@@ -525,25 +525,9 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 		return nil, nil, 0, fmt.Errorf("failed to marshal trigger data: %w", err)
 	}
 
-	// Build LastSuccessfulShas and detect transitions
-	lastSuccessfulShas := make(map[string]string, len(applicableEnvs))
-	if prev != nil {
-		for k, v := range prev.LastSuccessfulShas {
-			lastSuccessfulShas[k] = v
-		}
-	}
-	transitionedEnvironments := []string{}
-	for _, env := range applicableEnvs {
-		branch := env.Branch
-		envPhase := resolvePhaseForBranch(branch, phase, phasePerBranch)
-		if envPhase == promoterv1alpha1.CommitPhaseSuccess {
-			lastSuccessfulShas[branch] = currentShaPerBranch[branch]
-		}
-		prevEnvPhase := string(resolvePhaseForBranch(branch, promoterv1alpha1.CommitStatusPhase(previousPhase), prevPhasePerBranch))
-		if prevEnvPhase != string(promoterv1alpha1.CommitPhaseSuccess) && envPhase == promoterv1alpha1.CommitPhaseSuccess {
-			transitionedEnvironments = append(transitionedEnvironments, branch)
-		}
-	}
+	transitionedEnvironments, lastSuccessfulShas := detectTransitionsAndUpdateShas(
+		applicableEnvs, prev, phase, phasePerBranch, previousPhase, prevPhasePerBranch, currentShaPerBranch,
+	)
 	if len(transitionedEnvironments) > 0 {
 		logger.Info("Validation transitioned to success (context=promotionstrategy)", "branches", transitionedEnvironments)
 	}
@@ -599,6 +583,38 @@ func allBranchesSucceededForCurrentShas(
 		}
 	}
 	return true
+}
+
+// detectTransitionsAndUpdateShas builds the lastSuccessfulShas map (seeded from previous state) and
+// returns the list of branches that transitioned to success this reconcile.
+func detectTransitionsAndUpdateShas(
+	applicableEnvs []promoterv1alpha1.Environment,
+	prev *promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus,
+	phase promoterv1alpha1.CommitStatusPhase,
+	phasePerBranch map[string]promoterv1alpha1.CommitStatusPhase,
+	previousPhase string,
+	prevPhasePerBranch map[string]promoterv1alpha1.CommitStatusPhase,
+	currentShaPerBranch map[string]string,
+) ([]string, map[string]string) {
+	lastSuccessfulShas := make(map[string]string, len(applicableEnvs))
+	if prev != nil {
+		for k, v := range prev.LastSuccessfulShas {
+			lastSuccessfulShas[k] = v
+		}
+	}
+	var transitioned []string
+	for _, env := range applicableEnvs {
+		branch := env.Branch
+		envPhase := resolvePhaseForBranch(branch, phase, phasePerBranch)
+		if envPhase == promoterv1alpha1.CommitPhaseSuccess {
+			lastSuccessfulShas[branch] = currentShaPerBranch[branch]
+		}
+		prevEnvPhase := resolvePhaseForBranch(branch, promoterv1alpha1.CommitStatusPhase(previousPhase), prevPhasePerBranch)
+		if prevEnvPhase != promoterv1alpha1.CommitPhaseSuccess && envPhase == promoterv1alpha1.CommitPhaseSuccess {
+			transitioned = append(transitioned, branch)
+		}
+	}
+	return transitioned, lastSuccessfulShas
 }
 
 // --- Shared helpers for processEnvironments and processContextPromotionStrategy ---
@@ -671,7 +687,7 @@ func unmarshalJSONMap(raw *apiextensionsv1.JSON) (map[string]any, error) {
 	}
 	result := make(map[string]any)
 	if err := json.Unmarshal(raw.Raw, &result); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to unmarshal JSON map: %w", err)
 	}
 	return result, nil
 }
@@ -683,7 +699,7 @@ func marshalJSONMap(data map[string]any) (*apiextensionsv1.JSON, error) {
 	}
 	raw, err := json.Marshal(data)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to marshal JSON map: %w", err)
 	}
 	return &apiextensionsv1.JSON{Raw: raw}, nil
 }
@@ -747,24 +763,9 @@ func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx co
 		responseDataJSON = &apiextensionsv1.JSON{Raw: responseDataBytes}
 	}
 
-	var phase promoterv1alpha1.CommitStatusPhase
-	var phasePerBranch map[string]promoterv1alpha1.CommitStatusPhase
-	if wrcs.Spec.Mode.Context == promoterv1alpha1.ContextPromotionStrategy {
-		var evalErr error
-		phase, phasePerBranch, evalErr = r.evaluateValidationExpressionForPromotionStrategy(ctx, wrcs.Spec.Success.When.Expression, response)
-		if evalErr != nil {
-			return httpValidationResult{}, fmt.Errorf("failed to evaluate validation expression: %w", evalErr)
-		}
-	} else {
-		passed, evalErr := r.evaluateValidationExpression(ctx, wrcs.Spec.Success.When.Expression, response)
-		if evalErr != nil {
-			return httpValidationResult{}, fmt.Errorf("failed to evaluate validation expression: %w", evalErr)
-		}
-		if passed {
-			phase = promoterv1alpha1.CommitPhaseSuccess
-		} else {
-			phase = promoterv1alpha1.CommitPhasePending
-		}
+	phase, phasePerBranch, err := r.evaluatePhaseFromResponse(ctx, wrcs, response)
+	if err != nil {
+		return httpValidationResult{}, fmt.Errorf("failed to evaluate validation expression: %w", err)
 	}
 
 	return httpValidationResult{
@@ -774,6 +775,26 @@ func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx co
 		LastResponseStatusCode: lastResponseStatusCode,
 		ResponseDataJSON:       responseDataJSON,
 	}, nil
+}
+
+// evaluatePhaseFromResponse evaluates the success expression against an HTTP response and returns
+// the phase and optional per-branch phases.
+func (r *WebRequestCommitStatusReconciler) evaluatePhaseFromResponse(
+	ctx context.Context,
+	wrcs *promoterv1alpha1.WebRequestCommitStatus,
+	response httpResponse,
+) (promoterv1alpha1.CommitStatusPhase, map[string]promoterv1alpha1.CommitStatusPhase, error) {
+	if wrcs.Spec.Mode.Context == promoterv1alpha1.ContextPromotionStrategy {
+		return r.evaluateValidationExpressionForPromotionStrategy(ctx, wrcs.Spec.Success.When.Expression, response)
+	}
+	passed, err := r.evaluateValidationExpression(ctx, wrcs.Spec.Success.When.Expression, response)
+	if err != nil {
+		return "", nil, err
+	}
+	if passed {
+		return promoterv1alpha1.CommitPhaseSuccess, nil, nil
+	}
+	return promoterv1alpha1.CommitPhasePending, nil, nil
 }
 
 // getApplicableEnvironments returns the PromotionStrategy environments this WebRequestCommitStatus should run for.

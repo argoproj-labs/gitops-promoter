@@ -223,35 +223,41 @@ func (r *WebRequestCommitStatusReconciler) evaluateValidationExpressionForPromot
 
 	// Object: { defaultPhase?, environments? } — defaultPhase defaults to "pending" when omitted
 	if obj, ok := output.(map[string]any); ok {
-		defaultPhase := parsePhaseString(getString(logger, obj, "defaultPhase"), promoterv1alpha1.CommitPhasePending)
-		envsVal, hasEnvs := obj["environments"]
-		if !hasEnvs || envsVal == nil {
-			return defaultPhase, nil, nil
-		}
-		sl, ok := envsVal.([]any)
-		if !ok {
-			return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("validation expression environments must be an array, got %T", envsVal)
-		}
-		if len(sl) == 0 {
-			return defaultPhase, nil, nil
-		}
-		m := make(map[string]promoterv1alpha1.CommitStatusPhase, len(sl))
-		for i, item := range sl {
-			entry, ok := item.(map[string]any)
-			if !ok {
-				return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("validation expression environments[%d] must be object with branch and phase, got %T", i, item)
-			}
-			branch := getString(logger, entry, "branch")
-			if branch == "" {
-				return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("validation expression environments[%d]: branch is required", i)
-			}
-			m[branch] = parsePhaseString(getString(logger, entry, "phase"), defaultPhase)
-		}
-		logger.V(4).Info("Validation expression evaluated (per-branch object)", "defaultPhase", defaultPhase, "phasePerBranch", m)
-		return defaultPhase, m, nil
+		return parsePerBranchPhases(logger, obj)
 	}
 
 	return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("validation expression (promotionstrategy context) must return bool or object { defaultPhase?, environments? }, got %T", output)
+}
+
+// parsePerBranchPhases extracts defaultPhase and optional per-branch overrides from an expression
+// result object of the form { defaultPhase?, environments?: [{ branch, phase }] }.
+func parsePerBranchPhases(logger logr.Logger, obj map[string]any) (promoterv1alpha1.CommitStatusPhase, map[string]promoterv1alpha1.CommitStatusPhase, error) {
+	defaultPhase := parsePhaseString(getString(logger, obj, "defaultPhase"), promoterv1alpha1.CommitPhasePending)
+	envsVal, hasEnvs := obj["environments"]
+	if !hasEnvs || envsVal == nil {
+		return defaultPhase, nil, nil
+	}
+	sl, ok := envsVal.([]any)
+	if !ok {
+		return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("validation expression environments must be an array, got %T", envsVal)
+	}
+	if len(sl) == 0 {
+		return defaultPhase, nil, nil
+	}
+	m := make(map[string]promoterv1alpha1.CommitStatusPhase, len(sl))
+	for i, item := range sl {
+		entry, ok := item.(map[string]any)
+		if !ok {
+			return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("validation expression environments[%d] must be object with branch and phase, got %T", i, item)
+		}
+		branch := getString(logger, entry, "branch")
+		if branch == "" {
+			return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("validation expression environments[%d]: branch is required", i)
+		}
+		m[branch] = parsePhaseString(getString(logger, entry, "phase"), defaultPhase)
+	}
+	logger.V(4).Info("Validation expression evaluated (per-branch object)", "defaultPhase", defaultPhase, "phasePerBranch", m)
+	return defaultPhase, m, nil
 }
 
 func getString(logger logr.Logger, m map[string]any, key string) string {
