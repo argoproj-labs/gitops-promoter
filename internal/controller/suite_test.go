@@ -107,11 +107,9 @@ func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
 
 	c, _ := GinkgoConfiguration()
-	// c.FocusFiles = []string{
-	// 	"changetransferpolicy_controller_test.go",
-	// 	"pullrequest_controller_test.go",
-	// 	"promotionstrategy_controller_test.go",
-	// }
+	// Narrow iteration without editing specs: run `FOCUS='SubString' make test-parallel` (see Makefile).
+	// Or scope by file (do not commit):
+	// c.FocusFiles = []string{"promotionstrategy_controller_test.go"}
 	// GinkgoWriter.TeeTo(os.Stdout)
 
 	RunSpecs(t, "Controller Suite", c)
@@ -603,7 +601,12 @@ func startGitServer(gitStoragePath string) (string, *http.Server) {
 	return gitServerPortStr, server
 }
 
-func setupInitialTestGitRepoWithoutActiveMetadata(owner string, name string) {
+// testGitRepoCloneURL is the http URL of the fake repository on the in-process test git server (from GitRepository.Spec.Fake).
+func testGitRepoCloneURL(repo *promoterv1alpha1.GitRepository) string {
+	return fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repo.Spec.Fake.Owner, repo.Spec.Fake.Name)
+}
+
+func setupInitialTestGitRepoWithoutActiveMetadata(repo *promoterv1alpha1.GitRepository) {
 	gitPath, err := os.MkdirTemp("", "*")
 	if err != nil {
 		panic("could not make temp dir for repo server")
@@ -615,7 +618,7 @@ func setupInitialTestGitRepoWithoutActiveMetadata(owner string, name string) {
 		}
 	}()
 
-	_, err = runGitCmd(ctx, gitPath, "clone", fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, owner, name), ".")
+	_, err = runGitCmd(ctx, gitPath, "clone", testGitRepoCloneURL(repo), ".")
 	Expect(err).NotTo(HaveOccurred())
 
 	_, err = runGitCmd(ctx, gitPath, "config", "user.name", "testuser")
@@ -669,7 +672,7 @@ func setupInitialTestGitRepoWithoutActiveMetadata(owner string, name string) {
 	}
 }
 
-func setupInitialTestGitRepoOnServer(ctx context.Context, owner string, name string) {
+func setupInitialTestGitRepoOnServer(ctx context.Context, repo *promoterv1alpha1.GitRepository) {
 	gitPath, err := os.MkdirTemp("", "*")
 	if err != nil {
 		panic("could not make temp dir for repo server")
@@ -681,7 +684,7 @@ func setupInitialTestGitRepoOnServer(ctx context.Context, owner string, name str
 		}
 	}()
 
-	_, err = runGitCmd(ctx, gitPath, "clone", fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, owner, name), ".")
+	_, err = runGitCmd(ctx, gitPath, "clone", testGitRepoCloneURL(repo), ".")
 	Expect(err).NotTo(HaveOccurred())
 
 	_, err = runGitCmd(ctx, gitPath, "config", "user.name", "testuser")
@@ -745,8 +748,8 @@ func setupInitialTestGitRepoOnServer(ctx context.Context, owner string, name str
 	GinkgoLogr.Info("Git repository initialized", "path", gitPath)
 }
 
-func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string, dryCommitMessage string, hydratedCommitMessage string) (string, string) {
-	repoURL := fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repoOwner, repoName)
+func makeChangeAndHydrateRepo(gitPath string, repo *promoterv1alpha1.GitRepository, dryCommitMessage string, hydratedCommitMessage string) (string, string) {
+	repoURL := testGitRepoCloneURL(repo)
 	_, err := runGitCmd(ctx, gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", repoURL, ".")
 	Expect(err).NotTo(HaveOccurred())
 
@@ -970,14 +973,14 @@ func sendWebhookForPush(ctx context.Context, sha, branch string) {
 	}
 }
 
-// cloneTestRepo clones the test repo and configures git user. Returns the temp directory path.
-func cloneTestRepo(ctx context.Context, repoName string) (gitPath string, err error) {
+// cloneTestRepo clones the test repo for gitRepo.Spec.Fake and configures git user. Returns the temp directory path.
+func cloneTestRepo(ctx context.Context, repo *promoterv1alpha1.GitRepository) (gitPath string, err error) {
 	gitPath, err = os.MkdirTemp("", "*")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp dir: %w", err)
 	}
 
-	repoURL := fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repoName, repoName)
+	repoURL := testGitRepoCloneURL(repo)
 	_, err = runGitCmd(ctx, gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", repoURL, ".")
 	if err != nil {
 		_ = os.RemoveAll(gitPath)

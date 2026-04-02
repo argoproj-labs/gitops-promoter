@@ -74,7 +74,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 			{Key: "external-approval"},
 		}
 
-		setupInitialTestGitRepoOnServer(ctx, name, name)
+		setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -983,7 +983,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 			{Key: "responsedata-test"},
 		}
 
-		setupInitialTestGitRepoOnServer(ctx, name, name)
+		setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -1491,7 +1491,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 			scmAuthPromotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 				{Key: "responsedata-test"},
 			}
-			setupInitialTestGitRepoOnServer(scmAuthCtx, scmAuthName, scmAuthName)
+			setupInitialTestGitRepoOnServer(scmAuthCtx, scmAuthGitRepo)
 			Expect(k8sClient.Create(scmAuthCtx, scmAuthScmSecret)).To(Succeed())
 			Expect(k8sClient.Create(scmAuthCtx, scmAuthScmProvider)).To(Succeed())
 			Expect(k8sClient.Create(scmAuthCtx, scmAuthGitRepo)).To(Succeed())
@@ -1694,7 +1694,7 @@ var _ = Describe("WebRequestCommitStatus Controller - SCM Host Validation", func
 			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 				{Key: "scm-host-check"},
 			}
-			setupInitialTestGitRepoOnServer(ctx, name, name)
+			setupInitialTestGitRepoOnServer(ctx, gitRepo)
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
@@ -1795,7 +1795,7 @@ var _ = Describe("WebRequestCommitStatus Controller - SCM Host Validation", func
 			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 				{Key: "scm-host-check"},
 			}
-			setupInitialTestGitRepoOnServer(ctx, name, name)
+			setupInitialTestGitRepoOnServer(ctx, gitRepo)
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
