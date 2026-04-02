@@ -380,7 +380,7 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 	}
 
 	lastReconciledCtxStatus := wrcs.Status.PromotionStrategyContext
-	lastState := newLastReconciledStateFromCtxStatus(ctx, lastReconciledCtxStatus)
+	lastState := lastReconciledStateFromContext(ctx, lastReconciledCtxStatus)
 
 	// Polling+proposed optimization: skip when all environments already succeeded for their current SHAs
 	if wrcs.Spec.Mode.Polling != nil && wrcs.Spec.ReportOn == constants.CommitRefProposed && lastReconciledCtxStatus != nil {
@@ -583,7 +583,7 @@ func lastReconciledStateFromEnvironment(ctx context.Context, status *promoterv1a
 	return s
 }
 
-func newLastReconciledStateFromCtxStatus(ctx context.Context, status *promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus) lastReconciledState {
+func lastReconciledStateFromContext(ctx context.Context, status *promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus) lastReconciledState {
 	if status == nil {
 		return lastReconciledState{}
 	}
