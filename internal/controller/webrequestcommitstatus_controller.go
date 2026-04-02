@@ -572,7 +572,7 @@ func allBranchesSucceededForCurrentShas(
 	if lastReconciledCtxStatus == nil || lastReconciledCtxStatus.LastSuccessfulShas == nil {
 		return false
 	}
-	defaultPhase := promoterv1alpha1.CommitStatusPhase(lastReconciledCtxStatus.Phase)
+	defaultPhase := lastReconciledCtxStatus.Phase
 	for _, env := range applicableEnvs {
 		branchPhase := resolvePhaseForBranch(env.Branch, defaultPhase, lastReconciledCtxStatus.PhasePerBranch)
 		if branchPhase != promoterv1alpha1.CommitPhaseSuccess {
