@@ -122,7 +122,7 @@ A gauge of how many `promoter.argoproj.io` custom resources currently exist in t
 
 The controller refreshes this metric on a fixed interval (30 seconds) by listing each kind via the manager client (same view as the controller cache). It does **not** count resources on remote clusters that are reconciled only through multicluster configuration.
 
-If a list request fails for a kind, that kind’s gauge is set to `0` and an error is logged.
+If a list request fails for a kind, that kind's gauge is set to `0` and an error is logged.
 
 Labels:
 
