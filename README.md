@@ -58,6 +58,10 @@ spec:
 The project is currently experimental, please use with caution. See the 
 [docs site](https://gitops-promoter.readthedocs.io/en/latest/getting-started/) for setup instructions.
 
+## Contributing
+
+See the  **[Contributing](https://gitops-promoter.readthedocs.io/en/latest/contributing/)** page in the documentation.
+
 ## Users
 
 If you're using GitOps Promoter, please add yourself to [USERS.md](USERS.md)!
