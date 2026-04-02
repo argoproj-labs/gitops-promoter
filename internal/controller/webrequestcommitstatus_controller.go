@@ -551,13 +551,13 @@ func resolveCurrentShas(
 // WebRequestCommitStatusEnvironmentStatus (per-env path) or
 // WebRequestCommitStatusPromotionStrategyContextStatus (context=promotionstrategy path).
 type lastReconciledState struct {
-	Phase                  string
 	TriggerData            map[string]any
 	ResponseData           map[string]any
 	LastRequestTime        *metav1.Time
 	LastResponseStatusCode *int
 	ResponseOutput         *apiextensionsv1.JSON
 	PhasePerBranch         map[string]promoterv1alpha1.CommitStatusPhase
+	Phase                  string
 }
 
 func lastReconciledStateFromEnvironment(ctx context.Context, status *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus) lastReconciledState {
