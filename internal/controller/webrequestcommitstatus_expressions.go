@@ -23,6 +23,7 @@ import (
 
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
+	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -222,7 +223,7 @@ func (r *WebRequestCommitStatusReconciler) evaluateValidationExpressionForPromot
 
 	// Object: { defaultPhase?, environments? } — defaultPhase defaults to "pending" when omitted
 	if obj, ok := output.(map[string]any); ok {
-		defaultPhase := parsePhaseString(getString(obj, "defaultPhase"), promoterv1alpha1.CommitPhasePending)
+		defaultPhase := parsePhaseString(getString(logger, obj, "defaultPhase"), promoterv1alpha1.CommitPhasePending)
 		envsVal, hasEnvs := obj["environments"]
 		if !hasEnvs || envsVal == nil {
 			return defaultPhase, nil, nil
@@ -240,11 +241,11 @@ func (r *WebRequestCommitStatusReconciler) evaluateValidationExpressionForPromot
 			if !ok {
 				return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("validation expression environments[%d] must be object with branch and phase, got %T", i, item)
 			}
-			branch := getString(entry, "branch")
+			branch := getString(logger, entry, "branch")
 			if branch == "" {
 				return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("validation expression environments[%d]: branch is required", i)
 			}
-			m[branch] = parsePhaseString(getString(entry, "phase"), defaultPhase)
+			m[branch] = parsePhaseString(getString(logger, entry, "phase"), defaultPhase)
 		}
 		logger.V(4).Info("Validation expression evaluated (per-branch object)", "defaultPhase", defaultPhase, "phasePerBranch", m)
 		return defaultPhase, m, nil
@@ -253,9 +254,16 @@ func (r *WebRequestCommitStatusReconciler) evaluateValidationExpressionForPromot
 	return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("validation expression (promotionstrategy context) must return bool or object { defaultPhase?, environments? }, got %T", output)
 }
 
-func getString(m map[string]any, key string) string {
-	v, _ := m[key]
-	s, _ := v.(string)
+func getString(logger logr.Logger, m map[string]any, key string) string {
+	v, ok := m[key]
+	if !ok || v == nil {
+		return ""
+	}
+	s, ok := v.(string)
+	if !ok {
+		logger.V(4).Info("Expression object field has unexpected type, expected string", "key", key, "actualType", fmt.Sprintf("%T", v))
+		return ""
+	}
 	return s
 }
 

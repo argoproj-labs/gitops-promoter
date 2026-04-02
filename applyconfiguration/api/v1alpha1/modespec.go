@@ -17,6 +17,10 @@ limitations under the License.
 
 package v1alpha1
 
+import (
+	apiv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+)
+
 // ModeSpecApplyConfiguration represents a declarative configuration of the ModeSpec type for use
 // with apply.
 //
@@ -35,7 +39,7 @@ type ModeSpecApplyConfiguration struct {
 	// environments, each still reporting on that environment's reportOn SHA. When context is promotionstrategy,
 	// per-environment template variables (Environment, ReportedSha, LastSuccessfulSha) are not set; do not use
 	// them in URL, body, description, or trigger templates.
-	Context *string `json:"context,omitempty"`
+	Context *apiv1alpha1.ContextMode `json:"context,omitempty"`
 }
 
 // ModeSpecApplyConfiguration constructs a declarative configuration of the ModeSpec type for use with
@@ -63,7 +67,7 @@ func (b *ModeSpecApplyConfiguration) WithTrigger(value *TriggerModeSpecApplyConf
 // WithContext sets the Context field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Context field is set to the value of the last call.
-func (b *ModeSpecApplyConfiguration) WithContext(value string) *ModeSpecApplyConfiguration {
+func (b *ModeSpecApplyConfiguration) WithContext(value apiv1alpha1.ContextMode) *ModeSpecApplyConfiguration {
 	b.Context = &value
 	return b
 }

@@ -21,12 +21,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// Mode.Context allowed values for WebRequestCommitStatus.
+// ContextMode represents the request-scope mode for WebRequestCommitStatus.
+type ContextMode string
+
 const (
 	// ContextEnvironments is the default: one HTTP request per environment; each environment has its own phase.
-	ContextEnvironments = "environments"
+	ContextEnvironments ContextMode = "environments"
 	// ContextPromotionStrategy means one HTTP request per reconcile; phase(s) are applied to all environments' CommitStatuses.
-	ContextPromotionStrategy = "promotionstrategy"
+	ContextPromotionStrategy ContextMode = "promotionstrategy"
 )
 
 // WebRequestCommitStatusSpec defines the desired state of WebRequestCommitStatus
@@ -150,7 +152,7 @@ type ModeSpec struct {
 	// +optional
 	// +kubebuilder:default=environments
 	// +kubebuilder:validation:Enum=environments;promotionstrategy
-	Context string `json:"context,omitempty"`
+	Context ContextMode `json:"context,omitempty"`
 }
 
 // PollingModeSpec defines interval-based polling configuration.

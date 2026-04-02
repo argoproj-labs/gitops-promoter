@@ -121,9 +121,8 @@ type httpValidationResult struct {
 	LastRequestTime        *metav1.Time
 	LastResponseStatusCode *int
 	ResponseDataJSON       *apiextensionsv1.JSON
+	PhasePerBranch         map[string]promoterv1alpha1.CommitStatusPhase
 	Phase                  promoterv1alpha1.CommitStatusPhase
-	// PhasePerBranch is set when context is promotionstrategy and the success expression returns an object with per-branch phases.
-	PhasePerBranch map[string]promoterv1alpha1.CommitStatusPhase
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=webrequestcommitstatuses,verbs=get;list;watch;create;update;patch;delete
@@ -353,7 +352,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		var responseDataJSON *apiextensionsv1.JSON
 
 		if decision.ShouldFire {
-			result, err := r.handleHTTPRequestAndValidation(ctx, wrcs, td, branch)
+			result, err := r.handleHTTPRequestAndValidation(ctx, wrcs, td)
 			if err != nil {
 				return nil, nil, 0, err
 			}
@@ -502,7 +501,7 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 	}
 
 	if decision.ShouldFire {
-		result, err := r.handleHTTPRequestAndValidation(ctx, wrcs, td, "-")
+		result, err := r.handleHTTPRequestAndValidation(ctx, wrcs, td)
 		if err != nil {
 			return nil, nil, 0, err
 		}
@@ -586,7 +585,7 @@ func allBranchesSucceededForCurrentShas(
 	prev *promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus,
 	currentShaPerBranch map[string]string,
 ) bool {
-	if prev.LastSuccessfulShas == nil {
+	if prev == nil || prev.LastSuccessfulShas == nil {
 		return false
 	}
 	defaultPhase := promoterv1alpha1.CommitStatusPhase(prev.Phase)
@@ -606,8 +605,8 @@ func allBranchesSucceededForCurrentShas(
 
 // triggerDecision holds the result of evaluateTriggerDecision.
 type triggerDecision struct {
-	ShouldFire     bool
 	NewTriggerData map[string]any
+	ShouldFire     bool
 }
 
 // evaluateTriggerDecision determines whether the HTTP request should fire this reconcile.
@@ -716,31 +715,29 @@ func requeueDuration(mode promoterv1alpha1.ModeSpec) time.Duration {
 	return 0
 }
 
-// handleHTTPRequestAndValidation is called when the trigger allows (or in polling mode). It performs the
+// handleHTTPRequestAndValidation is called when the trigger fires (or in polling mode). It performs the
 // HTTP request, optionally runs the response expression to populate ResponseOutput, then runs the validation
-// expression to set Phase (Success or Pending). When wrcs.Spec.Mode.Context is "promotionstrategy", the expression may
-// return an object { defaultPhase?, environments? } to set per-environment phases; see evaluateValidationExpressionForPromotionStrategy.
-func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, templateData templateData, branch string) (httpValidationResult, error) {
+// expression to set Phase. When context is "promotionstrategy", the expression may return an object
+// { defaultPhase?, environments? } to set per-environment phases; see evaluateValidationExpressionForPromotionStrategy.
+func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, templateData templateData) (httpValidationResult, error) {
 	logger := log.FromContext(ctx)
 
-	// Make the HTTP request
 	response, err := r.makeHTTPRequest(ctx, wrcs, templateData)
 	if err != nil {
-		return httpValidationResult{}, fmt.Errorf("failed to make HTTP request for environment %q: %w", branch, err)
+		return httpValidationResult{}, fmt.Errorf("failed to make HTTP request: %w", err)
 	}
 
 	now := metav1.Now()
 	lastRequestTime := &now
 	lastResponseStatusCode := &response.StatusCode
 
-	logger.V(4).Info("HTTP response received", "branch", branch, "statusCode", response.StatusCode)
+	logger.V(4).Info("HTTP response received", "statusCode", response.StatusCode)
 
-	// Store response data (only in trigger mode with response.output.expression)
 	var responseDataJSON *apiextensionsv1.JSON
 	if wrcs.Spec.Mode.Trigger != nil && wrcs.Spec.Mode.Trigger.Response != nil {
 		extractedData, err := r.evaluateResponseDataExpression(ctx, wrcs.Spec.Mode.Trigger.Response.Output.Expression, response)
 		if err != nil {
-			return httpValidationResult{}, fmt.Errorf("failed to evaluate response data expression for environment %q: %w", branch, err)
+			return httpValidationResult{}, fmt.Errorf("failed to evaluate response data expression: %w", err)
 		}
 
 		responseDataBytes, err := json.Marshal(extractedData)
@@ -750,19 +747,18 @@ func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx co
 		responseDataJSON = &apiextensionsv1.JSON{Raw: responseDataBytes}
 	}
 
-	// Evaluate the success expression (behavior depends on promotionStrategyContext)
 	var phase promoterv1alpha1.CommitStatusPhase
 	var phasePerBranch map[string]promoterv1alpha1.CommitStatusPhase
 	if wrcs.Spec.Mode.Context == promoterv1alpha1.ContextPromotionStrategy {
 		var evalErr error
 		phase, phasePerBranch, evalErr = r.evaluateValidationExpressionForPromotionStrategy(ctx, wrcs.Spec.Success.When.Expression, response)
 		if evalErr != nil {
-			return httpValidationResult{}, fmt.Errorf("failed to evaluate validation expression for environment %q: %w", branch, evalErr)
+			return httpValidationResult{}, fmt.Errorf("failed to evaluate validation expression: %w", evalErr)
 		}
 	} else {
 		passed, evalErr := r.evaluateValidationExpression(ctx, wrcs.Spec.Success.When.Expression, response)
 		if evalErr != nil {
-			return httpValidationResult{}, fmt.Errorf("failed to evaluate validation expression for environment %q: %w", branch, evalErr)
+			return httpValidationResult{}, fmt.Errorf("failed to evaluate validation expression: %w", evalErr)
 		}
 		if passed {
 			phase = promoterv1alpha1.CommitPhaseSuccess
