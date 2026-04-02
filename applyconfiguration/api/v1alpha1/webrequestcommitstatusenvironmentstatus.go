@@ -18,6 +18,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	apiv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -38,7 +39,7 @@ type WebRequestCommitStatusEnvironmentStatusApplyConfiguration struct {
 	LastSuccessfulSha *string `json:"lastSuccessfulSha,omitempty"`
 	// Phase represents the current phase of the validation.
 	// This controller sets only "pending" or "success"; it never sets "failure" (failure is allowed by the enum for API consistency).
-	Phase *string `json:"phase,omitempty"`
+	Phase *apiv1alpha1.CommitStatusPhase `json:"phase,omitempty"`
 	// LastRequestTime is when the last HTTP request was made.
 	LastRequestTime *v1.Time `json:"lastRequestTime,omitempty"`
 	// LastResponseStatusCode is the HTTP status code from the last request.
@@ -95,7 +96,7 @@ func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithLastSucc
 // WithPhase sets the Phase field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Phase field is set to the value of the last call.
-func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithPhase(value string) *WebRequestCommitStatusEnvironmentStatusApplyConfiguration {
+func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithPhase(value apiv1alpha1.CommitStatusPhase) *WebRequestCommitStatusEnvironmentStatusApplyConfiguration {
 	b.Phase = &value
 	return b
 }

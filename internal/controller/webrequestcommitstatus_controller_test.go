@@ -580,7 +580,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				// Find an environment with trigger data stored
 				var foundEnvWithData bool
 				for _, envStatus := range wrcs.Status.Environments {
-					if envStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess) &&
+					if envStatus.Phase == promoterv1alpha1.CommitPhaseSuccess &&
 						envStatus.TriggerOutput != nil {
 						// Parse the trigger data
 						var trigData map[string]any
@@ -2106,8 +2106,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 				_ = json.NewEncoder(w).Encode(map[string]any{
 					"environments": map[string]string{
 						testBranchDevelopment: "approved",
-						testBranchStaging:    "pending",
-						testBranchProduction: "pending",
+						testBranchStaging:     "pending",
+						testBranchProduction:  "pending",
 					},
 				})
 			}))

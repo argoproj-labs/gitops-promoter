@@ -104,7 +104,7 @@ func (td templateData) triggerExprEnv() map[string]any {
 }
 
 // evaluateTriggerExpression runs the trigger expression to decide whether to perform the HTTP request.
-// Returns true when the controller should issue the request; false keeps the previous phase and skips.
+// Returns true when the controller should issue the request; false keeps the phase from the last reconcile and skips.
 func (r *WebRequestCommitStatusReconciler) evaluateTriggerExpression(ctx context.Context, expression string, td templateData) (triggerResult, error) {
 	logger := log.FromContext(ctx)
 

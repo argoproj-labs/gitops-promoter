@@ -30,7 +30,7 @@ import (
 type WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration struct {
 	// Phase is the validation result from the HTTP request (pending, success, or failure).
 	// When PhasePerBranch is set, Phase is used as the default for any branch not listed in PhasePerBranch.
-	Phase *string `json:"phase,omitempty"`
+	Phase *apiv1alpha1.CommitStatusPhase `json:"phase,omitempty"`
 	// PhasePerBranch holds per-branch phases when the success expression returned an object with per-branch overrides.
 	// Key is branch name, value is "pending", "success", or "failure". When set, each environment's CommitStatus
 	// uses this phase; branches not in the map use Phase.
@@ -59,7 +59,7 @@ func WebRequestCommitStatusPromotionStrategyContextStatus() *WebRequestCommitSta
 // WithPhase sets the Phase field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Phase field is set to the value of the last call.
-func (b *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration) WithPhase(value string) *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration {
+func (b *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration) WithPhase(value apiv1alpha1.CommitStatusPhase) *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration {
 	b.Phase = &value
 	return b
 }

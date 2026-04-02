@@ -395,7 +395,7 @@ type WebRequestCommitStatusPromotionStrategyContextStatus struct {
 	// When PhasePerBranch is set, Phase is used as the default for any branch not listed in PhasePerBranch.
 	// +kubebuilder:validation:Enum=pending;success;failure
 	// +required
-	Phase string `json:"phase"`
+	Phase CommitStatusPhase `json:"phase"`
 
 	// PhasePerBranch holds per-branch phases when the success expression returned an object with per-branch overrides.
 	// Key is branch name, value is "pending", "success", or "failure". When set, each environment's CommitStatus
@@ -459,7 +459,7 @@ type WebRequestCommitStatusEnvironmentStatus struct {
 	// This controller sets only "pending" or "success"; it never sets "failure" (failure is allowed by the enum for API consistency).
 	// +kubebuilder:validation:Enum=pending;success;failure
 	// +required
-	Phase string `json:"phase"`
+	Phase CommitStatusPhase `json:"phase"`
 
 	// LastRequestTime is when the last HTTP request was made.
 	// +optional
