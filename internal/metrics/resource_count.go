@@ -171,6 +171,9 @@ func (r *ResourceCountRunnable) Start(ctx context.Context) error {
 	if interval <= 0 {
 		interval = defaultResourceCountInterval
 	}
+	if r.Client == nil {
+		return fmt.Errorf("resource count runnable client is nil")
+	}
 
 	refreshKubernetesResourceCounts(ctx, r.Client, log)
 
