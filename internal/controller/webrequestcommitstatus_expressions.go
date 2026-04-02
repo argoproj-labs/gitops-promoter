@@ -78,10 +78,10 @@ func (r *WebRequestCommitStatusReconciler) getCompiledValidationExpression(expre
 	return r.getCompiledExpression(expressionCacheKey{Prefix: "validation", Expression: expression}, expr.AsBool())
 }
 
-// getCompiledValidationExpressionFlexible returns a cached or newly compiled validation expression without AsBool.
+// getCompiledValidationExpressionForPromotionStrategy returns a cached or newly compiled validation expression without AsBool.
 // Used by evaluateValidationExpressionForPromotionStrategy when context is promotionstrategy: expression may return bool or object { defaultPhase?, environments? }.
-func (r *WebRequestCommitStatusReconciler) getCompiledValidationExpressionFlexible(expression string) (*vm.Program, error) {
-	return r.getCompiledExpression(expressionCacheKey{Prefix: "validation_flex", Expression: expression})
+func (r *WebRequestCommitStatusReconciler) getCompiledValidationExpressionForPromotionStrategy(expression string) (*vm.Program, error) {
+	return r.getCompiledExpression(expressionCacheKey{Prefix: "validation_promotionstrategy", Expression: expression})
 }
 
 // getCompiledResponseDataExpression returns a cached or newly compiled response output expression program.
@@ -195,7 +195,7 @@ func (r *WebRequestCommitStatusReconciler) evaluateValidationExpression(ctx cont
 func (r *WebRequestCommitStatusReconciler) evaluateValidationExpressionForPromotionStrategy(ctx context.Context, expression string, resp httpResponse) (phase promoterv1alpha1.CommitStatusPhase, phasePerBranch map[string]promoterv1alpha1.CommitStatusPhase, err error) {
 	logger := log.FromContext(ctx)
 
-	program, err := r.getCompiledValidationExpressionFlexible(expression)
+	program, err := r.getCompiledValidationExpressionForPromotionStrategy(expression)
 	if err != nil {
 		return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("failed to compile validation expression: %w", err)
 	}
