@@ -8,11 +8,11 @@ Thanks for helping improve GitOps Promoter. The project is still young; we keep 
 2. **[Fork the repository](https://github.com/argoproj-labs/gitops-promoter/fork)** on GitHub, clone your fork, and create a branch from **`main`**. Push work to your fork only.
 3. **Make focused changes** — one logical change per PR when possible.
 4. **Run checks** that match what you changed:
-   - **Go only** (no CRD, webhook, or generated install / apply-config churn): `go mod tidy`, `make lint`, `make test-parallel`.
-   - **APIs, CRDs, webhooks, or bundled install YAML** (anything `make build-installer` regenerates—`config/`, `dist/install.yaml`, deepcopy/applyconfiguration, extension icon output): **`make build-installer`**, commit the full diff, then `go mod tidy`, `make lint`, `make test-parallel`.
-   - **`ui/`**: `make lint-ui`, `make test-unit-test-extension`, `make test-ui-test-dashboard`.
-   - **`docs/`** (this site): `make lint-docs`.
-   - CI also runs **Nilaway** and **spell checking**; use **`make nilaway-no-test`** locally if you want parity before pushing.
+    - **Go only** (no CRD, webhook, or generated install / apply-config churn): `go mod tidy`, `make lint`, `make test-parallel`.
+    - **APIs, CRDs, webhooks, or bundled install YAML** (anything `make build-installer` regenerates—`config/`, `dist/install.yaml`, deepcopy/applyconfiguration, extension icon output): **`make build-installer`**, commit the full diff, then `go mod tidy`, `make lint`, `make test-parallel`.
+    - **`ui/`**: `make lint-ui`, `make test-unit-test-extension`, `make test-ui-test-dashboard`.
+    - **`docs/`** (this site): `make lint-docs`.
+    - CI also runs **Nilaway** and **spell checking**; use **`make nilaway-no-test`** locally if you want parity before pushing.
 5. **Open a pull request from your fork** into `main` on `argoproj-labs/gitops-promoter`, with a short title and enough context for reviewers (what changed, why). Use `Fixes #123` / `Closes #123` when it applies. Every commit must be **DCO sign-off** (see below).
 6. **Iterate on review** — CI must be green; maintainers will help get it over the line.
 
@@ -22,25 +22,18 @@ Pull requests must pass the [**Developer Certificate of Origin (DCO)**](https://
 
 To add a **`prepare-commit-msg`** hook that signs off automatically, follow [Argoproj’s instructions](https://github.com/argoproj/argoproj/blob/main/community/CONTRIBUTING.md#legal): copy [`community/dco-signoff-hook/prepare-commit-msg`](https://github.com/argoproj/argoproj/blob/main/community/dco-signoff-hook/prepare-commit-msg) from [`argoproj/argoproj`](https://github.com/argoproj/argoproj) into **`.git/hooks/prepare-commit-msg`** in your clone (merge with an existing hook if you already have one), and ensure it is executable (`chmod +x`).
 
-## Setup
-
-- **Go** — Match `go.mod` / CI (currently **Go 1.26** in `.github/workflows/ci.yaml`).
-- **Make** — Run `make help` from the repo root; most tasks are wired there.
-- **Node.js** — Needed only for `ui/` work (CI uses **Node 24**).
-- **Python 3.13** — Only if you run `make lint-docs` locally (same flow as CI: venv + `docs/requirements-hashed.txt`).
-
 ## Where things live
 
-| Area | Path |
-|------|------|
-| Controller entrypoint | [`cmd/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/cmd) |
-| Reconcilers | [`internal/controller/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/internal/controller) |
-| API types (CRDs) | [`api/v1alpha1/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/api/v1alpha1) |
-| Install / RBAC / CRD bases | [`config/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/config) |
-| Metrics | [`internal/metrics/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/internal/metrics) |
-| User docs (MkDocs) | [`docs/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/docs) |
-| Dashboard & Argo CD extension | [`ui/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/ui) |
-| Envtest-based integration tests | [`internal/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/internal) (via Ginkgo) |
+| Area                            | Path                                                                                                     |
+|---------------------------------|----------------------------------------------------------------------------------------------------------|
+| Controller entrypoint           | [`cmd/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/cmd)                                 |
+| Reconcilers                     | [`internal/controller/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/internal/controller) |
+| API types (CRDs)                | [`api/v1alpha1/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/api/v1alpha1)               |
+| Install / RBAC / CRD bases      | [`config/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/config)                           |
+| Metrics                         | [`internal/metrics/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/internal/metrics)       |
+| User docs (MkDocs)              | [`docs/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/docs)                               |
+| Dashboard & Argo CD extension   | [`ui/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/ui)                                   |
+| Envtest-based integration tests | [`internal/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/internal) (via Ginkgo)          |
 
 ## Design patterns
 
