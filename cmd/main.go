@@ -31,6 +31,7 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/cmd/demo"
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
+	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
 
@@ -194,6 +195,10 @@ func runController(
 	}
 
 	localManager := mcMgr.GetLocalManager()
+
+	if err := localManager.Add(metrics.NewResourceCountRunnable(localManager.GetClient())); err != nil {
+		panic(fmt.Errorf("unable to add resource count metrics runnable: %w", err))
+	}
 
 	settingsMgr := settings.NewManager(localManager.GetClient(), localManager.GetAPIReader(), settings.ManagerConfig{
 		ControllerNamespace: controllerNamespace,
