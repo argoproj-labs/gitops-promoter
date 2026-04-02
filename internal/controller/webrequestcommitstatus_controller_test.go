@@ -175,7 +175,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					}
 				}
 				g.Expect(devEnvStatus).ToNot(BeNil(), "Dev environment status should exist")
-				g.Expect(devEnvStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				g.Expect(devEnvStatus.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 
 				// Validate status fields are populated
 				g.Expect(devEnvStatus.ReportedSha).ToNot(BeEmpty(), "ReportedSha should be populated")
@@ -272,7 +272,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					}
 				}
 				g.Expect(devEnvStatus).ToNot(BeNil(), "Dev environment status should exist")
-				g.Expect(devEnvStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)))
+				g.Expect(devEnvStatus.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
 
 				// Verify CommitStatus was created for dev environment with pending phase
 				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-polling-failure-"+testBranchDevelopment+"-webrequest")
@@ -368,7 +368,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					g.Expect(len(wrcs.Status.Environments)).To(Equal(3), "all three environments must be processed before snapshotting the request count")
 					for i := range wrcs.Status.Environments {
 						g.Expect(wrcs.Status.Environments[i].LastRequestTime).ToNot(BeNil(), "LastRequestTime should be set after first request")
-						g.Expect(wrcs.Status.Environments[i].Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)), "validation fails (approved: false) so phase stays Pending")
+						g.Expect(wrcs.Status.Environments[i].Phase).To(Equal(promoterv1alpha1.CommitPhasePending), "validation fails (approved: false) so phase stays Pending")
 					}
 					requestMu.Lock()
 					initialRequestCount = requestCount
@@ -470,7 +470,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					}
 				}
 				g.Expect(devEnvStatus).ToNot(BeNil())
-				g.Expect(devEnvStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)))
+				g.Expect(devEnvStatus.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
 				// lastSuccessfulSha should still be empty when in pending phase
 				g.Expect(devEnvStatus.LastSuccessfulSha).To(BeEmpty(), "lastSuccessfulSha should be empty when validation has not succeeded")
 				g.Expect(devEnvStatus.ReportedSha).NotTo(BeEmpty(), "reportedSha should be set")
@@ -493,7 +493,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					}
 				}
 				g.Expect(devEnvStatus).ToNot(BeNil())
-				g.Expect(devEnvStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				g.Expect(devEnvStatus.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 				// lastSuccessfulSha should now be set to reportedSha after success
 				g.Expect(devEnvStatus.LastSuccessfulSha).To(Equal(devEnvStatus.ReportedSha), "lastSuccessfulSha should match reportedSha after success")
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -944,7 +944,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				}
 				g.Expect(devEnvStatus).ToNot(BeNil(), "Dev environment status should exist")
 				// Expression evaluates to false because StatusCode != 200
-				g.Expect(devEnvStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)))
+				g.Expect(devEnvStatus.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
 				g.Expect(*devEnvStatus.LastResponseStatusCode).To(Equal(500))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
@@ -1081,7 +1081,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 				devEnv := wrcs.Status.Environments[0]
 
 				// Verify validation succeeded
-				g.Expect(devEnv.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				g.Expect(devEnv.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 
 				// Verify response output is nil without response.output.expression
 				g.Expect(devEnv.ResponseOutput).To(BeNil(), "response output should be nil without response.output.expression")
@@ -1260,7 +1260,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
 
 				devEnv := wrcs.Status.Environments[0]
-				g.Expect(devEnv.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				g.Expect(devEnv.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 
 				// Verify we made multiple requests (at least 3)
 				g.Expect(requestCount).To(BeNumerically(">=", 3))
@@ -1436,7 +1436,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
 
 				// Verify validation succeeded
-				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 
 				// Verify response output is nil in polling mode
 				g.Expect(wrcs.Status.Environments[0].ResponseOutput).To(BeNil(), "response output should be nil in polling mode")
@@ -1577,7 +1577,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					}
 				}
 				g.Expect(devEnv).ToNot(BeNil())
-				g.Expect(devEnv.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				g.Expect(devEnv.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 				g.Expect(devEnv.LastResponseStatusCode).ToNot(BeNil())
 				g.Expect(*devEnv.LastResponseStatusCode).To(Equal(200))
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -1778,7 +1778,7 @@ var _ = Describe("WebRequestCommitStatus Controller - SCM Host Validation", func
 					}
 				}
 				g.Expect(devStatus).ToNot(BeNil(), "dev environment status should exist")
-				g.Expect(devStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				g.Expect(devStatus.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
@@ -1995,7 +1995,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 				g.Expect(err).NotTo(HaveOccurred())
 
 				g.Expect(fetched.Status.PromotionStrategyContext).NotTo(BeNil(), "PromotionStrategyContext should be populated")
-				g.Expect(fetched.Status.PromotionStrategyContext.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				g.Expect(fetched.Status.PromotionStrategyContext.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 				g.Expect(fetched.Status.PromotionStrategyContext.LastResponseStatusCode).NotTo(BeNil())
 				g.Expect(*fetched.Status.PromotionStrategyContext.LastResponseStatusCode).To(Equal(200))
 				g.Expect(fetched.Status.PromotionStrategyContext.LastRequestTime).NotTo(BeNil())
@@ -2078,7 +2078,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 				g.Expect(err).NotTo(HaveOccurred())
 
 				g.Expect(fetched.Status.PromotionStrategyContext).NotTo(BeNil())
-				g.Expect(fetched.Status.PromotionStrategyContext.Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)))
+				g.Expect(fetched.Status.PromotionStrategyContext.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
 				g.Expect(fetched.Status.Environments).To(BeEmpty())
 
 				for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
@@ -2163,7 +2163,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 				g.Expect(err).NotTo(HaveOccurred())
 
 				g.Expect(fetched.Status.PromotionStrategyContext).NotTo(BeNil())
-				g.Expect(fetched.Status.PromotionStrategyContext.Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)),
+				g.Expect(fetched.Status.PromotionStrategyContext.Phase).To(Equal(promoterv1alpha1.CommitPhasePending),
 					"default phase should be pending")
 				g.Expect(fetched.Status.PromotionStrategyContext.PhasePerBranch).NotTo(BeNil(),
 					"PhasePerBranch should be populated")
@@ -2255,7 +2255,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 				g.Expect(err).NotTo(HaveOccurred())
 
 				g.Expect(fetched.Status.PromotionStrategyContext).NotTo(BeNil())
-				g.Expect(fetched.Status.PromotionStrategyContext.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				g.Expect(fetched.Status.PromotionStrategyContext.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 
 				g.Expect(fetched.Status.PromotionStrategyContext.TriggerOutput).NotTo(BeNil(),
 					"TriggerOutput should be populated")
@@ -2346,7 +2346,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 				g.Expect(err).NotTo(HaveOccurred())
 
 				g.Expect(fetched.Status.PromotionStrategyContext).NotTo(BeNil())
-				g.Expect(fetched.Status.PromotionStrategyContext.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				g.Expect(fetched.Status.PromotionStrategyContext.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 				g.Expect(fetched.Status.PromotionStrategyContext.ResponseOutput).NotTo(BeNil(),
 					"ResponseOutput should be populated in trigger mode with response.output")
 
@@ -2427,7 +2427,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 				}, &fetched)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(fetched.Status.PromotionStrategyContext).NotTo(BeNil())
-				g.Expect(fetched.Status.PromotionStrategyContext.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				g.Expect(fetched.Status.PromotionStrategyContext.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 				g.Expect(fetched.Status.PromotionStrategyContext.LastSuccessfulShas).NotTo(BeEmpty(),
 					"LastSuccessfulShas should be populated after success")
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -2511,7 +2511,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 				g.Expect(err).NotTo(HaveOccurred())
 
 				g.Expect(fetched.Status.PromotionStrategyContext).NotTo(BeNil())
-				g.Expect(fetched.Status.PromotionStrategyContext.Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)))
+				g.Expect(fetched.Status.PromotionStrategyContext.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
 				g.Expect(fetched.Status.PromotionStrategyContext.LastResponseStatusCode).NotTo(BeNil())
 				g.Expect(*fetched.Status.PromotionStrategyContext.LastResponseStatusCode).To(Equal(500))
 			}, constants.EventuallyTimeout).Should(Succeed())
