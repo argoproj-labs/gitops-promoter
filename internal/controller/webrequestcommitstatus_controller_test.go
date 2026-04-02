@@ -1911,7 +1911,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 			{Key: "ps-context-check"},
 		}
 
-		setupInitialTestGitRepoOnServer(ctx, name, name)
+		setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
