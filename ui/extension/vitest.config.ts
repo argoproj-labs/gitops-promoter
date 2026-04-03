@@ -18,5 +18,19 @@ export default defineConfig({
         inline: [/react-icons/],
       },
     },
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'lcov'],
+      reportsDirectory: './coverage',
+      include: ['**/*.{ts,tsx}'],
+      exclude: [
+        '**/*.test.{ts,tsx}',
+        'test/**',
+        'node_modules/**',
+        'dist/**',
+        'vitest.config.ts',
+        'iconStyles.generated.ts',
+      ],
+    },
   },
 });

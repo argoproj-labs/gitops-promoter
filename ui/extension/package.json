@@ -13,7 +13,7 @@
     "lint:fix": "eslint . --ext .ts,.tsx,.js,.jsx --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "vitest run"
+    "test": "vitest run --coverage"
   },
   "devDependencies": {
     "@codecov/webpack-plugin": "^1.9.1",
@@ -22,6 +22,7 @@
     "@types/react-dom": "^19.1.6",
     "@typescript-eslint/eslint-plugin": "^8.54.0",
     "@typescript-eslint/parser": "^8.54.0",
+    "@vitest/coverage-v8": "^4.1.2",
     "css-loader": "^7.0.0",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.0.0",
