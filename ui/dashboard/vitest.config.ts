@@ -22,14 +22,17 @@ export default mergeConfig(
       },
       coverage: {
         provider: 'v8',
+        // Sibling packages live outside vitest root; default allowExternal:false drops them from LCOV.
+        allowExternal: true,
         reporter: ['text', ['lcov', { projectRoot: repoRoot }]],
         reportsDirectory: './coverage',
+        // Globs match absolute paths; picomatch uses contains:true, so `ui/...` need not be anchored.
         include: [
-          'src/**/*.{ts,tsx}',
-          '../shared/src/**/*.{ts,tsx}',
-          '../components-lib/src/**/*.{ts,tsx}',
+          'ui/dashboard/src/**/*.{ts,tsx}',
+          'ui/shared/src/**/*.{ts,tsx}',
+          'ui/components-lib/src/**/*.{ts,tsx}',
         ],
-        exclude: ['node_modules/**', '**/*.d.ts', '**/vitest.config.ts'],
+        exclude: ['**/node_modules/**', '**/*.d.ts', '**/vitest.config.ts'],
       },
     },
   }),
