@@ -26,7 +26,7 @@ import (
 // WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration represents a declarative configuration of the WebRequestCommitStatusPromotionStrategyContextStatus type for use
 // with apply.
 //
-// WebRequestCommitStatusPromotionStrategyContextStatus holds the observed state for context=promotionstrategy (one request per reconcile).
+// WebRequestCommitStatusPromotionStrategyContextStatus holds the observed state for context=promotionstrategy (at most one request per WebRequestCommitStatus).
 type WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration struct {
 	// Phase is the validation result from the HTTP request (pending, success, or failure).
 	// When PhasePerBranch is set, Phase is used as the default for any branch not listed in PhasePerBranch.

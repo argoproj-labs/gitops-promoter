@@ -30,7 +30,7 @@ type WebRequestCommitStatusStatusApplyConfiguration struct {
 	// When context is "promotionstrategy", this slice is empty and PromotionStrategyContext is used instead.
 	Environments []WebRequestCommitStatusEnvironmentStatusApplyConfiguration `json:"environments,omitempty"`
 	// PromotionStrategyContext holds the result of the one HTTP run when context is "promotionstrategy".
-	// One request is made per reconcile; phase(s) are reported on each environment's CommitStatus.
+	// At most one request is made per WebRequestCommitStatus; phase(s) are reported on each environment's CommitStatus.
 	PromotionStrategyContext *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration `json:"promotionStrategyContext,omitempty"`
 	// Conditions represent the latest available observations of an object's state
 	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`

@@ -8,7 +8,7 @@ The WebRequestCommitStatus controller provides flexible validation by calling ex
 
 ### How It Works
 
-Behavior depends on **`spec.mode.context`** (see [Request scope](#request-scope-environments-vs-promotionstrategy) below). By default (`environments`), the controller runs **one HTTP request per applicable environment**. With `promotionstrategy`, it runs **one HTTP request per reconcile** and maps the result to every applicable environment’s `CommitStatus`.
+Behavior depends on **`spec.mode.context`** (see [Request scope](#request-scope-environments-vs-promotionstrategy) below). By default (`environments`), the controller runs **one HTTP request per applicable environment**. With `promotionstrategy`, it runs **at most one HTTP request per WebRequestCommitStatus** and maps the result to every applicable environment’s `CommitStatus`.
 
 For each applicable environment (after resolving context):
 
@@ -60,9 +60,9 @@ Uses expressions to dynamically control when HTTP requests are made. Powerful fo
 
 ## Request scope: environments vs promotionstrategy
 
-Use **`spec.mode.context`** to choose **`environments`** (default) or **`promotionstrategy`**. This field controls **how many HTTP requests** the controller performs per reconcile and **how** the success expression’s result maps to `CommitStatus` resources.
+Use **`spec.mode.context`** to choose **`environments`** (default) or **`promotionstrategy`**. This field controls **how many HTTP requests** the controller performs per `WebRequestCommitStatus` and **how** the success expression’s result maps to `CommitStatus` resources.
 
-| Value | HTTP requests per reconcile (when the trigger allows) | `CommitStatus` resources |
+| Value | HTTP requests per WebRequestCommitStatus (when the trigger allows) | `CommitStatus` resources |
 |-------|------------------------------------------------------|---------------------------|
 | `environments` (default) | One per applicable environment | One per environment; each request uses that environment’s templates and SHA |
 | `promotionstrategy` | **One** for the whole `WebRequestCommitStatus` | Still one per environment, but all are updated from the **same** response; each row uses that environment’s `reportOn` SHA |

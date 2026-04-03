@@ -359,8 +359,8 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 	return transitionedEnvironments, commitStatuses, requeueDuration(wrcs.Spec.Mode), nil
 }
 
-// processContextPromotionStrategy runs when mode.context is "promotionstrategy": one HTTP request per reconcile;
-// phase(s) are applied to a CommitStatus per environment (each with that environment's reportOn SHA).
+// processContextPromotionStrategy runs when mode.context is "promotionstrategy": at most one HTTP request
+// per WebRequestCommitStatus; phase(s) are applied to a CommitStatus per environment (each with that environment's reportOn SHA).
 func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, namespaceMeta namespaceMetadata) ([]string, []*promoterv1alpha1.CommitStatus, time.Duration, error) {
 	logger := log.FromContext(ctx)
 

@@ -27,7 +27,7 @@ type ContextMode string
 const (
 	// ContextEnvironments is the default: one HTTP request per environment; each environment has its own phase.
 	ContextEnvironments ContextMode = "environments"
-	// ContextPromotionStrategy means one HTTP request per reconcile; phase(s) are applied to all environments' CommitStatuses.
+	// ContextPromotionStrategy means at most one HTTP request per WebRequestCommitStatus; phase(s) are applied to all environments' CommitStatuses.
 	ContextPromotionStrategy ContextMode = "promotionstrategy"
 )
 
@@ -145,7 +145,7 @@ type ModeSpec struct {
 
 	// Context controls whether the controller makes one HTTP request per environment or one per PromotionStrategy.
 	// - "environments" (default): one HTTP request per environment; each environment gets its own phase and status.
-	// - "promotionstrategy": one HTTP request per reconcile; the same phase is applied to CommitStatuses for all
+	// - "promotionstrategy": at most one HTTP request per WebRequestCommitStatus; the same phase is applied to CommitStatuses for all
 	//   environments, each still reporting on that environment's reportOn SHA. When context is promotionstrategy,
 	//   per-environment template variables (Environment, ReportedSha, LastSuccessfulSha) are not set; do not use
 	//   them in URL, body, description, or trigger templates.
@@ -378,7 +378,7 @@ type WebRequestCommitStatusStatus struct {
 	Environments []WebRequestCommitStatusEnvironmentStatus `json:"environments,omitempty"`
 
 	// PromotionStrategyContext holds the result of the one HTTP run when context is "promotionstrategy".
-	// One request is made per reconcile; phase(s) are reported on each environment's CommitStatus.
+	// At most one request is made per WebRequestCommitStatus; phase(s) are reported on each environment's CommitStatus.
 	// +optional
 	PromotionStrategyContext *WebRequestCommitStatusPromotionStrategyContextStatus `json:"promotionStrategyContext,omitempty"`
 
@@ -389,7 +389,7 @@ type WebRequestCommitStatusStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
-// WebRequestCommitStatusPromotionStrategyContextStatus holds the observed state for context=promotionstrategy (one request per reconcile).
+// WebRequestCommitStatusPromotionStrategyContextStatus holds the observed state for context=promotionstrategy (at most one request per WebRequestCommitStatus).
 type WebRequestCommitStatusPromotionStrategyContextStatus struct {
 	// Phase is the validation result from the HTTP request (pending, success, or failure).
 	// When PhasePerBranch is set, Phase is used as the default for any branch not listed in PhasePerBranch.
