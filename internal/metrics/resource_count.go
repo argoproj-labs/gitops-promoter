@@ -40,25 +40,25 @@ type resourceCountInformerSource interface {
 }
 
 type promoterResource struct {
-	kind string
 	obj  client.Object
+	kind string
 }
 
 // promoterResources lists each root CRD kind matching config/rbac/role.yaml (single source for kinds and count targets).
 var promoterResources = []promoterResource{
-	{"ArgoCDCommitStatus", &promoterv1alpha1.ArgoCDCommitStatus{}},
-	{"ChangeTransferPolicy", &promoterv1alpha1.ChangeTransferPolicy{}},
-	{"ClusterScmProvider", &promoterv1alpha1.ClusterScmProvider{}},
-	{"CommitStatus", &promoterv1alpha1.CommitStatus{}},
-	{"ControllerConfiguration", &promoterv1alpha1.ControllerConfiguration{}},
-	{"GitCommitStatus", &promoterv1alpha1.GitCommitStatus{}},
-	{"GitRepository", &promoterv1alpha1.GitRepository{}},
-	{"PromotionStrategy", &promoterv1alpha1.PromotionStrategy{}},
-	{"PullRequest", &promoterv1alpha1.PullRequest{}},
-	{"RevertCommit", &promoterv1alpha1.RevertCommit{}},
-	{"ScmProvider", &promoterv1alpha1.ScmProvider{}},
-	{"TimedCommitStatus", &promoterv1alpha1.TimedCommitStatus{}},
-	{"WebRequestCommitStatus", &promoterv1alpha1.WebRequestCommitStatus{}},
+	{kind: "ArgoCDCommitStatus", obj: &promoterv1alpha1.ArgoCDCommitStatus{}},
+	{kind: "ChangeTransferPolicy", obj: &promoterv1alpha1.ChangeTransferPolicy{}},
+	{kind: "ClusterScmProvider", obj: &promoterv1alpha1.ClusterScmProvider{}},
+	{kind: "CommitStatus", obj: &promoterv1alpha1.CommitStatus{}},
+	{kind: "ControllerConfiguration", obj: &promoterv1alpha1.ControllerConfiguration{}},
+	{kind: "GitCommitStatus", obj: &promoterv1alpha1.GitCommitStatus{}},
+	{kind: "GitRepository", obj: &promoterv1alpha1.GitRepository{}},
+	{kind: "PromotionStrategy", obj: &promoterv1alpha1.PromotionStrategy{}},
+	{kind: "PullRequest", obj: &promoterv1alpha1.PullRequest{}},
+	{kind: "RevertCommit", obj: &promoterv1alpha1.RevertCommit{}},
+	{kind: "ScmProvider", obj: &promoterv1alpha1.ScmProvider{}},
+	{kind: "TimedCommitStatus", obj: &promoterv1alpha1.TimedCommitStatus{}},
+	{kind: "WebRequestCommitStatus", obj: &promoterv1alpha1.WebRequestCommitStatus{}},
 }
 
 func countFromInformer(ctx context.Context, c resourceCountInformerSource, obj client.Object) (int, error) {

@@ -50,7 +50,7 @@ func (s *stubResourceCountInformerSource) GetInformer(ctx context.Context, obj c
 	}
 	gvk, err := apiutil.GVKForObject(obj, s.scheme)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("gvk for object: %w", err)
 	}
 	if e, ok := s.gvkErr[gvk]; ok {
 		return nil, e
@@ -103,6 +103,8 @@ func buildStubInformerSourceWithCounts() *stubResourceCountInformerSource {
 			items = []runtime.Object{
 				&promoterv1alpha1.GitRepository{ObjectMeta: metav1.ObjectMeta{Name: "repo-a", Namespace: "ns"}},
 			}
+		default:
+			items = nil
 		}
 		gvkInf[gvk] = informerWithExampleAndItems(r.obj, items...)
 	}
