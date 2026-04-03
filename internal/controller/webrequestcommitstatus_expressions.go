@@ -224,7 +224,10 @@ func parsePerBranchPhases(logger logr.Logger, obj map[string]any) (promoterv1alp
 	if err != nil {
 		return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("validation expression defaultPhase: %w", err)
 	}
-	defaultPhase := parsePhaseString(defaultPhaseStr, promoterv1alpha1.CommitPhasePending)
+	defaultPhase, err := parsePhaseString(defaultPhaseStr, promoterv1alpha1.CommitPhasePending)
+	if err != nil {
+		return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("validation expression defaultPhase: %w", err)
+	}
 	envsVal, hasEnvs := obj["environments"]
 	if !hasEnvs || envsVal == nil {
 		return defaultPhase, nil, nil
@@ -253,7 +256,11 @@ func parsePerBranchPhases(logger logr.Logger, obj map[string]any) (promoterv1alp
 		if err != nil {
 			return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("validation expression environments[%d].phase: %w", i, err)
 		}
-		m[branch] = parsePhaseString(phaseStr, defaultPhase)
+		phase, err := parsePhaseString(phaseStr, defaultPhase)
+		if err != nil {
+			return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("validation expression environments[%d].phase: %w", i, err)
+		}
+		m[branch] = phase
 	}
 	logger.V(4).Info("Validation expression evaluated (per-branch object)", "defaultPhase", defaultPhase, "phasePerBranch", m)
 	return defaultPhase, m, nil
@@ -284,16 +291,18 @@ func resolvePhaseForBranch(branch string, defaultPhase promoterv1alpha1.CommitSt
 	return defaultPhase
 }
 
-func parsePhaseString(phaseStr string, defaultPhase promoterv1alpha1.CommitStatusPhase) promoterv1alpha1.CommitStatusPhase {
+func parsePhaseString(phaseStr string, defaultPhase promoterv1alpha1.CommitStatusPhase) (promoterv1alpha1.CommitStatusPhase, error) {
 	switch phaseStr {
 	case "success":
-		return promoterv1alpha1.CommitPhaseSuccess
+		return promoterv1alpha1.CommitPhaseSuccess, nil
 	case "pending":
-		return promoterv1alpha1.CommitPhasePending
+		return promoterv1alpha1.CommitPhasePending, nil
 	case "failure":
-		return promoterv1alpha1.CommitPhaseFailure
+		return promoterv1alpha1.CommitPhaseFailure, nil
+	case "":
+		return defaultPhase, nil
 	default:
-		return defaultPhase
+		return promoterv1alpha1.CommitPhasePending, fmt.Errorf("unrecognized phase %q, must be one of: success, pending, failure", phaseStr)
 	}
 }
 
