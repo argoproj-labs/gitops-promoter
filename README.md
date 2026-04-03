@@ -2,7 +2,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo/stacked/secondary.svg">
-  <img src="docs/assets/logo/stacked/primary.svg" alt="GitOps Promoter" width="400">
+  <img src="docs/assets/logo/stacked/primary.svg" alt="GitOps Promoter" width="400" height="111">
 </picture>
 
 ---
