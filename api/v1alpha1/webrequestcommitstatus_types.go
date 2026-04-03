@@ -401,6 +401,7 @@ type WebRequestCommitStatusPromotionStrategyContextStatus struct {
 	// Key is branch name, value is "pending", "success", or "failure". When set, each environment's CommitStatus
 	// uses this phase; branches not in the map use Phase.
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="self.all(k, self[k] in ['pending', 'success', 'failure'])",message="phasePerBranch values must be pending, success, or failure"
 	PhasePerBranch map[string]CommitStatusPhase `json:"phasePerBranch,omitempty"`
 
 	// LastRequestTime is when the last HTTP request was made.
@@ -430,6 +431,7 @@ type WebRequestCommitStatusPromotionStrategyContextStatus struct {
 	// have already succeeded for their current SHAs.
 	// Key is branch name, value is the SHA that last succeeded.
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="self.all(k, self[k].matches('^([a-f0-9]{40}|[a-f0-9]{64})$'))",message="lastSuccessfulShas values must be valid SHA-1 (40 char) or SHA-256 (64 char) hex strings"
 	LastSuccessfulShas map[string]string `json:"lastSuccessfulShas,omitempty"`
 }
 

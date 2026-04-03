@@ -7230,6 +7230,10 @@ spec:
                       have already succeeded for their current SHAs.
                       Key is branch name, value is the SHA that last succeeded.
                     type: object
+                    x-kubernetes-validations:
+                    - message: lastSuccessfulShas values must be valid SHA-1 (40 char)
+                        or SHA-256 (64 char) hex strings
+                      rule: self.all(k, self[k].matches('^([a-f0-9]{40}|[a-f0-9]{64})$'))
                   phase:
                     description: |-
                       Phase is the validation result from the HTTP request (pending, success, or failure).
@@ -7249,6 +7253,10 @@ spec:
                       Key is branch name, value is "pending", "success", or "failure". When set, each environment's CommitStatus
                       uses this phase; branches not in the map use Phase.
                     type: object
+                    x-kubernetes-validations:
+                    - message: phasePerBranch values must be pending, success, or
+                        failure
+                      rule: self.all(k, self[k] in ['pending', 'success', 'failure'])
                   responseOutput:
                     description: ResponseOutput stores the map returned by spec.mode.trigger.response.output.expression.
                     type: object
