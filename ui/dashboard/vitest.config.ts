@@ -1,6 +1,10 @@
+import path from 'path';
 import { mergeConfig } from 'vite';
 import { defineConfig } from 'vitest/config';
 import viteConfig from './vite.config';
+
+// Istanbul LCOV uses path.relative(projectRoot, file); repo root => SF: lines match Codecov/git.
+const repoRoot = path.resolve(__dirname, '../..');
 
 export default mergeConfig(
   viteConfig,
@@ -15,9 +19,13 @@ export default mergeConfig(
       },
       coverage: {
         provider: 'v8',
-        reporter: ['text', 'lcov'],
+        reporter: ['text', ['lcov', { projectRoot: repoRoot }]],
         reportsDirectory: './coverage',
-        include: ['src/**/*.{ts,tsx}'],
+        include: [
+          'src/**/*.{ts,tsx}',
+          '../shared/src/**/*.{ts,tsx}',
+          '../components-lib/src/**/*.{ts,tsx}',
+        ],
         exclude: ['node_modules/**', '**/*.d.ts', '**/vitest.config.ts'],
       },
     },

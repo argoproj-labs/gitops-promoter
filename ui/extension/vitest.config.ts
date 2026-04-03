@@ -1,5 +1,8 @@
-import { defineConfig } from 'vitest/config';
 import path from 'path';
+import { defineConfig } from 'vitest/config';
+
+// Istanbul LCOV uses path.relative(projectRoot, file); repo root => SF: lines match Codecov/git.
+const repoRoot = path.resolve(__dirname, '../..');
 
 export default defineConfig({
   resolve: {
@@ -20,7 +23,7 @@ export default defineConfig({
     },
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'lcov'],
+      reporter: ['text', ['lcov', { projectRoot: repoRoot }]],
       reportsDirectory: './coverage',
       include: ['**/*.{ts,tsx}'],
       exclude: [

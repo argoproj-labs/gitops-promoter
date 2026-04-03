@@ -173,13 +173,10 @@ lint-dashboard: ## Run dashboard type-check, lint and audit checks
 lint-extension: ## Run extension type-check, lint and audit checks
 	cd ui/extension && npm run type-check && npm run lint && npm run format:check && npm audit --omit=dev
 
-# Vitest writes coverage/lcov.info with SF: (source file) paths relative to each package dir.
-# Codecov matches those strings to the git tree from the repo root, so paths like
-# "src/App.tsx" or "AppViewExtension.tsx" would not line up with ui/dashboard/src/... or
-# ui/extension/.... The perl step rewrites SF: lines in-place to repo-root paths for upload.
+# LCOV paths: vitest coverage uses istanbul lcov reporter with projectRoot = repo root (see vitest.config).
 .PHONY: test-unit-test-extension
-test-unit-test-extension: ## Run extension unit tests (with coverage; lcov paths fixed for Codecov)
-	cd ui/extension && npm test && perl -pi -e 's/^SF:/SF:ui\/extension\//' coverage/lcov.info
+test-unit-test-extension: ## Run extension unit tests (with coverage)
+	cd ui/extension && npm test
 
 .PHONY: lint-components-lib
 lint-components-lib: ## Run components-lib type-check and format checks (includes shared/)
@@ -189,10 +186,9 @@ lint-components-lib: ## Run components-lib type-check and format checks (include
 .PHONY: lint-ui
 lint-ui: lint-dashboard lint-extension lint-components-lib ## Run all UI checks
 
-# See comment on test-unit-test-extension (LCOV path rewrite for Codecov).
 .PHONY: test-ui-test-dashboard
-test-ui-test-dashboard: ## Run dashboard unit tests (with coverage; lcov paths fixed for Codecov)
-	cd ui/dashboard && npm test && perl -pi -e 's/^SF:src\//SF:ui\/dashboard\/src\//' coverage/lcov.info
+test-ui-test-dashboard: ## Run dashboard unit tests (with coverage)
+	cd ui/dashboard && npm test
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
