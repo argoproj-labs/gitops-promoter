@@ -249,8 +249,6 @@ func (r *WebRequestCommitStatusReconciler) SetupWithManager(ctx context.Context,
 // runs the validation expression, then upserts the CommitStatus. It updates wrcs.Status.Environments and
 // returns the list of branches that transitioned to success, all created/updated CommitStatuses, and the
 // requeue duration (from spec or default).
-//
-// Linear per-environment business logic; further extraction would scatter the flow.
 func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, namespaceMeta namespaceMetadata) ([]string, []*promoterv1alpha1.CommitStatus, time.Duration, error) {
 	logger := log.FromContext(ctx)
 
