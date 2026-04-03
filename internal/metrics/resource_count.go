@@ -15,7 +15,7 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
-const defaultResourceCountInterval = 30 * time.Second
+const resourceCountInterval = 30 * time.Second
 
 // kubernetesResources counts promoter.argoproj.io custom resources in the local cluster (see refreshKubernetesResourceCounts).
 var kubernetesResources = prometheus.NewGaugeVec(
@@ -148,17 +148,15 @@ func refreshKubernetesResourceCounts(ctx context.Context, c client.Client, log l
 
 // ResourceCountRunnable periodically lists promoter CRs and updates promoter_kubernetes_resources.
 type ResourceCountRunnable struct {
-	Client   client.Client
-	Log      logr.Logger
-	Interval time.Duration
+	Client client.Client
+	Log    logr.Logger
 }
 
 // NewResourceCountRunnable returns a manager.Runnable that refreshes promoter_kubernetes_resources.
 func NewResourceCountRunnable(c client.Client) *ResourceCountRunnable {
 	return &ResourceCountRunnable{
-		Client:   c,
-		Log:      ctrl.Log.WithName("promoter-resource-counts"),
-		Interval: defaultResourceCountInterval,
+		Client: c,
+		Log:    ctrl.Log.WithName("promoter-resource-counts"),
 	}
 }
 
@@ -168,17 +166,13 @@ func (r *ResourceCountRunnable) Start(ctx context.Context) error {
 	if log.GetSink() == nil {
 		log = ctrl.Log.WithName("promoter-resource-counts")
 	}
-	interval := r.Interval
-	if interval <= 0 {
-		interval = defaultResourceCountInterval
-	}
 	if r.Client == nil {
 		return errors.New("resource count runnable client is nil")
 	}
 
 	refreshKubernetesResourceCounts(ctx, r.Client, log)
 
-	ticker := time.NewTicker(interval)
+	ticker := time.NewTicker(resourceCountInterval)
 	defer ticker.Stop()
 
 	for {
