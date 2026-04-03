@@ -16,6 +16,16 @@ Thanks for helping improve GitOps Promoter. The project is still young; we keep 
 5. **Open a pull request from your fork** into `main` on `argoproj-labs/gitops-promoter`, with a short title and enough context for reviewers (what changed, why). Use `Fixes #123` / `Closes #123` when it applies. Every commit must be **DCO sign-off** (see below).
 6. **Iterate on review** — CI must be green; maintainers will help get it over the line.
 
+## Testing expectations
+
+Substantive new or changed **user-facing behavior** (APIs, controllers, webhooks, or UI) should include **automated tests** in the same pull request unless maintainers explicitly agree otherwise. Reviewers expect this during code review, and **failing tests block merge**.
+
+**How we test (stack):**
+
+- **Go (controller and cluster behavior):** [Ginkgo](https://onsi.github.io/ginkgo/) suites with **envtest**, which runs a real Kubernetes API server from test binaries for integration-style tests against our APIs and reconcilers.
+- **UI (dashboard and Argo CD extension):** unit tests via the **Node.js** tooling and npm scripts used in CI (lint and test targets for the dashboard and extension).
+- **Static analysis:** **golangci-lint**, **Nilaway**, and other checks run in CI on every change.
+
 ## DCO sign-off
 
 Pull requests must pass the [**Developer Certificate of Origin (DCO)**](https://github.com/apps/dco/) check: every commit needs a `Signed-off-by` line (this is not GPG signing). The email in that line should match your GitHub account. Use **`git commit -s`** / **`git commit --amend -s`** when you forget.
