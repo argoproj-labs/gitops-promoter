@@ -173,8 +173,9 @@ lint-dashboard: ## Run dashboard type-check, lint and audit checks
 lint-extension: ## Run extension type-check, lint and audit checks
 	cd ui/extension && npm run type-check && npm run lint && npm run format:check && npm audit --omit=dev
 
+# LCOV paths: vitest coverage uses istanbul lcov reporter with projectRoot = repo root (see vitest.config).
 .PHONY: test-unit-test-extension
-test-unit-test-extension: ## Run unit tests for the extension
+test-unit-test-extension: ## Run extension unit tests (with coverage)
 	cd ui/extension && npm test
 
 .PHONY: lint-components-lib
@@ -186,7 +187,7 @@ lint-components-lib: ## Run components-lib type-check and format checks (include
 lint-ui: lint-dashboard lint-extension lint-components-lib ## Run all UI checks
 
 .PHONY: test-ui-test-dashboard
-test-ui-test-dashboard: ## Run unit tests for the dashboard
+test-ui-test-dashboard: ## Run dashboard unit tests (with coverage)
 	cd ui/dashboard && npm test
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
