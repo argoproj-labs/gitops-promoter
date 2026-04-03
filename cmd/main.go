@@ -196,7 +196,7 @@ func runController(
 
 	localManager := mcMgr.GetLocalManager()
 
-	if err := localManager.Add(metrics.NewResourceCountRunnable(localManager.GetClient())); err != nil {
+	if err := localManager.Add(metrics.NewResourceCountRunnable(localManager.GetCache())); err != nil {
 		panic(fmt.Errorf("unable to add resource count metrics runnable: %w", err))
 	}
 

@@ -16,10 +16,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
+	toolscache "k8s.io/client-go/tools/cache"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -31,61 +34,85 @@ func TestMetrics(t *testing.T) {
 	RunSpecs(t, "Metrics Suite")
 }
 
-// listCallCounter wraps a client and counts List calls (each full refresh lists once per promoter kind).
-type listCallCounter struct {
-	client.Client
-	n atomic.Int32
+var errInjectedGetInformer = errors.New("injected get informer failure")
+
+// stubResourceCountInformerSource implements resourceCountInformerSource for tests.
+type stubResourceCountInformerSource struct {
+	scheme   *runtime.Scheme
+	gvkErr   map[schema.GroupVersionKind]error
+	gvkInf   map[schema.GroupVersionKind]toolscache.SharedIndexInformer
+	getCount *atomic.Int32
 }
 
-func (w *listCallCounter) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
-	w.n.Add(1)
-	err := w.Client.List(ctx, list, opts...)
+func (s *stubResourceCountInformerSource) GetInformer(ctx context.Context, obj client.Object, opts ...cache.InformerGetOption) (cache.Informer, error) {
+	if s.getCount != nil {
+		s.getCount.Add(1)
+	}
+	gvk, err := apiutil.GVKForObject(obj, s.scheme)
 	if err != nil {
-		return fmt.Errorf("error listing %s: %w", list.GetObjectKind().GroupVersionKind().Kind, err)
+		return nil, err
 	}
-	return nil
-}
-
-// errListClient fails List for PromotionStrategy only (used to exercise error logging).
-type errListClient struct {
-	client.Client
-}
-
-var errInjectedList = errors.New("injected list failure")
-
-func (c *errListClient) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
-	switch list.(type) {
-	case *promoterv1alpha1.PromotionStrategyList:
-		return errInjectedList
-	default:
-		if err := c.Client.List(ctx, list, opts...); err != nil {
-			return fmt.Errorf("errListClient list: %w", err)
-		}
-		return nil
+	if e, ok := s.gvkErr[gvk]; ok {
+		return nil, e
 	}
-}
-
-func resetPromoterKubernetesResourceGauges() {
-	for _, k := range promoterResourceKinds {
-		kubernetesResources.DeleteLabelValues(k)
+	if inf, ok := s.gvkInf[gvk]; ok {
+		return inf, nil
 	}
+	return nil, fmt.Errorf("stub: no informer for %v", gvk)
 }
 
-func buildResourceCountFakeClient() client.Client {
+func informerWithExampleAndItems(example runtime.Object, items ...runtime.Object) toolscache.SharedIndexInformer {
+	inf := toolscache.NewSharedIndexInformer(
+		&toolscache.ListWatch{},
+		example,
+		0,
+		toolscache.Indexers{toolscache.NamespaceIndex: toolscache.MetaNamespaceIndexFunc},
+	)
+	for _, it := range items {
+		_ = inf.GetStore().Add(it)
+	}
+	return inf
+}
+
+func testMetricsScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
 	utilruntime.Must(scheme.AddToScheme(s))
 	utilruntime.Must(promoterv1alpha1.AddToScheme(s))
-	return fake.NewClientBuilder().WithScheme(s).WithObjects(
-		&promoterv1alpha1.PromotionStrategy{
-			ObjectMeta: metav1.ObjectMeta{Name: "one", Namespace: "ns"},
-		},
-		&promoterv1alpha1.PromotionStrategy{
-			ObjectMeta: metav1.ObjectMeta{Name: "two", Namespace: "ns"},
-		},
-		&promoterv1alpha1.GitRepository{
-			ObjectMeta: metav1.ObjectMeta{Name: "repo-a", Namespace: "ns"},
-		},
-	).Build()
+	return s
+}
+
+func gvkKey(sc *runtime.Scheme, obj client.Object) schema.GroupVersionKind {
+	gvk, err := apiutil.GVKForObject(obj, sc)
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
+	return gvk
+}
+
+func buildStubInformerSourceWithCounts() *stubResourceCountInformerSource {
+	s := testMetricsScheme()
+	gvkInf := make(map[schema.GroupVersionKind]toolscache.SharedIndexInformer)
+	for _, r := range promoterResources {
+		gvk := gvkKey(s, r.obj)
+		var items []runtime.Object
+		switch r.kind {
+		case "PromotionStrategy":
+			items = []runtime.Object{
+				&promoterv1alpha1.PromotionStrategy{ObjectMeta: metav1.ObjectMeta{Name: "one", Namespace: "ns"}},
+				&promoterv1alpha1.PromotionStrategy{ObjectMeta: metav1.ObjectMeta{Name: "two", Namespace: "ns"}},
+			}
+		case "GitRepository":
+			items = []runtime.Object{
+				&promoterv1alpha1.GitRepository{ObjectMeta: metav1.ObjectMeta{Name: "repo-a", Namespace: "ns"}},
+			}
+		}
+		gvkInf[gvk] = informerWithExampleAndItems(r.obj, items...)
+	}
+	return &stubResourceCountInformerSource{scheme: s, gvkInf: gvkInf}
+}
+
+func resetPromoterKubernetesResourceGauges() {
+	for _, r := range promoterResources {
+		kubernetesResources.DeleteLabelValues(r.kind)
+	}
 }
 
 var _ = Describe("Resource count metrics", func() {
@@ -94,7 +121,7 @@ var _ = Describe("Resource count metrics", func() {
 	})
 
 	Describe("refreshKubernetesResourceCounts", func() {
-		It("logs an error and sets the gauge to zero when listing a kind fails", func() {
+		It("logs an error and sets the gauge to zero when getting an informer fails", func() {
 			var logLines []string
 			log := funcr.New(func(prefix, args string) {
 				if prefix != "" {
@@ -104,17 +131,20 @@ var _ = Describe("Resource count metrics", func() {
 				logLines = append(logLines, args)
 			}, funcr.Options{})
 
-			c := &errListClient{Client: buildResourceCountFakeClient()}
-			refreshKubernetesResourceCounts(context.Background(), c, log)
+			stub := buildStubInformerSourceWithCounts()
+			psGVK := gvkKey(stub.scheme, &promoterv1alpha1.PromotionStrategy{})
+			stub.gvkErr = map[schema.GroupVersionKind]error{psGVK: errInjectedGetInformer}
+
+			refreshKubernetesResourceCounts(context.Background(), stub, log)
 
 			Expect(testutil.ToFloat64(kubernetesResources.WithLabelValues("PromotionStrategy"))).To(Equal(0.0))
 			Expect(testutil.ToFloat64(kubernetesResources.WithLabelValues("GitRepository"))).To(Equal(1.0))
 
 			combined := strings.Join(logLines, "\n")
 			Expect(combined).To(And(
-				ContainSubstring("listing resources for promoter_kubernetes_resources metric"),
+				ContainSubstring("counting resources for promoter_kubernetes_resources metric"),
 				ContainSubstring("PromotionStrategy"),
-				ContainSubstring("injected list failure"),
+				ContainSubstring("injected get informer failure"),
 			))
 		})
 	})
@@ -124,16 +154,16 @@ var _ = Describe("Resource count metrics", func() {
 			logf.SetLogger(logr.Discard())
 		})
 
-		It("returns an error when the client is nil", func() {
+		It("returns an error when the cache is nil", func() {
 			r := NewResourceCountRunnable(nil)
 			err := r.Start(context.Background())
-			Expect(err).To(MatchError("resource count runnable client is nil"))
+			Expect(err).To(MatchError("resource count runnable cache is nil"))
 		})
 
 		It("runs an immediate refresh, updates gauges, and refreshes again on the ticker until the context is cancelled", func() {
-			wrapped := &listCallCounter{Client: buildResourceCountFakeClient()}
-			r := NewResourceCountRunnable(wrapped)
-			r.tickInterval = 25 * time.Millisecond
+			stub := buildStubInformerSourceWithCounts()
+			stub.getCount = &atomic.Int32{}
+			r := &ResourceCountRunnable{Cache: stub, tickInterval: 25 * time.Millisecond}
 
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -145,9 +175,9 @@ var _ = Describe("Resource count metrics", func() {
 				close(done)
 			}()
 
-			minLists := 2 * len(promoterResourceKinds)
-			Eventually(func() int32 { return wrapped.n.Load() }).WithTimeout(3 * time.Second).WithPolling(5 * time.Millisecond).
-				Should(BeNumerically(">=", minLists))
+			minGets := 2 * len(promoterResources)
+			Eventually(func() int32 { return stub.getCount.Load() }).WithTimeout(3 * time.Second).WithPolling(5 * time.Millisecond).
+				Should(BeNumerically(">=", minGets))
 
 			Expect(testutil.ToFloat64(kubernetesResources.WithLabelValues("PromotionStrategy"))).To(Equal(2.0))
 			Expect(testutil.ToFloat64(kubernetesResources.WithLabelValues("GitRepository"))).To(Equal(1.0))
