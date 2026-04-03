@@ -220,7 +220,11 @@ func (r *WebRequestCommitStatusReconciler) evaluateValidationExpressionForPromot
 // parsePerBranchPhases extracts defaultPhase and optional per-branch overrides from an expression
 // result object of the form { defaultPhase?, environments?: [{ branch, phase }] }.
 func parsePerBranchPhases(logger logr.Logger, obj map[string]any) (promoterv1alpha1.CommitStatusPhase, map[string]promoterv1alpha1.CommitStatusPhase, error) {
-	defaultPhase := parsePhaseString(getString(logger, obj, "defaultPhase"), promoterv1alpha1.CommitPhasePending)
+	defaultPhaseStr, err := getString(obj, "defaultPhase")
+	if err != nil {
+		return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("validation expression defaultPhase: %w", err)
+	}
+	defaultPhase := parsePhaseString(defaultPhaseStr, promoterv1alpha1.CommitPhasePending)
 	envsVal, hasEnvs := obj["environments"]
 	if !hasEnvs || envsVal == nil {
 		return defaultPhase, nil, nil
@@ -238,27 +242,35 @@ func parsePerBranchPhases(logger logr.Logger, obj map[string]any) (promoterv1alp
 		if !ok {
 			return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("validation expression environments[%d] must be object with branch and phase, got %T", i, item)
 		}
-		branch := getString(logger, entry, "branch")
+		branch, err := getString(entry, "branch")
+		if err != nil {
+			return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("validation expression environments[%d].branch: %w", i, err)
+		}
 		if branch == "" {
 			return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("validation expression environments[%d]: branch is required", i)
 		}
-		m[branch] = parsePhaseString(getString(logger, entry, "phase"), defaultPhase)
+		phaseStr, err := getString(entry, "phase")
+		if err != nil {
+			return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("validation expression environments[%d].phase: %w", i, err)
+		}
+		m[branch] = parsePhaseString(phaseStr, defaultPhase)
 	}
 	logger.V(4).Info("Validation expression evaluated (per-branch object)", "defaultPhase", defaultPhase, "phasePerBranch", m)
 	return defaultPhase, m, nil
 }
 
-func getString(logger logr.Logger, m map[string]any, key string) string {
+// getString reads an optional string field from an expression object. Missing or nil key yields ("", nil).
+// A present value with non-string type returns an error.
+func getString(m map[string]any, key string) (string, error) {
 	v, ok := m[key]
 	if !ok || v == nil {
-		return ""
+		return "", nil
 	}
 	s, ok := v.(string)
 	if !ok {
-		logger.V(4).Info("Expression object field has unexpected type, expected string", "key", key, "actualType", fmt.Sprintf("%T", v))
-		return ""
+		return "", fmt.Errorf("field %q must be a string, got %T", key, v)
 	}
-	return s
+	return s, nil
 }
 
 // resolvePhaseForBranch returns the phase for a branch from phasePerBranch, falling back to defaultPhase
