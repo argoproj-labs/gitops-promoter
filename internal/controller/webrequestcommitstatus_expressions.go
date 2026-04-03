@@ -29,21 +29,18 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
-// expressionCacheKey identifies a compiled expression in the cache. Prefix (e.g. "trigger:", "validation:")
-// ensures the same expression compiled with different options gets distinct cache entries.
+// expressionCacheKey identifies a compiled expression in the cache. Prefix distinguishes entries so the same
+// source expression compiled with different options (e.g. trigger vs validation) stays separate. Used as the
+// sync.Map key (struct value, not string concat) so distinct (prefix, expression) pairs cannot collide.
 type expressionCacheKey struct {
 	Prefix     string
 	Expression string
 }
 
-func (k expressionCacheKey) String() string { return k.Prefix + k.Expression }
-
 // getCompiledExpression returns a compiled expr program from the reconciler's cache, or compiles the expression and caches it.
 // key.Prefix distinguishes cache entries (e.g. trigger vs validation); opts are passed through to expr.Compile.
 func (r *WebRequestCommitStatusReconciler) getCompiledExpression(key expressionCacheKey, opts ...expr.Option) (*vm.Program, error) {
-	cacheKey := key.String()
-
-	if cached, ok := r.expressionCache.Load(cacheKey); ok {
+	if cached, ok := r.expressionCache.Load(key); ok {
 		program, ok := cached.(*vm.Program)
 		if !ok {
 			return nil, errors.New("cached value is not a *vm.Program")
@@ -56,8 +53,19 @@ func (r *WebRequestCommitStatusReconciler) getCompiledExpression(key expressionC
 		return nil, fmt.Errorf("failed to compile expression: %w", err)
 	}
 
-	r.expressionCache.Store(cacheKey, program)
+	r.expressionCache.Store(key, program)
 	return program, nil
+}
+
+// responseExpressionEnv builds the variable environment for validation and response-output expressions.
+func responseExpressionEnv(resp httpResponse) map[string]any {
+	return map[string]any{
+		"Response": map[string]any{
+			"StatusCode": resp.StatusCode,
+			"Body":       resp.Body,
+			"Headers":    resp.Headers,
+		},
+	}
 }
 
 // getCompiledTriggerExpression returns a cached or newly compiled trigger expression program.
@@ -157,28 +165,16 @@ func (r *WebRequestCommitStatusReconciler) evaluateTriggerDataExpression(ctx con
 func (r *WebRequestCommitStatusReconciler) evaluateValidationExpression(ctx context.Context, expression string, resp httpResponse) (bool, error) {
 	logger := log.FromContext(ctx)
 
-	// Get compiled expression from cache or compile it
 	program, err := r.getCompiledValidationExpression(expression)
 	if err != nil {
 		return false, fmt.Errorf("failed to compile validation expression: %w", err)
 	}
 
-	// Build environment for expression evaluation
-	env := map[string]any{
-		"Response": map[string]any{
-			"StatusCode": resp.StatusCode,
-			"Body":       resp.Body,
-			"Headers":    resp.Headers,
-		},
-	}
-
-	// Run the expression
-	output, err := expr.Run(program, env)
+	output, err := expr.Run(program, responseExpressionEnv(resp))
 	if err != nil {
 		return false, fmt.Errorf("failed to evaluate validation expression: %w", err)
 	}
 
-	// Check the result
 	result, ok := output.(bool)
 	if !ok {
 		return false, fmt.Errorf("validation expression must return boolean, got %T", output)
@@ -200,15 +196,7 @@ func (r *WebRequestCommitStatusReconciler) evaluateValidationExpressionForPromot
 		return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("failed to compile validation expression: %w", err)
 	}
 
-	env := map[string]any{
-		"Response": map[string]any{
-			"StatusCode": resp.StatusCode,
-			"Body":       resp.Body,
-			"Headers":    resp.Headers,
-		},
-	}
-
-	output, err := expr.Run(program, env)
+	output, err := expr.Run(program, responseExpressionEnv(resp))
 	if err != nil {
 		return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("failed to evaluate validation expression: %w", err)
 	}
@@ -303,28 +291,16 @@ func parsePhaseString(phaseStr string, defaultPhase promoterv1alpha1.CommitStatu
 func (r *WebRequestCommitStatusReconciler) evaluateResponseDataExpression(ctx context.Context, expression string, resp httpResponse) (map[string]any, error) {
 	logger := log.FromContext(ctx)
 
-	// Get compiled expression from cache or compile it
 	program, err := r.getCompiledResponseDataExpression(expression)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile response data expression: %w", err)
 	}
 
-	// Build environment for expression evaluation (same as validation expression)
-	env := map[string]any{
-		"Response": map[string]any{
-			"StatusCode": resp.StatusCode,
-			"Body":       resp.Body,
-			"Headers":    resp.Headers,
-		},
-	}
-
-	// Run the expression
-	output, err := expr.Run(program, env)
+	output, err := expr.Run(program, responseExpressionEnv(resp))
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate response expression: %w", err)
 	}
 
-	// Convert output to map[string]any
 	result, ok := output.(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("response data expression must return a map/object, got %T", output)
