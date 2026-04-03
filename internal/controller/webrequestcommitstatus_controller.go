@@ -560,6 +560,8 @@ type lastReconciledState struct {
 	Phase                  string
 }
 
+// lastReconciledStateFromEnvironment extracts the previous reconcile's state from a per-environment
+// status entry, deserializing trigger and response output JSON into maps.
 func lastReconciledStateFromEnvironment(ctx context.Context, status *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus) lastReconciledState {
 	if status == nil {
 		return lastReconciledState{}
@@ -583,6 +585,8 @@ func lastReconciledStateFromEnvironment(ctx context.Context, status *promoterv1a
 	return s
 }
 
+// lastReconciledStateFromContext extracts the previous reconcile's state from the
+// promotionstrategy-level context status, including per-branch phase overrides.
 func lastReconciledStateFromContext(ctx context.Context, status *promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus) lastReconciledState {
 	if status == nil {
 		return lastReconciledState{}
