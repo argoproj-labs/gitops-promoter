@@ -377,7 +377,8 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 		return nil, nil, 0, err
 	}
 
-	lastReconciledCtxStatus := wrcs.Status.PromotionStrategyContext
+	// Snapshot prior reconcile state before we overwrite status.
+	lastReconciledCtxStatus := wrcs.Status.PromotionStrategyContext.DeepCopy()
 	lastState := lastReconciledStateFromContext(ctx, lastReconciledCtxStatus)
 
 	// Polling+proposed optimization: skip when all environments already succeeded for their current SHAs
