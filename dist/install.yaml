@@ -7229,6 +7229,7 @@ spec:
                       Used with reportOn "proposed" + polling to skip HTTP requests when all environments
                       have already succeeded for their current SHAs.
                       Key is branch name, value is the SHA that last succeeded.
+                    maxProperties: 100
                     type: object
                     x-kubernetes-validations:
                     - message: lastSuccessfulShas values must be valid SHA-1 (40 char)
@@ -7252,6 +7253,7 @@ spec:
                       PhasePerBranch holds per-branch phases when the success expression returned an object with per-branch overrides.
                       Key is branch name, value is "pending", "success", or "failure". When set, each environment's CommitStatus
                       uses this phase; branches not in the map use Phase.
+                    maxProperties: 100
                     type: object
                     x-kubernetes-validations:
                     - message: phasePerBranch values must be pending, success, or
