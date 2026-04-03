@@ -28,7 +28,10 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-          cache-dependency-path: ui/dashboard/package-lock.json
+          cache-dependency-path: |
+            ui/dashboard/package-lock.json
+            ui/extension/package-lock.json
+            ui/components-lib/package-lock.json
       - name: Install UI dependencies and build
         run: |
           make build-dashboard
@@ -86,12 +89,16 @@ jobs:
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: code-coverage
-          path: cover.out
+          path: |
+            cover.out
+            ui/dashboard/coverage/lcov.info
+            ui/extension/coverage/lcov.info
       - name: Upload code coverage information to codecov.io
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
         with:
-          files: cover.out
+          # cover.out: Ginkgo (after make test-parallel). UI: Vitest lcov (repo-root SF: via lcov projectRoot).
+          files: cover.out,ui/dashboard/coverage/lcov.info,ui/extension/coverage/lcov.info
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
