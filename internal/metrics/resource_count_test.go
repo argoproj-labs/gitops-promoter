@@ -58,7 +58,10 @@ func (c *errListClient) List(ctx context.Context, list client.ObjectList, opts .
 	case *promoterv1alpha1.PromotionStrategyList:
 		return errInjectedList
 	default:
-		return c.Client.List(ctx, list, opts...)
+		if err := c.Client.List(ctx, list, opts...); err != nil {
+			return fmt.Errorf("errListClient list: %w", err)
+		}
+		return nil
 	}
 }
 
