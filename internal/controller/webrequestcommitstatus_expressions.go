@@ -260,6 +260,9 @@ func parsePerBranchPhases(logger logr.Logger, obj map[string]any) (promoterv1alp
 		if err != nil {
 			return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("validation expression environments[%d].phase: %w", i, err)
 		}
+		if _, exists := m[branch]; exists {
+			return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("validation expression environments[%d]: duplicate branch %q", i, branch)
+		}
 		m[branch] = phase
 	}
 	logger.V(4).Info("Validation expression evaluated (per-branch object)", "defaultPhase", defaultPhase, "phasePerBranch", m)
