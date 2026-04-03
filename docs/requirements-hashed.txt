@@ -278,9 +278,9 @@ mkdocs-github-admonitions-plugin==0.1.1 \
     --hash=sha256:7f81520a0681b9955952d73b21ce99b923921830b6b6d1ace9b3fb95cd1fb61f \
     --hash=sha256:824dc821764171943c1043c88218d4af0329693870ba9be657f890d484a0aa85
     # via -r docs/requirements.txt
-mkdocs-material==9.5.42 \
-    --hash=sha256:452a7c5d21284b373f36b981a2cbebfff59263feebeede1bc28652e9c5bbe316 \
-    --hash=sha256:92779b5e9b5934540c574c11647131d217dc540dce72b05feeda088c8eb1b8f2
+mkdocs-material==9.7.6 \
+    --hash=sha256:00bdde50574f776d328b1862fe65daeaf581ec309bd150f7bff345a098c64a69 \
+    --hash=sha256:71b84353921b8ea1ba84fe11c50912cc512da8fe0881038fcc9a0761c0e635ba
     # via -r docs/requirements.txt
 mkdocs-material-extensions==1.3.1 \
     --hash=sha256:10c9511cea88f568257f960358a467d12b970e1f7b2c0e5fb2bb48cab1928443 \
