@@ -2518,3 +2518,169 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 		})
 	})
 })
+
+var _ = Describe("WebRequestCommitStatus Controller - Context Switching", Ordered, func() {
+	var (
+		ctx               context.Context
+		name              string
+		scmSecret         *corev1.Secret
+		scmProvider       *promoterv1alpha1.ScmProvider
+		gitRepo           *promoterv1alpha1.GitRepository
+		promotionStrategy *promoterv1alpha1.PromotionStrategy
+		testServer        *httptest.Server
+		wrcs              *promoterv1alpha1.WebRequestCommitStatus
+	)
+
+	BeforeAll(func() {
+		ctx = context.Background()
+
+		By("Setting up test git repository and resources for context-switching tests")
+		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "wrcs-ctx-switch-test", "default")
+
+		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+			{Key: "ctx-switch-check"},
+		}
+
+		setupInitialTestGitRepoOnServer(ctx, gitRepo)
+
+		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+		By("Creating a test HTTP server that returns approved=true")
+		testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"approved": true,
+			})
+		}))
+	})
+
+	AfterAll(func() {
+		if testServer != nil {
+			testServer.Close()
+		}
+		if wrcs != nil {
+			_ = k8sClient.Delete(ctx, wrcs)
+		}
+		if promotionStrategy != nil {
+			_ = k8sClient.Delete(ctx, promotionStrategy)
+		}
+		if gitRepo != nil {
+			_ = k8sClient.Delete(ctx, gitRepo)
+		}
+		if scmProvider != nil {
+			_ = k8sClient.Delete(ctx, scmProvider)
+		}
+		if scmSecret != nil {
+			_ = k8sClient.Delete(ctx, scmSecret)
+		}
+	})
+
+	It("should cleanly transition status when switching between environments and promotionstrategy contexts", func() {
+		By("Creating a WRCS with default (environments) context")
+		wrcs = &promoterv1alpha1.WebRequestCommitStatus{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name + "-ctx-switch",
+				Namespace: "default",
+			},
+			Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+				Key:                  "ctx-switch-check",
+				ReportOn:             constants.CommitRefProposed,
+				HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+					URLTemplate: testServer.URL + "/validate",
+					Method:      "GET",
+					Timeout:     metav1.Duration{Duration: 10 * time.Second},
+				},
+				Success: promoterv1alpha1.SuccessSpec{
+					When: promoterv1alpha1.WhenSpec{
+						Expression: "Response.StatusCode == 200 && Response.Body.approved == true",
+					},
+				},
+				Mode: promoterv1alpha1.ModeSpec{
+					Polling: &promoterv1alpha1.PollingModeSpec{
+						Interval: metav1.Duration{Duration: 30 * time.Second},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, wrcs)).To(Succeed())
+
+		By("Waiting for environments context status to be populated")
+		Eventually(func(g Gomega) {
+			var fetched promoterv1alpha1.WebRequestCommitStatus
+			err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(len(fetched.Status.Environments)).To(BeNumerically(">=", 1), "Environments status should be populated")
+			g.Expect(fetched.Status.PromotionStrategyContext).To(BeNil(), "PromotionStrategyContext should be nil in environments context")
+
+			var devEnvStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
+			for i := range fetched.Status.Environments {
+				if fetched.Status.Environments[i].Branch == testBranchDevelopment {
+					devEnvStatus = &fetched.Status.Environments[i]
+					break
+				}
+			}
+			g.Expect(devEnvStatus).NotTo(BeNil(), "Dev environment status should exist")
+			g.Expect(devEnvStatus.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		By("Switching context to promotionstrategy")
+		Eventually(func(g Gomega) {
+			var latest promoterv1alpha1.WebRequestCommitStatus
+			err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &latest)
+			g.Expect(err).NotTo(HaveOccurred())
+			latest.Spec.Mode.Context = promoterv1alpha1.ContextPromotionStrategy
+			g.Expect(k8sClient.Update(ctx, &latest)).To(Succeed())
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		By("Waiting for promotionstrategy context status to be populated and environments to be cleared")
+		Eventually(func(g Gomega) {
+			var fetched promoterv1alpha1.WebRequestCommitStatus
+			err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(fetched.Status.PromotionStrategyContext).NotTo(BeNil(), "PromotionStrategyContext should be populated")
+			g.Expect(fetched.Status.PromotionStrategyContext.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			g.Expect(fetched.Status.Environments).To(BeEmpty(), "Environments should be cleared after switching to promotionstrategy context")
+
+			for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
+				csName := utils.KubeSafeUniqueName(ctx, wrcs.Name+"-"+branch+"-webrequest")
+				var cs promoterv1alpha1.CommitStatus
+				err = k8sClient.Get(ctx, types.NamespacedName{Name: csName, Namespace: "default"}, &cs)
+				g.Expect(err).NotTo(HaveOccurred(), "CommitStatus for %s should exist", branch)
+				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess), "CommitStatus for %s should be success", branch)
+			}
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		By("Switching context back to environments (default)")
+		Eventually(func(g Gomega) {
+			var latest promoterv1alpha1.WebRequestCommitStatus
+			err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &latest)
+			g.Expect(err).NotTo(HaveOccurred())
+			latest.Spec.Mode.Context = ""
+			g.Expect(k8sClient.Update(ctx, &latest)).To(Succeed())
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		By("Waiting for environments status to be repopulated and promotionstrategy context to be cleared")
+		Eventually(func(g Gomega) {
+			var fetched promoterv1alpha1.WebRequestCommitStatus
+			err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(fetched.Status.PromotionStrategyContext).To(BeNil(), "PromotionStrategyContext should be nil after switching back to environments context")
+			g.Expect(len(fetched.Status.Environments)).To(BeNumerically(">=", 1), "Environments status should be repopulated")
+
+			var devEnvStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
+			for i := range fetched.Status.Environments {
+				if fetched.Status.Environments[i].Branch == testBranchDevelopment {
+					devEnvStatus = &fetched.Status.Environments[i]
+					break
+				}
+			}
+			g.Expect(devEnvStatus).NotTo(BeNil(), "Dev environment status should exist after switching back")
+			g.Expect(devEnvStatus.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+		}, constants.EventuallyTimeout).Should(Succeed())
+	})
+})
