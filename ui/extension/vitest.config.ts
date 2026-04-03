@@ -1,5 +1,8 @@
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { defineConfig } from 'vitest/config';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Istanbul LCOV uses path.relative(projectRoot, file); repo root => SF: lines match Codecov/git.
 const repoRoot = path.resolve(__dirname, '../..');
