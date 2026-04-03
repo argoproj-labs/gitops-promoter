@@ -5,9 +5,8 @@
   ],
   gitAuthor: 'Renovate Bot <bot@renovateapp.com>',
   timezone: 'UTC',
-  schedule: [
-    'every weekend',
-  ],
+  // PR cadence is enforced by .github/workflows/renovate.yaml (Sun/Wed/Sat). A
+  // weekend-only schedule here prevented those mid-week runs from opening updates.
   labels: [
     'dependencies',
   ],
@@ -134,7 +133,7 @@
         '/^\\.github/workflows/.*\\.ya?ml$/',
       ],
       matchStrings: [
-        'go-version:\\s*[\'"]?(?<currentValue>\\d+\\.\\d+)[\'"]?',
+        'go-version:\\s*[\'"]?(?<currentValue>\\d+\\.\\d+(\\.\\d+)?)[\'"]?',
       ],
       depNameTemplate: 'go',
       datasourceTemplate: 'golang-version',
