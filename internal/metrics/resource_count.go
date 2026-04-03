@@ -149,30 +149,30 @@ func refreshKubernetesResourceCounts(ctx context.Context, c client.Client, log l
 // ResourceCountRunnable periodically lists promoter CRs and updates promoter_kubernetes_resources.
 type ResourceCountRunnable struct {
 	Client client.Client
-	Log    logr.Logger
+	// tickInterval is the delay between refreshes after the initial run. Zero means resourceCountInterval.
+	// Tests set a short value so the ticker path runs without long sleeps.
+	tickInterval time.Duration
 }
 
 // NewResourceCountRunnable returns a manager.Runnable that refreshes promoter_kubernetes_resources.
 func NewResourceCountRunnable(c client.Client) *ResourceCountRunnable {
-	return &ResourceCountRunnable{
-		Client: c,
-		Log:    ctrl.Log.WithName("promoter-resource-counts"),
-	}
+	return &ResourceCountRunnable{Client: c}
 }
 
 // Start implements manager.Runnable.
 func (r *ResourceCountRunnable) Start(ctx context.Context) error {
-	log := r.Log
-	if log.GetSink() == nil {
-		log = ctrl.Log.WithName("promoter-resource-counts")
-	}
+	log := ctrl.Log.WithName("promoter-resource-counts")
 	if r.Client == nil {
 		return errors.New("resource count runnable client is nil")
 	}
 
 	refreshKubernetesResourceCounts(ctx, r.Client, log)
 
-	ticker := time.NewTicker(resourceCountInterval)
+	interval := r.tickInterval
+	if interval <= 0 {
+		interval = resourceCountInterval
+	}
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
