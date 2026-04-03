@@ -112,7 +112,7 @@ Once the app is created. Go to Install app and install it in your account.
 
 #### Using the webhook
 
-The webhook notifies the Promoter and Argo CD that a new commit was push/merged to the main branch. It greatly reduces the latency between deployment.
+The webhook notifies the Promoter and Argo CD that a new commit was push/merged to the main branch. It greatly reduces the latency between deployments.
 
 If you want your local demo to be very responsive, you can use [Smee.io](https://smee.io/) to forward the webhook events to your local machine.
 
@@ -325,7 +325,7 @@ Here, we implement a simple strategy:
 3. Manual merge on production
 
 > [!NOTE]
-> You should see 2 PRs getting merged automatically and 1 PR to merge manually for the production. That is normal: we branched from the main branch which is DRY. The promoter detects change and do what's needed to sync the two branches.
+> You should see 2 PRs getting merged automatically and 1 PR to merge manually for the production. That is normal: we branched from the main branch which is DRY. The promoter detects changes and does what's needed to sync the two branches.
 
 ## Play with your environment
 
