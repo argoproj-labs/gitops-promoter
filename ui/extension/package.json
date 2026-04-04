@@ -12,35 +12,44 @@
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
     "lint:fix": "eslint . --ext .ts,.tsx,.js,.jsx --fix",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "test": "vitest run --coverage"
   },
   "devDependencies": {
     "@codecov/webpack-plugin": "^1.9.1",
+    "@types/node": "^22.0.0",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@typescript-eslint/eslint-plugin": "^8.54.0",
     "@typescript-eslint/parser": "^8.54.0",
+    "@vitest/coverage-v8": "^4.1.2",
     "css-loader": "^7.0.0",
     "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.0.0",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
+    "jsdom": "^26.0.0",
+    "prettier": "^3.5.3",
     "sass": "^1.89.2",
     "sass-loader": "^16.0.5",
     "style-loader": "^4.0.0",
     "ts-loader": "^9.5.1",
+    "vitest": "^4.0.18",
     "webpack": "^5.91.0",
     "webpack-cli": "^6.0.0"
   },
   "dependencies": {
     "@types/js-yaml": "^4.0.9",
-    "axios": "^1.12.0",
+    "axios": "^1.13.5",
     "js-yaml": "^4.1.1",
     "react": "18.3.1",
     "react-dom": "18.3.1",
+    "react-select": "^5.10.2",
     "zustand": "^5.0.0"
   },
   "overrides": {
+    "picomatch": "2.3.2",
     "undici": "^7.18.2"
   }
 }

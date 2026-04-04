@@ -52,6 +52,7 @@ import (
 	mcbuilder "sigs.k8s.io/multicluster-runtime/pkg/builder"
 	mchandler "sigs.k8s.io/multicluster-runtime/pkg/handler"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
+	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
 	mcreconcile "sigs.k8s.io/multicluster-runtime/pkg/reconcile"
 	"sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
 
@@ -115,7 +116,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 
 	var argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
 	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &argoCDCommitStatus, r.localClient, r.Recorder, &err)
+	defer utils.HandleReconciliationResult(ctx, startTime, &argoCDCommitStatus, r.localClient, r.Recorder, &result, &err)
 
 	err = r.localClient.Get(ctx, req.NamespacedName, &argoCDCommitStatus, &client.GetOptions{})
 	if err != nil {
@@ -159,14 +160,14 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		if err != nil {
 			clusterNameMsg := "on the local cluster"
 			if clusterName != "" {
-				clusterNameMsg = "on cluster " + clusterName
+				clusterNameMsg = "on cluster " + clusterName.String()
 			}
 			return ctrl.Result{}, fmt.Errorf("failed to list ArgoCDApplications %s: %w", clusterNameMsg, err)
 		}
 
 		apps = append(apps, ApplicationsInEnvironment{
 			ApplicationList: clusterArgoCDApps,
-			ClusterName:     clusterName,
+			ClusterName:     clusterName.String(),
 		})
 	}
 
@@ -175,6 +176,10 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		appCount += len(clusterApps.Items)
 	}
 	logger.V(4).Info("Found Applications", "appCount", appCount)
+
+	if appCount == 0 {
+		return ctrl.Result{}, fmt.Errorf("no Argo CD Applications found matching selector %v - check that the clusters successfully engaged", ls)
+	}
 
 	promotionStrategy := promoterv1alpha1.PromotionStrategy{}
 	err = r.localClient.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: argoCDCommitStatus.Spec.PromotionStrategyRef.Name}, &promotionStrategy)
@@ -417,7 +422,7 @@ func getMostRecentLastTransitionTime(apps []*argocd.Application) *metav1.Time {
 }
 
 func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchandler.TypedEventHandlerFunc[client.Object, mcreconcile.Request] {
-	return func(clusterName string, cl cluster.Cluster) handler.TypedEventHandler[client.Object, mcreconcile.Request] {
+	return func(clusterName multicluster.ClusterName, cl cluster.Cluster) handler.TypedEventHandler[client.Object, mcreconcile.Request] {
 		return handler.TypedEnqueueRequestsFromMapFunc(func(ctx context.Context, argoCDApplication client.Object) []mcreconcile.Request {
 			metrics.ApplicationWatchEventsHandled.Inc()
 

@@ -54,6 +54,15 @@ linters:
     govet:
       enable:
         - fieldalignment
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-no-explanation:
+        - misspell
+      # We are temporarily allowing unused nolints due to apparently
+      # false failures in CI. See
+      # https://github.com/golangci/golangci-lint/issues/3228
+      allow-unused: true
     revive:
       enable-all-rules: true
       rules:
@@ -72,6 +81,11 @@ linters:
         - name: struct-tag
           arguments:
             - "json,inline" # Used by kubebuilder.
+        - name: package-naming
+          exclude:
+            - "**/bitbucket_cloud/**"
+            - "**/internal/utils/**"
+            - "**/test/utils/**"
         - name: exported
           exclude:
             - "**/argocd_types.go" # The types here are only used internally.
@@ -143,6 +157,7 @@ linters:
       - third_party$
       - builtin$
       - examples$
+      - node_modules
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
@@ -156,3 +171,4 @@ formatters:
       - third_party$
       - builtin$
       - examples$
+      - node_modules

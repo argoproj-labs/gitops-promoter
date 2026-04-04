@@ -66,7 +66,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 			{Key: "timer"},
 		}
 
-		setupInitialTestGitRepoOnServer(ctx, name, name)
+		setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -150,7 +150,9 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 				}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
-				g.Expect(cs.Spec.Description).To(ContainSubstring("Waiting for time-based gate on " + testBranchDevelopment))
+				expectedDuration := 1 * time.Hour
+				g.Expect(cs.Spec.Description).To(ContainSubstring(expectedDuration.String()), "Description should include the required duration")
+				g.Expect(cs.Spec.Description).To(ContainSubstring("duration gate to complete on " + testBranchDevelopment))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
@@ -342,7 +344,9 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending),
 					"CommitStatus phase must remain pending while gate isn't met")
-				g.Expect(cs.Spec.Description).To(ContainSubstring("Waiting for time-based gate"))
+				expectedDuration := 24 * time.Hour
+				g.Expect(cs.Spec.Description).To(ContainSubstring(expectedDuration.String()), "Description should include the required duration")
+				g.Expect(cs.Spec.Description).To(ContainSubstring("duration gate to complete on " + testBranchDevelopment))
 			}, 10*time.Second, 1*time.Second).Should(Succeed())
 		})
 	})
@@ -357,7 +361,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 			defer func() {
 				_ = os.RemoveAll(gitPath)
 			}()
-			makeChangeAndHydrateRepo(gitPath, name, name, "pending change in staging", "pending change")
+			makeChangeAndHydrateRepo(gitPath, gitRepo, "pending change in staging", "pending change")
 
 			// Trigger webhook to create PR in staging
 			var ctpStaging promoterv1alpha1.ChangeTransferPolicy

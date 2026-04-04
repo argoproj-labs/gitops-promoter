@@ -1,8 +1,18 @@
-[![codecov](https://codecov.io/gh/argoproj-labs/gitops-promoter/graph/badge.svg?token=Nbye3NDioO)](https://codecov.io/gh/argoproj-labs/gitops-promoter)
 
-# GitOps Promoter
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo/stacked/secondary.svg">
+  <img src="docs/assets/logo/stacked/primary.svg" alt="GitOps Promoter" width="400" height="111">
+</picture>
+
+---
 
 GitOps Promoter facilitates environment promotion for config managed via GitOps.
+
+[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/gitops-promoter)](https://artifacthub.io/packages/helm/gitops-promoter/gitops-promoter)
+[![codecov](https://codecov.io/gh/argoproj-labs/gitops-promoter/graph/badge.svg?token=Nbye3NDioO)](https://codecov.io/gh/argoproj-labs/gitops-promoter)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/argoproj-labs/gitops-promoter/badge)](https://scorecard.dev/viewer/?uri=github.com/argoproj-labs/gitops-promoter)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/11911/badge)](https://www.bestpractices.dev/projects/11911)
 
 ![Video of the GitOps Promoter UI as a change is promoted through three environments](https://github.com/user-attachments/assets/5860cc7a-56e6-4003-b1fc-b33e4d69d411)
 
@@ -48,3 +58,22 @@ spec:
 
 The project is currently experimental, please use with caution. See the 
 [docs site](https://gitops-promoter.readthedocs.io/en/latest/getting-started/) for setup instructions.
+
+## Contributing
+
+See the  **[Contributing](https://gitops-promoter.readthedocs.io/en/latest/contributing/)** page in the documentation.
+
+## Roadmap
+
+Planned features include:
+
+* Support for additional SCMs (such as Bitbucket Server)
+* Advanced promotion strategies (such as full DAG support)
+* Deployment window commit status support
+* Multiple instances per cluster for horizontal scaling, reduced blast radius, etc.
+
+## Users
+
+If you're using GitOps Promoter, please add yourself to [USERS.md](USERS.md)!
+
+If you're evaluating GitOps Promoter, we'd love to hear from you — please [open a discussion](https://github.com/argoproj-labs/gitops-promoter/discussions) to share your feedback.

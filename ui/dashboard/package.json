@@ -9,22 +9,30 @@
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
     "lint:fix": "eslint \"src/**/*.{ts,tsx}\" --fix",
     "type-check": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "preview": "vite preview",
-    "build:embed": "npm run build && mkdir -p ../web/static && cp -r dist/* ../web/static/"
+    "build:embed": "npm run build && mkdir -p ../web/static && cp -r dist/* ../web/static/",
+    "test": "vitest run --coverage"
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@typescript-eslint/eslint-plugin": "^8.54.0",
     "@typescript-eslint/parser": "^8.54.0",
-    "@vitejs/plugin-react": "^4.2.1",
+    "@vitejs/plugin-react": "^5.0.0",
+    "@vitest/coverage-v8": "^4.1.2",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.0.0",
     "eslint-plugin-react": "^7.34.0",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.5",
+    "jsdom": "^26.0.0",
+    "prettier": "^3.5.3",
     "typescript": "^5.2.2",
-    "vite": "^7.1.5"
+    "vite": "^7.1.5",
+    "vitest": "^4.0.18"
   },
   "dependencies": {
     "react": "^18.2.0",
@@ -34,5 +42,8 @@
     "react-select": "^5.8.0",
     "sass": "^1.89.2",
     "zustand": "^5.0.0"
+  },
+  "overrides": {
+    "picomatch": "2.3.2"
   }
 }

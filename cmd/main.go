@@ -304,6 +304,16 @@ func runController(
 		setupLog.Error(err, "unable to create controller", "controller", "GitCommitStatus")
 		panic(fmt.Errorf("unable to create GitCommitStatus controller: %w", err))
 	}
+	if err := (&controller.WebRequestCommitStatusReconciler{
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorder("WebRequestCommitStatus"),
+		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "WebRequestCommitStatus")
+		panic(fmt.Errorf("unable to create WebRequestCommitStatus controller: %w", err))
+	}
 	//+kubebuilder:scaffold:builder
 
 	if err := localManager.AddHealthzCheck("healthz", healthz.Ping); err != nil {
@@ -332,7 +342,8 @@ func runController(
 	})
 
 	g.Go(func() error {
-		if err := ignoreCanceled(whr.Start(processSignalsCtx, fmt.Sprintf(":%d", constants.WebhookReceiverPort))); err != nil { //nolint:lll
+		//nolint:lll // long line due to function call with multiple parameters
+		if err := ignoreCanceled(whr.Start(processSignalsCtx, fmt.Sprintf(":%d", constants.WebhookReceiverPort))); err != nil {
 			setupLog.Error(err, "unable to start webhook receiver")
 			return err
 		}
@@ -414,6 +425,7 @@ func newCommand() *cobra.Command {
 
 	opts := zap.Options{
 		Development: true,
+		Level:       zapcore.InfoLevel, // default to info; use --zap-log-level=debug or =5 for verbose
 		TimeEncoder: zapcore.RFC3339NanoTimeEncoder,
 	}
 

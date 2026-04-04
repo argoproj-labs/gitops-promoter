@@ -17,7 +17,7 @@ export interface Commit {
   }>;
 }
 
-export interface ReferenceCommit  {
+export interface ReferenceCommit {
   sha?: string;
   author?: string;
   subject?: string;
@@ -30,6 +30,7 @@ export interface ReferenceCommit  {
 export interface PullRequest {
   id: string;
   url?: string;
+  prMergeTime?: string;
 }
 
 export interface History {
@@ -102,7 +103,7 @@ export interface EnrichedEnvDetails {
   // Environment info
   branch: string;
   promotionStatus: string;
-  
+
   // Active commits
   activeSha: string;
   activeCommitAuthor: string;
@@ -115,10 +116,10 @@ export interface EnrichedEnvDetails {
   activeStatus: 'success' | 'failure' | 'pending' | 'unknown';
   activePrUrl: string | null;
   activePrNumber: number | null;
-  
+
   activeReferenceCommit: ReferenceCommit | null;
   activeReferenceCommitUrl: string | null;
-  
+
   // Proposed commits
   proposedSha: string;
   prNumber: number | null;
@@ -134,6 +135,9 @@ export interface EnrichedEnvDetails {
 
   proposedReferenceCommit: ReferenceCommit | null;
   proposedReferenceCommitUrl: string | null;
+
+  // History
+  historyMergeTimeAgo: string | null;
 }
 
-export type PromotionPhase = 'promoted' | 'failure' | 'pending' | 'unknown'; 
+export type PromotionPhase = 'promoted' | 'failure' | 'pending' | 'unknown';

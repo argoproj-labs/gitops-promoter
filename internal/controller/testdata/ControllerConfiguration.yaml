@@ -40,7 +40,8 @@ spec:
 
   # PullRequest controller manages pull request lifecycle
   pullRequest:
-    # Template configuration for generating PR titles and descriptions
+    # Template configuration for generating PR titles and descriptions.
+    # Template data has access to: .ChangeTransferPolicy, .PromotionStrategy
     template:
       title: "Promote {{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }} to `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`"
       description: |
@@ -96,6 +97,16 @@ spec:
   gitCommitStatus:
     workQueue:
       requeueDuration: "5m"
+      maxConcurrentReconciles: 5
+      rateLimiter:
+        exponentialFailure:
+          baseDelay: "500ms"
+          maxDelay: "1m"
+
+  # WebRequestCommitStatus controller runs HTTP requests and reports commit status from response
+  webRequestCommitStatus:
+    workQueue:
+      requeueDuration: "2m"
       maxConcurrentReconciles: 5
       rateLimiter:
         exponentialFailure:

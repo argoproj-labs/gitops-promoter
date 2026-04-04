@@ -73,8 +73,15 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) applyconfiguration:headerFile="hack/boilerplate.go.txt" object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
+.PHONY: generate-extension-icon-styles
+generate-extension-icon-styles: ## Generate Argo CD extension icon styles from logo SVGs.
+	./hack/extension-icon-styles.sh
+
+.PHONY: generate-all
+generate-all: generate generate-extension-icon-styles ## Run all code generation used in CI (controller-gen, extension icon styles). For mocks, run make mockery-gen separately.
+
 .PHONY: mockery-gen
-mockery-gen:
+mockery-gen: mockery
 	$(MOCKERY)
 
 .PHONY: fmt
@@ -160,15 +167,28 @@ run-dashboard: build-dashboard
 
 .PHONY: lint-dashboard
 lint-dashboard: ## Run dashboard type-check, lint and audit checks
-	cd ui/dashboard && npm run type-check && npm run lint && npm audit
+	cd ui/dashboard && npm run type-check && npm run lint && npm run format:check && npm audit --omit=dev
 
 .PHONY: lint-extension
 lint-extension: ## Run extension type-check, lint and audit checks
-	cd ui/extension && npm run type-check && npm run lint && npm audit
+	cd ui/extension && npm run type-check && npm run lint && npm run format:check && npm audit --omit=dev
+
+# LCOV paths: vitest coverage uses istanbul lcov reporter with projectRoot = repo root (see vitest.config).
+.PHONY: test-unit-test-extension
+test-unit-test-extension: ## Run extension unit tests (with coverage)
+	cd ui/extension && npm test
+
+.PHONY: lint-components-lib
+lint-components-lib: ## Run components-lib type-check and format checks (includes shared/)
+	cd ui/components-lib && npm run type-check && npm run format:check
+	cd ui/components-lib && npx prettier --check '../shared/**/*.{ts,tsx}'
 
 .PHONY: lint-ui
-lint-ui: lint-dashboard lint-extension ## Run all UI checks
+lint-ui: lint-dashboard lint-extension lint-components-lib ## Run all UI checks
 
+.PHONY: test-ui-test-dashboard
+test-ui-test-dashboard: ## Run dashboard unit tests (with coverage)
+	cd ui/dashboard && npm test
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
@@ -207,7 +227,7 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 	rm Dockerfile.cross
 
 .PHONY: build-installer
-build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
+build-installer: manifests generate-all kustomize ## Generate a consolidated YAML with CRDs and deployment.
 	mkdir -p dist
 	# cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default > dist/install.yaml
@@ -259,9 +279,9 @@ GORELEASER ?= $(LOCALBIN)/goreleaser-$(GORELEASER_VERSION)
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.3.0
-CONTROLLER_TOOLS_VERSION ?= v0.20.0
+CONTROLLER_TOOLS_VERSION ?= v0.20.1
 ENVTEST_VERSION ?= release-0.19
-GOLANGCI_LINT_VERSION ?= v2.8.0
+GOLANGCI_LINT_VERSION ?= v2.11.4
 MOCKERY_VERSION ?= v2.42.2
 NILAWAY_VERSION ?= latest
 GINKGO_VERSION=$(shell go list -m all | grep github.com/onsi/ginkgo/v2 | awk '{print $$2}')

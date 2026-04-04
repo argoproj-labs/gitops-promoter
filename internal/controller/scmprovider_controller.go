@@ -56,7 +56,7 @@ func (r *ScmProviderReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	var scmProvider promoterv1alpha1.ScmProvider
 	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &scmProvider, r.Client, r.Recorder, &err)
+	defer utils.HandleReconciliationResult(ctx, startTime, &scmProvider, r.Client, r.Recorder, &result, &err)
 
 	if err := r.Get(ctx, req.NamespacedName, &scmProvider); err != nil {
 		if k8serrors.IsNotFound(err) {

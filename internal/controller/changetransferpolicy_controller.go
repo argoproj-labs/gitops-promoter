@@ -39,6 +39,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -101,7 +102,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 
 	var ctp promoterv1alpha1.ChangeTransferPolicy
 	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &ctp, r.Client, r.Recorder, &err)
+	defer utils.HandleReconciliationResult(ctx, startTime, &ctp, r.Client, r.Recorder, &result, &err)
 
 	err = r.Get(ctx, req.NamespacedName, &ctp, &client.GetOptions{})
 	if err != nil {
@@ -439,7 +440,7 @@ func removeKnownTrailers(input string) string {
 func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	// This index gets used by the CommitStatus controller and the webhook server to find the ChangeTransferPolicy to trigger reconcile
 	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.ChangeTransferPolicy{}, ".status.proposed.hydrated.sha", func(rawObj client.Object) []string {
-		//nolint:forcetypeassert
+		//nolint:forcetypeassert // type is guaranteed by the IndexField API
 		ctp := rawObj.(*promoterv1alpha1.ChangeTransferPolicy)
 		return []string{ctp.Status.Proposed.Hydrated.Sha}
 	}); err != nil {
@@ -448,7 +449,7 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 
 	// This gets used by the CommitStatus controller to find the ChangeTransferPolicy to trigger reconcile
 	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.ChangeTransferPolicy{}, ".status.active.hydrated.sha", func(rawObj client.Object) []string {
-		//nolint:forcetypeassert
+		//nolint:forcetypeassert // type is guaranteed by the IndexField API
 		ctp := rawObj.(*promoterv1alpha1.ChangeTransferPolicy)
 		return []string{ctp.Status.Active.Hydrated.Sha}
 	}); err != nil {
@@ -590,7 +591,7 @@ func (e *TooManyMatchingShaError) Error() string {
 	// Construct a message that includes the namespace/name of each commit status.
 	// If there are more than two, finish the message with "and X more..."
 	var msg strings.Builder
-	msg.WriteString("there are to many matching SHAs for the '" + e.commitStatusKey + "' commit status: ")
+	msg.WriteString("there are too many matching SHAs for the '" + e.commitStatusKey + "' commit status: ")
 	for i, cs := range e.commitStatuses {
 		if i > 0 {
 			msg.WriteString(", ")
@@ -870,6 +871,28 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 	return nil
 }
 
+// getPromotionStrategy fetches the PromotionStrategy for the CTP.
+// It uses the controller owner reference.
+// Returns nil, nil if no PS owner reference is present (PS is optional or not yet set).
+// Returns an error only if the owner reference is present but the PS cannot be found.
+func (r *ChangeTransferPolicyReconciler) getPromotionStrategy(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) (*promoterv1alpha1.PromotionStrategy, error) {
+	logger := log.FromContext(ctx)
+
+	psKind := reflect.TypeOf(promoterv1alpha1.PromotionStrategy{}).Name()
+	for _, ref := range ctp.OwnerReferences {
+		if ref.Kind == psKind && ptr.Deref(ref.Controller, false) {
+			var ps promoterv1alpha1.PromotionStrategy
+			if err := r.Get(ctx, client.ObjectKey{Namespace: ctp.Namespace, Name: ref.Name}, &ps); err != nil {
+				return nil, fmt.Errorf("failed to get PromotionStrategy %q in namespace %q: %w", ref.Name, ctp.Namespace, err)
+			}
+			return &ps, nil
+		}
+	}
+
+	logger.V(4).Info("ChangeTransferPolicy has no PromotionStrategy owner reference, skipping PromotionStrategy lookup")
+	return nil, nil
+}
+
 // tooManyPRsError constructs an error indicating that there are too many open pull requests for the CTP.
 func tooManyPRsError(pr *promoterv1alpha1.PullRequestList) error {
 	prNames := make([]string, 0, len(pr.Items))
@@ -922,12 +945,22 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 
 	prName = utils.KubeSafeUniqueName(ctx, prName)
 
+	ps, err := r.getPromotionStrategy(ctx, ctp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get PromotionStrategy for template: %w", err)
+	}
+
 	templatePullRequestTemplate, err := r.SettingsMgr.GetPullRequestControllersTemplate(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pull request template from settings: %w", err)
 	}
 
-	title, description, err := TemplatePullRequest(templatePullRequestTemplate, map[string]any{"ChangeTransferPolicy": ctp})
+	// Template receives the current CTP and its PromotionStrategy.
+	templateData := map[string]any{
+		"ChangeTransferPolicy": ctp,
+		"PromotionStrategy":    ps,
+	}
+	title, description, err := TemplatePullRequest(templatePullRequestTemplate, templateData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to template pull request: %w", err)
 	}

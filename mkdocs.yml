@@ -1,15 +1,17 @@
 site_name: GitOps Promoter - A GitOps First Environment Promotion Tool
 repo_url: https://github.com/argoproj-labs/gitops-promoter
-site_url: https://argo-gitops-promoter.readthedocs.io/
+site_url: https://gitops-promoter.readthedocs.io/
 theme:
   font:
     text: Work Sans
-  logo: assets/logo.png
+  logo: assets/logo/icon/secondary.png
+  favicon: assets/logo/favicon.png
   name: material
   features:
     - content.code.copy
   palette:
-    - primary: teal
+    - primary: custom
+      accent: custom
       scheme: default
       toggle:
         icon: material/toggle-switch-off-outline
@@ -18,6 +20,8 @@ theme:
       toggle:
         icon: material/toggle-switch
         name: Switch to light mode
+extra_css:
+  - stylesheets/extra.css
 markdown_extensions:
   - markdown_include.include
   - codehilite:
@@ -27,6 +31,8 @@ markdown_extensions:
 nav:
   - Overview: index.md
   - Getting Started: getting-started.md
+  - Contributing: contributing.md
+  - Security: security.md
   - Architecture: architecture.md
   - Custom Hydrator: custom-hydrator.md
   - CRD Specs: crd-specs.md
@@ -37,6 +43,7 @@ nav:
       - Argo CD: commit-status-controllers/argocd.md
       - Git Commit: commit-status-controllers/git-commit.md
       - Timed: commit-status-controllers/timed.md
+      - Web Request: commit-status-controllers/web-request.md
       - Development Best Practices: commit-status-controllers/development-best-practices.md
   - Multi-Tenancy: multi-tenancy.md
   - Monitoring:
@@ -48,7 +55,9 @@ nav:
   - FAQs: faqs.md
   - Tutorials:
       - Argo CD Apps: tutorial-argocd-apps.md
-  - Argo CD Integrations: argocd-integrations.md
+  - Argo CD Integrations:
+      - Overview: argocd-integrations/index.md
+      - Extension Development: argocd-integrations/development.md
 plugins:
   - gh-admonitions
   - redirects:

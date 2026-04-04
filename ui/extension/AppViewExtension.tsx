@@ -1,50 +1,138 @@
-import React, { useEffect, useMemo, useState } from "react";
-import Card from "@components-lib/components/Card";
-import { PromotionStrategy } from "@shared/types/promotion";
-import { AppViewComponentProps } from "@shared/types/extension";
+import React, { useEffect, useState } from 'react';
+import Select, { SingleValue } from 'react-select';
+import Card from '@components-lib/components/Card';
+import { PromotionStrategy } from '@shared/types/promotion';
+import { AppViewComponentProps } from '@shared/types/extension';
+import './StrategyDropdown.scss';
 
-const AppViewExtension = ({ tree, application }: AppViewComponentProps) => {
-  const promotionStrategyNodes = useMemo(
-    () => tree.nodes.filter((node) => node.kind === "PromotionStrategy"),
-    [tree.nodes]
-  );
-  if (promotionStrategyNodes.length !== 1) {
-    throw new Error(
-      `Expected exactly one PromotionStrategy resource in Gitops Promoter Extension, found ${promotionStrategyNodes.length}`
-    );
+const GROUP = 'promoter.argoproj.io';
+const KIND = 'PromotionStrategy';
+const PARAM = 'promotionstrategy';
+
+interface SelectOption {
+  value: string;
+  label: string;
+}
+
+const getParam = (): string => {
+  const params = new URLSearchParams(window.location.search);
+  return params.get(PARAM) || '';
+};
+
+const setParam = (name: string) => {
+  const url = new URL(window.location.href);
+  if (name) {
+    url.searchParams.set(PARAM, name);
+  } else {
+    url.searchParams.delete(PARAM);
   }
+  window.history.replaceState(null, '', url.toString());
+};
 
-  const [promotionStrategy, setPromotionStrategy] =
-    useState<PromotionStrategy>();
-  const [isLoading, setIsLoading] = useState(false);
+const strategyKey = (s: PromotionStrategy) => `${s.metadata.namespace}/${s.metadata.name}`;
+
+const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
+  const [strategies, setStrategies] = useState<PromotionStrategy[]>([]);
+  const [selectedKey, setSelectedKey] = useState<string>(getParam);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
-    const promotionStrategyNode = promotionStrategyNodes[0];
-    const group = "promoter.argoproj.io";
-    const url = `/api/v1/applications/${application.metadata.name}/resource?name=${promotionStrategyNode.name}&appNamespace=${application.metadata.namespace}&namespace=${promotionStrategyNode.namespace}&resourceName=${promotionStrategyNode.name}&version=${promotionStrategyNode?.version}&kind=${promotionStrategyNode.kind}&group=${group}`;
+    const appName = application.metadata.name;
+    const appNamespace = application.metadata.namespace;
 
-    setIsLoading(true);
-    fetch(url)
-      .then((response) => response.json())
-      .then((data) => {
-        setPromotionStrategy(
-          typeof data.manifest === "string"
-            ? JSON.parse(data.manifest)
-            : data.manifest
-        );
-        setIsLoading(false);
+    const strategyNodes = (tree.nodes || []).filter(
+      (node) => node.group === GROUP && node.kind === KIND,
+    );
+
+    if (strategyNodes.length === 0) {
+      setFetchError('No PromotionStrategy resources found');
+      setStrategies([]);
+      setSelectedKey('');
+      setParam('');
+      return;
+    }
+
+    setFetchError(null);
+    Promise.all(
+      strategyNodes.map(async (node) => {
+        const params = new URLSearchParams({
+          appNamespace,
+          namespace: node.namespace,
+          resourceName: node.name,
+          version: node.version || '',
+          kind: KIND,
+          group: GROUP,
+        });
+        const response = await fetch(`/api/v1/applications/${appName}/resource?${params}`);
+        if (!response.ok) {
+          let errorText = '';
+          try {
+            errorText = await response.text();
+          } catch {
+            // ignore errors while reading error body
+          }
+          const messageParts = [
+            `Request failed with status ${response.status} ${response.statusText}`,
+            errorText && `body: ${errorText}`,
+          ].filter(Boolean);
+          throw new Error(messageParts.join(' - '));
+        }
+        const data: { manifest: string } = await response.json();
+        return JSON.parse(data.manifest) as PromotionStrategy;
+      }),
+    )
+      .then((parsed) => {
+        setStrategies(parsed);
+        const fromUrl = getParam();
+        const match = parsed.find((s) => strategyKey(s) === fromUrl);
+        const initial = match ? fromUrl : strategyKey(parsed[0]);
+        setSelectedKey(initial);
+        setParam(initial);
       })
       .catch((err) => {
-        setIsLoading(false);
-        throw new Error("Error fetching promotion strategy data: " + err);
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        setFetchError('Failed to load PromotionStrategy: ' + errorMessage);
+        setStrategies([]);
+        setSelectedKey('');
+        setParam('');
       });
-  }, [promotionStrategyNodes, application.metadata.name, application.metadata.namespace]);
-  if (isLoading && !promotionStrategy) {
+  }, [application.metadata.name, application.metadata.namespace, tree]);
+
+  if (strategies.length === 0) {
+    if (fetchError) {
+      return <div>{fetchError}</div>;
+    }
     return <div>Loading...</div>;
   }
+
+  const selected = strategies.find((s) => strategyKey(s) === selectedKey);
+
+  const hasDuplicateNames =
+    new Set(strategies.map((s) => s.metadata.name)).size < strategies.length;
+
+  const options: SelectOption[] = strategies.map((s) => ({
+    value: strategyKey(s),
+    label: hasDuplicateNames ? `${s.metadata.name} (${s.metadata.namespace})` : s.metadata.name,
+  }));
+
   return (
     <div className="extension-container">
-      <Card environments={promotionStrategy?.status?.environments || []} />
+      {strategies.length > 1 && (
+        <div className="strategy-dropdown-wrapper">
+          <Select<SelectOption>
+            classNamePrefix="strategy-dropdown"
+            options={options}
+            placeholder="Select a PromotionStrategy"
+            value={options.find((opt) => opt.value === selectedKey) || null}
+            onChange={(option: SingleValue<SelectOption>) => {
+              const key = option ? option.value : '';
+              setSelectedKey(key);
+              setParam(key);
+            }}
+          />
+        </div>
+      )}
+      {selected && <Card environments={selected.status?.environments || []} />}
     </div>
   );
 };

@@ -41,6 +41,12 @@ var testChangeTransferPolicyYAML string
 const healthCheckCSKey = "health-check"
 
 var _ = Describe("ChangeTransferPolicy Controller", func() {
+	var ctx context.Context
+
+	BeforeEach(func() {
+		ctx = context.Background()
+	})
+
 	Context("When unmarshalling the test data", func() {
 		It("should unmarshal the ChangeTransferPolicy resource", func() {
 			err := unmarshalYamlStrict(testChangeTransferPolicyYAML, &promoterv1alpha1.ChangeTransferPolicy{})
@@ -49,8 +55,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 	})
 
 	Context("When reconciling a resource", func() {
-		ctx := context.Background()
-
 		Context("When no commit status checks are configured", func() {
 			var name string
 			var gitRepo *promoterv1alpha1.GitRepository
@@ -92,7 +96,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				By("Adding a pending commit")
-				fullSha, shortSha := makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
+				fullSha, shortSha := makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 
 				By("Reconciling the created resource")
 
@@ -117,7 +121,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Adding another pending commit")
-				_, shortSha = makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
+				_, shortSha = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, types.NamespacedName{
@@ -216,7 +220,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 			It("should successfully reconcile the resource", func() {
 				By("Adding a pending commit")
-				makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
+				makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 
 				By("Checking commit status before CommitStatus resource is created")
 				Eventually(func(g Gomega) {
@@ -319,7 +323,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 			It("should successfully reconcile the resource", func() {
 				By("Adding a pending commit")
-				fullSha, shortSha := makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
+				fullSha, shortSha := makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 
 				By("Reconciling the created resource")
 
@@ -344,7 +348,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Adding another pending commit")
-				_, shortSha = makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
+				_, shortSha = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, types.NamespacedName{
@@ -415,7 +419,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 			It("should set mergeSha to proposed hydrated SHA", func() {
 				By("Adding a pending commit")
-				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
+				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 
 				By("Reconciling and waiting for PR creation")
 
@@ -497,7 +501,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 			It("should read phase from spec instead of status to avoid stale reads", func() {
 				By("Adding a pending commit")
-				makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
+				makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 
 				By("Creating CommitStatus with success in spec")
 				Eventually(func(g Gomega) {
@@ -595,7 +599,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 			It("should remove CTP finalizer from PR when PR is externally closed and status is synced", func() {
 				By("Adding a pending commit")
-				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
+				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 
 				By("Waiting for PR to be created")
 				var createdPR promoterv1alpha1.PullRequest
@@ -662,6 +666,69 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 	})
 })
 
+var _ = Describe("TemplatePullRequest", func() {
+	Context("PR template with ChangeTransferPolicy and optional PromotionStrategy", func() {
+		It("renders description with only CTP when PromotionStrategy is absent", func() {
+			ctp := &promoterv1alpha1.ChangeTransferPolicy{
+				Spec: promoterv1alpha1.ChangeTransferPolicySpec{
+					ActiveBranch:   testBranchDevelopment,
+					ProposedBranch: testBranchDevelopmentNext,
+				},
+				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+					Proposed: promoterv1alpha1.CommitBranchState{
+						Dry: promoterv1alpha1.CommitShaState{Sha: "abc1234"},
+					},
+				},
+			}
+			template := promoterv1alpha1.PullRequestTemplate{
+				Title:       "Promote {{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }} to `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`",
+				Description: "Promote to {{ .ChangeTransferPolicy.Spec.ActiveBranch }}{{ if .PromotionStrategy }} Strategy: {{ .PromotionStrategy.Name }}{{ end }}",
+			}
+			data := map[string]any{"ChangeTransferPolicy": ctp}
+			title, description, err := TemplatePullRequest(template, data)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(title).To(Equal("Promote abc1234 to `" + testBranchDevelopment + "`"))
+			Expect(description).To(Equal("Promote to " + testBranchDevelopment))
+			Expect(description).NotTo(ContainSubstring("Strategy:"))
+		})
+
+		It("renders description with CTP and PromotionStrategy when PromotionStrategy is present", func() {
+			ctp := &promoterv1alpha1.ChangeTransferPolicy{
+				Spec: promoterv1alpha1.ChangeTransferPolicySpec{
+					ActiveBranch:   testBranchDevelopment,
+					ProposedBranch: testBranchDevelopmentNext,
+				},
+				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+					Proposed: promoterv1alpha1.CommitBranchState{
+						Dry: promoterv1alpha1.CommitShaState{Sha: "def5678"},
+					},
+				},
+			}
+			psName := "my-promotion-strategy"
+			ps := &promoterv1alpha1.PromotionStrategy{
+				ObjectMeta: metav1.ObjectMeta{Name: psName, Namespace: "default"},
+				Spec: promoterv1alpha1.PromotionStrategySpec{
+					RepositoryReference: promoterv1alpha1.ObjectReference{Name: "test-repo"},
+					Environments:        []promoterv1alpha1.Environment{{Branch: testBranchDevelopment}},
+				},
+			}
+			template := promoterv1alpha1.PullRequestTemplate{
+				Title:       "Promote {{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }} to `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`",
+				Description: "Promote to {{ .ChangeTransferPolicy.Spec.ActiveBranch }}{{ if .PromotionStrategy }} Strategy: {{ .PromotionStrategy.Name }}{{ end }}",
+			}
+			data := map[string]any{
+				"ChangeTransferPolicy": ctp,
+				"PromotionStrategy":    ps,
+			}
+			title, description, err := TemplatePullRequest(template, data)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(title).To(Equal("Promote def5678 to `" + testBranchDevelopment + "`"))
+			Expect(description).To(ContainSubstring("Strategy: " + psName))
+			Expect(description).To(ContainSubstring("Promote to " + testBranchDevelopment))
+		})
+	})
+})
+
 var _ = Describe("tooManyPRsError", func() {
 	Context("When formatting tooManyPRsError", func() {
 		It("returns an error listing all PR names if 3 or fewer", func() {
@@ -696,10 +763,26 @@ var _ = Describe("tooManyPRsError", func() {
 	})
 })
 
-//nolint:unparam
+//nolint:unparam // namespace is always "default" in tests but kept for consistency with other test helpers
 func changeTransferPolicyResources(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.ChangeTransferPolicy) {
 	name = name + "-" + utils.KubeSafeUniqueName(ctx, randomString(15))
-	setupInitialTestGitRepoOnServer(ctx, name, name)
+	gitRepo := &promoterv1alpha1.GitRepository{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: promoterv1alpha1.GitRepositorySpec{
+			Fake: &promoterv1alpha1.FakeRepo{
+				Owner: name,
+				Name:  name,
+			},
+			ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
+				Kind: promoterv1alpha1.ScmProviderKind,
+				Name: name,
+			},
+		},
+	}
+	setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 	scmSecret := &v1.Secret{
 		TypeMeta: metav1.TypeMeta{},
@@ -721,23 +804,6 @@ func changeTransferPolicyResources(ctx context.Context, name, namespace string) 
 			Fake:      &promoterv1alpha1.Fake{},
 		},
 		Status: promoterv1alpha1.ScmProviderStatus{},
-	}
-
-	gitRepo := &promoterv1alpha1.GitRepository{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
-		Spec: promoterv1alpha1.GitRepositorySpec{
-			Fake: &promoterv1alpha1.FakeRepo{
-				Owner: name,
-				Name:  name,
-			},
-			ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
-				Kind: promoterv1alpha1.ScmProviderKind,
-				Name: name,
-			},
-		},
 	}
 
 	commitStatus := &promoterv1alpha1.CommitStatus{

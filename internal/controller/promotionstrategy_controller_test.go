@@ -50,6 +50,12 @@ import (
 var testPromotionStrategyYAML string
 
 var _ = Describe("PromotionStrategy Controller", func() {
+	var ctx context.Context
+
+	BeforeEach(func() {
+		ctx = context.Background()
+	})
+
 	Context("When unmarshalling the test data", func() {
 		It("should unmarshal the PromotionStrategy resource", func() {
 			err := unmarshalYamlStrict(testPromotionStrategyYAML, &promoterv1alpha1.PromotionStrategy{})
@@ -58,8 +64,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 
 	Context("When reconciling a resource with no commit statuses", func() {
-		ctx := context.Background()
-
 		Context("When git repo is not initialized", func() {
 			var name string
 			var promotionStrategy *promoterv1alpha1.PromotionStrategy
@@ -114,7 +118,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				var scmSecret *v1.Secret
 				var scmProvider *promoterv1alpha1.ScmProvider
 				name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "promotion-strategy-no-commit-status", "default")
-				setupInitialTestGitRepoOnServer(ctx, name, name)
+				setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 				typeNamespacedName = types.NamespacedName{
 					Name:      name,
@@ -243,7 +247,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				By("Adding a pending commit")
 				gitPath, err := os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
-				makeChangeAndHydrateRepo(gitPath, name, name, "this is a change to bump image\n\nThis is the body\nThis is a newline", "added pending commit from dry sha")
+				makeChangeAndHydrateRepo(gitPath, gitRepo, "this is a change to bump image\n\nThis is the body\nThis is a newline", "added pending commit from dry sha")
 
 				By("Checking that the CTPs have reconciled and picked up the new commits")
 				Eventually(func(g Gomega) {
@@ -371,7 +375,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				By("Creating the resources")
 				var scmSecret *v1.Secret
 				name, scmSecret, _, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "promotion-strategy-no-commit-status", "default")
-				setupInitialTestGitRepoOnServer(ctx, name, name)
+				setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 				clusterScmProvider = &promoterv1alpha1.ClusterScmProvider{
 					TypeMeta: metav1.TypeMeta{},
@@ -380,7 +384,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Namespace: "default",
 					},
 					Spec: promoterv1alpha1.ScmProviderSpec{
-						SecretRef: &v1.LocalObjectReference{Name: name},
+						SecretRef: &v1.LocalObjectReference{Name: scmSecret.Name},
 						Fake:      &promoterv1alpha1.Fake{},
 					},
 					Status: promoterv1alpha1.ScmProviderStatus{},
@@ -517,7 +521,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				By("Adding a pending commit")
 				gitPath, err := os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
-				makeChangeAndHydrateRepo(gitPath, name, name, "", "")
+				makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 
 				By("Checking that the pull requests were created and merged (they may auto-merge too fast to observe in open state)")
 				// With automatic webhooks, PRs may be created and auto-merged before we can observe them in the open state.
@@ -567,7 +571,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				var scmSecret *v1.Secret
 				var scmProvider *promoterv1alpha1.ScmProvider
 				name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "promotion-strategy-no-commit-status", "default")
-				setupInitialTestGitRepoWithoutActiveMetadata(name, name)
+				setupInitialTestGitRepoWithoutActiveMetadata(gitRepo)
 
 				typeNamespacedName = types.NamespacedName{
 					Name:      name,
@@ -699,7 +703,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				By("Adding a pending commit")
 				gitPath, err := os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
-				makeChangeAndHydrateRepo(gitPath, name, name, "", "")
+				makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 
 				By("Checking that the pull request for the development, staging, and production environments are closed")
 				// With automatic webhooks, PRs may be created and auto-merged too fast to observe in open state
@@ -771,7 +775,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				promotionStrategy.Spec.Environments[1].AutoMerge = ptr.To(false) // staging
 				promotionStrategy.Spec.Environments[2].AutoMerge = ptr.To(false) // production
 
-				setupInitialTestGitRepoOnServer(ctx, name, name)
+				setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 				typeNamespacedName = types.NamespacedName{
 					Name:      name,
@@ -900,7 +904,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				By("Adding a pending commit")
 				gitPath, err := os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
-				makeChangeAndHydrateRepo(gitPath, name, name, "", "")
+				makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 
 				_, err = runGitCmd(ctx, gitPath, "checkout", ctpDev.Spec.ActiveBranch)
 				Expect(err).NotTo(HaveOccurred())
@@ -1085,8 +1089,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 
 	Context("When reconciling a resource with active commit statuses", func() {
-		ctx := context.Background()
-
 		Context("When git repo is initialized with active commit statuses", func() {
 			var name string
 			var gitRepo *promoterv1alpha1.GitRepository
@@ -1101,7 +1103,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				var scmSecret *v1.Secret
 				var scmProvider *promoterv1alpha1.ScmProvider
 				name, scmSecret, scmProvider, gitRepo, activeCommitStatusDevelopment, activeCommitStatusStaging, promotionStrategy = promotionStrategyResource(ctx, "promotion-strategy-with-active-commit-status", "default")
-				setupInitialTestGitRepoOnServer(ctx, name, name)
+				setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 				typeNamespacedName = types.NamespacedName{
 					Name:      name,
@@ -1171,7 +1173,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				By("Adding a pending commit")
 				gitPath, err := os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
-				drySha, _ := makeChangeAndHydrateRepo(gitPath, name, name, "", "")
+				drySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 
 				Eventually(func(g Gomega) {
 					// Dev PR should be closed because it is the lowest level environment
@@ -1320,7 +1322,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				var scmSecret *v1.Secret
 				var scmProvider *promoterv1alpha1.ScmProvider
 				name, scmSecret, scmProvider, gitRepo, activeCommitStatusDevelopment, activeCommitStatusStaging, promotionStrategy = promotionStrategyResource(ctx, "promotion-strategy-with-active-commit-status", "default")
-				setupInitialTestGitRepoWithoutActiveMetadata(name, name)
+				setupInitialTestGitRepoWithoutActiveMetadata(gitRepo)
 
 				typeNamespacedName = types.NamespacedName{
 					Name:      name,
@@ -1389,7 +1391,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				By("Adding a pending commit")
 				gitPath, err := os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
-				drySha, _ := makeChangeAndHydrateRepo(gitPath, name, name, "", "")
+				drySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 
 				Eventually(func(g Gomega) {
 					// Dev PR should be closed because it is the lowest level environment
@@ -1519,8 +1521,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 
 	Context("When reconciling a resource with a proposed commit status", func() {
-		ctx := context.Background()
-
 		Context("When git repo is initialized with proposed commit statuses", func() {
 			var name string
 			var gitRepo *promoterv1alpha1.GitRepository
@@ -1533,7 +1533,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				var scmSecret *v1.Secret
 				var scmProvider *promoterv1alpha1.ScmProvider
 				name, scmSecret, scmProvider, gitRepo, proposedCommitStatusDevelopment, proposedCommitStatusStaging, promotionStrategy = promotionStrategyResource(ctx, "promotion-strategy-with-proposed-commit-status", "default")
-				setupInitialTestGitRepoOnServer(ctx, name, name)
+				setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 				typeNamespacedName = types.NamespacedName{
 					Name:      name,
@@ -1545,7 +1545,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Key: "no-deployments-allowed",
 					},
 				}
-				proposedCommitStatusDevelopment.Spec.Name = "no-deployments-allowed" //nolint:goconst
+				proposedCommitStatusDevelopment.Spec.Name = "no-deployments-allowed" //nolint:goconst // test value used only in this context
 				proposedCommitStatusDevelopment.Labels = map[string]string{
 					promoterv1alpha1.CommitStatusLabel: "no-deployments-allowed",
 				}
@@ -1571,7 +1571,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				By("Adding a pending commit")
 				gitPath, err := os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
-				makeChangeAndHydrateRepo(gitPath, name, name, "", "")
+				makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
 				// We should now get PRs created for the ProposedCommits
@@ -1791,7 +1791,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				var scmSecret *v1.Secret
 				var scmProvider *promoterv1alpha1.ScmProvider
 				name, scmSecret, scmProvider, gitRepo, proposedCommitStatusDevelopment, proposedCommitStatusStaging, promotionStrategy = promotionStrategyResource(ctx, "promotion-strategy-with-proposed-commit-status", "default")
-				setupInitialTestGitRepoWithoutActiveMetadata(name, name)
+				setupInitialTestGitRepoWithoutActiveMetadata(gitRepo)
 
 				typeNamespacedName = types.NamespacedName{
 					Name:      name,
@@ -1833,7 +1833,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				By("Adding a pending commit")
 				gitPath, err := os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
-				makeChangeAndHydrateRepo(gitPath, name, name, "", "")
+				makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 
 				pullRequestDev := promoterv1alpha1.PullRequest{}
 				pullRequestStaging := promoterv1alpha1.PullRequest{}
@@ -1938,7 +1938,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 
 	Context("When reconciling a resource with active commit status using ArgoCDCommitStatus", Label("argocdcommitstatus"), func() {
-		ctx := context.Background()
 		const argocdCSLabel = "argocd-health"
 		const namespace = "default"
 
@@ -1956,7 +1955,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				var scmProvider *promoterv1alpha1.ScmProvider
 				plainName = "promotion-strategy-with-active-commit-status-argocdcommitstatus"
 				name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, plainName, "default")
-				setupInitialTestGitRepoOnServer(ctx, name, name)
+				setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 				typeNamespacedName = types.NamespacedName{
 					Name:      name,
@@ -1984,7 +1983,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					},
 				}
 
-				argoCDAppDev, argoCDAppStaging, argoCDAppProduction = argocdApplications(namespace, plainName)
+				argoCDAppDev, argoCDAppStaging, argoCDAppProduction = argocdApplications(namespace, plainName, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
 
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -2072,7 +2071,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				By("Adding a pending commit")
 				gitPath, err := os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
-				drySha, _ := makeChangeAndHydrateRepo(gitPath, name, name, "", "")
+				drySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 
 				pullRequestDev := promoterv1alpha1.PullRequest{}
 				pullRequestStaging := promoterv1alpha1.PullRequest{}
@@ -2208,7 +2207,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				var scmProvider *promoterv1alpha1.ScmProvider
 				plainName = "mc-promo-strategy-with-active-commit-status-argocdcommitstatus"
 				name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, plainName, "default")
-				setupInitialTestGitRepoOnServer(ctx, name, name)
+				setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 				typeNamespacedName = types.NamespacedName{
 					Name:      name,
@@ -2244,7 +2243,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					},
 				}
 
-				argoCDAppDev, argoCDAppStaging, argoCDAppProduction = argocdApplications(namespace, plainName)
+				argoCDAppDev, argoCDAppStaging, argoCDAppProduction = argocdApplications(namespace, plainName, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
 
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -2326,7 +2325,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				By("Adding a pending commit")
 				gitPath, err := os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
-				drySha, _ := makeChangeAndHydrateRepo(gitPath, name, name, "", "")
+				drySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 
 				pullRequestDev := promoterv1alpha1.PullRequest{}
 				pullRequestStaging := promoterv1alpha1.PullRequest{}
@@ -2450,8 +2449,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 
 	Context("When reconciling a resource with a proposed commit status we should have history", func() {
-		ctx := context.Background()
-
 		Context("When tracking proposed commit history", func() {
 			var name string
 			var gitRepo *promoterv1alpha1.GitRepository
@@ -2466,7 +2463,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				var scmSecret *v1.Secret
 				var scmProvider *promoterv1alpha1.ScmProvider
 				name, scmSecret, scmProvider, gitRepo, proposedCommitStatusDevelopment, proposedCommitStatusStaging, promotionStrategy = promotionStrategyResource(ctx, "promotion-strategy-with-proposed-commit-status", "default")
-				setupInitialTestGitRepoOnServer(ctx, name, name)
+				setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 				typeNamespacedName = types.NamespacedName{
 					Name:      name,
@@ -2512,7 +2509,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				By("Adding a pending commit")
 				gitPath, err := os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
-				drySha, _ := makeChangeAndHydrateRepo(gitPath, name, name, "", "")
+				drySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
@@ -2804,13 +2801,17 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 })
 
-func promotionStrategyResource(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.PromotionStrategy) { //nolint:unparam
-	name = name + "-" + utils.KubeSafeUniqueName(ctx, randomString(15))
+func promotionStrategyResource(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.PromotionStrategy) { //nolint:unparam // namespace is always "default" in tests but kept for consistency
+	stem := name + "-" + utils.KubeSafeUniqueName(ctx, randomString(15))
+	secName := stem + "-sec"
+	scmName := stem + "-scm"
+	grName := stem + "-gr"
+	psName := stem + "-ps"
 
 	scmSecret := &v1.Secret{
 		TypeMeta: metav1.TypeMeta{},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
+			Name:      secName,
 			Namespace: namespace,
 		},
 		Data: nil,
@@ -2819,11 +2820,11 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 	scmProvider := &promoterv1alpha1.ScmProvider{
 		TypeMeta: metav1.TypeMeta{},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
+			Name:      scmName,
 			Namespace: namespace,
 		},
 		Spec: promoterv1alpha1.ScmProviderSpec{
-			SecretRef: &v1.LocalObjectReference{Name: name},
+			SecretRef: &v1.LocalObjectReference{Name: secName},
 			Fake:      &promoterv1alpha1.Fake{},
 		},
 		Status: promoterv1alpha1.ScmProviderStatus{},
@@ -2831,17 +2832,17 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 
 	gitRepo := &promoterv1alpha1.GitRepository{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
+			Name:      grName,
 			Namespace: namespace,
 		},
 		Spec: promoterv1alpha1.GitRepositorySpec{
 			Fake: &promoterv1alpha1.FakeRepo{
-				Owner: name,
-				Name:  name,
+				Owner: grName,
+				Name:  grName,
 			},
 			ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
 				Kind: promoterv1alpha1.ScmProviderKind,
-				Name: name,
+				Name: scmName,
 			},
 		},
 	}
@@ -2849,12 +2850,12 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 	commitStatusDevelopment := &promoterv1alpha1.CommitStatus{
 		TypeMeta: metav1.TypeMeta{},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "development-" + name,
+			Name:      "development-" + grName,
 			Namespace: namespace,
 		},
 		Spec: promoterv1alpha1.CommitStatusSpec{
 			RepositoryReference: promoterv1alpha1.ObjectReference{
-				Name: name,
+				Name: grName,
 			},
 			Sha:         "",
 			Name:        "",
@@ -2867,12 +2868,12 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 	commitStatusStaging := &promoterv1alpha1.CommitStatus{
 		TypeMeta: metav1.TypeMeta{},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "staging-" + name,
+			Name:      "staging-" + grName,
 			Namespace: namespace,
 		},
 		Spec: promoterv1alpha1.CommitStatusSpec{
 			RepositoryReference: promoterv1alpha1.ObjectReference{
-				Name: name,
+				Name: grName,
 			},
 			Sha:         "",
 			Name:        "",
@@ -2884,12 +2885,12 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 
 	promotionStrategy := &promoterv1alpha1.PromotionStrategy{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
+			Name:      psName,
 			Namespace: namespace,
 		},
 		Spec: promoterv1alpha1.PromotionStrategySpec{
 			RepositoryReference: promoterv1alpha1.ObjectReference{
-				Name: name,
+				Name: grName,
 			},
 			Environments: []promoterv1alpha1.Environment{
 				{Branch: testBranchDevelopment},
@@ -2899,14 +2900,14 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 		},
 	}
 
-	return name, scmSecret, scmProvider, gitRepo, commitStatusDevelopment, commitStatusStaging, promotionStrategy
+	return psName, scmSecret, scmProvider, gitRepo, commitStatusDevelopment, commitStatusStaging, promotionStrategy
 }
 
-func argocdApplications(namespace string, name string) (argocd.Application, argocd.Application, argocd.Application) {
+func argocdApplications(namespace, appLabel, repoOwner, repoName string) (argocd.Application, argocd.Application, argocd.Application) {
 	environments := []string{"development", "staging", "production"}
 	apps := make([]argocd.Application, len(environments))
 	for i, environment := range environments {
-		envAppName := name + "-" + environment
+		envAppName := appLabel + "-" + environment
 		envApp := argocd.Application{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "Application",
@@ -2916,13 +2917,13 @@ func argocdApplications(namespace string, name string) (argocd.Application, argo
 				Name:      envAppName,
 				Namespace: namespace,
 				Labels: map[string]string{
-					"app": name,
+					"app": appLabel,
 				},
 			},
 			Spec: argocd.ApplicationSpec{
 				SourceHydrator: &argocd.SourceHydrator{
 					DrySource: argocd.DrySource{
-						RepoURL: fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, name, name),
+						RepoURL: fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repoOwner, repoName),
 					},
 					SyncSource: argocd.SyncSource{
 						TargetBranch: "environment/" + environment,
@@ -2946,8 +2947,6 @@ func argocdApplications(namespace string, name string) (argocd.Application, argo
 
 var _ = Describe("PromotionStrategy Bug Tests", func() {
 	Context("When PR merges while previous environment has non-passing checks", func() {
-		ctx := context.Background()
-
 		Context("When PR is merged before checks pass", func() {
 			var name string
 			var gitRepo *promoterv1alpha1.GitRepository
@@ -2961,7 +2960,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				var scmSecret *v1.Secret
 				var scmProvider *promoterv1alpha1.ScmProvider
 				name, scmSecret, scmProvider, gitRepo, activeCommitStatusDevelopment, activeCommitStatusStaging, promotionStrategy = promotionStrategyResource(ctx, "promotion-strategy-bug-test", "default")
-				setupInitialTestGitRepoOnServer(ctx, name, name)
+				setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 				typeNamespacedName = types.NamespacedName{
 					Name:      name,
@@ -3016,7 +3015,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				By("Adding first commit")
 				gitPath1, err := os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
-				firstDrySha, _ := makeChangeAndHydrateRepo(gitPath1, name, name, "first commit", "")
+				firstDrySha, _ := makeChangeAndHydrateRepo(gitPath1, gitRepo, "first commit", "")
 
 				By("Waiting for dev PR to be auto-merged (first commit)")
 				Eventually(func(g Gomega) {
@@ -3165,8 +3164,6 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 	})
 
 	Context("When environment branch names are changed", func() {
-		ctx := context.Background()
-
 		Context("When cleaning up orphaned CTPs", func() {
 			var name string
 			var gitRepo *promoterv1alpha1.GitRepository
@@ -3181,7 +3178,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "promotion-strategy-cleanup-test", "default")
 
 				// Setup git repo with branches using "environments" prefix (with typo)
-				setupInitialTestGitRepoOnServer(ctx, name, name)
+				setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 				// Modify the PromotionStrategy to use "environments" prefix (simulating typo)
 				promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
@@ -3346,7 +3343,6 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 	Context("Out-of-order hydration protection", func() {
 		// This test verifies that the system correctly blocks downstream environments
 		// from promoting when upstream environments haven't been hydrated yet.
-		ctx := context.Background()
 
 		var name string
 		var gitRepo *promoterv1alpha1.GitRepository
@@ -3360,7 +3356,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			var scmSecret *v1.Secret
 			var scmProvider *promoterv1alpha1.ScmProvider
 			name, scmSecret, scmProvider, gitRepo, activeCommitStatusDevelopment, activeCommitStatusStaging, promotionStrategy = promotionStrategyResource(ctx, "out-of-order-hydration-test", "default")
-			setupInitialTestGitRepoOnServer(ctx, name, name)
+			setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 			typeNamespacedName = types.NamespacedName{
 				Name:      name,
@@ -3418,7 +3414,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			gitPath1, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = os.RemoveAll(gitPath1) }()
-			firstDrySha, _ := makeChangeAndHydrateRepo(gitPath1, name, name, "first commit", "")
+			firstDrySha, _ := makeChangeAndHydrateRepo(gitPath1, gitRepo, "first commit", "")
 
 			By("Setting dev's commit status to success so staging can promote")
 			Eventually(func(g Gomega) {
@@ -3466,7 +3462,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(err).To(Succeed())
 
 			By("Now simulating out-of-order hydration: hydrate ONLY staging for a new commit")
-			gitPath2, err := cloneTestRepo(ctx, name)
+			gitPath2, err := cloneTestRepo(ctx, gitRepo)
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = os.RemoveAll(gitPath2) }()
 
@@ -3603,7 +3599,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			gitPath1, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = os.RemoveAll(gitPath1) }()
-			firstDrySha, _ := makeChangeAndHydrateRepo(gitPath1, name, name, "first commit", "")
+			firstDrySha, _ := makeChangeAndHydrateRepo(gitPath1, gitRepo, "first commit", "")
 
 			By("Setting dev's commit status to success so staging can promote")
 			Eventually(func(g Gomega) {
@@ -3651,7 +3647,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(err).To(Succeed())
 
 			By("Now simulating out-of-order hydration: hydrate ONLY staging for a new commit")
-			gitPath2, err := cloneTestRepo(ctx, name)
+			gitPath2, err := cloneTestRepo(ctx, gitRepo)
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = os.RemoveAll(gitPath2) }()
 
@@ -3763,7 +3759,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			gitPath1, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = os.RemoveAll(gitPath1) }()
-			firstDrySha, _ := makeChangeAndHydrateRepo(gitPath1, name, name, "first commit A", "")
+			firstDrySha, _ := makeChangeAndHydrateRepo(gitPath1, gitRepo, "first commit A", "")
 
 			By("Setting dev's commit status to success")
 			Eventually(func(g Gomega) {
@@ -3820,7 +3816,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Now making second commit (B) that only affects staging")
-			gitPath2, err := cloneTestRepo(ctx, name)
+			gitPath2, err := cloneTestRepo(ctx, gitRepo)
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = os.RemoveAll(gitPath2) }()
 
@@ -3952,7 +3948,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			initialDevActiveSha := ctpDev.Status.Active.Dry.Sha
 
 			By("Making a dry commit that will affect dev and prod but NOT staging")
-			gitPath, err := cloneTestRepo(ctx, name)
+			gitPath, err := cloneTestRepo(ctx, gitRepo)
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = os.RemoveAll(gitPath) }()
 
@@ -4555,7 +4551,6 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		It("should enqueue CTP on first call", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
-			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
 				makeCTP("test-ctp"),
 			}
@@ -4572,7 +4567,6 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		It("should rate limit second call within threshold", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
-			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
 				makeCTP("test-ctp"),
 			}
@@ -4598,7 +4592,6 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		It("should schedule delayed enqueue on rate limited call", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
-			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
 				makeCTP("test-ctp"),
 			}
@@ -4627,7 +4620,6 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		It("should not accumulate multiple delayed enqueues", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
-			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
 				makeCTP("test-ctp"),
 			}
@@ -4655,7 +4647,6 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		It("should rate limit multiple CTPs independently", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
-			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
 				makeCTP("ctp-1"),
 				makeCTP("ctp-2"),
@@ -4687,7 +4678,6 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		It("should rate limit one CTP while allowing others through", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
-			ctx := context.Background()
 			ctp1 := makeCTP("ctp-1")
 			ctp2 := makeCTP("ctp-2")
 

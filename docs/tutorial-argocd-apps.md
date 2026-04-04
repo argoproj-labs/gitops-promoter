@@ -21,7 +21,12 @@ To complete this tutorial, you will need the following:
 
 > [!NOTE]
 > GitOps Promoter provides several opt-in Argo CD integrations that improve the user experience. Check out the 
-> [Argo CD Integrations](./argocd-integrations.md) page for more information.
+> [Argo CD Integrations](argocd-integrations/index.md) page for more information.
+
+> [!TIP]
+> For the impatient, the steps below are also available as a command `./gitops-promoter demo` 
+> It will run the whole tutorial in a local k8s cluster, with Argo CD and GitOps Promoter installed, and a sample application deployed.
+
 
 ## Set up the test cluster
 
@@ -66,7 +71,7 @@ Connect with this password for the `admin` user.
 > See [Getting Started](./getting-started.md)
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.22.1/install.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.25.1/install.yaml
 ```
 
 > [!NOTE]
@@ -107,7 +112,7 @@ Once the app is created. Go to Install app and install it in your account.
 
 #### Using the webhook
 
-The webhook notifies the Promoter and Argo CD that a new commit was push/merged to the main branch. It greatly reduces the latency between deployment.
+The webhook notifies the Promoter and Argo CD that a new commit was push/merged to the main branch. It greatly reduces the latency between deployments.
 
 If you want your local demo to be very responsive, you can use [Smee.io](https://smee.io/) to forward the webhook events to your local machine.
 
@@ -320,7 +325,7 @@ Here, we implement a simple strategy:
 3. Manual merge on production
 
 > [!NOTE]
-> You should see 2 PRs getting merged automatically and 1 PR to merge manually for the production. That is normal: we branched from the main branch which is DRY. The promoter detects change and do what's needed to sync the two branches.
+> You should see 2 PRs getting merged automatically and 1 PR to merge manually for the production. That is normal: we branched from the main branch which is DRY. The promoter detects changes and does what's needed to sync the two branches.
 
 ## Play with your environment
 

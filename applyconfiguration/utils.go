@@ -45,6 +45,10 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.AzureDevOpsApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("AzureDevOpsRepo"):
 		return &apiv1alpha1.AzureDevOpsRepoApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("BasicAuth"):
+		return &apiv1alpha1.BasicAuthApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("BearerAuth"):
+		return &apiv1alpha1.BearerAuthApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("BitbucketCloudRepo"):
 		return &apiv1alpha1.BitbucketCloudRepoApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("Bucket"):
@@ -133,10 +137,22 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.HealthyDryShasApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("History"):
 		return &apiv1alpha1.HistoryApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("HTTPAuthentication"):
+		return &apiv1alpha1.HTTPAuthenticationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("HTTPRequestSpec"):
+		return &apiv1alpha1.HTTPRequestSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("HydratorMetadata"):
 		return &apiv1alpha1.HydratorMetadataApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ModeSpec"):
+		return &apiv1alpha1.ModeSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("OAuth2Auth"):
+		return &apiv1alpha1.OAuth2AuthApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ObjectReference"):
 		return &apiv1alpha1.ObjectReferenceApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("OutputSpec"):
+		return &apiv1alpha1.OutputSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("PollingModeSpec"):
+		return &apiv1alpha1.PollingModeSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PromotionStrategy"):
 		return &apiv1alpha1.PromotionStrategyApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PromotionStrategyConfiguration"):
@@ -161,6 +177,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.RateLimiterApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("RateLimiterTypes"):
 		return &apiv1alpha1.RateLimiterTypesApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ResponseOutputSpec"):
+		return &apiv1alpha1.ResponseOutputSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("RevertCommit"):
 		return &apiv1alpha1.RevertCommitApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("RevertCommitSpec"):
@@ -175,6 +193,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ScmProviderSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ScmProviderStatus"):
 		return &apiv1alpha1.ScmProviderStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("SuccessSpec"):
+		return &apiv1alpha1.SuccessSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("TimedCommitStatus"):
 		return &apiv1alpha1.TimedCommitStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("TimedCommitStatusConfiguration"):
@@ -187,8 +207,26 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.TimedCommitStatusSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("TimedCommitStatusStatus"):
 		return &apiv1alpha1.TimedCommitStatusStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("TLSAuth"):
+		return &apiv1alpha1.TLSAuthApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("TriggerModeSpec"):
+		return &apiv1alpha1.TriggerModeSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("URLConfig"):
 		return &apiv1alpha1.URLConfigApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("WebRequestCommitStatus"):
+		return &apiv1alpha1.WebRequestCommitStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("WebRequestCommitStatusConfiguration"):
+		return &apiv1alpha1.WebRequestCommitStatusConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("WebRequestCommitStatusEnvironmentStatus"):
+		return &apiv1alpha1.WebRequestCommitStatusEnvironmentStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("WebRequestCommitStatusSpec"):
+		return &apiv1alpha1.WebRequestCommitStatusSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("WebRequestCommitStatusStatus"):
+		return &apiv1alpha1.WebRequestCommitStatusStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("WhenSpec"):
+		return &apiv1alpha1.WhenSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("WhenWithOutputSpec"):
+		return &apiv1alpha1.WhenWithOutputSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("WorkQueue"):
 		return &apiv1alpha1.WorkQueueApplyConfiguration{}
 

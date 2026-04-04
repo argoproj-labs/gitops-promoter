@@ -47,6 +47,7 @@ dockers:
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
       - "--label=org.opencontainers.image.version=latest"
       - "--platform=linux/amd64"
+      - "--provenance=false"
   - image_templates:
       - quay.io/argoprojlabs/gitops-promoter:latest-arm64
     dockerfile: release.Dockerfile
@@ -61,12 +62,7 @@ dockers:
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
       - "--label=org.opencontainers.image.version=latest"
       - "--platform=linux/arm64"
-
-docker_manifests:
-  - name_template: "quay.io/argoprojlabs/gitops-promoter:latest"
-    image_templates:
-      - "quay.io/argoprojlabs/gitops-promoter:latest-amd64"
-      - "quay.io/argoprojlabs/gitops-promoter:latest-arm64"
+      - "--provenance=false"
 
 # No archives for latest builds
 archives: []

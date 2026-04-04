@@ -119,7 +119,7 @@ func (ws *WebServer) sendDeleteEvent(e client.Object) {
 func (ws *WebServer) SetupWithManager(mgr ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(mgr).
 		Named("webServer").
-		Watches(&promoterv1alpha1.PromotionStrategy{}, handler.Funcs{ //nolint:dupl
+		Watches(&promoterv1alpha1.PromotionStrategy{}, handler.Funcs{ //nolint:dupl // similar watch handlers are intentional for different resource types
 			CreateFunc: func(ctx context.Context, e event.TypedCreateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				if ps, ok := e.Object.(*promoterv1alpha1.PromotionStrategy); ok {
 					ps.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("PromotionStrategy"))
@@ -139,7 +139,7 @@ func (ws *WebServer) SetupWithManager(mgr ctrl.Manager) error {
 				}
 			},
 		}).
-		Watches(&promoterv1alpha1.ChangeTransferPolicy{}, handler.Funcs{ //nolint:dupl
+		Watches(&promoterv1alpha1.ChangeTransferPolicy{}, handler.Funcs{ //nolint:dupl // similar watch handlers are intentional for different resource types
 			CreateFunc: func(ctx context.Context, e event.TypedCreateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				if ctp, ok := e.Object.(*promoterv1alpha1.ChangeTransferPolicy); ok {
 					ctp.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("ChangeTransferPolicy"))
@@ -159,7 +159,7 @@ func (ws *WebServer) SetupWithManager(mgr ctrl.Manager) error {
 				}
 			},
 		}).
-		Watches(&promoterv1alpha1.PullRequest{}, handler.Funcs{ //nolint:dupl
+		Watches(&promoterv1alpha1.PullRequest{}, handler.Funcs{ //nolint:dupl // similar watch handlers are intentional for different resource types
 			CreateFunc: func(ctx context.Context, e event.TypedCreateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				if pr, ok := e.Object.(*promoterv1alpha1.PullRequest); ok {
 					pr.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("PullRequest"))
@@ -179,7 +179,7 @@ func (ws *WebServer) SetupWithManager(mgr ctrl.Manager) error {
 				}
 			},
 		}).
-		Watches(&promoterv1alpha1.CommitStatus{}, handler.Funcs{ //nolint:dupl
+		Watches(&promoterv1alpha1.CommitStatus{}, handler.Funcs{ //nolint:dupl // similar watch handlers are intentional for different resource types
 			CreateFunc: func(ctx context.Context, e event.TypedCreateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				if cs, ok := e.Object.(*promoterv1alpha1.CommitStatus); ok {
 					cs.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("CommitStatus"))
@@ -234,9 +234,27 @@ func (ws *WebServer) StartDashboard(ctx context.Context, addr string) error {
 		c.JSON(http.StatusOK, "ok")
 	})
 
-	// Handle favicon
+	// Handle favicon (serve from embed so /favicon.png is not caught by SPA catch-all)
 	router.GET("/favicon.ico", func(c *gin.Context) {
 		c.Status(http.StatusNoContent)
+	})
+	router.GET("/favicon.png", func(c *gin.Context) {
+		f, err := distFS.Open("favicon.png")
+		if err != nil {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		defer func() {
+			if cerr := f.Close(); cerr != nil {
+				logger.Error(cerr, "failed to close favicon.png")
+			}
+		}()
+		content, err := io.ReadAll(f)
+		if err != nil {
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		c.Data(http.StatusOK, "image/png", content)
 	})
 
 	// Serve static files from embed

@@ -7,6 +7,8 @@ export const useHover = (): [React.MutableRefObject<HTMLDivElement | null>, bool
 
   const handleMouseOver = () => setShow(true);
   const handleMouseOut = () => setShow(false);
+  const handleFocus = () => setShow(true);
+  const handleBlur = () => setShow(false);
 
   useEffect(() => {
     const cur = ref.current;
@@ -14,10 +16,14 @@ export const useHover = (): [React.MutableRefObject<HTMLDivElement | null>, bool
     if (cur) {
       cur.addEventListener('mouseover', handleMouseOver);
       cur.addEventListener('mouseout', handleMouseOut);
+      cur.addEventListener('focus', handleFocus, true);
+      cur.addEventListener('blur', handleBlur, true);
 
       return () => {
         cur.removeEventListener('mouseover', handleMouseOver);
         cur.removeEventListener('mouseout', handleMouseOut);
+        cur.removeEventListener('focus', handleFocus, true);
+        cur.removeEventListener('blur', handleBlur, true);
       };
     }
   }, []);
@@ -42,30 +48,25 @@ export const Tooltip: React.FC<TooltipProps> = ({ content, children }) => {
       const rect = tooltip.current.getBoundingClientRect();
       setPosition({
         top: rect.bottom + 4,
-        left: rect.left
+        left: rect.left,
       });
     }
   }, [showTooltip]);
-  
+
   return (
-    <div ref={tooltip} className="tooltip-wrapper">
+    <div ref={tooltip} className="promoter-popover-wrapper">
       {showTooltip && content && (
-        <div 
-          className="tooltip"
+        <div
+          className="promoter-popover"
           style={{
             top: `${position.top}px`,
-            left: `${position.left}px`
+            left: `${position.left}px`,
           }}
         >
-          <div className="tooltip-content">
-            {content}
-          </div>
+          <div className="promoter-popover-content">{content}</div>
         </div>
       )}
       {children}
     </div>
   );
 };
-
-
-

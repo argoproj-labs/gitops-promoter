@@ -39,6 +39,9 @@ junit.xml
 release_dist
 
 venv
+.venv
+.venv-*
+.pip-cache/
 
 node_modules/
 
@@ -93,3 +96,8 @@ mkdocs-lint.log
 site/
 # Go build output (prevent accidentally committing the manager binary)
 main
+
+# Claude Code
+.claude
+CLAUDE.md
+
