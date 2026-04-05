@@ -1747,6 +1747,43 @@ spec:
                 required:
                 - workQueue
                 type: object
+              webhookReceiver:
+                description: |-
+                  WebhookReceiver contains the configuration for the webhook receiver server,
+                  including optional signature verification for supported SCM providers.
+                properties:
+                  github:
+                    description: |-
+                      GitHub contains GitHub-specific webhook receiver configuration,
+                      including optional HMAC-SHA256 signature verification.
+                    properties:
+                      secretRef:
+                        description: |-
+                          SecretRef references a Kubernetes Secret in the controller's namespace that contains
+                          the GitHub webhook signing secret. The Secret must have a key named "webhookSecret"
+                          whose value is the signing secret configured in the GitHub App or repository webhook
+                          settings.
+
+                          When this field is set, the webhook receiver validates the X-Hub-Signature-256 header
+                          on every incoming GitHub webhook request using HMAC-SHA256. Requests with a missing or
+                          invalid signature are rejected with HTTP 401.
+
+                          When this field is absent, signature validation is skipped and all GitHub webhook
+                          requests are accepted without verification.
+                        properties:
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                        type: object
+                        x-kubernetes-map-type: atomic
+                    type: object
+                type: object
             required:
             - argocdCommitStatus
             - changeTransferPolicy

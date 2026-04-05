@@ -72,7 +72,60 @@ spec:
               number: 3333
 ```
 
-### Usage
+#### Securing GitHub Webhooks with HMAC Signature Verification (Recommended)
+
+When the webhook receiver is exposed on the internet, you should configure a **webhook signing secret** so that
+the promoter validates the `X-Hub-Signature-256` header sent by GitHub on every delivery. Requests with a
+missing or invalid signature are rejected with HTTP 401 before any reconciliation is triggered.
+
+**Step 1 – Create a Kubernetes Secret with the signing secret**
+
+Choose a strong random secret (GitHub recommends at least 20 characters) and store it in a Kubernetes Secret
+in the controller's namespace (`promoter-system` by default). The key must be named `webhookSecret`.
+
+```bash
+kubectl create secret generic github-webhook-secret \
+  --namespace promoter-system \
+  --from-literal=webhookSecret=<your-random-secret>
+```
+
+**Step 2 – Configure the signing secret in GitHub**
+
+When configuring the webhook in your GitHub App or repository webhook settings, set the **Secret** field to
+the same value you stored in the Kubernetes Secret above.
+
+**Step 3 – Reference the secret in ControllerConfiguration**
+
+Update the `ControllerConfiguration` resource to reference the Secret:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ControllerConfiguration
+metadata:
+  name: promoter-controller-configuration
+  namespace: promoter-system
+spec:
+  # ... other fields ...
+  webhookReceiver:
+    github:
+      secretRef:
+        name: github-webhook-secret
+```
+
+When `webhookReceiver.github.secretRef` is set, the webhook receiver will:
+
+- Read the signing secret from the `webhookSecret` key of the referenced Secret.
+- Compute `HMAC-SHA256(secret, body)` and compare it to the `X-Hub-Signature-256` header using
+  constant-time comparison (preventing timing attacks).
+- Return **HTTP 401** for requests with a missing or invalid signature.
+- Allow requests through to normal processing when the signature is valid.
+
+> [!NOTE]
+> When `webhookReceiver.github.secretRef` is **not** set, signature verification is skipped and all
+> GitHub webhook requests are accepted without verification. This is the default behaviour and is
+> appropriate for internal/private deployments where network controls already restrict access to the
+> webhook receiver.
+
 
 The GitHub App will generate a private key that you will need to save. You will also need to get the App ID and the
 installation ID in a secret as follows:

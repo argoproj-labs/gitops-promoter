@@ -3,17 +3,23 @@ package webhookreceiver
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 
 	"github.com/tidwall/gjson"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -39,18 +45,36 @@ type EnqueueFunc func(namespace, name string)
 
 // WebhookReceiver is a server that listens for webhooks and triggers reconciles of ChangeTransferPolicies.
 type WebhookReceiver struct {
-	mgr        controllerruntime.Manager
-	k8sClient  client.Client
-	enqueueCTP EnqueueFunc
+	mgr         controllerruntime.Manager
+	k8sClient   client.Client
+	enqueueCTP  EnqueueFunc
+	settingsMgr *settings.Manager
 }
 
 // NewWebhookReceiver creates a new instance of WebhookReceiver.
-func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP EnqueueFunc) WebhookReceiver {
+func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP EnqueueFunc, settingsMgr *settings.Manager) WebhookReceiver {
 	return WebhookReceiver{
-		mgr:        mgr,
-		k8sClient:  mgr.GetClient(),
-		enqueueCTP: enqueueCTP,
+		mgr:         mgr,
+		k8sClient:   mgr.GetClient(),
+		enqueueCTP:  enqueueCTP,
+		settingsMgr: settingsMgr,
 	}
+}
+
+// NewWebhookReceiverWithClient creates a WebhookReceiver with an explicit k8s client.
+// This is useful in tests where a full controller-runtime Manager is not available.
+func NewWebhookReceiverWithClient(k8sClient client.Client, enqueueCTP EnqueueFunc, settingsMgr *settings.Manager) WebhookReceiver {
+	return WebhookReceiver{
+		k8sClient:   k8sClient,
+		enqueueCTP:  enqueueCTP,
+		settingsMgr: settingsMgr,
+	}
+}
+
+// ServeHTTP implements http.Handler, allowing WebhookReceiver to be used directly
+// with httptest.NewServer or http.ListenAndServe.
+func (wr *WebhookReceiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	wr.postRoot(w, r)
 }
 
 // Start starts the webhook receiver server on the given address.
@@ -169,6 +193,21 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		responseCode = http.StatusInternalServerError
 		http.Error(w, "error reading body", responseCode)
 		return
+	}
+
+	// Verify GitHub webhook signature when a signing secret is configured.
+	if provider == ProviderGitHub {
+		rejected, statusCode, errMsg := wr.verifyGitHubWebhookSignature(r.Context(), r.Header.Get("X-Hub-Signature-256"), jsonBytes)
+		if rejected {
+			if statusCode == http.StatusUnauthorized {
+				logger.V(4).Info("rejected GitHub webhook request due to signature mismatch")
+			} else {
+				logger.Error(fmt.Errorf("%s", errMsg), "error verifying GitHub webhook signature")
+			}
+			responseCode = statusCode
+			http.Error(w, errMsg, responseCode)
+			return
+		}
 	}
 
 	ctp, err := wr.findChangeTransferPolicy(r.Context(), provider, jsonBytes)
@@ -321,3 +360,75 @@ func (wr *WebhookReceiver) extractDeliveryID(r *http.Request) string {
 	}
 	return ""
 }
+
+// verifyGitHubWebhookSignature checks the X-Hub-Signature-256 header against the computed
+// HMAC-SHA256 of the request body using the configured signing secret.
+//
+// Returns (false, 0, "") when:
+//   - no settingsMgr is configured (verification disabled)
+//   - no webhook secretRef is set in ControllerConfiguration (verification disabled)
+//   - the signature is valid
+//
+// Returns (true, statusCode, errorMessage) when:
+//   - a configuration or secret lookup error occurred → 500
+//   - the X-Hub-Signature-256 header is missing → 401
+//   - the signature is invalid → 401
+func (wr *WebhookReceiver) verifyGitHubWebhookSignature(ctx context.Context, sig string, body []byte) (rejected bool, statusCode int, errMsg string) {
+	if wr.settingsMgr == nil {
+		return false, 0, ""
+	}
+
+	webhookCfg, err := wr.settingsMgr.GetWebhookReceiverConfiguration(ctx)
+	if err != nil {
+		return true, http.StatusInternalServerError, "error retrieving webhook receiver configuration"
+	}
+	if webhookCfg == nil || webhookCfg.GitHub == nil || webhookCfg.GitHub.SecretRef == nil {
+		// No secret configured – verification is disabled.
+		return false, 0, ""
+	}
+
+	secretName := webhookCfg.GitHub.SecretRef.Name
+	secret := &corev1.Secret{}
+	if err := wr.k8sClient.Get(ctx, client.ObjectKey{
+		Namespace: wr.settingsMgr.GetControllerNamespace(),
+		Name:      secretName,
+	}, secret); err != nil {
+		return true, http.StatusInternalServerError, "error retrieving webhook signing secret"
+	}
+
+	webhookSecret, ok := secret.Data["webhookSecret"]
+	if !ok {
+		return true, http.StatusInternalServerError, "webhook signing secret missing required key 'webhookSecret'"
+	}
+
+	if sig == "" {
+		return true, http.StatusUnauthorized, "missing X-Hub-Signature-256 header"
+	}
+
+	if !VerifyGitHubSignature(webhookSecret, body, sig) {
+		return true, http.StatusUnauthorized, "invalid webhook signature"
+	}
+
+	return false, 0, ""
+}
+
+// VerifyGitHubSignature computes HMAC-SHA256(secret, body) and compares it to the provided
+// "sha256=<hex>" signature using constant-time comparison to prevent timing attacks.
+// Returns true if the signature is valid, false otherwise.
+func VerifyGitHubSignature(secret, body []byte, signature string) bool {
+	const prefix = "sha256="
+	if !strings.HasPrefix(signature, prefix) {
+		return false
+	}
+	hexSig := signature[len(prefix):]
+	sigBytes, err := hex.DecodeString(hexSig)
+	if err != nil {
+		return false
+	}
+	mac := hmac.New(sha256.New, secret)
+	mac.Write(body)
+	expected := mac.Sum(nil)
+	// hmac.Equal uses constant-time comparison to prevent timing attacks.
+	return hmac.Equal(sigBytes, expected)
+}
+
