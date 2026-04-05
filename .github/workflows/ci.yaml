@@ -22,13 +22,16 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@4aaadf42668403795cdfdb15b1c4250e9fed12b9 # pin@v5
         with:
-          go-version: "1.26"
+          go-version: "1.26.1"
       - name: Setup Node.js
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: '24'
           cache: 'npm'
-          cache-dependency-path: ui/dashboard/package-lock.json
+          cache-dependency-path: |
+            ui/dashboard/package-lock.json
+            ui/extension/package-lock.json
+            ui/components-lib/package-lock.json
       - name: Install UI dependencies and build
         run: |
           make build-dashboard
@@ -41,7 +44,7 @@ jobs:
       - name: Set up Python and venv for docs
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
-          python-version: '3.13'
+          python-version: '3.14'
       - name: Create venv and install MkDocs requirements
         run: |
           python3 -m venv .venv
@@ -86,12 +89,16 @@ jobs:
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: code-coverage
-          path: cover.out
+          path: |
+            cover.out
+            ui/dashboard/coverage/lcov.info
+            ui/extension/coverage/lcov.info
       - name: Upload code coverage information to codecov.io
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
         with:
-          files: cover.out
+          # cover.out: Ginkgo (after make test-parallel). UI: Vitest lcov (repo-root SF: via lcov projectRoot).
+          files: cover.out,ui/dashboard/coverage/lcov.info,ui/extension/coverage/lcov.info
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
@@ -111,7 +118,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@4aaadf42668403795cdfdb15b1c4250e9fed12b9 # pin@v5
         with:
-          go-version: "1.26"
+          go-version: "1.26.1"
       - name: go mod tidy
         run: |
           go mod tidy
@@ -137,6 +144,6 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@4aaadf42668403795cdfdb15b1c4250e9fed12b9 # pin@v5
         with:
-          go-version: "1.26"
+          go-version: "1.26.1"
       - name: Run Nilaway
         run: make nilaway-no-test
