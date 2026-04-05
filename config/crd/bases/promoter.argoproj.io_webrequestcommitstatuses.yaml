@@ -297,6 +297,19 @@ spec:
                   Mode controls how the controller polls or triggers HTTP requests.
                   Exactly one of Polling or Trigger must be specified.
                 properties:
+                  context:
+                    default: environments
+                    description: |-
+                      Context controls whether the controller makes one HTTP request per environment or one per PromotionStrategy.
+                      - "environments" (default): one HTTP request per environment; each environment gets its own phase and status.
+                      - "promotionstrategy": at most one HTTP request per WebRequestCommitStatus; the same phase is applied to CommitStatuses for all
+                        environments, each still reporting on that environment's reportOn SHA. When context is promotionstrategy,
+                        per-environment template variables (Environment, ReportedSha, LastSuccessfulSha) are not set; do not use
+                        them in URL, body, description, or trigger templates.
+                    enum:
+                    - environments
+                    - promotionstrategy
+                    type: string
                   polling:
                     description: |-
                       Polling enables interval-based polling mode.
@@ -461,13 +474,22 @@ spec:
                 properties:
                   when:
                     description: |-
-                      When holds the boolean expression evaluated against the HTTP response (expr library).
+                      When holds the expression evaluated against the HTTP response (expr library).
                       Available variables: Response.StatusCode (int), Response.Body (parsed JSON as map[string]any, or raw string if not JSON), Response.Headers (map[string][]string).
-                      The expression must return true for validation to pass. Example: "Response.StatusCode == 200 && Response.Body.approved == true"
+
+                      Return type:
+                      - When mode.context is "environments": must return a boolean. true sets phase Success, false sets Pending.
+                      - When mode.context is "promotionstrategy": may return:
+                        - A boolean: same phase (Success or Pending) for all environments.
+                        - An object with defaultPhase (optional) and environments (optional array):
+                          - defaultPhase: "success", "pending", or "failure" — defaults to "pending" when omitted. Used for all when environments is empty, or for branches not listed in environments.
+                          - environments: optional array of { branch (string), phase (string) }. Example: { defaultPhase: "pending", environments: [{ branch: "dev", phase: "success" }, { branch: "staging", phase: "pending" }] }.
                     properties:
                       expression:
-                        description: Expression is evaluated using the expr library
-                          (github.com/expr-lang/expr). Must return a boolean.
+                        description: |-
+                          Expression is evaluated using the expr library (github.com/expr-lang/expr).
+                          Must return a boolean when mode.context is "environments".
+                          When mode.context is "promotionstrategy", may return a boolean or an object { defaultPhase?, environments? } as described in SuccessSpec.
                         type: string
                     required:
                     - expression
@@ -565,8 +587,9 @@ spec:
                 - type
                 x-kubernetes-list-type: map
               environments:
-                description: Environments holds the status of each environment being
-                  tracked.
+                description: |-
+                  Environments holds the status of each environment when context is "environments".
+                  When context is "promotionstrategy", this slice is empty and PromotionStrategyContext is used instead.
                 items:
                   description: WebRequestCommitStatusEnvironmentStatus defines the
                     observed status for a specific environment.
@@ -639,6 +662,59 @@ spec:
                 x-kubernetes-list-map-keys:
                 - branch
                 x-kubernetes-list-type: map
+              promotionStrategyContext:
+                description: |-
+                  PromotionStrategyContext holds the result of the one HTTP run when context is "promotionstrategy".
+                  At most one request is made per WebRequestCommitStatus; phase(s) are reported on each environment's CommitStatus.
+                properties:
+                  lastRequestTime:
+                    description: LastRequestTime is when the last HTTP request was
+                      made.
+                    format: date-time
+                    type: string
+                  lastResponseStatusCode:
+                    description: LastResponseStatusCode is the HTTP status code from
+                      the last request.
+                    type: integer
+                  lastSuccessfulShas:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      LastSuccessfulShas tracks the last SHA that achieved success for each branch.
+                      Used with reportOn "proposed" + polling to skip HTTP requests when all environments
+                      have already succeeded for their current SHAs.
+                      Key is branch name, value is the SHA that last succeeded.
+                    type: object
+                  phase:
+                    description: |-
+                      Phase is the validation result from the HTTP request (pending, success, or failure).
+                      When PhasePerBranch is set, Phase is used as the default for any branch not listed in PhasePerBranch.
+                    enum:
+                    - pending
+                    - success
+                    - failure
+                    type: string
+                  phasePerBranch:
+                    additionalProperties:
+                      description: CommitStatusPhase represents the phase of a commit
+                        status.
+                      type: string
+                    description: |-
+                      PhasePerBranch holds per-branch phases when the success expression returned an object with per-branch overrides.
+                      Key is branch name, value is "pending", "success", or "failure". When set, each environment's CommitStatus
+                      uses this phase; branches not in the map use Phase.
+                    type: object
+                  responseOutput:
+                    description: ResponseOutput stores the map returned by spec.mode.trigger.response.output.expression.
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                  triggerOutput:
+                    description: TriggerOutput stores the map returned by spec.mode.trigger.when.output.expression.
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                required:
+                - phase
+                type: object
             type: object
         required:
         - spec
