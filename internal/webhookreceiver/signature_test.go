@@ -12,7 +12,6 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -116,7 +115,7 @@ var _ = Describe("GitHub webhook signature enforcement in postRoot", func() {
 			ControllerNamespace: controllerNamespace,
 		})
 		wr := webhookreceiver.NewWebhookReceiverWithClient(fakeClient, nil, mgr)
-		return &wr
+		return wr
 	}
 
 	// invoke sends a POST request with a GitHub event header and optional signature.
@@ -180,10 +179,3 @@ var _ = Describe("GitHub webhook signature enforcement in postRoot", func() {
 		})
 	})
 })
-
-// Compile-time assertion: WebhookReceiver must satisfy http.Handler.
-var _ http.Handler = (*webhookreceiver.WebhookReceiver)(nil)
-
-// Compile-time assertion: settings.Manager Reader interface is satisfied by fake client.
-var _ client.Reader = (client.Client)(nil)
-

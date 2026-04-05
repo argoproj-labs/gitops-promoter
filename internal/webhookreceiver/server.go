@@ -63,8 +63,8 @@ func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP EnqueueFunc, s
 
 // NewWebhookReceiverWithClient creates a WebhookReceiver with an explicit k8s client.
 // This is useful in tests where a full controller-runtime Manager is not available.
-func NewWebhookReceiverWithClient(k8sClient client.Client, enqueueCTP EnqueueFunc, settingsMgr *settings.Manager) WebhookReceiver {
-	return WebhookReceiver{
+func NewWebhookReceiverWithClient(k8sClient client.Client, enqueueCTP EnqueueFunc, settingsMgr *settings.Manager) *WebhookReceiver {
+	return &WebhookReceiver{
 		k8sClient:   k8sClient,
 		enqueueCTP:  enqueueCTP,
 		settingsMgr: settingsMgr,
@@ -202,7 +202,7 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 			if statusCode == http.StatusUnauthorized {
 				logger.V(4).Info("rejected GitHub webhook request due to signature mismatch")
 			} else {
-				logger.Error(fmt.Errorf("%s", errMsg), "error verifying GitHub webhook signature")
+				logger.Error(errors.New(errMsg), "error verifying GitHub webhook signature")
 			}
 			responseCode = statusCode
 			http.Error(w, errMsg, responseCode)
@@ -431,4 +431,3 @@ func VerifyGitHubSignature(secret, body []byte, signature string) bool {
 	// hmac.Equal uses constant-time comparison to prevent timing attacks.
 	return hmac.Equal(sigBytes, expected)
 }
-
