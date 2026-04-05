@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -69,6 +70,11 @@ type ControllerConfigurationSpec struct {
 	// including WorkQueue settings that control reconciliation behavior.
 	// +required
 	WebRequestCommitStatus WebRequestCommitStatusConfiguration `json:"webRequestCommitStatus"`
+
+	// WebhookReceiver contains the configuration for the webhook receiver server,
+	// including optional signature verification for supported SCM providers.
+	// +optional
+	WebhookReceiver *WebhookReceiverConfiguration `json:"webhookReceiver,omitempty"`
 }
 
 // PromotionStrategyConfiguration defines the configuration for the PromotionStrategy controller.
@@ -170,6 +176,31 @@ type WebRequestCommitStatusConfiguration struct {
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
 	WorkQueue WorkQueue `json:"workQueue"`
+}
+
+// WebhookReceiverConfiguration defines the configuration for the webhook receiver server.
+type WebhookReceiverConfiguration struct {
+	// GitHub contains GitHub-specific webhook receiver configuration,
+	// including optional HMAC-SHA256 signature verification.
+	// +optional
+	GitHub *GitHubWebhookReceiverConfiguration `json:"github,omitempty"`
+}
+
+// GitHubWebhookReceiverConfiguration defines GitHub-specific webhook receiver configuration.
+type GitHubWebhookReceiverConfiguration struct {
+	// SecretRef references a Kubernetes Secret in the controller's namespace that contains
+	// the GitHub webhook signing secret. The Secret must have a key named "webhookSecret"
+	// whose value is the signing secret configured in the GitHub App or repository webhook
+	// settings.
+	//
+	// When this field is set, the webhook receiver validates the X-Hub-Signature-256 header
+	// on every incoming GitHub webhook request using HMAC-SHA256. Requests with a missing or
+	// invalid signature are rejected with HTTP 401.
+	//
+	// When this field is absent, signature validation is skipped and all GitHub webhook
+	// requests are accepted without verification.
+	// +optional
+	SecretRef *corev1.LocalObjectReference `json:"secretRef,omitempty"`
 }
 
 // WorkQueue defines the work queue configuration for a controller.
