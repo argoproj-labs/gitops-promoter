@@ -169,7 +169,9 @@ type HealthyDryShas struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// PromotionStrategy is the Schema for the promotionstrategies API
+// PromotionStrategy is the user's interface to controlling how changes are promoted through environments.
+// In this resource you configure the list of live hydrated environment branches in promotion order and the
+// checks (active and proposed commit statuses) that must pass between promotion steps.
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 type PromotionStrategy struct {
 	metav1.TypeMeta   `json:",inline"`

@@ -27,7 +27,10 @@ import (
 // ControllerConfigurationApplyConfiguration represents a declarative configuration of the ControllerConfiguration type for use
 // with apply.
 //
-// ControllerConfiguration is the Schema for the controllerconfigurations API.
+// ControllerConfiguration configures the behavior of the promoter controllers. A global instance is typically
+// deployed with the controller and applies to all promotions. Each controller has a section (WorkQueue settings,
+// rate limiters, and controller-specific options such as PR templates or watchLocalApplications). All fields are
+// required; defaults are provided in the installation manifests.
 type ControllerConfigurationApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`

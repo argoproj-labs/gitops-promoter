@@ -25,8 +25,11 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ArgoCDCommitStatus is the Schema for the argocdcommitstatuses
-          API.
+        description: |-
+          ArgoCDCommitStatus aggregates the status of Argo CD Applications used in a promotion strategy. It selects
+          Applications via a label selector and a reference to a PromotionStrategy, then creates CommitStatus resources
+          (with key "argocd-health") so that promotion gates reflect whether the selected applications are synced and
+          healthy. Optional URL config can generate links (e.g. to the Argo CD UI) for each status.
         properties:
           apiVersion:
             description: |-
