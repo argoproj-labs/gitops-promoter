@@ -1,0 +1,21 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: pipeline-gate
+  namespace: default
+spec:
+  promotionStrategyRef:
+    name: my-app
+  key: pipeline-gate
+  reportOn: proposed
+  httpRequest:
+    urlTemplate: "https://example.com/gate"
+    method: GET
+    timeout: 30s
+  success:
+    when:
+      expression: "Response.StatusCode == 200"
+  mode:
+    context: promotionstrategy
+    polling:
+      interval: 2m
