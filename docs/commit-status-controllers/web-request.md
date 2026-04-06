@@ -88,7 +88,7 @@ For the **HTTP request** (URL, headers, body), **trigger** `when.expression`, **
 
 They are unset (empty / nil) because there is no single “current environment” for that one request.
 
-**You can use:** `PromotionStrategy` (full spec and status), `Phase` (previous overall phase in promotion-strategy context), `TriggerOutput`, `ResponseOutput` (trigger mode), and `NamespaceMetadata` labels and annotations — same as in environment context, except for the per-env fields above.
+**You can use:** `PromotionStrategy` (full spec and status), `Phase` (aggregate of all applicable branches' phases — `success` only when every branch succeeded, `failure` if any failed, `pending` otherwise), `TriggerOutput`, `ResponseOutput` (trigger mode), and `NamespaceMetadata` labels and annotations — same as in environment context, except for the per-env fields above.
 
 When rendering **CommitStatus** `descriptionTemplate` and `urlTemplate`, the controller sets **`{{ .Phase }}`** to **that environment’s** resolved phase (`success`, `pending`, or `failure`). It still does **not** set `ReportedSha` or `Environment` in promotion-strategy context. If you need branch- or SHA-specific text in the SCM description or URL, either **walk `{{ .PromotionStrategy }}`** in the Go template (for example, `range` over `.PromotionStrategy.Status.Environments` and match on `.Branch`) or use **the same wording for every environment** (a generic message or link that does not try to substitute `{{ .ReportedSha }}` or `{{ .Environment.Branch }}`).
 
@@ -115,8 +115,7 @@ Observed state is stored under **`status.promotionStrategyContext`**, not under 
 
 Notable fields:
 
-- **`phase`** — default phase for branches not overridden in `phasePerBranch`
-- **`phasePerBranch`** — map branch → phase when the success expression returned the object form
+- **`phasePerBranch`** — map of branch → resolved phase (`success`, `pending`, or `failure`) for every applicable environment. This is always fully populated after reconciliation, regardless of whether the success expression returned a boolean or the object form.
 - **`lastSuccessfulShas`** — branch → last SHA that reached **success** for that branch (used for optimizations below)
 - **`lastRequestTime`**, **`lastResponseStatusCode`**, **`triggerOutput`**, **`responseOutput`** — same roles as per-environment status in the default context, but stored once for the shared request
 

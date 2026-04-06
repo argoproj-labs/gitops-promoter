@@ -1995,7 +1995,6 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 				g.Expect(err).NotTo(HaveOccurred())
 
 				g.Expect(fetched.Status.PromotionStrategyContext).NotTo(BeNil(), "PromotionStrategyContext should be populated")
-				g.Expect(fetched.Status.PromotionStrategyContext.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 				g.Expect(fetched.Status.PromotionStrategyContext.LastResponseStatusCode).NotTo(BeNil())
 				g.Expect(*fetched.Status.PromotionStrategyContext.LastResponseStatusCode).To(Equal(200))
 				g.Expect(fetched.Status.PromotionStrategyContext.LastRequestTime).NotTo(BeNil())
@@ -2005,6 +2004,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 
 				// CommitStatuses should be created for each applicable environment
 				for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
+					g.Expect(fetched.Status.PromotionStrategyContext.PhasePerBranch[branch]).To(
+						Equal(promoterv1alpha1.CommitPhaseSuccess), "PhasePerBranch for %s should be success", branch)
 					csName := utils.KubeSafeUniqueName(ctx, wrcs.Name+"-"+branch+"-webrequest")
 					var cs promoterv1alpha1.CommitStatus
 					err = k8sClient.Get(ctx, types.NamespacedName{
@@ -2078,10 +2079,11 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 				g.Expect(err).NotTo(HaveOccurred())
 
 				g.Expect(fetched.Status.PromotionStrategyContext).NotTo(BeNil())
-				g.Expect(fetched.Status.PromotionStrategyContext.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
 				g.Expect(fetched.Status.Environments).To(BeEmpty())
 
 				for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
+					g.Expect(fetched.Status.PromotionStrategyContext.PhasePerBranch[branch]).To(
+						Equal(promoterv1alpha1.CommitPhasePending), "PhasePerBranch for %s should be pending", branch)
 					csName := utils.KubeSafeUniqueName(ctx, wrcs.Name+"-"+branch+"-webrequest")
 					var cs promoterv1alpha1.CommitStatus
 					err = k8sClient.Get(ctx, types.NamespacedName{
@@ -2163,8 +2165,6 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 				g.Expect(err).NotTo(HaveOccurred())
 
 				g.Expect(fetched.Status.PromotionStrategyContext).NotTo(BeNil())
-				g.Expect(fetched.Status.PromotionStrategyContext.Phase).To(Equal(promoterv1alpha1.CommitPhasePending),
-					"default phase should be pending")
 				g.Expect(fetched.Status.PromotionStrategyContext.PhasePerBranch).NotTo(BeNil(),
 					"PhasePerBranch should be populated")
 				g.Expect(fetched.Status.PromotionStrategyContext.PhasePerBranch[testBranchDevelopment]).To(
@@ -2255,7 +2255,6 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 				g.Expect(err).NotTo(HaveOccurred())
 
 				g.Expect(fetched.Status.PromotionStrategyContext).NotTo(BeNil())
-				g.Expect(fetched.Status.PromotionStrategyContext.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 
 				g.Expect(fetched.Status.PromotionStrategyContext.TriggerOutput).NotTo(BeNil(),
 					"TriggerOutput should be populated")
@@ -2266,6 +2265,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 				g.Expect(triggerData["lastCheckTime"]).To(Equal("checked"))
 
 				for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
+					g.Expect(fetched.Status.PromotionStrategyContext.PhasePerBranch[branch]).To(
+						Equal(promoterv1alpha1.CommitPhaseSuccess), "PhasePerBranch for %s should be success", branch)
 					csName := utils.KubeSafeUniqueName(ctx, wrcs.Name+"-"+branch+"-webrequest")
 					var cs promoterv1alpha1.CommitStatus
 					err = k8sClient.Get(ctx, types.NamespacedName{Name: csName, Namespace: "default"}, &cs)
@@ -2346,7 +2347,10 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 				g.Expect(err).NotTo(HaveOccurred())
 
 				g.Expect(fetched.Status.PromotionStrategyContext).NotTo(BeNil())
-				g.Expect(fetched.Status.PromotionStrategyContext.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+				for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
+					g.Expect(fetched.Status.PromotionStrategyContext.PhasePerBranch[branch]).To(
+						Equal(promoterv1alpha1.CommitPhaseSuccess), "PhasePerBranch for %s should be success", branch)
+				}
 				g.Expect(fetched.Status.PromotionStrategyContext.ResponseOutput).NotTo(BeNil(),
 					"ResponseOutput should be populated in trigger mode with response.output")
 
@@ -2427,7 +2431,10 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 				}, &fetched)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(fetched.Status.PromotionStrategyContext).NotTo(BeNil())
-				g.Expect(fetched.Status.PromotionStrategyContext.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+				for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
+					g.Expect(fetched.Status.PromotionStrategyContext.PhasePerBranch[branch]).To(
+						Equal(promoterv1alpha1.CommitPhaseSuccess), "PhasePerBranch for %s should be success", branch)
+				}
 				g.Expect(fetched.Status.PromotionStrategyContext.LastSuccessfulShas).NotTo(BeEmpty(),
 					"LastSuccessfulShas should be populated after success")
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -2511,7 +2518,10 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 				g.Expect(err).NotTo(HaveOccurred())
 
 				g.Expect(fetched.Status.PromotionStrategyContext).NotTo(BeNil())
-				g.Expect(fetched.Status.PromotionStrategyContext.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
+				for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
+					g.Expect(fetched.Status.PromotionStrategyContext.PhasePerBranch[branch]).To(
+						Equal(promoterv1alpha1.CommitPhasePending), "PhasePerBranch for %s should be pending", branch)
+				}
 				g.Expect(fetched.Status.PromotionStrategyContext.LastResponseStatusCode).NotTo(BeNil())
 				g.Expect(*fetched.Status.PromotionStrategyContext.LastResponseStatusCode).To(Equal(500))
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -2643,10 +2653,11 @@ var _ = Describe("WebRequestCommitStatus Controller - Context Switching", Ordere
 			err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(fetched.Status.PromotionStrategyContext).NotTo(BeNil(), "PromotionStrategyContext should be populated")
-			g.Expect(fetched.Status.PromotionStrategyContext.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 			g.Expect(fetched.Status.Environments).To(BeEmpty(), "Environments should be cleared after switching to promotionstrategy context")
 
 			for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
+				g.Expect(fetched.Status.PromotionStrategyContext.PhasePerBranch[branch]).To(
+					Equal(promoterv1alpha1.CommitPhaseSuccess), "PhasePerBranch for %s should be success", branch)
 				csName := utils.KubeSafeUniqueName(ctx, wrcs.Name+"-"+branch+"-webrequest")
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{Name: csName, Namespace: "default"}, &cs)

@@ -294,6 +294,37 @@ func resolvePhaseForBranch(branch string, defaultPhase promoterv1alpha1.CommitSt
 	return defaultPhase
 }
 
+// resolveAllBranchPhases builds a complete PhasePerBranch map for all applicable environments,
+// merging the default phase with any per-branch overrides from the expression result.
+func resolveAllBranchPhases(envs []promoterv1alpha1.Environment, defaultPhase promoterv1alpha1.CommitStatusPhase, phasePerBranch map[string]promoterv1alpha1.CommitStatusPhase) map[string]promoterv1alpha1.CommitStatusPhase {
+	resolved := make(map[string]promoterv1alpha1.CommitStatusPhase, len(envs))
+	for _, env := range envs {
+		resolved[env.Branch] = resolvePhaseForBranch(env.Branch, defaultPhase, phasePerBranch)
+	}
+	return resolved
+}
+
+// aggregatePhase computes an overall phase from a PhasePerBranch map:
+// success only if all branches succeeded, failure if any failed, pending otherwise.
+func aggregatePhase(phasePerBranch map[string]promoterv1alpha1.CommitStatusPhase) string {
+	if len(phasePerBranch) == 0 {
+		return string(promoterv1alpha1.CommitPhasePending)
+	}
+	allSuccess := true
+	for _, p := range phasePerBranch {
+		if p == promoterv1alpha1.CommitPhaseFailure {
+			return string(promoterv1alpha1.CommitPhaseFailure)
+		}
+		if p != promoterv1alpha1.CommitPhaseSuccess {
+			allSuccess = false
+		}
+	}
+	if allSuccess {
+		return string(promoterv1alpha1.CommitPhaseSuccess)
+	}
+	return string(promoterv1alpha1.CommitPhasePending)
+}
+
 func parsePhaseString(phaseStr string, defaultPhase promoterv1alpha1.CommitStatusPhase) (promoterv1alpha1.CommitStatusPhase, error) {
 	switch phaseStr {
 	case "success":

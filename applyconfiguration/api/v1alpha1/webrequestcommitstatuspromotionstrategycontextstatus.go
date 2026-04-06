@@ -28,12 +28,9 @@ import (
 //
 // WebRequestCommitStatusPromotionStrategyContextStatus holds the observed state for context=promotionstrategy (at most one request per WebRequestCommitStatus).
 type WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration struct {
-	// Phase is the validation result from the HTTP request (pending, success, or failure).
-	// When PhasePerBranch is set, Phase is used as the default for any branch not listed in PhasePerBranch.
-	Phase *apiv1alpha1.CommitStatusPhase `json:"phase,omitempty"`
-	// PhasePerBranch holds per-branch phases when the success expression returned an object with per-branch overrides.
-	// Key is branch name, value is "pending", "success", or "failure". When set, each environment's CommitStatus
-	// uses this phase; branches not in the map use Phase.
+	// PhasePerBranch holds the resolved phase for each applicable branch.
+	// Key is branch name, value is "pending", "success", or "failure".
+	// Every applicable branch is always present in this map after reconciliation.
 	PhasePerBranch map[string]apiv1alpha1.CommitStatusPhase `json:"phasePerBranch,omitempty"`
 	// LastRequestTime is when the last HTTP request was made.
 	LastRequestTime *v1.Time `json:"lastRequestTime,omitempty"`
@@ -54,14 +51,6 @@ type WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration stru
 // apply.
 func WebRequestCommitStatusPromotionStrategyContextStatus() *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration {
 	return &WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration{}
-}
-
-// WithPhase sets the Phase field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the Phase field is set to the value of the last call.
-func (b *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration) WithPhase(value apiv1alpha1.CommitStatusPhase) *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration {
-	b.Phase = &value
-	return b
 }
 
 // WithPhasePerBranch puts the entries into the PhasePerBranch field in the declarative configuration

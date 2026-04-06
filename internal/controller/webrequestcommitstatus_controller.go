@@ -428,11 +428,13 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 		logger.Info("Validation transitioned to success (context=promotionstrategy)", "branches", transitionedEnvironments)
 	}
 
+	// Resolve all applicable branches into a complete PhasePerBranch map.
+	resolvedPhases := resolveAllBranchPhases(applicableEnvs, result.Phase, result.PhasePerBranch)
+
 	// Update status
 	wrcs.Status.Environments = nil
 	wrcs.Status.PromotionStrategyContext = &promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus{
-		Phase:                  result.Phase,
-		PhasePerBranch:         result.PhasePerBranch,
+		PhasePerBranch:         resolvedPhases,
 		LastRequestTime:        result.LastRequestTime,
 		LastResponseStatusCode: result.LastResponseStatusCode,
 		TriggerOutput:          triggerDataJSON,
@@ -445,7 +447,7 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 	commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0, len(applicableEnvs))
 	for _, env := range applicableEnvs {
 		branch := env.Branch
-		envPhase := resolvePhaseForBranch(branch, result.Phase, result.PhasePerBranch)
+		envPhase := resolvedPhases[branch]
 		perEnvTd := commitTd
 		perEnvTd.Phase = string(envPhase)
 		cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, currentShaPerBranch[branch], envPhase, perEnvTd)
@@ -468,9 +470,8 @@ func allBranchesSucceededForCurrentShas(
 	if lastReconciledCtxStatus == nil || lastReconciledCtxStatus.LastSuccessfulShas == nil {
 		return false
 	}
-	defaultPhase := lastReconciledCtxStatus.Phase
 	for _, env := range applicableEnvs {
-		branchPhase := resolvePhaseForBranch(env.Branch, defaultPhase, lastReconciledCtxStatus.PhasePerBranch)
+		branchPhase := lastReconciledCtxStatus.PhasePerBranch[env.Branch]
 		if branchPhase != promoterv1alpha1.CommitPhaseSuccess {
 			return false
 		}
@@ -586,13 +587,15 @@ func lastReconciledStateFromEnvironment(ctx context.Context, status *promoterv1a
 
 // lastReconciledStateFromContext extracts the previous reconcile's state from the
 // promotionstrategy-level context status, including per-branch phase overrides.
+// Phase is computed as an aggregate of PhasePerBranch (success only if all branches succeeded,
+// failure if any failed, pending otherwise).
 func lastReconciledStateFromContext(ctx context.Context, status *promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus) lastReconciledState {
 	if status == nil {
 		return lastReconciledState{}
 	}
 	logger := log.FromContext(ctx)
 	s := lastReconciledState{
-		Phase:                  string(status.Phase),
+		Phase:                  aggregatePhase(status.PhasePerBranch),
 		LastRequestTime:        status.LastRequestTime,
 		LastResponseStatusCode: status.LastResponseStatusCode,
 		ResponseOutput:         status.ResponseOutput,
