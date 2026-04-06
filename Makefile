@@ -118,18 +118,35 @@ test-parallel-repeat3: test-deps ## Run tests in parallel 3 times to check for f
 FUZZ_PACKAGES ?= ./internal/utils
 # Duration per fuzz target when running `make test-fuzz` (each Fuzz* runs sequentially within a package).
 FUZZ_TIME ?= 30s
+# Executions after seed/corpus baseline when running `make test-fuzz-seed` (see `go help testflag` -fuzztime).
+FUZZ_SEED_TIME ?= 1x
 
 .PHONY: test-fuzz-seed test-fuzz
 test-fuzz-seed: ## Replay fuzz seeds and testdata/fuzz corpora (fast; used in CI).
-	go test $(FUZZ_PACKAGES) -run '^Fuzz' -count=1
+	@set -euo pipefail; \
+	for pkg in $(FUZZ_PACKAGES); do \
+	  list=$$(go test $$pkg -list Fuzz); \
+	  fuzzes=$$(echo "$$list" | { grep '^Fuzz' || true; }); \
+	  if [ -z "$$fuzzes" ]; then \
+	    continue; \
+	  fi; \
+	  for fuzz in $$fuzzes; do \
+	    echo "replay $$pkg $$fuzz ($(FUZZ_SEED_TIME))"; \
+	    go test $$pkg -count=1 -run=$$fuzz -fuzz=$$fuzz -fuzztime=$(FUZZ_SEED_TIME); \
+	  done; \
+	done
 
 test-fuzz: ## Run each Fuzz* in FUZZ_PACKAGES for FUZZ_TIME (exploratory).
 	@set -euo pipefail; \
 	for pkg in $(FUZZ_PACKAGES); do \
-	  fuzzes=$$(go test $$pkg -list Fuzz 2>/dev/null | grep '^Fuzz' || true); \
+	  list=$$(go test $$pkg -list Fuzz); \
+	  fuzzes=$$(echo "$$list" | { grep '^Fuzz' || true; }); \
+	  if [ -z "$$fuzzes" ]; then \
+	    continue; \
+	  fi; \
 	  for fuzz in $$fuzzes; do \
 	    echo "fuzz $$pkg $$fuzz ($(FUZZ_TIME))"; \
-	    go test $$pkg -count=1 -fuzz=$$fuzz -fuzztime=$(FUZZ_TIME); \
+	    go test $$pkg -count=1 -run=$$fuzz -fuzz=$$fuzz -fuzztime=$(FUZZ_TIME); \
 	  done; \
 	done
 

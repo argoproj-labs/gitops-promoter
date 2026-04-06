@@ -77,7 +77,6 @@ var _ = Describe("TruncateStringFromBeginning", func() {
 			{name: "when length is 100", length: 100},
 		}
 		for _, tt := range tests {
-			tt := tt
 			It(tt.name, func() {
 				out := utils.TruncateStringFromBeginning(loneContinuation, tt.length)
 				Expect(utf8.ValidString(out)).To(BeTrue(), "output must be valid UTF-8")
