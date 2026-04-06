@@ -15,7 +15,6 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
-	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 
 	"github.com/tidwall/gjson"
 
@@ -45,29 +44,29 @@ type EnqueueFunc func(namespace, name string)
 
 // WebhookReceiver is a server that listens for webhooks and triggers reconciles of ChangeTransferPolicies.
 type WebhookReceiver struct {
-	mgr         controllerruntime.Manager
-	k8sClient   client.Client
-	enqueueCTP  EnqueueFunc
-	settingsMgr *settings.Manager
+	mgr                 controllerruntime.Manager
+	k8sClient           client.Client
+	enqueueCTP          EnqueueFunc
+	controllerNamespace string
 }
 
 // NewWebhookReceiver creates a new instance of WebhookReceiver.
-func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP EnqueueFunc, settingsMgr *settings.Manager) WebhookReceiver {
+func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP EnqueueFunc, controllerNamespace string) WebhookReceiver {
 	return WebhookReceiver{
-		mgr:         mgr,
-		k8sClient:   mgr.GetClient(),
-		enqueueCTP:  enqueueCTP,
-		settingsMgr: settingsMgr,
+		mgr:                 mgr,
+		k8sClient:           mgr.GetClient(),
+		enqueueCTP:          enqueueCTP,
+		controllerNamespace: controllerNamespace,
 	}
 }
 
 // NewWebhookReceiverWithClient creates a WebhookReceiver with an explicit k8s client.
 // This is useful in tests where a full controller-runtime Manager is not available.
-func NewWebhookReceiverWithClient(k8sClient client.Client, enqueueCTP EnqueueFunc, settingsMgr *settings.Manager) *WebhookReceiver {
+func NewWebhookReceiverWithClient(k8sClient client.Client, enqueueCTP EnqueueFunc, controllerNamespace string) *WebhookReceiver {
 	return &WebhookReceiver{
-		k8sClient:   k8sClient,
-		enqueueCTP:  enqueueCTP,
-		settingsMgr: settingsMgr,
+		k8sClient:           k8sClient,
+		enqueueCTP:          enqueueCTP,
+		controllerNamespace: controllerNamespace,
 	}
 }
 
@@ -362,54 +361,86 @@ func (wr *WebhookReceiver) extractDeliveryID(r *http.Request) string {
 }
 
 // verifyGitHubWebhookSignature checks the X-Hub-Signature-256 header against the computed
-// HMAC-SHA256 of the request body using the configured signing secret.
+// HMAC-SHA256 of the request body using the signing secrets from all ScmProviders and
+// ClusterScmProviders that have a GitHub webhook secret configured.
+//
+// The check is skipped (returns false, 0, "") when no ScmProvider/ClusterScmProvider has a
+// webhookSecret configured for its GitHub spec.
 //
 // Returns (false, 0, "") when:
-//   - no settingsMgr is configured (verification disabled)
-//   - no webhook secretRef is set in ControllerConfiguration (verification disabled)
-//   - the signature is valid
+//   - no ScmProvider/ClusterScmProvider has a GitHub webhookSecret configured (verification disabled)
+//   - the signature is valid against at least one configured secret
 //
 // Returns (true, statusCode, errorMessage) when:
 //   - a configuration or secret lookup error occurred → 500
 //   - the X-Hub-Signature-256 header is missing → 401
-//   - the signature is invalid → 401
+//   - the signature does not match any configured secret → 401
 func (wr *WebhookReceiver) verifyGitHubWebhookSignature(ctx context.Context, sig string, body []byte) (rejected bool, statusCode int, errMsg string) {
-	if wr.settingsMgr == nil {
+	// Collect webhook secrets from all namespaced ScmProviders that have a GitHub webhookSecret.
+	scmProviderList := &promoterv1alpha1.ScmProviderList{}
+	if err := wr.k8sClient.List(ctx, scmProviderList); err != nil {
+		return true, http.StatusInternalServerError, "error listing SCM providers"
+	}
+
+	// Collect webhook secrets from all ClusterScmProviders that have a GitHub webhookSecret.
+	clusterScmProviderList := &promoterv1alpha1.ClusterScmProviderList{}
+	if err := wr.k8sClient.List(ctx, clusterScmProviderList); err != nil {
+		return true, http.StatusInternalServerError, "error listing cluster SCM providers"
+	}
+
+	var webhookSecrets [][]byte
+
+	for i := range scmProviderList.Items {
+		smp := &scmProviderList.Items[i]
+		if smp.Spec.GitHub == nil || smp.Spec.GitHub.WebhookSecret == nil {
+			continue
+		}
+		secret := &corev1.Secret{}
+		if err := wr.k8sClient.Get(ctx, client.ObjectKey{
+			Namespace: smp.Namespace,
+			Name:      smp.Spec.GitHub.WebhookSecret.Name,
+		}, secret); err != nil {
+			return true, http.StatusInternalServerError, "error retrieving webhook signing secret"
+		}
+		if v, ok := secret.Data["webhookSecret"]; ok {
+			webhookSecrets = append(webhookSecrets, v)
+		}
+	}
+
+	for i := range clusterScmProviderList.Items {
+		csmp := &clusterScmProviderList.Items[i]
+		if csmp.Spec.GitHub == nil || csmp.Spec.GitHub.WebhookSecret == nil {
+			continue
+		}
+		// ClusterScmProvider secrets live in the controller's namespace by convention.
+		secret := &corev1.Secret{}
+		if err := wr.k8sClient.Get(ctx, client.ObjectKey{
+			Namespace: wr.controllerNamespace,
+			Name:      csmp.Spec.GitHub.WebhookSecret.Name,
+		}, secret); err != nil {
+			return true, http.StatusInternalServerError, "error retrieving webhook signing secret"
+		}
+		if v, ok := secret.Data["webhookSecret"]; ok {
+			webhookSecrets = append(webhookSecrets, v)
+		}
+	}
+
+	if len(webhookSecrets) == 0 {
+		// No secrets configured – verification is disabled.
 		return false, 0, ""
-	}
-
-	webhookCfg, err := wr.settingsMgr.GetWebhookReceiverConfiguration(ctx)
-	if err != nil {
-		return true, http.StatusInternalServerError, "error retrieving webhook receiver configuration"
-	}
-	if webhookCfg == nil || webhookCfg.GitHub == nil || webhookCfg.GitHub.SecretRef == nil {
-		// No secret configured – verification is disabled.
-		return false, 0, ""
-	}
-
-	secretName := webhookCfg.GitHub.SecretRef.Name
-	secret := &corev1.Secret{}
-	if err := wr.k8sClient.Get(ctx, client.ObjectKey{
-		Namespace: wr.settingsMgr.GetControllerNamespace(),
-		Name:      secretName,
-	}, secret); err != nil {
-		return true, http.StatusInternalServerError, "error retrieving webhook signing secret"
-	}
-
-	webhookSecret, ok := secret.Data["webhookSecret"]
-	if !ok {
-		return true, http.StatusInternalServerError, "webhook signing secret missing required key 'webhookSecret'"
 	}
 
 	if sig == "" {
 		return true, http.StatusUnauthorized, "missing X-Hub-Signature-256 header"
 	}
 
-	if !VerifyGitHubSignature(webhookSecret, body, sig) {
-		return true, http.StatusUnauthorized, "invalid webhook signature"
+	for _, secret := range webhookSecrets {
+		if VerifyGitHubSignature(secret, body, sig) {
+			return false, 0, ""
+		}
 	}
 
-	return false, 0, ""
+	return true, http.StatusUnauthorized, "invalid webhook signature"
 }
 
 // VerifyGitHubSignature computes HMAC-SHA256(secret, body) and compares it to the provided

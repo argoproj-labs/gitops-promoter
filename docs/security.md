@@ -26,30 +26,32 @@ The `promoter-webhook-receiver` service accepts incoming SCM webhook POST reques
 
 ### GitHub
 
-GitHub signs every webhook delivery with HMAC-SHA256 and sends the signature in the `X-Hub-Signature-256` header. GitOps Promoter can validate this header using a shared secret.
+GitHub signs every webhook delivery with HMAC-SHA256 and sends the signature in the `X-Hub-Signature-256` header. GitOps Promoter validates this header using the signing secret configured on each `ScmProvider` (or `ClusterScmProvider`).
 
 To enable signature verification:
 
-1. **Create a Kubernetes Secret** in the controller's namespace containing the signing secret:
+1. **Create a Kubernetes Secret** containing the signing secret.
+   For a namespaced `ScmProvider`, put the Secret in the same namespace.
+   For a `ClusterScmProvider`, put the Secret in the controller's namespace (default: `promoter-system`):
 
    ```bash
    kubectl create secret generic github-webhook-secret \
-     --namespace promoter-system \
+     --namespace <scmprovider-namespace> \
      --from-literal=webhookSecret=<your-strong-random-secret>
    ```
 
 2. **Set the same value** as the *Secret* field when configuring the webhook in your GitHub App or repository webhook settings.
 
-3. **Reference the secret** in `ControllerConfiguration`:
+3. **Reference the secret** in the `ScmProvider` (or `ClusterScmProvider`) `spec.github.webhookSecret`:
 
    ```yaml
    spec:
-     webhookReceiver:
-       github:
-         secretRef:
-           name: github-webhook-secret
+     github:
+       appID: 12345
+       webhookSecret:
+         name: github-webhook-secret
    ```
 
-When configured, requests with a missing or invalid `X-Hub-Signature-256` header are rejected with HTTP 401 before any reconciliation is triggered. The comparison uses `hmac.Equal` (constant-time) to prevent timing attacks.
+When configured, the webhook receiver checks the `X-Hub-Signature-256` header against the HMAC-SHA256 computed from the shared secret. Requests with a missing or invalid signature are rejected with HTTP 401 before any reconciliation is triggered. The comparison uses `hmac.Equal` (constant-time) to prevent timing attacks.
 
-See [Getting Started — Securing GitHub Webhooks](getting-started.md) for the full configuration walkthrough.
+Signature verification is enabled as soon as at least one `ScmProvider` or `ClusterScmProvider` has `spec.github.webhookSecret` set. If multiple providers have secrets configured, a request is accepted when its signature matches any one of them.

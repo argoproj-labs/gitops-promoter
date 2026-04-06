@@ -165,25 +165,6 @@ func (m *Manager) GetPullRequestControllersTemplate(ctx context.Context) (promot
 	return config.Spec.PullRequest.Template, nil
 }
 
-// GetWebhookReceiverConfiguration retrieves the webhook receiver configuration from the
-// ControllerConfiguration resource. Returns nil if no webhook receiver configuration is set.
-//
-// This method uses the cached client and requires the manager's cache to be started.
-// Do not call this during SetupWithManager.
-//
-// Parameters:
-//   - ctx: Context for the request, used for cancellation and deadlines
-//
-// Returns the configured WebhookReceiverConfiguration, or an error if the configuration
-// cannot be retrieved.
-func (m *Manager) GetWebhookReceiverConfiguration(ctx context.Context) (*promoterv1alpha1.WebhookReceiverConfiguration, error) {
-	config, err := m.getControllerConfiguration(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get controller configuration: %w", err)
-	}
-	return config.Spec.WebhookReceiver, nil
-}
-
 // GetRequeueDuration retrieves the requeue duration for a specific controller type.
 // The type parameter T must satisfy the ControllerConfigurationTypes constraint.
 //

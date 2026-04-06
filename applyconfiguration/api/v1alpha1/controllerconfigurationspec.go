@@ -53,9 +53,6 @@ type ControllerConfigurationSpecApplyConfiguration struct {
 	// WebRequestCommitStatus contains the configuration for the WebRequestCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	WebRequestCommitStatus *WebRequestCommitStatusConfigurationApplyConfiguration `json:"webRequestCommitStatus,omitempty"`
-	// WebhookReceiver contains the configuration for the webhook receiver server,
-	// including optional signature verification for supported SCM providers.
-	WebhookReceiver *WebhookReceiverConfigurationApplyConfiguration `json:"webhookReceiver,omitempty"`
 }
 
 // ControllerConfigurationSpecApplyConfiguration constructs a declarative configuration of the ControllerConfigurationSpec type for use with
@@ -125,13 +122,5 @@ func (b *ControllerConfigurationSpecApplyConfiguration) WithGitCommitStatus(valu
 // If called multiple times, the WebRequestCommitStatus field is set to the value of the last call.
 func (b *ControllerConfigurationSpecApplyConfiguration) WithWebRequestCommitStatus(value *WebRequestCommitStatusConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
 	b.WebRequestCommitStatus = value
-	return b
-}
-
-// WithWebhookReceiver sets the WebhookReceiver field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the WebhookReceiver field is set to the value of the last call.
-func (b *ControllerConfigurationSpecApplyConfiguration) WithWebhookReceiver(value *WebhookReceiverConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
-	b.WebhookReceiver = value
 	return b
 }

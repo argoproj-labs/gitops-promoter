@@ -115,10 +115,3 @@ spec:
               fastDelay: "1s"
               slowDelay: "5m"
               maxFastAttempts: 3
-  # webhookReceiver configures the incoming SCM webhook endpoint.
-  # For production deployments exposed to the internet, enable signature
-  # verification to prevent unauthenticated reconcile triggers. See docs/security.md.
-  # webhookReceiver:
-  #   github:
-  #     secretRef:
-  #       name: github-webhook-secret  # Secret key: webhookSecret

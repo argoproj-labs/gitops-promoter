@@ -1,6 +1,7 @@
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -20,6 +21,18 @@ type GitHub struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Minimum=0
 	InstallationID int64 `json:"installationID,omitempty"`
+	// WebhookSecret references a Kubernetes Secret that contains the GitHub webhook signing secret
+	// used to validate the X-Hub-Signature-256 header on incoming webhook deliveries.
+	// The Secret must have a key named "webhookSecret" whose value is the signing secret
+	// configured in the GitHub App or repository webhook settings.
+	//
+	// For a namespaced ScmProvider the Secret must be in the same namespace as the ScmProvider.
+	// For a ClusterScmProvider the Secret must be in the controller's namespace.
+	//
+	// When set, the webhook receiver rejects requests with a missing or invalid signature (HTTP 401).
+	// When absent, signature verification is skipped and all requests are accepted.
+	// +optional
+	WebhookSecret *corev1.LocalObjectReference `json:"webhookSecret,omitempty"`
 }
 
 // GitLab is a GitLab SCM provider configuration. It is used to configure the GitLab settings.

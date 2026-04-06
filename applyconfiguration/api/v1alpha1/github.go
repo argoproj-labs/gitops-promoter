@@ -17,6 +17,10 @@ limitations under the License.
 
 package v1alpha1
 
+import (
+	v1 "k8s.io/api/core/v1"
+)
+
 // GitHubApplyConfiguration represents a declarative configuration of the GitHub type for use
 // with apply.
 //
@@ -31,6 +35,17 @@ type GitHubApplyConfiguration struct {
 	// GitHub orgs, do not specify this field. The installation ID will be inferred from the repo owner
 	// when needed.
 	InstallationID *int64 `json:"installationID,omitempty"`
+	// WebhookSecret references a Kubernetes Secret that contains the GitHub webhook signing secret
+	// used to validate the X-Hub-Signature-256 header on incoming webhook deliveries.
+	// The Secret must have a key named "webhookSecret" whose value is the signing secret
+	// configured in the GitHub App or repository webhook settings.
+	//
+	// For a namespaced ScmProvider the Secret must be in the same namespace as the ScmProvider.
+	// For a ClusterScmProvider the Secret must be in the controller's namespace.
+	//
+	// When set, the webhook receiver rejects requests with a missing or invalid signature (HTTP 401).
+	// When absent, signature verification is skipped and all requests are accepted.
+	WebhookSecret *v1.LocalObjectReference `json:"webhookSecret,omitempty"`
 }
 
 // GitHubApplyConfiguration constructs a declarative configuration of the GitHub type for use with
@@ -60,5 +75,13 @@ func (b *GitHubApplyConfiguration) WithAppID(value int64) *GitHubApplyConfigurat
 // If called multiple times, the InstallationID field is set to the value of the last call.
 func (b *GitHubApplyConfiguration) WithInstallationID(value int64) *GitHubApplyConfiguration {
 	b.InstallationID = &value
+	return b
+}
+
+// WithWebhookSecret sets the WebhookSecret field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the WebhookSecret field is set to the value of the last call.
+func (b *GitHubApplyConfiguration) WithWebhookSecret(value v1.LocalObjectReference) *GitHubApplyConfiguration {
+	b.WebhookSecret = &value
 	return b
 }

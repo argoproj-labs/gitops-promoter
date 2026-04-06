@@ -15,7 +15,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
 )
@@ -77,27 +76,19 @@ var _ = Describe("GitHub webhook signature enforcement in postRoot", func() {
 	body := []byte(`{"ref":"refs/heads/main","before":"abc123","pusher":{"name":"user"}}`)
 
 	// buildReceiver sets up a WebhookReceiver backed by a fake k8s client.
-	// If withSecretRef is true, the ControllerConfiguration includes the GitHub secretRef.
-	// If withSecret is true, the referenced Secret is also created.
-	buildReceiver := func(withSecretRef, withSecret bool) *webhookreceiver.WebhookReceiver {
+	// scmProvider is used as a namespaced ScmProvider when non-nil.
+	// clusterScmProvider is used as a ClusterScmProvider when non-nil.
+	// withSecret controls whether the referenced Secret is actually created.
+	buildReceiver := func(scmProvider *promoterv1alpha1.ScmProvider, clusterScmProvider *promoterv1alpha1.ClusterScmProvider, withSecret bool) *webhookreceiver.WebhookReceiver {
 		scheme := utils.GetScheme()
 
-		cc := &promoterv1alpha1.ControllerConfiguration{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      settings.ControllerConfigurationName,
-				Namespace: controllerNamespace,
-			},
-			Spec: promoterv1alpha1.ControllerConfigurationSpec{},
+		b := fake.NewClientBuilder().WithScheme(scheme)
+		if scmProvider != nil {
+			b = b.WithObjects(scmProvider)
 		}
-		if withSecretRef {
-			cc.Spec.WebhookReceiver = &promoterv1alpha1.WebhookReceiverConfiguration{
-				GitHub: &promoterv1alpha1.GitHubWebhookReceiverConfiguration{
-					SecretRef: &corev1.LocalObjectReference{Name: secretName},
-				},
-			}
+		if clusterScmProvider != nil {
+			b = b.WithObjects(clusterScmProvider)
 		}
-
-		b := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cc)
 		if withSecret {
 			b = b.WithObjects(&corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
@@ -110,12 +101,44 @@ var _ = Describe("GitHub webhook signature enforcement in postRoot", func() {
 			})
 		}
 		fakeClient := b.Build()
+		return webhookreceiver.NewWebhookReceiverWithClient(fakeClient, nil, controllerNamespace)
+	}
 
-		mgr := settings.NewManager(fakeClient, fakeClient, settings.ManagerConfig{
-			ControllerNamespace: controllerNamespace,
-		})
-		wr := webhookreceiver.NewWebhookReceiverWithClient(fakeClient, nil, mgr)
-		return wr
+	// buildScmProvider creates a namespaced ScmProvider with optional webhook secret reference.
+	buildScmProvider := func(withWebhookSecret bool) *promoterv1alpha1.ScmProvider {
+		smp := &promoterv1alpha1.ScmProvider{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-github-provider",
+				Namespace: controllerNamespace,
+			},
+			Spec: promoterv1alpha1.ScmProviderSpec{
+				GitHub: &promoterv1alpha1.GitHub{
+					AppID: 12345,
+				},
+			},
+		}
+		if withWebhookSecret {
+			smp.Spec.GitHub.WebhookSecret = &corev1.LocalObjectReference{Name: secretName}
+		}
+		return smp
+	}
+
+	// buildClusterScmProvider creates a ClusterScmProvider with optional webhook secret reference.
+	buildClusterScmProvider := func(withWebhookSecret bool) *promoterv1alpha1.ClusterScmProvider {
+		csmp := &promoterv1alpha1.ClusterScmProvider{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "my-cluster-github-provider",
+			},
+			Spec: promoterv1alpha1.ScmProviderSpec{
+				GitHub: &promoterv1alpha1.GitHub{
+					AppID: 12345,
+				},
+			},
+		}
+		if withWebhookSecret {
+			csmp.Spec.GitHub.WebhookSecret = &corev1.LocalObjectReference{Name: secretName}
+		}
+		return csmp
 	}
 
 	// invoke sends a POST request with a GitHub event header and optional signature.
@@ -130,46 +153,65 @@ var _ = Describe("GitHub webhook signature enforcement in postRoot", func() {
 		return rr.Code
 	}
 
-	Context("when no webhook secret is configured", func() {
+	Context("when no ScmProvider has a webhook secret configured", func() {
 		It("allows requests without any signature header (returns 204 – no matching CTP)", func() {
-			wr := buildReceiver(false, false)
+			wr := buildReceiver(buildScmProvider(false), nil, false)
 			Expect(invoke(wr, "")).To(Equal(http.StatusNoContent))
 		})
 
 		It("allows requests even when a signature header is present", func() {
-			wr := buildReceiver(false, false)
+			wr := buildReceiver(buildScmProvider(false), nil, false)
 			Expect(invoke(wr, computeGitHubSig(signingSecret, body))).To(Equal(http.StatusNoContent))
 		})
 	})
 
-	Context("when a webhook secret is configured", func() {
+	Context("when a namespaced ScmProvider has a webhook secret configured", func() {
 		It("accepts a request with a valid signature (returns 204 – no matching CTP)", func() {
-			wr := buildReceiver(true, true)
+			wr := buildReceiver(buildScmProvider(true), nil, true)
 			sig := computeGitHubSig(signingSecret, body)
 			Expect(invoke(wr, sig)).To(Equal(http.StatusNoContent))
 		})
 
 		It("rejects a request with an invalid signature with 401", func() {
-			wr := buildReceiver(true, true)
+			wr := buildReceiver(buildScmProvider(true), nil, true)
 			Expect(invoke(wr, "sha256=00000000000000000000000000000000000000000000000000000000000000ff")).
 				To(Equal(http.StatusUnauthorized))
 		})
 
 		It("rejects a request with a missing signature with 401", func() {
-			wr := buildReceiver(true, true)
+			wr := buildReceiver(buildScmProvider(true), nil, true)
 			Expect(invoke(wr, "")).To(Equal(http.StatusUnauthorized))
 		})
 
 		It("returns 500 when the referenced secret does not exist", func() {
-			wr := buildReceiver(true, false) // secretRef configured but Secret not created
+			wr := buildReceiver(buildScmProvider(true), nil, false)
+			Expect(invoke(wr, computeGitHubSig(signingSecret, body))).
+				To(Equal(http.StatusInternalServerError))
+		})
+	})
+
+	Context("when a ClusterScmProvider has a webhook secret configured", func() {
+		It("accepts a request with a valid signature (returns 204 – no matching CTP)", func() {
+			wr := buildReceiver(nil, buildClusterScmProvider(true), true)
+			sig := computeGitHubSig(signingSecret, body)
+			Expect(invoke(wr, sig)).To(Equal(http.StatusNoContent))
+		})
+
+		It("rejects a request with a missing signature with 401", func() {
+			wr := buildReceiver(nil, buildClusterScmProvider(true), true)
+			Expect(invoke(wr, "")).To(Equal(http.StatusUnauthorized))
+		})
+
+		It("returns 500 when the referenced secret does not exist", func() {
+			wr := buildReceiver(nil, buildClusterScmProvider(true), false)
 			Expect(invoke(wr, computeGitHubSig(signingSecret, body))).
 				To(Equal(http.StatusInternalServerError))
 		})
 	})
 
 	Context("non-GitHub providers", func() {
-		It("does not verify signatures for GitLab webhooks even when a GitHub secret is configured", func() {
-			wr := buildReceiver(true, true)
+		It("does not verify signatures for GitLab webhooks even when a ScmProvider has a GitHub secret configured", func() {
+			wr := buildReceiver(buildScmProvider(true), nil, true)
 			req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(string(body)))
 			req.Header.Set("X-Gitlab-Event", "Push Hook")
 			// No signature header – signature check is skipped for non-GitHub providers.

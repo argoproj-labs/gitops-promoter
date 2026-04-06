@@ -130,6 +130,30 @@ spec:
                     format: int64
                     minimum: 0
                     type: integer
+                  webhookSecret:
+                    description: |-
+                      WebhookSecret references a Kubernetes Secret that contains the GitHub webhook signing secret
+                      used to validate the X-Hub-Signature-256 header on incoming webhook deliveries.
+                      The Secret must have a key named "webhookSecret" whose value is the signing secret
+                      configured in the GitHub App or repository webhook settings.
+
+                      For a namespaced ScmProvider the Secret must be in the same namespace as the ScmProvider.
+                      For a ClusterScmProvider the Secret must be in the controller's namespace.
+
+                      When set, the webhook receiver rejects requests with a missing or invalid signature (HTTP 401).
+                      When absent, signature verification is skipped and all requests are accepted.
+                    properties:
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                    type: object
+                    x-kubernetes-map-type: atomic
                 required:
                 - appID
                 type: object
