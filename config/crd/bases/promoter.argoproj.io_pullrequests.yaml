@@ -65,6 +65,15 @@ spec:
                 description: Commit contains configuration for how we will merge/squash/etc
                   the pull request.
                 properties:
+                  mergeStrategy:
+                    default: merge
+                    description: |-
+                      MergeStrategy is the strategy to use when merging the pull request. Can be "merge" or "squash".
+                      Defaults to "merge" if not specified.
+                    enum:
+                    - merge
+                    - squash
+                    type: string
                   message:
                     description: Message is the commit message that will be written
                       for the commit that's made when merging the PR.

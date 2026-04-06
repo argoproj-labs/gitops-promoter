@@ -63,10 +63,25 @@ type PullRequestSpec struct {
 	State PullRequestState `json:"state"`
 }
 
+// PullRequestMergeStrategy defines the strategy to use when merging a pull request.
+type PullRequestMergeStrategy string
+
+const (
+	// MergeStrategyMerge creates a merge commit, preserving all commits from the source branch.
+	MergeStrategyMerge PullRequestMergeStrategy = "merge"
+	// MergeStrategySquash squashes all commits from the source branch into a single commit.
+	MergeStrategySquash PullRequestMergeStrategy = "squash"
+)
+
 // CommitConfiguration defines the commit configuration for how we will merge/squash/etc the pull request.
 type CommitConfiguration struct {
 	// Message is the commit message that will be written for the commit that's made when merging the PR.
 	Message string `json:"message"`
+	// MergeStrategy is the strategy to use when merging the pull request. Can be "merge" or "squash".
+	// Defaults to "merge" if not specified.
+	// +kubebuilder:validation:Enum=merge;squash
+	// +kubebuilder:default:=merge
+	MergeStrategy PullRequestMergeStrategy `json:"mergeStrategy,omitempty"`
 }
 
 // PullRequestStatus defines the observed state of PullRequest

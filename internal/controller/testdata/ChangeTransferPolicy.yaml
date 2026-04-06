@@ -12,6 +12,10 @@ spec:
   proposedCommitStatuses:
   - key: security-scan
   - key: promoter-previous-environment
+  commit:
+    # mergeStrategy controls how the PR is merged. Can be "merge" (default) or "squash".
+    # "merge" preserves all individual commits; "squash" combines them into a single commit.
+    mergeStrategy: merge
 status:
   conditions:
     # The Ready condition indicates that the resource has been successfully reconciled, when there is an error during
