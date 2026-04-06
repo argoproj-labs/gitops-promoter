@@ -21,7 +21,7 @@ type GitHub struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Minimum=0
 	InstallationID int64 `json:"installationID,omitempty"`
-	// WebhookSecret references a Kubernetes Secret that contains the GitHub webhook signing secret
+	// WebhookSecretRef references a Kubernetes Secret that contains the GitHub webhook signing secret
 	// used to validate the X-Hub-Signature-256 header on incoming webhook deliveries.
 	// The Secret must have a key named "webhookSecret" whose value is the signing secret
 	// configured in the GitHub App or repository webhook settings.
@@ -32,7 +32,7 @@ type GitHub struct {
 	// When set, the webhook receiver rejects requests with a missing or invalid signature (HTTP 401).
 	// When absent, signature verification is skipped and all requests are accepted.
 	// +optional
-	WebhookSecret *corev1.LocalObjectReference `json:"webhookSecret,omitempty"`
+	WebhookSecretRef *corev1.LocalObjectReference `json:"webhookSecretRef,omitempty"`
 }
 
 // GitLab is a GitLab SCM provider configuration. It is used to configure the GitLab settings.

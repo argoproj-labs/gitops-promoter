@@ -42,16 +42,17 @@ To enable signature verification:
 
 2. **Set the same value** as the *Secret* field when configuring the webhook in your GitHub App or repository webhook settings.
 
-3. **Reference the secret** in the `ScmProvider` (or `ClusterScmProvider`) `spec.github.webhookSecret`:
+3. **Reference the secret** in the `ScmProvider` (or `ClusterScmProvider`) `spec.github.webhookSecretRef`:
 
    ```yaml
    spec:
      github:
        appID: 12345
-       webhookSecret:
+       webhookSecretRef:
          name: github-webhook-secret
    ```
 
-When configured, the webhook receiver checks the `X-Hub-Signature-256` header against the HMAC-SHA256 computed from the shared secret. Requests with a missing or invalid signature are rejected with HTTP 401 before any reconciliation is triggered. The comparison uses `hmac.Equal` (constant-time) to prevent timing attacks.
+When configured, the webhook receiver checks the `X-Hub-Signature-256` header on requests that match a `ChangeTransferPolicy` backed by this provider. Requests with a missing or invalid signature are rejected with HTTP 401.
 
-Signature verification is enabled as soon as at least one `ScmProvider` or `ClusterScmProvider` has `spec.github.webhookSecret` set. If multiple providers have secrets configured, a request is accepted when its signature matches any one of them.
+> [!WARNING]
+> Signature verification is applied per `ScmProvider`. A provider without `webhookSecretRef` accepts all requests without a signature check. **For full protection, configure `webhookSecretRef` on every `(Cluster)ScmProvider`.**

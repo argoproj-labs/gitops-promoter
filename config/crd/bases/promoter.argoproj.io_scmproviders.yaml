@@ -129,9 +129,9 @@ spec:
                     format: int64
                     minimum: 0
                     type: integer
-                  webhookSecret:
+                  webhookSecretRef:
                     description: |-
-                      WebhookSecret references a Kubernetes Secret that contains the GitHub webhook signing secret
+                      WebhookSecretRef references a Kubernetes Secret that contains the GitHub webhook signing secret
                       used to validate the X-Hub-Signature-256 header on incoming webhook deliveries.
                       The Secret must have a key named "webhookSecret" whose value is the signing secret
                       configured in the GitHub App or repository webhook settings.

@@ -194,21 +194,6 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify GitHub webhook signature when a signing secret is configured.
-	if provider == ProviderGitHub {
-		rejected, statusCode, errMsg := wr.verifyGitHubWebhookSignature(r.Context(), r.Header.Get("X-Hub-Signature-256"), jsonBytes)
-		if rejected {
-			if statusCode == http.StatusUnauthorized {
-				logger.V(4).Info("rejected GitHub webhook request due to signature mismatch")
-			} else {
-				logger.Error(errors.New(errMsg), "error verifying GitHub webhook signature")
-			}
-			responseCode = statusCode
-			http.Error(w, errMsg, responseCode)
-			return
-		}
-	}
-
 	ctp, err := wr.findChangeTransferPolicy(r.Context(), provider, jsonBytes)
 	if err != nil {
 		logger.V(4).Info("could not find any matching ChangeTransferPolicies", "error", err)
@@ -221,6 +206,22 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		responseCode = http.StatusNoContent
 		w.WriteHeader(responseCode)
 		return
+	}
+
+	// For GitHub webhooks, verify the signature against the secret configured on the ScmProvider
+	// that backs this CTP's GitRepository (if one is configured).
+	if provider == ProviderGitHub {
+		rejected, statusCode, errMsg := wr.verifyGitHubWebhookSignatureForCTP(r.Context(), r.Header.Get("X-Hub-Signature-256"), jsonBytes, ctp)
+		if rejected {
+			if statusCode == http.StatusUnauthorized {
+				logger.V(4).Info("rejected GitHub webhook request due to signature mismatch")
+			} else {
+				logger.Error(errors.New(errMsg), "error verifying GitHub webhook signature")
+			}
+			responseCode = statusCode
+			http.Error(w, errMsg, responseCode)
+			return
+		}
 	}
 
 	ctpFound = true
@@ -360,87 +361,94 @@ func (wr *WebhookReceiver) extractDeliveryID(r *http.Request) string {
 	return ""
 }
 
-// verifyGitHubWebhookSignature checks the X-Hub-Signature-256 header against the computed
-// HMAC-SHA256 of the request body using the signing secrets from all ScmProviders and
-// ClusterScmProviders that have a GitHub webhook secret configured.
+// verifyGitHubWebhookSignatureForCTP verifies the X-Hub-Signature-256 header for a GitHub
+// webhook delivery using the signing secret configured on the (Cluster)ScmProvider that backs
+// the given CTP's GitRepository.
 //
-// The check is skipped (returns false, 0, "") when no ScmProvider/ClusterScmProvider has a
-// webhookSecret configured for its GitHub spec.
+// If the ScmProvider has no webhookSecretRef configured, verification is skipped (returns false, 0, "").
+// This means webhooks from providers without a secret are always accepted; see the security
+// documentation for guidance on configuring secrets for all providers.
 //
 // Returns (false, 0, "") when:
-//   - no ScmProvider/ClusterScmProvider has a GitHub webhookSecret configured (verification disabled)
-//   - the signature is valid against at least one configured secret
+//   - the ScmProvider has no webhookSecretRef configured (verification disabled for this provider)
+//   - the signature is valid
 //
 // Returns (true, statusCode, errorMessage) when:
-//   - a configuration or secret lookup error occurred → 500
+//   - the GitRepository or ScmProvider could not be looked up → 500
 //   - the X-Hub-Signature-256 header is missing → 401
-//   - the signature does not match any configured secret → 401
-func (wr *WebhookReceiver) verifyGitHubWebhookSignature(ctx context.Context, sig string, body []byte) (rejected bool, statusCode int, errMsg string) {
-	// Collect webhook secrets from all namespaced ScmProviders that have a GitHub webhookSecret.
-	scmProviderList := &promoterv1alpha1.ScmProviderList{}
-	if err := wr.k8sClient.List(ctx, scmProviderList); err != nil {
-		return true, http.StatusInternalServerError, "error listing SCM providers"
+//   - the signature is invalid → 401
+func (wr *WebhookReceiver) verifyGitHubWebhookSignatureForCTP(ctx context.Context, sig string, body []byte, ctp *promoterv1alpha1.ChangeTransferPolicy) (rejected bool, statusCode int, errMsg string) {
+	// Look up the GitRepository that this CTP references.
+	gitRepo := &promoterv1alpha1.GitRepository{}
+	if err := wr.k8sClient.Get(ctx, client.ObjectKey{
+		Namespace: ctp.Namespace,
+		Name:      ctp.Spec.RepositoryReference.Name,
+	}, gitRepo); err != nil {
+		return true, http.StatusInternalServerError, "error retrieving git repository for webhook verification"
 	}
 
-	// Collect webhook secrets from all ClusterScmProviders that have a GitHub webhookSecret.
-	clusterScmProviderList := &promoterv1alpha1.ClusterScmProviderList{}
-	if err := wr.k8sClient.List(ctx, clusterScmProviderList); err != nil {
-		return true, http.StatusInternalServerError, "error listing cluster SCM providers"
-	}
+	// Determine the ScmProvider and its webhookSecretRef / namespace.
+	var webhookSecretRef *corev1.LocalObjectReference
+	var secretNamespace string
 
-	var webhookSecrets [][]byte
-
-	for i := range scmProviderList.Items {
-		smp := scmProviderList.Items[i]
-		if smp.Spec.GitHub == nil || smp.Spec.GitHub.WebhookSecret == nil {
-			continue
-		}
-		secret := &corev1.Secret{}
+	switch gitRepo.Spec.ScmProviderRef.Kind {
+	case promoterv1alpha1.ScmProviderKind:
+		scmProvider := &promoterv1alpha1.ScmProvider{}
 		if err := wr.k8sClient.Get(ctx, client.ObjectKey{
-			Namespace: smp.Namespace,
-			Name:      smp.Spec.GitHub.WebhookSecret.Name,
-		}, secret); err != nil {
-			return true, http.StatusInternalServerError, "error retrieving webhook signing secret"
+			Namespace: ctp.Namespace,
+			Name:      gitRepo.Spec.ScmProviderRef.Name,
+		}, scmProvider); err != nil {
+			return true, http.StatusInternalServerError, "error retrieving SCM provider for webhook verification"
 		}
-		if v, ok := secret.Data["webhookSecret"]; ok {
-			webhookSecrets = append(webhookSecrets, v)
+		if scmProvider.Spec.GitHub == nil || scmProvider.Spec.GitHub.WebhookSecretRef == nil {
+			// No secret configured for this provider – skip verification.
+			return false, 0, ""
 		}
-	}
+		webhookSecretRef = scmProvider.Spec.GitHub.WebhookSecretRef
+		secretNamespace = scmProvider.Namespace
 
-	for i := range clusterScmProviderList.Items {
-		csmp := clusterScmProviderList.Items[i]
-		if csmp.Spec.GitHub == nil || csmp.Spec.GitHub.WebhookSecret == nil {
-			continue
+	case promoterv1alpha1.ClusterScmProviderKind:
+		clusterScmProvider := &promoterv1alpha1.ClusterScmProvider{}
+		if err := wr.k8sClient.Get(ctx, client.ObjectKey{
+			Name: gitRepo.Spec.ScmProviderRef.Name,
+		}, clusterScmProvider); err != nil {
+			return true, http.StatusInternalServerError, "error retrieving cluster SCM provider for webhook verification"
 		}
+		if clusterScmProvider.Spec.GitHub == nil || clusterScmProvider.Spec.GitHub.WebhookSecretRef == nil {
+			// No secret configured for this provider – skip verification.
+			return false, 0, ""
+		}
+		webhookSecretRef = clusterScmProvider.Spec.GitHub.WebhookSecretRef
 		// ClusterScmProvider secrets live in the controller's namespace by convention.
-		secret := &corev1.Secret{}
-		if err := wr.k8sClient.Get(ctx, client.ObjectKey{
-			Namespace: wr.controllerNamespace,
-			Name:      csmp.Spec.GitHub.WebhookSecret.Name,
-		}, secret); err != nil {
-			return true, http.StatusInternalServerError, "error retrieving webhook signing secret"
-		}
-		if v, ok := secret.Data["webhookSecret"]; ok {
-			webhookSecrets = append(webhookSecrets, v)
-		}
+		secretNamespace = wr.controllerNamespace
+
+	default:
+		// Unknown provider kind – skip verification.
+		return false, 0, ""
 	}
 
-	if len(webhookSecrets) == 0 {
-		// No secrets configured – verification is disabled.
-		return false, 0, ""
+	secret := &corev1.Secret{}
+	if err := wr.k8sClient.Get(ctx, client.ObjectKey{
+		Namespace: secretNamespace,
+		Name:      webhookSecretRef.Name,
+	}, secret); err != nil {
+		return true, http.StatusInternalServerError, "error retrieving webhook signing secret"
+	}
+
+	webhookSecret, ok := secret.Data["webhookSecret"]
+	if !ok {
+		return true, http.StatusInternalServerError, "webhook signing secret missing required key 'webhookSecret'"
 	}
 
 	if sig == "" {
 		return true, http.StatusUnauthorized, "missing X-Hub-Signature-256 header"
 	}
 
-	for _, secret := range webhookSecrets {
-		if VerifyGitHubSignature(secret, body, sig) {
-			return false, 0, ""
-		}
+	if !VerifyGitHubSignature(webhookSecret, body, sig) {
+		return true, http.StatusUnauthorized, "invalid webhook signature"
 	}
 
-	return true, http.StatusUnauthorized, "invalid webhook signature"
+	return false, 0, ""
 }
 
 // VerifyGitHubSignature computes HMAC-SHA256(secret, body) and compares it to the provided
