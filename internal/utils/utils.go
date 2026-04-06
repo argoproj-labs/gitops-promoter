@@ -19,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -191,23 +192,35 @@ func GetChangeTransferPolicyName(promotionStrategyName, environmentBranch string
 	return fmt.Sprintf("%s-%s", promotionStrategyName, environmentBranch)
 }
 
-// KubeSafeUniqueName Creates a safe name by replacing all non-alphanumeric characters with a hyphen and truncating to a max of 255 characters, then appending a hash of the name.
+// KubeSafeUniqueName returns a DNS-1123 subdomain-safe unique name: lowercase, non-alphanumerics become '-',
+// then a rune budget is reserved for "-"+FNV hash (hash of the full sanitized string) under DNS1123 max length.
+//
+// When trimming and truncation leave no usable stem (for example input that is only spaces or punctuation, so
+// sanitization is all hyphens), the stem falls back to "x" so the result is still "x-<hash>" instead of "-<hash>",
+// which would violate DNS1123 (names must start and end with an alphanumeric character). The same fallback
+// applies if the stem would end up empty after TruncateString + TrimRight.
 func KubeSafeUniqueName(ctx context.Context, name string) string {
-	name = m1.ReplaceAllString(name, "-")
-	name = strings.ToLower(name)
-
+	s := strings.ToLower(m1.ReplaceAllString(name, "-"))
 	h := fnv.New32a()
-	_, err := h.Write([]byte(name))
-	if err != nil {
+	if _, err := h.Write([]byte(s)); err != nil {
 		log.FromContext(ctx).Error(err, "Failed to write to hash")
 	}
 	hash := strconv.FormatUint(uint64(h.Sum32()), 16)
-
-	if len(name) > 0 && name[len(name)-1] == '-' {
-		name = name[:len(name)-1]
+	limit := validation.DNS1123SubdomainMaxLength
+	if len(hash)+1 > limit {
+		return TruncateString(hash, limit)
 	}
-	name = name + "-" + hash
-	return TruncateString(name, 255-len(hash)-1)
+	budget := limit - len(hash) - 1 // runes for stem before the final "-<hash>"
+	stem := strings.Trim(s, "-")
+	if stem == "" {
+		stem = "x"
+	}
+	stem = TruncateString(stem, budget)
+	stem = strings.TrimRight(stem, "-")
+	if stem == "" {
+		stem = "x"
+	}
+	return stem + "-" + hash
 }
 
 // KubeSafeLabel Creates a safe label buy truncating from the beginning of 'name' to a max of 63 characters, if the name starts with a hyphen it will be removed.
