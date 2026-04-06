@@ -2550,7 +2550,6 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
-
 })
 
 var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy Zero Applicable Environments", Ordered, func() {
