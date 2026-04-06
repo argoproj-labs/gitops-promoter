@@ -28,10 +28,10 @@ type WhenWithOutputSpecApplyConfiguration struct {
 	//
 	// Available variables:
 	// - PromotionStrategy (PromotionStrategy): the full PromotionStrategy spec and status
-	// - Environment (EnvironmentStatus): current environment's status from PromotionStrategy
-	// - Phase (string): current phase (success/pending/failure)
-	// - ReportedSha (string): the SHA being validated
-	// - LastSuccessfulSha (string): last SHA that achieved success for this environment
+	// - Environment (EnvironmentStatus): current environment's status from PromotionStrategy (environments context only; nil in promotionstrategy context)
+	// - Phase (string): current phase — per-environment in environments context; aggregate of all branches in promotionstrategy context (success only if all succeeded, failure if any failed, pending otherwise)
+	// - ReportedSha (string): the SHA being validated (environments context only; empty in promotionstrategy context)
+	// - LastSuccessfulSha (string): last SHA that achieved success for this environment (environments context only; empty in promotionstrategy context)
 	// - TriggerOutput (map[string]any): custom data from the previous when.output.expression evaluation
 	// - ResponseOutput (map[string]any): response data from the previous HTTP request (if any)
 	//

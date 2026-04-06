@@ -32,16 +32,14 @@ import (
 // the previous run (trigger mode only).
 //
 // Template variables:
-// - {{ .ReportedSha }}: the commit SHA being reported on (based on reportOn setting)
-// - {{ .LastSuccessfulSha }}: last SHA that achieved success (empty until first success)
-// - {{ .Phase }}: phase from previous reconcile (success/pending/failure, defaults to pending)
+// - {{ .ReportedSha }}: the commit SHA being reported on (environments context only; empty in promotionstrategy context)
+// - {{ .LastSuccessfulSha }}: last SHA that achieved success (environments context only; empty in promotionstrategy context)
+// - {{ .Phase }}: phase from previous reconcile (success/pending/failure, defaults to pending); in promotionstrategy context, aggregate of all branches (success only if all succeeded, failure if any failed, pending otherwise)
 // - {{ .PromotionStrategy }}: full PromotionStrategy object
-// - {{ .Environment }}: current environment status from PromotionStrategy
+// - {{ .Environment }}: current environment status from PromotionStrategy (environments context only; nil in promotionstrategy context)
 // - {{ .NamespaceMetadata.Labels }}: map of labels from the namespace
 // - {{ .NamespaceMetadata.Annotations }}: map of annotations from the namespace
 // - {{ index .TriggerOutput "key" }}, {{ index .ResponseOutput "key" }}: (trigger mode only) from previous reconcile
-//
-// When spec.mode.context is "promotionstrategy", Environment, ReportedSha, and LastSuccessfulSha are not set for the shared request — see ModeSpec.
 //
 // Example: "https://api.example.com/validate/{{ .Environment.Branch }}/{{ .ReportedSha }}"
 type HTTPRequestSpecApplyConfiguration struct {
@@ -66,8 +64,10 @@ type HTTPRequestSpecApplyConfiguration struct {
 	// - Bearer Token: Bearer token authentication (e.g., API keys, JWTs)
 	// - OAuth2: OAuth2 client credentials flow for obtaining access tokens
 	// - TLS: Mutual TLS (mTLS) with client certificates
+	// - SCM: Reuses credentials from the ScmProvider referenced by the PromotionStrategy (no extra secret needed)
 	//
-	// All credentials must be stored in Kubernetes secrets and referenced via secretRef fields.
+	// For Basic, Bearer, OAuth2, and TLS, credentials must be stored in Kubernetes secrets and referenced via secretRef fields.
+	// For SCM, credentials are obtained automatically from the SCM provider; just set scm: {}.
 	//
 	// Examples:
 	// # Basic Auth
@@ -94,6 +94,10 @@ type HTTPRequestSpecApplyConfiguration struct {
 	// tls:
 	// secretRef:
 	// name: my-tls-cert
+	//
+	// # SCM Provider Credentials
+	// authentication:
+	// scm: {}
 	Authentication *HTTPAuthenticationApplyConfiguration `json:"authentication,omitempty"`
 }
 

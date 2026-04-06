@@ -198,10 +198,10 @@ type WhenWithOutputSpec struct {
 	//
 	// Available variables:
 	//   - PromotionStrategy (PromotionStrategy): the full PromotionStrategy spec and status
-	//   - Environment (EnvironmentStatus): current environment's status from PromotionStrategy
-	//   - Phase (string): current phase (success/pending/failure)
-	//   - ReportedSha (string): the SHA being validated
-	//   - LastSuccessfulSha (string): last SHA that achieved success for this environment
+	//   - Environment (EnvironmentStatus): current environment's status from PromotionStrategy (environments context only; nil in promotionstrategy context)
+	//   - Phase (string): current phase — per-environment in environments context; aggregate of all branches in promotionstrategy context (success only if all succeeded, failure if any failed, pending otherwise)
+	//   - ReportedSha (string): the SHA being validated (environments context only; empty in promotionstrategy context)
+	//   - LastSuccessfulSha (string): last SHA that achieved success for this environment (environments context only; empty in promotionstrategy context)
 	//   - TriggerOutput (map[string]any): custom data from the previous when.output.expression evaluation
 	//   - ResponseOutput (map[string]any): response data from the previous HTTP request (if any)
 	//
@@ -263,16 +263,14 @@ type ResponseOutputSpec struct {
 // the previous run (trigger mode only).
 //
 // Template variables:
-//   - {{ .ReportedSha }}: the commit SHA being reported on (based on reportOn setting)
-//   - {{ .LastSuccessfulSha }}: last SHA that achieved success (empty until first success)
-//   - {{ .Phase }}: phase from previous reconcile (success/pending/failure, defaults to pending)
+//   - {{ .ReportedSha }}: the commit SHA being reported on (environments context only; empty in promotionstrategy context)
+//   - {{ .LastSuccessfulSha }}: last SHA that achieved success (environments context only; empty in promotionstrategy context)
+//   - {{ .Phase }}: phase from previous reconcile (success/pending/failure, defaults to pending); in promotionstrategy context, aggregate of all branches (success only if all succeeded, failure if any failed, pending otherwise)
 //   - {{ .PromotionStrategy }}: full PromotionStrategy object
-//   - {{ .Environment }}: current environment status from PromotionStrategy
+//   - {{ .Environment }}: current environment status from PromotionStrategy (environments context only; nil in promotionstrategy context)
 //   - {{ .NamespaceMetadata.Labels }}: map of labels from the namespace
 //   - {{ .NamespaceMetadata.Annotations }}: map of annotations from the namespace
 //   - {{ index .TriggerOutput "key" }}, {{ index .ResponseOutput "key" }}: (trigger mode only) from previous reconcile
-//
-// When spec.mode.context is "promotionstrategy", Environment, ReportedSha, and LastSuccessfulSha are not set for the shared request — see ModeSpec.
 //
 // Example: "https://api.example.com/validate/{{ .Environment.Branch }}/{{ .ReportedSha }}"
 type HTTPRequestSpec struct {
@@ -309,8 +307,10 @@ type HTTPRequestSpec struct {
 	// - Bearer Token: Bearer token authentication (e.g., API keys, JWTs)
 	// - OAuth2: OAuth2 client credentials flow for obtaining access tokens
 	// - TLS: Mutual TLS (mTLS) with client certificates
+	// - SCM: Reuses credentials from the ScmProvider referenced by the PromotionStrategy (no extra secret needed)
 	//
-	// All credentials must be stored in Kubernetes secrets and referenced via secretRef fields.
+	// For Basic, Bearer, OAuth2, and TLS, credentials must be stored in Kubernetes secrets and referenced via secretRef fields.
+	// For SCM, credentials are obtained automatically from the SCM provider; just set scm: {}.
 	//
 	// Examples:
 	//   # Basic Auth
@@ -337,6 +337,10 @@ type HTTPRequestSpec struct {
 	//     tls:
 	//       secretRef:
 	//         name: my-tls-cert
+	//
+	//   # SCM Provider Credentials
+	//   authentication:
+	//     scm: {}
 	//
 	// +optional
 	Authentication *HTTPAuthentication `json:"authentication,omitempty"`
