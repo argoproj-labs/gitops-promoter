@@ -35,6 +35,8 @@ type GitCommitStatusStatusApplyConfiguration struct {
 	// Each environment entry tracks both the ProposedHydratedSha (where status is reported) and the
 	// ActiveHydratedSha, with TargetedSha indicating which one was actually evaluated.
 	Environments []GitCommitStatusEnvironmentStatusApplyConfiguration `json:"environments,omitempty"`
+	// ObservedGeneration is the generation of the resource that was last reconciled.
+	ObservedGeneration *int64 `json:"observedGeneration,omitempty"`
 	// Conditions represent the latest available observations of the GitCommitStatus's state.
 	// Standard condition types include "Ready" which aggregates the status of all environments.
 	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
@@ -56,6 +58,14 @@ func (b *GitCommitStatusStatusApplyConfiguration) WithEnvironments(values ...*Gi
 		}
 		b.Environments = append(b.Environments, *values[i])
 	}
+	return b
+}
+
+// WithObservedGeneration sets the ObservedGeneration field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ObservedGeneration field is set to the value of the last call.
+func (b *GitCommitStatusStatusApplyConfiguration) WithObservedGeneration(value int64) *GitCommitStatusStatusApplyConfiguration {
+	b.ObservedGeneration = &value
 	return b
 }
 

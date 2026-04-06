@@ -29,6 +29,8 @@ type ArgoCDCommitStatusStatusApplyConfiguration struct {
 	// ApplicationsSelected represents the Argo CD applications that are selected by the commit status.
 	// This field is sorted by environment (same order as the referenced PromotionStrategy), then namespace, then name.
 	ApplicationsSelected []ApplicationsSelectedApplyConfiguration `json:"applicationsSelected,omitempty"`
+	// ObservedGeneration is the generation of the resource that was last reconciled.
+	ObservedGeneration *int64 `json:"observedGeneration,omitempty"`
 	// Conditions Represents the observations of the current state.
 	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
 }
@@ -49,6 +51,14 @@ func (b *ArgoCDCommitStatusStatusApplyConfiguration) WithApplicationsSelected(va
 		}
 		b.ApplicationsSelected = append(b.ApplicationsSelected, *values[i])
 	}
+	return b
+}
+
+// WithObservedGeneration sets the ObservedGeneration field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ObservedGeneration field is set to the value of the last call.
+func (b *ArgoCDCommitStatusStatusApplyConfiguration) WithObservedGeneration(value int64) *ArgoCDCommitStatusStatusApplyConfiguration {
+	b.ObservedGeneration = &value
 	return b
 }
 

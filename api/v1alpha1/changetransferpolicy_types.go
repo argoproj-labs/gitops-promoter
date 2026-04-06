@@ -105,7 +105,7 @@ type HydratorMetadata struct {
 	// DrySha is the SHA of the commit that was used as the dry source for hydration.
 	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
 	// +kubebuilder:validation:MaxLength=64
-	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})?$`
 	DrySha string `json:"drySha,omitempty"`
 	// Author is the author of the dry commit that was used to hydrate the branch.
 	Author string `json:"author,omitempty"`
@@ -124,7 +124,7 @@ type CommitShaState struct {
 	// Sha is the SHA of the commit in the branch
 	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
 	// +kubebuilder:validation:MaxLength=64
-	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})?$`
 	Sha string `json:"sha,omitempty"`
 	// CommitTime is the time the commit was made
 	CommitTime metav1.Time `json:"commitTime,omitempty"`
@@ -171,6 +171,10 @@ type ChangeTransferPolicyStatus struct {
 	// History is in reverse chronological order (newest is first).
 	History []History `json:"history,omitempty"`
 
+	// ObservedGeneration is the generation of the resource that was last reconciled.
+	// +kubebuilder:validation:Optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// Conditions Represents the observations of the current state.
 	// +patchMergeKey=type
 	// +patchStrategy=merge
@@ -204,7 +208,7 @@ type PullRequestCommonStatus struct {
 	// ID is the unique identifier of the pull request, set by the SCM.
 	ID string `json:"id,omitempty"`
 	// State is the state of the pull request.
-	// +kubebuilder:validation:Enum=closed;merged;open
+	// +kubebuilder:validation:Enum="";closed;merged;open
 	State PullRequestState `json:"state,omitempty"`
 	// PRCreationTime is the time when the pull request was created.
 	PRCreationTime metav1.Time `json:"prCreationTime,omitempty"`

@@ -346,6 +346,10 @@ type WebRequestCommitStatusStatus struct {
 	// +optional
 	Environments []WebRequestCommitStatusEnvironmentStatus `json:"environments,omitempty"`
 
+	// ObservedGeneration is the generation of the resource that was last reconciled.
+	// +kubebuilder:validation:Optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// Conditions represent the latest available observations of an object's state
 	// +listType=map
 	// +listMapKey=type

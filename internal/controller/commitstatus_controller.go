@@ -31,6 +31,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/azuredevops"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
@@ -38,6 +39,7 @@ import (
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils/statusapply"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/fields"
@@ -79,7 +81,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	var cs promoterv1alpha1.CommitStatus
 	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &cs, r.Client, r.Recorder, &result, &err)
+	defer utils.HandleReconciliationResult(ctx, startTime, &cs, func() any { return r.buildStatusApplyConfiguration(&cs) }, r.Client, constants.CommitStatusControllerFieldOwner, r.Recorder, &result, &err)
 
 	err = r.Get(ctx, req.NamespacedName, &cs, &client.GetOptions{})
 	if err != nil {
@@ -255,4 +257,15 @@ func (r *CommitStatusReconciler) triggerReconcileChangeTransferPolicy(ctx contex
 	}
 
 	return nil
+}
+
+func (r *CommitStatusReconciler) buildStatusApplyConfiguration(v *promoterv1alpha1.CommitStatus) any {
+	status := acv1alpha1.CommitStatusStatus().
+		WithObservedGeneration(v.GetGeneration()).
+		WithId(v.Status.Id).
+		WithSha(v.Status.Sha).
+		WithPhase(v.Status.Phase).
+		WithConditions(statusapply.ConditionsToApplyConfiguration(v.Status.Conditions)...)
+	return acv1alpha1.CommitStatus(v.Name, v.Namespace).
+		WithStatus(status)
 }

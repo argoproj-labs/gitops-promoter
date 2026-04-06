@@ -29,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	bitbucket_cloud "github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_cloud"
@@ -40,6 +41,7 @@ import (
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils/statusapply"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -78,7 +80,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	var pr promoterv1alpha1.PullRequest
 	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &pr, r.Client, r.Recorder, &result, &err)
+	defer utils.HandleReconciliationResult(ctx, startTime, &pr, func() any { return r.buildStatusApplyConfiguration(&pr) }, r.Client, constants.PullRequestControllerFieldOwner, r.Recorder, &result, &err)
 
 	if err := r.Get(ctx, req.NamespacedName, &pr); err != nil {
 		if errors.IsNotFound(err) {
@@ -472,4 +474,21 @@ func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr *promot
 	}
 	pr.Status.State = promoterv1alpha1.PullRequestClosed
 	return nil
+}
+
+func (r *PullRequestReconciler) buildStatusApplyConfiguration(v *promoterv1alpha1.PullRequest) any {
+	status := acv1alpha1.PullRequestStatus().
+		WithObservedGeneration(v.GetGeneration()).
+		WithID(v.Status.ID).
+		WithState(v.Status.State).
+		WithUrl(v.Status.Url).
+		WithConditions(statusapply.ConditionsToApplyConfiguration(v.Status.Conditions)...)
+	if !v.Status.PRCreationTime.IsZero() {
+		status = status.WithPRCreationTime(v.Status.PRCreationTime)
+	}
+	if v.Status.ExternallyMergedOrClosed != nil {
+		status = status.WithExternallyMergedOrClosed(*v.Status.ExternallyMergedOrClosed)
+	}
+	return acv1alpha1.PullRequest(v.Name, v.Namespace).
+		WithStatus(status)
 }
