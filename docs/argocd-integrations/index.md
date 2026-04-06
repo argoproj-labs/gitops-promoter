@@ -112,6 +112,33 @@ metadata:
     promoter.argoproj.io/has-promotionstrategy: "true"
 ```
 
+### Linking from Pull Requests
+
+You can link to the extension view by constructing the URL from PromotionStrategy metadata:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ControllerConfiguration
+spec:
+  pullRequest:
+    template:
+      description: |
+        ...
+
+        {{- with .PromotionStrategy }}
+        {{- $promoURL := urlParse "https://argocd.example.com" }}
+        {{- $promoTrackID := index .Annotations "argocd.argoproj.io/tracking-id" }}
+        {{- if $promoTrackID }}
+        {{- $promoApp := index (splitList ":" $promoTrackID) 0 }}
+        {{- $promoQuery := printf "promotionstrategy=%s%%2F%s" .Namespace .Name }}
+        {{- $promoRawQuery := join "&" (list "resource=" "view=GitOps+Promoter" $promoQuery) }}
+        {{- $_ := set $promoURL "path" (printf "/applications/%s" $promoApp) }}
+        {{- $_ = set $promoURL "query" $promoRawQuery }}
+        [View PromotionStrategy in Argo CD]({{ urlJoin $promoURL }})
+        {{- end }}
+        {{- end }}
+```
+
 ## Deep Links
 
 Argo CD supports [deep links](https://argo-cd.readthedocs.io/en/stable/operator-manual/deep_links/) from a resource's details
