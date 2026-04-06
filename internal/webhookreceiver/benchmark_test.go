@@ -20,6 +20,7 @@ package webhookreceiver_test
 //   - no_matching_CTP          – webhook arrives but no CTP SHA matches; cheap path.
 //   - CTP_no_sig_check         – CTP found, ScmProvider has no webhookSecretRef; no HMAC.
 //   - CTP_with_valid_signature – CTP found, ScmProvider has webhookSecretRef, signature valid.
+//   - CTP_with_invalid_signature – CTP found, ScmProvider has webhookSecretRef, signature invalid.
 
 import (
 	"context"
@@ -30,9 +31,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"testing"
-	goruntime "runtime"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -89,7 +90,7 @@ func BenchmarkPostRoot(b *testing.B) {
 		Metrics: metricsserver.Options{BindAddress: "0"},
 		// Do not serve the health check endpoint.
 		HealthProbeBindAddress: "0",
-		Cache: cache.Options{
+		Cache:                  cache.Options{
 			// No namespace restriction – benchmark resources live in "default".
 		},
 	})
@@ -236,7 +237,7 @@ func BenchmarkPostRoot(b *testing.B) {
 	// Push payload whose "before" SHA matches both CTPs above.
 	body := []byte(`{"ref":"refs/heads/main","before":"` + beforeSHA + `","pusher":{"name":"bench"}}`)
 	validSig := computeHMACGitHub(signingSecret, body)
-	wrongSIG := "sha256=0000000000000000000000000000000000000000000000000000000000000000"
+	wrongSig := "sha256=0000000000000000000000000000000000000000000000000000000000000000"
 
 	// Helper to run a single request through the receiver.
 	invoke := func(sig string) {
@@ -267,7 +268,7 @@ func BenchmarkPostRoot(b *testing.B) {
 	b.Run("CTP_no_sig_check", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			invoke("") // no signature header; provider has no secret so it passes through
+			invoke("") // no signature header; provider has no webhookSecretRef configured so it passes through
 		}
 	})
 
@@ -286,7 +287,7 @@ func BenchmarkPostRoot(b *testing.B) {
 	b.Run("CTP_with_invalid_signature", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			invoke(wrongSIG)
+			invoke(wrongSig)
 		}
 	})
 }
