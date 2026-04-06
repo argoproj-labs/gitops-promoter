@@ -391,7 +391,7 @@ func (wr *WebhookReceiver) verifyGitHubWebhookSignature(ctx context.Context, sig
 	var webhookSecrets [][]byte
 
 	for i := range scmProviderList.Items {
-		smp := &scmProviderList.Items[i]
+		smp := scmProviderList.Items[i]
 		if smp.Spec.GitHub == nil || smp.Spec.GitHub.WebhookSecret == nil {
 			continue
 		}
@@ -408,7 +408,7 @@ func (wr *WebhookReceiver) verifyGitHubWebhookSignature(ctx context.Context, sig
 	}
 
 	for i := range clusterScmProviderList.Items {
-		csmp := &clusterScmProviderList.Items[i]
+		csmp := clusterScmProviderList.Items[i]
 		if csmp.Spec.GitHub == nil || csmp.Spec.GitHub.WebhookSecret == nil {
 			continue
 		}
