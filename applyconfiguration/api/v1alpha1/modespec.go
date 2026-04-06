@@ -24,8 +24,17 @@ import (
 // ModeSpecApplyConfiguration represents a declarative configuration of the ModeSpec type for use
 // with apply.
 //
-// ModeSpec defines the operating mode for the WebRequestCommitStatus controller.
-// Exactly one of Polling or Trigger must be specified.
+// ModeSpec defines how the WebRequestCommitStatus controller issues HTTP requests.
+//
+// Exactly one of Polling or Trigger must be set.
+//
+// Context (the context field below) controls request fan-out and what data is available in templates and trigger expressions:
+//
+// - "environments" (default): one HTTP request per environment; each environment has its own phase and status; success.when.expression is evaluated per response and must return a boolean (true → success, false → pending; failure is not expressible).
+//
+// - "promotionstrategy": at most one HTTP request per WebRequestCommitStatus resource; CommitStatuses remain one per environment on each environment’s reportOn SHA. success.when.expression runs once on that shared response — see WhenSpec.Expression for boolean vs per-branch object return shapes.
+//
+// When context is "promotionstrategy", Environment, ReportedSha, and LastSuccessfulSha are not set for the shared HTTP request or for trigger when/output templates; do not reference them in spec.httpRequest (URL, headers, body), descriptionTemplate, urlTemplate, or spec.mode.trigger. Use PromotionStrategy (e.g. status environments) for branch- or SHA-specific values. For description and url templates, {{ .Phase }} is still set per environment when rendering that environment’s CommitStatus.
 type ModeSpecApplyConfiguration struct {
 	// Polling enables interval-based polling mode.
 	// The controller will poll the HTTP endpoint at the specified interval.
@@ -33,13 +42,7 @@ type ModeSpecApplyConfiguration struct {
 	// Trigger enables expression-based triggering mode.
 	// The controller will evaluate the expression to determine when to make HTTP requests.
 	Trigger *TriggerModeSpecApplyConfiguration `json:"trigger,omitempty"`
-	// Context controls whether the controller makes one HTTP request per environment or one per PromotionStrategy.
-	// - "environments" (default): one HTTP request per environment; each environment gets its own phase and status.
-	// - "promotionstrategy": at most one HTTP request per WebRequestCommitStatus; CommitStatuses are still one per environment,
-	// each on that environment's reportOn SHA. The success expression may return a boolean (then every environment gets the
-	// same phase: success or pending) or an object with defaultPhase and per-branch overrides (see success.when.expression).
-	// When context is promotionstrategy, per-environment template variables (Environment, ReportedSha, LastSuccessfulSha)
-	// are not set for the shared HTTP request and trigger templates; do not use them in URL, body, description, or trigger templates.
+	// Context is "environments" (default) or "promotionstrategy". See the ModeSpec type documentation for behavior, template limits, and success expression rules.
 	Context *apiv1alpha1.ContextMode `json:"context,omitempty"`
 }
 

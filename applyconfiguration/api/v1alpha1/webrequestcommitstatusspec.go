@@ -20,7 +20,10 @@ package v1alpha1
 // WebRequestCommitStatusSpecApplyConfiguration represents a declarative configuration of the WebRequestCommitStatusSpec type for use
 // with apply.
 //
-// WebRequestCommitStatusSpec defines the desired state of WebRequestCommitStatus
+// WebRequestCommitStatusSpec defines the desired state of WebRequestCommitStatus.
+//
+// Documentation map: template variables and Sprig rules — HTTPRequestSpec; context (environments vs promotionstrategy) — ModeSpec;
+// success expression after HTTP response — WhenSpec; trigger when/output expressions — WhenWithOutputSpec; persisted trigger/response maps — WebRequestCommitStatusEnvironmentStatus.
 type WebRequestCommitStatusSpecApplyConfiguration struct {
 	// PromotionStrategyRef references the PromotionStrategy this applies to.
 	// The controller will check commits from ALL environments in the referenced PromotionStrategy
@@ -36,50 +39,17 @@ type WebRequestCommitStatusSpecApplyConfiguration struct {
 	// to determine which environments this validation applies to.
 	// Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
 	Key *string `json:"key,omitempty"`
-	// DescriptionTemplate is a human-readable description of this validation that will be shown in the SCM provider
-	// (GitHub, GitLab, etc.) as the commit status description.
-	// Supports Go templates; Sprig functions are available except env, expandenv, getHostByName; urlQueryEscape is also available.
+	// DescriptionTemplate is the human-readable commit status description in the SCM provider (GitHub, GitLab, etc.).
+	// Uses Go templates; variable list and Sprig rules match HTTPRequestSpec (spec.httpRequest). Rendered with the latest
+	// data after the most recent HTTP request and trigger evaluation (unlike spec.httpRequest URL/body/headers, which use pre-request data — see HTTPRequestSpec).
+	// How spec.mode.context restricts template data: see ModeSpec.
 	//
-	// Template data is the latest: rendered after the most recent HTTP request and trigger evaluation, so description/URL reflect current status.
-	//
-	// When spec.mode.context is "environments" (default), template variables include per-environment fields.
-	// When spec.mode.context is "promotionstrategy", {{ .Phase }} is set to each environment's resolved phase when rendering
-	// that environment's CommitStatus (success, pending, or failure from the structured success expression).
-	// Environment, ReportedSha, and LastSuccessfulSha are not set in promotionstrategy context — do not use them here;
-	// use {{ .PromotionStrategy }} (e.g. range over status environments) for branch- or SHA-specific text.
-	//
-	// Available template variables:
-	// - {{ .ReportedSha }}: the commit SHA being reported on (environments context only)
-	// - {{ .LastSuccessfulSha }}: last SHA that achieved success for this environment (environments context only)
-	// - {{ .Phase }}: current phase (success/pending/failure); in promotionstrategy context, the phase for that CommitStatus's branch
-	// - {{ .PromotionStrategy }}: full PromotionStrategy object
-	// - {{ .Environment }}: current environment status from PromotionStrategy (environments context only)
-	// - {{ .NamespaceMetadata.Labels }}: map of labels from the namespace
-	// - {{ .NamespaceMetadata.Annotations }}: map of annotations from the namespace
-	// - {{ index .TriggerOutput "key" }}: (trigger mode only) map from trigger.when.output.expression
-	// - {{ index .ResponseOutput "key" }}: (trigger mode only) map from response.output.expression
-	//
-	// Examples:
-	// - "External approval for {{ .Environment.Branch }}"
-	// - "Checking deployment {{ .ReportedSha | trunc 7 }}"
-	// - "{{ .Phase }} - waiting for external approval"
+	// Examples: "External approval for {{ .Environment.Branch }}", "Checking deployment {{ .ReportedSha | trunc 7 }}", "{{ .Phase }} - waiting for external approval".
 	//
 	// If not specified, defaults to empty string.
 	DescriptionTemplate *string `json:"descriptionTemplate,omitempty"`
-	// UrlTemplate is a link to more details about this validation that will be shown in the SCM provider
-	// (GitHub, GitLab, etc.) as the commit status target URL.
-	// Supports Go templates with the same variables and timing as DescriptionTemplate (latest data; TriggerOutput/ResponseOutput in trigger mode).
-	// In promotionstrategy context, {{ .Phase }} is per-environment; ReportedSha and Environment are unset — see DescriptionTemplate.
-	//
-	// This can link to:
-	// - External approval system UI
-	// - Monitoring dashboard
-	// - API endpoint being checked
-	// - Documentation or runbook
-	//
-	// Examples:
-	// - "https://approvals.example.com/{{ .ReportedSha }}"
-	// - "https://dashboard.example.com/{{ .Environment.Branch }}/status"
+	// UrlTemplate is the commit status target URL in the SCM provider. Same Go templates, variables, timing, and context rules as DescriptionTemplate.
+	// Typical uses: approval UI, dashboard, API, or runbook links. Examples: "https://approvals.example.com/{{ .ReportedSha }}", "https://dashboard.example.com/{{ .Environment.Branch }}/status".
 	//
 	// If not specified, defaults to empty string (no URL shown).
 	UrlTemplate *string `json:"urlTemplate,omitempty"`
@@ -93,13 +63,11 @@ type WebRequestCommitStatusSpecApplyConfiguration struct {
 	// When "active": Polls forever, even after success (active state can change).
 	// Use "active" for checks that monitor the change after it's released, for example a metrics monitoring service.
 	ReportOn *string `json:"reportOn,omitempty"`
-	// HTTPRequest defines the HTTP request configuration.
-	// Supports Go templates in URL, Headers, and Body fields.
+	// HTTPRequest configures the outbound HTTP call. See HTTPRequestSpec.
 	HTTPRequest *HTTPRequestSpecApplyConfiguration `json:"httpRequest,omitempty"`
-	// Success defines when the HTTP response is considered successful (commit status phase success).
+	// Success defines when the HTTP response counts as success for commit status phase. See SuccessSpec.
 	Success *SuccessSpecApplyConfiguration `json:"success,omitempty"`
-	// Mode controls how the controller polls or triggers HTTP requests.
-	// Exactly one of Polling or Trigger must be specified.
+	// Mode selects polling vs trigger and request scope (context). See ModeSpec.
 	Mode *ModeSpecApplyConfiguration `json:"mode,omitempty"`
 }
 

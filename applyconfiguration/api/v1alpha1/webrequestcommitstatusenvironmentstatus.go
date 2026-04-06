@@ -27,6 +27,9 @@ import (
 // with apply.
 //
 // WebRequestCommitStatusEnvironmentStatus defines the observed status for a specific environment.
+//
+// TriggerOutput and ResponseOutput hold JSON maps written by trigger mode: when.output.expression and response.output.expression respectively.
+// They are surfaced on the next reconcile as TriggerOutput and ResponseOutput in expr and templates (see WhenWithOutputSpec and HTTPRequestSpec).
 type WebRequestCommitStatusEnvironmentStatusApplyConfiguration struct {
 	// Branch is the name of the branch/environment.
 	Branch *string `json:"branch,omitempty"`
@@ -44,22 +47,9 @@ type WebRequestCommitStatusEnvironmentStatusApplyConfiguration struct {
 	LastRequestTime *v1.Time `json:"lastRequestTime,omitempty"`
 	// LastResponseStatusCode is the HTTP status code from the last request.
 	LastResponseStatusCode *int `json:"lastResponseStatusCode,omitempty"`
-	// TriggerOutput stores the map returned by spec.mode.trigger.when.output.expression.
-	// It is passed back into the next reconcile as the TriggerOutput variable (in expressions and templates), making it available
-	// to both the trigger when.expression and when.output.expression. Use it to track state across
-	// reconcile cycles (e.g. last-seen SHA, attempt counter, last request timestamp).
-	// The data is preserved as arbitrary JSON.
+	// TriggerOutput is the map from spec.mode.trigger.when.output.expression (arbitrary JSON keys).
 	TriggerOutput *apiextensionsv1.JSON `json:"triggerOutput,omitempty"`
-	// ResponseOutput stores the map returned by spec.mode.trigger.response.output.expression.
-	// This field is ONLY populated when spec.mode.trigger.response is provided.
-	// The response output expression is evaluated after each HTTP request and its result is stored here,
-	// allowing subsequent trigger expressions to inspect data from the previous response when
-	// deciding whether to issue the next request.
-	//
-	// Without spec.mode.trigger.response, this field will always be nil.
-	//
-	// Available in trigger expressions and templates as: ResponseOutput.field1, ResponseOutput.field2, etc.
-	// (where fields depend on what your response.output.expression returns)
+	// ResponseOutput is the map from spec.mode.trigger.response.output.expression when spec.mode.trigger.response is set; otherwise nil.
 	ResponseOutput *apiextensionsv1.JSON `json:"responseOutput,omitempty"`
 }
 

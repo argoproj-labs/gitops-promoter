@@ -6600,40 +6600,17 @@ spec:
             properties:
               descriptionTemplate:
                 description: |-
-                  DescriptionTemplate is a human-readable description of this validation that will be shown in the SCM provider
-                  (GitHub, GitLab, etc.) as the commit status description.
-                  Supports Go templates; Sprig functions are available except env, expandenv, getHostByName; urlQueryEscape is also available.
+                  DescriptionTemplate is the human-readable commit status description in the SCM provider (GitHub, GitLab, etc.).
+                  Uses Go templates; variable list and Sprig rules match HTTPRequestSpec (spec.httpRequest). Rendered with the latest
+                  data after the most recent HTTP request and trigger evaluation (unlike spec.httpRequest URL/body/headers, which use pre-request data — see HTTPRequestSpec).
+                  How spec.mode.context restricts template data: see ModeSpec.
 
-                  Template data is the latest: rendered after the most recent HTTP request and trigger evaluation, so description/URL reflect current status.
-
-                  When spec.mode.context is "environments" (default), template variables include per-environment fields.
-                  When spec.mode.context is "promotionstrategy", {{ .Phase }} is set to each environment's resolved phase when rendering
-                  that environment's CommitStatus (success, pending, or failure from the structured success expression).
-                  Environment, ReportedSha, and LastSuccessfulSha are not set in promotionstrategy context — do not use them here;
-                  use {{ .PromotionStrategy }} (e.g. range over status environments) for branch- or SHA-specific text.
-
-                  Available template variables:
-                    - {{ .ReportedSha }}: the commit SHA being reported on (environments context only)
-                    - {{ .LastSuccessfulSha }}: last SHA that achieved success for this environment (environments context only)
-                    - {{ .Phase }}: current phase (success/pending/failure); in promotionstrategy context, the phase for that CommitStatus's branch
-                    - {{ .PromotionStrategy }}: full PromotionStrategy object
-                    - {{ .Environment }}: current environment status from PromotionStrategy (environments context only)
-                    - {{ .NamespaceMetadata.Labels }}: map of labels from the namespace
-                    - {{ .NamespaceMetadata.Annotations }}: map of annotations from the namespace
-                    - {{ index .TriggerOutput "key" }}: (trigger mode only) map from trigger.when.output.expression
-                    - {{ index .ResponseOutput "key" }}: (trigger mode only) map from response.output.expression
-
-                  Examples:
-                    - "External approval for {{ .Environment.Branch }}"
-                    - "Checking deployment {{ .ReportedSha | trunc 7 }}"
-                    - "{{ .Phase }} - waiting for external approval"
+                  Examples: "External approval for {{ .Environment.Branch }}", "Checking deployment {{ .ReportedSha | trunc 7 }}", "{{ .Phase }} - waiting for external approval".
 
                   If not specified, defaults to empty string.
                 type: string
               httpRequest:
-                description: |-
-                  HTTPRequest defines the HTTP request configuration.
-                  Supports Go templates in URL, Headers, and Body fields.
+                description: HTTPRequest configures the outbound HTTP call. See HTTPRequestSpec.
                 properties:
                   authentication:
                     description: |-
@@ -6844,20 +6821,14 @@ spec:
                 pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                 type: string
               mode:
-                description: |-
-                  Mode controls how the controller polls or triggers HTTP requests.
-                  Exactly one of Polling or Trigger must be specified.
+                description: Mode selects polling vs trigger and request scope (context).
+                  See ModeSpec.
                 properties:
                   context:
                     default: environments
-                    description: |-
-                      Context controls whether the controller makes one HTTP request per environment or one per PromotionStrategy.
-                      - "environments" (default): one HTTP request per environment; each environment gets its own phase and status.
-                      - "promotionstrategy": at most one HTTP request per WebRequestCommitStatus; CommitStatuses are still one per environment,
-                        each on that environment's reportOn SHA. The success expression may return a boolean (then every environment gets the
-                        same phase: success or pending) or an object with defaultPhase and per-branch overrides (see success.when.expression).
-                        When context is promotionstrategy, per-environment template variables (Environment, ReportedSha, LastSuccessfulSha)
-                        are not set for the shared HTTP request and trigger templates; do not use them in URL, body, description, or trigger templates.
+                    description: Context is "environments" (default) or "promotionstrategy".
+                      See the ModeSpec type documentation for behavior, template limits,
+                      and success expression rules.
                     enum:
                     - environments
                     - promotionstrategy
@@ -6891,12 +6862,9 @@ spec:
                         properties:
                           output:
                             description: |-
-                              Output holds the expression that extracts and transforms data from the HTTP response.
-                              The expression is evaluated after the HTTP request completes (for any response status) and its
-                              result is stored in status.environments[].responseOutput. On the next reconcile that value is
-                              available as the ResponseOutput variable in trigger expressions and in all templates.
-                              Available in the expression: Response.StatusCode (int), Response.Body (parsed JSON or raw string), Response.Headers (map[string][]string).
-                              The expression must return a map/object.
+                              Output is evaluated after the HTTP request completes (any status). Response variables are the same as for spec.success.when.expression — see WhenSpec.Expression.
+                              The result is stored in status (environments[].responseOutput or promotionStrategyContext.responseOutput) and exposed on the next reconcile as ResponseOutput in trigger expressions and templates.
+                              Must return a map/object.
                             properties:
                               expression:
                                 description: Expression is an expr expression that
@@ -6951,13 +6919,11 @@ spec:
                             description: |-
                               Output optionally holds an expression that produces a map of data to persist across reconcile cycles.
                               The expression runs on every reconcile (whether or not the HTTP request is made). Its result is stored in
-                              status.environments[].triggerOutput and is available in the next reconcile as TriggerOutput (in when.expression,
-                              when.output.expression, and in all templates). Use it to track state such as attempt counts, last-seen SHAs, or timestamps.
+                              status (per-environment under environments[].triggerOutput, or under promotionStrategyContext.triggerOutput when context is promotionstrategy)
+                              and is available in the next reconcile as TriggerOutput in when.expression, when.output.expression, and in templates.
+                              Use it to track state such as attempt counts, last-seen SHAs, or timestamps.
 
-                              Available variables (same as Expression):
-                                - PromotionStrategy, Environment, Phase, ReportedSha, LastSuccessfulSha, TriggerOutput, ResponseOutput
-
-                              The expression must return a map/object. Every key in the returned map is stored in TriggerOutput.
+                              Variables are the same as for Expression (see above). The expression must return a map/object; every key is stored in TriggerOutput.
 
                               Examples:
                                 # Track SHA to detect changes
@@ -7021,34 +6987,24 @@ spec:
                 - active
                 type: string
               success:
-                description: Success defines when the HTTP response is considered
-                  successful (commit status phase success).
+                description: Success defines when the HTTP response counts as success
+                  for commit status phase. See SuccessSpec.
                 properties:
                   when:
-                    description: |-
-                      When holds the expression evaluated against the HTTP response (expr library).
-                      Variables and return types depend on spec.mode.context; see when.expression.
+                    description: When is evaluated against the HTTP response after
+                      each request. See WhenSpec.Expression.
                     properties:
                       expression:
                         description: |-
-                          Expression is evaluated using the expr library (github.com/expr-lang/expr) against the HTTP response.
-                          With mode.context "promotionstrategy" there is one HTTP response per controller request; this expression
-                          runs once against that shared response and the result maps to every applicable environment (or per branch
-                          when returning the object form). With "environments", each environment's response is evaluated separately.
+                          Expression uses github.com/expr-lang/expr against the HTTP response. Variables (also used by spec.mode.trigger.response.output):
+                          Response.StatusCode (int), Response.Body (parsed JSON as map[string]any, or raw string if not JSON), Response.Headers (map[string][]string).
 
-                          Available variables: Response.StatusCode (int), Response.Body (parsed JSON as map[string]any, or raw string if not JSON),
-                          Response.Headers (map[string][]string).
+                          Evaluation scope follows spec.mode.context; see ModeSpec. Return shape:
 
-                          When mode.context is "environments": must return a boolean. true sets phase success, false sets pending.
-                          Failure phase is not expressible in this mode (boolean success expression only).
+                            - "environments": must return boolean — true → success, false → pending; failure phase is not expressible.
 
-                          When mode.context is "promotionstrategy", may return:
-                            - A boolean: true sets success for all applicable environments; false sets pending for all (not failure).
-                            - An object with defaultPhase (optional) and environments (optional array):
-                              - defaultPhase: "success", "pending", or "failure" — defaults to "pending" when omitted. Used when environments is empty,
-                                or for branches not listed in environments.
-                              - environments: array of { branch (string), phase (string) } with required phase per entry. Example:
-                                { defaultPhase: "pending", environments: [{ branch: "dev", phase: "success" }, { branch: "staging", phase: "pending" }] }.
+                            - "promotionstrategy": boolean true/false applies the same phase to all applicable environments (success or pending only), or return an object with optional defaultPhase ("success"|"pending"|"failure", default "pending") and optional environments: [{ branch, phase }, ...] for per-branch phases. Example:
+                              { defaultPhase: "pending", environments: [{ branch: "dev", phase: "success" }, { branch: "staging", phase: "pending" }] }.
                         type: string
                     required:
                     - expression
@@ -7058,20 +7014,8 @@ spec:
                 type: object
               urlTemplate:
                 description: |-
-                  UrlTemplate is a link to more details about this validation that will be shown in the SCM provider
-                  (GitHub, GitLab, etc.) as the commit status target URL.
-                  Supports Go templates with the same variables and timing as DescriptionTemplate (latest data; TriggerOutput/ResponseOutput in trigger mode).
-                  In promotionstrategy context, {{ .Phase }} is per-environment; ReportedSha and Environment are unset — see DescriptionTemplate.
-
-                  This can link to:
-                    - External approval system UI
-                    - Monitoring dashboard
-                    - API endpoint being checked
-                    - Documentation or runbook
-
-                  Examples:
-                    - "https://approvals.example.com/{{ .ReportedSha }}"
-                    - "https://dashboard.example.com/{{ .Environment.Branch }}/status"
+                  UrlTemplate is the commit status target URL in the SCM provider. Same Go templates, variables, timing, and context rules as DescriptionTemplate.
+                  Typical uses: approval UI, dashboard, API, or runbook links. Examples: "https://approvals.example.com/{{ .ReportedSha }}", "https://dashboard.example.com/{{ .Environment.Branch }}/status".
 
                   If not specified, defaults to empty string (no URL shown).
                 type: string
@@ -7151,8 +7095,11 @@ spec:
                   Environments holds the status of each environment when context is "environments".
                   When context is "promotionstrategy", this slice is empty and PromotionStrategyContext is used instead.
                 items:
-                  description: WebRequestCommitStatusEnvironmentStatus defines the
-                    observed status for a specific environment.
+                  description: |-
+                    WebRequestCommitStatusEnvironmentStatus defines the observed status for a specific environment.
+
+                    TriggerOutput and ResponseOutput hold JSON maps written by trigger mode: when.output.expression and response.output.expression respectively.
+                    They are surfaced on the next reconcile as TriggerOutput and ResponseOutput in expr and templates (see WhenWithOutputSpec and HTTPRequestSpec).
                   properties:
                     branch:
                       description: Branch is the name of the branch/environment.
@@ -7192,26 +7139,13 @@ spec:
                       pattern: ^([a-f0-9]{40}|[a-f0-9]{64})?$
                       type: string
                     responseOutput:
-                      description: |-
-                        ResponseOutput stores the map returned by spec.mode.trigger.response.output.expression.
-                        This field is ONLY populated when spec.mode.trigger.response is provided.
-                        The response output expression is evaluated after each HTTP request and its result is stored here,
-                        allowing subsequent trigger expressions to inspect data from the previous response when
-                        deciding whether to issue the next request.
-
-                        Without spec.mode.trigger.response, this field will always be nil.
-
-                        Available in trigger expressions and templates as: ResponseOutput.field1, ResponseOutput.field2, etc.
-                        (where fields depend on what your response.output.expression returns)
+                      description: ResponseOutput is the map from spec.mode.trigger.response.output.expression
+                        when spec.mode.trigger.response is set; otherwise nil.
                       type: object
                       x-kubernetes-preserve-unknown-fields: true
                     triggerOutput:
-                      description: |-
-                        TriggerOutput stores the map returned by spec.mode.trigger.when.output.expression.
-                        It is passed back into the next reconcile as the TriggerOutput variable (in expressions and templates), making it available
-                        to both the trigger when.expression and when.output.expression. Use it to track state across
-                        reconcile cycles (e.g. last-seen SHA, attempt counter, last request timestamp).
-                        The data is preserved as arbitrary JSON.
+                      description: TriggerOutput is the map from spec.mode.trigger.when.output.expression
+                        (arbitrary JSON keys).
                       type: object
                       x-kubernetes-preserve-unknown-fields: true
                   required:
@@ -7256,11 +7190,13 @@ spec:
                       Every applicable branch is always present in this map after reconciliation.
                     type: object
                   responseOutput:
-                    description: ResponseOutput stores the map returned by spec.mode.trigger.response.output.expression.
+                    description: 'ResponseOutput: same semantics as WebRequestCommitStatusEnvironmentStatus.ResponseOutput,
+                      one shared map for context=promotionstrategy.'
                     type: object
                     x-kubernetes-preserve-unknown-fields: true
                   triggerOutput:
-                    description: TriggerOutput stores the map returned by spec.mode.trigger.when.output.expression.
+                    description: 'TriggerOutput: same semantics as WebRequestCommitStatusEnvironmentStatus.TriggerOutput,
+                      one shared map for context=promotionstrategy.'
                     type: object
                     x-kubernetes-preserve-unknown-fields: true
                 type: object

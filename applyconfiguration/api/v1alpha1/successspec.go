@@ -22,8 +22,7 @@ package v1alpha1
 //
 // SuccessSpec defines when the HTTP response is considered successful (commit status phase success).
 type SuccessSpecApplyConfiguration struct {
-	// When holds the expression evaluated against the HTTP response (expr library).
-	// Variables and return types depend on spec.mode.context; see when.expression.
+	// When is evaluated against the HTTP response after each request. See WhenSpec.Expression.
 	When *WhenSpecApplyConfiguration `json:"when,omitempty"`
 }
 

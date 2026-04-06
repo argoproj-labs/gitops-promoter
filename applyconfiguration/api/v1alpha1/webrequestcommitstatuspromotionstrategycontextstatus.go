@@ -36,9 +36,9 @@ type WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration stru
 	LastRequestTime *v1.Time `json:"lastRequestTime,omitempty"`
 	// LastResponseStatusCode is the HTTP status code from the last request.
 	LastResponseStatusCode *int `json:"lastResponseStatusCode,omitempty"`
-	// TriggerOutput stores the map returned by spec.mode.trigger.when.output.expression.
+	// TriggerOutput: same semantics as WebRequestCommitStatusEnvironmentStatus.TriggerOutput, one shared map for context=promotionstrategy.
 	TriggerOutput *apiextensionsv1.JSON `json:"triggerOutput,omitempty"`
-	// ResponseOutput stores the map returned by spec.mode.trigger.response.output.expression.
+	// ResponseOutput: same semantics as WebRequestCommitStatusEnvironmentStatus.ResponseOutput, one shared map for context=promotionstrategy.
 	ResponseOutput *apiextensionsv1.JSON `json:"responseOutput,omitempty"`
 	// LastSuccessfulShas tracks the last SHA that achieved success for each branch.
 	// Used with reportOn "proposed" + polling to skip HTTP requests when all environments

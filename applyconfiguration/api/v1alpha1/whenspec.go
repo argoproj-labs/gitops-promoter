@@ -21,25 +21,16 @@ package v1alpha1
 // with apply.
 //
 // WhenSpec holds spec.success.when.expression only (evaluated after the HTTP response).
-// Trigger mode uses WhenWithOutputSpec under spec.mode.trigger.when, not this type.
+// Trigger guards use WhenWithOutputSpec under spec.mode.trigger.when, not this type.
 type WhenSpecApplyConfiguration struct {
-	// Expression is evaluated using the expr library (github.com/expr-lang/expr) against the HTTP response.
-	// With mode.context "promotionstrategy" there is one HTTP response per controller request; this expression
-	// runs once against that shared response and the result maps to every applicable environment (or per branch
-	// when returning the object form). With "environments", each environment's response is evaluated separately.
+	// Expression uses github.com/expr-lang/expr against the HTTP response. Variables (also used by spec.mode.trigger.response.output):
+	// Response.StatusCode (int), Response.Body (parsed JSON as map[string]any, or raw string if not JSON), Response.Headers (map[string][]string).
 	//
-	// Available variables: Response.StatusCode (int), Response.Body (parsed JSON as map[string]any, or raw string if not JSON),
-	// Response.Headers (map[string][]string).
+	// Evaluation scope follows spec.mode.context; see ModeSpec. Return shape:
 	//
-	// When mode.context is "environments": must return a boolean. true sets phase success, false sets pending.
-	// Failure phase is not expressible in this mode (boolean success expression only).
+	// - "environments": must return boolean — true → success, false → pending; failure phase is not expressible.
 	//
-	// When mode.context is "promotionstrategy", may return:
-	// - A boolean: true sets success for all applicable environments; false sets pending for all (not failure).
-	// - An object with defaultPhase (optional) and environments (optional array):
-	// - defaultPhase: "success", "pending", or "failure" — defaults to "pending" when omitted. Used when environments is empty,
-	// or for branches not listed in environments.
-	// - environments: array of { branch (string), phase (string) } with required phase per entry. Example:
+	// - "promotionstrategy": boolean true/false applies the same phase to all applicable environments (success or pending only), or return an object with optional defaultPhase ("success"|"pending"|"failure", default "pending") and optional environments: [{ branch, phase }, ...] for per-branch phases. Example:
 	// { defaultPhase: "pending", environments: [{ branch: "dev", phase: "success" }, { branch: "staging", phase: "pending" }] }.
 	Expression *string `json:"expression,omitempty"`
 }

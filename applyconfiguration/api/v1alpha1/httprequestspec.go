@@ -26,7 +26,7 @@ import (
 //
 // HTTPRequestSpec defines the HTTP request configuration.
 //
-// URLTemplate, HeaderTemplates, and BodyTemplate support Go templates (same Sprig/exclusions as DescriptionTemplate).
+// URLTemplate, HeaderTemplates, and BodyTemplate support Go templates. Sprig functions are available except env, expandenv, and getHostByName; urlQueryEscape is also available.
 // These fields are rendered with previous-attempt data: they are evaluated before the current HTTP request is made,
 // so they never contain the response from the request being built. Use TriggerOutput/ResponseOutput for state from
 // the previous run (trigger mode only).
@@ -40,6 +40,8 @@ import (
 // - {{ .NamespaceMetadata.Labels }}: map of labels from the namespace
 // - {{ .NamespaceMetadata.Annotations }}: map of annotations from the namespace
 // - {{ index .TriggerOutput "key" }}, {{ index .ResponseOutput "key" }}: (trigger mode only) from previous reconcile
+//
+// When spec.mode.context is "promotionstrategy", Environment, ReportedSha, and LastSuccessfulSha are not set for the shared request — see ModeSpec.
 //
 // Example: "https://api.example.com/validate/{{ .Environment.Branch }}/{{ .ReportedSha }}"
 type HTTPRequestSpecApplyConfiguration struct {
