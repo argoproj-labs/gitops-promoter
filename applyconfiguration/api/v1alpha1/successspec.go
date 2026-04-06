@@ -23,15 +23,7 @@ package v1alpha1
 // SuccessSpec defines when the HTTP response is considered successful (commit status phase success).
 type SuccessSpecApplyConfiguration struct {
 	// When holds the expression evaluated against the HTTP response (expr library).
-	// Available variables: Response.StatusCode (int), Response.Body (parsed JSON as map[string]any, or raw string if not JSON), Response.Headers (map[string][]string).
-	//
-	// Return type:
-	// - When mode.context is "environments": must return a boolean. true sets phase Success, false sets Pending.
-	// - When mode.context is "promotionstrategy": may return:
-	// - A boolean: same phase (Success or Pending) for all environments.
-	// - An object with defaultPhase (optional) and environments (optional array):
-	// - defaultPhase: "success", "pending", or "failure" — defaults to "pending" when omitted. Used for all when environments is empty, or for branches not listed in environments.
-	// - environments: optional array of { branch (string), phase (string) }. Example: { defaultPhase: "pending", environments: [{ branch: "dev", phase: "success" }, { branch: "staging", phase: "pending" }] }.
+	// Variables and return types depend on spec.mode.context; see when.expression.
 	When *WhenSpecApplyConfiguration `json:"when,omitempty"`
 }
 

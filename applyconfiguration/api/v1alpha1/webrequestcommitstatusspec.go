@@ -42,12 +42,18 @@ type WebRequestCommitStatusSpecApplyConfiguration struct {
 	//
 	// Template data is the latest: rendered after the most recent HTTP request and trigger evaluation, so description/URL reflect current status.
 	//
+	// When spec.mode.context is "environments" (default), template variables include per-environment fields.
+	// When spec.mode.context is "promotionstrategy", {{ .Phase }} is set to each environment's resolved phase when rendering
+	// that environment's CommitStatus (success, pending, or failure from the structured success expression).
+	// Environment, ReportedSha, and LastSuccessfulSha are not set in promotionstrategy context — do not use them here;
+	// use {{ .PromotionStrategy }} (e.g. range over status environments) for branch- or SHA-specific text.
+	//
 	// Available template variables:
-	// - {{ .ReportedSha }}: the commit SHA being reported on
-	// - {{ .LastSuccessfulSha }}: last SHA that achieved success for this environment
-	// - {{ .Phase }}: current phase (success/pending/failure)
+	// - {{ .ReportedSha }}: the commit SHA being reported on (environments context only)
+	// - {{ .LastSuccessfulSha }}: last SHA that achieved success for this environment (environments context only)
+	// - {{ .Phase }}: current phase (success/pending/failure); in promotionstrategy context, the phase for that CommitStatus's branch
 	// - {{ .PromotionStrategy }}: full PromotionStrategy object
-	// - {{ .Environment }}: current environment status from PromotionStrategy
+	// - {{ .Environment }}: current environment status from PromotionStrategy (environments context only)
 	// - {{ .NamespaceMetadata.Labels }}: map of labels from the namespace
 	// - {{ .NamespaceMetadata.Annotations }}: map of annotations from the namespace
 	// - {{ index .TriggerOutput "key" }}: (trigger mode only) map from trigger.when.output.expression
@@ -63,6 +69,7 @@ type WebRequestCommitStatusSpecApplyConfiguration struct {
 	// UrlTemplate is a link to more details about this validation that will be shown in the SCM provider
 	// (GitHub, GitLab, etc.) as the commit status target URL.
 	// Supports Go templates with the same variables and timing as DescriptionTemplate (latest data; TriggerOutput/ResponseOutput in trigger mode).
+	// In promotionstrategy context, {{ .Phase }} is per-environment; ReportedSha and Environment are unset — see DescriptionTemplate.
 	//
 	// This can link to:
 	// - External approval system UI

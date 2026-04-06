@@ -261,9 +261,9 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 	if lastReconciledStatus == nil {
 		lastReconciledStatus = &promoterv1alpha1.WebRequestCommitStatusStatus{}
 	}
-	wrcsEnvStatusMap := make(map[string]*promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus, len(lastReconciledStatus.Environments))
+	statusByEnv := make(map[string]*promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus, len(lastReconciledStatus.Environments))
 	for i := range lastReconciledStatus.Environments {
-		wrcsEnvStatusMap[lastReconciledStatus.Environments[i].Branch] = &lastReconciledStatus.Environments[i]
+		statusByEnv[lastReconciledStatus.Environments[i].Branch] = &lastReconciledStatus.Environments[i]
 	}
 
 	psEnvStatusMap := buildPSEnvStatusMap(ps)
@@ -281,7 +281,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		branch := env.Branch
 		reportedSha := currentShas[branch]
 
-		lastReconciledEnvStatus := wrcsEnvStatusMap[branch]
+		lastReconciledEnvStatus := statusByEnv[branch]
 		lastState := lastReconciledStateFromEnvironment(ctx, lastReconciledEnvStatus)
 		lastSuccessfulSha := ""
 		if lastReconciledEnvStatus != nil {

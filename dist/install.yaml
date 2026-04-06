@@ -6606,12 +6606,18 @@ spec:
 
                   Template data is the latest: rendered after the most recent HTTP request and trigger evaluation, so description/URL reflect current status.
 
+                  When spec.mode.context is "environments" (default), template variables include per-environment fields.
+                  When spec.mode.context is "promotionstrategy", {{ .Phase }} is set to each environment's resolved phase when rendering
+                  that environment's CommitStatus (success, pending, or failure from the structured success expression).
+                  Environment, ReportedSha, and LastSuccessfulSha are not set in promotionstrategy context — do not use them here;
+                  use {{ .PromotionStrategy }} (e.g. range over status environments) for branch- or SHA-specific text.
+
                   Available template variables:
-                    - {{ .ReportedSha }}: the commit SHA being reported on
-                    - {{ .LastSuccessfulSha }}: last SHA that achieved success for this environment
-                    - {{ .Phase }}: current phase (success/pending/failure)
+                    - {{ .ReportedSha }}: the commit SHA being reported on (environments context only)
+                    - {{ .LastSuccessfulSha }}: last SHA that achieved success for this environment (environments context only)
+                    - {{ .Phase }}: current phase (success/pending/failure); in promotionstrategy context, the phase for that CommitStatus's branch
                     - {{ .PromotionStrategy }}: full PromotionStrategy object
-                    - {{ .Environment }}: current environment status from PromotionStrategy
+                    - {{ .Environment }}: current environment status from PromotionStrategy (environments context only)
                     - {{ .NamespaceMetadata.Labels }}: map of labels from the namespace
                     - {{ .NamespaceMetadata.Annotations }}: map of annotations from the namespace
                     - {{ index .TriggerOutput "key" }}: (trigger mode only) map from trigger.when.output.expression
@@ -6847,10 +6853,11 @@ spec:
                     description: |-
                       Context controls whether the controller makes one HTTP request per environment or one per PromotionStrategy.
                       - "environments" (default): one HTTP request per environment; each environment gets its own phase and status.
-                      - "promotionstrategy": at most one HTTP request per WebRequestCommitStatus; the same phase is applied to CommitStatuses for all
-                        environments, each still reporting on that environment's reportOn SHA. When context is promotionstrategy,
-                        per-environment template variables (Environment, ReportedSha, LastSuccessfulSha) are not set; do not use
-                        them in URL, body, description, or trigger templates.
+                      - "promotionstrategy": at most one HTTP request per WebRequestCommitStatus; CommitStatuses are still one per environment,
+                        each on that environment's reportOn SHA. The success expression may return a boolean (then every environment gets the
+                        same phase: success or pending) or an object with defaultPhase and per-branch overrides (see success.when.expression).
+                        When context is promotionstrategy, per-environment template variables (Environment, ReportedSha, LastSuccessfulSha)
+                        are not set for the shared HTTP request and trigger templates; do not use them in URL, body, description, or trigger templates.
                     enum:
                     - environments
                     - promotionstrategy
@@ -7020,21 +7027,28 @@ spec:
                   when:
                     description: |-
                       When holds the expression evaluated against the HTTP response (expr library).
-                      Available variables: Response.StatusCode (int), Response.Body (parsed JSON as map[string]any, or raw string if not JSON), Response.Headers (map[string][]string).
-
-                      Return type:
-                      - When mode.context is "environments": must return a boolean. true sets phase Success, false sets Pending.
-                      - When mode.context is "promotionstrategy": may return:
-                        - A boolean: same phase (Success or Pending) for all environments.
-                        - An object with defaultPhase (optional) and environments (optional array):
-                          - defaultPhase: "success", "pending", or "failure" — defaults to "pending" when omitted. Used for all when environments is empty, or for branches not listed in environments.
-                          - environments: optional array of { branch (string), phase (string) }. Example: { defaultPhase: "pending", environments: [{ branch: "dev", phase: "success" }, { branch: "staging", phase: "pending" }] }.
+                      Variables and return types depend on spec.mode.context; see when.expression.
                     properties:
                       expression:
                         description: |-
-                          Expression is evaluated using the expr library (github.com/expr-lang/expr).
-                          Must return a boolean when mode.context is "environments".
-                          When mode.context is "promotionstrategy", may return a boolean or an object { defaultPhase?, environments? } as described in SuccessSpec.
+                          Expression is evaluated using the expr library (github.com/expr-lang/expr) against the HTTP response.
+                          With mode.context "promotionstrategy" there is one HTTP response per controller request; this expression
+                          runs once against that shared response and the result maps to every applicable environment (or per branch
+                          when returning the object form). With "environments", each environment's response is evaluated separately.
+
+                          Available variables: Response.StatusCode (int), Response.Body (parsed JSON as map[string]any, or raw string if not JSON),
+                          Response.Headers (map[string][]string).
+
+                          When mode.context is "environments": must return a boolean. true sets phase success, false sets pending.
+                          Failure phase is not expressible in this mode (boolean success expression only).
+
+                          When mode.context is "promotionstrategy", may return:
+                            - A boolean: true sets success for all applicable environments; false sets pending for all (not failure).
+                            - An object with defaultPhase (optional) and environments (optional array):
+                              - defaultPhase: "success", "pending", or "failure" — defaults to "pending" when omitted. Used when environments is empty,
+                                or for branches not listed in environments.
+                              - environments: array of { branch (string), phase (string) } with required phase per entry. Example:
+                                { defaultPhase: "pending", environments: [{ branch: "dev", phase: "success" }, { branch: "staging", phase: "pending" }] }.
                         type: string
                     required:
                     - expression
@@ -7047,6 +7061,7 @@ spec:
                   UrlTemplate is a link to more details about this validation that will be shown in the SCM provider
                   (GitHub, GitLab, etc.) as the commit status target URL.
                   Supports Go templates with the same variables and timing as DescriptionTemplate (latest data; TriggerOutput/ResponseOutput in trigger mode).
+                  In promotionstrategy context, {{ .Phase }} is per-environment; ReportedSha and Environment are unset — see DescriptionTemplate.
 
                   This can link to:
                     - External approval system UI

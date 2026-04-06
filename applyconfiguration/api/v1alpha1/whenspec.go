@@ -20,11 +20,27 @@ package v1alpha1
 // WhenSpecApplyConfiguration represents a declarative configuration of the WhenSpec type for use
 // with apply.
 //
-// WhenSpec holds the success expression.
+// WhenSpec holds spec.success.when.expression only (evaluated after the HTTP response).
+// Trigger mode uses WhenWithOutputSpec under spec.mode.trigger.when, not this type.
 type WhenSpecApplyConfiguration struct {
-	// Expression is evaluated using the expr library (github.com/expr-lang/expr).
-	// Must return a boolean when mode.context is "environments".
-	// When mode.context is "promotionstrategy", may return a boolean or an object { defaultPhase?, environments? } as described in SuccessSpec.
+	// Expression is evaluated using the expr library (github.com/expr-lang/expr) against the HTTP response.
+	// With mode.context "promotionstrategy" there is one HTTP response per controller request; this expression
+	// runs once against that shared response and the result maps to every applicable environment (or per branch
+	// when returning the object form). With "environments", each environment's response is evaluated separately.
+	//
+	// Available variables: Response.StatusCode (int), Response.Body (parsed JSON as map[string]any, or raw string if not JSON),
+	// Response.Headers (map[string][]string).
+	//
+	// When mode.context is "environments": must return a boolean. true sets phase success, false sets pending.
+	// Failure phase is not expressible in this mode (boolean success expression only).
+	//
+	// When mode.context is "promotionstrategy", may return:
+	// - A boolean: true sets success for all applicable environments; false sets pending for all (not failure).
+	// - An object with defaultPhase (optional) and environments (optional array):
+	// - defaultPhase: "success", "pending", or "failure" — defaults to "pending" when omitted. Used when environments is empty,
+	// or for branches not listed in environments.
+	// - environments: array of { branch (string), phase (string) } with required phase per entry. Example:
+	// { defaultPhase: "pending", environments: [{ branch: "dev", phase: "success" }, { branch: "staging", phase: "pending" }] }.
 	Expression *string `json:"expression,omitempty"`
 }
 

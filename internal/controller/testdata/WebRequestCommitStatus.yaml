@@ -38,6 +38,9 @@ spec:
 
   # Exactly one of polling or trigger must be set.
   mode:
+    # context: environments (default) — one HTTP request per environment; status.environments[] below.
+    # Use context: promotionstrategy for one shared request; then status.promotionStrategyContext is set instead.
+    context: environments
     # Polling: single optional field. Interval (default 1m) controls how often the HTTP request runs.
     polling:
       interval: 2m
@@ -71,3 +74,30 @@ status:
       lastResponseStatusCode: 200
       # triggerOutput (trigger mode): output from trigger.when.output.expression (available as TriggerOutput in expressions/templates)
       # responseOutput (trigger + response.output): output from response.output.expression (available as ResponseOutput in expressions/templates)
+
+# --- promotionstrategy context (illustrative; use a separate WebRequestCommitStatus resource) ---
+# spec:
+#   promotionStrategyRef: { name: my-app }
+#   key: pipeline-gate
+#   descriptionTemplate: "Gate: {{ .Phase }} (use .PromotionStrategy for branch-specific text)"
+#   reportOn: proposed
+#   httpRequest:
+#     urlTemplate: "https://deployments.example.com/apps/{{ .PromotionStrategy.Spec.RepositoryReference.Name }}/status"
+#     method: GET
+#   success:
+#     when:
+#       # Boolean (all envs same phase) or object { defaultPhase, environments } — see docs/commit-status-controllers/web-request.md
+#       expression: "Response.StatusCode == 200"
+#   mode:
+#     context: promotionstrategy
+#     polling:
+#       interval: 2m
+# status:
+#   promotionStrategyContext:
+#     phase: pending
+#     phasePerBranch:
+#       environment/dev: success
+#     lastSuccessfulShas:
+#       environment/dev: abc123def456789012345678901234567890abcd
+#     lastRequestTime: "2024-01-15T10:30:00Z"
+#     lastResponseStatusCode: 200

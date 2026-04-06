@@ -35,10 +35,11 @@ type ModeSpecApplyConfiguration struct {
 	Trigger *TriggerModeSpecApplyConfiguration `json:"trigger,omitempty"`
 	// Context controls whether the controller makes one HTTP request per environment or one per PromotionStrategy.
 	// - "environments" (default): one HTTP request per environment; each environment gets its own phase and status.
-	// - "promotionstrategy": at most one HTTP request per WebRequestCommitStatus; the same phase is applied to CommitStatuses for all
-	// environments, each still reporting on that environment's reportOn SHA. When context is promotionstrategy,
-	// per-environment template variables (Environment, ReportedSha, LastSuccessfulSha) are not set; do not use
-	// them in URL, body, description, or trigger templates.
+	// - "promotionstrategy": at most one HTTP request per WebRequestCommitStatus; CommitStatuses are still one per environment,
+	// each on that environment's reportOn SHA. The success expression may return a boolean (then every environment gets the
+	// same phase: success or pending) or an object with defaultPhase and per-branch overrides (see success.when.expression).
+	// When context is promotionstrategy, per-environment template variables (Environment, ReportedSha, LastSuccessfulSha)
+	// are not set for the shared HTTP request and trigger templates; do not use them in URL, body, description, or trigger templates.
 	Context *apiv1alpha1.ContextMode `json:"context,omitempty"`
 }
 
