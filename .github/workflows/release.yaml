@@ -43,13 +43,18 @@ jobs:
         with:
           version: type=image,tag=29.1.5
 
-      - name: Extract version from commit message
+      - name: Extract version and release description from commit message
         id: extract_version
         env:
           COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
           VERSION=$(printf '%s\n' "$COMMIT_MSG" | head -n1 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+')
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          {
+            echo 'release_description<<RELEASE_DESC_EOF'
+            printf '%s\n' "$COMMIT_MSG" | awk '/^Release description:/{f=1;next} f'
+            echo 'RELEASE_DESC_EOF'
+          } >> "$GITHUB_OUTPUT"
       - name: Create tag
         if: steps.extract_version.outputs.version != ''
         run: |
@@ -86,3 +91,4 @@ jobs:
           args: release --clean --verbose
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_RELEASE_DESCRIPTION: ${{ steps.extract_version.outputs.release_description }}
