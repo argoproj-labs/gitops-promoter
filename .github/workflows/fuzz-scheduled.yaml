@@ -1,0 +1,28 @@
+# Exploratory fuzzing on a schedule. PR CI replays corpora via `make test-fuzz-seed` only.
+name: fuzz scheduled
+on:
+  schedule:
+    - cron: '12 7 * * 1' # Mondays 07:12 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fuzz:
+    name: Bounded native fuzzing
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98 # pin@v4
+      - name: Set up Go
+        uses: actions/setup-go@4aaadf42668403795cdfdb15b1c4250e9fed12b9 # pin@v5
+        with:
+          go-version: "1.26.1"
+      - name: Run fuzz targets
+        run: make test-fuzz FUZZ_TIME=45s

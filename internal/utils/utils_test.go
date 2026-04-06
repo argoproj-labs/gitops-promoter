@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"time"
+	"unicode/utf8"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
@@ -59,6 +60,31 @@ var _ = Describe("test rendering a template", func() {
 			Expect(result).To(Equal(test.result))
 		})
 	}
+})
+
+// Regression: when len([]rune(s)) <= length the implementation must not return raw input bytes,
+// which can be invalid UTF-8 (e.g. lone 0xC3). Output must be valid for Kubernetes labels.
+// The fuzz corpus under testdata/fuzz/FuzzTruncateStringFromBeginning/ replays a minimized case.
+var _ = Describe("TruncateStringFromBeginning", func() {
+	Describe("invalid UTF-8 when input is not truncated", func() {
+		const loneContinuation = "\xc3"
+		tests := []struct {
+			name   string
+			length int
+		}{
+			{name: "when length is 1", length: 1},
+			{name: "when length is 39", length: 39},
+			{name: "when length is 100", length: 100},
+		}
+		for _, tt := range tests {
+			tt := tt
+			It(tt.name, func() {
+				out := utils.TruncateStringFromBeginning(loneContinuation, tt.length)
+				Expect(utf8.ValidString(out)).To(BeTrue(), "output must be valid UTF-8")
+				Expect(out).To(Equal("\ufffd"), "lone continuation byte must become U+FFFD, not raw 0xC3")
+			})
+		}
+	})
 })
 
 var _ = Describe("InheritNotReadyConditionFromObjects", func() {

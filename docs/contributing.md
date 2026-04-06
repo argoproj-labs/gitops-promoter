@@ -8,13 +8,23 @@ Thanks for helping improve GitOps Promoter. The project is still young; we keep 
 2. **[Fork the repository](https://github.com/argoproj-labs/gitops-promoter/fork)** on GitHub, clone your fork, and create a branch from **`main`**. Push work to your fork only.
 3. **Make focused changes** — one logical change per PR when possible.
 4. **Run checks** that match what you changed:
-    - **Go only** (no CRD, webhook, or generated install / apply-config churn): `go mod tidy`, `make lint`, `make test-parallel`.
+    - **Go only** (no CRD, webhook, or generated install / apply-config churn): `go mod tidy`, `make lint`, `make test-parallel`, `make test-fuzz-seed` (replays fuzz corpora; same as CI).
     - **APIs, CRDs, webhooks, or bundled install YAML** (anything `make build-installer` regenerates—`config/`, `dist/install.yaml`, deepcopy/applyconfiguration, extension icon output): **`make build-installer`**, commit the full diff, then `go mod tidy`, `make lint`, `make test-parallel`.
     - **`ui/`**: `make lint-ui`, `make test-unit-test-extension`, `make test-ui-test-dashboard`.
     - **`docs/`** (this site): `make lint-docs`.
     - CI also runs **Nilaway** and **spell checking**; use **`make nilaway-no-test`** locally if you want parity before pushing.
 5. **Open a pull request from your fork** into `main` on `argoproj-labs/gitops-promoter`, with a short title and enough context for reviewers (what changed, why). Use `Fixes #123` / `Closes #123` when it applies. Every commit must be **DCO sign-off** (see below).
 6. **Iterate on review** — CI must be green; maintainers will help get it over the line.
+
+## Testing expectations
+
+Substantive new or changed **user-facing behavior** (APIs, controllers, webhooks, or UI) should include **automated tests** in the same pull request unless maintainers explicitly agree otherwise. Reviewers expect this during code review, and **failing tests block merge**.
+
+**How we test (stack):**
+
+- **Go (controller and cluster behavior):** [Ginkgo](https://onsi.github.io/ginkgo/) suites with **envtest**, which runs a real Kubernetes API server from test binaries for integration-style tests against our APIs and reconcilers.
+- **UI (dashboard and Argo CD extension):** unit tests via the **Node.js** tooling and npm scripts used in CI (lint and test targets for the dashboard and extension).
+- **Static analysis:** **golangci-lint**, **Nilaway**, and other checks run in CI on every change.
 
 ## DCO sign-off
 

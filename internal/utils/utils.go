@@ -164,15 +164,18 @@ func TruncateString(str string, length int) string {
 }
 
 // TruncateStringFromBeginning truncates from front of string. For example, if the string is "abcdefg" and length is 3,
-// it will return "efg".
+// it will return "efg". Truncation is by rune so the result is always valid UTF-8.
 func TruncateStringFromBeginning(str string, length int) string {
 	if length <= 0 {
 		return ""
 	}
-	if len(str) <= length {
-		return str
+	runes := []rune(str)
+	if len(runes) <= length {
+		// Return string(runes), not str: decoding replaces invalid UTF-8 with U+FFFD; the
+		// original bytes may not be valid UTF-8 (e.g. a lone continuation byte).
+		return string(runes)
 	}
-	return str[len(str)-length:]
+	return string(runes[len(runes)-length:])
 }
 
 var m1 = regexp.MustCompile("[^a-zA-Z0-9]+")
@@ -200,7 +203,7 @@ func KubeSafeUniqueName(ctx context.Context, name string) string {
 	}
 	hash := strconv.FormatUint(uint64(h.Sum32()), 16)
 
-	if name[len(name)-1] == '-' {
+	if len(name) > 0 && name[len(name)-1] == '-' {
 		name = name[:len(name)-1]
 	}
 	name = name + "-" + hash
@@ -215,7 +218,7 @@ func KubeSafeLabel(name string) string {
 	}
 	name = m1.ReplaceAllString(name, "-")
 	name = TruncateStringFromBeginning(name, 63)
-	if name[0] == '-' {
+	for len(name) > 0 && name[0] == '-' {
 		name = name[1:]
 	}
 	return name

@@ -287,7 +287,6 @@ func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provide
 func (wr *WebhookReceiver) extractDeliveryID(r *http.Request) string {
 	// Check common headers in a sensible order and return the first non-empty value.
 	// GitHub
-	fmt.Println("received a webhook event")
 	if id := r.Header.Get("X-Github-Delivery"); id != "" {
 		return id
 	}

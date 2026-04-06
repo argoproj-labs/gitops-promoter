@@ -112,6 +112,27 @@ test-parallel: test-deps ## Run tests in parallel
 test-parallel-repeat3: test-deps ## Run tests in parallel 3 times to check for flakiness --repeat does not count the first run
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GINKGO) -p -procs=4 -r -v -cover -coverprofile=cover.out -coverpkg=./... --junit-report=junit.xml --repeat=2 internal/
 
+##@ Fuzzing
+
+# Packages that define native Go fuzz targets (Fuzz* in fuzz_test.go).
+FUZZ_PACKAGES ?= ./internal/utils
+# Duration per fuzz target when running `make test-fuzz` (each Fuzz* runs sequentially within a package).
+FUZZ_TIME ?= 30s
+
+.PHONY: test-fuzz-seed test-fuzz
+test-fuzz-seed: ## Replay fuzz seeds and testdata/fuzz corpora (fast; used in CI).
+	go test $(FUZZ_PACKAGES) -run '^Fuzz' -count=1
+
+test-fuzz: ## Run each Fuzz* in FUZZ_PACKAGES for FUZZ_TIME (exploratory).
+	@set -euo pipefail; \
+	for pkg in $(FUZZ_PACKAGES); do \
+	  fuzzes=$$(go test $$pkg -list Fuzz 2>/dev/null | grep '^Fuzz' || true); \
+	  for fuzz in $$fuzzes; do \
+	    echo "fuzz $$pkg $$fuzz ($(FUZZ_TIME))"; \
+	    go test $$pkg -count=1 -fuzz=$$fuzz -fuzztime=$(FUZZ_TIME); \
+	  done; \
+	done
+
 .PHONY: lint nilaway-no-test
 lint: golangci-lint ## Run golangci-lint linter & yamllint
 	$(GOLANGCI_LINT) run
