@@ -94,7 +94,6 @@ status:
 #       interval: 2m
 # status:
 #   promotionStrategyContext:
-#     phase: pending
 #     phasePerBranch:
 #       environment/dev: success
 #     lastSuccessfulShas:
