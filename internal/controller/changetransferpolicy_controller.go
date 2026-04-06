@@ -439,21 +439,21 @@ func removeKnownTrailers(input string) string {
 // SetupWithManager sets up the controller with the Manager.
 func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	// This index gets used by the CommitStatus controller and the webhook server to find the ChangeTransferPolicy to trigger reconcile
-	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.ChangeTransferPolicy{}, ".status.proposed.hydrated.sha", func(rawObj client.Object) []string {
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.ChangeTransferPolicy{}, constants.ChangeTransferPolicyProposedHydratedSHAIndexField, func(rawObj client.Object) []string {
 		//nolint:forcetypeassert // type is guaranteed by the IndexField API
 		ctp := rawObj.(*promoterv1alpha1.ChangeTransferPolicy)
 		return []string{ctp.Status.Proposed.Hydrated.Sha}
 	}); err != nil {
-		return fmt.Errorf("failed to set field index for .status.proposed.hydrated.sha: %w", err)
+		return fmt.Errorf("failed to set field index for %s: %w", constants.ChangeTransferPolicyProposedHydratedSHAIndexField, err)
 	}
 
 	// This gets used by the CommitStatus controller to find the ChangeTransferPolicy to trigger reconcile
-	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.ChangeTransferPolicy{}, ".status.active.hydrated.sha", func(rawObj client.Object) []string {
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.ChangeTransferPolicy{}, constants.ChangeTransferPolicyActiveHydratedSHAIndexField, func(rawObj client.Object) []string {
 		//nolint:forcetypeassert // type is guaranteed by the IndexField API
 		ctp := rawObj.(*promoterv1alpha1.ChangeTransferPolicy)
 		return []string{ctp.Status.Active.Hydrated.Sha}
 	}); err != nil {
-		return fmt.Errorf("failed to set field index for .status.active.hydrated.sha: %w", err)
+		return fmt.Errorf("failed to set field index for %s: %w", constants.ChangeTransferPolicyActiveHydratedSHAIndexField, err)
 	}
 
 	// Use Direct methods to read configuration from the API server without cache during setup.

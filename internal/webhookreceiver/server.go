@@ -15,6 +15,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 
 	"github.com/tidwall/gjson"
 
@@ -293,7 +294,7 @@ func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provide
 
 	err := wr.k8sClient.List(ctx, &ctpLists, &client.ListOptions{
 		FieldSelector: fields.SelectorFromSet(map[string]string{
-			".status.proposed.hydrated.sha": beforeSha,
+			constants.ChangeTransferPolicyProposedHydratedSHAIndexField: beforeSha,
 		}),
 	})
 	if err != nil {
@@ -304,7 +305,7 @@ func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provide
 		// List again, this time checking the active sha. This lets us catch cases where someone manually merged a PR in the SCM.
 		err = wr.k8sClient.List(ctx, &ctpLists, &client.ListOptions{
 			FieldSelector: fields.SelectorFromSet(map[string]string{
-				".status.active.hydrated.sha": beforeSha,
+				constants.ChangeTransferPolicyActiveHydratedSHAIndexField: beforeSha,
 			}),
 		})
 		if err != nil {

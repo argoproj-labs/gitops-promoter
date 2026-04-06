@@ -16,6 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
 )
@@ -88,11 +89,11 @@ var _ = Describe("GitHub webhook signature enforcement in postRoot", func() {
 		scheme := utils.GetScheme()
 
 		b := fake.NewClientBuilder().WithScheme(scheme).
-			WithIndex(&promoterv1alpha1.ChangeTransferPolicy{}, ".status.proposed.hydrated.sha", func(o client.Object) []string {
+			WithIndex(&promoterv1alpha1.ChangeTransferPolicy{}, constants.ChangeTransferPolicyProposedHydratedSHAIndexField, func(o client.Object) []string {
 				ctp := o.(*promoterv1alpha1.ChangeTransferPolicy) //nolint:forcetypeassert
 				return []string{ctp.Status.Proposed.Hydrated.Sha}
 			}).
-			WithIndex(&promoterv1alpha1.ChangeTransferPolicy{}, ".status.active.hydrated.sha", func(o client.Object) []string {
+			WithIndex(&promoterv1alpha1.ChangeTransferPolicy{}, constants.ChangeTransferPolicyActiveHydratedSHAIndexField, func(o client.Object) []string {
 				ctp := o.(*promoterv1alpha1.ChangeTransferPolicy) //nolint:forcetypeassert
 				return []string{ctp.Status.Active.Hydrated.Sha}
 			})

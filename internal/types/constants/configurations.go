@@ -22,6 +22,14 @@ const (
 	// performed by the ChangeTransferPolicy controller.
 	ChangeTransferPolicyControllerFieldOwner = "promoter.argoproj.io/changetransferpolicy-controller"
 
+	// ChangeTransferPolicyProposedHydratedSHAIndexField is the field index path for the
+	// proposed branch hydrated commit SHA on a ChangeTransferPolicy resource.
+	ChangeTransferPolicyProposedHydratedSHAIndexField = ".status.proposed.hydrated.sha"
+
+	// ChangeTransferPolicyActiveHydratedSHAIndexField is the field index path for the
+	// active branch hydrated commit SHA on a ChangeTransferPolicy resource.
+	ChangeTransferPolicyActiveHydratedSHAIndexField = ".status.active.hydrated.sha"
+
 	// ArgoCDCommitStatusControllerFieldOwner is the field owner for Server-Side Apply operations
 	// performed by the ArgoCDCommitStatus controller.
 	ArgoCDCommitStatusControllerFieldOwner = "promoter.argoproj.io/argocdcommitstatus-controller"
