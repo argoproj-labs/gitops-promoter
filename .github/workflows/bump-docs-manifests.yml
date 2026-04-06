@@ -39,8 +39,7 @@ jobs:
           commit-message: |
             docs: bump manifest versions to v${{ github.event.inputs.new_version }}
 
-            Release description:
-            ${{ github.event.inputs.release_description }}
+            Release-Description: ${{ toJSON(github.event.inputs.release_description) }}
           title: "docs: bump manifest versions to v${{ github.event.inputs.new_version }}"
           body: |
             Automated PR to bump manifest versions in documentation.
@@ -49,7 +48,7 @@ jobs:
 
             ${{ github.event.inputs.release_description }}
 
-            **Maintainers:** merge with **squash** or **rebase** so the commit on `main` keeps the full message (including the `Release description:` block). A plain merge commit uses a different message and the release workflow will not pick up this text.
+            **Maintainers:** merge with **squash** or **rebase** so the commit on `main` keeps the subject line and the `Release-Description:` trailer (a single line: the key plus a JSON-encoded string). A plain merge commit replaces the message and the release workflow will not see the description.
           branch: "bump-docs-manifests/v${{ github.event.inputs.new_version }}"
           delete-branch: true
           signoff: true
