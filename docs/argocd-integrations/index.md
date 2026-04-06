@@ -125,14 +125,18 @@ spec:
       description: |
         ...
 
+        {{- with .PromotionStrategy }}
         {{- $promoURL := urlParse "https://argocd.example.com" }}
-        {{- $promoTrackID := index .PromotionStrategy.metadata.annotations "argocd.argoproj.io/tracking-id" }}
+        {{- $promoTrackID := index .Annotations "argocd.argoproj.io/tracking-id" }}
+        {{- if $promoTrackID }}
         {{- $promoApp := index (splitList ":" $promoTrackID) 0 }}
-        {{- $promoQuery := printf "promotionstrategy=%s" .PromotionStrategy.metadata.name }}
-        {{- $promoRawQuery := join "&" (list "view=GitOps+Promoter" $promoQuery) }}
+        {{- $promoQuery := printf "promotionstrategy=%s%%2F%s" .Namespace .Name }}
+        {{- $promoRawQuery := join "&" (list "resource=" "view=GitOps+Promoter" $promoQuery) }}
         {{- $_ := set $promoURL "path" (printf "/applications/%s" $promoApp) }}
         {{- $_ = set $promoURL "query" $promoRawQuery }}
-        [Promotion Strategy]({{ urlJoin $promoURL }})
+        [View PromotionStrategy in Argo CD]({{ urlJoin $promoURL }})
+        {{- end }}
+        {{- end }}
 ```
 
 ## Deep Links
