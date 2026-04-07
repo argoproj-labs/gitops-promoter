@@ -22,9 +22,7 @@ package v1alpha1
 //
 // SuccessSpec defines when the HTTP response is considered successful (commit status phase success).
 type SuccessSpecApplyConfiguration struct {
-	// When holds the boolean expression evaluated against the HTTP response (expr library).
-	// Available variables: Response.StatusCode (int), Response.Body (parsed JSON as map[string]any, or raw string if not JSON), Response.Headers (map[string][]string).
-	// The expression must return true for validation to pass. Example: "Response.StatusCode == 200 && Response.Body.approved == true"
+	// When is evaluated against the HTTP response after each request. See WhenSpec.Expression.
 	When *WhenSpecApplyConfiguration `json:"when,omitempty"`
 }
 

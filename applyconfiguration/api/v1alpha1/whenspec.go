@@ -20,9 +20,18 @@ package v1alpha1
 // WhenSpecApplyConfiguration represents a declarative configuration of the WhenSpec type for use
 // with apply.
 //
-// WhenSpec holds a single boolean expression.
+// WhenSpec holds spec.success.when.expression only (evaluated after the HTTP response).
+// Trigger guards use WhenWithOutputSpec under spec.mode.trigger.when, not this type.
 type WhenSpecApplyConfiguration struct {
-	// Expression is evaluated using the expr library (github.com/expr-lang/expr). Must return a boolean.
+	// Expression uses github.com/expr-lang/expr against the HTTP response. Variables (also used by spec.mode.trigger.response.output):
+	// Response.StatusCode (int), Response.Body (parsed JSON as map[string]any, or raw string if not JSON), Response.Headers (map[string][]string).
+	//
+	// Evaluation scope follows spec.mode.context; see ModeSpec. Return shape:
+	//
+	// - "environments": must return boolean — true → success, false → pending; failure phase is not expressible.
+	//
+	// - "promotionstrategy": boolean true/false applies the same phase to all applicable environments (success or pending only), or return an object with optional defaultPhase ("success"|"pending"|"failure", default "pending") and optional environments: [{ branch, phase }, ...] for per-branch phases. Example:
+	// { defaultPhase: "pending", environments: [{ branch: "dev", phase: "success" }, { branch: "staging", phase: "pending" }] }.
 	Expression *string `json:"expression,omitempty"`
 }
 
