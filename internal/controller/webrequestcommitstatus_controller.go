@@ -683,8 +683,12 @@ func (r *WebRequestCommitStatusReconciler) fireOrCarryForward(
 	if decision.ShouldFire {
 		return r.handleHTTPRequestAndValidation(ctx, wrcs, td)
 	}
+	phase := promoterv1alpha1.CommitStatusPhase(lastState.Phase)
+	if phase == "" {
+		phase = promoterv1alpha1.CommitPhasePending
+	}
 	return httpValidationResult{
-		Phase:                  phaseOrDefault(lastState.Phase),
+		Phase:                  phase,
 		PhasePerBranch:         lastState.PhasePerBranch,
 		LastRequestTime:        lastState.LastRequestTime,
 		LastResponseStatusCode: lastState.LastResponseStatusCode,
@@ -734,14 +738,6 @@ func (r *WebRequestCommitStatusReconciler) evaluateTriggerDecision(
 	}
 
 	return triggerDecision{ShouldFire: shouldFire, NewTriggerData: newTriggerData}, nil
-}
-
-// phaseOrDefault converts a phase string to CommitStatusPhase, defaulting to Pending when empty.
-func phaseOrDefault(phase string) promoterv1alpha1.CommitStatusPhase {
-	if phase != "" {
-		return promoterv1alpha1.CommitStatusPhase(phase)
-	}
-	return promoterv1alpha1.CommitPhasePending
 }
 
 // resolveReportedSha returns the SHA to report on based on the reportOn setting.
