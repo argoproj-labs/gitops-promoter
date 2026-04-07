@@ -112,7 +112,7 @@ var _ = Describe("postRoot max payload size enforcement", func() {
 
 	// buildReceiverWithCC creates a WebhookReceiver backed by a fake k8s client.
 	// When withCC is true a ControllerConfiguration with the given maxPayloadBytes is created;
-	// when withCC is false no ControllerConfiguration is present (default fallback path).
+	// when withCC is false no ControllerConfiguration is present (requests will fail with HTTP 500).
 	buildReceiverWithCC := func(withCC bool, maxPayloadBytes int64) *webhookreceiver.WebhookReceiver {
 		scheme := utils.GetScheme()
 		b := fake.NewClientBuilder().WithScheme(scheme).
@@ -169,8 +169,8 @@ var _ = Describe("postRoot max payload size enforcement", func() {
 		Expect(rr.Code).To(Equal(http.StatusNoContent))
 	})
 
-	It("uses the default limit (25 MiB) when no ControllerConfiguration is present", func() {
-		// No ControllerConfiguration in the fake client; a tiny body should still pass.
+	It("errors out when no ControllerConfiguration is present", func() {
+		// No ControllerConfiguration in the fake client; the request should fail with 500.
 		wr := buildReceiverWithCC(false, 0)
 
 		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{}`))
@@ -179,8 +179,7 @@ var _ = Describe("postRoot max payload size enforcement", func() {
 		rr := httptest.NewRecorder()
 		wr.ServeHTTP(rr, req)
 
-		// 204 means the body was accepted under the default limit
-		Expect(rr.Code).To(Equal(http.StatusNoContent))
+		Expect(rr.Code).To(Equal(http.StatusInternalServerError))
 	})
 
 	It("accepts any body size when maxPayloadBytes is 0 (no limit)", func() {

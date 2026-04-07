@@ -1,9 +1,11 @@
 package webhookreceiver_test
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -165,6 +167,24 @@ var _ = Describe("GitHub webhook signature enforcement in postRoot", func() {
 		}
 
 		fakeClient := b.Build()
+
+		// Always add a ControllerConfiguration; it is required (no fallback) since the
+		// webhook receiver now errors out if the CC is missing.
+		cc := &promoterv1alpha1.ControllerConfiguration{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "promoter-controller-configuration",
+				Namespace: controllerNamespace,
+			},
+			Spec: promoterv1alpha1.ControllerConfigurationSpec{
+				WebhookReceiver: &promoterv1alpha1.WebhookReceiverConfiguration{
+					MaxPayloadBytes: 26214400,
+				},
+			},
+		}
+		if err := fakeClient.Create(context.Background(), cc); err != nil {
+			panic(fmt.Sprintf("failed to create ControllerConfiguration in test: %v", err))
+		}
+
 		return webhookreceiver.NewWebhookReceiverWithClient(fakeClient, nil, controllerNamespace)
 	}
 

@@ -40,10 +40,6 @@ const (
 	ProviderUnknown        = ""
 )
 
-// defaultMaxPayloadBytes is the fallback payload limit (25 MiB) used when no
-// WebhookReceiverConfiguration is present in the ControllerConfiguration.
-const defaultMaxPayloadBytes int64 = 26214400
-
 // EnqueueFunc is a function type that can be used to enqueue CTP reconcile requests
 // without modifying the CTP object. This matches controller.CTPEnqueueFunc.
 type EnqueueFunc func(namespace, name string)
@@ -82,23 +78,23 @@ func (wr *WebhookReceiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	wr.postRoot(w, r)
 }
 
-// getMaxPayloadBytes returns the configured maximum request-body size.
+// getMaxPayloadBytes returns the configured maximum request-body size from the ControllerConfiguration.
 // It reads the ControllerConfiguration from the cache (fast, no API-server round-trip).
-// If the ControllerConfiguration is not found or no WebhookReceiver section is configured,
-// it falls back to defaultMaxPayloadBytes.
-func (wr *WebhookReceiver) getMaxPayloadBytes(ctx context.Context) int64 {
+// Returns an error if the ControllerConfiguration is not found; it is a required part of every installation.
+// If the WebhookReceiver section is absent, 0 is returned (no limit).
+func (wr *WebhookReceiver) getMaxPayloadBytes(ctx context.Context) (int64, error) {
 	cc := &promoterv1alpha1.ControllerConfiguration{}
 	if err := wr.k8sClient.Get(ctx, client.ObjectKey{
 		Name:      settings.ControllerConfigurationName,
 		Namespace: wr.controllerNamespace,
 	}, cc); err != nil {
-		logger.V(4).Info("could not read ControllerConfiguration, using default max payload size", "default", defaultMaxPayloadBytes)
-		return defaultMaxPayloadBytes
+		return 0, fmt.Errorf("could not read ControllerConfiguration %s/%s: %w",
+			wr.controllerNamespace, settings.ControllerConfigurationName, err)
 	}
 	if cc.Spec.WebhookReceiver == nil {
-		return defaultMaxPayloadBytes
+		return 0, nil
 	}
-	return cc.Spec.WebhookReceiver.MaxPayloadBytes
+	return cc.Spec.WebhookReceiver.MaxPayloadBytes, nil
 }
 
 // Start starts the webhook receiver server on the given address.
@@ -211,7 +207,13 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	maxPayloadBytes := wr.getMaxPayloadBytes(r.Context())
+	maxPayloadBytes, err := wr.getMaxPayloadBytes(r.Context())
+	if err != nil {
+		logger.Error(err, "failed to read ControllerConfiguration")
+		responseCode = http.StatusInternalServerError
+		http.Error(w, "internal server error: could not read controller configuration", responseCode)
+		return
+	}
 	if maxPayloadBytes > 0 {
 		// Reject oversized payloads before buffering: if Content-Length is declared and
 		// already exceeds the limit, we can refuse immediately without reading the body.
