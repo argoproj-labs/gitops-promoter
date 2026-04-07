@@ -79,31 +79,8 @@ checksum:
   extra_files:
     - glob: ./install.yaml
 
-binary_signs:
-  - cmd: cosign
-    signature: "${artifact}.sigstore.json"
-    args:
-      - sign-blob
-      - "--bundle=${signature}"
-      - "${artifact}"
-      - "--yes"
-    ids:
-      - gitops-promoter
-    output: true
-
 signs:
-  - id: archives
-    cmd: cosign
-    signature: "${artifact}.sigstore.json"
-    args:
-      - sign-blob
-      - "--bundle=${signature}"
-      - "${artifact}"
-      - "--yes"
-    artifacts: archive
-    output: true
-  - id: checksum
-    cmd: cosign
+  - cmd: cosign
     signature: "${artifact}.sigstore.json"
     args:
       - sign-blob
@@ -184,7 +161,7 @@ release:
       quay.io/argoprojlabs/gitops-promoter:latest
     ```
 
-    **Checksums, tarballs, and binaries**: Each file in the checksums manifest, each release `.tar.gz`, and each `gitops-promoter` binary has a matching `*.sigstore.json` bundle. Example for the checksums file:
+    **Checksums file**: The checksums file is signed with Sigstore. Download `gitops-promoter_{{ .Version }}_checksums.txt` and its `.sigstore.json` bundle, then verify:
 
     ```bash
     cosign verify-blob \
@@ -194,7 +171,11 @@ release:
       gitops-promoter_{{ .Version }}_checksums.txt
     ```
 
-    Use the same `--certificate-identity` and issuer with the `.sigstore.json` / artifact pair for any other file from this release.
+    Then verify any downloaded artifact against the checksums file:
+
+    ```bash
+    sha256sum -c gitops-promoter_{{ .Version }}_checksums.txt --ignore-missing
+    ```
 
     **Full Changelog**: https://github.com/argoproj-labs/gitops-promoter/compare/{{ .PreviousTag }}...{{ .Tag }}
 
