@@ -21,17 +21,17 @@ type GitAuthenticationProvider struct {
 var _ scms.GitOperationsProvider = &GitAuthenticationProvider{}
 
 // NewGiteaGitAuthenticationProvider creates a new instance of GitAuthenticationProvider for Gitea.
-func NewGiteaGitAuthenticationProvider(scmProvider promoterv1alpha1.GenericScmProvider, secret *k8sV1.Secret) *GitAuthenticationProvider {
+func NewGiteaGitAuthenticationProvider(scmProvider promoterv1alpha1.GenericScmProvider, secret *k8sV1.Secret) (*GitAuthenticationProvider, error) {
 	client, err := GetClient(scmProvider.GetSpec().Gitea.Domain, *secret)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("failed to create Gitea client: %w", err)
 	}
 
 	return &GitAuthenticationProvider{
 		scmProvider: scmProvider,
 		secret:      secret,
 		client:      client,
-	}
+	}, nil
 }
 
 // GetGitHttpsRepoUrl constructs the HTTPS URL for a Gitea repository.
