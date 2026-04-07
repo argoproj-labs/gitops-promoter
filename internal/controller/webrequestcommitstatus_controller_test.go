@@ -3393,7 +3393,6 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 			}, constants.EventuallyTimeout, 1*time.Second).Should(Succeed())
 		})
 	})
-
 })
 
 func wrcsPhaseForBranch(items []promoterv1alpha1.WebRequestCommitStatusPhasePerBranchItem, branch string) promoterv1alpha1.CommitStatusPhase {
