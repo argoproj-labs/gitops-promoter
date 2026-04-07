@@ -167,6 +167,10 @@ spec:
     name: <your-scmprovider-name> # The secret that contains the GitLab Access Token
 ```
 
+> [!WARNING]
+> GitLab does not support updating existing commit statuses without transitioning the state. So a pending CommitStatus's
+> description or URL may go stale if updated after creation.
+
 ## Gitea Configuration
 
 To configure GitOps Promoter with Gitea, you will need to create an access token. See the [official Gitea documentation](https://docs.gitea.com/development/api-usage#generating-and-listing-api-tokens) for creating access tokens. The token needs `read and write` repository permissions.
