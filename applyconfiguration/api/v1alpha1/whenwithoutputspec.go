@@ -34,7 +34,6 @@ type WhenWithOutputSpecApplyConfiguration struct {
 	// - LastSuccessfulSha (string): last SHA that achieved success for this environment (environments context only; empty in promotionstrategy context)
 	// - TriggerOutput (map[string]any): custom data from the previous when.output.expression evaluation
 	// - ResponseOutput (map[string]any): response data from the previous HTTP request (if any)
-	// - UnixNow (float64): current time as Unix seconds when the expression is evaluated
 	//
 	// Note: PromotionStrategy.Status.Environments is an ordered array representing the promotion sequence.
 	// Environments[0] is the first environment (e.g., dev), Environments[1] is second (e.g., staging), etc.

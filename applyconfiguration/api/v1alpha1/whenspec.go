@@ -36,7 +36,6 @@ type WhenSpecApplyConfiguration struct {
 	// - LastSuccessfulSha (string): last SHA that achieved success (environments context only; empty in promotionstrategy context)
 	// - TriggerOutput (map[string]any): custom data from the previous when.output.expression evaluation
 	// - ResponseOutput (map[string]any): response data from the previous HTTP request (if any)
-	// - UnixNow (float64): current time as Unix seconds when the expression is evaluated
 	//
 	// Important: since the expression runs every reconcile, it must handle Response being nil (no HTTP request
 	// this reconcile). Expressions that only reference Response.* will error when Response is nil, causing the

@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
@@ -109,8 +108,6 @@ func (td templateData) triggerExprEnv() map[string]any {
 		"Environment":       td.Environment,
 		"TriggerOutput":     td.TriggerOutput,
 		"ResponseOutput":    td.ResponseOutput,
-		// UnixNow is seconds since Unix epoch (float64) at expression evaluation time; compare to JSON numeric fields from Response/ResponseOutput.
-		"UnixNow": float64(time.Now().Unix()),
 	}
 }
 

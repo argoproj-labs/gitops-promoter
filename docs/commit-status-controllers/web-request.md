@@ -88,7 +88,7 @@ For the **HTTP request** (URL, headers, body), **trigger** `when.expression`, **
 
 They are unset (empty / nil) because there is no single “current environment” for that one request.
 
-**You can use:** `PromotionStrategy` (full spec and status), `Phase` (aggregate of all applicable branches' phases — `success` only when every branch succeeded, `failure` if any failed, `pending` otherwise), `TriggerOutput`, `ResponseOutput` (trigger mode), `UnixNow` (current time as Unix seconds, float64), and `NamespaceMetadata` labels and annotations — same as in environment context, except for the per-env fields above.
+**You can use:** `PromotionStrategy` (full spec and status), `Phase` (aggregate of all applicable branches' phases — `success` only when every branch succeeded, `failure` if any failed, `pending` otherwise), `TriggerOutput`, `ResponseOutput` (trigger mode), and `NamespaceMetadata` labels and annotations — same as in environment context, except for the per-env fields above.
 
 When rendering **CommitStatus** `descriptionTemplate` and `urlTemplate`, the controller sets **`{{ .Phase }}`** to **that environment’s** resolved phase (`success`, `pending`, or `failure`). It still does **not** set `ReportedSha` or `Environment` in promotion-strategy context. If you need branch- or SHA-specific text in the SCM description or URL, either **walk `{{ .PromotionStrategy }}`** in the Go template (for example, `range` over `.PromotionStrategy.Status.Environments` and match on `.Branch`) or use **the same wording for every environment** (a generic message or link that does not try to substitute `{{ .ReportedSha }}` or `{{ .Environment.Branch }}`).
 
@@ -106,7 +106,6 @@ The `success.when.expression` is evaluated **every reconcile**, regardless of wh
 | `LastSuccessfulSha` | string | Last SHA that achieved success. Set in `environments` context; empty in `promotionstrategy` context. |
 | `TriggerOutput` | map[string]any | Custom data from the previous `when.output.expression` evaluation (trigger mode only). |
 | `ResponseOutput` | map[string]any | Response data from the previous HTTP request's `response.output.expression` (trigger mode only). |
-| `UnixNow` | float64 | Current time as Unix seconds when the expression runs; use with timestamps from `Response` / `ResponseOutput` for time-bounded success (for example an API-returned expiry). |
 
 **Important:** Since the expression runs every reconcile, it must handle `Response` being `nil` (no HTTP request this reconcile). Expressions that only reference `Response.*` will error when `Response` is `nil`, causing the reconcile to return an error and requeue. Guard `Response` access:
 

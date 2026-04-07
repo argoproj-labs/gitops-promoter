@@ -3275,7 +3275,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 		})
 	})
 
-	Describe("HTTP response expiry via ResponseOutput and UnixNow", func() {
+	Describe("HTTP response expiry via ResponseOutput and now()", func() {
 		var wrcs *promoterv1alpha1.WebRequestCommitStatus
 		var httpHits int
 		var httpHitsMu sync.Mutex
@@ -3308,8 +3308,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenSpec{
-							// Success only while wall clock is before validUntilUnix from the response (or persisted ResponseOutput).
-							Expression: `Response != nil ? (Response.StatusCode == 200 && UnixNow < Response.Body.validUntilUnix) : (ResponseOutput != nil && UnixNow < ResponseOutput["validUntilUnix"])`,
+							Expression: `Response != nil ? (Response.StatusCode == 200 && float(now().Unix()) < Response.Body.validUntilUnix) : (ResponseOutput != nil && float(now().Unix()) < ResponseOutput["validUntilUnix"])`,
 						},
 					},
 					Mode: promoterv1alpha1.ModeSpec{
@@ -3338,7 +3337,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 			_ = k8sClient.Delete(ctx, wrcs)
 		})
 
-		It("should report success until validUntilUnix passes then pending without new HTTP", func() {
+		It("should report success until expiry passes then revert to pending without new HTTP", func() {
 			var hitsAfterFirstWave int
 
 			By("Waiting for first HTTP wave and success on development while still before expiry")
@@ -3369,7 +3368,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 			hitsAfterFirstWave = httpHits
 			httpHitsMu.Unlock()
 
-			By("Waiting for success.when to flip to pending after UnixNow passes validUntilUnix (no further HTTP)")
+			By("Waiting for success.when to flip to pending after now().Unix() passes validUntilUnix (no further HTTP)")
 			Eventually(func(g Gomega) {
 				httpHitsMu.Lock()
 				h := httpHits
@@ -3382,7 +3381,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 				for _, env := range fetched.Status.Environments {
 					if env.Branch == testBranchDevelopment {
 						g.Expect(env.Phase).To(Equal(promoterv1alpha1.CommitPhasePending),
-							"phase should return to pending when success.when sees UnixNow >= validUntilUnix")
+							"phase should return to pending after expiry")
 					}
 				}
 
@@ -3394,6 +3393,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 			}, constants.EventuallyTimeout, 1*time.Second).Should(Succeed())
 		})
 	})
+
 })
 
 func wrcsPhaseForBranch(items []promoterv1alpha1.WebRequestCommitStatusPhasePerBranchItem, branch string) promoterv1alpha1.CommitStatusPhase {
