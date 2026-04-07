@@ -110,10 +110,10 @@ var _ = Describe("DetectProvider", func() {
 var _ = Describe("postRoot max payload size enforcement", func() {
 	const controllerNamespace = "promoter-system"
 
-	// buildReceiverWithPayloadLimit creates a WebhookReceiver backed by a fake k8s client
-	// that includes a ControllerConfiguration with the given maxPayloadBytes limit.
-	// Pass limit <= 0 to omit the ControllerConfiguration (testing the default-fallback path).
-	buildReceiverWithPayloadLimit := func(maxPayloadBytes int64) *webhookreceiver.WebhookReceiver {
+	// buildReceiverWithCC creates a WebhookReceiver backed by a fake k8s client.
+	// When withCC is true a ControllerConfiguration with the given maxPayloadBytes is created;
+	// when withCC is false no ControllerConfiguration is present (default fallback path).
+	buildReceiverWithCC := func(withCC bool, maxPayloadBytes int64) *webhookreceiver.WebhookReceiver {
 		scheme := utils.GetScheme()
 		b := fake.NewClientBuilder().WithScheme(scheme).
 			WithIndex(&promoterv1alpha1.ChangeTransferPolicy{}, constants.ChangeTransferPolicyProposedHydratedSHAIndexField, func(_ client.Object) []string {
@@ -123,7 +123,7 @@ var _ = Describe("postRoot max payload size enforcement", func() {
 				return nil
 			})
 
-		if maxPayloadBytes > 0 {
+		if withCC {
 			b = b.WithObjects(&promoterv1alpha1.ControllerConfiguration{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "promoter-controller-configuration",
@@ -142,7 +142,7 @@ var _ = Describe("postRoot max payload size enforcement", func() {
 
 	It("rejects a GitHub push whose body exceeds maxPayloadBytes with 413", func() {
 		const limit = 10
-		wr := buildReceiverWithPayloadLimit(limit)
+		wr := buildReceiverWithCC(true, limit)
 
 		body := strings.Repeat("x", limit+1) // one byte over the limit
 		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
@@ -156,7 +156,7 @@ var _ = Describe("postRoot max payload size enforcement", func() {
 
 	It("accepts a GitHub push whose body is exactly at maxPayloadBytes", func() {
 		const limit = 10
-		wr := buildReceiverWithPayloadLimit(limit)
+		wr := buildReceiverWithCC(true, limit)
 
 		body := strings.Repeat("x", limit) // exactly at the limit
 		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
@@ -171,7 +171,7 @@ var _ = Describe("postRoot max payload size enforcement", func() {
 
 	It("uses the default limit (25 MiB) when no ControllerConfiguration is present", func() {
 		// No ControllerConfiguration in the fake client; a tiny body should still pass.
-		wr := buildReceiverWithPayloadLimit(0)
+		wr := buildReceiverWithCC(false, 0)
 
 		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{}`))
 		req.Header.Set("X-GitHub-Event", "push")
@@ -180,6 +180,22 @@ var _ = Describe("postRoot max payload size enforcement", func() {
 		wr.ServeHTTP(rr, req)
 
 		// 204 means the body was accepted under the default limit
+		Expect(rr.Code).To(Equal(http.StatusNoContent))
+	})
+
+	It("accepts any body size when maxPayloadBytes is 0 (no limit)", func() {
+		// ControllerConfiguration is present with maxPayloadBytes=0, meaning unlimited.
+		wr := buildReceiverWithCC(true, 0)
+
+		// A body larger than the default 25 MiB default would normally be rejected,
+		// but with maxPayloadBytes=0 it should pass (204 = no matching CTP, body was accepted).
+		body := strings.Repeat("x", 100)
+		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+		req.Header.Set("X-GitHub-Event", "push")
+
+		rr := httptest.NewRecorder()
+		wr.ServeHTTP(rr, req)
+
 		Expect(rr.Code).To(Equal(http.StatusNoContent))
 	})
 })

@@ -212,22 +212,25 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	maxPayloadBytes := wr.getMaxPayloadBytes(r.Context())
-	// Reject oversized payloads before buffering: if Content-Length is declared and
-	// already exceeds the limit, we can refuse immediately without reading the body.
-	if r.ContentLength > maxPayloadBytes {
-		responseCode = http.StatusRequestEntityTooLarge
-		http.Error(w, "request body exceeds maximum allowed size", responseCode)
-		return
+	if maxPayloadBytes > 0 {
+		// Reject oversized payloads before buffering: if Content-Length is declared and
+		// already exceeds the limit, we can refuse immediately without reading the body.
+		if r.ContentLength > maxPayloadBytes {
+			responseCode = http.StatusRequestEntityTooLarge
+			http.Error(w, "request body exceeds maximum allowed size", responseCode)
+			return
+		}
+		// Read at most maxPayloadBytes+1 so we can detect chunked/undeclared oversized
+		// payloads without buffering the entire body.
+		r.Body = io.NopCloser(io.LimitReader(r.Body, maxPayloadBytes+1))
 	}
-	// Read at most maxPayloadBytes+1 so we can detect chunked/undeclared oversized
-	// payloads without buffering the entire body.
-	jsonBytes, err := io.ReadAll(io.LimitReader(r.Body, maxPayloadBytes+1))
+	jsonBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		responseCode = http.StatusInternalServerError
 		http.Error(w, "error reading body", responseCode)
 		return
 	}
-	if int64(len(jsonBytes)) > maxPayloadBytes {
+	if maxPayloadBytes > 0 && int64(len(jsonBytes)) > maxPayloadBytes {
 		responseCode = http.StatusRequestEntityTooLarge
 		http.Error(w, "request body exceeds maximum allowed size", responseCode)
 		return

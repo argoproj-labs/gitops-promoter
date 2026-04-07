@@ -24,7 +24,8 @@ package v1alpha1
 type WebhookReceiverConfigurationApplyConfiguration struct {
 	// MaxPayloadBytes is the maximum size in bytes of an incoming webhook request body.
 	// Requests whose bodies exceed this limit are rejected with HTTP 413 (Request Entity Too Large).
-	// Defaults to 26214400 (25 MiB), which matches GitHub's maximum webhook payload size.
+	// Set to 0 to disable the limit entirely. Defaults to 26214400 (25 MiB), which matches
+	// GitHub's maximum webhook payload size.
 	MaxPayloadBytes *int64 `json:"maxPayloadBytes,omitempty"`
 }
 
