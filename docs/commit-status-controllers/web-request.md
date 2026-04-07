@@ -115,15 +115,15 @@ Observed state is stored under **`status.promotionStrategyContext`**, not under 
 
 Notable fields:
 
-- **`phasePerBranch`** — map of branch → resolved phase (`success`, `pending`, or `failure`) for every applicable environment. This is always fully populated after reconciliation, regardless of whether the success expression returned a boolean or the object form.
-- **`lastSuccessfulShas`** — branch → last SHA that reached **success** for that branch (used for optimizations below)
+- **`phasePerBranch`** — list of `{ branch, phase }` entries (Kubernetes list type **map**, merge key **`branch`**) with resolved phase (`success`, `pending`, or `failure`) for every applicable environment. This is always fully populated after reconciliation, regardless of whether the success expression returned a boolean or the object form.
+- **`lastSuccessfulShas`** — list of `{ branch, lastSuccessfulSha }` entries (list type **map**, merge key **`branch`**) recording the last SHA that reached **success** for each branch (used for optimizations below)
 - **`lastRequestTime`**, **`lastResponseStatusCode`**, **`triggerOutput`**, **`responseOutput`** — same roles as per-environment status in the default context, but stored once for the shared request
 
 In trigger mode, **`triggerOutput`** and **`responseOutput`** are read from / written to **`promotionStrategyContext`**, not to `status.environments[]`.
 
 ### Polling optimization (`reportOn: proposed` only)
 
-When **`mode.polling`** is set, **`reportOn` is `proposed`**, and context is **`promotionstrategy`**, the controller can **skip** issuing a new HTTP request if **every** applicable environment is already **success** and each branch’s current proposed SHA matches **`lastSuccessfulShas`** for that branch. It still refreshes `CommitStatus` resources and requeues on the polling interval. This avoids hammering the API when nothing has changed.
+When **`mode.polling`** is set, **`reportOn` is `proposed`**, and context is **`promotionstrategy`**, the controller can **skip** issuing a new HTTP request if **every** applicable environment is already **success** and each branch’s current proposed SHA matches the **`lastSuccessfulSha`** value in **`lastSuccessfulShas`** for that branch. It still refreshes `CommitStatus` resources and requeues on the polling interval. This avoids hammering the API when nothing has changed.
 
 ### Examples
 

@@ -7177,24 +7177,61 @@ spec:
                       the last request.
                     type: integer
                   lastSuccessfulShas:
-                    additionalProperties:
-                      type: string
                     description: |-
                       LastSuccessfulShas tracks the last SHA that achieved success for each branch.
                       Used with reportOn "proposed" + polling to skip HTTP requests when all environments
                       have already succeeded for their current SHAs.
-                      Key is branch name, value is the SHA that last succeeded.
-                    type: object
+                    items:
+                      description: WebRequestCommitStatusLastSuccessfulShaItem records
+                        the last successful SHA for one branch in promotionstrategy
+                        context status.
+                      properties:
+                        branch:
+                          description: Branch is the environment branch name (merge
+                            key for lastSuccessfulShas list).
+                          minLength: 1
+                          type: string
+                        lastSuccessfulSha:
+                          description: LastSuccessfulSha is the SHA that last achieved
+                            success for this branch.
+                          maxLength: 64
+                          pattern: ^([a-f0-9]{40}|[a-f0-9]{64})?$
+                          type: string
+                      required:
+                      - branch
+                      type: object
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - branch
+                    x-kubernetes-list-type: map
                   phasePerBranch:
-                    additionalProperties:
-                      description: CommitStatusPhase represents the phase of a commit
-                        status.
-                      type: string
                     description: |-
                       PhasePerBranch holds the resolved phase for each applicable branch.
-                      Key is branch name, value is "pending", "success", or "failure".
-                      Every applicable branch is always present in this map after reconciliation.
-                    type: object
+                      Every applicable branch is always present after reconciliation.
+                    items:
+                      description: WebRequestCommitStatusPhasePerBranchItem is one
+                        branch's resolved phase in promotionstrategy context status.
+                      properties:
+                        branch:
+                          description: Branch is the environment branch name (merge
+                            key for phasePerBranch list).
+                          minLength: 1
+                          type: string
+                        phase:
+                          description: Phase is "pending", "success", or "failure".
+                          enum:
+                          - pending
+                          - success
+                          - failure
+                          type: string
+                      required:
+                      - branch
+                      - phase
+                      type: object
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - branch
+                    x-kubernetes-list-type: map
                   responseOutput:
                     description: 'ResponseOutput: same semantics as WebRequestCommitStatusEnvironmentStatus.ResponseOutput,
                       one shared map for context=promotionstrategy.'

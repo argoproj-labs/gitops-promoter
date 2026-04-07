@@ -95,8 +95,10 @@ status:
 # status:
 #   promotionStrategyContext:
 #     phasePerBranch:
-#       environment/dev: success
+#       - branch: environment/dev
+#         phase: success
 #     lastSuccessfulShas:
-#       environment/dev: abc123def456789012345678901234567890abcd
+#       - branch: environment/dev
+#         lastSuccessfulSha: abc123def456789012345678901234567890abcd
 #     lastRequestTime: "2024-01-15T10:30:00Z"
 #     lastResponseStatusCode: 200

@@ -367,13 +367,39 @@ type WebRequestCommitStatusStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
+// WebRequestCommitStatusPhasePerBranchItem is one branch's resolved phase in promotionstrategy context status.
+type WebRequestCommitStatusPhasePerBranchItem struct {
+	// Branch is the environment branch name (merge key for phasePerBranch list).
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	Branch string `json:"branch"`
+	// Phase is "pending", "success", or "failure".
+	// +required
+	// +kubebuilder:validation:Enum=pending;success;failure
+	Phase CommitStatusPhase `json:"phase"`
+}
+
+// WebRequestCommitStatusLastSuccessfulShaItem records the last successful SHA for one branch in promotionstrategy context status.
+type WebRequestCommitStatusLastSuccessfulShaItem struct {
+	// Branch is the environment branch name (merge key for lastSuccessfulShas list).
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	Branch string `json:"branch"`
+	// LastSuccessfulSha is the SHA that last achieved success for this branch.
+	// +optional
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})?$`
+	LastSuccessfulSha string `json:"lastSuccessfulSha,omitempty"`
+}
+
 // WebRequestCommitStatusPromotionStrategyContextStatus holds the observed state for context=promotionstrategy (at most one request per WebRequestCommitStatus).
 type WebRequestCommitStatusPromotionStrategyContextStatus struct {
 	// PhasePerBranch holds the resolved phase for each applicable branch.
-	// Key is branch name, value is "pending", "success", or "failure".
-	// Every applicable branch is always present in this map after reconciliation.
+	// Every applicable branch is always present after reconciliation.
+	// +listType=map
+	// +listMapKey=branch
 	// +optional
-	PhasePerBranch map[string]CommitStatusPhase `json:"phasePerBranch,omitempty"`
+	PhasePerBranch []WebRequestCommitStatusPhasePerBranchItem `json:"phasePerBranch,omitempty"`
 
 	// LastRequestTime is when the last HTTP request was made.
 	// +optional
@@ -400,9 +426,10 @@ type WebRequestCommitStatusPromotionStrategyContextStatus struct {
 	// LastSuccessfulShas tracks the last SHA that achieved success for each branch.
 	// Used with reportOn "proposed" + polling to skip HTTP requests when all environments
 	// have already succeeded for their current SHAs.
-	// Key is branch name, value is the SHA that last succeeded.
+	// +listType=map
+	// +listMapKey=branch
 	// +optional
-	LastSuccessfulShas map[string]string `json:"lastSuccessfulShas,omitempty"`
+	LastSuccessfulShas []WebRequestCommitStatusLastSuccessfulShaItem `json:"lastSuccessfulShas,omitempty"`
 }
 
 // WebRequestCommitStatusEnvironmentStatus defines the observed status for a specific environment.

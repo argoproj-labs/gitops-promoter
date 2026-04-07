@@ -18,7 +18,6 @@ limitations under the License.
 package v1alpha1
 
 import (
-	apiv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -29,9 +28,8 @@ import (
 // WebRequestCommitStatusPromotionStrategyContextStatus holds the observed state for context=promotionstrategy (at most one request per WebRequestCommitStatus).
 type WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration struct {
 	// PhasePerBranch holds the resolved phase for each applicable branch.
-	// Key is branch name, value is "pending", "success", or "failure".
-	// Every applicable branch is always present in this map after reconciliation.
-	PhasePerBranch map[string]apiv1alpha1.CommitStatusPhase `json:"phasePerBranch,omitempty"`
+	// Every applicable branch is always present after reconciliation.
+	PhasePerBranch []WebRequestCommitStatusPhasePerBranchItemApplyConfiguration `json:"phasePerBranch,omitempty"`
 	// LastRequestTime is when the last HTTP request was made.
 	LastRequestTime *v1.Time `json:"lastRequestTime,omitempty"`
 	// LastResponseStatusCode is the HTTP status code from the last request.
@@ -43,8 +41,7 @@ type WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration stru
 	// LastSuccessfulShas tracks the last SHA that achieved success for each branch.
 	// Used with reportOn "proposed" + polling to skip HTTP requests when all environments
 	// have already succeeded for their current SHAs.
-	// Key is branch name, value is the SHA that last succeeded.
-	LastSuccessfulShas map[string]string `json:"lastSuccessfulShas,omitempty"`
+	LastSuccessfulShas []WebRequestCommitStatusLastSuccessfulShaItemApplyConfiguration `json:"lastSuccessfulShas,omitempty"`
 }
 
 // WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration constructs a declarative configuration of the WebRequestCommitStatusPromotionStrategyContextStatus type for use with
@@ -53,16 +50,15 @@ func WebRequestCommitStatusPromotionStrategyContextStatus() *WebRequestCommitSta
 	return &WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration{}
 }
 
-// WithPhasePerBranch puts the entries into the PhasePerBranch field in the declarative configuration
+// WithPhasePerBranch adds the given value to the PhasePerBranch field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
-// If called multiple times, the entries provided by each call will be put on the PhasePerBranch field,
-// overwriting an existing map entries in PhasePerBranch field with the same key.
-func (b *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration) WithPhasePerBranch(entries map[string]apiv1alpha1.CommitStatusPhase) *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration {
-	if b.PhasePerBranch == nil && len(entries) > 0 {
-		b.PhasePerBranch = make(map[string]apiv1alpha1.CommitStatusPhase, len(entries))
-	}
-	for k, v := range entries {
-		b.PhasePerBranch[k] = v
+// If called multiple times, values provided by each call will be appended to the PhasePerBranch field.
+func (b *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration) WithPhasePerBranch(values ...*WebRequestCommitStatusPhasePerBranchItemApplyConfiguration) *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration {
+	for i := range values {
+		if values[i] == nil {
+			panic("nil value passed to WithPhasePerBranch")
+		}
+		b.PhasePerBranch = append(b.PhasePerBranch, *values[i])
 	}
 	return b
 }
@@ -99,16 +95,15 @@ func (b *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration)
 	return b
 }
 
-// WithLastSuccessfulShas puts the entries into the LastSuccessfulShas field in the declarative configuration
+// WithLastSuccessfulShas adds the given value to the LastSuccessfulShas field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
-// If called multiple times, the entries provided by each call will be put on the LastSuccessfulShas field,
-// overwriting an existing map entries in LastSuccessfulShas field with the same key.
-func (b *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration) WithLastSuccessfulShas(entries map[string]string) *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration {
-	if b.LastSuccessfulShas == nil && len(entries) > 0 {
-		b.LastSuccessfulShas = make(map[string]string, len(entries))
-	}
-	for k, v := range entries {
-		b.LastSuccessfulShas[k] = v
+// If called multiple times, values provided by each call will be appended to the LastSuccessfulShas field.
+func (b *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration) WithLastSuccessfulShas(values ...*WebRequestCommitStatusLastSuccessfulShaItemApplyConfiguration) *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration {
+	for i := range values {
+		if values[i] == nil {
+			panic("nil value passed to WithLastSuccessfulShas")
+		}
+		b.LastSuccessfulShas = append(b.LastSuccessfulShas, *values[i])
 	}
 	return b
 }

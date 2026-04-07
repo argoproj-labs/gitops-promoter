@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -108,7 +109,7 @@ type triggerResult struct {
 // is derived from the validation expression and is written to the CommitStatus.
 //
 // When context is promotionstrategy and the success expression returns an object { defaultPhase?, environments? },
-// PhasePerBranch is set and used to set each environment's CommitStatus phase; Phase is the default for branches not in the map.
+// PhasePerBranch is set and used to set each environment's CommitStatus phase; Phase is the default for branches not in the per-branch map.
 //
 // ResponseDataJSON is set only in trigger mode when response.output.expression is configured: it is the
 // JSON-serialized map returned by the data expression (extract/transform from the HTTP response).
@@ -434,12 +435,12 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 	// Update status
 	wrcs.Status.Environments = nil
 	wrcs.Status.PromotionStrategyContext = &promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus{
-		PhasePerBranch:         resolvedPhases,
+		PhasePerBranch:         phasePerBranchSliceFromMap(resolvedPhases),
 		LastRequestTime:        result.LastRequestTime,
 		LastResponseStatusCode: result.LastResponseStatusCode,
 		TriggerOutput:          triggerDataJSON,
 		ResponseOutput:         result.ResponseDataJSON,
-		LastSuccessfulShas:     lastSuccessfulShas,
+		LastSuccessfulShas:     lastSuccessfulShasSliceFromMap(lastSuccessfulShas),
 	}
 
 	// Upsert CommitStatuses for each environment
@@ -467,15 +468,17 @@ func allBranchesSucceededForCurrentShas(
 	lastReconciledCtxStatus *promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus,
 	currentShaPerBranch map[string]string,
 ) bool {
-	if lastReconciledCtxStatus == nil || lastReconciledCtxStatus.LastSuccessfulShas == nil {
+	if lastReconciledCtxStatus == nil || len(lastReconciledCtxStatus.LastSuccessfulShas) == 0 {
 		return false
 	}
+	phaseByBranch := phasePerBranchMapFromSlice(lastReconciledCtxStatus.PhasePerBranch)
+	shaByBranch := lastSuccessfulShasMapFromSlice(lastReconciledCtxStatus.LastSuccessfulShas)
 	for _, env := range applicableEnvs {
-		branchPhase := lastReconciledCtxStatus.PhasePerBranch[env.Branch]
+		branchPhase := phaseByBranch[env.Branch]
 		if branchPhase != promoterv1alpha1.CommitPhaseSuccess {
 			return false
 		}
-		if lastReconciledCtxStatus.LastSuccessfulShas[env.Branch] != currentShaPerBranch[env.Branch] {
+		if shaByBranch[env.Branch] != currentShaPerBranch[env.Branch] {
 			return false
 		}
 	}
@@ -495,8 +498,8 @@ func detectTransitionsAndUpdateShas(
 ) ([]string, map[string]string) {
 	lastSuccessfulShas := make(map[string]string, len(applicableEnvs))
 	if lastReconciledCtxStatus != nil {
-		for k, v := range lastReconciledCtxStatus.LastSuccessfulShas {
-			lastSuccessfulShas[k] = v
+		for _, it := range lastReconciledCtxStatus.LastSuccessfulShas {
+			lastSuccessfulShas[it.Branch] = it.LastSuccessfulSha
 		}
 	}
 	var transitioned []string
@@ -512,6 +515,60 @@ func detectTransitionsAndUpdateShas(
 		}
 	}
 	return transitioned, lastSuccessfulShas
+}
+
+func phasePerBranchMapFromSlice(items []promoterv1alpha1.WebRequestCommitStatusPhasePerBranchItem) map[string]promoterv1alpha1.CommitStatusPhase {
+	if len(items) == 0 {
+		return nil
+	}
+	m := make(map[string]promoterv1alpha1.CommitStatusPhase, len(items))
+	for _, it := range items {
+		m[it.Branch] = it.Phase
+	}
+	return m
+}
+
+func phasePerBranchSliceFromMap(m map[string]promoterv1alpha1.CommitStatusPhase) []promoterv1alpha1.WebRequestCommitStatusPhasePerBranchItem {
+	if len(m) == 0 {
+		return nil
+	}
+	branches := make([]string, 0, len(m))
+	for b := range m {
+		branches = append(branches, b)
+	}
+	slices.Sort(branches)
+	out := make([]promoterv1alpha1.WebRequestCommitStatusPhasePerBranchItem, 0, len(m))
+	for _, b := range branches {
+		out = append(out, promoterv1alpha1.WebRequestCommitStatusPhasePerBranchItem{Branch: b, Phase: m[b]})
+	}
+	return out
+}
+
+func lastSuccessfulShasMapFromSlice(items []promoterv1alpha1.WebRequestCommitStatusLastSuccessfulShaItem) map[string]string {
+	if len(items) == 0 {
+		return nil
+	}
+	m := make(map[string]string, len(items))
+	for _, it := range items {
+		m[it.Branch] = it.LastSuccessfulSha
+	}
+	return m
+}
+
+func lastSuccessfulShasSliceFromMap(m map[string]string) []promoterv1alpha1.WebRequestCommitStatusLastSuccessfulShaItem {
+	if len(m) == 0 {
+		return nil
+	}
+	branches := make([]string, 0, len(m))
+	for b := range m {
+		branches = append(branches, b)
+	}
+	slices.Sort(branches)
+	out := make([]promoterv1alpha1.WebRequestCommitStatusLastSuccessfulShaItem, 0, len(m))
+	for _, b := range branches {
+		out = append(out, promoterv1alpha1.WebRequestCommitStatusLastSuccessfulShaItem{Branch: b, LastSuccessfulSha: m[b]})
+	}
+	return out
 }
 
 // --- Shared helpers for processEnvironments and processContextPromotionStrategy ---
@@ -594,12 +651,13 @@ func lastReconciledStateFromContext(ctx context.Context, status *promoterv1alpha
 		return lastReconciledState{}
 	}
 	logger := log.FromContext(ctx)
+	phaseMap := phasePerBranchMapFromSlice(status.PhasePerBranch)
 	s := lastReconciledState{
-		Phase:                  aggregatePhase(status.PhasePerBranch),
+		Phase:                  aggregatePhase(phaseMap),
 		LastRequestTime:        status.LastRequestTime,
 		LastResponseStatusCode: status.LastResponseStatusCode,
 		ResponseOutput:         status.ResponseOutput,
-		PhasePerBranch:         status.PhasePerBranch,
+		PhasePerBranch:         phaseMap,
 	}
 	var err error
 	s.TriggerData, err = unmarshalJSONMap(status.TriggerOutput)
