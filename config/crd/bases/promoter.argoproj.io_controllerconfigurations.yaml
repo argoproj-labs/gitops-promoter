@@ -1747,6 +1747,22 @@ spec:
                 required:
                 - workQueue
                 type: object
+              webhookReceiver:
+                description: WebhookReceiver contains the configuration for the webhook
+                  receiver HTTP server.
+                properties:
+                  maxPayloadBytes:
+                    default: 26214400
+                    description: |-
+                      MaxPayloadBytes is the maximum size in bytes of an incoming webhook request body.
+                      Requests whose bodies exceed this limit are rejected with HTTP 413 (Request Entity Too Large).
+                      Defaults to 26214400 (25 MiB), which matches GitHub's maximum webhook payload size.
+                    format: int64
+                    minimum: 1
+                    type: integer
+                required:
+                - maxPayloadBytes
+                type: object
             required:
             - argocdCommitStatus
             - changeTransferPolicy

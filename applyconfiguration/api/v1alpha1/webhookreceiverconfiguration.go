@@ -20,11 +20,12 @@ package v1alpha1
 // WebhookReceiverConfigurationApplyConfiguration represents a declarative configuration of the WebhookReceiverConfiguration type for use
 // with apply.
 //
-// WebhookReceiverConfiguration defines the configuration for the webhook receiver server.
+// WebhookReceiverConfiguration defines the configuration for the webhook receiver HTTP server.
 type WebhookReceiverConfigurationApplyConfiguration struct {
-	// GitHub contains GitHub-specific webhook receiver configuration,
-	// including optional HMAC-SHA256 signature verification.
-	GitHub *GitHubWebhookReceiverConfigurationApplyConfiguration `json:"github,omitempty"`
+	// MaxPayloadBytes is the maximum size in bytes of an incoming webhook request body.
+	// Requests whose bodies exceed this limit are rejected with HTTP 413 (Request Entity Too Large).
+	// Defaults to 26214400 (25 MiB), which matches GitHub's maximum webhook payload size.
+	MaxPayloadBytes *int64 `json:"maxPayloadBytes,omitempty"`
 }
 
 // WebhookReceiverConfigurationApplyConfiguration constructs a declarative configuration of the WebhookReceiverConfiguration type for use with
@@ -33,10 +34,10 @@ func WebhookReceiverConfiguration() *WebhookReceiverConfigurationApplyConfigurat
 	return &WebhookReceiverConfigurationApplyConfiguration{}
 }
 
-// WithGitHub sets the GitHub field in the declarative configuration to the given value
+// WithMaxPayloadBytes sets the MaxPayloadBytes field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the GitHub field is set to the value of the last call.
-func (b *WebhookReceiverConfigurationApplyConfiguration) WithGitHub(value *GitHubWebhookReceiverConfigurationApplyConfiguration) *WebhookReceiverConfigurationApplyConfiguration {
-	b.GitHub = value
+// If called multiple times, the MaxPayloadBytes field is set to the value of the last call.
+func (b *WebhookReceiverConfigurationApplyConfiguration) WithMaxPayloadBytes(value int64) *WebhookReceiverConfigurationApplyConfiguration {
+	b.MaxPayloadBytes = &value
 	return b
 }

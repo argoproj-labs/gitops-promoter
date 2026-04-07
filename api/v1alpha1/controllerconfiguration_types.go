@@ -69,6 +69,10 @@ type ControllerConfigurationSpec struct {
 	// including WorkQueue settings that control reconciliation behavior.
 	// +required
 	WebRequestCommitStatus WebRequestCommitStatusConfiguration `json:"webRequestCommitStatus"`
+
+	// WebhookReceiver contains the configuration for the webhook receiver HTTP server.
+	// +optional
+	WebhookReceiver *WebhookReceiverConfiguration `json:"webhookReceiver,omitempty"`
 }
 
 // PromotionStrategyConfiguration defines the configuration for the PromotionStrategy controller.
@@ -170,6 +174,17 @@ type WebRequestCommitStatusConfiguration struct {
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
 	WorkQueue WorkQueue `json:"workQueue"`
+}
+
+// WebhookReceiverConfiguration defines the configuration for the webhook receiver HTTP server.
+type WebhookReceiverConfiguration struct {
+	// MaxPayloadBytes is the maximum size in bytes of an incoming webhook request body.
+	// Requests whose bodies exceed this limit are rejected with HTTP 413 (Request Entity Too Large).
+	// Defaults to 26214400 (25 MiB), which matches GitHub's maximum webhook payload size.
+	// +required
+	// +kubebuilder:default=26214400
+	// +kubebuilder:validation:Minimum=1
+	MaxPayloadBytes int64 `json:"maxPayloadBytes"`
 }
 
 // WorkQueue defines the work queue configuration for a controller.

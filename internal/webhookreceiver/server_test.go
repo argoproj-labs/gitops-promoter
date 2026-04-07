@@ -2,10 +2,19 @@ package webhookreceiver_test
 
 import (
 	"net/http"
+	"net/http/httptest"
+	"strings"
 
-	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
 )
 
 var _ = Describe("DetectProvider", func() {
@@ -95,5 +104,82 @@ var _ = Describe("DetectProvider", func() {
 
 		result := wr.DetectProvider(req)
 		Expect(result).To(Equal(webhookreceiver.ProviderGitHub))
+	})
+})
+
+var _ = Describe("postRoot max payload size enforcement", func() {
+	const controllerNamespace = "promoter-system"
+
+	// buildReceiverWithPayloadLimit creates a WebhookReceiver backed by a fake k8s client
+	// that includes a ControllerConfiguration with the given maxPayloadBytes limit.
+	// Pass limit <= 0 to omit the ControllerConfiguration (testing the default-fallback path).
+	buildReceiverWithPayloadLimit := func(maxPayloadBytes int64) *webhookreceiver.WebhookReceiver {
+		scheme := utils.GetScheme()
+		b := fake.NewClientBuilder().WithScheme(scheme).
+			WithIndex(&promoterv1alpha1.ChangeTransferPolicy{}, constants.ChangeTransferPolicyProposedHydratedSHAIndexField, func(_ client.Object) []string {
+				return nil
+			}).
+			WithIndex(&promoterv1alpha1.ChangeTransferPolicy{}, constants.ChangeTransferPolicyActiveHydratedSHAIndexField, func(_ client.Object) []string {
+				return nil
+			})
+
+		if maxPayloadBytes > 0 {
+			b = b.WithObjects(&promoterv1alpha1.ControllerConfiguration{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "promoter-controller-configuration",
+					Namespace: controllerNamespace,
+				},
+				Spec: promoterv1alpha1.ControllerConfigurationSpec{
+					WebhookReceiver: &promoterv1alpha1.WebhookReceiverConfiguration{
+						MaxPayloadBytes: maxPayloadBytes,
+					},
+				},
+			})
+		}
+
+		return webhookreceiver.NewWebhookReceiverWithClient(b.Build(), nil, controllerNamespace)
+	}
+
+	It("rejects a GitHub push whose body exceeds maxPayloadBytes with 413", func() {
+		const limit = 10
+		wr := buildReceiverWithPayloadLimit(limit)
+
+		body := strings.Repeat("x", limit+1) // one byte over the limit
+		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+		req.Header.Set("X-GitHub-Event", "push")
+
+		rr := httptest.NewRecorder()
+		wr.ServeHTTP(rr, req)
+
+		Expect(rr.Code).To(Equal(http.StatusRequestEntityTooLarge))
+	})
+
+	It("accepts a GitHub push whose body is exactly at maxPayloadBytes", func() {
+		const limit = 10
+		wr := buildReceiverWithPayloadLimit(limit)
+
+		body := strings.Repeat("x", limit) // exactly at the limit
+		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+		req.Header.Set("X-GitHub-Event", "push")
+
+		rr := httptest.NewRecorder()
+		wr.ServeHTTP(rr, req)
+
+		// 204 (no matching CTP) means the body was accepted
+		Expect(rr.Code).To(Equal(http.StatusNoContent))
+	})
+
+	It("uses the default limit (25 MiB) when no ControllerConfiguration is present", func() {
+		// No ControllerConfiguration in the fake client; a tiny body should still pass.
+		wr := buildReceiverWithPayloadLimit(0)
+
+		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{}`))
+		req.Header.Set("X-GitHub-Event", "push")
+
+		rr := httptest.NewRecorder()
+		wr.ServeHTTP(rr, req)
+
+		// 204 means the body was accepted under the default limit
+		Expect(rr.Code).To(Equal(http.StatusNoContent))
 	})
 })

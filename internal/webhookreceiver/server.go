@@ -15,6 +15,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 
 	"github.com/tidwall/gjson"
@@ -38,6 +39,10 @@ const (
 	ProviderAzureDevops    = "azureDevOps"
 	ProviderUnknown        = ""
 )
+
+// defaultMaxPayloadBytes is the fallback payload limit (25 MiB) used when no
+// WebhookReceiverConfiguration is present in the ControllerConfiguration.
+const defaultMaxPayloadBytes int64 = 26214400
 
 // EnqueueFunc is a function type that can be used to enqueue CTP reconcile requests
 // without modifying the CTP object. This matches controller.CTPEnqueueFunc.
@@ -75,6 +80,25 @@ func NewWebhookReceiverWithClient(k8sClient client.Client, enqueueCTP EnqueueFun
 // with httptest.NewServer or http.ListenAndServe.
 func (wr *WebhookReceiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	wr.postRoot(w, r)
+}
+
+// getMaxPayloadBytes returns the configured maximum request-body size.
+// It reads the ControllerConfiguration from the cache (fast, no API-server round-trip).
+// If the ControllerConfiguration is not found or no WebhookReceiver section is configured,
+// it falls back to defaultMaxPayloadBytes.
+func (wr *WebhookReceiver) getMaxPayloadBytes(ctx context.Context) int64 {
+	cc := &promoterv1alpha1.ControllerConfiguration{}
+	if err := wr.k8sClient.Get(ctx, client.ObjectKey{
+		Name:      settings.ControllerConfigurationName,
+		Namespace: wr.controllerNamespace,
+	}, cc); err != nil {
+		logger.V(4).Info("could not read ControllerConfiguration, using default max payload size", "default", defaultMaxPayloadBytes)
+		return defaultMaxPayloadBytes
+	}
+	if cc.Spec.WebhookReceiver == nil {
+		return defaultMaxPayloadBytes
+	}
+	return cc.Spec.WebhookReceiver.MaxPayloadBytes
 }
 
 // Start starts the webhook receiver server on the given address.
@@ -187,11 +211,25 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: add a configurable payload max side for DoS protection.
-	jsonBytes, err := io.ReadAll(r.Body)
+	maxPayloadBytes := wr.getMaxPayloadBytes(r.Context())
+	// Reject oversized payloads before buffering: if Content-Length is declared and
+	// already exceeds the limit, we can refuse immediately without reading the body.
+	if r.ContentLength > maxPayloadBytes {
+		responseCode = http.StatusRequestEntityTooLarge
+		http.Error(w, "request body exceeds maximum allowed size", responseCode)
+		return
+	}
+	// Read at most maxPayloadBytes+1 so we can detect chunked/undeclared oversized
+	// payloads without buffering the entire body.
+	jsonBytes, err := io.ReadAll(io.LimitReader(r.Body, maxPayloadBytes+1))
 	if err != nil {
 		responseCode = http.StatusInternalServerError
 		http.Error(w, "error reading body", responseCode)
+		return
+	}
+	if int64(len(jsonBytes)) > maxPayloadBytes {
+		responseCode = http.StatusRequestEntityTooLarge
+		http.Error(w, "request body exceeds maximum allowed size", responseCode)
 		return
 	}
 
