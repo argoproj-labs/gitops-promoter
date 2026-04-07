@@ -118,12 +118,9 @@ test-parallel-repeat3: test-deps ## Run tests in parallel 3 times to check for f
 FUZZ_PACKAGES ?= ./internal/utils
 # Duration per target for `fuzz-explore` (scheduled workflow and local; each Fuzz* runs sequentially within a package).
 FUZZ_TIME ?= 30s
-# Passed to `go test -fuzztime` for `fuzz-replay` (`go help testflag`). `1x` = replay only: seeds (`f.Add`) + corpus (`testdata/fuzz` files), no mutations.
-FUZZ_REPLAY_FUZZTIME ?= 1x
 
 .PHONY: fuzz-replay fuzz-explore
-# Replay seeds (`f.Add`) + committed corpus (`testdata/fuzz`); no time-bounded exploratory fuzzing (same as pull request CI).
-fuzz-replay: ## Replay seeds (`f.Add`) + corpus (`testdata/fuzz`); regression only.
+fuzz-replay: ## Replay seeds (`f.Add`) + corpus (`testdata/fuzz`); regression only (no `-fuzz`).
 	@set -euo pipefail; \
 	for pkg in $(FUZZ_PACKAGES); do \
 	  list=$$(go test $$pkg -list Fuzz); \
@@ -132,8 +129,8 @@ fuzz-replay: ## Replay seeds (`f.Add`) + corpus (`testdata/fuzz`); regression on
 	    continue; \
 	  fi; \
 	  for fuzz in $$fuzzes; do \
-	    echo "fuzz-replay $$pkg $$fuzz ($(FUZZ_REPLAY_FUZZTIME))"; \
-	    go test $$pkg -count=1 -run=$$fuzz -fuzz=$$fuzz -fuzztime=$(FUZZ_REPLAY_FUZZTIME); \
+	    echo "fuzz-replay $$pkg $$fuzz"; \
+	    go test $$pkg -count=1 -run=^$$fuzz$$; \
 	  done; \
 	done
 
@@ -148,7 +145,7 @@ fuzz-explore: ## Exploratory fuzzing for FUZZ_TIME per target (default $(FUZZ_TI
 	  fi; \
 	  for fuzz in $$fuzzes; do \
 	    echo "fuzz-explore $$pkg $$fuzz ($(FUZZ_TIME))"; \
-	    go test $$pkg -count=1 -run=$$fuzz -fuzz=$$fuzz -fuzztime=$(FUZZ_TIME); \
+	    go test $$pkg -count=1 -run=^$$fuzz$$ -fuzz=$$fuzz -fuzztime=$(FUZZ_TIME); \
 	  done; \
 	done
 
