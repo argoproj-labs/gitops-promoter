@@ -187,7 +187,7 @@ var _ = Describe("postRoot max payload size enforcement", func() {
 		// ControllerConfiguration is present with maxPayloadBytes=0, meaning unlimited.
 		wr := buildReceiverWithCC(true, 0)
 
-		// A body larger than the default 25 MiB default would normally be rejected,
+		// A body larger than the default 25 MiB limit would normally be rejected,
 		// but with maxPayloadBytes=0 it should pass (204 = no matching CTP, body was accepted).
 		body := strings.Repeat("x", 100)
 		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
