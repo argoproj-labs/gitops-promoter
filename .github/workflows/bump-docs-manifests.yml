@@ -7,10 +7,6 @@ on:
         description: 'New version (e.g. 1.2.3)'
         required: true
         type: string
-      release_description:
-        description: 'Human-readable summary for the GitHub release page (shown above the changelog)'
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -36,19 +32,9 @@ jobs:
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0 # v8.1.0
         with:
-          commit-message: |
-            docs: bump manifest versions to v${{ github.event.inputs.new_version }}
-
-            Release-Description: ${{ toJSON(github.event.inputs.release_description) }}
+          commit-message: "docs: bump manifest versions to v${{ github.event.inputs.new_version }}"
           title: "docs: bump manifest versions to v${{ github.event.inputs.new_version }}"
-          body: |
-            Automated PR to bump manifest versions in documentation.
-
-            ### Release description (for the GitHub release)
-
-            ${{ github.event.inputs.release_description }}
-
-            **Maintainers:** merge with **squash** or **rebase** so the commit on `main` keeps the subject line and the `Release-Description:` trailer (a single line: the key plus a JSON-encoded string). A plain merge commit replaces the message and the release workflow will not see the description.
+          body: "Automated PR to bump manifest versions in documentation."
           branch: "bump-docs-manifests/v${{ github.event.inputs.new_version }}"
           delete-branch: true
           signoff: true

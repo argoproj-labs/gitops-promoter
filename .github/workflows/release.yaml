@@ -43,17 +43,13 @@ jobs:
         with:
           version: type=image,tag=29.1.5
 
-      - name: Extract version and release description from commit message
+      - name: Extract version from commit message
         id: extract_version
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
-          release_description_json=$(git log -1 --pretty='format:%(trailers:key=Release-Description,valueonly)')
-          VERSION=$(git log -1 --pretty=format:%s | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+')
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          {
-            echo 'release_description_json<<JSON_EOF'
-            printf '%s' "$release_description_json"
-            echo 'JSON_EOF'
-          } >> "$GITHUB_OUTPUT"
+          VERSION=$(printf '%s\n' "$COMMIT_MSG" | head -n1 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
       - name: Create tag
         if: steps.extract_version.outputs.version != ''
         run: |
@@ -90,4 +86,3 @@ jobs:
           args: release --clean --verbose
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GORELEASER_RELEASE_DESCRIPTION: ${{ fromJSON(steps.extract_version.outputs.release_description_json) }}
