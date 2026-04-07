@@ -34,7 +34,7 @@ spec:
   # When the HTTP response is considered successful (phase success)
   success:
     when:
-      expression: "Response.StatusCode == 200 && Response.Body.approved == true"
+      expression: 'Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"'
 
   # Exactly one of polling or trigger must be set.
   mode:

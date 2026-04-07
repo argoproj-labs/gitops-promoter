@@ -17,7 +17,7 @@ For each applicable environment (after resolving context):
    - `active`: Validates the currently deployed commit
 2. The controller evaluates whether to make an HTTP request (polling mode always makes requests, trigger mode evaluates a trigger expression first). In `promotionstrategy` context this decision applies to the **single** shared request for that reconcile.
 3. If triggered, the controller makes an HTTP request to the configured endpoint using templated URL, headers, and body (in `promotionstrategy` context there is only one request per fire, not one per environment).
-4. The controller evaluates the success expression against the HTTP response (boolean-only in `environments` context; boolean or structured object in `promotionstrategy` context — see below).
+4. The controller evaluates `success.when.expression` **every reconcile** to determine the commit status phase. When an HTTP request was made, `Response` is populated; when no request was made, `Response` is `nil`. The expression also has access to `PromotionStrategy`, `Environment` (environments context), `ResponseOutput`, and other trigger-expression variables — see [Success expression variables](#success-expression-variables) below.
 5. The controller creates/updates a **CommitStatus per environment**, each with that environment’s SHA and its own phase when using per-branch results.
 6. The PromotionStrategy checks the CommitStatus before allowing promotion
 
@@ -88,17 +88,33 @@ For the **HTTP request** (URL, headers, body), **trigger** `when.expression`, **
 
 They are unset (empty / nil) because there is no single “current environment” for that one request.
 
-**You can use:** `PromotionStrategy` (full spec and status), `Phase` (aggregate of all applicable branches' phases — `success` only when every branch succeeded, `failure` if any failed, `pending` otherwise), `TriggerOutput`, `ResponseOutput` (trigger mode), and `NamespaceMetadata` labels and annotations — same as in environment context, except for the per-env fields above.
+**You can use:** `PromotionStrategy` (full spec and status), `Phase` (aggregate of all applicable branches' phases — `success` only when every branch succeeded, `failure` if any failed, `pending` otherwise), `TriggerOutput`, `ResponseOutput` (trigger mode), `UnixNow` (current time as Unix seconds, float64), and `NamespaceMetadata` labels and annotations — same as in environment context, except for the per-env fields above.
 
 When rendering **CommitStatus** `descriptionTemplate` and `urlTemplate`, the controller sets **`{{ .Phase }}`** to **that environment’s** resolved phase (`success`, `pending`, or `failure`). It still does **not** set `ReportedSha` or `Environment` in promotion-strategy context. If you need branch- or SHA-specific text in the SCM description or URL, either **walk `{{ .PromotionStrategy }}`** in the Go template (for example, `range` over `.PromotionStrategy.Status.Environments` and match on `.Branch`) or use **the same wording for every environment** (a generic message or link that does not try to substitute `{{ .ReportedSha }}` or `{{ .Environment.Branch }}`).
 
-### Success expression (`promotionstrategy` context)
+### Success expression variables
 
-The success expression still only sees the HTTP response:
+The `success.when.expression` is evaluated **every reconcile**, regardless of whether an HTTP request was made. It receives the same variables as `trigger.when.expression` (see [WhenWithOutputSpec](../../api/v1alpha1/webrequestcommitstatus_types.go)), plus `Response`:
 
-- `Response.StatusCode`
-- `Response.Body` (JSON object or raw string)
-- `Response.Headers`
+| Variable | Type | Description |
+|----------|------|-------------|
+| `Response` | map or nil | HTTP response from this reconcile's request. `nil` when no request was made. When non-nil: `Response.StatusCode` (int), `Response.Body` (parsed JSON or raw string), `Response.Headers` (map[string][]string). |
+| `PromotionStrategy` | PromotionStrategy | The full PromotionStrategy spec and status. |
+| `Environment` | EnvironmentStatus or nil | Current environment's status from PromotionStrategy. Set in `environments` context; `nil` in `promotionstrategy` context. |
+| `Phase` | string | Phase from the previous reconcile (`"success"`, `"pending"`, or `"failure"`). |
+| `ReportedSha` | string | The SHA being validated. Set in `environments` context; empty in `promotionstrategy` context. |
+| `LastSuccessfulSha` | string | Last SHA that achieved success. Set in `environments` context; empty in `promotionstrategy` context. |
+| `TriggerOutput` | map[string]any | Custom data from the previous `when.output.expression` evaluation (trigger mode only). |
+| `ResponseOutput` | map[string]any | Response data from the previous HTTP request's `response.output.expression` (trigger mode only). |
+| `UnixNow` | float64 | Current time as Unix seconds when the expression runs; use with timestamps from `Response` / `ResponseOutput` for time-bounded success (for example an API-returned expiry). |
+
+**Important:** Since the expression runs every reconcile, it must handle `Response` being `nil` (no HTTP request this reconcile). Expressions that only reference `Response.*` will error when `Response` is `nil`, causing the reconcile to return an error and requeue. Guard `Response` access:
+
+```
+Response != nil ? Response.StatusCode == 200 : Phase == "success"
+```
+
+### Success expression return types (`promotionstrategy` context)
 
 **Return types:**
 

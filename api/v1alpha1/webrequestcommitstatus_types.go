@@ -94,7 +94,7 @@ type WebRequestCommitStatusSpec struct {
 	// +required
 	HTTPRequest HTTPRequestSpec `json:"httpRequest"`
 
-	// Success defines when the HTTP response counts as success for commit status phase. See SuccessSpec.
+	// Success defines when the commit status phase is success. Evaluated every reconcile. See SuccessSpec.
 	// +required
 	Success SuccessSpec `json:"success"`
 
@@ -144,18 +144,35 @@ type PollingModeSpec struct {
 	Interval metav1.Duration `json:"interval,omitempty"`
 }
 
-// SuccessSpec defines when the HTTP response is considered successful (commit status phase success).
+// SuccessSpec defines when the commit status phase is success.
 type SuccessSpec struct {
-	// When is evaluated against the HTTP response after each request. See WhenSpec.Expression.
+	// When is evaluated every reconcile. See WhenSpec.Expression.
 	// +required
 	When WhenSpec `json:"when"`
 }
 
-// WhenSpec holds spec.success.when.expression only (evaluated after the HTTP response).
+// WhenSpec holds spec.success.when.expression (evaluated every reconcile, not just after HTTP requests).
 // Trigger guards use WhenWithOutputSpec under spec.mode.trigger.when, not this type.
 type WhenSpec struct {
-	// Expression uses github.com/expr-lang/expr against the HTTP response. Variables (also used by spec.mode.trigger.response.output):
-	// Response.StatusCode (int), Response.Body (parsed JSON as map[string]any, or raw string if not JSON), Response.Headers (map[string][]string).
+	// Expression uses github.com/expr-lang/expr and is evaluated every reconcile to determine the commit status phase.
+	// When an HTTP request was made this reconcile, Response is populated; otherwise Response is nil.
+	//
+	// Available variables (same as spec.mode.trigger.when.expression, plus Response):
+	//   - Response (map or nil): the HTTP response from this reconcile's request, nil when no request was made.
+	//     When non-nil: Response.StatusCode (int), Response.Body (parsed JSON as map[string]any, or raw string), Response.Headers (map[string][]string).
+	//   - PromotionStrategy (PromotionStrategy): the full PromotionStrategy spec and status
+	//   - Environment (EnvironmentStatus): current environment's status from PromotionStrategy (environments context only; nil in promotionstrategy context)
+	//   - Phase (string): phase from the previous reconcile
+	//   - ReportedSha (string): the SHA being validated (environments context only; empty in promotionstrategy context)
+	//   - LastSuccessfulSha (string): last SHA that achieved success (environments context only; empty in promotionstrategy context)
+	//   - TriggerOutput (map[string]any): custom data from the previous when.output.expression evaluation
+	//   - ResponseOutput (map[string]any): response data from the previous HTTP request (if any)
+	//   - UnixNow (float64): current time as Unix seconds when the expression is evaluated
+	//
+	// Important: since the expression runs every reconcile, it must handle Response being nil (no HTTP request
+	// this reconcile). Expressions that only reference Response.* will error when Response is nil, causing the
+	// reconcile to return an error and requeue. Guard Response access:
+	//   Response != nil ? Response.StatusCode == 200 : <fallback>
 	//
 	// Evaluation scope follows spec.mode.context; see ModeSpec. Return shape:
 	//
@@ -204,6 +221,7 @@ type WhenWithOutputSpec struct {
 	//   - LastSuccessfulSha (string): last SHA that achieved success for this environment (environments context only; empty in promotionstrategy context)
 	//   - TriggerOutput (map[string]any): custom data from the previous when.output.expression evaluation
 	//   - ResponseOutput (map[string]any): response data from the previous HTTP request (if any)
+	//   - UnixNow (float64): current time as Unix seconds when the expression is evaluated
 	//
 	// Note: PromotionStrategy.Status.Environments is an ordered array representing the promotion sequence.
 	// Environments[0] is the first environment (e.g., dev), Environments[1] is second (e.g., staging), etc.

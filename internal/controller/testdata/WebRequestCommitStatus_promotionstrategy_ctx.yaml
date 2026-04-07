@@ -14,7 +14,7 @@ spec:
     timeout: 30s
   success:
     when:
-      expression: "Response.StatusCode == 200"
+      expression: 'Response != nil ? Response.StatusCode == 200 : Phase == "success"'
   mode:
     context: promotionstrategy
     polling:

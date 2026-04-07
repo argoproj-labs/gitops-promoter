@@ -65,7 +65,7 @@ type WebRequestCommitStatusSpecApplyConfiguration struct {
 	ReportOn *string `json:"reportOn,omitempty"`
 	// HTTPRequest configures the outbound HTTP call. See HTTPRequestSpec.
 	HTTPRequest *HTTPRequestSpecApplyConfiguration `json:"httpRequest,omitempty"`
-	// Success defines when the HTTP response counts as success for commit status phase. See SuccessSpec.
+	// Success defines when the commit status phase is success. Evaluated every reconcile. See SuccessSpec.
 	Success *SuccessSpecApplyConfiguration `json:"success,omitempty"`
 	// Mode selects polling vs trigger and request scope (context). See ModeSpec.
 	Mode *ModeSpecApplyConfiguration `json:"mode,omitempty"`

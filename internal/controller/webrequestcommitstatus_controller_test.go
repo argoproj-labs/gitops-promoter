@@ -139,7 +139,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenSpec{
-							Expression: "Response.StatusCode == 200 && Response.Body.approved == true",
+							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
 						},
 					},
 					Mode: promoterv1alpha1.ModeSpec{
@@ -237,7 +237,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenSpec{
-							Expression: "Response.StatusCode == 200 && Response.Body.approved == true",
+							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
 						},
 					},
 					Mode: promoterv1alpha1.ModeSpec{
@@ -335,7 +335,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 						},
 						Success: promoterv1alpha1.SuccessSpec{
 							When: promoterv1alpha1.WhenSpec{
-								Expression: "Response.StatusCode == 200 && Response.Body.approved == true",
+								Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
 							},
 						},
 						Mode: promoterv1alpha1.ModeSpec{
@@ -448,7 +448,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenSpec{
-							Expression: "Response.StatusCode == 200 && Response.Body.approved == true",
+							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
 						},
 					},
 					Mode: promoterv1alpha1.ModeSpec{
@@ -544,7 +544,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenSpec{
-							Expression: "Response.StatusCode == 200 && Response.Body.approved == true",
+							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
 						},
 					},
 					Mode: promoterv1alpha1.ModeSpec{
@@ -686,7 +686,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenSpec{
-							Expression: "Response.StatusCode == 200",
+							Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
 						},
 					},
 					Mode: promoterv1alpha1.ModeSpec{
@@ -792,7 +792,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenSpec{
-							Expression: "Response.StatusCode == 200",
+							Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
 						},
 					},
 					Mode: promoterv1alpha1.ModeSpec{
@@ -908,7 +908,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenSpec{
-							Expression: "Response.StatusCode == 200",
+							Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
 						},
 					},
 					Mode: promoterv1alpha1.ModeSpec{
@@ -1060,7 +1060,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenSpec{
-							Expression: "Response.StatusCode == 200",
+							Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
 						},
 					},
 					Mode: promoterv1alpha1.ModeSpec{
@@ -1134,7 +1134,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenSpec{
-							Expression: "Response.StatusCode == 200",
+							Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
 						},
 					},
 					Mode: promoterv1alpha1.ModeSpec{
@@ -1233,7 +1233,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenSpec{
-							Expression: `Response.StatusCode == 200 && Response.Body.status == "done"`,
+							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.status == "done") : Phase == "success"`,
 						},
 					},
 					Mode: promoterv1alpha1.ModeSpec{
@@ -1322,7 +1322,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenSpec{
-							Expression: "Response.StatusCode == 200",
+							Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
 						},
 					},
 					Mode: promoterv1alpha1.ModeSpec{
@@ -1421,7 +1421,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenSpec{
-							Expression: "Response.StatusCode == 200",
+							Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
 						},
 					},
 					Mode: promoterv1alpha1.ModeSpec{
@@ -1527,7 +1527,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenSpec{
-							Expression: "Response.StatusCode == 200 && Response.Body.ok == true",
+							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.ok == true) : Phase == "success"`,
 						},
 					},
 					Mode: promoterv1alpha1.ModeSpec{
@@ -1630,7 +1630,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Missing PromotionStrategy"
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenSpec{
-							Expression: "Response.StatusCode == 200",
+							Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
 						},
 					},
 					Mode: promoterv1alpha1.ModeSpec{
@@ -1757,7 +1757,7 @@ var _ = Describe("WebRequestCommitStatus Controller - SCM Host Validation", func
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenSpec{
-							Expression: "Response.StatusCode == 200 && Response.Body.approved == true",
+							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
 						},
 					},
 					Mode: promoterv1alpha1.ModeSpec{
@@ -1863,7 +1863,7 @@ var _ = Describe("WebRequestCommitStatus Controller - SCM Host Validation", func
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenSpec{
-							Expression: "Response.StatusCode == 200",
+							Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
 						},
 					},
 					Mode: promoterv1alpha1.ModeSpec{
@@ -1972,7 +1972,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenSpec{
-							Expression: "Response.StatusCode == 200 && Response.Body.approved == true",
+							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
 						},
 					},
 					Mode: promoterv1alpha1.ModeSpec{
@@ -2056,7 +2056,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenSpec{
-							Expression: "Response.StatusCode == 200 && Response.Body.approved == true",
+							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
 						},
 					},
 					Mode: promoterv1alpha1.ModeSpec{
@@ -2232,7 +2232,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenSpec{
-							Expression: "Response.StatusCode == 200 && Response.Body.approved == true",
+							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
 						},
 					},
 					Mode: promoterv1alpha1.ModeSpec{
@@ -2322,7 +2322,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenSpec{
-							Expression: "Response.StatusCode == 200 && Response.Body.approved == true",
+							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
 						},
 					},
 					Mode: promoterv1alpha1.ModeSpec{
@@ -2414,7 +2414,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenSpec{
-							Expression: "Response.StatusCode == 200 && Response.Body.approved == true",
+							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
 						},
 					},
 					Mode: promoterv1alpha1.ModeSpec{
@@ -2501,7 +2501,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenSpec{
-							Expression: "Response.StatusCode == 200",
+							Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
 						},
 					},
 					Mode: promoterv1alpha1.ModeSpec{
@@ -2629,7 +2629,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy 
 				},
 				Success: promoterv1alpha1.SuccessSpec{
 					When: promoterv1alpha1.WhenSpec{
-						Expression: "Response.StatusCode == 200",
+						Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
 					},
 				},
 				Mode: promoterv1alpha1.ModeSpec{
@@ -2753,7 +2753,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy 
 				},
 				Success: promoterv1alpha1.SuccessSpec{
 					When: promoterv1alpha1.WhenSpec{
-						Expression: "Response.StatusCode == 200 && Response.Body.approved == true",
+						Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
 					},
 				},
 				Mode: promoterv1alpha1.ModeSpec{
@@ -2860,7 +2860,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context Switching", Ordere
 				},
 				Success: promoterv1alpha1.SuccessSpec{
 					When: promoterv1alpha1.WhenSpec{
-						Expression: "Response.StatusCode == 200 && Response.Body.approved == true",
+						Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
 					},
 				},
 				Mode: promoterv1alpha1.ModeSpec{
@@ -2950,6 +2950,449 @@ var _ = Describe("WebRequestCommitStatus Controller - Context Switching", Ordere
 				g.Expect(envSt.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess), "branch %s should succeed after switching back", branch)
 			}
 		}, constants.EventuallyTimeout).Should(Succeed())
+	})
+})
+
+var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconcile", Ordered, func() {
+	var (
+		ctx               context.Context
+		name              string
+		scmSecret         *corev1.Secret
+		scmProvider       *promoterv1alpha1.ScmProvider
+		gitRepo           *promoterv1alpha1.GitRepository
+		promotionStrategy *promoterv1alpha1.PromotionStrategy
+		testServer        *httptest.Server
+	)
+
+	BeforeAll(func() {
+		ctx = context.Background()
+
+		By("Setting up test git repository and resources")
+		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "wrcs-sw-test", "default")
+
+		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+			{Key: "external-approval"},
+		}
+
+		setupInitialTestGitRepoOnServer(ctx, gitRepo)
+
+		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+	})
+
+	AfterAll(func() {
+		if promotionStrategy != nil {
+			_ = k8sClient.Delete(ctx, promotionStrategy)
+		}
+		if gitRepo != nil {
+			_ = k8sClient.Delete(ctx, gitRepo)
+		}
+		if scmProvider != nil {
+			_ = k8sClient.Delete(ctx, scmProvider)
+		}
+		if scmSecret != nil {
+			_ = k8sClient.Delete(ctx, scmSecret)
+		}
+	})
+
+	Describe("Enriched context (environments context)", func() {
+		var wrcs *promoterv1alpha1.WebRequestCommitStatus
+		var httpRequestCount int
+		var httpCountMu sync.Mutex
+
+		BeforeEach(func() {
+			httpRequestCount = 0
+			By("Creating a test HTTP server that counts requests (trigger never fires, so count must stay 0)")
+			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				httpCountMu.Lock()
+				httpRequestCount++
+				httpCountMu.Unlock()
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(map[string]any{"approved": true})
+			}))
+
+			By("Creating a WRCS that uses PromotionStrategy in success.when (no Response dependency)")
+			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-sw-enriched",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  "external-approval",
+					ReportOn:             constants.CommitRefProposed,
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: testServer.URL + "/validate",
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+					},
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenSpec{
+							// Uses PromotionStrategy and Environment instead of Response.
+							// This should evaluate to success on every reconcile (even without a request)
+							// because PromotionStrategy is always non-nil.
+							Expression: `PromotionStrategy != nil && PromotionStrategy.Name != ""`,
+						},
+					},
+					Mode: promoterv1alpha1.ModeSpec{
+						Trigger: &promoterv1alpha1.TriggerModeSpec{
+							RequeueDuration: metav1.Duration{Duration: 5 * time.Second},
+							When: promoterv1alpha1.WhenWithOutputSpec{
+								// Never fire the HTTP request
+								Expression: "false",
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, wrcs)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if testServer != nil {
+				testServer.Close()
+			}
+			_ = k8sClient.Delete(ctx, wrcs)
+		})
+
+		It("should reach success phase using PromotionStrategy context even without an HTTP request", func() {
+			Eventually(func(g Gomega) {
+				var fetched promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				g.Expect(len(fetched.Status.Environments)).To(BeNumerically(">=", 1))
+
+				for _, env := range fetched.Status.Environments {
+					if env.Branch == testBranchDevelopment {
+						g.Expect(env.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess),
+							"Phase should be success from PromotionStrategy context, no HTTP request needed")
+						// LastRequestTime should be nil since no HTTP request was made
+						g.Expect(env.LastRequestTime).To(BeNil(),
+							"LastRequestTime should be nil since trigger never fired")
+					}
+				}
+
+				// Verify CommitStatus was created with success phase
+				csName := utils.KubeSafeUniqueName(ctx, wrcs.Name+"-"+testBranchDevelopment+"-webrequest")
+				var cs promoterv1alpha1.CommitStatus
+				err = k8sClient.Get(ctx, types.NamespacedName{Name: csName, Namespace: "default"}, &cs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			httpCountMu.Lock()
+			n := httpRequestCount
+			httpCountMu.Unlock()
+			Expect(n).To(Equal(0), "no HTTP request should occur when trigger is always false")
+		})
+	})
+
+	Describe("Enriched context (promotionstrategy context)", func() {
+		var wrcs *promoterv1alpha1.WebRequestCommitStatus
+		var httpRequestCount int
+		var httpCountMu sync.Mutex
+
+		BeforeEach(func() {
+			httpRequestCount = 0
+			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				httpCountMu.Lock()
+				httpRequestCount++
+				httpCountMu.Unlock()
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(map[string]any{"approved": true})
+			}))
+
+			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-sw-enriched-ps",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  "external-approval",
+					ReportOn:             constants.CommitRefProposed,
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: testServer.URL + "/validate",
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+					},
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenSpec{
+							// Uses PromotionStrategy in promotionstrategy context.
+							// Response is nil (trigger never fires), but PromotionStrategy is always available.
+							Expression: `PromotionStrategy != nil`,
+						},
+					},
+					Mode: promoterv1alpha1.ModeSpec{
+						Context: promoterv1alpha1.ContextPromotionStrategy,
+						Trigger: &promoterv1alpha1.TriggerModeSpec{
+							RequeueDuration: metav1.Duration{Duration: 5 * time.Second},
+							When: promoterv1alpha1.WhenWithOutputSpec{
+								Expression: "false",
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, wrcs)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if testServer != nil {
+				testServer.Close()
+			}
+			_ = k8sClient.Delete(ctx, wrcs)
+		})
+
+		It("should reach success phase using PromotionStrategy in promotionstrategy context without HTTP request", func() {
+			Eventually(func(g Gomega) {
+				var fetched promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				g.Expect(fetched.Status.PromotionStrategyContext).NotTo(BeNil(),
+					"PromotionStrategyContext should be populated")
+				g.Expect(fetched.Status.PromotionStrategyContext.LastRequestTime).To(BeNil(),
+					"LastRequestTime should be nil since trigger never fired")
+
+				for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
+					g.Expect(wrcsPhaseForBranch(fetched.Status.PromotionStrategyContext.PhasePerBranch, branch)).To(
+						Equal(promoterv1alpha1.CommitPhaseSuccess),
+						"PhasePerBranch for %s should be success from PromotionStrategy context", branch)
+				}
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			httpCountMu.Lock()
+			n := httpRequestCount
+			httpCountMu.Unlock()
+			Expect(n).To(Equal(0), "no HTTP request should occur when trigger is always false (promotionstrategy context)")
+		})
+	})
+
+	Describe("Response guard pattern", func() {
+		var wrcs *promoterv1alpha1.WebRequestCommitStatus
+		var requestCount int
+		var requestCountMu sync.Mutex
+
+		BeforeEach(func() {
+			requestCount = 0
+			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requestCountMu.Lock()
+				requestCount++
+				requestCountMu.Unlock()
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(map[string]any{"approved": true})
+			}))
+
+			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-sw-guard",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  "external-approval",
+					ReportOn:             constants.CommitRefProposed,
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: testServer.URL + "/validate",
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+					},
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenSpec{
+							// Guard pattern: check Response when available, fall back to Phase when not.
+							// After first request succeeds, Phase carries "success" and subsequent
+							// reconciles (no request) use the fallback branch.
+							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
+						},
+					},
+					Mode: promoterv1alpha1.ModeSpec{
+						Trigger: &promoterv1alpha1.TriggerModeSpec{
+							RequeueDuration: metav1.Duration{Duration: 5 * time.Second},
+							When: promoterv1alpha1.WhenWithOutputSpec{
+								Expression: `ReportedSha != TriggerOutput["trackedSha"]`,
+								Output:     &promoterv1alpha1.OutputSpec{Expression: `{ trackedSha: ReportedSha }`},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, wrcs)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if testServer != nil {
+				testServer.Close()
+			}
+			_ = k8sClient.Delete(ctx, wrcs)
+		})
+
+		It("should succeed via Response on first reconcile, then stay success via Phase fallback without extra HTTP", func() {
+			By("Waiting for first wave of HTTP requests and success (one request per applicable environment)")
+			Eventually(func(g Gomega) {
+				requestCountMu.Lock()
+				c := requestCount
+				requestCountMu.Unlock()
+				g.Expect(c).To(BeNumerically(">=", 1))
+				var fetched promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(len(fetched.Status.Environments)).To(BeNumerically(">=", 1))
+				for _, env := range fetched.Status.Environments {
+					if env.Branch == testBranchDevelopment {
+						g.Expect(env.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+					}
+				}
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			requestCountMu.Lock()
+			countAfterSuccess := requestCount
+			requestCountMu.Unlock()
+
+			By("Verifying no further HTTP requests while trigger stays false and phase stays success")
+			Consistently(func(g Gomega) {
+				requestCountMu.Lock()
+				c := requestCount
+				requestCountMu.Unlock()
+				g.Expect(c).To(Equal(countAfterSuccess), "HTTP request count should not increase after trigger stops firing")
+
+				var fetched promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
+				g.Expect(err).NotTo(HaveOccurred())
+				for _, env := range fetched.Status.Environments {
+					if env.Branch == testBranchDevelopment {
+						g.Expect(env.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess),
+							"Phase should stay success via Phase==success fallback")
+					}
+				}
+			}, 15*time.Second, 3*time.Second).Should(Succeed())
+		})
+	})
+
+	Describe("HTTP response expiry via ResponseOutput and UnixNow", func() {
+		var wrcs *promoterv1alpha1.WebRequestCommitStatus
+		var httpHits int
+		var httpHitsMu sync.Mutex
+
+		BeforeEach(func() {
+			httpHits = 0
+			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				httpHitsMu.Lock()
+				httpHits++
+				httpHitsMu.Unlock()
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				validUntil := float64(time.Now().Add(15 * time.Second).Unix())
+				_ = json.NewEncoder(w).Encode(map[string]any{"validUntilUnix": validUntil})
+			}))
+
+			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-sw-expiry",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  "external-approval",
+					ReportOn:             constants.CommitRefProposed,
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: testServer.URL + "/validate",
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+					},
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenSpec{
+							// Success only while wall clock is before validUntilUnix from the response (or persisted ResponseOutput).
+							Expression: `Response != nil ? (Response.StatusCode == 200 && UnixNow < Response.Body.validUntilUnix) : (ResponseOutput != nil && UnixNow < ResponseOutput["validUntilUnix"])`,
+						},
+					},
+					Mode: promoterv1alpha1.ModeSpec{
+						Trigger: &promoterv1alpha1.TriggerModeSpec{
+							RequeueDuration: metav1.Duration{Duration: 2 * time.Second},
+							When: promoterv1alpha1.WhenWithOutputSpec{
+								Expression: `ReportedSha != TriggerOutput["trackedSha"]`,
+								Output:     &promoterv1alpha1.OutputSpec{Expression: `{ trackedSha: ReportedSha }`},
+							},
+							Response: &promoterv1alpha1.ResponseOutputSpec{
+								Output: promoterv1alpha1.OutputSpec{
+									Expression: `{ validUntilUnix: Response.Body.validUntilUnix }`,
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, wrcs)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if testServer != nil {
+				testServer.Close()
+			}
+			_ = k8sClient.Delete(ctx, wrcs)
+		})
+
+		It("should report success until validUntilUnix passes then pending without new HTTP", func() {
+			var hitsAfterFirstWave int
+
+			By("Waiting for first HTTP wave and success on development while still before expiry")
+			Eventually(func(g Gomega) {
+				httpHitsMu.Lock()
+				h := httpHits
+				httpHitsMu.Unlock()
+				g.Expect(h).To(BeNumerically(">=", 1), "each environment fires once on first SHA track")
+
+				var fetched promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
+				g.Expect(err).NotTo(HaveOccurred())
+				for _, env := range fetched.Status.Environments {
+					if env.Branch == testBranchDevelopment {
+						g.Expect(env.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+						g.Expect(env.ResponseOutput).NotTo(BeNil())
+					}
+				}
+
+				csName := utils.KubeSafeUniqueName(ctx, wrcs.Name+"-"+testBranchDevelopment+"-webrequest")
+				var cs promoterv1alpha1.CommitStatus
+				err = k8sClient.Get(ctx, types.NamespacedName{Name: csName, Namespace: "default"}, &cs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			}, constants.EventuallyTimeout, 500*time.Millisecond).Should(Succeed())
+
+			httpHitsMu.Lock()
+			hitsAfterFirstWave = httpHits
+			httpHitsMu.Unlock()
+
+			By("Waiting for success.when to flip to pending after UnixNow passes validUntilUnix (no further HTTP)")
+			Eventually(func(g Gomega) {
+				httpHitsMu.Lock()
+				h := httpHits
+				httpHitsMu.Unlock()
+				g.Expect(h).To(Equal(hitsAfterFirstWave), "must not re-call HTTP once each env has tracked its SHA")
+
+				var fetched promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
+				g.Expect(err).NotTo(HaveOccurred())
+				for _, env := range fetched.Status.Environments {
+					if env.Branch == testBranchDevelopment {
+						g.Expect(env.Phase).To(Equal(promoterv1alpha1.CommitPhasePending),
+							"phase should return to pending when success.when sees UnixNow >= validUntilUnix")
+					}
+				}
+
+				csName := utils.KubeSafeUniqueName(ctx, wrcs.Name+"-"+testBranchDevelopment+"-webrequest")
+				var cs promoterv1alpha1.CommitStatus
+				err = k8sClient.Get(ctx, types.NamespacedName{Name: csName, Namespace: "default"}, &cs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
+			}, constants.EventuallyTimeout, 1*time.Second).Should(Succeed())
+		})
 	})
 })
 
