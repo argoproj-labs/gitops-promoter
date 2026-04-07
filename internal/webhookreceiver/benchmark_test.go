@@ -134,7 +134,7 @@ func BenchmarkPostRoot(b *testing.B) {
 		ns            = "default"
 		secretName    = "bench-webhook-secret"
 		signingSecret = "bench-s3cr3t"
-		beforeSHA     = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+		beforeSHA     = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	)
 
 	// ── shared Kubernetes resources ────────────────────────────────────────────
