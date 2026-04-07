@@ -22,7 +22,20 @@ package v1alpha1
 //
 // SuccessSpec defines when the HTTP response is considered successful (commit status phase success).
 type SuccessSpecApplyConfiguration struct {
-	// When is evaluated against the HTTP response after each request. See WhenSpec.Expression.
+	// When is evaluated on every reconcile cycle — both before and after the HTTP request:
+	//
+	// Before: Evaluated every reconcile with current PromotionStrategy/Environment context
+	// and last persisted response data (or an empty Response when no prior request exists).
+	// This sets the CommitStatus phase as a baseline, so phases reflect PromotionStrategy state
+	// changes even when the trigger does not fire and no HTTP request is made.
+	//
+	// After: When the trigger fires and the HTTP request completes, the expression is evaluated
+	// again with the actual Response. This result supersedes the before-check result.
+	//
+	// The trigger is the sole controller of whether the HTTP request fires.
+	// The result of this expression only controls CommitStatus phase, never HTTP firing.
+	//
+	// See WhenSpec.Expression for available variables and return shapes.
 	When *WhenSpecApplyConfiguration `json:"when,omitempty"`
 }
 

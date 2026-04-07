@@ -111,7 +111,7 @@ type WebRequestCommitStatusSpec struct {
 //
 //   - "environments" (default): one HTTP request per environment; each environment has its own phase and status; success.when.expression is evaluated per response and must return a boolean (true → success, false → pending; failure is not expressible).
 //
-//   - "promotionstrategy": at most one HTTP request per WebRequestCommitStatus resource; CommitStatuses remain one per environment on each environment’s reportOn SHA. success.when.expression runs once on that shared response — see WhenSpec.Expression for boolean vs per-branch object return shapes.
+//   - "promotionstrategy": at most one HTTP request per WebRequestCommitStatus resource; CommitStatuses remain one per environment on each environment’s reportOn SHA. success.when.expression is evaluated on every reconcile (before the request with persisted data or an empty Response, and again after the request with the actual Response when the trigger fires) — see WhenSpec.Expression for boolean vs per-branch object return shapes.
 //
 // When context is "promotionstrategy", Environment, ReportedSha, and LastSuccessfulSha are not set for the shared HTTP request or for trigger when/output templates; do not reference them in spec.httpRequest (URL, headers, body), descriptionTemplate, urlTemplate, or spec.mode.trigger. Use PromotionStrategy (e.g. status environments) for branch- or SHA-specific values. For description and url templates, {{ .Phase }} is still set per environment when rendering that environment’s CommitStatus.
 //
@@ -146,16 +146,44 @@ type PollingModeSpec struct {
 
 // SuccessSpec defines when the HTTP response is considered successful (commit status phase success).
 type SuccessSpec struct {
-	// When is evaluated against the HTTP response after each request. See WhenSpec.Expression.
+	// When is evaluated on every reconcile cycle — both before and after the HTTP request:
+	//
+	//   Before: Evaluated every reconcile with current PromotionStrategy/Environment context
+	//   and last persisted response data (or an empty Response when no prior request exists).
+	//   This sets the CommitStatus phase as a baseline, so phases reflect PromotionStrategy state
+	//   changes even when the trigger does not fire and no HTTP request is made.
+	//
+	//   After: When the trigger fires and the HTTP request completes, the expression is evaluated
+	//   again with the actual Response. This result supersedes the before-check result.
+	//
+	// The trigger is the sole controller of whether the HTTP request fires.
+	// The result of this expression only controls CommitStatus phase, never HTTP firing.
+	//
+	// See WhenSpec.Expression for available variables and return shapes.
 	// +required
 	When WhenSpec `json:"when"`
 }
 
-// WhenSpec holds spec.success.when.expression only (evaluated after the HTTP response).
+// WhenSpec holds spec.success.when.expression only.
 // Trigger guards use WhenWithOutputSpec under spec.mode.trigger.when, not this type.
 type WhenSpec struct {
-	// Expression uses github.com/expr-lang/expr against the HTTP response. Variables (also used by spec.mode.trigger.response.output):
-	// Response.StatusCode (int), Response.Body (parsed JSON as map[string]any, or raw string if not JSON), Response.Headers (map[string][]string).
+	// Expression uses github.com/expr-lang/expr. It is evaluated on every reconcile cycle.
+	//
+	// Both evaluations receive the same set of variables:
+	//   PromotionStrategy, Environment (nil in promotionstrategy context), ReportedSha,
+	//   LastSuccessfulSha, Phase, TriggerOutput, ResponseOutput, and Response.
+	// The only difference between the two is what Response contains.
+	//
+	// Before the HTTP request (or when the trigger does not fire):
+	//   Response is a synthetic object rebuilt from persisted status.responseOutput, or an
+	//   empty object (StatusCode=0, Body=nil, Headers=nil) when no prior request exists.
+	//   This allows expressions that inspect PromotionStrategy fields to determine phase
+	//   without requiring an HTTP response.
+	//
+	// After the HTTP request (when the trigger fires):
+	//   Response contains the actual HTTP response: Response.StatusCode (int), Response.Body
+	//   (parsed JSON as map[string]any, or raw string if not JSON), Response.Headers
+	//   (map[string][]string). This result supersedes the before-check.
 	//
 	// Evaluation scope follows spec.mode.context; see ModeSpec. Return shape:
 	//

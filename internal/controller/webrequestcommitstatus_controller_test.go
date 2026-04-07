@@ -37,6 +37,7 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -104,6 +105,297 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 		if scmSecret != nil {
 			_ = k8sClient.Delete(ctx, scmSecret)
 		}
+	})
+
+	Context("success.when expression environment", func() {
+		It("includes template fields with Response so ReportedSha can be checked against ResponseOutput", func() {
+			r := &WebRequestCommitStatusReconciler{}
+			ctx := context.Background()
+			wrcs := &promoterv1alpha1.WebRequestCommitStatus{
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenSpec{
+							Expression: `Response.StatusCode == 200 && ReportedSha == ResponseOutput.respSha`,
+						},
+					},
+				},
+			}
+			td := templateData{
+				ReportedSha:    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+				ResponseOutput: map[string]any{"respSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+			}
+			resp := httpResponse{StatusCode: 200, Body: map[string]any{}}
+			phase, branchPhases, err := r.evaluatePhaseFromResponse(ctx, wrcs, td, resp)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(phase).To(Equal(promoterv1alpha1.CommitPhasePending))
+			Expect(branchPhases).To(BeNil())
+
+			td.ResponseOutput = map[string]any{"respSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+			phase, _, err = r.evaluatePhaseFromResponse(ctx, wrcs, td, resp)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+		})
+
+		It("includes PromotionStrategy for promotionstrategy context", func() {
+			r := &WebRequestCommitStatusReconciler{}
+			ctx := context.Background()
+			wrcs := &promoterv1alpha1.WebRequestCommitStatus{
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					Mode: promoterv1alpha1.ModeSpec{Context: promoterv1alpha1.ContextPromotionStrategy},
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenSpec{
+							Expression: `len(PromotionStrategy.Spec.Environments) > 0 && Response.StatusCode == 200`,
+						},
+					},
+				},
+			}
+			ps := &promoterv1alpha1.PromotionStrategy{
+				Spec: promoterv1alpha1.PromotionStrategySpec{
+					Environments: []promoterv1alpha1.Environment{{Branch: "environments/dev"}},
+				},
+			}
+			td := templateData{PromotionStrategy: ps}
+			resp := httpResponse{StatusCode: 200, Body: map[string]any{}}
+			phase, _, err := r.evaluatePhaseFromResponse(ctx, wrcs, td, resp)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+		})
+	})
+
+	Context("success.when before and after evaluation", func() {
+		It("before-check sets phase from persisted data when trigger does not fire", func() {
+			r := &WebRequestCommitStatusReconciler{}
+			ctx := context.Background()
+			wrcs := &promoterv1alpha1.WebRequestCommitStatus{
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenSpec{
+							Expression: `Response.StatusCode == 200 && Response.Body.approved == true`,
+						},
+					},
+				},
+			}
+
+			responseData := map[string]any{"approved": true}
+			responseJSON, err := json.Marshal(responseData)
+			Expect(err).NotTo(HaveOccurred())
+			statusCode := 200
+			lastState := lastReconciledState{
+				Phase:                  "pending",
+				ResponseData:           responseData,
+				ResponseOutput:         &apiextensionsv1.JSON{Raw: responseJSON},
+				LastResponseStatusCode: &statusCode,
+			}
+			td := templateData{Phase: "pending"}
+			decision := triggerDecision{ShouldFire: false}
+
+			result, err := r.fireOrCarryForward(ctx, wrcs, td, decision, lastState)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+		})
+
+		It("before-check evaluates with empty response when no persisted data", func() {
+			r := &WebRequestCommitStatusReconciler{}
+			ctx := context.Background()
+			ps := &promoterv1alpha1.PromotionStrategy{
+				Spec: promoterv1alpha1.PromotionStrategySpec{
+					Environments: []promoterv1alpha1.Environment{{Branch: "environments/dev"}},
+				},
+			}
+			wrcs := &promoterv1alpha1.WebRequestCommitStatus{
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenSpec{
+							Expression: `len(PromotionStrategy.Spec.Environments) > 0`,
+						},
+					},
+				},
+			}
+
+			lastState := lastReconciledState{Phase: "pending"}
+			td := templateData{Phase: "pending", PromotionStrategy: ps}
+			decision := triggerDecision{ShouldFire: false}
+
+			result, err := r.fireOrCarryForward(ctx, wrcs, td, decision, lastState)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+		})
+
+		It("before-check falls back to last phase on expression error", func() {
+			r := &WebRequestCommitStatusReconciler{}
+			ctx := context.Background()
+			wrcs := &promoterv1alpha1.WebRequestCommitStatus{
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenSpec{
+							Expression: `Response.Body.nested.deep.field == true`,
+						},
+					},
+				},
+			}
+
+			lastState := lastReconciledState{Phase: "pending"}
+			td := templateData{Phase: "pending"}
+			decision := triggerDecision{ShouldFire: false}
+
+			result, err := r.fireOrCarryForward(ctx, wrcs, td, decision, lastState)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
+		})
+
+		It("before-check uses PromotionStrategy and Environment in env mode", func() {
+			r := &WebRequestCommitStatusReconciler{}
+			ctx := context.Background()
+			ps := &promoterv1alpha1.PromotionStrategy{
+				Spec: promoterv1alpha1.PromotionStrategySpec{
+					Environments: []promoterv1alpha1.Environment{{Branch: "environments/staging"}},
+				},
+			}
+			envStatus := &promoterv1alpha1.EnvironmentStatus{
+				Branch: "environments/staging",
+			}
+			wrcs := &promoterv1alpha1.WebRequestCommitStatus{
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenSpec{
+							Expression: `Environment.Branch == "environments/staging" && len(PromotionStrategy.Spec.Environments) == 1`,
+						},
+					},
+				},
+			}
+
+			lastState := lastReconciledState{Phase: "pending"}
+			td := templateData{Phase: "pending", PromotionStrategy: ps, Environment: envStatus}
+			decision := triggerDecision{ShouldFire: false}
+
+			result, err := r.fireOrCarryForward(ctx, wrcs, td, decision, lastState)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+		})
+
+		It("before-check uses PromotionStrategy in promotionstrategy mode", func() {
+			r := &WebRequestCommitStatusReconciler{}
+			ctx := context.Background()
+			ps := &promoterv1alpha1.PromotionStrategy{
+				Spec: promoterv1alpha1.PromotionStrategySpec{
+					Environments: []promoterv1alpha1.Environment{
+						{Branch: "environments/staging"},
+						{Branch: "environments/production"},
+					},
+				},
+			}
+			wrcs := &promoterv1alpha1.WebRequestCommitStatus{
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					Mode: promoterv1alpha1.ModeSpec{Context: promoterv1alpha1.ContextPromotionStrategy},
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenSpec{
+							Expression: `len(PromotionStrategy.Spec.Environments) == 2`,
+						},
+					},
+				},
+			}
+
+			lastState := lastReconciledState{Phase: "pending"}
+			td := templateData{Phase: "pending", PromotionStrategy: ps}
+			decision := triggerDecision{ShouldFire: false}
+
+			result, err := r.fireOrCarryForward(ctx, wrcs, td, decision, lastState)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+		})
+
+		It("after-check supersedes before-check when trigger fires", func() {
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(map[string]any{"approved": true})
+			}))
+			defer ts.Close()
+
+			r := &WebRequestCommitStatusReconciler{httpClient: &http.Client{}}
+			ctx := context.Background()
+
+			responseData := map[string]any{"approved": false}
+			responseJSON, err := json.Marshal(responseData)
+			Expect(err).NotTo(HaveOccurred())
+			statusCode := 200
+			lastState := lastReconciledState{
+				Phase:                  "pending",
+				ResponseData:           responseData,
+				ResponseOutput:         &apiextensionsv1.JSON{Raw: responseJSON},
+				LastResponseStatusCode: &statusCode,
+			}
+
+			wrcs := &promoterv1alpha1.WebRequestCommitStatus{
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: ts.URL,
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 5 * time.Second},
+					},
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenSpec{
+							Expression: `Response.StatusCode == 200 && Response.Body.approved == true`,
+						},
+					},
+				},
+			}
+
+			td := templateData{Phase: "pending"}
+			decision := triggerDecision{ShouldFire: true}
+
+			result, err := r.fireOrCarryForward(ctx, wrcs, td, decision, lastState)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+		})
+
+		It("HTTP always fires when trigger says fire regardless of before-check result", func() {
+			httpCalled := false
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				httpCalled = true
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(map[string]any{"approved": true})
+			}))
+			defer ts.Close()
+
+			r := &WebRequestCommitStatusReconciler{httpClient: &http.Client{}}
+			ctx := context.Background()
+
+			responseData := map[string]any{"approved": true}
+			responseJSON, err := json.Marshal(responseData)
+			Expect(err).NotTo(HaveOccurred())
+			statusCode := 200
+			lastState := lastReconciledState{
+				Phase:                  string(promoterv1alpha1.CommitPhaseSuccess),
+				ResponseData:           responseData,
+				ResponseOutput:         &apiextensionsv1.JSON{Raw: responseJSON},
+				LastResponseStatusCode: &statusCode,
+			}
+
+			wrcs := &promoterv1alpha1.WebRequestCommitStatus{
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: ts.URL,
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 5 * time.Second},
+					},
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenSpec{
+							Expression: `Response.StatusCode == 200 && Response.Body.approved == true`,
+						},
+					},
+				},
+			}
+
+			td := templateData{Phase: string(promoterv1alpha1.CommitPhaseSuccess)}
+			decision := triggerDecision{ShouldFire: true}
+
+			result, err := r.fireOrCarryForward(ctx, wrcs, td, decision, lastState)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			Expect(httpCalled).To(BeTrue(), "HTTP request must fire even when before-check already shows success")
+		})
 	})
 
 	Describe("Polling Mode - Success Response", func() {
@@ -2779,6 +3071,129 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy 
 			g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 			g.Expect(cs.Spec.Sha).To(Equal(activeSha))
 		}, constants.EventuallyTimeout).Should(Succeed())
+	})
+})
+
+var _ = Describe("WebRequestCommitStatus Controller - Before-Check Without HTTP", Ordered, func() {
+	var (
+		ctx               context.Context
+		name              string
+		scmSecret         *corev1.Secret
+		scmProvider       *promoterv1alpha1.ScmProvider
+		gitRepo           *promoterv1alpha1.GitRepository
+		promotionStrategy *promoterv1alpha1.PromotionStrategy
+		wrcs              *promoterv1alpha1.WebRequestCommitStatus
+		httpRequestCount  int
+		testServer        *httptest.Server
+	)
+
+	BeforeAll(func() {
+		ctx = context.Background()
+
+		By("Setting up test git repository and resources")
+		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "wrcs-before-check-test", "default")
+
+		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+			{Key: "before-check-key"},
+		}
+
+		setupInitialTestGitRepoOnServer(ctx, gitRepo)
+
+		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+		httpRequestCount = 0
+		testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			httpRequestCount++
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(map[string]any{"approved": true})
+		}))
+	})
+
+	AfterAll(func() {
+		if testServer != nil {
+			testServer.Close()
+		}
+		if wrcs != nil {
+			_ = k8sClient.Delete(ctx, wrcs)
+		}
+		if promotionStrategy != nil {
+			_ = k8sClient.Delete(ctx, promotionStrategy)
+		}
+		if gitRepo != nil {
+			_ = k8sClient.Delete(ctx, gitRepo)
+		}
+		if scmProvider != nil {
+			_ = k8sClient.Delete(ctx, scmProvider)
+		}
+		if scmSecret != nil {
+			_ = k8sClient.Delete(ctx, scmSecret)
+		}
+	})
+
+	It("should set CommitStatus phase from before-check when trigger never fires", func() {
+		By("Creating a WRCS with a trigger that always returns false and success.when using PromotionStrategy context")
+		wrcs = &promoterv1alpha1.WebRequestCommitStatus{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name + "-before-check",
+				Namespace: "default",
+			},
+			Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+				Key:                  "before-check-key",
+				ReportOn:             constants.CommitRefProposed,
+				HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+					URLTemplate: testServer.URL + "/should-not-be-called",
+					Method:      "GET",
+					Timeout:     metav1.Duration{Duration: 5 * time.Second},
+				},
+				Success: promoterv1alpha1.SuccessSpec{
+					When: promoterv1alpha1.WhenSpec{
+						Expression: `len(PromotionStrategy.Spec.Environments) > 0`,
+					},
+				},
+				Mode: promoterv1alpha1.ModeSpec{
+					Trigger: &promoterv1alpha1.TriggerModeSpec{
+						RequeueDuration: metav1.Duration{Duration: 5 * time.Second},
+						When: promoterv1alpha1.WhenWithOutputSpec{
+							Expression: "false",
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, wrcs)).To(Succeed())
+
+		By("Waiting for before-check to evaluate success.when and set CommitStatus phase to success")
+		Eventually(func(g Gomega) {
+			var fetched promoterv1alpha1.WebRequestCommitStatus
+			err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(len(fetched.Status.Environments)).To(BeNumerically(">=", 1))
+
+			for _, envStatus := range fetched.Status.Environments {
+				g.Expect(envStatus.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess),
+					"branch %s phase should be success from before-check using PromotionStrategy context", envStatus.Branch)
+				g.Expect(envStatus.LastRequestTime).To(BeNil(),
+					"branch %s should have no LastRequestTime since HTTP never fired", envStatus.Branch)
+			}
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		By("Verifying no HTTP requests were made")
+		Expect(httpRequestCount).To(Equal(0), "No HTTP requests should have been made since trigger always returns false")
+
+		By("Verifying CommitStatus K8s resources were created with success phase")
+		for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
+			csName := utils.KubeSafeUniqueName(ctx, wrcs.Name+"-"+branch+"-webrequest")
+			var cs promoterv1alpha1.CommitStatus
+			err := k8sClient.Get(ctx, types.NamespacedName{Name: csName, Namespace: "default"}, &cs)
+			Expect(err).NotTo(HaveOccurred(), "CommitStatus for %s should exist", branch)
+			Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess),
+				"CommitStatus for %s should be success from before-check", branch)
+		}
 	})
 })
 

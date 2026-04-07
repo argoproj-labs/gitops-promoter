@@ -68,6 +68,19 @@ func responseExpressionEnv(resp httpResponse) map[string]any {
 	}
 }
 
+// successExpressionEnv is the variable environment for success.when (validation) expressions.
+// It includes the same fields as trigger expressions (PromotionStrategy, ReportedSha, Phase,
+// TriggerOutput, ResponseOutput, Environment, LastSuccessfulSha) plus Response from the HTTP
+// response (or a synthetic response rebuilt from status when the trigger does not fire).
+func successExpressionEnv(td templateData, resp httpResponse) map[string]any {
+	env := td.triggerExprEnv()
+	respEnv := responseExpressionEnv(resp)
+	for k, v := range respEnv {
+		env[k] = v
+	}
+	return env
+}
+
 // getCompiledTriggerExpression returns a cached or newly compiled trigger expression program.
 // Used by evaluateTriggerExpression. Compiled with expr.AsBool() so the expression must return a boolean.
 func (r *WebRequestCommitStatusReconciler) getCompiledTriggerExpression(expression string) (*vm.Program, error) {
@@ -160,9 +173,10 @@ func (r *WebRequestCommitStatusReconciler) evaluateTriggerDataExpression(ctx con
 }
 
 // evaluateValidationExpression runs the validation expression against the HTTP response to determine the commit status phase.
-// The expression receives Response.StatusCode, Response.Body, and Response.Headers. Its boolean return is used directly:
-// true sets the CommitStatus phase to Success, false sets it to Pending. Used when deciding whether promotion can proceed.
-func (r *WebRequestCommitStatusReconciler) evaluateValidationExpression(ctx context.Context, expression string, resp httpResponse) (bool, error) {
+// The expression receives Response (StatusCode, Body, Headers) and the same template fields as trigger.when
+// (PromotionStrategy, ReportedSha, Phase, TriggerOutput, ResponseOutput, Environment, LastSuccessfulSha).
+// Its boolean return is used directly: true sets the CommitStatus phase to Success, false sets it to Pending.
+func (r *WebRequestCommitStatusReconciler) evaluateValidationExpression(ctx context.Context, expression string, td templateData, resp httpResponse) (bool, error) {
 	logger := log.FromContext(ctx)
 
 	program, err := r.getCompiledValidationExpression(expression)
@@ -170,7 +184,7 @@ func (r *WebRequestCommitStatusReconciler) evaluateValidationExpression(ctx cont
 		return false, fmt.Errorf("failed to compile validation expression: %w", err)
 	}
 
-	output, err := expr.Run(program, responseExpressionEnv(resp))
+	output, err := expr.Run(program, successExpressionEnv(td, resp))
 	if err != nil {
 		return false, fmt.Errorf("failed to evaluate validation expression: %w", err)
 	}
@@ -188,7 +202,8 @@ func (r *WebRequestCommitStatusReconciler) evaluateValidationExpression(ctx cont
 // The expression may return: a boolean (one phase for all); or an object { defaultPhase?, environments? }.
 // defaultPhase defaults to "pending" when omitted; it is used for all when environments is empty, or for branches not in environments.
 // environments is an optional array of { branch, phase }. Returns (phase, phasePerBranch, err).
-func (r *WebRequestCommitStatusReconciler) evaluateValidationExpressionForPromotionStrategy(ctx context.Context, expression string, resp httpResponse) (phase promoterv1alpha1.CommitStatusPhase, phasePerBranch map[string]promoterv1alpha1.CommitStatusPhase, err error) {
+// The expression environment matches evaluateValidationExpression (Response plus PromotionStrategy template fields).
+func (r *WebRequestCommitStatusReconciler) evaluateValidationExpressionForPromotionStrategy(ctx context.Context, expression string, td templateData, resp httpResponse) (phase promoterv1alpha1.CommitStatusPhase, phasePerBranch map[string]promoterv1alpha1.CommitStatusPhase, err error) {
 	logger := log.FromContext(ctx)
 
 	program, err := r.getCompiledValidationExpressionForPromotionStrategy(expression)
@@ -196,7 +211,7 @@ func (r *WebRequestCommitStatusReconciler) evaluateValidationExpressionForPromot
 		return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("failed to compile validation expression: %w", err)
 	}
 
-	output, err := expr.Run(program, responseExpressionEnv(resp))
+	output, err := expr.Run(program, successExpressionEnv(td, resp))
 	if err != nil {
 		return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("failed to evaluate validation expression: %w", err)
 	}

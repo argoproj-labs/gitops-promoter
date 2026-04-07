@@ -15,11 +15,12 @@ For each applicable environment (after resolving context):
 1. The controller determines which SHA to validate based on the `reportOn` setting:
    - `proposed` (default): Validates the commit that will be promoted
    - `active`: Validates the currently deployed commit
-2. The controller evaluates whether to make an HTTP request (polling mode always makes requests, trigger mode evaluates a trigger expression first). In `promotionstrategy` context this decision applies to the **single** shared request for that reconcile.
-3. If triggered, the controller makes an HTTP request to the configured endpoint using templated URL, headers, and body (in `promotionstrategy` context there is only one request per fire, not one per environment).
-4. The controller evaluates the success expression against the HTTP response (boolean-only in `environments` context; boolean or structured object in `promotionstrategy` context — see below).
-5. The controller creates/updates a **CommitStatus per environment**, each with that environment’s SHA and its own phase when using per-branch results.
-6. The PromotionStrategy checks the CommitStatus before allowing promotion
+2. **Before-check**: The controller evaluates `success.when` with current PromotionStrategy/Environment context and any persisted response data from the last HTTP request (see [Success expression evaluation lifecycle](#success-expression-evaluation-lifecycle)). This sets the CommitStatus phase as a baseline.
+3. The controller evaluates whether to make an HTTP request (polling mode always makes requests, trigger mode evaluates a trigger expression first). The trigger is the sole controller of whether the HTTP request fires — the before-check result never affects this decision. In `promotionstrategy` context this decision applies to the **single** shared request for that reconcile.
+4. If triggered, the controller makes an HTTP request to the configured endpoint using templated URL, headers, and body (in `promotionstrategy` context there is only one request per fire, not one per environment).
+5. **After-check**: The controller evaluates `success.when` against the actual HTTP response (boolean-only in `environments` context; boolean or structured object in `promotionstrategy` context — see below). This result supersedes the before-check.
+6. The controller creates/updates a **CommitStatus per environment**, each with that environment’s SHA and its own phase when using per-branch results.
+7. The PromotionStrategy checks the CommitStatus before allowing promotion
 
 ### Operating Modes
 
@@ -58,6 +59,72 @@ Uses expressions to dynamically control when HTTP requests are made. Powerful fo
 - Can access previous HTTP response data via `ResponseOutput` (via `response.output.expression`)
 - Always reconciles at `requeueDuration` interval (default: 1 minute)
 
+## Success expression evaluation lifecycle
+
+The `success.when` expression is evaluated on **every reconcile cycle**, not just after an HTTP request. This two-phase evaluation ensures that CommitStatus phases always reflect the current state of the PromotionStrategy and persisted response data, even when the trigger does not fire.
+
+### Before-check (every reconcile)
+
+Before the trigger is evaluated, `success.when` runs with the following context:
+
+| Variable | Value |
+|----------|-------|
+| `PromotionStrategy` | Current PromotionStrategy spec and status from the cluster |
+| `Environment` | Current environment status (`environments` context only; nil in `promotionstrategy` context) |
+| `ReportedSha` | SHA being validated (`environments` context only) |
+| `LastSuccessfulSha` | Last SHA that reached success (`environments` context only) |
+| `Phase` | Phase from the previous reconcile |
+| `TriggerOutput` | Persisted trigger output from the last reconcile |
+| `ResponseOutput` | Persisted response output from the last HTTP request (nil if no prior request) |
+| `Response` | Synthetic object rebuilt from persisted `responseOutput` (status code and body), or empty (`StatusCode=0`, `Body=nil`, `Headers=nil`) when no prior request exists |
+
+The before-check result sets the CommitStatus phase as a baseline. This means:
+
+- Expressions can inspect `PromotionStrategy` fields (e.g., PR state, environment status, dry SHAs) to determine phase **without requiring an HTTP response**.
+- When persisted response data exists, the expression can re-evaluate it against current PromotionStrategy state (e.g., to revoke a previously successful phase when conditions change).
+- CommitStatus resources are created/updated with the before-check result on every reconcile, even when no HTTP request is made.
+
+### After-check (when HTTP fires)
+
+When the trigger fires and the HTTP request completes, `success.when` is evaluated again with the actual `Response` (real status code, body, and headers). This result **supersedes** the before-check result.
+
+### Key invariant
+
+The trigger (`spec.mode.trigger.when` or `spec.mode.polling`) is the **sole controller** of whether the HTTP request fires. The result of `success.when` — whether from the before-check or after-check — only controls the CommitStatus phase. It never causes or prevents an HTTP request.
+
+### Example: PromotionStrategy-aware expression
+
+An expression that uses PromotionStrategy state and does not require an HTTP response:
+
+```yaml
+success:
+  when:
+    expression: |
+      len(PromotionStrategy.Spec.Environments) > 0 &&
+      all(PromotionStrategy.Status.Environments, {
+        #.PullRequest == nil || string(#.PullRequest.State) != "open"
+      })
+```
+
+This expression evaluates to `true` when no environments have open pull requests, regardless of HTTP response data. With the before-check, this is evaluated on every reconcile so the CommitStatus stays in sync with PromotionStrategy state.
+
+### Example: Mixed expression (response data + PromotionStrategy state)
+
+An expression that uses both persisted response data and live PromotionStrategy context:
+
+```yaml
+success:
+  when:
+    expression: |
+      Response.StatusCode == 200 &&
+      Response.Body.approved == true &&
+      all(PromotionStrategy.Status.Environments, {
+        #.Proposed.Note != nil && #.Proposed.Note.DrySha != ""
+      })
+```
+
+When the trigger does not fire, this evaluates against the synthetic `Response` from persisted data. If any PromotionStrategy environment loses its dry SHA, the expression returns `false` and the CommitStatus moves back to `pending` — even though no new HTTP request was made.
+
 ## Request scope: environments vs promotionstrategy
 
 Use **`spec.mode.context`** to choose **`environments`** (default) or **`promotionstrategy`**. This field controls **how many HTTP requests** the controller performs per `WebRequestCommitStatus` and **how** the success expression’s result maps to `CommitStatus` resources.
@@ -94,11 +161,7 @@ When rendering **CommitStatus** `descriptionTemplate` and `urlTemplate`, the con
 
 ### Success expression (`promotionstrategy` context)
 
-The success expression still only sees the HTTP response:
-
-- `Response.StatusCode`
-- `Response.Body` (JSON object or raw string)
-- `Response.Headers`
+The success expression receives the same variables as in `environments` context (see [Success expression evaluation lifecycle](#success-expression-evaluation-lifecycle)), including `PromotionStrategy`, `Phase`, `TriggerOutput`, `ResponseOutput`, and `Response`. The per-environment fields (`Environment`, `ReportedSha`, `LastSuccessfulSha`) are nil/empty since there is no single "current environment" for the shared request.
 
 **Return types:**
 

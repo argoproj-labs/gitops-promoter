@@ -20,11 +20,26 @@ package v1alpha1
 // WhenSpecApplyConfiguration represents a declarative configuration of the WhenSpec type for use
 // with apply.
 //
-// WhenSpec holds spec.success.when.expression only (evaluated after the HTTP response).
+// WhenSpec holds spec.success.when.expression only.
 // Trigger guards use WhenWithOutputSpec under spec.mode.trigger.when, not this type.
 type WhenSpecApplyConfiguration struct {
-	// Expression uses github.com/expr-lang/expr against the HTTP response. Variables (also used by spec.mode.trigger.response.output):
-	// Response.StatusCode (int), Response.Body (parsed JSON as map[string]any, or raw string if not JSON), Response.Headers (map[string][]string).
+	// Expression uses github.com/expr-lang/expr. It is evaluated on every reconcile cycle.
+	//
+	// Both evaluations receive the same set of variables:
+	// PromotionStrategy, Environment (nil in promotionstrategy context), ReportedSha,
+	// LastSuccessfulSha, Phase, TriggerOutput, ResponseOutput, and Response.
+	// The only difference between the two is what Response contains.
+	//
+	// Before the HTTP request (or when the trigger does not fire):
+	// Response is a synthetic object rebuilt from persisted status.responseOutput, or an
+	// empty object (StatusCode=0, Body=nil, Headers=nil) when no prior request exists.
+	// This allows expressions that inspect PromotionStrategy fields to determine phase
+	// without requiring an HTTP response.
+	//
+	// After the HTTP request (when the trigger fires):
+	// Response contains the actual HTTP response: Response.StatusCode (int), Response.Body
+	// (parsed JSON as map[string]any, or raw string if not JSON), Response.Headers
+	// (map[string][]string). This result supersedes the before-check.
 	//
 	// Evaluation scope follows spec.mode.context; see ModeSpec. Return shape:
 	//

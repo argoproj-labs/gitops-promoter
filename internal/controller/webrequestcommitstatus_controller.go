@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -671,8 +672,24 @@ func lastReconciledStateFromContext(ctx context.Context, status *promoterv1alpha
 	return s
 }
 
-// fireOrCarryForward executes the HTTP request when decision.ShouldFire is true, otherwise
-// carries forward state from the last reconcile.
+// httpResponseFromCarryForward rebuilds an httpResponse from persisted status so success.when can be
+// re-evaluated when the HTTP request is skipped. Body is derived from status.responseOutput.
+func httpResponseFromCarryForward(last lastReconciledState) httpResponse {
+	code := 0
+	if last.LastResponseStatusCode != nil {
+		code = *last.LastResponseStatusCode
+	}
+	var body any
+	if len(last.ResponseData) > 0 {
+		body = maps.Clone(last.ResponseData)
+	}
+	return httpResponse{StatusCode: code, Body: body, Headers: nil}
+}
+
+// fireOrCarryForward evaluates success.when on every reconcile ("before" check), then fires
+// the HTTP request when decision.ShouldFire is true and re-evaluates success.when with the
+// actual response ("after" check). The trigger is the sole controller of HTTP firing;
+// success.when only determines CommitStatus phase.
 func (r *WebRequestCommitStatusReconciler) fireOrCarryForward(
 	ctx context.Context,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
@@ -680,20 +697,60 @@ func (r *WebRequestCommitStatusReconciler) fireOrCarryForward(
 	decision triggerDecision,
 	lastState lastReconciledState,
 ) (httpValidationResult, error) {
+	logger := log.FromContext(ctx)
+
+	beforeResult := r.evaluateBeforePhase(ctx, wrcs, td, decision, lastState)
+
 	if decision.ShouldFire {
-		return r.handleHTTPRequestAndValidation(ctx, wrcs, td)
+		afterResult, err := r.handleHTTPRequestAndValidation(ctx, wrcs, td)
+		if err != nil {
+			return httpValidationResult{}, err
+		}
+		logger.V(4).Info("success.when evaluated before and after HTTP",
+			"beforePhase", beforeResult.Phase, "afterPhase", afterResult.Phase)
+		return afterResult, nil
 	}
-	phase := promoterv1alpha1.CommitStatusPhase(lastState.Phase)
-	if phase == "" {
-		phase = promoterv1alpha1.CommitPhasePending
+
+	return beforeResult, nil
+}
+
+// evaluateBeforePhase runs success.when with the current PromotionStrategy/Environment context
+// and last persisted response data (or an empty response when none exists). This provides a
+// baseline phase on every reconcile so CommitStatuses reflect PromotionStrategy state changes
+// even when the trigger does not fire.
+func (r *WebRequestCommitStatusReconciler) evaluateBeforePhase(
+	ctx context.Context,
+	wrcs *promoterv1alpha1.WebRequestCommitStatus,
+	td templateData,
+	decision triggerDecision,
+	lastState lastReconciledState,
+) httpValidationResult {
+	logger := log.FromContext(ctx)
+
+	beforeTd := td.withLatestOutputs(lastState.ResponseOutput, decision.NewTriggerData)
+
+	var synth httpResponse
+	if len(lastState.ResponseData) > 0 {
+		synth = httpResponseFromCarryForward(lastState)
 	}
+
+	phase, phasePerBranch, err := r.evaluatePhaseFromResponse(ctx, wrcs, beforeTd, synth)
+	if err != nil {
+		logger.V(4).Info("Before-check success.when evaluation failed, falling back to last phase", "error", err)
+		phase = promoterv1alpha1.CommitStatusPhase(lastState.Phase)
+		if phase == "" {
+			phase = promoterv1alpha1.CommitPhasePending
+		}
+		phasePerBranch = lastState.PhasePerBranch
+	}
+
 	return httpValidationResult{
 		Phase:                  phase,
-		PhasePerBranch:         lastState.PhasePerBranch,
+		PhasePerBranch:         phasePerBranch,
 		LastRequestTime:        lastState.LastRequestTime,
 		LastResponseStatusCode: lastState.LastResponseStatusCode,
 		ResponseDataJSON:       lastState.ResponseOutput,
-	}, nil
+	}
 }
 
 // triggerDecision holds the result of evaluateTriggerDecision.
@@ -831,7 +888,13 @@ func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx co
 		responseDataJSON = &apiextensionsv1.JSON{Raw: responseDataBytes}
 	}
 
-	phase, phasePerBranch, err := r.evaluatePhaseFromResponse(ctx, wrcs, response)
+	validationTd := templateData
+	if responseDataJSON != nil {
+		validationTd = validationTd.withLatestOutputs(responseDataJSON, nil)
+	} else {
+		validationTd.ResponseOutput = nil
+	}
+	phase, phasePerBranch, err := r.evaluatePhaseFromResponse(ctx, wrcs, validationTd, response)
 	if err != nil {
 		return httpValidationResult{}, fmt.Errorf("failed to evaluate validation expression: %w", err)
 	}
@@ -850,12 +913,13 @@ func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx co
 func (r *WebRequestCommitStatusReconciler) evaluatePhaseFromResponse(
 	ctx context.Context,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
+	td templateData,
 	response httpResponse,
 ) (promoterv1alpha1.CommitStatusPhase, map[string]promoterv1alpha1.CommitStatusPhase, error) {
 	if wrcs.Spec.Mode.Context == promoterv1alpha1.ContextPromotionStrategy {
-		return r.evaluateValidationExpressionForPromotionStrategy(ctx, wrcs.Spec.Success.When.Expression, response)
+		return r.evaluateValidationExpressionForPromotionStrategy(ctx, wrcs.Spec.Success.When.Expression, td, response)
 	}
-	passed, err := r.evaluateValidationExpression(ctx, wrcs.Spec.Success.When.Expression, response)
+	passed, err := r.evaluateValidationExpression(ctx, wrcs.Spec.Success.When.Expression, td, response)
 	if err != nil {
 		return "", nil, err
 	}

@@ -452,13 +452,41 @@ spec:
                   for commit status phase. See SuccessSpec.
                 properties:
                   when:
-                    description: When is evaluated against the HTTP response after
-                      each request. See WhenSpec.Expression.
+                    description: |-
+                      When is evaluated on every reconcile cycle — both before and after the HTTP request:
+
+                        Before: Evaluated every reconcile with current PromotionStrategy/Environment context
+                        and last persisted response data (or an empty Response when no prior request exists).
+                        This sets the CommitStatus phase as a baseline, so phases reflect PromotionStrategy state
+                        changes even when the trigger does not fire and no HTTP request is made.
+
+                        After: When the trigger fires and the HTTP request completes, the expression is evaluated
+                        again with the actual Response. This result supersedes the before-check result.
+
+                      The trigger is the sole controller of whether the HTTP request fires.
+                      The result of this expression only controls CommitStatus phase, never HTTP firing.
+
+                      See WhenSpec.Expression for available variables and return shapes.
                     properties:
                       expression:
                         description: |-
-                          Expression uses github.com/expr-lang/expr against the HTTP response. Variables (also used by spec.mode.trigger.response.output):
-                          Response.StatusCode (int), Response.Body (parsed JSON as map[string]any, or raw string if not JSON), Response.Headers (map[string][]string).
+                          Expression uses github.com/expr-lang/expr. It is evaluated on every reconcile cycle.
+
+                          Both evaluations receive the same set of variables:
+                            PromotionStrategy, Environment (nil in promotionstrategy context), ReportedSha,
+                            LastSuccessfulSha, Phase, TriggerOutput, ResponseOutput, and Response.
+                          The only difference between the two is what Response contains.
+
+                          Before the HTTP request (or when the trigger does not fire):
+                            Response is a synthetic object rebuilt from persisted status.responseOutput, or an
+                            empty object (StatusCode=0, Body=nil, Headers=nil) when no prior request exists.
+                            This allows expressions that inspect PromotionStrategy fields to determine phase
+                            without requiring an HTTP response.
+
+                          After the HTTP request (when the trigger fires):
+                            Response contains the actual HTTP response: Response.StatusCode (int), Response.Body
+                            (parsed JSON as map[string]any, or raw string if not JSON), Response.Headers
+                            (map[string][]string). This result supersedes the before-check.
 
                           Evaluation scope follows spec.mode.context; see ModeSpec. Return shape:
 
