@@ -1,4 +1,4 @@
-# Exploratory fuzzing on a schedule. PR CI replays corpora via `make test-fuzz-seed` only.
+# Exploratory fuzzing on a schedule (FUZZ_TIME in Makefile, default 30s per target). PR CI runs `make fuzz-replay` (seeds + corpus replay only).
 name: fuzz scheduled
 on:
   schedule:
@@ -25,4 +25,4 @@ jobs:
         with:
           go-version: "1.26.1"
       - name: Run fuzz targets
-        run: make test-fuzz FUZZ_TIME=45s
+        run: make fuzz-explore

@@ -22,15 +22,15 @@ This policy describes intent; timelines can vary with maintainer capacity and up
 
 We use Go’s native fuzzing (`testing.F`). Add `Fuzz…` functions in `*_test.go` next to the code they exercise (same package as the implementation, or an external test package such as `foo_test` for `package foo`).
 
-Checked-in fuzz inputs live under each package’s `testdata/fuzz/<FuzzName>/` directory. Extend **`FUZZ_PACKAGES`** in the `Makefile` when you add fuzz targets in a new import path so `make test-fuzz-seed` and `make test-fuzz` pick them up.
+Checked-in **corpus** files (inputs discovered or minimized earlier) live under each package’s `testdata/fuzz/<FuzzName>/` directory. Extend **`FUZZ_PACKAGES`** in the `Makefile` when you add fuzz targets in a new import path so `make fuzz-replay` and `make fuzz-explore` pick them up.
 
 **Local commands:**
 
 ```bash
-make test-fuzz-seed          # replay seeds + corpus (same as PR CI)
-make test-fuzz FUZZ_TIME=60s # exploratory run per target
+make fuzz-replay    # replay seeds (`f.Add`) + corpus (`testdata/fuzz`) only (same as pull request CI)
+make fuzz-explore   # exploratory run per target; duration is FUZZ_TIME in the Makefile (default 30s)
 ```
 
-**CI:** pull requests run `make test-fuzz-seed`. A scheduled workflow runs bounded `make test-fuzz`.
+**CI:** pull requests run **`make fuzz-replay`** (regression: seeds + corpus, no mutations). The scheduled workflow runs **`make fuzz-explore`** (same **`FUZZ_TIME`** default from the Makefile).
 
-**Practice:** bound inputs (`t.Skip` on very large values), use `f.Add` for hand-picked cases, and assert properties the code is supposed to guarantee. When `go test -fuzz=…` writes a minimized failure, commit it under `testdata/fuzz/<FuzzName>/`. For behavior you also want spelled out in prose, add or extend a [unit test](contributing.md#testing-expectations).
+**Practice:** bound inputs (`t.Skip` on very large values), register **seeds** with `f.Add` (fixed inputs in source), and assert properties the code is supposed to guarantee. When `go test -fuzz=…` writes a minimized failure, commit it under `testdata/fuzz/<FuzzName>/` (**corpus**: replayed like seeds, but as files). For behavior you also want spelled out in prose, add or extend a [unit test](contributing.md#testing-expectations).

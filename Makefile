@@ -116,13 +116,14 @@ test-parallel-repeat3: test-deps ## Run tests in parallel 3 times to check for f
 
 # Packages that define native Go fuzz targets (Fuzz* in fuzz_test.go).
 FUZZ_PACKAGES ?= ./internal/utils
-# Duration per fuzz target when running `make test-fuzz` (each Fuzz* runs sequentially within a package).
+# Duration per target for `fuzz-explore` (scheduled workflow and local; each Fuzz* runs sequentially within a package).
 FUZZ_TIME ?= 30s
-# Executions after seed/corpus baseline when running `make test-fuzz-seed` (see `go help testflag` -fuzztime).
-FUZZ_SEED_TIME ?= 1x
+# Passed to `go test -fuzztime` for `fuzz-replay` (`go help testflag`). `1x` = replay only: seeds (`f.Add`) + corpus (`testdata/fuzz` files), no mutations.
+FUZZ_REPLAY_FUZZTIME ?= 1x
 
-.PHONY: test-fuzz-seed test-fuzz
-test-fuzz-seed: ## Replay fuzz seeds and testdata/fuzz corpora (fast; used in CI).
+.PHONY: fuzz-replay fuzz-explore
+# Replay seeds (`f.Add`) + committed corpus (`testdata/fuzz`); no time-bounded exploratory fuzzing (same as pull request CI).
+fuzz-replay: ## Replay seeds (`f.Add`) + corpus (`testdata/fuzz`); regression only.
 	@set -euo pipefail; \
 	for pkg in $(FUZZ_PACKAGES); do \
 	  list=$$(go test $$pkg -list Fuzz); \
@@ -131,12 +132,13 @@ test-fuzz-seed: ## Replay fuzz seeds and testdata/fuzz corpora (fast; used in CI
 	    continue; \
 	  fi; \
 	  for fuzz in $$fuzzes; do \
-	    echo "replay $$pkg $$fuzz ($(FUZZ_SEED_TIME))"; \
-	    go test $$pkg -count=1 -run=$$fuzz -fuzz=$$fuzz -fuzztime=$(FUZZ_SEED_TIME); \
+	    echo "fuzz-replay $$pkg $$fuzz ($(FUZZ_REPLAY_FUZZTIME))"; \
+	    go test $$pkg -count=1 -run=$$fuzz -fuzz=$$fuzz -fuzztime=$(FUZZ_REPLAY_FUZZTIME); \
 	  done; \
 	done
 
-test-fuzz: ## Run each Fuzz* in FUZZ_PACKAGES for FUZZ_TIME (exploratory).
+# Bounded exploratory fuzzing: mutates beyond seeds (`f.Add`) + corpus (`testdata/fuzz`) for FUZZ_TIME per target (scheduled workflow uses this variable too).
+fuzz-explore: ## Exploratory fuzzing for FUZZ_TIME per target (default $(FUZZ_TIME); see Makefile).
 	@set -euo pipefail; \
 	for pkg in $(FUZZ_PACKAGES); do \
 	  list=$$(go test $$pkg -list Fuzz); \
@@ -145,7 +147,7 @@ test-fuzz: ## Run each Fuzz* in FUZZ_PACKAGES for FUZZ_TIME (exploratory).
 	    continue; \
 	  fi; \
 	  for fuzz in $$fuzzes; do \
-	    echo "fuzz $$pkg $$fuzz ($(FUZZ_TIME))"; \
+	    echo "fuzz-explore $$pkg $$fuzz ($(FUZZ_TIME))"; \
 	    go test $$pkg -count=1 -run=$$fuzz -fuzz=$$fuzz -fuzztime=$(FUZZ_TIME); \
 	  done; \
 	done

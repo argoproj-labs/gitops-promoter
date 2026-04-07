@@ -8,7 +8,7 @@ Thanks for helping improve GitOps Promoter. The project is still young; we keep 
 2. **[Fork the repository](https://github.com/argoproj-labs/gitops-promoter/fork)** on GitHub, clone your fork, and create a branch from **`main`**. Push work to your fork only.
 3. **Make focused changes** — one logical change per PR when possible.
 4. **Run checks** that match what you changed:
-    - **Go only** (no CRD, webhook, or generated install / apply-config churn): `go mod tidy`, `make lint`, `make test-parallel`, `make test-fuzz-seed` (replays fuzz corpora; same as CI).
+    - **Go only** (no CRD, webhook, or generated install / apply-config churn): `go mod tidy`, `make lint`, `make test-parallel`, `make fuzz-replay` (replay seeds (`f.Add`) + corpus (`testdata/fuzz`); same as CI).
     - **APIs, CRDs, webhooks, or bundled install YAML** (anything `make build-installer` regenerates—`config/`, `dist/install.yaml`, deepcopy/applyconfiguration, extension icon output): **`make build-installer`**, commit the full diff, then `go mod tidy`, `make lint`, `make test-parallel`.
     - **`ui/`**: `make lint-ui`, `make test-unit-test-extension`, `make test-ui-test-dashboard`.
     - **`docs/`** (this site): `make lint-docs`.
