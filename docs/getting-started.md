@@ -339,7 +339,7 @@ spec:
     name: <repo-name>
   scmProviderRef:
     name: <your-scmprovider-name>
- ```
+```
 
 ### Webhooks (Optional - but highly recommended)
 
