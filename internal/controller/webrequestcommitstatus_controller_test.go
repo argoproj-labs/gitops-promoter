@@ -3395,6 +3395,378 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 	})
 })
 
+var _ = Describe("WebRequestCommitStatus Controller - SuccessOutput", Ordered, func() {
+	var (
+		name              string
+		promotionStrategy *promoterv1alpha1.PromotionStrategy
+		gitRepo           *promoterv1alpha1.GitRepository
+		scmProvider       *promoterv1alpha1.ScmProvider
+		scmSecret         *corev1.Secret
+		testServer        *httptest.Server
+	)
+
+	const (
+		testBranchDevelopment = "environment/development"
+		testBranchStaging     = "environment/staging"
+		testBranchProduction  = "environment/production"
+	)
+
+	ctx := context.Background()
+
+	BeforeAll(func() {
+		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "webrequest-successoutput", "default")
+
+		promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
+			{Branch: testBranchDevelopment},
+			{Branch: testBranchStaging},
+			{Branch: testBranchProduction},
+		}
+
+		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+			{Key: "success-output-test"},
+		}
+
+		setupInitialTestGitRepoOnServer(ctx, gitRepo)
+
+		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+	})
+
+	AfterAll(func() {
+		if promotionStrategy != nil {
+			_ = k8sClient.Delete(ctx, promotionStrategy)
+		}
+		if gitRepo != nil {
+			_ = k8sClient.Delete(ctx, gitRepo)
+		}
+		if scmProvider != nil {
+			_ = k8sClient.Delete(ctx, scmProvider)
+		}
+		if scmSecret != nil {
+			_ = k8sClient.Delete(ctx, scmSecret)
+		}
+	})
+
+	Describe("Environments Context - success.when.output stores data in status", func() {
+		var wrcs *promoterv1alpha1.WebRequestCommitStatus
+
+		BeforeEach(func() {
+			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"approved": true,
+					"approver": "jane",
+				})
+			}))
+
+			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-env-success-out",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  "success-output-test",
+					ReportOn:             constants.CommitRefProposed,
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: testServer.URL + "/validate",
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+					},
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
+							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
+							Output:     &promoterv1alpha1.OutputSpec{Expression: `{approver: Response != nil ? Response.Body.approver : SuccessOutput["approver"], evaluatedAt: "2025-01-01"}`},
+						},
+					},
+					Mode: promoterv1alpha1.ModeSpec{
+						Trigger: &promoterv1alpha1.TriggerModeSpec{
+							RequeueDuration: metav1.Duration{Duration: 5 * time.Second},
+							When: promoterv1alpha1.WhenWithOutputSpec{
+								Expression: "true",
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, wrcs)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if testServer != nil {
+				testServer.Close()
+			}
+			_ = k8sClient.Delete(ctx, wrcs)
+		})
+
+		It("should populate successOutput in each environment status", func() {
+			Eventually(func(g Gomega) {
+				var fetched promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(len(fetched.Status.Environments)).To(BeNumerically(">=", 1))
+
+				var foundEnvWithSuccessOutput bool
+				for _, envStatus := range fetched.Status.Environments {
+					if envStatus.Phase == promoterv1alpha1.CommitPhaseSuccess && envStatus.SuccessOutput != nil {
+						var successData map[string]any
+						err := json.Unmarshal(envStatus.SuccessOutput.Raw, &successData)
+						g.Expect(err).NotTo(HaveOccurred())
+						if approver, ok := successData["approver"].(string); ok && approver == "jane" {
+							g.Expect(successData["evaluatedAt"]).To(Equal("2025-01-01"))
+							foundEnvWithSuccessOutput = true
+						}
+					}
+				}
+				g.Expect(foundEnvWithSuccessOutput).To(BeTrue(),
+					"At least one environment should have successOutput with approver=jane")
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	Describe("Environments Context - no success.when.output leaves successOutput nil", func() {
+		var wrcs *promoterv1alpha1.WebRequestCommitStatus
+
+		BeforeEach(func() {
+			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(map[string]any{"approved": true})
+			}))
+
+			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-env-no-success-out",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  "success-output-test",
+					ReportOn:             constants.CommitRefProposed,
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: testServer.URL + "/validate",
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+					},
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
+							Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
+						},
+					},
+					Mode: promoterv1alpha1.ModeSpec{
+						Trigger: &promoterv1alpha1.TriggerModeSpec{
+							RequeueDuration: metav1.Duration{Duration: 5 * time.Second},
+							When: promoterv1alpha1.WhenWithOutputSpec{
+								Expression: "true",
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, wrcs)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if testServer != nil {
+				testServer.Close()
+			}
+			_ = k8sClient.Delete(ctx, wrcs)
+		})
+
+		It("should NOT populate successOutput when no output expression is configured", func() {
+			Eventually(func(g Gomega) {
+				var fetched promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(len(fetched.Status.Environments)).To(BeNumerically(">=", 1))
+
+				for _, envStatus := range fetched.Status.Environments {
+					if envStatus.Phase == promoterv1alpha1.CommitPhaseSuccess {
+						g.Expect(envStatus.SuccessOutput).To(BeNil(),
+							"successOutput should be nil when no output expression is configured for branch %s", envStatus.Branch)
+					}
+				}
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	Describe("PromotionStrategy Context - success.when.output stores data in promotionStrategyContext", func() {
+		var wrcs *promoterv1alpha1.WebRequestCommitStatus
+
+		BeforeEach(func() {
+			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"approved":   true,
+					"approvedBy": "deploy-bot",
+				})
+			}))
+
+			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-ctx-ps-success-out",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  "success-output-test",
+					ReportOn:             constants.CommitRefProposed,
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: testServer.URL + "/validate",
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+					},
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
+							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
+							Output:     &promoterv1alpha1.OutputSpec{Expression: `{approvedBy: Response != nil ? Response.Body.approvedBy : SuccessOutput["approvedBy"]}`},
+						},
+					},
+					Mode: promoterv1alpha1.ModeSpec{
+						Context: promoterv1alpha1.ContextPromotionStrategy,
+						Trigger: &promoterv1alpha1.TriggerModeSpec{
+							RequeueDuration: metav1.Duration{Duration: 5 * time.Second},
+							When: promoterv1alpha1.WhenWithOutputSpec{
+								Expression: "true",
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, wrcs)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if testServer != nil {
+				testServer.Close()
+			}
+			_ = k8sClient.Delete(ctx, wrcs)
+		})
+
+		It("should populate successOutput in promotionStrategyContext status", func() {
+			Eventually(func(g Gomega) {
+				var fetched promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				g.Expect(fetched.Status.PromotionStrategyContext).NotTo(BeNil())
+				g.Expect(fetched.Status.PromotionStrategyContext.SuccessOutput).NotTo(BeNil(),
+					"SuccessOutput should be populated in promotionstrategy context")
+
+				var successData map[string]any
+				err = json.Unmarshal(fetched.Status.PromotionStrategyContext.SuccessOutput.Raw, &successData)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(successData["approvedBy"]).To(Equal("deploy-bot"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	Describe("SuccessOutput available in trigger.when expression", func() {
+		var wrcs *promoterv1alpha1.WebRequestCommitStatus
+		var requestCount int
+		var mu sync.Mutex
+
+		BeforeEach(func() {
+			requestCount = 0
+			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				mu.Lock()
+				requestCount++
+				mu.Unlock()
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"approved": true,
+				})
+			}))
+
+			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-success-out-in-trigger",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  "success-output-test",
+					ReportOn:             constants.CommitRefProposed,
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: testServer.URL + "/validate",
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+					},
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
+							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
+							Output:     &promoterv1alpha1.OutputSpec{Expression: `{checkedSha: ReportedSha}`},
+						},
+					},
+					Mode: promoterv1alpha1.ModeSpec{
+						Trigger: &promoterv1alpha1.TriggerModeSpec{
+							RequeueDuration: metav1.Duration{Duration: 2 * time.Second},
+							When: promoterv1alpha1.WhenWithOutputSpec{
+								// Only trigger if SuccessOutput hasn't recorded this SHA yet
+								Expression: `SuccessOutput == nil || SuccessOutput["checkedSha"] != ReportedSha`,
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, wrcs)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if testServer != nil {
+				testServer.Close()
+			}
+			_ = k8sClient.Delete(ctx, wrcs)
+		})
+
+		It("should stop triggering once SuccessOutput records the SHA", func() {
+			By("Waiting for first HTTP request and SuccessOutput to be stored")
+			Eventually(func(g Gomega) {
+				mu.Lock()
+				count := requestCount
+				mu.Unlock()
+				g.Expect(count).To(BeNumerically(">=", 1), "Should have made at least one HTTP request")
+
+				var fetched promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(len(fetched.Status.Environments)).To(BeNumerically(">=", 1))
+
+				var foundWithOutput bool
+				for _, envStatus := range fetched.Status.Environments {
+					if envStatus.SuccessOutput != nil {
+						var data map[string]any
+						if err := json.Unmarshal(envStatus.SuccessOutput.Raw, &data); err == nil {
+							if sha, ok := data["checkedSha"].(string); ok && sha != "" {
+								foundWithOutput = true
+							}
+						}
+					}
+				}
+				g.Expect(foundWithOutput).To(BeTrue(), "Should have SuccessOutput with checkedSha")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying subsequent reconciles do not trigger HTTP requests (SuccessOutput has the SHA)")
+			mu.Lock()
+			initialCount := requestCount
+			mu.Unlock()
+			Consistently(func(g Gomega) {
+				mu.Lock()
+				count := requestCount
+				mu.Unlock()
+				// Allow a small buffer for concurrent env processing
+				g.Expect(count).To(BeNumerically("<=", initialCount+3),
+					"Should not make many additional HTTP requests once SuccessOutput has the SHA")
+			}, 8*time.Second, 2*time.Second).Should(Succeed())
+		})
+	})
+})
+
 func wrcsPhaseForBranch(items []promoterv1alpha1.WebRequestCommitStatusPhasePerBranchItem, branch string) promoterv1alpha1.CommitStatusPhase {
 	for _, it := range items {
 		if it.Branch == branch {
