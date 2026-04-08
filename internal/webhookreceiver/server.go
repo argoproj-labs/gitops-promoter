@@ -277,7 +277,7 @@ func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provide
 		return nil, fmt.Errorf("no changetransferpolicies found from webhook receiver sha: %s, ref: %s", beforeSha, ref)
 	}
 	if len(ctpLists.Items) > 1 {
-		return nil, fmt.Errorf("too many changetranferpolicies found for sha: %s, ref: %s", beforeSha, ref)
+		return nil, fmt.Errorf("too many changetransferpolicies found for sha: %s, ref: %s", beforeSha, ref)
 	}
 
 	return &ctpLists.Items[0], nil
