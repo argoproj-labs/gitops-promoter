@@ -686,8 +686,8 @@ func (r *WebRequestCommitStatusReconciler) fireOrCarryForward(
 	}
 
 	// Run success.when even without a request, passing Response=nil.
-	env := successWhenExprEnv(td, nil)
-	phase, phasePerBranch, err := r.evaluateSuccessPhase(ctx, wrcs, env)
+	exprData := successWhenExprData(td, nil)
+	phase, phasePerBranch, err := r.evaluateSuccessPhase(ctx, wrcs, exprData)
 	if err != nil {
 		return httpValidationResult{}, fmt.Errorf("failed to evaluate success.when expression: %w", err)
 	}
@@ -843,8 +843,8 @@ func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx co
 		}
 	}
 
-	env := successWhenExprEnv(td, &response)
-	phase, phasePerBranch, err := r.evaluateSuccessPhase(ctx, wrcs, env)
+	exprData := successWhenExprData(td, &response)
+	phase, phasePerBranch, err := r.evaluateSuccessPhase(ctx, wrcs, exprData)
 	if err != nil {
 		return httpValidationResult{}, fmt.Errorf("failed to evaluate validation expression: %w", err)
 	}
@@ -859,17 +859,17 @@ func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx co
 }
 
 // evaluateSuccessPhase evaluates the success.when expression and returns the phase and optional per-branch phases.
-// The env map is built by successWhenExprEnv; it includes Response (nil when no request was made),
+// The exprData map is built by successWhenExprData; it includes Response (nil when no request was made),
 // PromotionStrategy, Environment, and other trigger-expression variables.
 func (r *WebRequestCommitStatusReconciler) evaluateSuccessPhase(
 	ctx context.Context,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
-	env map[string]any,
+	exprData map[string]any,
 ) (promoterv1alpha1.CommitStatusPhase, map[string]promoterv1alpha1.CommitStatusPhase, error) {
 	if wrcs.Spec.Mode.Context == promoterv1alpha1.ContextPromotionStrategy {
-		return r.evaluateValidationExpressionForPromotionStrategy(ctx, wrcs.Spec.Success.When.Expression, env)
+		return r.evaluateValidationExpressionForPromotionStrategy(ctx, wrcs.Spec.Success.When.Expression, exprData)
 	}
-	passed, err := r.evaluateValidationExpression(ctx, wrcs.Spec.Success.When.Expression, env)
+	passed, err := r.evaluateValidationExpression(ctx, wrcs.Spec.Success.When.Expression, exprData)
 	if err != nil {
 		return "", nil, err
 	}
