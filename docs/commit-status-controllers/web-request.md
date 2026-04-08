@@ -94,7 +94,7 @@ When rendering **CommitStatus** `descriptionTemplate` and `urlTemplate`, the con
 
 ### Success expression variables
 
-The `success.when.expression` is evaluated **every reconcile**, regardless of whether an HTTP request was made. It receives the same variables as `trigger.when.expression` (see [WhenWithOutputSpec](../../api/v1alpha1/webrequestcommitstatus_types.go)), plus `Response`:
+The `success.when.expression` is evaluated **every reconcile**, regardless of whether an HTTP request was made. It receives the same variables as `trigger.when.expression` (see `WhenWithOutputSpec` in `api/v1alpha1/webrequestcommitstatus_types.go`), plus `Response`:
 
 | Variable | Type | Description |
 |----------|------|-------------|
