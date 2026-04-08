@@ -615,7 +615,8 @@ func makeChangeAndHydrateRepo(gitPath string, repo *promoterv1alpha1.GitReposito
 	sha, err := runGitCmd(ctx, gitPath, "rev-parse", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
 	sha = strings.TrimSpace(sha)
-	shortSha, err := runGitCmd(ctx, gitPath, "rev-parse", "--short=7", defaultBranch)
+	// --short=5 aligns with shipped ControllerConfiguration pullRequest.template (trunc 5 on dry SHA).
+	shortSha, err := runGitCmd(ctx, gitPath, "rev-parse", "--short=5", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
 	shortSha = strings.TrimSpace(shortSha)
 
