@@ -38,7 +38,10 @@ The release workflow runs [GoReleaser](https://goreleaser.com/), which:
 
 ### 5. Review and publish the draft release
 
-Go to **Releases** on GitHub. The new release appears as a draft. Review the generated changelog, then click **Publish release**. Pre-releases (e.g. `v1.2.3-rc.1`) are detected automatically.
+Go to **Releases** on GitHub. The new release appears as a draft. Review the generated changelog, then click **Publish release**.
+
+> [!NOTE]
+> RC / pre-release versions (e.g. `v1.2.3-rc.1`) are **not supported**. The release pipeline only handles stable `vX.Y.Z` versions.
 
 > [!WARNING]
 > If immutable releases are enabled on the repository, the release and its tag become permanently locked once published. Make sure everything looks right before publishing.
