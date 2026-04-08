@@ -23,7 +23,7 @@ package v1alpha1
 // WebRequestCommitStatusSpec defines the desired state of WebRequestCommitStatus.
 //
 // Documentation map: template variables and Sprig rules — HTTPRequestSpec; context (environments vs promotionstrategy) — ModeSpec;
-// success expression after HTTP response — WhenSpec; trigger when/output expressions — WhenWithOutputSpec; persisted trigger/response maps — WebRequestCommitStatusEnvironmentStatus.
+// success expression after HTTP response — WhenWithOutputSpec; trigger when/output expressions — WhenWithOutputSpec; persisted trigger/response/success maps — WebRequestCommitStatusEnvironmentStatus.
 type WebRequestCommitStatusSpecApplyConfiguration struct {
 	// PromotionStrategyRef references the PromotionStrategy this applies to.
 	// The controller will check commits from ALL environments in the referenced PromotionStrategy

@@ -108,6 +108,7 @@ func (td templateData) triggerExprData() map[string]any {
 		"Environment":       td.Environment,
 		"TriggerOutput":     td.TriggerOutput,
 		"ResponseOutput":    td.ResponseOutput,
+		"SuccessOutput":     td.SuccessOutput,
 	}
 }
 
@@ -382,5 +383,36 @@ func (r *WebRequestCommitStatusReconciler) evaluateResponseDataExpression(ctx co
 	}
 
 	logger.V(4).Info("Response data expression evaluated", "responseData", result)
+	return result, nil
+}
+
+// getCompiledSuccessDataExpression returns a cached or newly compiled success output expression program.
+// Used by evaluateSuccessDataExpression. Compiled without a result type constraint; the expression is expected to return a map for SuccessOutput.
+func (r *WebRequestCommitStatusReconciler) getCompiledSuccessDataExpression(expression string) (*vm.Program, error) {
+	return r.getCompiledExpression(expressionCacheKey{Prefix: "successdata", Expression: expression})
+}
+
+// evaluateSuccessDataExpression runs the success.when.output expression to produce state that is persisted
+// across reconcile cycles in status.successOutput. Must return a map[string]any.
+// The exprData map is the same one used for success.when.expression (built by successWhenExprData).
+func (r *WebRequestCommitStatusReconciler) evaluateSuccessDataExpression(ctx context.Context, expression string, exprData map[string]any) (map[string]any, error) {
+	logger := log.FromContext(ctx)
+
+	program, err := r.getCompiledSuccessDataExpression(expression)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compile success data expression: %w", err)
+	}
+
+	output, err := expr.Run(program, exprData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to evaluate success data expression: %w", err)
+	}
+
+	result, ok := output.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("success data expression must return a map/object, got %T", output)
+	}
+
+	logger.V(4).Info("Success data expression evaluated", "successData", result)
 	return result, nil
 }

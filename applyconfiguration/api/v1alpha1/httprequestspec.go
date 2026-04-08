@@ -40,6 +40,7 @@ import (
 // - {{ .NamespaceMetadata.Labels }}: map of labels from the namespace
 // - {{ .NamespaceMetadata.Annotations }}: map of annotations from the namespace
 // - {{ index .TriggerOutput "key" }}, {{ index .ResponseOutput "key" }}: (trigger mode only) from previous reconcile
+// - {{ index .SuccessOutput "key" }}: custom data from the previous success.when.output.expression evaluation
 //
 // Example: "https://api.example.com/validate/{{ .Environment.Branch }}/{{ .ReportedSha }}"
 type HTTPRequestSpecApplyConfiguration struct {

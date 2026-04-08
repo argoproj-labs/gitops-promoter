@@ -22,8 +22,8 @@ package v1alpha1
 //
 // SuccessSpec defines when the commit status phase is success.
 type SuccessSpecApplyConfiguration struct {
-	// When is evaluated every reconcile. See WhenSpec.Expression.
-	When *WhenSpecApplyConfiguration `json:"when,omitempty"`
+	// When is evaluated every reconcile. See WhenWithOutputSpec.Expression.
+	When *WhenWithOutputSpecApplyConfiguration `json:"when,omitempty"`
 }
 
 // SuccessSpecApplyConfiguration constructs a declarative configuration of the SuccessSpec type for use with
@@ -35,7 +35,7 @@ func SuccessSpec() *SuccessSpecApplyConfiguration {
 // WithWhen sets the When field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the When field is set to the value of the last call.
-func (b *SuccessSpecApplyConfiguration) WithWhen(value *WhenSpecApplyConfiguration) *SuccessSpecApplyConfiguration {
+func (b *SuccessSpecApplyConfiguration) WithWhen(value *WhenWithOutputSpecApplyConfiguration) *SuccessSpecApplyConfiguration {
 	b.When = value
 	return b
 }

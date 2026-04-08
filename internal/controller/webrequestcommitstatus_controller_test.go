@@ -138,7 +138,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
-						When: promoterv1alpha1.WhenSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
 							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
 						},
 					},
@@ -236,7 +236,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
-						When: promoterv1alpha1.WhenSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
 							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
 						},
 					},
@@ -334,7 +334,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 							Timeout:     metav1.Duration{Duration: 10 * time.Second},
 						},
 						Success: promoterv1alpha1.SuccessSpec{
-							When: promoterv1alpha1.WhenSpec{
+							When: promoterv1alpha1.WhenWithOutputSpec{
 								Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
 							},
 						},
@@ -447,7 +447,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
-						When: promoterv1alpha1.WhenSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
 							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
 						},
 					},
@@ -543,7 +543,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
-						When: promoterv1alpha1.WhenSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
 							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
 						},
 					},
@@ -685,7 +685,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 						Timeout:      metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
-						When: promoterv1alpha1.WhenSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
 							Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
 						},
 					},
@@ -791,7 +791,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
-						When: promoterv1alpha1.WhenSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
 							Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
 						},
 					},
@@ -907,7 +907,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
-						When: promoterv1alpha1.WhenSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
 							Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
 						},
 					},
@@ -1059,7 +1059,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
-						When: promoterv1alpha1.WhenSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
 							Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
 						},
 					},
@@ -1133,7 +1133,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
-						When: promoterv1alpha1.WhenSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
 							Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
 						},
 					},
@@ -1232,7 +1232,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
-						When: promoterv1alpha1.WhenSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
 							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.status == "done") : Phase == "success"`,
 						},
 					},
@@ -1321,7 +1321,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
-						When: promoterv1alpha1.WhenSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
 							Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
 						},
 					},
@@ -1420,7 +1420,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
-						When: promoterv1alpha1.WhenSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
 							Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
 						},
 					},
@@ -1526,7 +1526,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 						},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
-						When: promoterv1alpha1.WhenSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
 							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.ok == true) : Phase == "success"`,
 						},
 					},
@@ -1629,7 +1629,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Missing PromotionStrategy"
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
-						When: promoterv1alpha1.WhenSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
 							Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
 						},
 					},
@@ -1756,7 +1756,7 @@ var _ = Describe("WebRequestCommitStatus Controller - SCM Host Validation", func
 						},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
-						When: promoterv1alpha1.WhenSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
 							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
 						},
 					},
@@ -1862,7 +1862,7 @@ var _ = Describe("WebRequestCommitStatus Controller - SCM Host Validation", func
 						},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
-						When: promoterv1alpha1.WhenSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
 							Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
 						},
 					},
@@ -1971,7 +1971,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
-						When: promoterv1alpha1.WhenSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
 							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
 						},
 					},
@@ -2055,7 +2055,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
-						When: promoterv1alpha1.WhenSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
 							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
 						},
 					},
@@ -2137,7 +2137,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
-						When: promoterv1alpha1.WhenSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
 							Expression: `{defaultPhase: "pending", environments: [` +
 								`{branch: "` + testBranchDevelopment + `", phase: Response.Body.environments["` + testBranchDevelopment + `"] == "approved" ? "success" : "pending"},` +
 								`{branch: "` + testBranchStaging + `", phase: Response.Body.environments["` + testBranchStaging + `"] == "approved" ? "success" : "pending"},` +
@@ -2231,7 +2231,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
-						When: promoterv1alpha1.WhenSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
 							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
 						},
 					},
@@ -2321,7 +2321,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
-						When: promoterv1alpha1.WhenSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
 							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
 						},
 					},
@@ -2413,7 +2413,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
-						When: promoterv1alpha1.WhenSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
 							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
 						},
 					},
@@ -2500,7 +2500,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
-						When: promoterv1alpha1.WhenSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
 							Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
 						},
 					},
@@ -2628,7 +2628,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy 
 					Timeout:     metav1.Duration{Duration: 10 * time.Second},
 				},
 				Success: promoterv1alpha1.SuccessSpec{
-					When: promoterv1alpha1.WhenSpec{
+					When: promoterv1alpha1.WhenWithOutputSpec{
 						Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
 					},
 				},
@@ -2752,7 +2752,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy 
 					Timeout:     metav1.Duration{Duration: 10 * time.Second},
 				},
 				Success: promoterv1alpha1.SuccessSpec{
-					When: promoterv1alpha1.WhenSpec{
+					When: promoterv1alpha1.WhenWithOutputSpec{
 						Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
 					},
 				},
@@ -2859,7 +2859,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context Switching", Ordere
 					Timeout:     metav1.Duration{Duration: 10 * time.Second},
 				},
 				Success: promoterv1alpha1.SuccessSpec{
-					When: promoterv1alpha1.WhenSpec{
+					When: promoterv1alpha1.WhenWithOutputSpec{
 						Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
 					},
 				},
@@ -3030,7 +3030,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
-						When: promoterv1alpha1.WhenSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
 							// Uses PromotionStrategy and Environment instead of Response.
 							// This should evaluate to success on every reconcile (even without a request)
 							// because PromotionStrategy is always non-nil.
@@ -3122,7 +3122,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
-						When: promoterv1alpha1.WhenSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
 							// Uses PromotionStrategy in promotionstrategy context.
 							// Response is nil (trigger never fires), but PromotionStrategy is always available.
 							Expression: `PromotionStrategy != nil`,
@@ -3205,7 +3205,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
-						When: promoterv1alpha1.WhenSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
 							// Guard pattern: check Response when available, fall back to Phase when not.
 							// After first request succeeds, Phase carries "success" and subsequent
 							// reconciles (no request) use the fallback branch.
@@ -3307,7 +3307,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
-						When: promoterv1alpha1.WhenSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
 							Expression: `Response != nil ? (Response.StatusCode == 200 && float(now().Unix()) < Response.Body.validUntilUnix) : (ResponseOutput != nil && float(now().Unix()) < ResponseOutput["validUntilUnix"])`,
 						},
 					},

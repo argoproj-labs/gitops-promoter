@@ -32,7 +32,7 @@ import (
 //
 // - "environments" (default): one HTTP request per environment; each environment has its own phase and status; success.when.expression is evaluated per response and must return a boolean (true → success, false → pending; failure is not expressible).
 //
-// - "promotionstrategy": at most one HTTP request per WebRequestCommitStatus resource; CommitStatuses remain one per environment on each environment’s reportOn SHA. success.when.expression runs once on that shared response — see WhenSpec.Expression for boolean vs per-branch object return shapes.
+// - "promotionstrategy": at most one HTTP request per WebRequestCommitStatus resource; CommitStatuses remain one per environment on each environment’s reportOn SHA. success.when.expression runs once on that shared response — see WhenWithOutputSpec.Expression for boolean vs per-branch object return shapes.
 //
 // When context is "promotionstrategy", Environment, ReportedSha, and LastSuccessfulSha are not set for the shared HTTP request or for trigger when/output templates; do not reference them in spec.httpRequest (URL, headers, body), descriptionTemplate, urlTemplate, or spec.mode.trigger. Use PromotionStrategy (e.g. status environments) for branch- or SHA-specific values. For description and url templates, {{ .Phase }} is still set per environment when rendering that environment’s CommitStatus.
 type ModeSpecApplyConfiguration struct {

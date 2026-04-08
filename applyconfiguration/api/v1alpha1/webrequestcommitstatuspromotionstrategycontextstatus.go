@@ -38,6 +38,8 @@ type WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration stru
 	TriggerOutput *apiextensionsv1.JSON `json:"triggerOutput,omitempty"`
 	// ResponseOutput: same semantics as WebRequestCommitStatusEnvironmentStatus.ResponseOutput, one shared map for context=promotionstrategy.
 	ResponseOutput *apiextensionsv1.JSON `json:"responseOutput,omitempty"`
+	// SuccessOutput: same semantics as WebRequestCommitStatusEnvironmentStatus.SuccessOutput, one shared map for context=promotionstrategy.
+	SuccessOutput *apiextensionsv1.JSON `json:"successOutput,omitempty"`
 	// LastSuccessfulShas tracks the last SHA that achieved success for each branch.
 	// Used with reportOn "proposed" + polling to skip HTTP requests when all environments
 	// have already succeeded for their current SHAs.
@@ -92,6 +94,14 @@ func (b *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration)
 // If called multiple times, the ResponseOutput field is set to the value of the last call.
 func (b *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration) WithResponseOutput(value apiextensionsv1.JSON) *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration {
 	b.ResponseOutput = &value
+	return b
+}
+
+// WithSuccessOutput sets the SuccessOutput field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the SuccessOutput field is set to the value of the last call.
+func (b *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration) WithSuccessOutput(value apiextensionsv1.JSON) *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration {
+	b.SuccessOutput = &value
 	return b
 }
 
