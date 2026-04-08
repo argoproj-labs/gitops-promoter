@@ -672,7 +672,8 @@ func lastReconciledStateFromContext(ctx context.Context, status *promoterv1alpha
 }
 
 // fireOrCarryForward executes the HTTP request when decision.ShouldFire is true, otherwise
-// carries forward state from the last reconcile.
+// evaluates success.when with Response=nil so it can determine phase from PromotionStrategy,
+// Environment, and ResponseOutput context.
 func (r *WebRequestCommitStatusReconciler) fireOrCarryForward(
 	ctx context.Context,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
@@ -683,13 +684,17 @@ func (r *WebRequestCommitStatusReconciler) fireOrCarryForward(
 	if decision.ShouldFire {
 		return r.handleHTTPRequestAndValidation(ctx, wrcs, td)
 	}
-	phase := promoterv1alpha1.CommitStatusPhase(lastState.Phase)
-	if phase == "" {
-		phase = promoterv1alpha1.CommitPhasePending
+
+	// Run success.when even without a request, passing Response=nil.
+	env := successWhenExprEnv(td, nil)
+	phase, phasePerBranch, err := r.evaluateSuccessPhase(ctx, wrcs, env)
+	if err != nil {
+		return httpValidationResult{}, fmt.Errorf("failed to evaluate success.when expression: %w", err)
 	}
+
 	return httpValidationResult{
 		Phase:                  phase,
-		PhasePerBranch:         lastState.PhasePerBranch,
+		PhasePerBranch:         phasePerBranch,
 		LastRequestTime:        lastState.LastRequestTime,
 		LastResponseStatusCode: lastState.LastResponseStatusCode,
 		ResponseDataJSON:       lastState.ResponseOutput,
@@ -800,13 +805,13 @@ func requeueDuration(mode promoterv1alpha1.ModeSpec) time.Duration {
 }
 
 // handleHTTPRequestAndValidation is called when the trigger fires (or in polling mode). It performs the
-// HTTP request, optionally runs the response expression to populate ResponseOutput, then runs the validation
+// HTTP request, optionally runs the response expression to populate ResponseOutput, then runs the success.when
 // expression to set Phase. When context is "promotionstrategy", the expression may return an object
 // { defaultPhase?, environments? } to set per-environment phases; see evaluateValidationExpressionForPromotionStrategy.
-func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, templateData templateData) (httpValidationResult, error) {
+func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, td templateData) (httpValidationResult, error) {
 	logger := log.FromContext(ctx)
 
-	response, err := r.makeHTTPRequest(ctx, wrcs, templateData)
+	response, err := r.makeHTTPRequest(ctx, wrcs, td)
 	if err != nil {
 		return httpValidationResult{}, fmt.Errorf("failed to make HTTP request: %w", err)
 	}
@@ -831,7 +836,15 @@ func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx co
 		responseDataJSON = &apiextensionsv1.JSON{Raw: responseDataBytes}
 	}
 
-	phase, phasePerBranch, err := r.evaluatePhaseFromResponse(ctx, wrcs, response)
+	// Update td.ResponseOutput so success.when sees the current response data.
+	if responseDataJSON != nil {
+		if data, err := unmarshalJSONMap(responseDataJSON); err == nil && data != nil {
+			td.ResponseOutput = data
+		}
+	}
+
+	env := successWhenExprEnv(td, &response)
+	phase, phasePerBranch, err := r.evaluateSuccessPhase(ctx, wrcs, env)
 	if err != nil {
 		return httpValidationResult{}, fmt.Errorf("failed to evaluate validation expression: %w", err)
 	}
@@ -845,17 +858,18 @@ func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx co
 	}, nil
 }
 
-// evaluatePhaseFromResponse evaluates the success expression against an HTTP response and returns
-// the phase and optional per-branch phases.
-func (r *WebRequestCommitStatusReconciler) evaluatePhaseFromResponse(
+// evaluateSuccessPhase evaluates the success.when expression and returns the phase and optional per-branch phases.
+// The env map is built by successWhenExprEnv; it includes Response (nil when no request was made),
+// PromotionStrategy, Environment, and other trigger-expression variables.
+func (r *WebRequestCommitStatusReconciler) evaluateSuccessPhase(
 	ctx context.Context,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
-	response httpResponse,
+	env map[string]any,
 ) (promoterv1alpha1.CommitStatusPhase, map[string]promoterv1alpha1.CommitStatusPhase, error) {
 	if wrcs.Spec.Mode.Context == promoterv1alpha1.ContextPromotionStrategy {
-		return r.evaluateValidationExpressionForPromotionStrategy(ctx, wrcs.Spec.Success.When.Expression, response)
+		return r.evaluateValidationExpressionForPromotionStrategy(ctx, wrcs.Spec.Success.When.Expression, env)
 	}
-	passed, err := r.evaluateValidationExpression(ctx, wrcs.Spec.Success.When.Expression, response)
+	passed, err := r.evaluateValidationExpression(ctx, wrcs.Spec.Success.When.Expression, env)
 	if err != nil {
 		return "", nil, err
 	}

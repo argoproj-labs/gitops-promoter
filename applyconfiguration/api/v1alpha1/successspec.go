@@ -20,9 +20,9 @@ package v1alpha1
 // SuccessSpecApplyConfiguration represents a declarative configuration of the SuccessSpec type for use
 // with apply.
 //
-// SuccessSpec defines when the HTTP response is considered successful (commit status phase success).
+// SuccessSpec defines when the commit status phase is success.
 type SuccessSpecApplyConfiguration struct {
-	// When is evaluated against the HTTP response after each request. See WhenSpec.Expression.
+	// When is evaluated every reconcile. See WhenSpec.Expression.
 	When *WhenSpecApplyConfiguration `json:"when,omitempty"`
 }
 
