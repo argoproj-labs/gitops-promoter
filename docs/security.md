@@ -33,4 +33,4 @@ make fuzz-explore   # exploratory run per target; duration is FUZZ_TIME in the M
 
 **CI:** pull requests run **`make fuzz-replay`** (regression: seeds + corpus, no `-fuzz`). The scheduled workflow runs **`make fuzz-explore`** (same **`FUZZ_TIME`** default from the Makefile).
 
-**Practice:** bound inputs (`t.Skip` on very large values), register **seeds** with `f.Add` (fixed inputs in source), and assert properties the code is supposed to guarantee. When `go test -fuzz=…` writes a minimized failure, commit it under `testdata/fuzz/<FuzzName>/` (**corpus**: replayed like seeds, but as files). For behavior you also want spelled out in prose, add or extend a [unit test](contributing.md#testing-expectations).
+**Practice:** bound inputs (`t.Skip` on very large values), register **seeds** with `f.Add` (fixed inputs in source), and assert properties the code is supposed to guarantee. When `go test -fuzz=…` writes a minimized failure, commit it under `testdata/fuzz/<FuzzName>/` (**corpus**: replayed like seeds, but as files). For behavior you also want spelled out in prose, add or extend a [unit test](contributing/index.md#testing-expectations).

@@ -1,5 +1,5 @@
-# see https://github.com/argoproj-labs/argocd-ephemeral-access/blob/main/.github/workflows/release.yaml
-# this file must be kept in sync with the above release.yaml except for the trigger and job name
+# This file must be kept in sync with release.yaml except for the trigger,
+# job name, and release section.
 name: release-latest
 
 on:
@@ -12,7 +12,6 @@ permissions:
 
 env:
   # If set in the repo env vars it will use this tag to build the release notes.
-  # Useful when creating a release tag after a release candidate tags phase.
   GORELEASER_PREVIOUS_TAG: ${{vars.GORELEASER_PREVIOUS_TAG}}
 
 defaults:

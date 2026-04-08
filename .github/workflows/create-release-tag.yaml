@@ -1,0 +1,56 @@
+# Lightweight workflow: detects the "docs: bump manifest versions to vX.Y.Z"
+# commit on main, creates + pushes the corresponding git tag, then dispatches
+# the release workflow (release.yaml) on that tag ref so the OIDC signing
+# identity is refs/tags/vX.Y.Z (not refs/heads/main).
+name: Create Release Tag
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/getting-started.md'
+      - 'docs/tutorial-argocd-apps.md'
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  create-tag:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: write
+    if: >-
+      contains(github.event.head_commit.message, 'docs: bump manifest versions to v')
+    name: Create Tag and Dispatch Release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from commit message
+        id: extract_version
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          VERSION=$(printf '%s\n' "$COMMIT_MSG" | head -n1 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create and push tag
+        if: steps.extract_version.outputs.version != ''
+        run: |
+          git tag ${{ steps.extract_version.outputs.version }}
+          git push origin ${{ steps.extract_version.outputs.version }}
+
+      - name: Dispatch release workflow on tag ref
+        if: steps.extract_version.outputs.version != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run release.yaml --ref ${{ steps.extract_version.outputs.version }}
