@@ -43,6 +43,12 @@ Go to **Releases** on GitHub. The new release appears as a draft. Review the gen
 > [!WARNING]
 > If immutable releases are enabled on the repository, the release and its tag become permanently locked once published. Make sure everything looks right before publishing.
 
+## Why `workflow_dispatch` instead of a tag trigger?
+
+A simpler design would be: push the tag in the first workflow, and have the release workflow trigger on `push: tags: ['v*']`. The reason we don't do this is that GitHub suppresses most events created by `GITHUB_TOKEN` to prevent recursive workflow loops. A tag pushed by one workflow's `GITHUB_TOKEN` will not trigger a `push: tags` event in another workflow. The only events exempt from this restriction are `workflow_dispatch` and `repository_dispatch`.
+
+We use `workflow_dispatch` (via `gh workflow run release.yaml --ref <tag>`) because it lets us specify the tag as the workflow ref. This means the release workflow runs in the context of `refs/tags/vX.Y.Z`, and the GitHub OIDC token — used by cosign for keyless Sigstore signing — carries that tag as the certificate identity. `repository_dispatch` cannot do this because it always runs on the default branch (`refs/heads/main`), which would produce the wrong signing identity.
+
 ## Retrying a failed release
 
 If the release workflow fails partway through, you can re-trigger it without re-creating the tag:
