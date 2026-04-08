@@ -77,7 +77,7 @@ func (wr *WebhookReceiver) Start(ctx context.Context, addr string) error {
 	logger.Info("webhook receiver server stopped")
 
 	if err := server.Shutdown(ctx); err != nil {
-		logger.Error(err, "webhook receiver server shutdown failed", "error", err)
+		logger.Error(err, "webhook receiver server shutdown failed")
 	}
 	logger.Info("webhook receiver server exited properly")
 
