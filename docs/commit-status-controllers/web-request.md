@@ -887,6 +887,82 @@ The trigger expression fires when:
 2. The dry SHA changes (new content pushed before re-hydration)
 3. The phase is not yet `success` (keeps retrying until approval is achieved)
 
+#### `promotionstrategy` context — per-branch dry SHA guard
+
+In `promotionstrategy` context, `Environment` is `nil` so you cannot access `Environment.Proposed.Dry.Sha` directly. Instead, walk `PromotionStrategy.Status.Environments` and use the per-branch return format. The success expression returns the `{ defaultPhase, environments }` object, and the output stores the per-branch phases and dry SHAs so they can be replayed on subsequent reconciles.
+
+Use `let` to capture the outer predicate variable inside nested closures so `find` can match by branch. The output stores an array of `{ branch, drySha, phase }` entries that the success expression replays on subsequent reconciles:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: per-branch-sha-guard
+spec:
+  promotionStrategyRef:
+    name: my-app
+  key: external-approval
+  descriptionTemplate: "External approval: {{ .Phase }}"
+  reportOn: proposed
+  httpRequest:
+    urlTemplate: "https://approvals.example.com/api/status?app={{ .PromotionStrategy.Spec.RepositoryReference.Name }}"
+    method: GET
+  success:
+    when:
+      expression: |
+        Response != nil
+          ? (Response.StatusCode == 200 && Response.Body.approved == true
+              ? { defaultPhase: "success" }
+              : { defaultPhase: "pending" })
+          : (SuccessOutput != nil && SuccessOutput["branches"] != nil
+              ? {
+                  defaultPhase: "pending",
+                  environments: map(PromotionStrategy.Status.Environments, {
+                    let env = #;
+                    let stored = find(SuccessOutput["branches"], {.branch == env.Branch});
+                    {
+                      branch: env.Branch,
+                      phase: stored != nil && stored.drySha == env.Proposed.Dry.Sha
+                        ? (stored.phase ?? "pending")
+                        : "pending"
+                    }
+                  })
+                }
+              : { defaultPhase: "pending" })
+      output:
+        expression: |
+          Response != nil && Response.StatusCode == 200 && Response.Body.approved == true
+            ? {
+                branches: map(PromotionStrategy.Status.Environments, {
+                  { branch: #.Branch, drySha: #.Proposed.Dry.Sha, phase: "success" }
+                })
+              }
+            : (SuccessOutput ?? {})
+  mode:
+    context: promotionstrategy
+    trigger:
+      requeueDuration: 1m
+      when:
+        expression: |
+          Phase != "success" ||
+          SuccessOutput == nil ||
+          SuccessOutput["branches"] == nil ||
+          any(PromotionStrategy.Status.Environments, {
+            let env = #;
+            find(SuccessOutput["branches"] ?? [], {.branch == env.Branch}) == nil
+          })
+        output:
+          expression: "{ triggered: true }"
+```
+
+How this works:
+
+- **`success.when.expression`**: When `Response` is present and approved, returns `{ defaultPhase: "success" }` so all environments become success. When no response, it replays the stored phases from `SuccessOutput` — but for any branch where the current `Proposed.Dry.Sha` no longer matches the stored `drySha` entry, that branch's phase resets to `"pending"`. Branches whose dry SHA is unchanged keep their stored phase.
+- **`success.when.output.expression`**: On a successful response, snapshots each environment's dry SHA and phase into a `branches` array using `map(PromotionStrategy.Status.Environments, { ... })`. On subsequent reconciles without a successful response, preserves the existing `SuccessOutput` unchanged.
+- **`trigger.when.expression`**: Re-fires the HTTP request when any branch hasn't been validated yet (no matching entry in `branches`) or when the aggregate phase isn't success.
+
+The `let env = #` inside the `map` predicate captures the outer element so the inner `find(SuccessOutput["branches"], {.branch == env.Branch})` can look up the stored entry by branch name without conflicting with the `find` predicate's own `#` / `.branch`.
+
 ## Field reference
 
 Field-level documentation (required/optional, template variables, expression variables, defaults) is maintained on the API types. Use either:
