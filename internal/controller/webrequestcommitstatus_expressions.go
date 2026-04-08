@@ -57,8 +57,8 @@ func (r *WebRequestCommitStatusReconciler) getCompiledExpression(key expressionC
 	return program, nil
 }
 
-// responseExpressionData builds the expression data map for validation and response-output expressions.
-func responseExpressionData(resp httpResponse) map[string]any {
+// responseExprData builds the expression data map for validation and response-output expressions.
+func responseExprData(resp httpResponse) map[string]any {
 	return map[string]any{
 		"Response": map[string]any{
 			"StatusCode": resp.StatusCode,
@@ -371,7 +371,7 @@ func (r *WebRequestCommitStatusReconciler) evaluateResponseDataExpression(ctx co
 		return nil, fmt.Errorf("failed to compile response data expression: %w", err)
 	}
 
-	output, err := expr.Run(program, responseExpressionData(resp))
+	output, err := expr.Run(program, responseExprData(resp))
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate response expression: %w", err)
 	}
