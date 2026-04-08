@@ -56,6 +56,7 @@ Uses expressions to dynamically control when HTTP requests are made. Powerful fo
 - Only makes HTTP request if trigger expression returns true
 - Can store and access custom state via `TriggerOutput` (via `trigger.when.output.expression`)
 - Can access previous HTTP response data via `ResponseOutput` (via `response.output.expression`)
+- Can store and access custom state from success evaluation via `SuccessOutput` (via `success.when.output.expression`)
 - Always reconciles at `requeueDuration` interval (default: 1 minute)
 
 ## Request scope: environments vs promotionstrategy
@@ -88,7 +89,7 @@ For the **HTTP request** (URL, headers, body), **trigger** `when.expression`, **
 
 They are unset (empty / nil) because there is no single “current environment” for that one request.
 
-**You can use:** `PromotionStrategy` (full spec and status), `Phase` (aggregate of all applicable branches' phases — `success` only when every branch succeeded, `failure` if any failed, `pending` otherwise), `TriggerOutput`, `ResponseOutput` (trigger mode), and `NamespaceMetadata` labels and annotations — same as in environment context, except for the per-env fields above.
+**You can use:** `PromotionStrategy` (full spec and status), `Phase` (aggregate of all applicable branches' phases — `success` only when every branch succeeded, `failure` if any failed, `pending` otherwise), `TriggerOutput`, `ResponseOutput` (trigger mode), `SuccessOutput`, and `NamespaceMetadata` labels and annotations — same as in environment context, except for the per-env fields above.
 
 When rendering **CommitStatus** `descriptionTemplate` and `urlTemplate`, the controller sets **`{{ .Phase }}`** to **that environment’s** resolved phase (`success`, `pending`, or `failure`). It still does **not** set `ReportedSha` or `Environment` in promotion-strategy context. If you need branch- or SHA-specific text in the SCM description or URL, either **walk `{{ .PromotionStrategy }}`** in the Go template (for example, `range` over `.PromotionStrategy.Status.Environments` and match on `.Branch`) or use **the same wording for every environment** (a generic message or link that does not try to substitute `{{ .ReportedSha }}` or `{{ .Environment.Branch }}`).
 
@@ -106,6 +107,7 @@ The `success.when.expression` is evaluated **every reconcile**, regardless of wh
 | `LastSuccessfulSha` | string | Last SHA that achieved success. Set in `environments` context; empty in `promotionstrategy` context. |
 | `TriggerOutput` | map[string]any | Custom data from the previous `when.output.expression` evaluation (trigger mode only). |
 | `ResponseOutput` | map[string]any | Response data from the previous HTTP request's `response.output.expression` (trigger mode only). |
+| `SuccessOutput` | map[string]any | Custom data from the previous `success.when.output.expression` evaluation. |
 
 > [!IMPORTANT]
 > Since the expression runs every reconcile, it must handle `Response` being `nil` (no HTTP request this reconcile). Expressions that only reference `Response.*` will error when `Response` is `nil`, causing the reconcile to return an error and requeue. Guard `Response` access:
@@ -133,9 +135,9 @@ Notable fields:
 
 - **`phasePerBranch`** — list of `{ branch, phase }` entries (Kubernetes list type **map**, merge key **`branch`**) with resolved phase (`success`, `pending`, or `failure`) for every applicable environment. This is always fully populated after reconciliation, regardless of whether the success expression returned a boolean or the object form.
 - **`lastSuccessfulShas`** — list of `{ branch, lastSuccessfulSha }` entries (list type **map**, merge key **`branch`**) recording the last SHA that reached **success** for each branch (used for optimizations below)
-- **`lastRequestTime`**, **`lastResponseStatusCode`**, **`triggerOutput`**, **`responseOutput`** — same roles as per-environment status in the default context, but stored once for the shared request
+- **`lastRequestTime`**, **`lastResponseStatusCode`**, **`triggerOutput`**, **`responseOutput`**, **`successOutput`** — same roles as per-environment status in the default context, but stored once for the shared request
 
-In trigger mode, **`triggerOutput`** and **`responseOutput`** are read from / written to **`promotionStrategyContext`**, not to `status.environments[]`.
+In trigger mode, **`triggerOutput`**, **`responseOutput`**, and **`successOutput`** are read from / written to **`promotionStrategyContext`**, not to `status.environments[]`.
 
 ### Polling optimization (`reportOn: proposed` only)
 
@@ -216,7 +218,7 @@ The WebRequestCommitStatus controller renders URLs (and optionally headers and b
 **Recommendations for administrators:**
 
 - **Restrict who can create or modify WebRequestCommitStatus resources** using RBAC. Only trusted actors should be able to set or change `spec.httpRequest.urlTemplate` and related fields.
-- **Be cautious with templates that include user-controlled or namespace-controlled data.** Template variables such as `NamespaceMetadata.Labels`, `NamespaceMetadata.Annotations`, and data from `TriggerOutput` or `ResponseOutput` can influence the rendered URL. If those values are controllable by less-trusted users, they could push the URL toward internal or metadata endpoints.
+- **Be cautious with templates that include user-controlled or namespace-controlled data.** Template variables such as `NamespaceMetadata.Labels`, `NamespaceMetadata.Annotations`, and data from `TriggerOutput`, `ResponseOutput`, or `SuccessOutput` can influence the rendered URL. If those values are controllable by less-trusted users, they could push the URL toward internal or metadata endpoints.
 - **Consider network policies** to limit egress traffic from the controller (e.g. only to approved external APIs). This helps limit which destinations the controller can reach even if a CRD is misconfigured or compromised.
 
 ### Summary for administrators
@@ -397,6 +399,45 @@ spec:
               retryAfter: Response.Body.retryAfter
             }
 ```
+
+### Trigger Mode with Success Output
+
+Store computed state from the success evaluation that persists across reconcile cycles. `SuccessOutput` is available in trigger expressions, success expressions, and templates on the next reconcile:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: approval-with-metadata
+spec:
+  promotionStrategyRef:
+    name: my-app
+  key: approval-with-metadata
+  descriptionTemplate: "Approved by {{ index .SuccessOutput \"approver\" | default \"pending\" }}"
+  httpRequest:
+    urlTemplate: "https://approvals.example.com/api/check/{{ .ReportedSha }}"
+    method: GET
+  success:
+    when:
+      expression: |
+        Response != nil
+          ? (Response.StatusCode == 200 && Response.Body.approved == true)
+          : Phase == "success"
+      output:
+        expression: |
+          {
+            approver: Response != nil ? Response.Body.approver : SuccessOutput["approver"],
+            approvedAt: Response != nil ? Response.Body.approvedAt : SuccessOutput["approvedAt"]
+          }
+  mode:
+    trigger:
+      requeueDuration: 1m
+      when:
+        # Only re-trigger if SuccessOutput hasn't recorded this SHA yet
+        expression: 'SuccessOutput == nil || SuccessOutput["checkedSha"] != ReportedSha'
+```
+
+The `success.when.output.expression` runs every reconcile (whether or not an HTTP request was made). Its map result is stored in `status.environments[].successOutput` (or `status.promotionStrategyContext.successOutput` in `promotionstrategy` context) and exposed as `SuccessOutput` in all expressions and Go templates on the next reconcile.
 
 ### POST Request with JSON Body
 

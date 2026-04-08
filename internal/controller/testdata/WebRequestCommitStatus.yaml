@@ -35,6 +35,8 @@ spec:
   success:
     when:
       expression: 'Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"'
+      # output:
+      #   expression: ""      # optional; expr returning map, stored in status.successOutput (available as SuccessOutput)
 
   # Exactly one of polling or trigger must be set.
   mode:
@@ -74,6 +76,7 @@ status:
       lastResponseStatusCode: 200
       # triggerOutput (trigger mode): output from trigger.when.output.expression (available as TriggerOutput in expressions/templates)
       # responseOutput (trigger + response.output): output from response.output.expression (available as ResponseOutput in expressions/templates)
+      # successOutput: output from success.when.output.expression (available as SuccessOutput in expressions/templates)
 
 # --- promotionstrategy context (illustrative; use a separate WebRequestCommitStatus resource) ---
 # spec:
