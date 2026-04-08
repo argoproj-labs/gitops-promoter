@@ -149,7 +149,11 @@ type ApplicationsSelected struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
-// ArgoCDCommitStatus is the Schema for the argocdcommitstatuses API.
+// ArgoCDCommitStatus aggregates the status of Argo CD Applications used in a promotion strategy. It selects
+// Applications via a label selector and a reference to a PromotionStrategy, then creates CommitStatus resources
+// (with key "argocd-health") so that promotion gates reflect whether the selected applications are synced and
+// healthy. Optional URL config can generate links (e.g. to the Argo CD UI) for each status.
+//
 // +kubebuilder:printcolumn:name="PromotionStrategy",type=string,JSONPath=`.spec.promotionStrategyRef.name`,priority=1
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 type ArgoCDCommitStatus struct {

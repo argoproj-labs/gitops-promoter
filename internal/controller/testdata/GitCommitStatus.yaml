@@ -1,0 +1,15 @@
+# GitCommitStatus validates commits using expressions and creates CommitStatus resources.
+# The key must match an entry in the referenced PromotionStrategy's proposedCommitStatuses
+# (or an environment's proposedCommitStatuses). See api/v1alpha1/gitcommitstatus_types.go.
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: GitCommitStatus
+metadata:
+  name: example-git-commit-status
+spec:
+  promotionStrategyRef:
+    name: example-promotion-strategy
+  key: commit-convention
+  description: "Validates commit message follows convention"
+  # target: active (default) or proposed
+  target: proposed
+  expression: 'Commit.Subject != "" && len(Commit.Subject) <= 72'

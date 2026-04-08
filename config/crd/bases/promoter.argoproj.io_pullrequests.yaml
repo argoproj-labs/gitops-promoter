@@ -39,7 +39,7 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: PullRequest is the Schema for the pullrequests API
+        description: PullRequest is a thin wrapper around the SCM's pull request API.
         properties:
           apiVersion:
             description: |-
@@ -135,10 +135,10 @@ spec:
             - title
             type: object
           status:
-            description: PullRequestStatus defines the observed state of PullRequest
+            description: PullRequestStatus defines the observed state of PullRequest.
             properties:
               conditions:
-                description: Conditions Represents the observations of the current
+                description: Conditions represent the observations of the current
                   state.
                 items:
                   description: Condition contains details for one aspect of the current
@@ -200,21 +200,29 @@ spec:
                 x-kubernetes-list-type: map
               externallyMergedOrClosed:
                 description: |-
-                  ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
-                  This is set to true when the pull request has an ID but is no longer found on the SCM provider.
-                  When true, the State field will be empty ("") since we cannot determine if it was merged or closed.
-                  The PullRequest resource will be deleted after this flag is set, but the status is preserved in
-                  the owning ChangeTransferPolicy to maintain a record of the external action.
+                  ExternallyMergedOrClosed indicates that the pull request was merged or closed outside the controller
+                  (e.g. via the SCM UI). Set to true when the resource has an ID but is no longer found on the SCM.
+                  When true, State may be empty since we cannot determine if it was merged or closed. The PullRequest
+                  resource may be deleted after this is set; the owning ChangeTransferPolicy preserves the status.
                 type: boolean
               id:
-                description: ID the id of the pull request
+                description: ID is the unique identifier of the pull request, set
+                  by the SCM.
                 type: string
               prCreationTime:
-                description: PRCreationTime the time the PR was created
+                description: PRCreationTime is the time when the pull request was
+                  created.
+                format: date-time
+                type: string
+              prMergeTime:
+                description: |-
+                  PRMergeTime is the time when the pull request was merged. This is set when the controller
+                  sets the PR to merged; it may vary slightly from the SCM's actual merge time.
                 format: date-time
                 type: string
               state:
-                description: State of the merge request closed/merged/open
+                description: State is the state of the pull request (closed, merged,
+                  or open).
                 enum:
                 - ""
                 - closed

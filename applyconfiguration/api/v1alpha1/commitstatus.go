@@ -26,7 +26,8 @@ import (
 // CommitStatusApplyConfiguration represents a declarative configuration of the CommitStatus type for use
 // with apply.
 //
-// CommitStatus is the Schema for the commitstatuses API
+// CommitStatus is a thin wrapper for the SCM's commit status API. CommitStatuses are the primary source of truth
+// for promotion gates: the controller writes their state to the SCM so checkmarks/failures appear in the SCM UI.
 type CommitStatusApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
