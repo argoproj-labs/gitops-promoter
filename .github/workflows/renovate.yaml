@@ -27,9 +27,8 @@ jobs:
   renovate:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pull-requests: write
-      issues: write
+      # https://github.com/renovatebot/github-action?tab=readme-ov-file#example-with-github-app
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
