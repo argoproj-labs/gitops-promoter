@@ -31,7 +31,9 @@ markdown_extensions:
 nav:
   - Overview: index.md
   - Getting Started: getting-started.md
-  - Contributing: contributing.md
+  - Contributing:
+      - Overview: contributing/index.md
+      - Cutting a Release: contributing/cutting-a-release.md
   - Security: security.md
   - Architecture: architecture.md
   - Custom Hydrator: custom-hydrator.md
@@ -61,3 +63,4 @@ plugins:
   - redirects:
       redirect_maps:
         'metrics.md': 'monitoring/metrics.md' # Page was moved to a subdirectory.
+        'contributing.md': 'contributing/index.md' # Page was moved to a subdirectory.
