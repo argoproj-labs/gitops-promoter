@@ -163,7 +163,7 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: add a configurable payload max side for DoS protection.
+	// TODO: add a configurable payload max size for DoS protection.
 	jsonBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		responseCode = http.StatusInternalServerError
