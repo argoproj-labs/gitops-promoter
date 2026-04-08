@@ -1,5 +1,4 @@
-# Based on: https://github.com/argoproj-labs/gitops-promoter/blob/main/.goreleaser.yaml
-# This file must be kept in sync with .gorleaser-latest.yaml except for release section
+# This file must be kept in sync with .goreleaser-latest.yaml except for release section
 # The lines below are called `modelines`. See `:help modeline`
 # yaml-language-server: $schema=https://raw.githubusercontent.com/goreleaser/goreleaser/v2.13.2/www/docs/static/schema.json
 # vim: set ts=2 sw=2 tw=0 fo=cnqoj
