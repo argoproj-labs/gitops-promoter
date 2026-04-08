@@ -53,8 +53,10 @@ jobs:
       - name: Create tag
         if: steps.extract_version.outputs.version != ''
         run: |
-          git tag ${{ steps.extract_version.outputs.version }}
-          git push origin ${{ steps.extract_version.outputs.version }}
+          git tag ${STEPS_EXTRACT_VERSION_OUTPUTS_VERSION}
+          git push origin ${STEPS_EXTRACT_VERSION_OUTPUTS_VERSION}
+        env:
+          STEPS_EXTRACT_VERSION_OUTPUTS_VERSION: ${{ steps.extract_version.outputs.version }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0

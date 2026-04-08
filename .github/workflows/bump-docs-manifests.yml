@@ -22,13 +22,15 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Set up Git
         run: |
-          git config user.name "${{ github.actor }}"
-          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git config user.name "${GITHUB_ACTOR}"
+          git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
       - name: Bump manifest versions in docs
         run: |
           chmod +x hack/bump-docs-manifests.sh
-          ./hack/bump-docs-manifests.sh ${{ github.event.inputs.new_version }}
+          ./hack/bump-docs-manifests.sh ${GITHUB_EVENT_INPUTS_NEW_VERSION}
           git add docs/getting-started.md docs/tutorial-argocd-apps.md docs/argocd-integrations/index.md
+        env:
+          GITHUB_EVENT_INPUTS_NEW_VERSION: ${{ github.event.inputs.new_version }}
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0 # v8.1.0
         with:
