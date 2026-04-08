@@ -57,8 +57,8 @@ func (r *WebRequestCommitStatusReconciler) getCompiledExpression(key expressionC
 	return program, nil
 }
 
-// responseExpressionEnv builds the variable environment for validation and response-output expressions.
-func responseExpressionEnv(resp httpResponse) map[string]any {
+// responseExpressionData builds the expression data map for validation and response-output expressions.
+func responseExpressionData(resp httpResponse) map[string]any {
 	return map[string]any{
 		"Response": map[string]any{
 			"StatusCode": resp.StatusCode,
@@ -98,8 +98,8 @@ func (r *WebRequestCommitStatusReconciler) getCompiledResponseDataExpression(exp
 	return r.getCompiledExpression(expressionCacheKey{Prefix: "responsedata", Expression: expression})
 }
 
-// triggerExprEnv builds the variable environment for trigger and trigger output expressions.
-func (td templateData) triggerExprEnv() map[string]any {
+// triggerExprData builds the expression data map for trigger and trigger output expressions.
+func (td templateData) triggerExprData() map[string]any {
 	return map[string]any{
 		"ReportedSha":       td.ReportedSha,
 		"LastSuccessfulSha": td.LastSuccessfulSha,
@@ -111,21 +111,21 @@ func (td templateData) triggerExprEnv() map[string]any {
 	}
 }
 
-// successWhenExprEnv builds the variable environment for success.when expressions.
-// It mirrors triggerExprEnv (PromotionStrategy, Environment, ResponseOutput, etc.) and adds
+// successWhenExprData builds the expression data map for success.when expressions.
+// It mirrors triggerExprData (PromotionStrategy, Environment, ResponseOutput, etc.) and adds
 // Response: the HTTP response map when a request was made this reconcile, or nil otherwise.
-func successWhenExprEnv(td templateData, resp *httpResponse) map[string]any {
-	env := td.triggerExprEnv()
+func successWhenExprData(td templateData, resp *httpResponse) map[string]any {
+	exprData := td.triggerExprData()
 	if resp != nil {
-		env["Response"] = map[string]any{
+		exprData["Response"] = map[string]any{
 			"StatusCode": resp.StatusCode,
 			"Body":       resp.Body,
 			"Headers":    resp.Headers,
 		}
 	} else {
-		env["Response"] = nil
+		exprData["Response"] = nil
 	}
-	return env
+	return exprData
 }
 
 // evaluateTriggerExpression runs the trigger expression to decide whether to perform the HTTP request.
@@ -138,7 +138,7 @@ func (r *WebRequestCommitStatusReconciler) evaluateTriggerExpression(ctx context
 		return triggerResult{}, fmt.Errorf("failed to compile trigger expression: %w", err)
 	}
 
-	output, err := expr.Run(program, td.triggerExprEnv())
+	output, err := expr.Run(program, td.triggerExprData())
 	if err != nil {
 		return triggerResult{}, fmt.Errorf("failed to evaluate trigger expression: %w", err)
 	}
@@ -162,7 +162,7 @@ func (r *WebRequestCommitStatusReconciler) evaluateTriggerDataExpression(ctx con
 		return nil, fmt.Errorf("failed to compile trigger data expression: %w", err)
 	}
 
-	output, err := expr.Run(program, td.triggerExprEnv())
+	output, err := expr.Run(program, td.triggerExprData())
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate trigger data expression: %w", err)
 	}
@@ -177,10 +177,10 @@ func (r *WebRequestCommitStatusReconciler) evaluateTriggerDataExpression(ctx con
 }
 
 // evaluateValidationExpression runs the success.when expression to determine the commit status phase.
-// The env map is built by successWhenExprEnv and includes Response (nil when no request was made),
+// The exprData map is built by successWhenExprData and includes Response (nil when no request was made),
 // PromotionStrategy, Environment, and other trigger-expression variables.
 // Its boolean return is used directly: true → Success, false → Pending.
-func (r *WebRequestCommitStatusReconciler) evaluateValidationExpression(ctx context.Context, expression string, env map[string]any) (bool, error) {
+func (r *WebRequestCommitStatusReconciler) evaluateValidationExpression(ctx context.Context, expression string, exprData map[string]any) (bool, error) {
 	logger := log.FromContext(ctx)
 
 	program, err := r.getCompiledValidationExpression(expression)
@@ -188,7 +188,7 @@ func (r *WebRequestCommitStatusReconciler) evaluateValidationExpression(ctx cont
 		return false, fmt.Errorf("failed to compile validation expression: %w", err)
 	}
 
-	output, err := expr.Run(program, env)
+	output, err := expr.Run(program, exprData)
 	if err != nil {
 		return false, fmt.Errorf("failed to evaluate validation expression: %w", err)
 	}
@@ -203,12 +203,12 @@ func (r *WebRequestCommitStatusReconciler) evaluateValidationExpression(ctx cont
 }
 
 // evaluateValidationExpressionForPromotionStrategy runs the success.when expression when mode.context is promotionstrategy.
-// The env map is built by successWhenExprEnv and includes Response (nil when no request was made),
+// The exprData map is built by successWhenExprData and includes Response (nil when no request was made),
 // PromotionStrategy, and other trigger-expression variables.
 // The expression may return: a boolean (one phase for all); or an object { defaultPhase?, environments? }.
 // defaultPhase defaults to "pending" when omitted; it is used for all when environments is empty, or for branches not in environments.
 // environments is an optional array of { branch, phase }. Returns (phase, phasePerBranch, err).
-func (r *WebRequestCommitStatusReconciler) evaluateValidationExpressionForPromotionStrategy(ctx context.Context, expression string, env map[string]any) (phase promoterv1alpha1.CommitStatusPhase, phasePerBranch map[string]promoterv1alpha1.CommitStatusPhase, err error) {
+func (r *WebRequestCommitStatusReconciler) evaluateValidationExpressionForPromotionStrategy(ctx context.Context, expression string, exprData map[string]any) (phase promoterv1alpha1.CommitStatusPhase, phasePerBranch map[string]promoterv1alpha1.CommitStatusPhase, err error) {
 	logger := log.FromContext(ctx)
 
 	program, err := r.getCompiledValidationExpressionForPromotionStrategy(expression)
@@ -216,7 +216,7 @@ func (r *WebRequestCommitStatusReconciler) evaluateValidationExpressionForPromot
 		return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("failed to compile validation expression: %w", err)
 	}
 
-	output, err := expr.Run(program, env)
+	output, err := expr.Run(program, exprData)
 	if err != nil {
 		return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("failed to evaluate validation expression: %w", err)
 	}
@@ -371,7 +371,7 @@ func (r *WebRequestCommitStatusReconciler) evaluateResponseDataExpression(ctx co
 		return nil, fmt.Errorf("failed to compile response data expression: %w", err)
 	}
 
-	output, err := expr.Run(program, responseExpressionEnv(resp))
+	output, err := expr.Run(program, responseExpressionData(resp))
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate response expression: %w", err)
 	}
