@@ -45,12 +45,15 @@ jobs:
       - name: Create and push tag
         if: steps.extract_version.outputs.version != ''
         run: |
-          git tag ${{ steps.extract_version.outputs.version }}
-          git push origin ${{ steps.extract_version.outputs.version }}
+          git tag ${STEPS_EXTRACT_VERSION_OUTPUTS_VERSION}
+          git push origin ${STEPS_EXTRACT_VERSION_OUTPUTS_VERSION}
+        env:
+          STEPS_EXTRACT_VERSION_OUTPUTS_VERSION: ${{ steps.extract_version.outputs.version }}
 
       - name: Dispatch release workflow on tag ref
         if: steps.extract_version.outputs.version != ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STEPS_EXTRACT_VERSION_OUTPUTS_VERSION: ${{ steps.extract_version.outputs.version }}
         run: |
-          gh workflow run release.yaml --ref ${{ steps.extract_version.outputs.version }}
+          gh workflow run release.yaml --ref ${STEPS_EXTRACT_VERSION_OUTPUTS_VERSION}
