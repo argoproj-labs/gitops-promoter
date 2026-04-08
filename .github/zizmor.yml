@@ -11,35 +11,17 @@ rules:
     disable: true
   concurrency-limits:
     disable: true
-  dangerous-triggers:
-    disable: true
   dependabot-cooldown:
     disable: true
   dependabot-execution:
     disable: true
   forbidden-uses:
     disable: true
-  github-env:
-    disable: true
-  hardcoded-container-credentials:
-    disable: true
   impostor-commit:
-    disable: true
-  insecure-commands:
     disable: true
   known-vulnerable-actions:
     disable: true
-  misfeature:
-    disable: true
-  obfuscation:
-    disable: true
-  overprovisioned-secrets:
-    disable: true
   ref-confusion:
-    disable: true
-  ref-version-mismatch:
-    disable: true
-  secrets-inherit:
     disable: true
   secrets-outside-env:
     disable: true
@@ -49,17 +31,5 @@ rules:
     disable: true
   superfluous-actions:
     disable: true
-  template-injection:
-    disable: true
   undocumented-permissions:
-    disable: true
-  unpinned-images:
-    disable: true
-  unredacted-secrets:
-    disable: true
-  unsound-condition:
-    disable: true
-  unsound-contains:
-    disable: true
-  use-trusted-publishing:
     disable: true
