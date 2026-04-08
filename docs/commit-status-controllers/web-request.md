@@ -74,7 +74,7 @@ The controller reconciles when the `WebRequestCommitStatus` or the referenced **
 Use it when a **single** external API call represents validation for the whole PromotionStrategy (or a subset of environments that share one backend), and you do not want N identical HTTP calls for N environments. Examples:
 
 - One “release train” or “deployment pipeline” status API keyed by application or repo, not by individual environment branch
-- A batch endpoint that returns status for multiple environments in one JSON payload (pair with a success expression that returns [per-branch phases](#success-expression-promotionstrategy-context))
+- A batch endpoint that returns status for multiple environments in one JSON payload (pair with a success expression that returns [per-branch phases](#success-expression-return-types-promotionstrategy-context))
 
 Keep **`environments`** context when each environment should hit a **different** URL or body (typical `{{ .Environment.Branch }}` / `{{ .ReportedSha }}` per call).
 
