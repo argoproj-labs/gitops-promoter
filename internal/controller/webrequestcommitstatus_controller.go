@@ -262,6 +262,9 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 
 	// Snapshot the full WRCS before any status mutations so expressions see previous-reconcile state.
 	wrcsSnapshot := wrcs.DeepCopy()
+	if wrcsSnapshot == nil {
+		return nil, nil, 0, fmt.Errorf("unexpected nil from DeepCopy for WebRequestCommitStatus %s/%s", wrcs.Namespace, wrcs.Name)
+	}
 
 	// Clear the promotionstrategy-context status; this path uses per-environment status instead.
 	wrcs.Status.PromotionStrategyContext = nil
@@ -387,6 +390,9 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 
 	// Snapshot the full WRCS before any status mutations so expressions see previous-reconcile state.
 	wrcsSnapshot := wrcs.DeepCopy()
+	if wrcsSnapshot == nil {
+		return nil, nil, 0, fmt.Errorf("unexpected nil from DeepCopy for WebRequestCommitStatus %s/%s", wrcs.Namespace, wrcs.Name)
+	}
 
 	psEnvStatusMap := buildPSEnvStatusMap(ps)
 	currentShaPerBranch, err := resolveCurrentShas(applicableEnvs, psEnvStatusMap, wrcs.Spec.ReportOn)
