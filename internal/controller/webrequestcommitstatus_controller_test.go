@@ -3825,8 +3825,12 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard", Ordered, f
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
 				v, _ := approved.Load("value")
+				isApproved, ok := v.(bool)
+				if !ok {
+					isApproved = false
+				}
 				_ = json.NewEncoder(w).Encode(map[string]any{
-					"approved": v.(bool),
+					"approved": isApproved,
 				})
 			}))
 
@@ -4001,8 +4005,12 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard (PromotionSt
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
 				v, _ := approved.Load("value")
+				isApproved, ok := v.(bool)
+				if !ok {
+					isApproved = false
+				}
 				_ = json.NewEncoder(w).Encode(map[string]any{
-					"approved": v.(bool),
+					"approved": isApproved,
 				})
 			}))
 
