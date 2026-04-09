@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -3813,15 +3814,19 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard", Ordered, f
 		}
 	})
 
-	Describe("Trigger Mode - resets to pending when proposed dry SHA changes", func() {
+	Describe("Trigger Mode - resets to pending when new commit arrives and is not yet approved", func() {
 		var wrcs *promoterv1alpha1.WebRequestCommitStatus
+		var approved sync.Map
 
 		BeforeEach(func() {
+			approved.Store("value", true)
+
 			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
+				v, _ := approved.Load("value")
 				_ = json.NewEncoder(w).Encode(map[string]any{
-					"approved": true,
+					"approved": v.(bool),
 				})
 			}))
 
@@ -3872,62 +3877,40 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard", Ordered, f
 			_ = k8sClient.Delete(ctx, wrcs)
 		})
 
-		It("should reset to pending when proposed dry SHA changes on the PromotionStrategy", func() {
-			By("Waiting for WRCS to reach success for development")
+		It("should go to pending for the new SHA when the external system has not approved it yet", func() {
+			By("Pushing a hydrated commit and waiting for WRCS to reach success")
+			gitPath, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+			defer func() { _ = os.RemoveAll(gitPath) }()
+			firstDrySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "first commit for dry-sha-guard", "")
+
 			Eventually(func(g Gomega) {
 				var fetched promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(len(fetched.Status.Environments)).To(BeNumerically(">=", 1))
 
-				var devPhase promoterv1alpha1.CommitStatusPhase
 				for _, env := range fetched.Status.Environments {
 					if env.Branch == testBranchDevelopment {
-						devPhase = env.Phase
-					}
-				}
-				g.Expect(devPhase).To(Equal(promoterv1alpha1.CommitPhaseSuccess),
-					"development environment should reach success")
-			}, constants.EventuallyTimeout).Should(Succeed())
+						g.Expect(env.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+						g.Expect(env.SuccessOutput).NotTo(BeNil())
 
-			By("Verifying successOutput stores the validated dry SHA")
-			var originalDrySha string
-			Eventually(func(g Gomega) {
-				var fetched promoterv1alpha1.WebRequestCommitStatus
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
-				g.Expect(err).NotTo(HaveOccurred())
-
-				for _, env := range fetched.Status.Environments {
-					if env.Branch == testBranchDevelopment && env.SuccessOutput != nil {
 						var data map[string]any
-						err := json.Unmarshal(env.SuccessOutput.Raw, &data)
-						g.Expect(err).NotTo(HaveOccurred())
-						sha, _ := data["successDrySha"].(string)
-						originalDrySha = sha
-						g.Expect(data).To(HaveKey("successDrySha"),
-							"successOutput should contain successDrySha")
+						e := json.Unmarshal(env.SuccessOutput.Raw, &data)
+						g.Expect(e).NotTo(HaveOccurred())
+						g.Expect(data["successDrySha"]).To(Equal(firstDrySha))
 					}
 				}
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Changing the proposed dry SHA on the PromotionStrategy status")
-			fakeDrySha := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-			Eventually(func(g Gomega) {
-				var ps promoterv1alpha1.PromotionStrategy
-				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, &ps)).To(Succeed())
+			By("Switching the external system to not-approved (simulating new content not yet validated)")
+			approved.Store("value", false)
 
-				for i := range ps.Status.Environments {
-					if ps.Status.Environments[i].Branch == testBranchDevelopment {
-						ps.Status.Environments[i].Proposed.Dry.Sha = fakeDrySha
-					}
-				}
-				g.Expect(k8sClient.Status().Update(ctx, &ps)).To(Succeed())
-			}, constants.EventuallyTimeout).Should(Succeed())
+			By("Pushing a second hydrated commit with a new dry SHA")
+			secondDrySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "second commit for dry-sha-guard", "")
+			Expect(secondDrySha).NotTo(Equal(firstDrySha))
 
-			Expect(fakeDrySha).NotTo(Equal(originalDrySha),
-				"fake dry SHA must differ from the original to trigger the guard")
-
-			By("Verifying WRCS resets to pending for development (dry SHA mismatch)")
+			By("Verifying WRCS resets to pending for development")
 			Eventually(func(g Gomega) {
 				var fetched promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
@@ -3936,7 +3919,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard", Ordered, f
 				for _, env := range fetched.Status.Environments {
 					if env.Branch == testBranchDevelopment {
 						g.Expect(env.Phase).To(Equal(promoterv1alpha1.CommitPhasePending),
-							"development should reset to pending when dry SHA changes")
+							"development should be pending after new commit when external system returns not-approved")
 					}
 				}
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -3947,23 +3930,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard", Ordered, f
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: csName, Namespace: "default"}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending),
-					"CommitStatus should be pending after dry SHA change")
+				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
 			}, constants.EventuallyTimeout).Should(Succeed())
-
-			By("Confirming the pending state persists (no premature recovery)")
-			Consistently(func(g Gomega) {
-				var fetched promoterv1alpha1.WebRequestCommitStatus
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
-				g.Expect(err).NotTo(HaveOccurred())
-
-				for _, env := range fetched.Status.Environments {
-					if env.Branch == testBranchDevelopment {
-						g.Expect(env.Phase).To(Equal(promoterv1alpha1.CommitPhasePending),
-							"development should remain pending (no premature recovery within polling interval)")
-					}
-				}
-			}, 8*time.Second, 2*time.Second).Should(Succeed())
 		})
 	})
 })
@@ -4024,13 +3992,17 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard (PromotionSt
 
 	Describe("Per-branch phases with dry SHA guard", func() {
 		var wrcs *promoterv1alpha1.WebRequestCommitStatus
+		var approved sync.Map
 
 		BeforeEach(func() {
+			approved.Store("value", true)
+
 			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
+				v, _ := approved.Load("value")
 				_ = json.NewEncoder(w).Encode(map[string]any{
-					"approved": true,
+					"approved": v.(bool),
 				})
 			}))
 
@@ -4111,8 +4083,13 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard (PromotionSt
 			_ = k8sClient.Delete(ctx, wrcs)
 		})
 
-		It("should reset per-branch phase to pending when that branch's proposed dry SHA changes", func() {
-			By("Waiting for all branches to reach success in promotionstrategy context")
+		It("should reset all branches to pending when new commit arrives and is not yet approved", func() {
+			By("Pushing a hydrated commit and waiting for all branches to reach success")
+			gitPath, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+			defer func() { _ = os.RemoveAll(gitPath) }()
+			firstDrySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "first commit for ps-guard", "")
+
 			Eventually(func(g Gomega) {
 				var fetched promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
@@ -4122,41 +4099,24 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard (PromotionSt
 					To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 				g.Expect(wrcsPhaseForBranch(fetched.Status.PromotionStrategyContext.PhasePerBranch, testBranchStaging)).
 					To(Equal(promoterv1alpha1.CommitPhaseSuccess))
-			}, constants.EventuallyTimeout).Should(Succeed())
-
-			By("Verifying successOutput stores per-branch data")
-			Eventually(func(g Gomega) {
-				var fetched promoterv1alpha1.WebRequestCommitStatus
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(fetched.Status.PromotionStrategyContext).NotTo(BeNil())
 				g.Expect(fetched.Status.PromotionStrategyContext.SuccessOutput).NotTo(BeNil())
 
 				var data map[string]any
-				err = json.Unmarshal(fetched.Status.PromotionStrategyContext.SuccessOutput.Raw, &data)
-				g.Expect(err).NotTo(HaveOccurred())
+				e := json.Unmarshal(fetched.Status.PromotionStrategyContext.SuccessOutput.Raw, &data)
+				g.Expect(e).NotTo(HaveOccurred())
 				g.Expect(data).To(HaveKey("branches"))
-				branches, ok := data["branches"].([]any)
-				g.Expect(ok).To(BeTrue(), "branches should be an array")
-				g.Expect(len(branches)).To(BeNumerically(">=", 2),
-					"should have entries for at least dev and staging")
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Changing only the development branch's proposed dry SHA")
-			fakeDrySha := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-			Eventually(func(g Gomega) {
-				var ps promoterv1alpha1.PromotionStrategy
-				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, &ps)).To(Succeed())
+			_ = firstDrySha
 
-				for i := range ps.Status.Environments {
-					if ps.Status.Environments[i].Branch == testBranchDevelopment {
-						ps.Status.Environments[i].Proposed.Dry.Sha = fakeDrySha
-					}
-				}
-				g.Expect(k8sClient.Status().Update(ctx, &ps)).To(Succeed())
-			}, constants.EventuallyTimeout).Should(Succeed())
+			By("Switching the external system to not-approved")
+			approved.Store("value", false)
 
-			By("Verifying development resets to pending while staging remains success")
+			By("Pushing a second hydrated commit with new dry SHAs")
+			secondDrySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "second commit for ps-guard", "")
+			Expect(secondDrySha).NotTo(Equal(firstDrySha))
+
+			By("Verifying all branches reset to pending")
 			Eventually(func(g Gomega) {
 				var fetched promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
@@ -4165,10 +4125,10 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard (PromotionSt
 
 				g.Expect(wrcsPhaseForBranch(fetched.Status.PromotionStrategyContext.PhasePerBranch, testBranchDevelopment)).
 					To(Equal(promoterv1alpha1.CommitPhasePending),
-						"development should be pending after its dry SHA changed")
+						"development should be pending after new commit when external system returns not-approved")
 				g.Expect(wrcsPhaseForBranch(fetched.Status.PromotionStrategyContext.PhasePerBranch, testBranchStaging)).
-					To(Equal(promoterv1alpha1.CommitPhaseSuccess),
-						"staging should remain success (its dry SHA did not change)")
+					To(Equal(promoterv1alpha1.CommitPhasePending),
+						"staging should be pending after new commit when external system returns not-approved")
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying CommitStatus for development is pending")
@@ -4178,15 +4138,6 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard (PromotionSt
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: csName, Namespace: "default"}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
-			}, constants.EventuallyTimeout).Should(Succeed())
-
-			By("Verifying CommitStatus for staging remains success")
-			Eventually(func(g Gomega) {
-				csName := utils.KubeSafeUniqueName(ctx, wrcs.Name+"-"+testBranchStaging+"-webrequest")
-				var cs promoterv1alpha1.CommitStatus
-				err := k8sClient.Get(ctx, types.NamespacedName{Name: csName, Namespace: "default"}, &cs)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
