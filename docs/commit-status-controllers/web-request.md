@@ -423,18 +423,18 @@ spec:
       expression: |
         Response != nil
           ? (Response.StatusCode == 200 && Response.Body.approved == true)
-          : Phase == "success"
+          : (Phase == "success" && ReportedSha == LastSuccessfulSha)
       output:
         expression: |
           {
-            approver: Response != nil ? Response.Body.approver : SuccessOutput["approver"],
-            approvedAt: Response != nil ? Response.Body.approvedAt : SuccessOutput["approvedAt"]
+            checkedSha: ReportedSha,
+            approver: Response != nil ? Response.Body.approver : (SuccessOutput ?? {})["approver"],
+            approvedAt: Response != nil ? Response.Body.approvedAt : (SuccessOutput ?? {})["approvedAt"]
           }
   mode:
     trigger:
       requeueDuration: 1m
       when:
-        # Only re-trigger if SuccessOutput hasn't recorded this SHA yet
         expression: 'SuccessOutput == nil || SuccessOutput["checkedSha"] != ReportedSha'
 ```
 
