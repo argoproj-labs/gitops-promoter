@@ -377,10 +377,10 @@ func (r *GitCommitStatusReconciler) getCompiledExpression(expression string) (*v
 	}
 
 	// Compile with type information (using nil pointer provides type info without actual data)
-	env := map[string]any{
+	exprData := map[string]any{
 		"Commit": (*CommitData)(nil),
 	}
-	program, err := expr.Compile(expression, expr.Env(env), expr.AsBool())
+	program, err := expr.Compile(expression, expr.Env(exprData), expr.AsBool())
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile expression: %w", err)
 	}
@@ -400,10 +400,10 @@ func (r *GitCommitStatusReconciler) evaluateExpression(expression string, commit
 	}
 
 	// Run the expression with actual commit data
-	env := map[string]any{
+	exprData := map[string]any{
 		"Commit": commitData,
 	}
-	output, err := expr.Run(program, env)
+	output, err := expr.Run(program, exprData)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to evaluate expression: %w", err)
 	}

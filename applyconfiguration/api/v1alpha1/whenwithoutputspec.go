@@ -28,10 +28,10 @@ type WhenWithOutputSpecApplyConfiguration struct {
 	//
 	// Available variables:
 	// - PromotionStrategy (PromotionStrategy): the full PromotionStrategy spec and status
-	// - Environment (EnvironmentStatus): current environment's status from PromotionStrategy
-	// - Phase (string): current phase (success/pending/failure)
-	// - ReportedSha (string): the SHA being validated
-	// - LastSuccessfulSha (string): last SHA that achieved success for this environment
+	// - Environment (EnvironmentStatus): current environment's status from PromotionStrategy (environments context only; nil in promotionstrategy context)
+	// - Phase (string): current phase — per-environment in environments context; aggregate of all branches in promotionstrategy context (success only if all succeeded, failure if any failed, pending otherwise)
+	// - ReportedSha (string): the SHA being validated (environments context only; empty in promotionstrategy context)
+	// - LastSuccessfulSha (string): last SHA that achieved success for this environment (environments context only; empty in promotionstrategy context)
 	// - TriggerOutput (map[string]any): custom data from the previous when.output.expression evaluation
 	// - ResponseOutput (map[string]any): response data from the previous HTTP request (if any)
 	//
@@ -56,13 +56,11 @@ type WhenWithOutputSpecApplyConfiguration struct {
 	Expression *string `json:"expression,omitempty"`
 	// Output optionally holds an expression that produces a map of data to persist across reconcile cycles.
 	// The expression runs on every reconcile (whether or not the HTTP request is made). Its result is stored in
-	// status.environments[].triggerOutput and is available in the next reconcile as TriggerOutput (in when.expression,
-	// when.output.expression, and in all templates). Use it to track state such as attempt counts, last-seen SHAs, or timestamps.
+	// status (per-environment under environments[].triggerOutput, or under promotionStrategyContext.triggerOutput when context is promotionstrategy)
+	// and is available in the next reconcile as TriggerOutput in when.expression, when.output.expression, and in templates.
+	// Use it to track state such as attempt counts, last-seen SHAs, or timestamps.
 	//
-	// Available variables (same as Expression):
-	// - PromotionStrategy, Environment, Phase, ReportedSha, LastSuccessfulSha, TriggerOutput, ResponseOutput
-	//
-	// The expression must return a map/object. Every key in the returned map is stored in TriggerOutput.
+	// Variables are the same as for Expression (see above). The expression must return a map/object; every key is stored in TriggerOutput.
 	//
 	// Examples:
 	// # Track SHA to detect changes

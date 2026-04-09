@@ -8,15 +8,17 @@ The WebRequestCommitStatus controller provides flexible validation by calling ex
 
 ### How It Works
 
-For each environment configured via the PromotionStrategy:
+Behavior depends on **`spec.mode.context`** (see [Request scope](#request-scope-environments-vs-promotionstrategy) below). By default (`environments`), the controller runs **one HTTP request per applicable environment**. With `promotionstrategy`, it runs **at most one HTTP request per WebRequestCommitStatus** and maps the result to every applicable environment’s `CommitStatus`.
+
+For each applicable environment (after resolving context):
 
 1. The controller determines which SHA to validate based on the `reportOn` setting:
    - `proposed` (default): Validates the commit that will be promoted
    - `active`: Validates the currently deployed commit
-2. The controller evaluates whether to make an HTTP request (polling mode always makes requests, trigger mode evaluates a trigger expression first)
-3. If triggered, the controller makes an HTTP request to the configured endpoint using templated URL, headers, and body
-4. The controller evaluates the success expression against the HTTP response
-5. The controller creates/updates a CommitStatus with the results of the success expression
+2. The controller evaluates whether to make an HTTP request (polling mode always makes requests, trigger mode evaluates a trigger expression first). In `promotionstrategy` context this decision applies to the **single** shared request for that reconcile.
+3. If triggered, the controller makes an HTTP request to the configured endpoint using templated URL, headers, and body (in `promotionstrategy` context there is only one request per fire, not one per environment).
+4. The controller evaluates `success.when.expression` **every reconcile** to determine the commit status phase. When an HTTP request was made, `Response` is populated; when no request was made, `Response` is `nil`. The expression also has access to `PromotionStrategy`, `Environment` (environments context), `ResponseOutput`, and other trigger-expression variables — see [Success expression variables](#success-expression-variables) below.
+5. The controller creates/updates a **CommitStatus per environment**, each with that environment’s SHA and its own phase when using per-branch results.
 6. The PromotionStrategy checks the CommitStatus before allowing promotion
 
 ### Operating Modes
@@ -55,6 +57,157 @@ Uses expressions to dynamically control when HTTP requests are made. Powerful fo
 - Can store and access custom state via `TriggerOutput` (via `trigger.when.output.expression`)
 - Can access previous HTTP response data via `ResponseOutput` (via `response.output.expression`)
 - Always reconciles at `requeueDuration` interval (default: 1 minute)
+
+## Request scope: environments vs promotionstrategy
+
+Use **`spec.mode.context`** to choose **`environments`** (default) or **`promotionstrategy`**. This field controls **how many HTTP requests** the controller performs per `WebRequestCommitStatus` and **how** the success expression’s result maps to `CommitStatus` resources.
+
+| Value | HTTP requests per WebRequestCommitStatus (when the trigger allows) | `CommitStatus` resources |
+|-------|------------------------------------------------------|---------------------------|
+| `environments` (default) | One per applicable environment | One per environment; each request uses that environment’s templates and SHA |
+| `promotionstrategy` | **One** for the whole `WebRequestCommitStatus` | Still one per environment, but all are updated from the **same** response; each row uses that environment’s `reportOn` SHA |
+
+The controller reconciles when the `WebRequestCommitStatus` or the referenced **`PromotionStrategy`** changes (for example environment SHAs moving), so promotion-strategy context stays in sync with the strategy.
+
+### When to use `promotionstrategy` context
+
+Use it when a **single** external API call represents validation for the whole PromotionStrategy (or a subset of environments that share one backend), and you do not want N identical HTTP calls for N environments. Examples:
+
+- One “release train” or “deployment pipeline” status API keyed by application or repo, not by individual environment branch
+- A batch endpoint that returns status for multiple environments in one JSON payload (pair with a success expression that returns [per-branch phases](#success-expression-return-types-promotionstrategy-context))
+
+Keep **`environments`** context when each environment should hit a **different** URL or body (typical `{{ .Environment.Branch }}` / `{{ .ReportedSha }}` per call).
+
+### Template and trigger variables (`promotionstrategy` context)
+
+For the **HTTP request** (URL, headers, body), **trigger** `when.expression`, **trigger** `when.output.expression`, and the **top-level** evaluation that runs before the request, the controller does **not** set per-environment fields. **Do not use** these in those places when `context` is `promotionstrategy`:
+
+- `{{ .Environment }}` / `Environment` in expr  
+- `{{ .ReportedSha }}` / `ReportedSha`  
+- `{{ .LastSuccessfulSha }}` / `LastSuccessfulSha`  
+
+They are unset (empty / nil) because there is no single “current environment” for that one request.
+
+**You can use:** `PromotionStrategy` (full spec and status), `Phase` (aggregate of all applicable branches' phases — `success` only when every branch succeeded, `failure` if any failed, `pending` otherwise), `TriggerOutput`, `ResponseOutput` (trigger mode), and `NamespaceMetadata` labels and annotations — same as in environment context, except for the per-env fields above.
+
+When rendering **CommitStatus** `descriptionTemplate` and `urlTemplate`, the controller sets **`{{ .Phase }}`** to **that environment’s** resolved phase (`success`, `pending`, or `failure`). It still does **not** set `ReportedSha` or `Environment` in promotion-strategy context. If you need branch- or SHA-specific text in the SCM description or URL, either **walk `{{ .PromotionStrategy }}`** in the Go template (for example, `range` over `.PromotionStrategy.Status.Environments` and match on `.Branch`) or use **the same wording for every environment** (a generic message or link that does not try to substitute `{{ .ReportedSha }}` or `{{ .Environment.Branch }}`).
+
+### Success expression variables
+
+The `success.when.expression` is evaluated **every reconcile**, regardless of whether an HTTP request was made. It receives the same variables as `trigger.when.expression` (see `WhenWithOutputSpec` in `api/v1alpha1/webrequestcommitstatus_types.go`), plus `Response`:
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `Response` | map or nil | HTTP response from this reconcile's request. `nil` when no request was made. When non-nil: `Response.StatusCode` (int), `Response.Body` (parsed JSON or raw string), `Response.Headers` (map[string][]string). |
+| `PromotionStrategy` | PromotionStrategy | The full PromotionStrategy spec and status. |
+| `Environment` | EnvironmentStatus or nil | Current environment's status from PromotionStrategy. Set in `environments` context; `nil` in `promotionstrategy` context. |
+| `Phase` | string | Phase from the previous reconcile (`"success"`, `"pending"`, or `"failure"`). |
+| `ReportedSha` | string | The SHA being validated. Set in `environments` context; empty in `promotionstrategy` context. |
+| `LastSuccessfulSha` | string | Last SHA that achieved success. Set in `environments` context; empty in `promotionstrategy` context. |
+| `TriggerOutput` | map[string]any | Custom data from the previous `when.output.expression` evaluation (trigger mode only). |
+| `ResponseOutput` | map[string]any | Response data from the previous HTTP request's `response.output.expression` (trigger mode only). |
+
+> [!IMPORTANT]
+> Since the expression runs every reconcile, it must handle `Response` being `nil` (no HTTP request this reconcile). Expressions that only reference `Response.*` will error when `Response` is `nil`, causing the reconcile to return an error and requeue. Guard `Response` access:
+
+```
+Response != nil ? Response.StatusCode == 200 : Phase == "success"
+```
+
+### Success expression return types (`promotionstrategy` context)
+
+**Return types:**
+
+1. **Boolean** — `true`: all applicable environments get phase **success**; `false`: all get **pending** (not failure).
+2. **Object** — shape: `{ "defaultPhase"?: "success" \| "pending" \| "failure", "environments"?: [ { "branch": "<branch>", "phase": "..." }, ... ] }`  
+   - If `environments` is omitted or empty, every environment gets `defaultPhase` (default **`pending`** if `defaultPhase` is omitted).  
+   - If `environments` is non-empty, each listed **branch** gets its `phase`; any applicable environment **not** listed uses `defaultPhase`.
+
+Branch strings must match **`PromotionStrategy.spec.environments[].branch`** for the environments this gate applies to.
+
+### Status shape (`promotionstrategy` context)
+
+Observed state is stored under **`status.promotionStrategyContext`**, not under **`status.environments`** (that slice is used only for `environments` context).
+
+Notable fields:
+
+- **`phasePerBranch`** — list of `{ branch, phase }` entries (Kubernetes list type **map**, merge key **`branch`**) with resolved phase (`success`, `pending`, or `failure`) for every applicable environment. This is always fully populated after reconciliation, regardless of whether the success expression returned a boolean or the object form.
+- **`lastSuccessfulShas`** — list of `{ branch, lastSuccessfulSha }` entries (list type **map**, merge key **`branch`**) recording the last SHA that reached **success** for each branch (used for optimizations below)
+- **`lastRequestTime`**, **`lastResponseStatusCode`**, **`triggerOutput`**, **`responseOutput`** — same roles as per-environment status in the default context, but stored once for the shared request
+
+In trigger mode, **`triggerOutput`** and **`responseOutput`** are read from / written to **`promotionStrategyContext`**, not to `status.environments[]`.
+
+### Polling optimization (`reportOn: proposed` only)
+
+When **`mode.polling`** is set, **`reportOn` is `proposed`**, and context is **`promotionstrategy`**, the controller can **skip** issuing a new HTTP request if **every** applicable environment is already **success** and each branch’s current proposed SHA matches the **`lastSuccessfulSha`** value in **`lastSuccessfulShas`** for that branch. It still refreshes `CommitStatus` resources and requeues on the polling interval. This avoids hammering the API when nothing has changed.
+
+### Examples
+
+#### Single boolean — one API for the whole strategy
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: pipeline-gate
+spec:
+  promotionStrategyRef:
+    name: my-app
+  key: pipeline-approved
+  descriptionTemplate: "Pipeline gate: {{ .Phase }} ({{ .PromotionStrategy.Name }})"
+  reportOn: proposed
+  httpRequest:
+    urlTemplate: "https://deployments.example.com/api/v1/apps/{{ .PromotionStrategy.Spec.RepositoryReference.Name }}/pipeline-status"
+    method: GET
+    authentication:
+      bearer:
+        secretRef:
+          name: deployments-api-token
+  success:
+    when:
+      expression: "Response.StatusCode == 200 && Response.Body.ready == true"
+  mode:
+    context: promotionstrategy
+    polling:
+      interval: 2m
+```
+
+#### Per-environment phases from one response
+
+Use this when the JSON body lists status per environment branch:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: batch-env-status
+spec:
+  promotionStrategyRef:
+    name: my-app
+  key: batch-validation
+  descriptionTemplate: "{{ .Phase }} — see runbook"
+  reportOn: proposed
+  httpRequest:
+    urlTemplate: "https://orchestrator.example.com/status?app={{ .PromotionStrategy.Spec.RepositoryReference.Name }}"
+    method: GET
+  success:
+    when:
+      expression: |
+        {
+          defaultPhase: "pending",
+          environments: [
+            { branch: "environment/dev", phase: Response.Body.devOk ? "success" : "pending" },
+            { branch: "environment/staging", phase: Response.Body.stagingOk ? "success" : "pending" },
+            { branch: "environment/prod", phase: Response.Body.prodOk ? "success" : "pending" }
+          ]
+        }
+  mode:
+    context: promotionstrategy
+    polling:
+      interval: 3m
+```
+
+Adjust `branch` values to match your `PromotionStrategy` environment branches. The expression must return a value of the shape described above; the example assumes `Response.Body` fields exist and are booleans.
 
 ## Security Considerations
 

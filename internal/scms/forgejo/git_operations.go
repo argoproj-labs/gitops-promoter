@@ -21,17 +21,17 @@ type GitAuthenticationProvider struct {
 var _ scms.GitOperationsProvider = &GitAuthenticationProvider{}
 
 // NewForgejoGitAuthenticationProvider creates a new instance of GitAuthenticationProvider for Forgejo.
-func NewForgejoGitAuthenticationProvider(scmProvider promoterv1alpha1.GenericScmProvider, secret *k8sV1.Secret) *GitAuthenticationProvider {
+func NewForgejoGitAuthenticationProvider(scmProvider promoterv1alpha1.GenericScmProvider, secret *k8sV1.Secret) (*GitAuthenticationProvider, error) {
 	client, err := GetClient(scmProvider.GetSpec().Forgejo.Domain, *secret)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("failed to create Forgejo client: %w", err)
 	}
 
 	return &GitAuthenticationProvider{
 		scmProvider: scmProvider,
 		secret:      secret,
 		client:      client,
-	}
+	}, nil
 }
 
 // GetGitHttpsRepoUrl constructs the HTTPS URL for a Forgejo repository.

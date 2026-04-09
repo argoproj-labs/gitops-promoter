@@ -1,21 +1,18 @@
-# see https://github.com/argoproj-labs/argocd-ephemeral-access/blob/main/.github/workflows/release.yaml
-# this file must be kept in sync with the above release-latest.yaml except for the trigger and job name
+# This file must be kept in sync with release-latest.yaml except for the
+# trigger, job name, and release section.
+#
+# Triggered by workflow_dispatch, dispatched by create-release-tag.yaml on a
+# tag ref. The workflow only runs when github.ref is a tag, ensuring the
+# Sigstore OIDC certificate identity is refs/tags/vX.Y.Z.
 name: release
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'docs/getting-started.md'
-      - 'docs/tutorial-argocd-apps.md'
+  workflow_dispatch: {}
 
 permissions:
   contents: read
 
 env:
-  # If set in the repo env vars it will use this tag to build the release notes.
-  # Useful when creating a release tag after a release candidate tags phase.
   GORELEASER_PREVIOUS_TAG: ${{vars.GORELEASER_PREVIOUS_TAG}}
 
 defaults:
@@ -27,9 +24,9 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      id-token: write
       packages: write
-    if: |
-      github.repository == 'argoproj-labs/gitops-promoter' && contains(github.event.head_commit.message, 'docs: bump manifest versions to v')
+    if: startsWith(github.ref, 'refs/tags/')
     name: Release
     steps:
       - name: Checkout
@@ -41,19 +38,6 @@ jobs:
         uses: docker/setup-docker-action@994c3d50f9b4a990bfb91dced73607ccbc906a1c
         with:
           version: type=image,tag=29.1.5
-
-      - name: Extract version from commit message
-        id: extract_version
-        env:
-          COMMIT_MSG: ${{ github.event.head_commit.message }}
-        run: |
-          VERSION=$(printf '%s\n' "$COMMIT_MSG" | head -n1 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+')
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-      - name: Create tag
-        if: steps.extract_version.outputs.version != ''
-        run: |
-          git tag ${{ steps.extract_version.outputs.version }}
-          git push origin ${{ steps.extract_version.outputs.version }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
@@ -69,6 +53,13 @@ jobs:
           registry: quay.io
           username: ${{ secrets.QUAY_USERNAME }}
           password: ${{ secrets.QUAY_TOKEN }}
+
+      # sigstore/cosign-installer v4.1.1 (latest release). Action pinned to commit SHA — update tag + SHA from
+      # https://github.com/sigstore/cosign-installer/releases when upgrading (do not use a floating @v4 ref).
+      - name: Install cosign
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # cosign-installer v4.1.1
+        with:
+          cosign-release: v3.0.5 # cosign CLI; latest sigstore/cosign, explicit pin for reproducibility
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7.0.0

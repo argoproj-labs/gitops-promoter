@@ -1,5 +1,5 @@
-# see https://github.com/argoproj-labs/argocd-ephemeral-access/blob/main/.github/workflows/release.yaml
-# this file must be kept in sync with the above release.yaml except for the trigger and job name
+# This file must be kept in sync with release.yaml except for the trigger,
+# job name, and release section.
 name: release-latest
 
 on:
@@ -12,7 +12,6 @@ permissions:
 
 env:
   # If set in the repo env vars it will use this tag to build the release notes.
-  # Useful when creating a release tag after a release candidate tags phase.
   GORELEASER_PREVIOUS_TAG: ${{vars.GORELEASER_PREVIOUS_TAG}}
 
 defaults:
@@ -24,6 +23,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      id-token: write
       packages: write
     name: Push Latest Docker Image
     steps:
@@ -50,6 +50,13 @@ jobs:
           username: ${{ secrets.QUAY_USERNAME }}
           password: ${{ secrets.QUAY_TOKEN }}
 
+      # sigstore/cosign-installer v4.1.1 (latest release). Action pinned to commit SHA — update tag + SHA from
+      # https://github.com/sigstore/cosign-installer/releases when upgrading (do not use a floating @v4 ref).
+      - name: Install cosign
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # cosign-installer v4.1.1
+        with:
+          cosign-release: v3.0.5 # cosign CLI; latest sigstore/cosign, explicit pin for reproducibility
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7.0.0
         with:
@@ -68,3 +75,9 @@ jobs:
           docker buildx imagetools create -t quay.io/argoprojlabs/gitops-promoter:latest \
             quay.io/argoprojlabs/gitops-promoter:latest-amd64 \
             quay.io/argoprojlabs/gitops-promoter:latest-arm64
+
+      - name: Cosign sign latest images
+        run: |
+          cosign sign quay.io/argoprojlabs/gitops-promoter:latest-amd64 --yes
+          cosign sign quay.io/argoprojlabs/gitops-promoter:latest-arm64 --yes
+          cosign sign quay.io/argoprojlabs/gitops-promoter:latest --yes

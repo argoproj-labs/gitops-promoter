@@ -8,7 +8,7 @@ Thanks for helping improve GitOps Promoter. The project is still young; we keep 
 2. **[Fork the repository](https://github.com/argoproj-labs/gitops-promoter/fork)** on GitHub, clone your fork, and create a branch from **`main`**. Push work to your fork only.
 3. **Make focused changes** — one logical change per PR when possible.
 4. **Run checks** that match what you changed:
-    - **Go only** (no CRD, webhook, or generated install / apply-config churn): `go mod tidy`, `make lint`, `make test-parallel`.
+    - **Go only** (no CRD, webhook, or generated install / apply-config churn): `go mod tidy`, `make lint`, `make test-parallel`, `make fuzz-replay` (replay seeds (`f.Add`) + corpus (`testdata/fuzz`); same as CI).
     - **APIs, CRDs, webhooks, or bundled install YAML** (anything `make build-installer` regenerates—`config/`, `dist/install.yaml`, deepcopy/applyconfiguration, extension icon output): **`make build-installer`**, commit the full diff, then `go mod tidy`, `make lint`, `make test-parallel`.
     - **`ui/`**: `make lint-ui`, `make test-unit-test-extension`, `make test-ui-test-dashboard`.
     - **`docs/`** (this site): `make lint-docs`.
@@ -52,8 +52,8 @@ To add a **`prepare-commit-msg`** hook that signs off automatically, follow [Arg
 - **APIs and RBAC** — Express API permissions with **`// +kubebuilder:rbac`** on the reconcilers in **`internal/controller/*_controller.go`** (not by editing `config/rbac/role.yaml`). Regenerate via **`make build-installer`** so rules stay aligned with what the binary actually needs.
 - **Shipped ControllerConfiguration** — [`config/config/controllerconfiguration.yaml`](https://github.com/argoproj-labs/gitops-promoter/blob/main/config/config/controllerconfiguration.yaml) is the actual `ControllerConfiguration` deployed with the controller. It must include **every field** with its default value; this is where defaults live for this resource (not in code). Whenever you add, remove, or rename a field in `ControllerConfigurationSpec`, update this file.
 - **Testdata example CRs** — [`internal/controller/testdata/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/internal/controller/testdata) contains example YAML for every custom resource, used by controller tests via `unmarshalYamlStrict`. Whenever you add or change a field in any CRD type, update the corresponding file in this directory too.
-- **Commit status controllers** — If you create or update `CommitStatus` objects, follow [Commit status development best practices](commit-status-controllers/development-best-practices.md) (standard labels, owner references, and keys that match `PromotionStrategy` config).
-- **Metrics** — Register operational metrics in `internal/metrics` and describe them for operators in [Metrics](monitoring/metrics.md) (see the note in [`internal/metrics/metrics.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/metrics/metrics.go)).
+- **Commit status controllers** — If you create or update `CommitStatus` objects, follow [Commit status development best practices](../commit-status-controllers/development-best-practices.md) (standard labels, owner references, and keys that match `PromotionStrategy` config).
+- **Metrics** — Register operational metrics in `internal/metrics` and describe them for operators in [Metrics](../monitoring/metrics.md) (see the note in [`internal/metrics/metrics.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/metrics/metrics.go)).
 
 ## Questions?
 

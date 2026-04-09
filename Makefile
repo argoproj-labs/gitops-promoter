@@ -112,6 +112,43 @@ test-parallel: test-deps ## Run tests in parallel
 test-parallel-repeat3: test-deps ## Run tests in parallel 3 times to check for flakiness --repeat does not count the first run
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GINKGO) -p -procs=4 -r -v -cover -coverprofile=cover.out -coverpkg=./... --junit-report=junit.xml --repeat=2 internal/
 
+##@ Fuzzing
+
+# Packages that define native Go fuzz targets (Fuzz* in fuzz_test.go).
+FUZZ_PACKAGES ?= ./internal/utils
+# Duration per target for `fuzz-explore` (scheduled workflow and local; each Fuzz* runs sequentially within a package).
+FUZZ_TIME ?= 30s
+
+.PHONY: fuzz-replay fuzz-explore
+fuzz-replay: ## Replay seeds (`f.Add`) + corpus (`testdata/fuzz`); regression only (no `-fuzz`).
+	@set -euo pipefail; \
+	for pkg in $(FUZZ_PACKAGES); do \
+	  list=$$(go test $$pkg -list Fuzz); \
+	  fuzzes=$$(echo "$$list" | { grep '^Fuzz' || true; }); \
+	  if [ -z "$$fuzzes" ]; then \
+	    continue; \
+	  fi; \
+	  for fuzz in $$fuzzes; do \
+	    echo "fuzz-replay $$pkg $$fuzz"; \
+	    go test $$pkg -count=1 -run=^$$fuzz$$; \
+	  done; \
+	done
+
+# Bounded exploratory fuzzing: mutates beyond seeds (`f.Add`) + corpus (`testdata/fuzz`) for FUZZ_TIME per target (scheduled workflow uses this variable too).
+fuzz-explore: ## Exploratory fuzzing for FUZZ_TIME per target (default $(FUZZ_TIME); see Makefile).
+	@set -euo pipefail; \
+	for pkg in $(FUZZ_PACKAGES); do \
+	  list=$$(go test $$pkg -list Fuzz); \
+	  fuzzes=$$(echo "$$list" | { grep '^Fuzz' || true; }); \
+	  if [ -z "$$fuzzes" ]; then \
+	    continue; \
+	  fi; \
+	  for fuzz in $$fuzzes; do \
+	    echo "fuzz-explore $$pkg $$fuzz ($(FUZZ_TIME))"; \
+	    go test $$pkg -count=1 -run=^$$fuzz$$ -fuzz=$$fuzz -fuzztime=$(FUZZ_TIME); \
+	  done; \
+	done
+
 .PHONY: lint nilaway-no-test
 lint: golangci-lint ## Run golangci-lint linter & yamllint
 	$(GOLANGCI_LINT) run
