@@ -101,11 +101,9 @@ func (r *WebRequestCommitStatusReconciler) getCompiledResponseDataExpression(exp
 // triggerExprData builds the expression data map for trigger and trigger output expressions.
 func (td templateData) triggerExprData() map[string]any {
 	return map[string]any{
-		"ReportedSha":            td.ReportedSha,
-		"LastSuccessfulSha":      td.LastSuccessfulSha,
+		"Branch":                 td.Branch,
 		"Phase":                  td.Phase,
 		"PromotionStrategy":      td.PromotionStrategy,
-		"Environment":            td.Environment,
 		"WebRequestCommitStatus": td.WebRequestCommitStatus,
 		"TriggerOutput":          td.TriggerOutput,
 		"ResponseOutput":         td.ResponseOutput,
@@ -114,8 +112,8 @@ func (td templateData) triggerExprData() map[string]any {
 }
 
 // successWhenExprData builds the expression data map for success.when expressions.
-// It mirrors triggerExprData (PromotionStrategy, Environment, ResponseOutput, etc.) and adds
-// Response: the HTTP response map when a request was made this reconcile, or nil otherwise.
+// It mirrors triggerExprData and adds Response: the HTTP response map when a request was
+// made this reconcile, or nil otherwise.
 func successWhenExprData(td templateData, resp *httpResponse) map[string]any {
 	exprData := td.triggerExprData()
 	if resp != nil {
@@ -180,7 +178,7 @@ func (r *WebRequestCommitStatusReconciler) evaluateTriggerDataExpression(ctx con
 
 // evaluateValidationExpression runs the success.when expression to determine the commit status phase.
 // The exprData map is built by successWhenExprData and includes Response (nil when no request was made),
-// PromotionStrategy, Environment, and other trigger-expression variables.
+// Branch, Phase, PromotionStrategy, WebRequestCommitStatus, and output variables.
 // Its boolean return is used directly: true → Success, false → Pending.
 func (r *WebRequestCommitStatusReconciler) evaluateValidationExpression(ctx context.Context, expression string, exprData map[string]any) (bool, error) {
 	logger := log.FromContext(ctx)

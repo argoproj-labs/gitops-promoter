@@ -27,30 +27,27 @@ type WhenWithOutputSpecApplyConfiguration struct {
 	// when false the controller keeps the previous phase and skips the request.
 	//
 	// Available variables:
+	// - Branch (string): the environment branch currently being processed (empty for the shared HTTP request in promotionstrategy context)
+	// - Phase (string): previous reconcile's phase — per-environment in environments context; aggregate of all branches in promotionstrategy context (success only if all succeeded, failure if any failed, pending otherwise)
 	// - PromotionStrategy (PromotionStrategy): the full PromotionStrategy spec and status
-	// - Environment (EnvironmentStatus): current environment's status from PromotionStrategy (environments context only; nil in promotionstrategy context)
-	// - Phase (string): current phase — per-environment in environments context; aggregate of all branches in promotionstrategy context (success only if all succeeded, failure if any failed, pending otherwise)
-	// - ReportedSha (string): the SHA being validated (environments context only; empty in promotionstrategy context)
-	// - LastSuccessfulSha (string): last SHA that achieved success for this environment (environments context only; empty in promotionstrategy context)
+	// - WebRequestCommitStatus (WebRequestCommitStatus): the full WebRequestCommitStatus spec and status (snapshot from the previous reconcile)
 	// - TriggerOutput (map[string]any): custom data from the previous when.output.expression evaluation
 	// - ResponseOutput (map[string]any): response data from the previous HTTP request (if any)
 	// - SuccessOutput (map[string]any): custom data from the previous success.when.output.expression evaluation
 	//
 	// Note: PromotionStrategy.Status.Environments is an ordered array representing the promotion sequence.
-	// Environments[0] is the first environment (e.g., dev), Environments[1] is second (e.g., staging), etc.
-	// Changes flow through the array in order. To access the previous environment, use array indexing:
-	// currentIdx = findIndex(PromotionStrategy.Status.Environments, {.Branch == Environment.Branch})
-	// previousEnv = currentIdx > 0 ? PromotionStrategy.Status.Environments[currentIdx-1] : nil
+	// Use Branch + filter/find to look up environment-specific data:
+	// find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha
 	//
 	// Examples:
 	// # Always trigger (equivalent to polling mode)
 	// - "true"
 	//
 	// # Only trigger when SHA changes from what we last tracked
-	// - "ReportedSha != TriggerOutput['lastCheckedSha']"
+	// - "find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha != (TriggerOutput['lastCheckedSha'] ?? ”)"
 	//
 	// # Only trigger when a particular commit status is success (e.g. argocd-health)
-	// - "size(filter(Environment.Proposed.CommitStatuses, {.Key == 'argocd-health'})) > 0 && filter(Environment.Proposed.CommitStatuses, {.Key == 'argocd-health'})[0].Phase == 'success'"
+	// - "let env = find(PromotionStrategy.Status.Environments, {.Branch == Branch}); any(env.Proposed.CommitStatuses, {.Key == 'argocd-health' && .Phase == 'success'})"
 	//
 	// # Only retry if the previous response indicated we should
 	// - "ResponseOutput == nil || ResponseOutput.status == 'retry'"
@@ -65,7 +62,7 @@ type WhenWithOutputSpecApplyConfiguration struct {
 	//
 	// Examples:
 	// # Track SHA to detect changes
-	// - "{ trackedSha: ReportedSha }"
+	// - "{ trackedSha: find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha }"
 	//
 	// # Increment attempt counter
 	// - "{ attemptCount: (TriggerOutput[\"attemptCount\"] ?? 0) + 1 }"

@@ -44,12 +44,15 @@ type WebRequestCommitStatusSpecApplyConfiguration struct {
 	// data after the most recent HTTP request and trigger evaluation (unlike spec.httpRequest URL/body/headers, which use pre-request data — see HTTPRequestSpec).
 	// How spec.mode.context restricts template data: see ModeSpec.
 	//
-	// Examples: "External approval for {{ .Environment.Branch }}", "Checking deployment {{ .ReportedSha | trunc 7 }}", "{{ .Phase }} - waiting for external approval".
+	// Examples: "External approval for {{ .Branch }}", "{{ .Phase }} - waiting for external approval".
 	//
 	// If not specified, defaults to empty string.
 	DescriptionTemplate *string `json:"descriptionTemplate,omitempty"`
 	// UrlTemplate is the commit status target URL in the SCM provider. Same Go templates, variables, timing, and context rules as DescriptionTemplate.
-	// Typical uses: approval UI, dashboard, API, or runbook links. Examples: "https://approvals.example.com/{{ .ReportedSha }}", "https://dashboard.example.com/{{ .Environment.Branch }}/status".
+	// Typical uses: approval UI, dashboard, API, or runbook links.
+	// To include the reported SHA, walk PromotionStrategy.Status.Environments by Branch:
+	// "https://approvals.example.com/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
+	// For branch-only links: "https://dashboard.example.com/{{ .Branch }}/status".
 	//
 	// If not specified, defaults to empty string (no URL shown).
 	UrlTemplate *string `json:"urlTemplate,omitempty"`

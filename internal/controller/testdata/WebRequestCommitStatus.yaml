@@ -22,7 +22,7 @@ spec:
 
   # HTTP request configuration; URL, headers, and body support Go templates
   httpRequest:
-    urlTemplate: "https://approvals.example.com/api/check/{{ .ReportedSha }}"
+    urlTemplate: "https://approvals.example.com/api/check/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
     method: GET
     # Optional: header name -> template value
     headerTemplates: {}

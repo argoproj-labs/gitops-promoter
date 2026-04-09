@@ -68,19 +68,23 @@ type WebRequestCommitStatusReconciler struct {
 	expressionCache sync.Map
 }
 
-// templateData is the data passed to Go templates when rendering URL, headers, body, and description.
-// It is built per environment and includes ReportedSha, Phase, TriggerOutput, ResponseOutput, SuccessOutput, and namespace metadata.
+// templateData is the data passed to Go templates when rendering URL, headers, body, and description,
+// and (via triggerExprData / successWhenExprData) to expr expressions.
+//
+// Branch is the environment branch currently being processed — set per-iteration in both
+// environments and promotionstrategy contexts (empty for the shared HTTP request in promotionstrategy).
+//
+// Phase is the previous reconcile's phase for carry-forward logic in expressions.
+// For description/URL templates it is updated to the current reconcile's phase before upsert.
 type templateData struct {
 	NamespaceMetadata      namespaceMetadata
 	PromotionStrategy      *promoterv1alpha1.PromotionStrategy
-	Environment            *promoterv1alpha1.EnvironmentStatus
 	WebRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
+	Branch                 string
+	Phase                  string
 	TriggerOutput          map[string]any
 	ResponseOutput         map[string]any
 	SuccessOutput          map[string]any
-	ReportedSha            string
-	LastSuccessfulSha      string
-	Phase                  string
 }
 
 // namespaceMetadata holds the labels and annotations of the WebRequestCommitStatus's namespace.
@@ -296,11 +300,9 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		}
 
 		td := templateData{
-			ReportedSha:            reportedSha,
-			LastSuccessfulSha:      lastSuccessfulSha,
+			Branch:                 branch,
 			Phase:                  lastState.Phase,
 			PromotionStrategy:      ps,
-			Environment:            psEnvStatusMap[branch],
 			WebRequestCommitStatus: wrcsSnapshot,
 			NamespaceMetadata:      namespaceMeta,
 			TriggerOutput:          lastState.TriggerData,
@@ -357,7 +359,9 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 			SuccessOutput:          result.SuccessDataJSON,
 		})
 
-		cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, reportedSha, result.Phase, td.withLatestOutputs(result.ResponseDataJSON, decision.NewTriggerData, result.SuccessDataJSON))
+		commitTd := td.withLatestOutputs(result.ResponseDataJSON, decision.NewTriggerData, result.SuccessDataJSON)
+		commitTd.Phase = string(result.Phase)
+		cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, reportedSha, result.Phase, commitTd)
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", branch, err)
 		}
@@ -401,7 +405,9 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 			baseTd := templateData{Phase: string(promoterv1alpha1.CommitPhaseSuccess), PromotionStrategy: ps, WebRequestCommitStatus: wrcsSnapshot, NamespaceMetadata: namespaceMeta, TriggerOutput: lastState.TriggerData, ResponseOutput: lastState.ResponseData, SuccessOutput: lastState.SuccessData}
 			commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0, len(applicableEnvs))
 			for _, env := range applicableEnvs {
-				cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, env.Branch, currentShaPerBranch[env.Branch], promoterv1alpha1.CommitPhaseSuccess, baseTd)
+				perEnvTd := baseTd
+				perEnvTd.Branch = env.Branch
+				cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, env.Branch, currentShaPerBranch[env.Branch], promoterv1alpha1.CommitPhaseSuccess, perEnvTd)
 				if err != nil {
 					return nil, nil, 0, fmt.Errorf("failed to upsert CommitStatus for skipped environment %q (context=promotionstrategy): %w", env.Branch, err)
 				}
@@ -465,6 +471,7 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 		branch := env.Branch
 		envPhase := resolvedPhases[branch]
 		perEnvTd := commitTd
+		perEnvTd.Branch = branch
 		perEnvTd.Phase = string(envPhase)
 		cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, currentShaPerBranch[branch], envPhase, perEnvTd)
 		if err != nil {

@@ -134,7 +134,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					Key:      "external-approval",
 					ReportOn: constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate/{{ .ReportedSha }}",
+						URLTemplate: testServer.URL + `/validate/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}`,
 						Method:      "GET",
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
@@ -330,7 +330,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 						Key:      "external-approval",
 						ReportOn: constants.CommitRefProposed,
 						HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-							URLTemplate: testServer.URL + "/validate/{{ .ReportedSha }}",
+							URLTemplate: testServer.URL + `/validate/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}`,
 							Method:      "GET",
 							Timeout:     metav1.Duration{Duration: 10 * time.Second},
 						},
@@ -551,10 +551,9 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					Mode: promoterv1alpha1.ModeSpec{
 						Trigger: &promoterv1alpha1.TriggerModeSpec{
 							RequeueDuration: metav1.Duration{Duration: 5 * time.Second},
-							// Only trigger when SHA changes from what we tracked
 							When: promoterv1alpha1.WhenWithOutputSpec{
-								Expression: "ReportedSha != TriggerOutput[\"trackedSha\"]",
-								Output:     &promoterv1alpha1.OutputSpec{Expression: `{ trackedSha: ReportedSha }`},
+								Expression: `find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha != (TriggerOutput["trackedSha"] ?? "")`,
+								Output:     &promoterv1alpha1.OutputSpec{Expression: `{ trackedSha: find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha }`},
 							},
 						},
 					},
@@ -673,16 +672,16 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					},
 					Key:                 "external-approval",
 					ReportOn:            constants.CommitRefProposed,
-					DescriptionTemplate: "Checking {{ .Environment.Branch }} at {{ .ReportedSha | trunc 7 }}",
-					UrlTemplate:         "https://example.com/status/{{ .ReportedSha }}",
+					DescriptionTemplate: "Checking {{ .Branch }} ({{ .Phase }})",
+					UrlTemplate:         `https://example.com/status/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}`,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate/{{ .Environment.Branch }}?sha={{ .ReportedSha }}",
+						URLTemplate: testServer.URL + `/validate/{{ .Branch }}?sha={{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}`,
 						Method:      "POST",
 						HeaderTemplates: map[string]string{
-							"X-Environment": "{{ .Environment.Branch }}",
-							"X-Sha":         "{{ .ReportedSha }}",
+							"X-Branch": "{{ .Branch }}",
+							"X-Sha":    `{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}`,
 						},
-						BodyTemplate: `{"branch": "{{ .Environment.Branch }}", "sha": "{{ .ReportedSha }}"}`,
+						BodyTemplate: `{"branch": "{{ .Branch }}", "sha": "{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"}`,
 						Timeout:      metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
@@ -721,8 +720,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				g.Expect(devReq.url).To(ContainSubstring(testBranchDevelopment))
 
 				// Headers should be set
-				g.Expect(devReq.headers.Get("X-Environment")).To(Equal(testBranchDevelopment))
-				g.Expect(devReq.headers.Get("X-Sha")).ToNot(BeEmpty())
+				g.Expect(devReq.headers.Get("X-Branch")).To(Equal(testBranchDevelopment))
+				g.Expect(devReq.headers.Get("X-Sha")).ToNot(BeEmpty(), "SHA header should be rendered from PromotionStrategy lookup")
 
 				// Body should contain rendered values
 				g.Expect(devReq.body).To(ContainSubstring(testBranchDevelopment))
@@ -1519,7 +1518,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					Key:      "responsedata-test",
 					ReportOn: constants.CommitRefActive,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: scmAuthTestServer.URL + "/check/{{ .ReportedSha }}",
+						URLTemplate: scmAuthTestServer.URL + `/check/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Active.Hydrated.Sha }}{{ end }}{{ end }}`,
 						Method:      "GET",
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 						Authentication: &promoterv1alpha1.HTTPAuthentication{
@@ -3217,8 +3216,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 						Trigger: &promoterv1alpha1.TriggerModeSpec{
 							RequeueDuration: metav1.Duration{Duration: 5 * time.Second},
 							When: promoterv1alpha1.WhenWithOutputSpec{
-								Expression: `ReportedSha != TriggerOutput["trackedSha"]`,
-								Output:     &promoterv1alpha1.OutputSpec{Expression: `{ trackedSha: ReportedSha }`},
+								Expression: `find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha != (TriggerOutput["trackedSha"] ?? "")`,
+								Output:     &promoterv1alpha1.OutputSpec{Expression: `{ trackedSha: find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha }`},
 							},
 						},
 					},
@@ -3316,8 +3315,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 						Trigger: &promoterv1alpha1.TriggerModeSpec{
 							RequeueDuration: metav1.Duration{Duration: 2 * time.Second},
 							When: promoterv1alpha1.WhenWithOutputSpec{
-								Expression: `ReportedSha != TriggerOutput["trackedSha"]`,
-								Output:     &promoterv1alpha1.OutputSpec{Expression: `{ trackedSha: ReportedSha }`},
+								Expression: `find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha != (TriggerOutput["trackedSha"] ?? "")`,
+								Output:     &promoterv1alpha1.OutputSpec{Expression: `{ trackedSha: find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha }`},
 							},
 							Response: &promoterv1alpha1.ResponseOutputSpec{
 								Output: promoterv1alpha1.OutputSpec{
@@ -3701,15 +3700,14 @@ var _ = Describe("WebRequestCommitStatus Controller - SuccessOutput", Ordered, f
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
 							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
-							Output:     &promoterv1alpha1.OutputSpec{Expression: `{checkedSha: ReportedSha}`},
+							Output:     &promoterv1alpha1.OutputSpec{Expression: `{checkedSha: find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha}`},
 						},
 					},
 					Mode: promoterv1alpha1.ModeSpec{
 						Trigger: &promoterv1alpha1.TriggerModeSpec{
 							RequeueDuration: metav1.Duration{Duration: 2 * time.Second},
 							When: promoterv1alpha1.WhenWithOutputSpec{
-								// Only trigger if SuccessOutput hasn't recorded this SHA yet
-								Expression: `SuccessOutput == nil || SuccessOutput["checkedSha"] != ReportedSha`,
+								Expression: `SuccessOutput == nil || SuccessOutput["checkedSha"] != find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha`,
 							},
 						},
 					},
@@ -3852,15 +3850,15 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard", Ordered, f
 						When: promoterv1alpha1.WhenWithOutputSpec{
 							Expression: `Response != nil` +
 								` ? (Response.StatusCode == 200 && Response.Body.approved == true)` +
-								` : (Phase == "success" && ReportedSha == LastSuccessfulSha)`,
+								` : (Phase == "success" && (let wrcsEnv = find(WebRequestCommitStatus.Status.Environments ?? [], {.Branch == Branch}); wrcsEnv != nil && find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha == wrcsEnv.LastSuccessfulSha))`,
 						},
 					},
 					Mode: promoterv1alpha1.ModeSpec{
 						Trigger: &promoterv1alpha1.TriggerModeSpec{
 							RequeueDuration: metav1.Duration{Duration: 5 * time.Minute},
 							When: promoterv1alpha1.WhenWithOutputSpec{
-								Expression: `ReportedSha != (TriggerOutput["lastCheckedSha"] ?? "") || Phase != "success"`,
-								Output:     &promoterv1alpha1.OutputSpec{Expression: `{ lastCheckedSha: ReportedSha }`},
+								Expression: `find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha != (TriggerOutput["lastCheckedSha"] ?? "") || Phase != "success"`,
+								Output:     &promoterv1alpha1.OutputSpec{Expression: `{ lastCheckedSha: find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha }`},
 							},
 						},
 					},

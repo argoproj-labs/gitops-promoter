@@ -179,7 +179,7 @@ Key features:
 - **Optional response expression:** Extract a subset of the HTTP response into `ResponseOutput` for use in the next trigger evaluation and in description/URL templates
 - **TriggerOutput:** Trigger when.output expression can return extra fields that are stored and available on the next run and in templates
 - **SuccessOutput:** Success when.output expression can return extra fields that are stored and available on the next run in trigger, success expressions, and templates
-- **Templated URL, headers, body:** Go templates with `ReportedSha`, `Environment`, `TriggerOutput`, `ResponseOutput`, `SuccessOutput`, namespace metadata, etc.
+- **Templated URL, headers, body:** Go templates with `Branch`, `Phase`, `PromotionStrategy`, `WebRequestCommitStatus`, `TriggerOutput`, `ResponseOutput`, `SuccessOutput`, namespace metadata, etc.
 - **Authentication:** Basic, Bearer, OAuth2, or mutual TLS via Secrets
 - **reportOn:** Report on the proposed commit (default) or the active (deployed) commit
 
