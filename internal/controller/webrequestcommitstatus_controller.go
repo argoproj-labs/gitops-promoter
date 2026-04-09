@@ -80,11 +80,11 @@ type templateData struct {
 	NamespaceMetadata      namespaceMetadata
 	PromotionStrategy      *promoterv1alpha1.PromotionStrategy
 	WebRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
-	Branch                 string
-	Phase                  string
 	TriggerOutput          map[string]any
 	ResponseOutput         map[string]any
 	SuccessOutput          map[string]any
+	Branch                 string
+	Phase                  string
 }
 
 // namespaceMetadata holds the labels and annotations of the WebRequestCommitStatus's namespace.
