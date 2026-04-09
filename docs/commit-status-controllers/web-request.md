@@ -102,6 +102,7 @@ The `success.when.expression` is evaluated **every reconcile**, regardless of wh
 | `Response` | map or nil | HTTP response from this reconcile's request. `nil` when no request was made. When non-nil: `Response.StatusCode` (int), `Response.Body` (parsed JSON or raw string), `Response.Headers` (map[string][]string). |
 | `PromotionStrategy` | PromotionStrategy | The full PromotionStrategy spec and status. |
 | `Environment` | EnvironmentStatus or nil | Current environment's status from PromotionStrategy. Set in `environments` context; `nil` in `promotionstrategy` context. |
+| `WebRequestCommitStatus` | WebRequestCommitStatus | The full WebRequestCommitStatus spec and status (snapshot from the previous reconcile). Useful in `promotionstrategy` context to access per-branch `Status.PromotionStrategyContext.LastSuccessfulShas` and `PhasePerBranch`. |
 | `Phase` | string | Phase from the previous reconcile (`"success"`, `"pending"`, or `"failure"`). |
 | `ReportedSha` | string | The SHA being validated. Set in `environments` context; empty in `promotionstrategy` context. |
 | `LastSuccessfulSha` | string | Last SHA that achieved success. Set in `environments` context; empty in `promotionstrategy` context. |
@@ -736,24 +737,19 @@ spec:
 
 When a WebRequestCommitStatus achieves `success`, it stays successful for that SHA until something changes. If new content is pushed (new dry commit → new hydrated commit), the WRCS should go back to `pending` so the external system re-validates the new content before promotion proceeds. Without this, there is a risk of promoting content that was never approved by the external system.
 
-The same applies to `reportOn: active` — when the active dry SHA changes, the WRCS should re-validate.
+The same applies to `reportOn: active` — when the active content changes, the WRCS should re-validate.
 
-**Recommendation:** Use the trigger expression to detect when the dry SHA changes and re-fire the HTTP request. The success expression uses `SuccessOutput` to track which dry SHA was last validated; if the dry SHA no longer matches and the external system has not yet re-approved, the phase falls back to `pending`.
+**Key insight:** The dry SHA and hydrated SHA always change together (the dry SHA is embedded in the hydrated commit's `hydrator.metadata`). The controller already tracks `LastSuccessfulSha` (hydrated) per environment in status. So comparing the current hydrated SHA against `LastSuccessfulSha` is sufficient to detect content changes — no separate dry SHA tracking needed.
 
-> [!IMPORTANT]
-> For `reportOn: proposed`, you **must** use **trigger mode** for this pattern. In polling mode with `reportOn: proposed`, the controller has an optimization that skips the success expression entirely once a SHA has succeeded — it carries forward the previous phase without re-evaluating. Trigger mode does not have this optimization; the `success.when.expression` runs on every reconcile regardless.
->
-> For `reportOn: active`, polling mode works because the optimization only applies to `reportOn: proposed`.
+#### `environments` context
 
-#### `reportOn: proposed` — re-validate when proposed content changes
-
-Use trigger mode with a trigger that fires when the dry SHA changes. When new content is pushed, the trigger detects the new `Proposed.Dry.Sha`, re-fires the HTTP request, and the success expression determines the phase from the response. Between trigger firings (when `Response` is `nil`), the success expression falls back to the stored `SuccessOutput` — keeping success only if the dry SHA still matches:
+In `environments` context, `ReportedSha` and `LastSuccessfulSha` are already available in expressions. Use trigger mode with a trigger that fires when the SHA changes or the phase is not yet success. The success expression is simply:
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: WebRequestCommitStatus
 metadata:
-  name: approval-with-sha-guard
+  name: approval-with-revalidation
 spec:
   promotionStrategyRef:
     name: my-app
@@ -770,82 +766,44 @@ spec:
   success:
     when:
       expression: |
-        Response != nil && Response.StatusCode == 200 && Response.Body.approved == true
-          ? true
-          : (Phase == "success" && Environment.Proposed.Dry.Sha == (SuccessOutput != nil ? SuccessOutput["successDrySha"] : ""))
-      output:
-        expression: |
-          Response != nil && Response.StatusCode == 200 && Response.Body.approved == true
-            ? { successDrySha: Environment.Proposed.Dry.Sha }
-            : (SuccessOutput ?? {})
+        Response != nil
+          ? (Response.StatusCode == 200 && Response.Body.approved == true)
+          : (Phase == "success" && ReportedSha == LastSuccessfulSha)
   mode:
     trigger:
       requeueDuration: 1m
       when:
         expression: |
-          ReportedSha != (TriggerOutput["lastCheckedSha"] ?? "") ||
-          Environment.Proposed.Dry.Sha != (TriggerOutput["lastCheckedDrySha"] ?? "") ||
-          Phase != "success"
+          ReportedSha != (TriggerOutput["lastCheckedSha"] ?? "") || Phase != "success"
         output:
           expression: |
-            { lastCheckedSha: ReportedSha, lastCheckedDrySha: Environment.Proposed.Dry.Sha }
+            { lastCheckedSha: ReportedSha }
 ```
 
-How it works end to end:
+How it works:
 
-1. **First proposed commit arrives** — trigger fires (SHA mismatch with empty `TriggerOutput`), HTTP request made, external system returns approved → phase `success`. `SuccessOutput` stores the dry SHA. `TriggerOutput` stores the hydrated and dry SHAs.
-2. **New content pushed (new dry + hydrated SHAs)** — trigger fires (`Proposed.Dry.Sha` changed or `ReportedSha` changed), HTTP request made. If the external system has not yet approved the new content → phase `pending`. If already approved → phase `success` with updated `SuccessOutput`.
-3. **No changes, subsequent reconcile** — trigger does not fire (SHAs match). Success expression runs with `Response` as `nil`. If `Phase` was `success` and dry SHA still matches `SuccessOutput` → stays `success`. If dry SHA somehow changed → falls back to `pending`.
-4. **Still pending, subsequent reconcile** — `Phase != "success"` fires the trigger again, re-querying the external system until it approves.
+1. **First commit arrives** — trigger fires (`ReportedSha` mismatch), HTTP request made, external system approves → `success`. Controller records `LastSuccessfulSha` = current hydrated SHA.
+2. **New content pushed** — hydrated SHA changes, trigger fires, HTTP request made. If external system has not approved the new content → `pending`. If already approved → `success`.
+3. **No changes, carry-forward reconcile** — trigger does not fire (`ReportedSha` matches). Success expression runs with `Response` as `nil`. `Phase == "success" && ReportedSha == LastSuccessfulSha` → stays `success` because the SHA hasn't changed.
+4. **SHA changed but trigger hasn't fired yet** — success expression runs with `Response` as `nil`. `ReportedSha != LastSuccessfulSha` → returns `false` → phase resets to `pending`. On the next reconcile, `Phase != "success"` fires the trigger.
+5. **Still pending** — `Phase != "success"` keeps the trigger firing on every requeue until the external system approves.
 
-> [!NOTE]
-> If your repository uses a hydrator, you can also (or instead) check `Environment.Proposed.Note.DrySha` — the dry SHA recorded in the git note on the hydrated commit.
+No `success.when.output` expression is needed. No `SuccessOutput` tracking. The `ReportedSha == LastSuccessfulSha` check in the carry-forward path ensures the WRCS never stays `success` for a SHA that has been superseded.
 
-#### `reportOn: active` — re-validate when active content changes
-
-The same pattern applies when monitoring the active commit. For `reportOn: active`, polling mode works because the polling optimization only applies to `reportOn: proposed`:
-
-```yaml
-apiVersion: promoter.argoproj.io/v1alpha1
-kind: WebRequestCommitStatus
-metadata:
-  name: production-health-with-sha-guard
-spec:
-  promotionStrategyRef:
-    name: my-app
-  key: production-health
-  descriptionTemplate: "Production health: {{ .Phase }}"
-  reportOn: active
-  httpRequest:
-    urlTemplate: "https://monitoring.example.com/health/{{ .ReportedSha }}"
-    method: GET
-  success:
-    when:
-      expression: |
-        Response != nil && Response.StatusCode == 200 && Response.Body.healthy == true
-          ? true
-          : (Phase == "success" && Environment.Active.Dry.Sha == (SuccessOutput != nil ? SuccessOutput["successDrySha"] : ""))
-      output:
-        expression: |
-          Response != nil && Response.StatusCode == 200 && Response.Body.healthy == true
-            ? { successDrySha: Environment.Active.Dry.Sha }
-            : (SuccessOutput ?? {})
-  mode:
-    polling:
-      interval: 1m
-```
+> [!IMPORTANT]
+> For `reportOn: proposed`, you must use **trigger mode** for this pattern. In polling mode with `reportOn: proposed`, the controller has an optimization that skips the success expression entirely once a SHA has succeeded. Trigger mode does not have this optimization. For `reportOn: active`, polling mode works because the optimization only applies to `reportOn: proposed`.
 
 #### `promotionstrategy` context — per-branch re-validation
 
-In `promotionstrategy` context, `Environment` is `nil` so you cannot access `Environment.Proposed.Dry.Sha` directly. Instead, walk `PromotionStrategy.Status.Environments` and use the per-branch return format. The success expression returns the `{ defaultPhase, environments }` object, and the output stores the per-branch phases and dry SHAs so they can be replayed on subsequent reconciles.
+In `promotionstrategy` context, `ReportedSha` and `LastSuccessfulSha` are empty (there is no single "current environment"). However, the `WebRequestCommitStatus` variable gives expressions access to the full WRCS status, including `Status.PromotionStrategyContext.LastSuccessfulShas` — a per-branch list of the hydrated SHAs that last achieved success.
 
-Use `let` to capture the outer predicate variable inside nested closures so `find` can match by branch. The output stores an array of `{ branch, drySha, phase }` entries that the success expression replays on subsequent reconciles:
+Use `find` with `let` to look up each branch's last successful SHA and compare it against the current hydrated SHA from the PromotionStrategy:
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: WebRequestCommitStatus
 metadata:
-  name: per-branch-sha-guard
+  name: per-branch-revalidation
 spec:
   promotionStrategyRef:
     name: my-app
@@ -862,30 +820,21 @@ spec:
           ? (Response.StatusCode == 200 && Response.Body.approved == true
               ? { defaultPhase: "success" }
               : { defaultPhase: "pending" })
-          : (SuccessOutput != nil && SuccessOutput["branches"] != nil
-              ? {
-                  defaultPhase: "pending",
-                  environments: map(PromotionStrategy.Status.Environments, {
-                    let env = #;
-                    let stored = find(SuccessOutput["branches"], {.branch == env.Branch});
-                    {
-                      branch: env.Branch,
-                      phase: stored != nil && stored.drySha == env.Proposed.Dry.Sha
-                        ? (stored.phase ?? "pending")
-                        : "pending"
-                    }
-                  })
+          : {
+              defaultPhase: "pending",
+              environments: map(PromotionStrategy.Status.Environments, {
+                let env = #;
+                let lastSha = find(
+                  WebRequestCommitStatus.Status.PromotionStrategyContext.LastSuccessfulShas ?? [],
+                  {.Branch == env.Branch}
+                );
+                {
+                  branch: env.Branch,
+                  phase: lastSha != nil && lastSha.LastSuccessfulSha == env.Proposed.Hydrated.Sha
+                    ? "success" : "pending"
                 }
-              : { defaultPhase: "pending" })
-      output:
-        expression: |
-          Response != nil && Response.StatusCode == 200 && Response.Body.approved == true
-            ? {
-                branches: map(PromotionStrategy.Status.Environments, {
-                  { branch: #.Branch, drySha: #.Proposed.Dry.Sha, phase: "success" }
-                })
-              }
-            : (SuccessOutput ?? {})
+              })
+            }
   mode:
     context: promotionstrategy
     trigger:
@@ -893,23 +842,22 @@ spec:
       when:
         expression: |
           Phase != "success" ||
-          SuccessOutput == nil ||
-          SuccessOutput["branches"] == nil ||
           any(PromotionStrategy.Status.Environments, {
             let env = #;
-            find(SuccessOutput["branches"] ?? [], {.branch == env.Branch}) == nil
+            let lastSha = find(
+              WebRequestCommitStatus.Status.PromotionStrategyContext.LastSuccessfulShas ?? [],
+              {.Branch == env.Branch}
+            );
+            lastSha == nil || lastSha.LastSuccessfulSha != env.Proposed.Hydrated.Sha
           })
-        output:
-          expression: "{ triggered: true }"
 ```
 
-How this works:
+How it works:
 
-- **`success.when.expression`**: When `Response` is present and approved, returns `{ defaultPhase: "success" }` so all environments become success. When no response, it replays the stored phases from `SuccessOutput` — but for any branch where the current `Proposed.Dry.Sha` no longer matches the stored `drySha` entry, that branch's phase resets to `"pending"`. Branches whose dry SHA is unchanged keep their stored phase.
-- **`success.when.output.expression`**: On a successful response, snapshots each environment's dry SHA and phase into a `branches` array using `map(PromotionStrategy.Status.Environments, { ... })`. On subsequent reconciles without a successful response, preserves the existing `SuccessOutput` unchanged.
-- **`trigger.when.expression`**: Re-fires the HTTP request when any branch hasn't been validated yet (no matching entry in `branches`) or when the aggregate phase isn't success.
+- **`success.when.expression`**: When `Response` is present and approved, returns `{ defaultPhase: "success" }` so all environments become success. When no response, builds per-branch phases by comparing each branch's current `Proposed.Hydrated.Sha` against the controller's `LastSuccessfulShas`. Branches whose SHA matches stay `"success"`; branches with a new SHA get `"pending"`.
+- **`trigger.when.expression`**: Re-fires the HTTP request when any branch's hydrated SHA doesn't match its last successful SHA, or when the aggregate phase isn't success.
 
-The `let env = #` inside the `map` predicate captures the outer element so the inner `find(SuccessOutput["branches"], {.branch == env.Branch})` can look up the stored entry by branch name without conflicting with the `find` predicate's own `#` / `.branch`.
+No `success.when.output` expression is needed. The controller's existing `LastSuccessfulShas` tracking (accessible via `WebRequestCommitStatus.Status.PromotionStrategyContext.LastSuccessfulShas`) replaces the manual `SuccessOutput` bookkeeping that was previously required.
 
 ## Field reference
 

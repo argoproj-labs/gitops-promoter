@@ -3850,21 +3850,16 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard", Ordered, f
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
-							Expression: `Response != nil && Response.StatusCode == 200 && Response.Body.approved == true` +
-								` ? true` +
-								` : (Phase == "success" && Environment.Proposed.Dry.Sha == (SuccessOutput != nil ? SuccessOutput["successDrySha"] : ""))`,
-							Output: &promoterv1alpha1.OutputSpec{
-								Expression: `Response != nil && Response.StatusCode == 200 && Response.Body.approved == true` +
-									` ? { successDrySha: Environment.Proposed.Dry.Sha }` +
-									` : (SuccessOutput ?? {})`,
-							},
+							Expression: `Response != nil` +
+								` ? (Response.StatusCode == 200 && Response.Body.approved == true)` +
+								` : (Phase == "success" && ReportedSha == LastSuccessfulSha)`,
 						},
 					},
 					Mode: promoterv1alpha1.ModeSpec{
 						Trigger: &promoterv1alpha1.TriggerModeSpec{
 							RequeueDuration: metav1.Duration{Duration: 5 * time.Minute},
 							When: promoterv1alpha1.WhenWithOutputSpec{
-								Expression: `ReportedSha != (TriggerOutput["lastCheckedSha"] ?? "")`,
+								Expression: `ReportedSha != (TriggerOutput["lastCheckedSha"] ?? "") || Phase != "success"`,
 								Output:     &promoterv1alpha1.OutputSpec{Expression: `{ lastCheckedSha: ReportedSha }`},
 							},
 						},
@@ -3897,12 +3892,6 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard", Ordered, f
 				for _, env := range fetched.Status.Environments {
 					if env.Branch == testBranchDevelopment {
 						g.Expect(env.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
-						g.Expect(env.SuccessOutput).NotTo(BeNil())
-
-						var data map[string]any
-						e := json.Unmarshal(env.SuccessOutput.Raw, &data)
-						g.Expect(e).NotTo(HaveOccurred())
-						g.Expect(data["successDrySha"]).To(Equal(firstDrySha))
 					}
 				}
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -4018,35 +4007,30 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard (PromotionSt
 				`  ? (Response.StatusCode == 200 && Response.Body.approved == true` +
 				`      ? { defaultPhase: "success" }` +
 				`      : { defaultPhase: "pending" })` +
-				`  : (SuccessOutput != nil && SuccessOutput["branches"] != nil` +
-				`      ? {` +
-				`          defaultPhase: "pending",` +
-				`          environments: map(PromotionStrategy.Status.Environments, {` +
-				`            let env = #;` +
-				`            let stored = find(SuccessOutput["branches"], {.branch == env.Branch});` +
-				`            {` +
-				`              branch: env.Branch,` +
-				`              phase: stored != nil && stored.drySha == env.Proposed.Dry.Sha` +
-				`                ? (stored.phase ?? "pending")` +
-				`                : "pending"` +
-				`            }` +
-				`          })` +
+				`  : {` +
+				`      defaultPhase: "pending",` +
+				`      environments: map(PromotionStrategy.Status.Environments, {` +
+				`        let env = #;` +
+				`        let lastSha = find(` +
+				`          WebRequestCommitStatus.Status.PromotionStrategyContext.LastSuccessfulShas ?? [],` +
+				`          {.Branch == env.Branch}` +
+				`        );` +
+				`        {` +
+				`          branch: env.Branch,` +
+				`          phase: lastSha != nil && lastSha.LastSuccessfulSha == env.Proposed.Hydrated.Sha` +
+				`            ? "success" : "pending"` +
 				`        }` +
-				`      : { defaultPhase: "pending" })`
-
-			outputExpr := `Response != nil && Response.StatusCode == 200 && Response.Body.approved == true` +
-				`  ? {` +
-				`      branches: map(PromotionStrategy.Status.Environments, {` +
-				`        { branch: #.Branch, drySha: #.Proposed.Dry.Sha, phase: "success" }` +
 				`      })` +
-				`    }` +
-				`  : (SuccessOutput ?? {})`
+				`    }`
 
-			triggerExpr := `Phase != "success" || SuccessOutput == nil || ` +
-				`SuccessOutput["branches"] == nil || ` +
+			triggerExpr := `Phase != "success" || ` +
 				`any(PromotionStrategy.Status.Environments, {` +
 				`  let env = #;` +
-				`  find(SuccessOutput["branches"] ?? [], {.branch == env.Branch}) == nil` +
+				`  let lastSha = find(` +
+				`    WebRequestCommitStatus.Status.PromotionStrategyContext.LastSuccessfulShas ?? [],` +
+				`    {.Branch == env.Branch}` +
+				`  );` +
+				`  lastSha == nil || lastSha.LastSuccessfulSha != env.Proposed.Hydrated.Sha` +
 				`})`
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
@@ -4066,7 +4050,6 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard (PromotionSt
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
 							Expression: successExpr,
-							Output:     &promoterv1alpha1.OutputSpec{Expression: outputExpr},
 						},
 					},
 					Mode: promoterv1alpha1.ModeSpec{
@@ -4075,7 +4058,6 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard (PromotionSt
 							RequeueDuration: metav1.Duration{Duration: 5 * time.Minute},
 							When: promoterv1alpha1.WhenWithOutputSpec{
 								Expression: triggerExpr,
-								Output:     &promoterv1alpha1.OutputSpec{Expression: `{ triggered: true }`},
 							},
 						},
 					},
@@ -4107,12 +4089,6 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard (PromotionSt
 					To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 				g.Expect(wrcsPhaseForBranch(fetched.Status.PromotionStrategyContext.PhasePerBranch, testBranchStaging)).
 					To(Equal(promoterv1alpha1.CommitPhaseSuccess))
-				g.Expect(fetched.Status.PromotionStrategyContext.SuccessOutput).NotTo(BeNil())
-
-				var data map[string]any
-				e := json.Unmarshal(fetched.Status.PromotionStrategyContext.SuccessOutput.Raw, &data)
-				g.Expect(e).NotTo(HaveOccurred())
-				g.Expect(data).To(HaveKey("branches"))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			_ = firstDrySha

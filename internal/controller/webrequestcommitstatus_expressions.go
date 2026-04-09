@@ -101,14 +101,15 @@ func (r *WebRequestCommitStatusReconciler) getCompiledResponseDataExpression(exp
 // triggerExprData builds the expression data map for trigger and trigger output expressions.
 func (td templateData) triggerExprData() map[string]any {
 	return map[string]any{
-		"ReportedSha":       td.ReportedSha,
-		"LastSuccessfulSha": td.LastSuccessfulSha,
-		"Phase":             td.Phase,
-		"PromotionStrategy": td.PromotionStrategy,
-		"Environment":       td.Environment,
-		"TriggerOutput":     td.TriggerOutput,
-		"ResponseOutput":    td.ResponseOutput,
-		"SuccessOutput":     td.SuccessOutput,
+		"ReportedSha":            td.ReportedSha,
+		"LastSuccessfulSha":      td.LastSuccessfulSha,
+		"Phase":                  td.Phase,
+		"PromotionStrategy":      td.PromotionStrategy,
+		"Environment":            td.Environment,
+		"WebRequestCommitStatus": td.WebRequestCommitStatus,
+		"TriggerOutput":          td.TriggerOutput,
+		"ResponseOutput":         td.ResponseOutput,
+		"SuccessOutput":          td.SuccessOutput,
 	}
 }
 

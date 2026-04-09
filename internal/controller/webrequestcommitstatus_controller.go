@@ -71,15 +71,16 @@ type WebRequestCommitStatusReconciler struct {
 // templateData is the data passed to Go templates when rendering URL, headers, body, and description.
 // It is built per environment and includes ReportedSha, Phase, TriggerOutput, ResponseOutput, SuccessOutput, and namespace metadata.
 type templateData struct {
-	NamespaceMetadata namespaceMetadata
-	PromotionStrategy *promoterv1alpha1.PromotionStrategy
-	Environment       *promoterv1alpha1.EnvironmentStatus
-	TriggerOutput     map[string]any
-	ResponseOutput    map[string]any
-	SuccessOutput     map[string]any
-	ReportedSha       string
-	LastSuccessfulSha string
-	Phase             string
+	NamespaceMetadata      namespaceMetadata
+	PromotionStrategy      *promoterv1alpha1.PromotionStrategy
+	Environment            *promoterv1alpha1.EnvironmentStatus
+	WebRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
+	TriggerOutput          map[string]any
+	ResponseOutput         map[string]any
+	SuccessOutput          map[string]any
+	ReportedSha            string
+	LastSuccessfulSha      string
+	Phase                  string
 }
 
 // namespaceMetadata holds the labels and annotations of the WebRequestCommitStatus's namespace.
@@ -255,12 +256,15 @@ func (r *WebRequestCommitStatusReconciler) SetupWithManager(ctx context.Context,
 func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, namespaceMeta namespaceMetadata) ([]string, []*promoterv1alpha1.CommitStatus, time.Duration, error) {
 	logger := log.FromContext(ctx)
 
+	// Snapshot the full WRCS before any status mutations so expressions see previous-reconcile state.
+	wrcsSnapshot := wrcs.DeepCopy()
+
 	// Clear the promotionstrategy-context status; this path uses per-environment status instead.
 	wrcs.Status.PromotionStrategyContext = nil
 
 	// Snapshot status from the last reconcile before we rebuild it. Used for transition detection,
 	// polling skip optimization, and carrying forward state when the trigger doesn't fire.
-	lastReconciledStatus := wrcs.Status.DeepCopy()
+	lastReconciledStatus := wrcsSnapshot.Status.DeepCopy()
 	if lastReconciledStatus == nil {
 		lastReconciledStatus = &promoterv1alpha1.WebRequestCommitStatusStatus{}
 	}
@@ -292,15 +296,16 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		}
 
 		td := templateData{
-			ReportedSha:       reportedSha,
-			LastSuccessfulSha: lastSuccessfulSha,
-			Phase:             lastState.Phase,
-			PromotionStrategy: ps,
-			Environment:       psEnvStatusMap[branch],
-			NamespaceMetadata: namespaceMeta,
-			TriggerOutput:     lastState.TriggerData,
-			ResponseOutput:    lastState.ResponseData,
-			SuccessOutput:     lastState.SuccessData,
+			ReportedSha:            reportedSha,
+			LastSuccessfulSha:      lastSuccessfulSha,
+			Phase:                  lastState.Phase,
+			PromotionStrategy:      ps,
+			Environment:            psEnvStatusMap[branch],
+			WebRequestCommitStatus: wrcsSnapshot,
+			NamespaceMetadata:      namespaceMeta,
+			TriggerOutput:          lastState.TriggerData,
+			ResponseOutput:         lastState.ResponseData,
+			SuccessOutput:          lastState.SuccessData,
 		}
 
 		// Polling+proposed optimization: skip when this SHA already succeeded
@@ -376,6 +381,9 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 		return nil, nil, 0, nil
 	}
 
+	// Snapshot the full WRCS before any status mutations so expressions see previous-reconcile state.
+	wrcsSnapshot := wrcs.DeepCopy()
+
 	psEnvStatusMap := buildPSEnvStatusMap(ps)
 	currentShaPerBranch, err := resolveCurrentShas(applicableEnvs, psEnvStatusMap, wrcs.Spec.ReportOn)
 	if err != nil {
@@ -383,14 +391,14 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 	}
 
 	// Snapshot prior reconcile state before we overwrite status.
-	lastReconciledCtxStatus := wrcs.Status.PromotionStrategyContext.DeepCopy()
+	lastReconciledCtxStatus := wrcsSnapshot.Status.PromotionStrategyContext.DeepCopy()
 	lastState := lastReconciledStateFromContext(ctx, lastReconciledCtxStatus)
 
 	// Polling+proposed optimization: skip when all environments already succeeded for their current SHAs
 	if wrcs.Spec.Mode.Polling != nil && wrcs.Spec.ReportOn == constants.CommitRefProposed && lastReconciledCtxStatus != nil {
 		if allBranchesSucceededForCurrentShas(applicableEnvs, lastReconciledCtxStatus, currentShaPerBranch) {
 			logger.V(4).Info("All environments already successful for current SHAs (context=promotionstrategy), skipping HTTP request")
-			baseTd := templateData{Phase: string(promoterv1alpha1.CommitPhaseSuccess), PromotionStrategy: ps, NamespaceMetadata: namespaceMeta, TriggerOutput: lastState.TriggerData, ResponseOutput: lastState.ResponseData, SuccessOutput: lastState.SuccessData}
+			baseTd := templateData{Phase: string(promoterv1alpha1.CommitPhaseSuccess), PromotionStrategy: ps, WebRequestCommitStatus: wrcsSnapshot, NamespaceMetadata: namespaceMeta, TriggerOutput: lastState.TriggerData, ResponseOutput: lastState.ResponseData, SuccessOutput: lastState.SuccessData}
 			commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0, len(applicableEnvs))
 			for _, env := range applicableEnvs {
 				cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, env.Branch, currentShaPerBranch[env.Branch], promoterv1alpha1.CommitPhaseSuccess, baseTd)
@@ -404,12 +412,13 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 	}
 
 	td := templateData{
-		Phase:             lastState.Phase,
-		PromotionStrategy: ps,
-		NamespaceMetadata: namespaceMeta,
-		TriggerOutput:     lastState.TriggerData,
-		ResponseOutput:    lastState.ResponseData,
-		SuccessOutput:     lastState.SuccessData,
+		Phase:                  lastState.Phase,
+		PromotionStrategy:      ps,
+		WebRequestCommitStatus: wrcsSnapshot,
+		NamespaceMetadata:      namespaceMeta,
+		TriggerOutput:          lastState.TriggerData,
+		ResponseOutput:         lastState.ResponseData,
+		SuccessOutput:          lastState.SuccessData,
 	}
 
 	decision, err := r.evaluateTriggerDecision(ctx, wrcs.Spec.Mode, td, lastState.LastRequestTime)
