@@ -732,27 +732,22 @@ spec:
 
 ## Best Practices
 
-### Reset to Pending When Dry SHAs Change
+### Reset to Pending When Proposed Content Changes
 
-When a WebRequestCommitStatus uses `reportOn: proposed`, the `ReportedSha` is the **hydrated** commit SHA. However, the underlying content that determines whether the check should pass is tied to the **dry SHA** (`Environment.Proposed.Dry.Sha`). There is a race condition if you don't account for this:
+When a WebRequestCommitStatus achieves `success`, it stays successful for that SHA until something changes. If new content is pushed (new dry commit → new hydrated commit), the WRCS should go back to `pending` so the external system re-validates the new content before promotion proceeds. Without this, there is a risk of promoting content that was never approved by the external system.
 
-1. The WebRequestCommitStatus achieves `success` for proposed dry SHA **A**
-2. New content is pushed, changing `Environment.Proposed.Dry.Sha` to **B**
-3. Before re-hydration completes (updating `ReportedSha`), the old `success` is still in effect
-4. The PromotionStrategy sees `success` and promotes — but the content has already changed
+The same applies to `reportOn: active` — when the active dry SHA changes, the WRCS should re-validate.
 
-The same race applies to `reportOn: active` when `Environment.Active.Dry.Sha` changes.
-
-**Recommendation:** Use `SuccessOutput` to track the dry SHA that was validated when success was achieved. In the success expression, fall back to `pending` whenever the current dry SHA no longer matches. This forces the check to re-run against the new content before promotion proceeds.
+**Recommendation:** Use the trigger expression to detect when the dry SHA changes and re-fire the HTTP request. The success expression uses `SuccessOutput` to track which dry SHA was last validated; if the dry SHA no longer matches and the external system has not yet re-approved, the phase falls back to `pending`.
 
 > [!IMPORTANT]
 > For `reportOn: proposed`, you **must** use **trigger mode** for this pattern. In polling mode with `reportOn: proposed`, the controller has an optimization that skips the success expression entirely once a SHA has succeeded — it carries forward the previous phase without re-evaluating. Trigger mode does not have this optimization; the `success.when.expression` runs on every reconcile regardless.
 >
 > For `reportOn: active`, polling mode works because the optimization only applies to `reportOn: proposed`.
 
-#### `reportOn: proposed` — reset on proposed dry SHA change (trigger mode)
+#### `reportOn: proposed` — re-validate when proposed content changes
 
-Use trigger mode with a trigger that tracks the `ReportedSha`. When the hydrated SHA hasn't changed, the trigger skips the HTTP request, but the success expression still runs and can detect dry SHA changes:
+Use trigger mode with a trigger that fires when the dry SHA changes. When new content is pushed, the trigger detects the new `Proposed.Dry.Sha`, re-fires the HTTP request, and the success expression determines the phase from the response. Between trigger firings (when `Response` is `nil`), the success expression falls back to the stored `SuccessOutput` — keeping success only if the dry SHA still matches:
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
@@ -788,24 +783,25 @@ spec:
       requeueDuration: 1m
       when:
         expression: |
-          ReportedSha != (TriggerOutput["lastCheckedSha"] ?? "")
+          ReportedSha != (TriggerOutput["lastCheckedSha"] ?? "") ||
+          Environment.Proposed.Dry.Sha != (TriggerOutput["lastCheckedDrySha"] ?? "") ||
+          Phase != "success"
         output:
           expression: |
-            { lastCheckedSha: ReportedSha }
+            { lastCheckedSha: ReportedSha, lastCheckedDrySha: Environment.Proposed.Dry.Sha }
 ```
 
-How the success expression works:
+How it works end to end:
 
-- **New successful response** (`Response != nil` and approved): returns `true` → phase becomes `success`, and the output stores the current dry SHA.
-- **No request this reconcile** (`Response` is `nil`) and previously `success`: only remains `success` if the proposed dry SHA still matches the stored `successDrySha`. If the dry SHA changed, returns `false` → phase resets to `pending`.
-- **Phase was already `pending`**: remains `pending` until a new successful response arrives.
-
-The trigger only fires when `ReportedSha` (hydrated SHA) changes. Between trigger firings, the success expression still runs every reconcile (with `Response` as `nil`), which is what detects the dry SHA change.
+1. **First proposed commit arrives** — trigger fires (SHA mismatch with empty `TriggerOutput`), HTTP request made, external system returns approved → phase `success`. `SuccessOutput` stores the dry SHA. `TriggerOutput` stores the hydrated and dry SHAs.
+2. **New content pushed (new dry + hydrated SHAs)** — trigger fires (`Proposed.Dry.Sha` changed or `ReportedSha` changed), HTTP request made. If the external system has not yet approved the new content → phase `pending`. If already approved → phase `success` with updated `SuccessOutput`.
+3. **No changes, subsequent reconcile** — trigger does not fire (SHAs match). Success expression runs with `Response` as `nil`. If `Phase` was `success` and dry SHA still matches `SuccessOutput` → stays `success`. If dry SHA somehow changed → falls back to `pending`.
+4. **Still pending, subsequent reconcile** — `Phase != "success"` fires the trigger again, re-querying the external system until it approves.
 
 > [!NOTE]
-> If your repository uses a hydrator, you can also (or instead) check `Environment.Proposed.Note.DrySha` — the dry SHA recorded in the git note on the hydrated commit. `Proposed.Dry.Sha` changes first (when the dry branch updates), while `Note.DrySha` changes once hydration completes. Checking `Proposed.Dry.Sha` is more conservative as it catches the change earlier.
+> If your repository uses a hydrator, you can also (or instead) check `Environment.Proposed.Note.DrySha` — the dry SHA recorded in the git note on the hydrated commit.
 
-#### `reportOn: active` — reset on active dry SHA change
+#### `reportOn: active` — re-validate when active content changes
 
 The same pattern applies when monitoring the active commit. For `reportOn: active`, polling mode works because the polling optimization only applies to `reportOn: proposed`:
 
@@ -839,55 +835,7 @@ spec:
       interval: 1m
 ```
 
-#### Combined — trigger on dry SHA change and re-validate immediately
-
-When you want the HTTP request to re-fire immediately upon a dry SHA change (rather than waiting for the next reconcile to detect it), combine the success guard with a trigger expression that also watches the dry SHA:
-
-```yaml
-apiVersion: promoter.argoproj.io/v1alpha1
-kind: WebRequestCommitStatus
-metadata:
-  name: approval-trigger-sha-guard
-spec:
-  promotionStrategyRef:
-    name: my-app
-  key: external-approval
-  descriptionTemplate: "External approval: {{ .Phase }}"
-  reportOn: proposed
-  httpRequest:
-    urlTemplate: "https://approvals.example.com/api/check/{{ .ReportedSha }}"
-    method: GET
-  success:
-    when:
-      expression: |
-        Response != nil && Response.StatusCode == 200 && Response.Body.approved == true
-          ? true
-          : (Phase == "success" && Environment.Proposed.Dry.Sha == (SuccessOutput != nil ? SuccessOutput["successDrySha"] : ""))
-      output:
-        expression: |
-          Response != nil && Response.StatusCode == 200 && Response.Body.approved == true
-            ? { successDrySha: Environment.Proposed.Dry.Sha }
-            : (SuccessOutput ?? {})
-  mode:
-    trigger:
-      requeueDuration: 1m
-      when:
-        expression: |
-          ReportedSha != (TriggerOutput["lastCheckedSha"] ?? "") ||
-          Environment.Proposed.Dry.Sha != (TriggerOutput["lastCheckedDrySha"] ?? "") ||
-          Phase != "success"
-        output:
-          expression: |
-            { lastCheckedSha: ReportedSha, lastCheckedDrySha: Environment.Proposed.Dry.Sha }
-```
-
-The trigger expression fires when:
-
-1. The hydrated SHA changes (new `ReportedSha`)
-2. The dry SHA changes (new content pushed before re-hydration)
-3. The phase is not yet `success` (keeps retrying until approval is achieved)
-
-#### `promotionstrategy` context — per-branch dry SHA guard
+#### `promotionstrategy` context — per-branch re-validation
 
 In `promotionstrategy` context, `Environment` is `nil` so you cannot access `Environment.Proposed.Dry.Sha` directly. Instead, walk `PromotionStrategy.Status.Environments` and use the per-branch return format. The success expression returns the `{ defaultPhase, environments }` object, and the output stores the per-branch phases and dry SHAs so they can be replayed on subsequent reconciles.
 
