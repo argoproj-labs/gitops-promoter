@@ -1,10 +1,12 @@
 package metrics
 
 import (
+	"context"
 	"strconv"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -218,7 +220,8 @@ func RecordGitOperation(gitRepo *v1alpha1.GitRepository, operation GitOperation,
 }
 
 // RecordSCMCall records both the increment and observation for SCM API calls, and optionally observes rate limit metrics.
-func RecordSCMCall(gitRepo *v1alpha1.GitRepository, api SCMAPI, operation SCMOperation, responseCode int, duration time.Duration, rateLimit *RateLimit) {
+// It emits a structured debug log (verbosity V(1); enable with e.g. --zap-log-level=1) for each call, matching metric labels.
+func RecordSCMCall(ctx context.Context, gitRepo *v1alpha1.GitRepository, api SCMAPI, operation SCMOperation, responseCode int, duration time.Duration, rateLimit *RateLimit) {
 	labels := prometheus.Labels{
 		"git_repository": gitRepo.Name,
 		"scm_provider":   gitRepo.Spec.ScmProviderRef.Name,
@@ -228,6 +231,16 @@ func RecordSCMCall(gitRepo *v1alpha1.GitRepository, api SCMAPI, operation SCMOpe
 	}
 	scmCallsTotal.With(labels).Inc()
 	scmCallsDurationSeconds.With(labels).Observe(duration.Seconds())
+
+	log.FromContext(ctx).V(1).Info("SCM API call",
+		"git_repository", gitRepo.Name,
+		"git_repository_namespace", gitRepo.Namespace,
+		"scm_provider", gitRepo.Spec.ScmProviderRef.Name,
+		"api", string(api),
+		"operation", string(operation),
+		"response_code", responseCode,
+		"duration_seconds", duration.Seconds(),
+	)
 
 	if rateLimit != nil {
 		rateLimitLabels := prometheus.Labels{
