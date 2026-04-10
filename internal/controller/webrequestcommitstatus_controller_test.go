@@ -295,139 +295,24 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
-		Describe("Polling Mode - Interval Short-Circuit", func() {
-			var (
-				webRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
-				requestCount           int
-				requestMu              sync.Mutex
-			)
-
-			BeforeEach(func() {
-				requestCount = 0
-				By("Creating a test HTTP server that counts requests and never returns approved (so we hit interval short-circuit path, not 'already successful SHA')")
-				testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					requestMu.Lock()
-					requestCount++
-					requestMu.Unlock()
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusOK)
-					_ = json.NewEncoder(w).Encode(map[string]any{
-						"approved": false,
-						"status":   "pending",
-					})
-				}))
-
-				By("Creating a WebRequestCommitStatus in polling mode with long interval")
-				webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      name + "-polling-interval-shortcircuit",
-						Namespace: "default",
-					},
-					Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
-						PromotionStrategyRef: promoterv1alpha1.ObjectReference{
-							Name: name,
-						},
-						Key:      "external-approval",
-						ReportOn: constants.CommitRefProposed,
-						HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-							URLTemplate: testServer.URL + `/validate/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}`,
-							Method:      "GET",
-							Timeout:     metav1.Duration{Duration: 10 * time.Second},
-						},
-						Success: promoterv1alpha1.SuccessSpec{
-							When: promoterv1alpha1.WhenWithOutputSpec{
-								Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
-							},
-						},
-						Mode: promoterv1alpha1.ModeSpec{
-							Polling: &promoterv1alpha1.PollingModeSpec{
-								// Long interval so a second reconcile triggered by PS update is still "within interval"
-								Interval: metav1.Duration{Duration: 10 * time.Minute},
-							},
-						},
-					},
-				}
-				Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
-			})
-
-			AfterEach(func() {
-				if testServer != nil {
-					testServer.Close()
-				}
-				_ = k8sClient.Delete(ctx, webRequestCommitStatus)
-			})
-
-			// Success = with short-circuit code in place, a second reconcile within the polling interval must not call the HTTP server.
-			// Server returns approved: false so validation stays Pending and we exercise the interval short-circuit path (not "already successful SHA").
-			It("should skip HTTP request when reconcile runs within polling interval", func() {
-				By("Waiting for first reconcile to complete (one HTTP request per environment) and set LastRequestTime; phase stays Pending (approved: false)")
-				var initialRequestCount int
-				Eventually(func(g Gomega) {
-					var wrcs promoterv1alpha1.WebRequestCommitStatus
-					err := k8sClient.Get(ctx, types.NamespacedName{
-						Name:      name + "-polling-interval-shortcircuit",
-						Namespace: "default",
-					}, &wrcs)
-					g.Expect(err).NotTo(HaveOccurred())
-					// Wait until ALL environments have been processed (not just >= 1), so that every
-					// environment has made its first HTTP request before we snapshot initialRequestCount.
-					// The PromotionStrategy has 3 environments (dev, staging, production). If we only wait
-					// for >= 1, staging and production may not have fired yet, and their first requests
-					// would then race with the Consistently block and falsely increment the count.
-					g.Expect(len(wrcs.Status.Environments)).To(Equal(3), "all three environments must be processed before snapshotting the request count")
-					for i := range wrcs.Status.Environments {
-						g.Expect(wrcs.Status.Environments[i].LastRequestTime).ToNot(BeNil(), "LastRequestTime should be set after first request")
-						g.Expect(wrcs.Status.Environments[i].Phase).To(Equal(promoterv1alpha1.CommitPhasePending), "validation fails (approved: false) so phase stays Pending")
-					}
-					requestMu.Lock()
-					initialRequestCount = requestCount
-					requestMu.Unlock()
-					g.Expect(initialRequestCount).To(BeNumerically(">=", 3), "Should have made at least one HTTP request per environment (3 total) before snapshotting")
-				}, constants.EventuallyTimeout).Should(Succeed())
-
-				By("Triggering another reconcile by updating the WebRequestCommitStatus (annotation)")
-				Eventually(func(g Gomega) {
-					var wrcs promoterv1alpha1.WebRequestCommitStatus
-					err := k8sClient.Get(ctx, types.NamespacedName{
-						Name:      name + "-polling-interval-shortcircuit",
-						Namespace: "default",
-					}, &wrcs)
-					g.Expect(err).NotTo(HaveOccurred())
-					if wrcs.Annotations == nil {
-						wrcs.Annotations = make(map[string]string)
-					}
-					wrcs.Annotations["test-reconcile-trigger"] = strconv.FormatInt(time.Now().UnixNano(), 10)
-					err = k8sClient.Update(ctx, &wrcs)
-					g.Expect(err).NotTo(HaveOccurred())
-				}, constants.EventuallyTimeout).Should(Succeed())
-
-				By("Success: no additional HTTP request for 10s — controller must not hit the server on second reconcile within interval")
-				Consistently(func(g Gomega) {
-					requestMu.Lock()
-					count := requestCount
-					requestMu.Unlock()
-					g.Expect(count).To(Equal(initialRequestCount), "controller must not call HTTP server when reconcile runs within polling interval (short-circuit success)")
-				}, 10*time.Second).Should(Succeed())
-			})
-		})
-
 		It("should only update lastSuccessfulSha when validation succeeds", func() {
 			By("Creating a test HTTP server that starts failing then succeeds")
-			var requestCount int
-			var mu sync.Mutex
+			var lssRequestCount int
+			var lssMu sync.Mutex
 			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				mu.Lock()
-				requestCount++
-				count := requestCount
-				mu.Unlock()
+				lssMu.Lock()
+				lssRequestCount++
+				count := lssRequestCount
+				lssMu.Unlock()
 
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
-				// First 2 requests: not approved (validation should fail)
-				// After that: approved (validation should succeed)
+				// With 3 environments, the first round produces 3 requests. Use a threshold
+				// of 6 so that at least 2 full rounds (6 requests) stay pending before any
+				// environment sees approval. This avoids flakiness from a global counter.
 				_ = json.NewEncoder(w).Encode(map[string]any{
-					"approved": count > 2,
-					"status":   map[bool]string{true: "approved", false: "pending"}[count > 2],
+					"approved": count > 6,
+					"status":   map[bool]string{true: "approved", false: "pending"}[count > 6],
 				})
 			}))
 
@@ -509,16 +394,127 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 		})
 	})
 
-	Describe("Trigger Mode - SHA Change Detection", func() {
-		var webRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
-		var requestCount int
+	Describe("Polling Mode - Interval Short-Circuit", func() {
+		var (
+			shortCircuitWRCS *promoterv1alpha1.WebRequestCommitStatus
+			scRequestCount   int
+			scRequestMu      sync.Mutex
+		)
 
 		BeforeEach(func() {
-			requestCount = 0
+			scRequestCount = 0
+			By("Creating a test HTTP server that counts requests and never returns approved (so we hit interval short-circuit path, not 'already successful SHA')")
+			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				scRequestMu.Lock()
+				scRequestCount++
+				scRequestMu.Unlock()
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"approved": false,
+					"status":   "pending",
+				})
+			}))
+
+			By("Creating a WebRequestCommitStatus in polling mode with long interval")
+			shortCircuitWRCS = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-polling-interval-shortcircuit",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key:      "external-approval",
+					ReportOn: constants.CommitRefProposed,
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: testServer.URL + `/validate/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}`,
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+					},
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
+							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true) : Phase == "success"`,
+						},
+					},
+					Mode: promoterv1alpha1.ModeSpec{
+						Polling: &promoterv1alpha1.PollingModeSpec{
+							Interval: metav1.Duration{Duration: 10 * time.Minute},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, shortCircuitWRCS)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if testServer != nil {
+				testServer.Close()
+			}
+			_ = k8sClient.Delete(ctx, shortCircuitWRCS)
+		})
+
+		It("should skip HTTP request when reconcile runs within polling interval", func() {
+			By("Waiting for first reconcile to complete (one HTTP request per environment) and set LastRequestTime; phase stays Pending (approved: false)")
+			var initialRequestCount int
+			Eventually(func(g Gomega) {
+				var wrcs promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name + "-polling-interval-shortcircuit",
+					Namespace: "default",
+				}, &wrcs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(len(wrcs.Status.Environments)).To(Equal(3), "all three environments must be processed before snapshotting the request count")
+				for i := range wrcs.Status.Environments {
+					g.Expect(wrcs.Status.Environments[i].LastRequestTime).ToNot(BeNil(), "LastRequestTime should be set after first request")
+					g.Expect(wrcs.Status.Environments[i].Phase).To(Equal(promoterv1alpha1.CommitPhasePending), "validation fails (approved: false) so phase stays Pending")
+				}
+				scRequestMu.Lock()
+				initialRequestCount = scRequestCount
+				scRequestMu.Unlock()
+				g.Expect(initialRequestCount).To(BeNumerically(">=", 3), "Should have made at least one HTTP request per environment (3 total) before snapshotting")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Triggering another reconcile by updating the WebRequestCommitStatus (annotation)")
+			Eventually(func(g Gomega) {
+				var wrcs promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name + "-polling-interval-shortcircuit",
+					Namespace: "default",
+				}, &wrcs)
+				g.Expect(err).NotTo(HaveOccurred())
+				if wrcs.Annotations == nil {
+					wrcs.Annotations = make(map[string]string)
+				}
+				wrcs.Annotations["test-reconcile-trigger"] = strconv.FormatInt(time.Now().UnixNano(), 10)
+				err = k8sClient.Update(ctx, &wrcs)
+				g.Expect(err).NotTo(HaveOccurred())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Success: no additional HTTP request for 10s — controller must not hit the server on second reconcile within interval")
+			Consistently(func(g Gomega) {
+				scRequestMu.Lock()
+				count := scRequestCount
+				scRequestMu.Unlock()
+				g.Expect(count).To(Equal(initialRequestCount), "controller must not call HTTP server when reconcile runs within polling interval (short-circuit success)")
+			}, 10*time.Second).Should(Succeed())
+		})
+	})
+
+	Describe("Trigger Mode - SHA Change Detection", func() {
+		var webRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
+		var triggerRequestCount int
+		var triggerMu sync.Mutex
+
+		BeforeEach(func() {
+			triggerRequestCount = 0
 
 			By("Creating a test HTTP server that counts requests")
 			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				requestCount++
+				triggerMu.Lock()
+				triggerRequestCount++
+				triggerMu.Unlock()
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
 				_ = json.NewEncoder(w).Encode(map[string]any{
@@ -573,7 +569,10 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 		It("should trigger HTTP request on first reconcile and store expression data", func() {
 			By("Waiting for first HTTP request to be made")
 			Eventually(func(g Gomega) {
-				g.Expect(requestCount).To(BeNumerically(">=", 1), "Should have made at least one HTTP request")
+				triggerMu.Lock()
+				c := triggerRequestCount
+				triggerMu.Unlock()
+				g.Expect(c).To(BeNumerically(">=", 1), "Should have made at least one HTTP request")
 
 				var wrcs promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -604,11 +603,14 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying subsequent reconciles do not trigger HTTP requests (same SHA)")
-			initialCount := requestCount
+			triggerMu.Lock()
+			initialCount := triggerRequestCount
+			triggerMu.Unlock()
 			Consistently(func(g Gomega) {
-				// Request count should not increase significantly since SHA hasn't changed
-				// Allow some buffer for multiple environments
-				g.Expect(requestCount).To(BeNumerically("<=", initialCount+3), "Should not make many additional HTTP requests for same SHA")
+				triggerMu.Lock()
+				c := triggerRequestCount
+				triggerMu.Unlock()
+				g.Expect(c).To(BeNumerically("<=", initialCount+3), "Should not make many additional HTTP requests for same SHA")
 			}, 10*time.Second, 2*time.Second).Should(Succeed())
 		})
 	})
@@ -1105,13 +1107,14 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				mu.Lock()
 				requestCount++
+				count := requestCount
 				mu.Unlock()
 
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
 				_ = json.NewEncoder(w).Encode(map[string]any{
 					"approved": true,
-					"count":    requestCount,
+					"count":    count,
 				})
 			}))
 
@@ -1186,8 +1189,10 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 				currentResponseData := wrcs.Status.Environments[0].ResponseOutput.Raw
 				g.Expect(currentResponseData).To(Equal(firstResponseData), "response output should be preserved")
 
-				// Verify only one request was made
-				g.Expect(requestCount).To(Equal(1), "Should only make one request")
+				mu.Lock()
+				c := requestCount
+				mu.Unlock()
+				g.Expect(c).To(Equal(1), "Should only make one request")
 			}, 15*time.Second, 3*time.Second).Should(Succeed())
 		})
 
@@ -1270,8 +1275,10 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 				devEnv := wrcs.Status.Environments[0]
 				g.Expect(devEnv.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 
-				// Verify we made multiple requests (at least 3)
-				g.Expect(requestCount).To(BeNumerically(">=", 3))
+				mu.Lock()
+				c := requestCount
+				mu.Unlock()
+				g.Expect(c).To(BeNumerically(">=", 3))
 
 				// Verify final response data shows "done"
 				g.Expect(devEnv.ResponseOutput).NotTo(BeNil())
@@ -1279,7 +1286,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 				err = json.Unmarshal(devEnv.ResponseOutput.Raw, &responseData)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(responseData["status"]).To(Equal("done"))
-			}, 30*time.Second).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
 		It("should extract custom fields using response.output.expression", func() {
@@ -2468,7 +2475,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 				requestMu.Unlock()
 				g.Expect(c).To(BeNumerically("<=", initialCount+1),
 					"HTTP requests should be skipped after all environments succeed (initial=%d)", initialCount)
-			}, 6*time.Second).Should(Succeed())
+			}, 10*time.Second).Should(Succeed())
 		})
 	})
 
@@ -3340,22 +3347,24 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 		It("should report success until expiry passes then revert to pending without new HTTP", func() {
 			var hitsAfterFirstWave int
 
-			By("Waiting for first HTTP wave and success on development while still before expiry")
+			By("Waiting for ALL environments to complete their first HTTP wave before snapshotting hit count")
 			Eventually(func(g Gomega) {
-				httpHitsMu.Lock()
-				h := httpHits
-				httpHitsMu.Unlock()
-				g.Expect(h).To(BeNumerically(">=", 1), "each environment fires once on first SHA track")
-
 				var fetched promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
 				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(len(fetched.Status.Environments)).To(Equal(3),
+					"all three environments must be processed before snapshotting the HTTP hit count")
 				for _, env := range fetched.Status.Environments {
-					if env.Branch == testBranchDevelopment {
-						g.Expect(env.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
-						g.Expect(env.ResponseOutput).NotTo(BeNil())
-					}
+					g.Expect(env.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess),
+						"environment %s should be success before snapshotting", env.Branch)
+					g.Expect(env.ResponseOutput).NotTo(BeNil(),
+						"environment %s should have ResponseOutput before snapshotting", env.Branch)
 				}
+
+				httpHitsMu.Lock()
+				h := httpHits
+				httpHitsMu.Unlock()
+				g.Expect(h).To(BeNumerically(">=", 3), "each environment fires once on first SHA track")
 
 				csName := utils.KubeSafeUniqueName(ctx, wrcs.Name+"-"+testBranchDevelopment+"-webrequest")
 				var cs promoterv1alpha1.CommitStatus
