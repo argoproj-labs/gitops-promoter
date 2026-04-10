@@ -41,6 +41,7 @@ To add a **`prepare-commit-msg`** hook that signs off automatically, follow [Arg
 | API types (CRDs)                | [`api/v1alpha1/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/api/v1alpha1)               |
 | Install / RBAC / CRD bases      | [`config/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/config)                           |
 | Metrics                         | [`internal/metrics/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/internal/metrics)       |
+| SCM provider integrations       | [`internal/scms/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/internal/scms) (see [Adding an SCM Provider](adding-an-scm-provider.md)) |
 | User docs (MkDocs)              | [`docs/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/docs)                               |
 | Dashboard & Argo CD extension   | [`ui/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/ui)                                   |
 | Envtest-based integration tests | [`internal/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/internal) (via Ginkgo)          |
@@ -52,6 +53,7 @@ To add a **`prepare-commit-msg`** hook that signs off automatically, follow [Arg
 - **APIs and RBAC** — Express API permissions with **`// +kubebuilder:rbac`** on the reconcilers in **`internal/controller/*_controller.go`** (not by editing `config/rbac/role.yaml`). Regenerate via **`make build-installer`** so rules stay aligned with what the binary actually needs.
 - **Commit status controllers** — If you create or update `CommitStatus` objects, follow [Commit status development best practices](../commit-status-controllers/development-best-practices.md) (standard labels, owner references, and keys that match `PromotionStrategy` config).
 - **Metrics** — Register operational metrics in `internal/metrics` and describe them for operators in [Metrics](../monitoring/metrics.md) (see the note in [`internal/metrics/metrics.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/metrics/metrics.go)).
+- **SCM providers** — New or extended provider code lives under `internal/scms/<provider>/`. Call [`metrics.RecordSCMCall`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/metrics/metrics.go) for every SCM REST request so metrics and debug logs stay correct; see [Adding an SCM Provider](adding-an-scm-provider.md).
 
 ## Questions?
 
