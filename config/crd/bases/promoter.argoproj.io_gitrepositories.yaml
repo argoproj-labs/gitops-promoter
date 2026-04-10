@@ -84,6 +84,25 @@ spec:
                 - name
                 - owner
                 type: object
+              bitbucketDataCenter:
+                description: BitbucketDataCenterRepo is a repository in Bitbucket
+                  DataCenter/Server, identified by its project key and repository
+                  slug.
+                properties:
+                  name:
+                    description: Name is the repository slug (e.g. "my-repo").
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                  project:
+                    description: Project is the Bitbucket project key (e.g. "MYPROJ").
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                required:
+                - name
+                - project
+                type: object
               fake:
                 description: FakeRepo is a placeholder for a repository in the fake
                   SCM provider, used for testing purposes.
@@ -202,8 +221,8 @@ spec:
             type: object
             x-kubernetes-validations:
             - message: exactly one of the fields in [github gitlab forgejo gitea bitbucketCloud
-                azureDevOps fake] must be set
-              rule: '[has(self.github),has(self.gitlab),has(self.forgejo),has(self.gitea),has(self.bitbucketCloud),has(self.azureDevOps),has(self.fake)].filter(x,x==true).size()
+                bitbucketDataCenter azureDevOps fake] must be set
+              rule: '[has(self.github),has(self.gitlab),has(self.forgejo),has(self.gitea),has(self.bitbucketCloud),has(self.bitbucketDataCenter),has(self.azureDevOps),has(self.fake)].filter(x,x==true).size()
                 == 1'
           status:
             description: GitRepositoryStatus defines the observed state of GitRepository

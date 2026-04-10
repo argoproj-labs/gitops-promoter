@@ -1645,6 +1645,19 @@ spec:
                 description: BitbucketCloud required configuration for Bitbucket Cloud
                   as the SCM provider
                 type: object
+              bitbucketDataCenter:
+                description: BitbucketDataCenter required configuration for Bitbucket
+                  DataCenter/Server as the SCM provider
+                properties:
+                  domain:
+                    description: Domain is the Bitbucket DataCenter/Server domain,
+                      such as "bitbucket.mycompany.com".
+                    maxLength: 253
+                    minLength: 1
+                    type: string
+                required:
+                - domain
+                type: object
               fake:
                 description: Fake required configuration for Fake as the SCM provider
                 properties:
@@ -1740,8 +1753,8 @@ spec:
             type: object
             x-kubernetes-validations:
             - message: exactly one of the fields in [github gitlab forgejo gitea bitbucketCloud
-                azureDevOps fake] must be set
-              rule: '[has(self.github),has(self.gitlab),has(self.forgejo),has(self.gitea),has(self.bitbucketCloud),has(self.azureDevOps),has(self.fake)].filter(x,x==true).size()
+                bitbucketDataCenter azureDevOps fake] must be set
+              rule: '[has(self.github),has(self.gitlab),has(self.forgejo),has(self.gitea),has(self.bitbucketCloud),has(self.bitbucketDataCenter),has(self.azureDevOps),has(self.fake)].filter(x,x==true).size()
                 == 1'
           status:
             description: ScmProviderStatus defines the observed state of ScmProvider
@@ -4187,6 +4200,25 @@ spec:
                 - name
                 - owner
                 type: object
+              bitbucketDataCenter:
+                description: BitbucketDataCenterRepo is a repository in Bitbucket
+                  DataCenter/Server, identified by its project key and repository
+                  slug.
+                properties:
+                  name:
+                    description: Name is the repository slug (e.g. "my-repo").
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                  project:
+                    description: Project is the Bitbucket project key (e.g. "MYPROJ").
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                required:
+                - name
+                - project
+                type: object
               fake:
                 description: FakeRepo is a placeholder for a repository in the fake
                   SCM provider, used for testing purposes.
@@ -4305,8 +4337,8 @@ spec:
             type: object
             x-kubernetes-validations:
             - message: exactly one of the fields in [github gitlab forgejo gitea bitbucketCloud
-                azureDevOps fake] must be set
-              rule: '[has(self.github),has(self.gitlab),has(self.forgejo),has(self.gitea),has(self.bitbucketCloud),has(self.azureDevOps),has(self.fake)].filter(x,x==true).size()
+                bitbucketDataCenter azureDevOps fake] must be set
+              rule: '[has(self.github),has(self.gitlab),has(self.forgejo),has(self.gitea),has(self.bitbucketCloud),has(self.bitbucketDataCenter),has(self.azureDevOps),has(self.fake)].filter(x,x==true).size()
                 == 1'
           status:
             description: GitRepositoryStatus defines the observed state of GitRepository
@@ -6165,6 +6197,19 @@ spec:
                 description: BitbucketCloud required configuration for Bitbucket Cloud
                   as the SCM provider
                 type: object
+              bitbucketDataCenter:
+                description: BitbucketDataCenter required configuration for Bitbucket
+                  DataCenter/Server as the SCM provider
+                properties:
+                  domain:
+                    description: Domain is the Bitbucket DataCenter/Server domain,
+                      such as "bitbucket.mycompany.com".
+                    maxLength: 253
+                    minLength: 1
+                    type: string
+                required:
+                - domain
+                type: object
               fake:
                 description: Fake required configuration for Fake as the SCM provider
                 properties:
@@ -6260,8 +6305,8 @@ spec:
             type: object
             x-kubernetes-validations:
             - message: exactly one of the fields in [github gitlab forgejo gitea bitbucketCloud
-                azureDevOps fake] must be set
-              rule: '[has(self.github),has(self.gitlab),has(self.forgejo),has(self.gitea),has(self.bitbucketCloud),has(self.azureDevOps),has(self.fake)].filter(x,x==true).size()
+                bitbucketDataCenter azureDevOps fake] must be set
+              rule: '[has(self.github),has(self.gitlab),has(self.forgejo),has(self.gitea),has(self.bitbucketCloud),has(self.bitbucketDataCenter),has(self.azureDevOps),has(self.fake)].filter(x,x==true).size()
                 == 1'
           status:
             description: ScmProviderStatus defines the observed state of ScmProvider

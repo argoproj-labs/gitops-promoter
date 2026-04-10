@@ -1,7 +1,7 @@
 # Getting Started
 
 This guide will help you get started installing and setting up the GitOps Promoter. We currently support
-GitHub, GitHub Enterprise, GitLab, Forgejo (including Codeberg), Gitea, Bitbucket Cloud, and Azure DevOps as the SCM providers. We would welcome any contributions to add support for other providers.
+GitHub, GitHub Enterprise, GitLab, Forgejo (including Codeberg), Gitea, Bitbucket Cloud, Bitbucket DataCenter/Server, and Azure DevOps as the SCM providers. We would welcome any contributions to add support for other providers.
 
 ## Requirements
 
@@ -296,6 +296,99 @@ To configure the GitOps Promoter with Bitbucket Cloud, you will need to create a
 6. Select the following permissions:
    * **Repositories**: Read and Write
    * **Pull requests**: Read and Write
+
+## Bitbucket DataCenter/Server Configuration
+
+To configure the GitOps Promoter with Bitbucket DataCenter or Bitbucket Server, you will need to create either a Personal Access Token (PAT) or use HTTP Basic Auth credentials.
+
+### Creating a Bitbucket DataCenter/Server Personal Access Token
+
+1. Log in to your Bitbucket DataCenter/Server instance
+2. Navigate to your user profile → **Manage account** → **Personal Access Tokens**
+3. Click **Create a token**
+4. Give it a name (e.g., "GitOps Promoter")
+5. Select the following permissions:
+   * **Projects**: Read
+   * **Repositories**: Write
+   * **Pull requests**: Write
+6. Click **Create** and save the token value
+
+### ScmProvider
+
+Create a Kubernetes Secret with either a Personal Access Token or username/password credentials:
+
+```yaml
+# Option 1: Personal Access Token (recommended)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: <your-secret-name>
+type: Opaque
+stringData:
+  token: <your-personal-access-token>
+---
+# Option 2: HTTP Basic Auth (username/password)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: <your-secret-name>
+type: Opaque
+stringData:
+  username: <your-username>
+  password: <your-password>
+```
+
+Create a ScmProvider referencing the secret and your Bitbucket DataCenter/Server hostname:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ScmProvider
+metadata:
+  name: <your-scmprovider-name>
+spec:
+  secretRef:
+    name: <your-secret-name>
+  bitbucketDataCenter:
+    domain: <your-bitbucket-server-hostname>
+```
+
+### GitRepository
+
+Create a GitRepository referencing the ScmProvider. The `project` field is the Bitbucket project key (e.g. `MYPROJ`) and `name` is the repository slug (e.g. `my-repo`):
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: GitRepository
+metadata:
+  name: <git-repository-ref-name>
+spec:
+  bitbucketDataCenter:
+    project: <your-project-key>
+    name: <your-repository-slug>
+  scmProviderRef:
+    name: <your-scmprovider-name>
+```
+
+### Webhooks (Optional - but highly recommended)
+
+Bitbucket DataCenter/Server can send webhook events to the GitOps Promoter to trigger PR creation on push without waiting for the reconciliation interval.
+
+> [!NOTE]
+> You will need to configure an ingress or load balancer to allow Bitbucket DataCenter/Server to reach the GitOps Promoter
+> webhook receiver service (`promoter-webhook-receiver`) on port `3333`. If you do not use webhooks you might want to
+> adjust the auto-reconciliation interval using the `promotionStrategyRequeueDuration` and
+> `changeTransferPolicyRequeueDuration` fields of the `ControllerConfiguration` resource.
+
+To configure a Bitbucket DataCenter/Server webhook:
+
+1. Navigate to your repository in Bitbucket DataCenter/Server
+2. Go to **Repository settings** → **Webhooks**
+3. Click **Create webhook**
+4. Configure the webhook:
+   * **Name**: GitOps Promoter
+   * **URL**: `https://<your-domain>/` (replace with your webhook receiver URL)
+   * **Events**: Select **Repository: Push**
+5. Click **Save**
 
 ## Azure DevOps Configuration
 
