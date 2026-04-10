@@ -3952,6 +3952,17 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = os.RemoveAll(gitPath) }()
 
+			By("Setting staging's active commit status to success (simulates healthy initial deployment)")
+			stagingActiveSha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+ctpStaging.Spec.ActiveBranch)
+			Expect(err).NotTo(HaveOccurred())
+			stagingActiveSha = strings.TrimSpace(stagingActiveSha)
+			_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, activeCommitStatusStaging, func() error {
+				activeCommitStatusStaging.Spec.Sha = stagingActiveSha
+				activeCommitStatusStaging.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+				return nil
+			})
+			Expect(err).To(Succeed())
+
 			drySha, err := makeDryCommit(ctx, gitPath, "change affecting dev and prod only")
 			Expect(err).NotTo(HaveOccurred())
 
