@@ -724,7 +724,7 @@ func getEffectiveHydratedDrySha(envStatus promoterv1alpha1.EnvironmentStatus) st
 // isPreviousEnvironmentPending recursively checks preceding environments (from last to first) to verify:
 // 1. The environment has been hydrated for the target dry SHA
 // 2. If the environment has real changes (not a no-op), it has been promoted and is healthy
-// 3. If the environment is a no-op, recurse to check earlier environments
+// 3. If the environment is a no-op, verify it is healthy, then recurse to check earlier environments
 func isPreviousEnvironmentPending(precedingEnvStatuses []promoterv1alpha1.EnvironmentStatus, targetDrySha string, currentActiveCommitTime metav1.Time) (isPending bool, reason string) {
 	// Base case: no more environments to check - all were no-ops
 	// This is valid - e.g., a change that only affects production. Allow promotion.
