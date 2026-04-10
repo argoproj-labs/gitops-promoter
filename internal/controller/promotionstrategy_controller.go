@@ -776,7 +776,16 @@ func isPreviousEnvironmentPending(precedingEnvStatuses []promoterv1alpha1.Enviro
 		return true, "Waiting for previous environment to be promoted"
 	}
 
-	// This environment is a no-op with no pending changes - recurse to check earlier environments
+	// Even for no-op environments with no pending changes, verify that the active
+	// deployment is healthy. This catches the case where a newer no-op dry SHA arrives
+	// while a real promotion is still deploying — without this check, every environment
+	// looks like a "no-op with no pending changes" and the recursion skips all health
+	// checks, allowing downstream environments to promote prematurely.
+	if isPend, reason := checkCommitStatusesPassing(envStatus.Active.CommitStatuses, envStatus.Branch); isPend {
+		return isPend, reason
+	}
+
+	// This environment is a no-op with no pending changes and is healthy - recurse to check earlier environments
 	return isPreviousEnvironmentPending(precedingEnvStatuses[:len(precedingEnvStatuses)-1], targetDrySha, currentActiveCommitTime)
 }
 
