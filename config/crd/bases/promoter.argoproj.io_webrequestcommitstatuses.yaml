@@ -60,7 +60,7 @@ spec:
                   data after the most recent HTTP request and trigger evaluation (unlike spec.httpRequest URL/body/headers, which use pre-request data — see HTTPRequestSpec).
                   How spec.mode.context restricts template data: see ModeSpec.
 
-                  Examples: "External approval for {{ .Environment.Branch }}", "Checking deployment {{ .ReportedSha | trunc 7 }}", "{{ .Phase }} - waiting for external approval".
+                  Examples: "External approval for {{ .Branch }}", "{{ .Phase }} - waiting for external approval".
 
                   If not specified, defaults to empty string.
                 type: string
@@ -323,7 +323,7 @@ spec:
                         properties:
                           output:
                             description: |-
-                              Output is evaluated after the HTTP request completes (any status). Response variables are the same as for spec.success.when.expression — see WhenSpec.Expression.
+                              Output is evaluated after the HTTP request completes (any status). Response variables are the same as for spec.success.when.expression — see WhenWithOutputSpec.Expression.
                               The result is stored in status (environments[].responseOutput or promotionStrategyContext.responseOutput) and exposed on the next reconcile as ResponseOutput in trigger expressions and templates.
                               Must return a map/object.
                             properties:
@@ -349,29 +349,27 @@ spec:
                               when false the controller keeps the previous phase and skips the request.
 
                               Available variables:
+                                - Branch (string): the environment branch currently being processed (empty for the shared HTTP request in promotionstrategy context)
+                                - Phase (string): previous reconcile's phase — per-environment in environments context; aggregate of all branches in promotionstrategy context (success only if all succeeded, failure if any failed, pending otherwise)
                                 - PromotionStrategy (PromotionStrategy): the full PromotionStrategy spec and status
-                                - Environment (EnvironmentStatus): current environment's status from PromotionStrategy (environments context only; nil in promotionstrategy context)
-                                - Phase (string): current phase — per-environment in environments context; aggregate of all branches in promotionstrategy context (success only if all succeeded, failure if any failed, pending otherwise)
-                                - ReportedSha (string): the SHA being validated (environments context only; empty in promotionstrategy context)
-                                - LastSuccessfulSha (string): last SHA that achieved success for this environment (environments context only; empty in promotionstrategy context)
+                                - WebRequestCommitStatus (WebRequestCommitStatus): the full WebRequestCommitStatus spec and status (snapshot from the previous reconcile)
                                 - TriggerOutput (map[string]any): custom data from the previous when.output.expression evaluation
                                 - ResponseOutput (map[string]any): response data from the previous HTTP request (if any)
+                                - SuccessOutput (map[string]any): custom data from the previous success.when.output.expression evaluation
 
                               Note: PromotionStrategy.Status.Environments is an ordered array representing the promotion sequence.
-                              Environments[0] is the first environment (e.g., dev), Environments[1] is second (e.g., staging), etc.
-                              Changes flow through the array in order. To access the previous environment, use array indexing:
-                                currentIdx = findIndex(PromotionStrategy.Status.Environments, {.Branch == Environment.Branch})
-                                previousEnv = currentIdx > 0 ? PromotionStrategy.Status.Environments[currentIdx-1] : nil
+                              Use Branch + filter/find to look up environment-specific data:
+                                find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha
 
                               Examples:
                                 # Always trigger (equivalent to polling mode)
                                 - "true"
 
                                 # Only trigger when SHA changes from what we last tracked
-                                - "ReportedSha != TriggerOutput['lastCheckedSha']"
+                                - "find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha != (TriggerOutput['lastCheckedSha'] ?? '')"
 
                                 # Only trigger when a particular commit status is success (e.g. argocd-health)
-                                - "size(filter(Environment.Proposed.CommitStatuses, {.Key == 'argocd-health'})) > 0 && filter(Environment.Proposed.CommitStatuses, {.Key == 'argocd-health'})[0].Phase == 'success'"
+                                - "let env = find(PromotionStrategy.Status.Environments, {.Branch == Branch}); any(env.Proposed.CommitStatuses, {.Key == 'argocd-health' && .Phase == 'success'})"
 
                                 # Only retry if the previous response indicated we should
                                 - "ResponseOutput == nil || ResponseOutput.status == 'retry'"
@@ -388,7 +386,7 @@ spec:
 
                               Examples:
                                 # Track SHA to detect changes
-                                - "{ trackedSha: ReportedSha }"
+                                - "{ trackedSha: find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha }"
 
                                 # Increment attempt counter
                                 - "{ attemptCount: (TriggerOutput[\"attemptCount\"] ?? 0) + 1 }"
@@ -452,36 +450,64 @@ spec:
                   Evaluated every reconcile. See SuccessSpec.
                 properties:
                   when:
-                    description: When is evaluated every reconcile. See WhenSpec.Expression.
+                    description: When is evaluated every reconcile. See WhenWithOutputSpec.Expression.
                     properties:
                       expression:
                         description: |-
-                          Expression uses github.com/expr-lang/expr and is evaluated every reconcile to determine the commit status phase.
-                          When an HTTP request was made this reconcile, Response is populated; otherwise Response is nil.
+                          Expression is a boolean expr expression that decides whether the HTTP request should be made.
+                          It is evaluated BEFORE each potential HTTP request. When it returns true the request is made;
+                          when false the controller keeps the previous phase and skips the request.
 
-                          Available variables (same as spec.mode.trigger.when.expression, plus Response):
-                            - Response (map or nil): the HTTP response from this reconcile's request, nil when no request was made.
-                              When non-nil: Response.StatusCode (int), Response.Body (parsed JSON as map[string]any, or raw string), Response.Headers (map[string][]string).
+                          Available variables:
+                            - Branch (string): the environment branch currently being processed (empty for the shared HTTP request in promotionstrategy context)
+                            - Phase (string): previous reconcile's phase — per-environment in environments context; aggregate of all branches in promotionstrategy context (success only if all succeeded, failure if any failed, pending otherwise)
                             - PromotionStrategy (PromotionStrategy): the full PromotionStrategy spec and status
-                            - Environment (EnvironmentStatus): current environment's status from PromotionStrategy (environments context only; nil in promotionstrategy context)
-                            - Phase (string): phase from the previous reconcile
-                            - ReportedSha (string): the SHA being validated (environments context only; empty in promotionstrategy context)
-                            - LastSuccessfulSha (string): last SHA that achieved success (environments context only; empty in promotionstrategy context)
+                            - WebRequestCommitStatus (WebRequestCommitStatus): the full WebRequestCommitStatus spec and status (snapshot from the previous reconcile)
                             - TriggerOutput (map[string]any): custom data from the previous when.output.expression evaluation
                             - ResponseOutput (map[string]any): response data from the previous HTTP request (if any)
+                            - SuccessOutput (map[string]any): custom data from the previous success.when.output.expression evaluation
 
-                          Important: since the expression runs every reconcile, it must handle Response being nil (no HTTP request
-                          this reconcile). Expressions that only reference Response.* will error when Response is nil, causing the
-                          reconcile to return an error and requeue. Guard Response access:
-                            Response != nil ? Response.StatusCode == 200 : <fallback>
+                          Note: PromotionStrategy.Status.Environments is an ordered array representing the promotion sequence.
+                          Use Branch + filter/find to look up environment-specific data:
+                            find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha
 
-                          Evaluation scope follows spec.mode.context; see ModeSpec. Return shape:
+                          Examples:
+                            # Always trigger (equivalent to polling mode)
+                            - "true"
 
-                            - "environments": must return boolean — true → success, false → pending; failure phase is not expressible.
+                            # Only trigger when SHA changes from what we last tracked
+                            - "find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha != (TriggerOutput['lastCheckedSha'] ?? '')"
 
-                            - "promotionstrategy": boolean true/false applies the same phase to all applicable environments (success or pending only), or return an object with optional defaultPhase ("success"|"pending"|"failure", default "pending") and optional environments: [{ branch, phase }, ...] for per-branch phases. Example:
-                              { defaultPhase: "pending", environments: [{ branch: "dev", phase: "success" }, { branch: "staging", phase: "pending" }] }.
+                            # Only trigger when a particular commit status is success (e.g. argocd-health)
+                            - "let env = find(PromotionStrategy.Status.Environments, {.Branch == Branch}); any(env.Proposed.CommitStatuses, {.Key == 'argocd-health' && .Phase == 'success'})"
+
+                            # Only retry if the previous response indicated we should
+                            - "ResponseOutput == nil || ResponseOutput.status == 'retry'"
                         type: string
+                      output:
+                        description: |-
+                          Output optionally holds an expression that produces a map of data to persist across reconcile cycles.
+                          The expression runs on every reconcile (whether or not the HTTP request is made). Its result is stored in
+                          status (per-environment under environments[].triggerOutput, or under promotionStrategyContext.triggerOutput when context is promotionstrategy)
+                          and is available in the next reconcile as TriggerOutput in when.expression, when.output.expression, and in templates.
+                          Use it to track state such as attempt counts, last-seen SHAs, or timestamps.
+
+                          Variables are the same as for Expression (see above). The expression must return a map/object; every key is stored in TriggerOutput.
+
+                          Examples:
+                            # Track SHA to detect changes
+                            - "{ trackedSha: find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha }"
+
+                            # Increment attempt counter
+                            - "{ attemptCount: (TriggerOutput[\"attemptCount\"] ?? 0) + 1 }"
+                        properties:
+                          expression:
+                            description: Expression is an expr expression that must
+                              return a map/object.
+                            type: string
+                        required:
+                        - expression
+                        type: object
                     required:
                     - expression
                     type: object
@@ -491,7 +517,10 @@ spec:
               urlTemplate:
                 description: |-
                   UrlTemplate is the commit status target URL in the SCM provider. Same Go templates, variables, timing, and context rules as DescriptionTemplate.
-                  Typical uses: approval UI, dashboard, API, or runbook links. Examples: "https://approvals.example.com/{{ .ReportedSha }}", "https://dashboard.example.com/{{ .Environment.Branch }}/status".
+                  Typical uses: approval UI, dashboard, API, or runbook links.
+                  To include the reported SHA, walk PromotionStrategy.Status.Environments by Branch:
+                    "https://approvals.example.com/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
+                  For branch-only links: "https://dashboard.example.com/{{ .Branch }}/status".
 
                   If not specified, defaults to empty string (no URL shown).
                 type: string
@@ -574,8 +603,8 @@ spec:
                   description: |-
                     WebRequestCommitStatusEnvironmentStatus defines the observed status for a specific environment.
 
-                    TriggerOutput and ResponseOutput hold JSON maps written by trigger mode: when.output.expression and response.output.expression respectively.
-                    They are surfaced on the next reconcile as TriggerOutput and ResponseOutput in expr and templates (see WhenWithOutputSpec and HTTPRequestSpec).
+                    TriggerOutput, ResponseOutput, and SuccessOutput hold JSON maps written by their respective output expressions.
+                    They are surfaced on the next reconcile as TriggerOutput, ResponseOutput, and SuccessOutput in expr and templates (see WhenWithOutputSpec and HTTPRequestSpec).
                   properties:
                     branch:
                       description: Branch is the name of the branch/environment.
@@ -617,6 +646,13 @@ spec:
                     responseOutput:
                       description: ResponseOutput is the map from spec.mode.trigger.response.output.expression
                         when spec.mode.trigger.response is set; otherwise nil.
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+                    successOutput:
+                      description: |-
+                        SuccessOutput is the map from spec.success.when.output.expression (arbitrary JSON keys).
+                        Evaluated every reconcile (whether or not an HTTP request was made). The result is stored here and
+                        exposed on the next reconcile as SuccessOutput in trigger/success expressions and templates.
                       type: object
                       x-kubernetes-preserve-unknown-fields: true
                     triggerOutput:
@@ -704,6 +740,11 @@ spec:
                     x-kubernetes-list-type: map
                   responseOutput:
                     description: 'ResponseOutput: same semantics as WebRequestCommitStatusEnvironmentStatus.ResponseOutput,
+                      one shared map for context=promotionstrategy.'
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                  successOutput:
+                    description: 'SuccessOutput: same semantics as WebRequestCommitStatusEnvironmentStatus.SuccessOutput,
                       one shared map for context=promotionstrategy.'
                     type: object
                     x-kubernetes-preserve-unknown-fields: true

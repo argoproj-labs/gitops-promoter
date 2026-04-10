@@ -17,7 +17,7 @@ For each applicable environment (after resolving context):
    - `active`: Validates the currently deployed commit
 2. The controller evaluates whether to make an HTTP request (polling mode always makes requests, trigger mode evaluates a trigger expression first). In `promotionstrategy` context this decision applies to the **single** shared request for that reconcile.
 3. If triggered, the controller makes an HTTP request to the configured endpoint using templated URL, headers, and body (in `promotionstrategy` context there is only one request per fire, not one per environment).
-4. The controller evaluates `success.when.expression` **every reconcile** to determine the commit status phase. When an HTTP request was made, `Response` is populated; when no request was made, `Response` is `nil`. The expression also has access to `PromotionStrategy`, `Environment` (environments context), `ResponseOutput`, and other trigger-expression variables — see [Success expression variables](#success-expression-variables) below.
+4. The controller evaluates `success.when.expression` **every reconcile** to determine the commit status phase. When an HTTP request was made, `Response` is populated; when no request was made, `Response` is `nil`. The expression also has access to `Branch`, `Phase`, `PromotionStrategy`, `WebRequestCommitStatus`, and output variables (`TriggerOutput`, `ResponseOutput`, `SuccessOutput`) — see [Success expression variables](#success-expression-variables) below.
 5. The controller creates/updates a **CommitStatus per environment**, each with that environment’s SHA and its own phase when using per-branch results.
 6. The PromotionStrategy checks the CommitStatus before allowing promotion
 
@@ -56,6 +56,7 @@ Uses expressions to dynamically control when HTTP requests are made. Powerful fo
 - Only makes HTTP request if trigger expression returns true
 - Can store and access custom state via `TriggerOutput` (via `trigger.when.output.expression`)
 - Can access previous HTTP response data via `ResponseOutput` (via `response.output.expression`)
+- Can store and access custom state from success evaluation via `SuccessOutput` (via `success.when.output.expression`)
 - Always reconciles at `requeueDuration` interval (default: 1 minute)
 
 ## Request scope: environments vs promotionstrategy
@@ -65,7 +66,7 @@ Use **`spec.mode.context`** to choose **`environments`** (default) or **`promoti
 | Value | HTTP requests per WebRequestCommitStatus (when the trigger allows) | `CommitStatus` resources |
 |-------|------------------------------------------------------|---------------------------|
 | `environments` (default) | One per applicable environment | One per environment; each request uses that environment’s templates and SHA |
-| `promotionstrategy` | **One** for the whole `WebRequestCommitStatus` | Still one per environment, but all are updated from the **same** response; each row uses that environment’s `reportOn` SHA |
+| `promotionstrategy` | **One** for the whole `WebRequestCommitStatus` | Still one per environment, but all are derived from the **same** response; each CommitStatus reports on that environment's `reportOn` SHA |
 
 The controller reconciles when the `WebRequestCommitStatus` or the referenced **`PromotionStrategy`** changes (for example environment SHAs moving), so promotion-strategy context stays in sync with the strategy.
 
@@ -76,21 +77,13 @@ Use it when a **single** external API call represents validation for the whole P
 - One “release train” or “deployment pipeline” status API keyed by application or repo, not by individual environment branch
 - A batch endpoint that returns status for multiple environments in one JSON payload (pair with a success expression that returns [per-branch phases](#success-expression-return-types-promotionstrategy-context))
 
-Keep **`environments`** context when each environment should hit a **different** URL or body (typical `{{ .Environment.Branch }}` / `{{ .ReportedSha }}` per call).
-
 ### Template and trigger variables (`promotionstrategy` context)
 
-For the **HTTP request** (URL, headers, body), **trigger** `when.expression`, **trigger** `when.output.expression`, and the **top-level** evaluation that runs before the request, the controller does **not** set per-environment fields. **Do not use** these in those places when `context` is `promotionstrategy`:
+For the **HTTP request** (URL, headers, body), **trigger** `when.expression`, and **trigger** `when.output.expression`, `Branch` is empty (`""`) because there is no single current environment for that one request. Use `PromotionStrategy` (e.g. status environments) for branch-specific values.
 
-- `{{ .Environment }}` / `Environment` in expr  
-- `{{ .ReportedSha }}` / `ReportedSha`  
-- `{{ .LastSuccessfulSha }}` / `LastSuccessfulSha`  
+**You can use:** `PromotionStrategy` (full spec and status), `WebRequestCommitStatus` (full spec and status snapshot), `Phase` (aggregate of all applicable branches' phases), `TriggerOutput`, `ResponseOutput` (trigger mode), `SuccessOutput`, and `NamespaceMetadata` labels and annotations.
 
-They are unset (empty / nil) because there is no single “current environment” for that one request.
-
-**You can use:** `PromotionStrategy` (full spec and status), `Phase` (aggregate of all applicable branches' phases — `success` only when every branch succeeded, `failure` if any failed, `pending` otherwise), `TriggerOutput`, `ResponseOutput` (trigger mode), and `NamespaceMetadata` labels and annotations — same as in environment context, except for the per-env fields above.
-
-When rendering **CommitStatus** `descriptionTemplate` and `urlTemplate`, the controller sets **`{{ .Phase }}`** to **that environment’s** resolved phase (`success`, `pending`, or `failure`). It still does **not** set `ReportedSha` or `Environment` in promotion-strategy context. If you need branch- or SHA-specific text in the SCM description or URL, either **walk `{{ .PromotionStrategy }}`** in the Go template (for example, `range` over `.PromotionStrategy.Status.Environments` and match on `.Branch`) or use **the same wording for every environment** (a generic message or link that does not try to substitute `{{ .ReportedSha }}` or `{{ .Environment.Branch }}`).
+When rendering **CommitStatus** `descriptionTemplate` and `urlTemplate`, the controller sets **`{{ .Branch }}`** to that environment's branch and **`{{ .Phase }}`** to that environment's resolved phase (`success`, `pending`, or `failure`). Use `{{ .Branch }}` with `{{ .PromotionStrategy }}` to look up branch-specific data.
 
 ### Success expression variables
 
@@ -99,13 +92,13 @@ The `success.when.expression` is evaluated **every reconcile**, regardless of wh
 | Variable | Type | Description |
 |----------|------|-------------|
 | `Response` | map or nil | HTTP response from this reconcile's request. `nil` when no request was made. When non-nil: `Response.StatusCode` (int), `Response.Body` (parsed JSON or raw string), `Response.Headers` (map[string][]string). |
-| `PromotionStrategy` | PromotionStrategy | The full PromotionStrategy spec and status. |
-| `Environment` | EnvironmentStatus or nil | Current environment's status from PromotionStrategy. Set in `environments` context; `nil` in `promotionstrategy` context. |
-| `Phase` | string | Phase from the previous reconcile (`"success"`, `"pending"`, or `"failure"`). |
-| `ReportedSha` | string | The SHA being validated. Set in `environments` context; empty in `promotionstrategy` context. |
-| `LastSuccessfulSha` | string | Last SHA that achieved success. Set in `environments` context; empty in `promotionstrategy` context. |
+| `Branch` | string | The environment branch currently being processed. Empty for the shared HTTP request in `promotionstrategy` context; set per-branch for CommitStatus templates. Use with `PromotionStrategy` or `WebRequestCommitStatus` to look up per-branch data. |
+| `Phase` | string | Phase from the previous reconcile (`"success"`, `"pending"`, or `"failure"`). Per-environment in `environments` context; aggregate of all branches in `promotionstrategy` context. |
+| `PromotionStrategy` | PromotionStrategy | The full PromotionStrategy spec and status. Use `find(PromotionStrategy.Status.Environments, {.Branch == Branch})` to access per-environment data (e.g. `.Proposed.Hydrated.Sha`). |
+| `WebRequestCommitStatus` | WebRequestCommitStatus | The full WebRequestCommitStatus spec and status (snapshot from the previous reconcile). Access per-branch status via `Status.Environments` or `Status.PromotionStrategyContext`. |
 | `TriggerOutput` | map[string]any | Custom data from the previous `when.output.expression` evaluation (trigger mode only). |
 | `ResponseOutput` | map[string]any | Response data from the previous HTTP request's `response.output.expression` (trigger mode only). |
+| `SuccessOutput` | map[string]any | Custom data from the previous `success.when.output.expression` evaluation. |
 
 > [!IMPORTANT]
 > Since the expression runs every reconcile, it must handle `Response` being `nil` (no HTTP request this reconcile). Expressions that only reference `Response.*` will error when `Response` is `nil`, causing the reconcile to return an error and requeue. Guard `Response` access:
@@ -113,6 +106,8 @@ The `success.when.expression` is evaluated **every reconcile**, regardless of wh
 ```
 Response != nil ? Response.StatusCode == 200 : Phase == "success"
 ```
+
+This is the **carry-forward pattern**: when an HTTP response is available, evaluate it (`Response.StatusCode == 200`). When no request was made this reconcile (`Response` is `nil`), fall back to `Phase` -- which holds the phase from the previous reconcile. If the previous reconcile already determined `"success"`, the expression preserves it without needing another HTTP call. On the very first reconcile `Phase` is `""` (empty), so the fallback returns `false` and the phase starts as `pending`.
 
 ### Success expression return types (`promotionstrategy` context)
 
@@ -133,9 +128,9 @@ Notable fields:
 
 - **`phasePerBranch`** — list of `{ branch, phase }` entries (Kubernetes list type **map**, merge key **`branch`**) with resolved phase (`success`, `pending`, or `failure`) for every applicable environment. This is always fully populated after reconciliation, regardless of whether the success expression returned a boolean or the object form.
 - **`lastSuccessfulShas`** — list of `{ branch, lastSuccessfulSha }` entries (list type **map**, merge key **`branch`**) recording the last SHA that reached **success** for each branch (used for optimizations below)
-- **`lastRequestTime`**, **`lastResponseStatusCode`**, **`triggerOutput`**, **`responseOutput`** — same roles as per-environment status in the default context, but stored once for the shared request
+- **`lastRequestTime`**, **`lastResponseStatusCode`**, **`triggerOutput`**, **`responseOutput`**, **`successOutput`** — same roles as per-environment status in the default context, but stored once for the shared request
 
-In trigger mode, **`triggerOutput`** and **`responseOutput`** are read from / written to **`promotionStrategyContext`**, not to `status.environments[]`.
+In trigger mode, **`triggerOutput`**, **`responseOutput`**, and **`successOutput`** are read from / written to **`promotionStrategyContext`**, not to `status.environments[]`.
 
 ### Polling optimization (`reportOn: proposed` only)
 
@@ -216,7 +211,7 @@ The WebRequestCommitStatus controller renders URLs (and optionally headers and b
 **Recommendations for administrators:**
 
 - **Restrict who can create or modify WebRequestCommitStatus resources** using RBAC. Only trusted actors should be able to set or change `spec.httpRequest.urlTemplate` and related fields.
-- **Be cautious with templates that include user-controlled or namespace-controlled data.** Template variables such as `NamespaceMetadata.Labels`, `NamespaceMetadata.Annotations`, and data from `TriggerOutput` or `ResponseOutput` can influence the rendered URL. If those values are controllable by less-trusted users, they could push the URL toward internal or metadata endpoints.
+- **Be cautious with templates that include user-controlled or namespace-controlled data.** Template variables such as `NamespaceMetadata.Labels`, `NamespaceMetadata.Annotations`, and data from `TriggerOutput`, `ResponseOutput`, or `SuccessOutput` can influence the rendered URL. If those values are controllable by less-trusted users, they could push the URL toward internal or metadata endpoints.
 - **Consider network policies** to limit egress traffic from the controller (e.g. only to approved external APIs). This helps limit which destinations the controller can reach even if a CRD is misconfigured or compromised.
 
 ### Summary for administrators
@@ -245,7 +240,7 @@ spec:
   descriptionTemplate: "Waiting for external approval"
   reportOn: proposed
   httpRequest:
-    urlTemplate: "https://approvals.example.com/api/check/{{ .ReportedSha }}"
+    urlTemplate: "https://approvals.example.com/api/check/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
     method: GET
     timeout: 30s
   success:
@@ -269,10 +264,10 @@ spec:
   promotionStrategyRef:
     name: my-app
   key: change-validation
-  descriptionTemplate: "Validating change request for {{ .Environment.Branch }}"
-  urlTemplate: "https://dashboard.example.com/changes/{{ .ReportedSha }}"
+  descriptionTemplate: "Validating change request for {{ .Branch }}"
+  urlTemplate: "https://dashboard.example.com/changes/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
   httpRequest:
-    urlTemplate: "https://api.example.com/v1/changes/{{ .ReportedSha }}/status"
+    urlTemplate: "https://api.example.com/v1/changes/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}/status"
     method: GET
     headerTemplates:
       Content-Type: "application/json"
@@ -309,9 +304,9 @@ spec:
   promotionStrategyRef:
     name: my-app
   key: deployment-check
-  descriptionTemplate: "Checking deployment {{ .ReportedSha | trunc 7 }}"
+  descriptionTemplate: "Checking deployment {{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha | trunc 7 }}{{ end }}{{ end }} ({{ .Phase }})"
   httpRequest:
-    urlTemplate: "https://monitoring.example.com/api/deployment/{{ .ReportedSha }}"
+    urlTemplate: "https://monitoring.example.com/api/deployment/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
     method: GET
   success:
     when:
@@ -320,9 +315,9 @@ spec:
     trigger:
       requeueDuration: 1m
       when:
-        expression: "ReportedSha != TriggerOutput[\"lastCheckedSha\"]"
+        expression: 'find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha != (TriggerOutput["lastCheckedSha"] ?? "")'
         output:
-          expression: "{ lastCheckedSha: ReportedSha }"
+          expression: '{ lastCheckedSha: find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha }'
 ```
 
 ### Trigger Mode - Only when another commit status is success
@@ -338,10 +333,10 @@ spec:
   promotionStrategyRef:
     name: my-app
   key: validate-after-argocd
-  descriptionTemplate: "External validation for {{ .ReportedSha }}"
+  descriptionTemplate: "External validation for {{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha | trunc 7 }}{{ end }}{{ end }}"
   reportOn: proposed
   httpRequest:
-    urlTemplate: "https://api.example.com/validate/{{ .ReportedSha }}"
+    urlTemplate: "https://api.example.com/validate/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
     method: GET
   success:
     when:
@@ -351,8 +346,8 @@ spec:
       requeueDuration: 30s
       when:
         expression: |
-          size(filter(Environment.Proposed.CommitStatuses, {.Key == "argocd-health"})) > 0 &&
-          filter(Environment.Proposed.CommitStatuses, {.Key == "argocd-health"})[0].Phase == "success"
+          let env = find(PromotionStrategy.Status.Environments, {.Branch == Branch});
+          any(env.Proposed.CommitStatuses, {.Key == "argocd-health" && .Phase == "success"})
 ```
 
 Use the same `Key` as in your PromotionStrategy's proposed or active commit statuses (e.g. `argocd-health`, `timer`).
@@ -372,7 +367,7 @@ spec:
   key: progressive-check
   descriptionTemplate: "Progressive validation (attempt {{ index .TriggerOutput \"attemptCount\" | default 0 }})"
   httpRequest:
-    urlTemplate: "https://validation.example.com/api/check/{{ .ReportedSha }}"
+    urlTemplate: "https://validation.example.com/api/check/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
     method: GET
   success:
     when:
@@ -398,6 +393,45 @@ spec:
             }
 ```
 
+### Trigger Mode with Success Output
+
+Store computed state from the success evaluation that persists across reconcile cycles. `SuccessOutput` is available in trigger expressions, success expressions, and templates on the next reconcile:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: approval-with-metadata
+spec:
+  promotionStrategyRef:
+    name: my-app
+  key: approval-with-metadata
+  descriptionTemplate: "Approved by {{ index .SuccessOutput \"approver\" | default \"pending\" }}"
+  httpRequest:
+    urlTemplate: "https://approvals.example.com/api/check/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
+    method: GET
+  mode:
+    trigger:
+      requeueDuration: 1m
+      when:
+        expression: 'SuccessOutput == nil || SuccessOutput["checkedSha"] != find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha'
+  success:
+    when:
+      expression: |
+        Response != nil
+          ? (Response.StatusCode == 200 && Response.Body.approved == true)
+          : (Phase == "success" && (let wrcsEnv = find(WebRequestCommitStatus.Status.Environments ?? [], {.Branch == Branch}); wrcsEnv != nil && find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha == wrcsEnv.LastSuccessfulSha))
+      output:
+        expression: |
+          {
+            checkedSha: find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha,
+            approver: Response != nil ? Response.Body.approver : (SuccessOutput ?? {})["approver"],
+            approvedAt: Response != nil ? Response.Body.approvedAt : (SuccessOutput ?? {})["approvedAt"]
+          }
+```
+
+The `success.when.output.expression` runs every reconcile (whether or not an HTTP request was made). Its map result is stored in `status.environments[].successOutput` (or `status.promotionStrategyContext.successOutput` in `promotionstrategy` context) and exposed as `SuccessOutput` in all expressions and Go templates on the next reconcile.
+
 ### POST Request with JSON Body
 
 Sending structured data to an external validation service:
@@ -411,18 +445,18 @@ spec:
   promotionStrategyRef:
     name: my-app
   key: compliance-check
-  descriptionTemplate: "Checking compliance for {{ .Environment.Branch }}"
+  descriptionTemplate: "Checking compliance for {{ .Branch }}"
   httpRequest:
     urlTemplate: "https://compliance.example.com/api/v1/validate"
     method: POST
     headerTemplates:
       Content-Type: "application/json"
-      X-Environment: "{{ .Environment.Branch }}"
+      X-Environment: "{{ .Branch }}"
     bodyTemplate: |
       {
-        "commitSha": "{{ .ReportedSha }}",
-        "environment": "{{ .Environment.Branch }}",
-        "dryCommitSha": "{{ .Environment.Active.Dry.Sha }}",
+        "branch": "{{ .Branch }}",
+        "namespace": "{{ index .NamespaceMetadata.Labels \"team\" }}",
+        "phase": "{{ .Phase }}"
         "namespace": "{{ index .NamespaceMetadata.Labels "team" }}"
       }
     authentication:
@@ -464,7 +498,7 @@ spec:
   key: enterprise-gate
   descriptionTemplate: "Enterprise approval check"
   httpRequest:
-    urlTemplate: "https://api.enterprise.com/v2/deployments/{{ .ReportedSha }}/approval"
+    urlTemplate: "https://api.enterprise.com/v2/deployments/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}/approval"
     method: GET
     authentication:
       oauth2:
@@ -504,7 +538,7 @@ spec:
   key: secure-validation
   descriptionTemplate: "Secure validation check"
   httpRequest:
-    urlTemplate: "https://secure.internal.company.com/api/validate/{{ .ReportedSha }}"
+    urlTemplate: "https://secure.internal.company.com/api/validate/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
     method: GET
     authentication:
       tls:
@@ -553,9 +587,9 @@ spec:
     name: my-promotion-strategy
   key: github-required-statuses
   reportOn: proposed
-  descriptionTemplate: "GitHub required statuses: {{ .ReportedSha }}"
+  descriptionTemplate: "GitHub required statuses: {{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha | trunc 7 }}{{ end }}{{ end }}"
   httpRequest:
-    urlTemplate: "https://api.github.com/repos/my-org/my-repo/commits/{{ .ReportedSha }}/check-runs?filter=latest"
+    urlTemplate: "https://api.github.com/repos/my-org/my-repo/commits/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}/check-runs?filter=latest"
     method: GET
     headerTemplates:
       Accept: "application/vnd.github+json"
@@ -591,7 +625,7 @@ spec:
   descriptionTemplate: "Monitoring production health"
   reportOn: active  # Monitor what's currently deployed
   httpRequest:
-    urlTemplate: "https://monitoring.example.com/health/{{ .ReportedSha }}"
+    urlTemplate: "https://monitoring.example.com/health/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Active.Hydrated.Sha }}{{ end }}{{ end }}"
     method: GET
   success:
     when:
@@ -617,7 +651,7 @@ spec:
   descriptionTemplate: "Running comprehensive checks"
   reportOn: proposed
   httpRequest:
-    urlTemplate: "https://api.example.com/comprehensive-check/{{ .ReportedSha }}"
+    urlTemplate: "https://api.example.com/comprehensive-check/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
     method: GET
   success:
     when:
@@ -655,9 +689,9 @@ spec:
       X-Cost-Center: "{{ index .NamespaceMetadata.Annotations \"cost-center\" }}"
     bodyTemplate: |
       {
-        "sha": "{{ .ReportedSha }}",
+        "branch": "{{ .Branch }}",
         "team": "{{ index .NamespaceMetadata.Labels \"team\" }}",
-        "environment": "{{ .Environment.Branch }}"
+        "phase": "{{ .Phase }}"
       }
   success:
     when:
@@ -688,6 +722,134 @@ spec:
       proposedCommitStatuses:
         - key: compliance-check  # Additional gate for production only
 ```
+
+## Best Practices
+
+### Reset to Pending When Proposed Content Changes
+
+When a WebRequestCommitStatus achieves `success`, it stays successful for that SHA until something changes. If new content is pushed (new dry commit → new hydrated commit), the WRCS should go back to `pending` so the external system re-validates the new content before promotion proceeds. Without this, there is a risk of promoting content that was never approved by the external system.
+
+The same applies to `reportOn: active` — when the active content changes, the WRCS should re-validate.
+
+**Key insight:** The dry SHA and hydrated SHA always change together (the dry SHA is embedded in the hydrated commit's `hydrator.metadata`). The controller already tracks `LastSuccessfulSha` (hydrated) per environment in status. So comparing the current hydrated SHA against `LastSuccessfulSha` is sufficient to detect content changes — no separate dry SHA tracking needed.
+
+#### `environments` context
+
+In `environments` context, use `Branch` with `PromotionStrategy` and `WebRequestCommitStatus` to look up the current SHA and last successful SHA. Use trigger mode with a trigger that fires when the SHA changes or the phase is not yet success:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: approval-with-revalidation
+spec:
+  promotionStrategyRef:
+    name: my-app
+  key: external-approval
+  descriptionTemplate: "External approval: {{ .Phase }}"
+  reportOn: proposed
+  httpRequest:
+    urlTemplate: "https://approvals.example.com/api/check/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
+    method: GET
+    authentication:
+      bearer:
+        secretRef:
+          name: api-token
+  success:
+    when:
+      expression: |
+        Response != nil
+          ? (Response.StatusCode == 200 && Response.Body.approved == true)
+          : (Phase == "success" && (let wrcsEnv = find(WebRequestCommitStatus.Status.Environments ?? [], {.Branch == Branch}); wrcsEnv != nil && find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha == wrcsEnv.LastSuccessfulSha))
+  mode:
+    trigger:
+      requeueDuration: 1m
+      when:
+        expression: |
+          find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha != (TriggerOutput["lastCheckedSha"] ?? "") || Phase != "success"
+        output:
+          expression: |
+            { lastCheckedSha: find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha }
+```
+
+How it works:
+
+1. **First commit arrives** — trigger fires (SHA mismatch via PromotionStrategy lookup), HTTP request made, external system approves → `success`. Controller records `LastSuccessfulSha` = current hydrated SHA.
+2. **New content pushed** — hydrated SHA changes, trigger fires, HTTP request made. If external system has not approved the new content → `pending`. If already approved → `success`.
+3. **No changes, carry-forward reconcile** — trigger does not fire (SHA matches). Success expression runs with `Response` as `nil`. `Phase == "success"` and the current SHA matches `LastSuccessfulSha` from the WRCS status → stays `success` because the SHA hasn't changed.
+4. **SHA changed but trigger hasn't fired yet** — success expression runs with `Response` as `nil`. Current SHA != `LastSuccessfulSha` → returns `false` → phase resets to `pending`. On the next reconcile, `Phase != "success"` fires the trigger.
+5. **Still pending** — `Phase != "success"` keeps the trigger firing on every requeue until the external system approves.
+
+No `success.when.output` expression is needed. No `SuccessOutput` tracking. The SHA comparison in the carry-forward path ensures the WRCS never stays `success` for a SHA that has been superseded.
+
+> [!IMPORTANT]
+> For `reportOn: proposed`, you must use **trigger mode** for this pattern. In polling mode with `reportOn: proposed`, the controller has an optimization that skips the success expression entirely once a SHA has succeeded. Trigger mode does not have this optimization. For `reportOn: active`, polling mode works because the optimization only applies to `reportOn: proposed`.
+
+#### `promotionstrategy` context — per-branch re-validation
+
+In `promotionstrategy` context, `Branch` is empty for the shared HTTP request (there is no single "current environment"). Use the `WebRequestCommitStatus` variable to access the full WRCS status, including `Status.PromotionStrategyContext.LastSuccessfulShas` — a per-branch list of the hydrated SHAs that last achieved success.
+
+Use `find` with `let` to look up each branch's last successful SHA and compare it against the current hydrated SHA from the PromotionStrategy:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: per-branch-revalidation
+spec:
+  promotionStrategyRef:
+    name: my-app
+  key: external-approval
+  descriptionTemplate: "External approval: {{ .Phase }}"
+  reportOn: proposed
+  httpRequest:
+    urlTemplate: "https://approvals.example.com/api/status?app={{ .PromotionStrategy.Spec.RepositoryReference.Name }}"
+    method: GET
+  success:
+    when:
+      expression: |
+        Response != nil
+          ? (Response.StatusCode == 200 && Response.Body.approved == true
+              ? { defaultPhase: "success" }
+              : { defaultPhase: "pending" })
+          : {
+              defaultPhase: "pending",
+              environments: map(PromotionStrategy.Status.Environments, {
+                let env = #;
+                let lastSha = find(
+                  WebRequestCommitStatus.Status.PromotionStrategyContext.LastSuccessfulShas ?? [],
+                  {.Branch == env.Branch}
+                );
+                {
+                  branch: env.Branch,
+                  phase: lastSha != nil && lastSha.LastSuccessfulSha == env.Proposed.Hydrated.Sha
+                    ? "success" : "pending"
+                }
+              })
+            }
+  mode:
+    context: promotionstrategy
+    trigger:
+      requeueDuration: 1m
+      when:
+        expression: |
+          Phase != "success" ||
+          any(PromotionStrategy.Status.Environments, {
+            let env = #;
+            let lastSha = find(
+              WebRequestCommitStatus.Status.PromotionStrategyContext.LastSuccessfulShas ?? [],
+              {.Branch == env.Branch}
+            );
+            lastSha == nil || lastSha.LastSuccessfulSha != env.Proposed.Hydrated.Sha
+          })
+```
+
+How it works:
+
+- **`success.when.expression`**: When `Response` is present and approved, returns `{ defaultPhase: "success" }` so all environments become success. When no response, builds per-branch phases by comparing each branch's current `Proposed.Hydrated.Sha` against the controller's `LastSuccessfulShas`. Branches whose SHA matches stay `"success"`; branches with a new SHA get `"pending"`.
+- **`trigger.when.expression`**: Re-fires the HTTP request when any branch's hydrated SHA doesn't match its last successful SHA, or when the aggregate phase isn't success.
+
+No `success.when.output` expression is needed. The controller's existing `LastSuccessfulShas` tracking (accessible via `WebRequestCommitStatus.Status.PromotionStrategyContext.LastSuccessfulShas`) replaces the manual `SuccessOutput` bookkeeping that was previously required.
 
 ## Field reference
 
