@@ -2,7 +2,6 @@ package bitbucket_datacenter
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -107,27 +106,4 @@ func createCommitURL(baseURL string, repo *v1alpha1.GitRepository, sha string) s
 		repo.Spec.BitbucketDataCenter.Name,
 		sha,
 	)
-}
-
-// buildStatusResponse is the response body returned by the build-status GET endpoint.
-type buildStatusResponse struct {
-	Values []struct {
-		State string `json:"state"`
-		Key   string `json:"key"`
-	} `json:"values"`
-}
-
-// getBuildStatus retrieves the build status for a given commit SHA.
-// This is unused at runtime but is useful for debugging.
-func (cs *CommitStatus) getBuildStatus(ctx context.Context, sha string) (*buildStatusResponse, error) {
-	path := fmt.Sprintf("/rest/build-status/1.0/commits/%s", sha)
-	_, body, err := cs.client.do(ctx, http.MethodGet, path, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get build status: %w", err)
-	}
-	var result buildStatusResponse
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse build status response: %w", err)
-	}
-	return &result, nil
 }

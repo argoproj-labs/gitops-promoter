@@ -85,6 +85,7 @@ func (wr *WebhookReceiver) Start(ctx context.Context, addr string) error {
 	return nil
 }
 
+// DetectProvider determines the SCM provider based on webhook headers.
 // Returns ProviderGitHub, ProviderGitLab, ProviderForgejo, ProviderGitea, ProviderBitbucketCloud, ProviderBitbucketDataCenter, ProviderAzureDevops or ProviderUnknown.
 func (wr *WebhookReceiver) DetectProvider(r *http.Request) string {
 	// Check for GitHub webhook headers

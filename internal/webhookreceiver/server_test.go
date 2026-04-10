@@ -63,7 +63,7 @@ var _ = Describe("DetectProvider", func() {
 		},
 		"Bitbucket DataCenter webhook with X-Event-Key": {
 			headers: map[string]string{
-				"X-Event-Key": "repo:refs_changed",
+				"X-Event-Key":  "repo:refs_changed",
 				"X-Request-Id": "abcde-12345",
 			},
 			expectedResult: webhookreceiver.ProviderBitbucketDataCenter,

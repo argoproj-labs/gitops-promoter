@@ -386,7 +386,7 @@ To configure a Bitbucket DataCenter/Server webhook:
 3. Click **Create webhook**
 4. Configure the webhook:
    * **Name**: GitOps Promoter
-   * **URL**: `https://<your-domain>/` (replace with your webhook receiver URL)
+   * **URL**: `https://<your-webhook-receiver-hostname>/` (the GitOps Promoter webhook receiver hostname; the service listens on port `3333`)
    * **Events**: Select **Repository: Push**
 5. Click **Save**
 
