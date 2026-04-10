@@ -712,8 +712,8 @@ func lastReconciledStateFromContext(ctx context.Context, status *promoterv1alpha
 }
 
 // fireOrCarryForward executes the HTTP request when decision.ShouldFire is true, otherwise
-// evaluates success.when with Response=nil so it can determine phase from PromotionStrategy,
-// Environment, and ResponseOutput context.
+// evaluates success.when with Response=nil so it can determine phase from Phase,
+// PromotionStrategy, WebRequestCommitStatus, and output variables.
 func (r *WebRequestCommitStatusReconciler) fireOrCarryForward(
 	ctx context.Context,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
@@ -917,7 +917,7 @@ func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx co
 
 // evaluateSuccessPhase evaluates the success.when expression and returns the phase and optional per-branch phases.
 // The exprData map is built by successWhenExprData; it includes Response (nil when no request was made),
-// PromotionStrategy, Environment, and other trigger-expression variables.
+// Branch, Phase, PromotionStrategy, WebRequestCommitStatus, and output variables.
 func (r *WebRequestCommitStatusReconciler) evaluateSuccessPhase(
 	ctx context.Context,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,

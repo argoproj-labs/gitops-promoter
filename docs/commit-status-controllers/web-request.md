@@ -17,7 +17,7 @@ For each applicable environment (after resolving context):
    - `active`: Validates the currently deployed commit
 2. The controller evaluates whether to make an HTTP request (polling mode always makes requests, trigger mode evaluates a trigger expression first). In `promotionstrategy` context this decision applies to the **single** shared request for that reconcile.
 3. If triggered, the controller makes an HTTP request to the configured endpoint using templated URL, headers, and body (in `promotionstrategy` context there is only one request per fire, not one per environment).
-4. The controller evaluates `success.when.expression` **every reconcile** to determine the commit status phase. When an HTTP request was made, `Response` is populated; when no request was made, `Response` is `nil`. The expression also has access to `PromotionStrategy`, `Environment` (environments context), `ResponseOutput`, and other trigger-expression variables — see [Success expression variables](#success-expression-variables) below.
+4. The controller evaluates `success.when.expression` **every reconcile** to determine the commit status phase. When an HTTP request was made, `Response` is populated; when no request was made, `Response` is `nil`. The expression also has access to `Branch`, `Phase`, `PromotionStrategy`, `WebRequestCommitStatus`, and output variables (`TriggerOutput`, `ResponseOutput`, `SuccessOutput`) — see [Success expression variables](#success-expression-variables) below.
 5. The controller creates/updates a **CommitStatus per environment**, each with that environment’s SHA and its own phase when using per-branch results.
 6. The PromotionStrategy checks the CommitStatus before allowing promotion
 
