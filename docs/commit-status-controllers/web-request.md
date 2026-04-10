@@ -410,6 +410,11 @@ spec:
   httpRequest:
     urlTemplate: "https://approvals.example.com/api/check/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
     method: GET
+  mode:
+    trigger:
+      requeueDuration: 1m
+      when:
+        expression: 'SuccessOutput == nil || SuccessOutput["checkedSha"] != find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha'
   success:
     when:
       expression: |
@@ -423,11 +428,6 @@ spec:
             approver: Response != nil ? Response.Body.approver : (SuccessOutput ?? {})["approver"],
             approvedAt: Response != nil ? Response.Body.approvedAt : (SuccessOutput ?? {})["approvedAt"]
           }
-  mode:
-    trigger:
-      requeueDuration: 1m
-      when:
-        expression: 'SuccessOutput == nil || SuccessOutput["checkedSha"] != find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha'
 ```
 
 The `success.when.output.expression` runs every reconcile (whether or not an HTTP request was made). Its map result is stored in `status.environments[].successOutput` (or `status.promotionStrategyContext.successOutput` in `promotionstrategy` context) and exposed as `SuccessOutput` in all expressions and Go templates on the next reconcile.
