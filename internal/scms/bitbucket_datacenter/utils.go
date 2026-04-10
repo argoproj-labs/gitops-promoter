@@ -74,9 +74,6 @@ func (c *Client) do(ctx context.Context, method, path string, body any) (int, []
 	if err != nil {
 		return 0, nil, fmt.Errorf("request failed: %w", err)
 	}
-	if resp == nil {
-		return 0, nil, fmt.Errorf("received nil response from %s %s", method, path)
-	}
 	defer resp.Body.Close() //nolint:errcheck // Closing response body; read error checked below
 
 	respBody, err := io.ReadAll(resp.Body)
