@@ -35,6 +35,9 @@ nav:
       - Overview: contributing/index.md
       - Cutting a Release: contributing/cutting-a-release.md
   - Security: security.md
+  - Debugging:
+      - Overview: debugging/index.md
+      - Finalizers: debugging/finalizers.md
   - Architecture: architecture.md
   - Custom Hydrator: custom-hydrator.md
   - CRD Specs: crd-specs.md

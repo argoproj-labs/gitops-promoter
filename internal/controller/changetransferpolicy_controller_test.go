@@ -33,6 +33,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 //go:embed testdata/ChangeTransferPolicy.yaml
@@ -591,10 +592,50 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 			AfterEach(func() {
 				By("Cleaning up resources")
-				Expect(k8sClient.Delete(ctx, changeTransferPolicy)).To(Succeed())
+				Expect(ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, changeTransferPolicy))).To(Succeed())
 				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
 				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+			})
+
+			// After the ChangeTransferPolicy is deleted, either the PullRequest is gone or it no longer carries
+			// ChangeTransferPolicyPullRequestFinalizer. Either outcome shows the CTP is no longer blocking PR cleanup.
+			// Envtest does not run garbage collection like a real cluster, so we cannot require one branch only.
+			It("should remove PullRequest finalizers when ChangeTransferPolicy is deleted", func() {
+				By("Adding a pending commit")
+				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+
+				var createdPR promoterv1alpha1.PullRequest
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      utils.KubeSafeUniqueName(ctx, prName),
+						Namespace: "default",
+					}, &createdPR)
+					g.Expect(err).To(Succeed())
+					g.Expect(createdPR.Finalizers).To(ContainElement(promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
+					g.Expect(err).To(Succeed())
+					g.Expect(changeTransferPolicy.Finalizers).To(ContainElement(promoterv1alpha1.ChangeTransferPolicyPullRequestCleanupFinalizer))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Deleting ChangeTransferPolicy")
+				Expect(k8sClient.Delete(ctx, changeTransferPolicy)).To(Succeed())
+
+				By("Ensuring the PullRequest is deleted or no longer has the ChangeTransferPolicy finalizer")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      createdPR.Name,
+						Namespace: createdPR.Namespace,
+					}, &createdPR)
+					if errors.IsNotFound(err) {
+						return
+					}
+					g.Expect(err).To(Succeed())
+					g.Expect(createdPR.Finalizers).NotTo(ContainElement(promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer))
+				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 
 			It("should remove CTP finalizer from PR when PR is externally closed and status is synced", func() {

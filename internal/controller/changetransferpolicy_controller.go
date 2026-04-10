@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
@@ -113,6 +114,18 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 
 		logger.Error(err, "failed to get ChangeTransferPolicy")
 		return ctrl.Result{}, fmt.Errorf("failed to get ChangeTransferPolicy: %w", err)
+	}
+
+	err = r.handleFinalizer(ctx, &ctp)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to handle finalizer: %w", err)
+	}
+
+	// If the CTP is being deleted, stop here. handleFinalizer has already performed cleanup
+	// (removing the CTP's PR finalizer from owned PullRequests). We must not continue and
+	// re-add those finalizers via creatOrUpdatePullRequest or mergePullRequests.
+	if !ctp.DeletionTimestamp.IsZero() {
+		return ctrl.Result{}, nil
 	}
 
 	// Handle PR finalizer removal if PR is being deleted and CTP status is already synced
@@ -741,14 +754,7 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 	logger := log.FromContext(ctx)
 
 	pr := &promoterv1alpha1.PullRequestList{}
-	err := r.List(ctx, pr, &client.ListOptions{
-		Namespace: ctp.Namespace,
-		LabelSelector: labels.SelectorFromSet(map[string]string{
-			promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
-			promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
-			promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
-		}),
-	})
+	err := r.List(ctx, pr, ctpPullRequestListOptions(ctp))
 	if err != nil {
 		return fmt.Errorf("failed to list PullRequests for ChangeTransferPolicy %q status update: %w", ctp.Name, err)
 	}
@@ -804,14 +810,7 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 
 	// Find any PR resources for this CTP
 	pr := &promoterv1alpha1.PullRequestList{}
-	err := r.List(ctx, pr, &client.ListOptions{
-		Namespace: ctp.Namespace,
-		LabelSelector: labels.SelectorFromSet(map[string]string{
-			promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
-			promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
-			promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
-		}),
-	})
+	err := r.List(ctx, pr, ctpPullRequestListOptions(ctp))
 	if err != nil {
 		return fmt.Errorf("failed to list PullRequests for finalizer check: %w", err)
 	}
@@ -868,6 +867,49 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 	}
 
 	logger.V(4).Info("PR finalizer removed")
+	return nil
+}
+
+// ctpPullRequestListOptions returns list options for PullRequests owned by this ChangeTransferPolicy.
+func ctpPullRequestListOptions(ctp *promoterv1alpha1.ChangeTransferPolicy) *client.ListOptions {
+	return &client.ListOptions{
+		Namespace: ctp.Namespace,
+		LabelSelector: labels.SelectorFromSet(map[string]string{
+			promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
+			promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
+			promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
+		}),
+	}
+}
+
+// handleCTPCleanupOnDelete removes ChangeTransferPolicyPullRequestFinalizer from all PullRequests for this CTP.
+// After that, the PullRequest controller and kube garbage collection (on a real cluster) complete removal; envtest
+// does not run the garbage collector, so owned PullRequests are not cascade-deleted by the apiserver alone.
+// Integration tests accept either PullRequest deletion or absence of this finalizer as proof the CTP no longer
+// blocks PR cleanup.
+func (r *ChangeTransferPolicyReconciler) handleCTPCleanupOnDelete(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
+	logger := log.FromContext(ctx)
+
+	prList := &promoterv1alpha1.PullRequestList{}
+	err := r.List(ctx, prList, ctpPullRequestListOptions(ctp))
+	if err != nil {
+		return fmt.Errorf("failed to list PullRequests for ChangeTransferPolicy deletion cleanup: %w", err)
+	}
+
+	for i := range prList.Items {
+		prItem := &prList.Items[i]
+
+		// Remove the CTP's PR finalizer so the PR can be deleted.
+		if controllerutil.ContainsFinalizer(prItem, promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer) {
+			logger.Info("Removing ChangeTransferPolicy PullRequest finalizer during ChangeTransferPolicy deletion",
+				"pullRequest", prItem.Name)
+			controllerutil.RemoveFinalizer(prItem, promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer)
+			if err := r.Update(ctx, prItem); err != nil {
+				return fmt.Errorf("failed to remove PullRequest finalizer for %q: %w", prItem.Name, err)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -1204,6 +1246,49 @@ func (r *ChangeTransferPolicyReconciler) gitMergeStrategyOurs(ctx context.Contex
 
 	r.Recorder.Eventf(ctp, nil, "Normal", constants.ResolvedConflictReason, "ResolvingConflict", constants.ResolvedConflictMessage, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 
+	return nil
+}
+
+// handleFinalizer ensures ChangeTransferPolicyPullRequestCleanupFinalizer is on the CTP while it exists so deletion
+// runs handleCTPCleanupOnDelete (strip ChangeTransferPolicyPullRequestFinalizer from PullRequests) before the policy
+// is removed. This is reconciled at entry, separate from PullRequest SSA in creatOrUpdatePullRequest / mergePullRequests.
+func (r *ChangeTransferPolicyReconciler) handleFinalizer(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
+	finalizer := promoterv1alpha1.ChangeTransferPolicyPullRequestCleanupFinalizer
+
+	if ctp.DeletionTimestamp.IsZero() {
+		if controllerutil.ContainsFinalizer(ctp, finalizer) {
+			// Not being deleted and already has finalizer, nothing to do.
+			return nil
+		}
+
+		// Finalizer is missing, add it.
+		return retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck // RetryOnConflict returns wrapped error
+			if err := r.Get(ctx, client.ObjectKeyFromObject(ctp), ctp); err != nil {
+				return err //nolint:wrapcheck // error will be wrapped by caller
+			}
+			if controllerutil.AddFinalizer(ctp, finalizer) {
+				return r.Update(ctx, ctp)
+			}
+			return nil
+		})
+	}
+
+	// If we're here, the object is being deleted
+	if !controllerutil.ContainsFinalizer(ctp, finalizer) {
+		// Finalizer already removed, nothing to do.
+		return nil
+	}
+
+	// Remove CTP finalizers from any PRs. The CTP is being deleted, we don't care about monitoring those PRs anymore.
+	err := r.handleCTPCleanupOnDelete(ctx, ctp)
+	if err != nil {
+		return fmt.Errorf("failed to clean up PullRequest finalizers for deleted ChangeTransferPolicy: %w", err)
+	}
+
+	controllerutil.RemoveFinalizer(ctp, finalizer)
+	if err := r.Update(ctx, ctp); err != nil {
+		return fmt.Errorf("failed to remove finalizer: %w", err)
+	}
 	return nil
 }
 
