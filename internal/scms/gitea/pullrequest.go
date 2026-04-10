@@ -230,7 +230,7 @@ func checkOpenPR(ctx context.Context, pr PullRequest, repo *promoterv1alpha1.Git
 	start := time.Now()
 	existingPr, resp, err := pr.giteaClient.GetPullRequest(repo.Spec.Gitea.Owner, repo.Spec.Gitea.Name, prID)
 	if resp != nil {
-		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
+		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationGet, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
 		return true, fmt.Errorf("failed to get pull request: %w", err)
