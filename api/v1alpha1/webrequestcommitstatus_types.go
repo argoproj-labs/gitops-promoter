@@ -34,7 +34,7 @@ const (
 // WebRequestCommitStatusSpec defines the desired state of WebRequestCommitStatus.
 //
 // Documentation map: template variables and Sprig rules — HTTPRequestSpec; context (environments vs promotionstrategy) — ModeSpec;
-// success expression after HTTP response — WhenSpec; trigger when/output expressions — WhenWithOutputSpec; persisted trigger/response maps — WebRequestCommitStatusEnvironmentStatus.
+// success expression after HTTP response — WhenWithOutputSpec; trigger when/output expressions — WhenWithOutputSpec; persisted trigger/response/success maps — WebRequestCommitStatusEnvironmentStatus.
 type WebRequestCommitStatusSpec struct {
 	// PromotionStrategyRef references the PromotionStrategy this applies to.
 	// The controller will check commits from ALL environments in the referenced PromotionStrategy
@@ -62,14 +62,17 @@ type WebRequestCommitStatusSpec struct {
 	// data after the most recent HTTP request and trigger evaluation (unlike spec.httpRequest URL/body/headers, which use pre-request data — see HTTPRequestSpec).
 	// How spec.mode.context restricts template data: see ModeSpec.
 	//
-	// Examples: "External approval for {{ .Environment.Branch }}", "Checking deployment {{ .ReportedSha | trunc 7 }}", "{{ .Phase }} - waiting for external approval".
+	// Examples: "External approval for {{ .Branch }}", "{{ .Phase }} - waiting for external approval".
 	//
 	// If not specified, defaults to empty string.
 	// +optional
 	DescriptionTemplate string `json:"descriptionTemplate,omitempty"`
 
 	// UrlTemplate is the commit status target URL in the SCM provider. Same Go templates, variables, timing, and context rules as DescriptionTemplate.
-	// Typical uses: approval UI, dashboard, API, or runbook links. Examples: "https://approvals.example.com/{{ .ReportedSha }}", "https://dashboard.example.com/{{ .Environment.Branch }}/status".
+	// Typical uses: approval UI, dashboard, API, or runbook links.
+	// To include the reported SHA, walk PromotionStrategy.Status.Environments by Branch:
+	//   "https://approvals.example.com/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
+	// For branch-only links: "https://dashboard.example.com/{{ .Branch }}/status".
 	//
 	// If not specified, defaults to empty string (no URL shown).
 	// +optional
@@ -111,9 +114,9 @@ type WebRequestCommitStatusSpec struct {
 //
 //   - "environments" (default): one HTTP request per environment; each environment has its own phase and status; success.when.expression is evaluated per response and must return a boolean (true → success, false → pending; failure is not expressible).
 //
-//   - "promotionstrategy": at most one HTTP request per WebRequestCommitStatus resource; CommitStatuses remain one per environment on each environment’s reportOn SHA. success.when.expression runs once on that shared response — see WhenSpec.Expression for boolean vs per-branch object return shapes.
+//   - "promotionstrategy": at most one HTTP request per WebRequestCommitStatus resource; CommitStatuses remain one per environment on each environment’s reportOn SHA. success.when.expression runs once on that shared response — see WhenWithOutputSpec.Expression for boolean vs per-branch object return shapes.
 //
-// When context is "promotionstrategy", Environment, ReportedSha, and LastSuccessfulSha are not set for the shared HTTP request or for trigger when/output templates; do not reference them in spec.httpRequest (URL, headers, body), descriptionTemplate, urlTemplate, or spec.mode.trigger. Use PromotionStrategy (e.g. status environments) for branch- or SHA-specific values. For description and url templates, {{ .Phase }} is still set per environment when rendering that environment’s CommitStatus.
+// When context is "promotionstrategy", Branch is empty for the shared HTTP request and trigger expressions. Use PromotionStrategy (e.g. status environments) for branch-specific values. For description and url templates, {{ .Branch }} and {{ .Phase }} are set per environment when rendering that environment’s CommitStatus.
 //
 // +kubebuilder:validation:ExactlyOneOf=polling;trigger
 type ModeSpec struct {
@@ -146,41 +149,9 @@ type PollingModeSpec struct {
 
 // SuccessSpec defines when the commit status phase is success.
 type SuccessSpec struct {
-	// When is evaluated every reconcile. See WhenSpec.Expression.
+	// When is evaluated every reconcile. See WhenWithOutputSpec.Expression.
 	// +required
-	When WhenSpec `json:"when"`
-}
-
-// WhenSpec holds spec.success.when.expression (evaluated every reconcile, not just after HTTP requests).
-// Trigger guards use WhenWithOutputSpec under spec.mode.trigger.when, not this type.
-type WhenSpec struct {
-	// Expression uses github.com/expr-lang/expr and is evaluated every reconcile to determine the commit status phase.
-	// When an HTTP request was made this reconcile, Response is populated; otherwise Response is nil.
-	//
-	// Available variables (same as spec.mode.trigger.when.expression, plus Response):
-	//   - Response (map or nil): the HTTP response from this reconcile's request, nil when no request was made.
-	//     When non-nil: Response.StatusCode (int), Response.Body (parsed JSON as map[string]any, or raw string), Response.Headers (map[string][]string).
-	//   - PromotionStrategy (PromotionStrategy): the full PromotionStrategy spec and status
-	//   - Environment (EnvironmentStatus): current environment's status from PromotionStrategy (environments context only; nil in promotionstrategy context)
-	//   - Phase (string): phase from the previous reconcile
-	//   - ReportedSha (string): the SHA being validated (environments context only; empty in promotionstrategy context)
-	//   - LastSuccessfulSha (string): last SHA that achieved success (environments context only; empty in promotionstrategy context)
-	//   - TriggerOutput (map[string]any): custom data from the previous when.output.expression evaluation
-	//   - ResponseOutput (map[string]any): response data from the previous HTTP request (if any)
-	//
-	// Important: since the expression runs every reconcile, it must handle Response being nil (no HTTP request
-	// this reconcile). Expressions that only reference Response.* will error when Response is nil, causing the
-	// reconcile to return an error and requeue. Guard Response access:
-	//   Response != nil ? Response.StatusCode == 200 : <fallback>
-	//
-	// Evaluation scope follows spec.mode.context; see ModeSpec. Return shape:
-	//
-	//   - "environments": must return boolean — true → success, false → pending; failure phase is not expressible.
-	//
-	//   - "promotionstrategy": boolean true/false applies the same phase to all applicable environments (success or pending only), or return an object with optional defaultPhase ("success"|"pending"|"failure", default "pending") and optional environments: [{ branch, phase }, ...] for per-branch phases. Example:
-	//     { defaultPhase: "pending", environments: [{ branch: "dev", phase: "success" }, { branch: "staging", phase: "pending" }] }.
-	// +required
-	Expression string `json:"expression"`
+	When WhenWithOutputSpec `json:"when"`
 }
 
 // OutputSpec holds an expression that returns a map/object to persist (e.g. TriggerOutput or ResponseOutput).
@@ -213,29 +184,27 @@ type WhenWithOutputSpec struct {
 	// when false the controller keeps the previous phase and skips the request.
 	//
 	// Available variables:
+	//   - Branch (string): the environment branch currently being processed (empty for the shared HTTP request in promotionstrategy context)
+	//   - Phase (string): previous reconcile's phase — per-environment in environments context; aggregate of all branches in promotionstrategy context (success only if all succeeded, failure if any failed, pending otherwise)
 	//   - PromotionStrategy (PromotionStrategy): the full PromotionStrategy spec and status
-	//   - Environment (EnvironmentStatus): current environment's status from PromotionStrategy (environments context only; nil in promotionstrategy context)
-	//   - Phase (string): current phase — per-environment in environments context; aggregate of all branches in promotionstrategy context (success only if all succeeded, failure if any failed, pending otherwise)
-	//   - ReportedSha (string): the SHA being validated (environments context only; empty in promotionstrategy context)
-	//   - LastSuccessfulSha (string): last SHA that achieved success for this environment (environments context only; empty in promotionstrategy context)
+	//   - WebRequestCommitStatus (WebRequestCommitStatus): the full WebRequestCommitStatus spec and status (snapshot from the previous reconcile)
 	//   - TriggerOutput (map[string]any): custom data from the previous when.output.expression evaluation
 	//   - ResponseOutput (map[string]any): response data from the previous HTTP request (if any)
+	//   - SuccessOutput (map[string]any): custom data from the previous success.when.output.expression evaluation
 	//
 	// Note: PromotionStrategy.Status.Environments is an ordered array representing the promotion sequence.
-	// Environments[0] is the first environment (e.g., dev), Environments[1] is second (e.g., staging), etc.
-	// Changes flow through the array in order. To access the previous environment, use array indexing:
-	//   currentIdx = findIndex(PromotionStrategy.Status.Environments, {.Branch == Environment.Branch})
-	//   previousEnv = currentIdx > 0 ? PromotionStrategy.Status.Environments[currentIdx-1] : nil
+	// Use Branch + filter/find to look up environment-specific data:
+	//   find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha
 	//
 	// Examples:
 	//   # Always trigger (equivalent to polling mode)
 	//   - "true"
 	//
 	//   # Only trigger when SHA changes from what we last tracked
-	//   - "ReportedSha != TriggerOutput['lastCheckedSha']"
+	//   - "find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha != (TriggerOutput['lastCheckedSha'] ?? '')"
 	//
 	//   # Only trigger when a particular commit status is success (e.g. argocd-health)
-	//   - "size(filter(Environment.Proposed.CommitStatuses, {.Key == 'argocd-health'})) > 0 && filter(Environment.Proposed.CommitStatuses, {.Key == 'argocd-health'})[0].Phase == 'success'"
+	//   - "let env = find(PromotionStrategy.Status.Environments, {.Branch == Branch}); any(env.Proposed.CommitStatuses, {.Key == 'argocd-health' && .Phase == 'success'})"
 	//
 	//   # Only retry if the previous response indicated we should
 	//   - "ResponseOutput == nil || ResponseOutput.status == 'retry'"
@@ -253,7 +222,7 @@ type WhenWithOutputSpec struct {
 	//
 	// Examples:
 	//   # Track SHA to detect changes
-	//   - "{ trackedSha: ReportedSha }"
+	//   - "{ trackedSha: find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha }"
 	//
 	//   # Increment attempt counter
 	//   - "{ attemptCount: (TriggerOutput[\"attemptCount\"] ?? 0) + 1 }"
@@ -264,7 +233,7 @@ type WhenWithOutputSpec struct {
 
 // ResponseOutputSpec holds the expression that extracts data from the HTTP response into ResponseOutput.
 type ResponseOutputSpec struct {
-	// Output is evaluated after the HTTP request completes (any status). Response variables are the same as for spec.success.when.expression — see WhenSpec.Expression.
+	// Output is evaluated after the HTTP request completes (any status). Response variables are the same as for spec.success.when.expression — see WhenWithOutputSpec.Expression.
 	// The result is stored in status (environments[].responseOutput or promotionStrategyContext.responseOutput) and exposed on the next reconcile as ResponseOutput in trigger expressions and templates.
 	// Must return a map/object.
 	// +required
@@ -279,16 +248,16 @@ type ResponseOutputSpec struct {
 // the previous run (trigger mode only).
 //
 // Template variables:
-//   - {{ .ReportedSha }}: the commit SHA being reported on (environments context only; empty in promotionstrategy context)
-//   - {{ .LastSuccessfulSha }}: last SHA that achieved success (environments context only; empty in promotionstrategy context)
-//   - {{ .Phase }}: phase from previous reconcile (success/pending/failure, defaults to pending); in promotionstrategy context, aggregate of all branches (success only if all succeeded, failure if any failed, pending otherwise)
-//   - {{ .PromotionStrategy }}: full PromotionStrategy object
-//   - {{ .Environment }}: current environment status from PromotionStrategy (environments context only; nil in promotionstrategy context)
+//   - {{ .Branch }}: the environment branch currently being processed (empty for shared HTTP request in promotionstrategy context)
+//   - {{ .Phase }}: phase from previous reconcile (success/pending/failure, defaults to pending); in promotionstrategy context, aggregate of all branches
+//   - {{ .PromotionStrategy }}: full PromotionStrategy object (use with Branch to look up per-environment data)
+//   - {{ .WebRequestCommitStatus }}: full WebRequestCommitStatus spec and status (snapshot from previous reconcile)
 //   - {{ .NamespaceMetadata.Labels }}: map of labels from the namespace
 //   - {{ .NamespaceMetadata.Annotations }}: map of annotations from the namespace
 //   - {{ index .TriggerOutput "key" }}, {{ index .ResponseOutput "key" }}: (trigger mode only) from previous reconcile
+//   - {{ index .SuccessOutput "key" }}: custom data from the previous success.when.output.expression evaluation
 //
-// Example: "https://api.example.com/validate/{{ .Environment.Branch }}/{{ .ReportedSha }}"
+// Example: "https://api.example.com/validate/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
 type HTTPRequestSpec struct {
 	// URLTemplate is the HTTP endpoint to request.
 	// Supports Go templates (see HTTPRequestSpec for available variables).
@@ -439,6 +408,13 @@ type WebRequestCommitStatusPromotionStrategyContextStatus struct {
 	// +kubebuilder:pruning:PreserveUnknownFields
 	ResponseOutput *apiextensionsv1.JSON `json:"responseOutput,omitempty"`
 
+	// SuccessOutput: same semantics as WebRequestCommitStatusEnvironmentStatus.SuccessOutput, one shared map for context=promotionstrategy.
+	// +optional
+	// +kubebuilder:validation:Schemaless
+	// +kubebuilder:validation:Type=object
+	// +kubebuilder:pruning:PreserveUnknownFields
+	SuccessOutput *apiextensionsv1.JSON `json:"successOutput,omitempty"`
+
 	// LastSuccessfulShas tracks the last SHA that achieved success for each branch.
 	// Used with reportOn "proposed" + polling to skip HTTP requests when all environments
 	// have already succeeded for their current SHAs.
@@ -450,8 +426,8 @@ type WebRequestCommitStatusPromotionStrategyContextStatus struct {
 
 // WebRequestCommitStatusEnvironmentStatus defines the observed status for a specific environment.
 //
-// TriggerOutput and ResponseOutput hold JSON maps written by trigger mode: when.output.expression and response.output.expression respectively.
-// They are surfaced on the next reconcile as TriggerOutput and ResponseOutput in expr and templates (see WhenWithOutputSpec and HTTPRequestSpec).
+// TriggerOutput, ResponseOutput, and SuccessOutput hold JSON maps written by their respective output expressions.
+// They are surfaced on the next reconcile as TriggerOutput, ResponseOutput, and SuccessOutput in expr and templates (see WhenWithOutputSpec and HTTPRequestSpec).
 type WebRequestCommitStatusEnvironmentStatus struct {
 	// Branch is the name of the branch/environment.
 	// +required
@@ -500,6 +476,15 @@ type WebRequestCommitStatusEnvironmentStatus struct {
 	// +kubebuilder:validation:Type=object
 	// +kubebuilder:pruning:PreserveUnknownFields
 	ResponseOutput *apiextensionsv1.JSON `json:"responseOutput,omitempty"`
+
+	// SuccessOutput is the map from spec.success.when.output.expression (arbitrary JSON keys).
+	// Evaluated every reconcile (whether or not an HTTP request was made). The result is stored here and
+	// exposed on the next reconcile as SuccessOutput in trigger/success expressions and templates.
+	// +optional
+	// +kubebuilder:validation:Schemaless
+	// +kubebuilder:validation:Type=object
+	// +kubebuilder:pruning:PreserveUnknownFields
+	SuccessOutput *apiextensionsv1.JSON `json:"successOutput,omitempty"`
 }
 
 // +kubebuilder:ac:generate=true
