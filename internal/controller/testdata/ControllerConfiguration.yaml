@@ -92,3 +92,8 @@ spec:
         exponentialFailure:
           baseDelay: "500ms"
           maxDelay: "1m"
+
+  # WebhookReceiver configures the HTTP server that accepts incoming webhook events.
+  # Set maxPayloadBytes to 0 to disable the limit entirely.
+  webhookReceiver:
+    maxPayloadBytes: 26214400

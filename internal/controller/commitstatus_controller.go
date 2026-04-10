@@ -203,7 +203,7 @@ func (r *CommitStatusReconciler) triggerReconcileChangeTransferPolicy(ctx contex
 	ctpListActiveOldSha := &promoterv1alpha1.ChangeTransferPolicyList{}
 	err := r.List(ctx, ctpListActiveOldSha, &client.ListOptions{
 		FieldSelector: fields.SelectorFromSet(map[string]string{
-			".status.active.hydrated.sha": oldSha,
+			constants.ChangeTransferPolicyActiveHydratedSHAIndexField: oldSha,
 		}),
 	})
 	if err != nil {
@@ -214,7 +214,7 @@ func (r *CommitStatusReconciler) triggerReconcileChangeTransferPolicy(ctx contex
 	ctpListActiveNewSha := &promoterv1alpha1.ChangeTransferPolicyList{}
 	err = r.List(ctx, ctpListActiveNewSha, &client.ListOptions{
 		FieldSelector: fields.SelectorFromSet(map[string]string{
-			".status.active.hydrated.sha": newSha,
+			constants.ChangeTransferPolicyActiveHydratedSHAIndexField: newSha,
 		}),
 	})
 	if err != nil {
@@ -224,7 +224,7 @@ func (r *CommitStatusReconciler) triggerReconcileChangeTransferPolicy(ctx contex
 	ctpListProposedOldSha := &promoterv1alpha1.ChangeTransferPolicyList{}
 	err = r.List(ctx, ctpListProposedOldSha, &client.ListOptions{
 		FieldSelector: fields.SelectorFromSet(map[string]string{
-			".status.proposed.hydrated.sha": oldSha,
+			constants.ChangeTransferPolicyProposedHydratedSHAIndexField: oldSha,
 		}),
 	})
 	if err != nil {
@@ -235,7 +235,7 @@ func (r *CommitStatusReconciler) triggerReconcileChangeTransferPolicy(ctx contex
 	ctpListProposedNewSha := &promoterv1alpha1.ChangeTransferPolicyList{}
 	err = r.List(ctx, ctpListProposedNewSha, &client.ListOptions{
 		FieldSelector: fields.SelectorFromSet(map[string]string{
-			".status.proposed.hydrated.sha": newSha,
+			constants.ChangeTransferPolicyProposedHydratedSHAIndexField: newSha,
 		}),
 	})
 	if err != nil {

@@ -72,6 +72,11 @@ spec:
               number: 3333
 ```
 
+
+> [!WARNING]
+> If the webhook receiver is exposed on the internet, you should configure a webhook signing secret.
+> See the [Security docs](security.md#webhook-receiver-hardening) for details.
+
 ### Usage
 
 The GitHub App will generate a private key that you will need to save. You will also need to get the App ID and the

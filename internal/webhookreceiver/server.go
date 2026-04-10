@@ -3,17 +3,24 @@ package webhookreceiver
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 
 	"github.com/tidwall/gjson"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -39,18 +46,55 @@ type EnqueueFunc func(namespace, name string)
 
 // WebhookReceiver is a server that listens for webhooks and triggers reconciles of ChangeTransferPolicies.
 type WebhookReceiver struct {
-	mgr        controllerruntime.Manager
-	k8sClient  client.Client
-	enqueueCTP EnqueueFunc
+	mgr                 controllerruntime.Manager
+	k8sClient           client.Client
+	enqueueCTP          EnqueueFunc
+	controllerNamespace string
 }
 
 // NewWebhookReceiver creates a new instance of WebhookReceiver.
-func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP EnqueueFunc) WebhookReceiver {
+func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP EnqueueFunc, controllerNamespace string) WebhookReceiver {
 	return WebhookReceiver{
-		mgr:        mgr,
-		k8sClient:  mgr.GetClient(),
-		enqueueCTP: enqueueCTP,
+		mgr:                 mgr,
+		k8sClient:           mgr.GetClient(),
+		enqueueCTP:          enqueueCTP,
+		controllerNamespace: controllerNamespace,
 	}
+}
+
+// NewWebhookReceiverWithClient creates a WebhookReceiver with an explicit k8s client.
+// This is useful in tests where a full controller-runtime Manager is not available.
+func NewWebhookReceiverWithClient(k8sClient client.Client, enqueueCTP EnqueueFunc, controllerNamespace string) *WebhookReceiver {
+	return &WebhookReceiver{
+		k8sClient:           k8sClient,
+		enqueueCTP:          enqueueCTP,
+		controllerNamespace: controllerNamespace,
+	}
+}
+
+// ServeHTTP implements http.Handler, allowing WebhookReceiver to be used directly
+// with httptest.NewServer or http.ListenAndServe.
+func (wr *WebhookReceiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	wr.postRoot(w, r)
+}
+
+// getMaxPayloadBytes returns the configured maximum request-body size from the ControllerConfiguration.
+// It reads the ControllerConfiguration from the cache (fast, no API-server round-trip).
+// Returns an error if the ControllerConfiguration is not found; it is a required part of every installation.
+// If the WebhookReceiver section is absent, 0 is returned (no limit).
+func (wr *WebhookReceiver) getMaxPayloadBytes(ctx context.Context) (int64, error) {
+	cc := &promoterv1alpha1.ControllerConfiguration{}
+	if err := wr.k8sClient.Get(ctx, client.ObjectKey{
+		Name:      settings.ControllerConfigurationName,
+		Namespace: wr.controllerNamespace,
+	}, cc); err != nil {
+		return 0, fmt.Errorf("could not read ControllerConfiguration %s/%s: %w",
+			wr.controllerNamespace, settings.ControllerConfigurationName, err)
+	}
+	if cc.Spec.WebhookReceiver == nil {
+		return 0, nil
+	}
+	return cc.Spec.WebhookReceiver.MaxPayloadBytes, nil
 }
 
 // Start starts the webhook receiver server on the given address.
@@ -163,11 +207,34 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: add a configurable payload max size for DoS protection.
+	maxPayloadBytes, err := wr.getMaxPayloadBytes(r.Context())
+	if err != nil {
+		logger.Error(err, "failed to read ControllerConfiguration")
+		responseCode = http.StatusInternalServerError
+		http.Error(w, "internal server error: could not read controller configuration", responseCode)
+		return
+	}
+	if maxPayloadBytes > 0 {
+		// Reject oversized payloads before buffering: if Content-Length is declared and
+		// already exceeds the limit, we can refuse immediately without reading the body.
+		if r.ContentLength > maxPayloadBytes {
+			responseCode = http.StatusRequestEntityTooLarge
+			http.Error(w, "request body exceeds maximum allowed size", responseCode)
+			return
+		}
+		// Read at most maxPayloadBytes+1 so we can detect chunked/undeclared oversized
+		// payloads without buffering the entire body.
+		r.Body = io.NopCloser(io.LimitReader(r.Body, maxPayloadBytes+1))
+	}
 	jsonBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		responseCode = http.StatusInternalServerError
 		http.Error(w, "error reading body", responseCode)
+		return
+	}
+	if maxPayloadBytes > 0 && int64(len(jsonBytes)) > maxPayloadBytes {
+		responseCode = http.StatusRequestEntityTooLarge
+		http.Error(w, "request body exceeds maximum allowed size", responseCode)
 		return
 	}
 
@@ -183,6 +250,22 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		responseCode = http.StatusNoContent
 		w.WriteHeader(responseCode)
 		return
+	}
+
+	// For GitHub webhooks, verify the signature against the secret configured on the ScmProvider
+	// that backs this CTP's GitRepository (if one is configured).
+	if provider == ProviderGitHub {
+		rejected, statusCode, errMsg := wr.verifyGitHubWebhookSignatureForCTP(r.Context(), r.Header.Get("X-Hub-Signature-256"), jsonBytes, ctp)
+		if rejected {
+			if statusCode == http.StatusUnauthorized {
+				logger.V(4).Info("rejected GitHub webhook request due to signature mismatch")
+			} else {
+				logger.Error(errors.New(errMsg), "error verifying GitHub webhook signature")
+			}
+			responseCode = statusCode
+			http.Error(w, errMsg, responseCode)
+			return
+		}
 	}
 
 	ctpFound = true
@@ -254,7 +337,7 @@ func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provide
 
 	err := wr.k8sClient.List(ctx, &ctpLists, &client.ListOptions{
 		FieldSelector: fields.SelectorFromSet(map[string]string{
-			".status.proposed.hydrated.sha": beforeSha,
+			constants.ChangeTransferPolicyProposedHydratedSHAIndexField: beforeSha,
 		}),
 	})
 	if err != nil {
@@ -265,7 +348,7 @@ func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provide
 		// List again, this time checking the active sha. This lets us catch cases where someone manually merged a PR in the SCM.
 		err = wr.k8sClient.List(ctx, &ctpLists, &client.ListOptions{
 			FieldSelector: fields.SelectorFromSet(map[string]string{
-				".status.active.hydrated.sha": beforeSha,
+				constants.ChangeTransferPolicyActiveHydratedSHAIndexField: beforeSha,
 			}),
 		})
 		if err != nil {
@@ -319,4 +402,114 @@ func (wr *WebhookReceiver) extractDeliveryID(r *http.Request) string {
 		return id
 	}
 	return ""
+}
+
+// verifyGitHubWebhookSignatureForCTP verifies the X-Hub-Signature-256 header for a GitHub
+// webhook delivery using the signing secret configured on the (Cluster)ScmProvider that backs
+// the given CTP's GitRepository.
+//
+// If the ScmProvider has no webhookSecretRef configured, verification is skipped (returns false, 0, "").
+// This means webhooks from providers without a secret are always accepted; see the security
+// documentation for guidance on configuring secrets for all providers.
+//
+// Returns (false, 0, "") when:
+//   - the ScmProvider has no webhookSecretRef configured (verification disabled for this provider)
+//   - the signature is valid
+//
+// Returns (true, statusCode, errorMessage) when:
+//   - the GitRepository or ScmProvider could not be looked up → 500
+//   - the X-Hub-Signature-256 header is missing → 401
+//   - the signature is invalid → 401
+func (wr *WebhookReceiver) verifyGitHubWebhookSignatureForCTP(ctx context.Context, sig string, body []byte, ctp *promoterv1alpha1.ChangeTransferPolicy) (rejected bool, statusCode int, errMsg string) {
+	// Look up the GitRepository that this CTP references.
+	gitRepo := &promoterv1alpha1.GitRepository{}
+	if err := wr.k8sClient.Get(ctx, client.ObjectKey{
+		Namespace: ctp.Namespace,
+		Name:      ctp.Spec.RepositoryReference.Name,
+	}, gitRepo); err != nil {
+		return true, http.StatusInternalServerError, "error retrieving git repository for webhook verification"
+	}
+
+	// Determine the ScmProvider and its webhookSecretRef / namespace.
+	var webhookSecretRef *corev1.LocalObjectReference
+	var secretNamespace string
+
+	switch gitRepo.Spec.ScmProviderRef.Kind {
+	case promoterv1alpha1.ScmProviderKind:
+		scmProvider := &promoterv1alpha1.ScmProvider{}
+		if err := wr.k8sClient.Get(ctx, client.ObjectKey{
+			Namespace: ctp.Namespace,
+			Name:      gitRepo.Spec.ScmProviderRef.Name,
+		}, scmProvider); err != nil {
+			return true, http.StatusInternalServerError, "error retrieving SCM provider for webhook verification"
+		}
+		if scmProvider.Spec.GitHub == nil || scmProvider.Spec.GitHub.WebhookSecretRef == nil {
+			// No secret configured for this provider – skip verification.
+			return false, 0, ""
+		}
+		webhookSecretRef = scmProvider.Spec.GitHub.WebhookSecretRef
+		secretNamespace = scmProvider.Namespace
+
+	case promoterv1alpha1.ClusterScmProviderKind:
+		clusterScmProvider := &promoterv1alpha1.ClusterScmProvider{}
+		if err := wr.k8sClient.Get(ctx, client.ObjectKey{
+			Name: gitRepo.Spec.ScmProviderRef.Name,
+		}, clusterScmProvider); err != nil {
+			return true, http.StatusInternalServerError, "error retrieving cluster SCM provider for webhook verification"
+		}
+		if clusterScmProvider.Spec.GitHub == nil || clusterScmProvider.Spec.GitHub.WebhookSecretRef == nil {
+			// No secret configured for this provider – skip verification.
+			return false, 0, ""
+		}
+		webhookSecretRef = clusterScmProvider.Spec.GitHub.WebhookSecretRef
+		// ClusterScmProvider secrets live in the controller's namespace by convention.
+		secretNamespace = wr.controllerNamespace
+
+	default:
+		// Unknown provider kind – skip verification.
+		return false, 0, ""
+	}
+
+	secret := &corev1.Secret{}
+	if err := wr.k8sClient.Get(ctx, client.ObjectKey{
+		Namespace: secretNamespace,
+		Name:      webhookSecretRef.Name,
+	}, secret); err != nil {
+		return true, http.StatusInternalServerError, "error retrieving webhook signing secret"
+	}
+
+	webhookSecret, ok := secret.Data["webhookSecret"]
+	if !ok {
+		return true, http.StatusInternalServerError, "webhook signing secret missing required key 'webhookSecret'"
+	}
+
+	if sig == "" {
+		return true, http.StatusUnauthorized, "missing X-Hub-Signature-256 header"
+	}
+
+	if !VerifyGitHubSignature(webhookSecret, body, sig) {
+		return true, http.StatusUnauthorized, "invalid webhook signature"
+	}
+
+	return false, 0, ""
+}
+
+// VerifyGitHubSignature computes HMAC-SHA256(secret, body) and compares it to the provided
+// "sha256=<hex>" signature using constant-time comparison to prevent timing attacks.
+// Returns true if the signature is valid, false otherwise.
+func VerifyGitHubSignature(secret, body []byte, signature string) bool {
+	const prefix = "sha256="
+	if !strings.HasPrefix(signature, prefix) {
+		return false
+	}
+	hexSig := signature[len(prefix):]
+	sigBytes, err := hex.DecodeString(hexSig)
+	if err != nil {
+		return false
+	}
+	mac := hmac.New(sha256.New, secret)
+	mac.Write(body)
+	expected := mac.Sum(nil)
+	// hmac.Equal uses constant-time comparison to prevent timing attacks.
+	return hmac.Equal(sigBytes, expected)
 }
