@@ -38,25 +38,32 @@ func NewBitbucketDataCenterPullRequestProvider(k8sClient k8sClient.Client, scmPr
 	}, nil
 }
 
+// prResponseRef holds the display ID of a branch reference in a pull-request response.
+type prResponseRef struct {
+	DisplayID string `json:"displayId"`
+}
+
+// prResponseLinks holds the self links from a pull-request response.
+type prResponseLinks struct {
+	Self []prResponseSelfLink `json:"self"`
+}
+
+// prResponseSelfLink is a single self-link href.
+type prResponseSelfLink struct {
+	Href string `json:"href"`
+}
+
 // prResponse represents the subset of fields returned by the Bitbucket DataCenter pull-request API.
 type prResponse struct {
-	ID          int    `json:"id"`
-	Version     int    `json:"version"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	State       string `json:"state"`
-	CreatedDate int64  `json:"createdDate"` // milliseconds since epoch
-	Links       struct {
-		Self []struct {
-			Href string `json:"href"`
-		} `json:"self"`
-	} `json:"links"`
-	FromRef struct {
-		DisplayID string `json:"displayId"`
-	} `json:"fromRef"`
-	ToRef struct {
-		DisplayID string `json:"displayId"`
-	} `json:"toRef"`
+	Title       string          `json:"title"`
+	Description string          `json:"description"`
+	State       string          `json:"state"`
+	FromRef     prResponseRef   `json:"fromRef"`
+	ToRef       prResponseRef   `json:"toRef"`
+	Links       prResponseLinks `json:"links"`
+	CreatedDate int64           `json:"createdDate"` // milliseconds since epoch
+	ID          int             `json:"id"`
+	Version     int             `json:"version"`
 }
 
 // prListResponse is the paginated response for listing pull requests.
@@ -93,11 +100,8 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 	}
 
 	start := time.Now()
-	resp, body, err := pr.client.do(ctx, http.MethodPost, prPath(projectKey, repoSlug), payload)
-	statusCode := http.StatusCreated
-	if resp != nil {
-		statusCode = resp.StatusCode
-	} else if err != nil {
+	statusCode, body, err := pr.client.do(ctx, http.MethodPost, prPath(projectKey, repoSlug), payload)
+	if err != nil {
 		statusCode = http.StatusInternalServerError
 	}
 	metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, statusCode, time.Since(start), nil)
@@ -105,8 +109,8 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 	if err != nil {
 		return "", fmt.Errorf("failed to create pull request: %w", err)
 	}
-	if resp.StatusCode != http.StatusCreated {
-		return "", fmt.Errorf("unexpected status code %d when creating pull request: %s", resp.StatusCode, string(body))
+	if statusCode != http.StatusCreated {
+		return "", fmt.Errorf("unexpected status code %d when creating pull request: %s", statusCode, string(body))
 	}
 
 	var created prResponse
@@ -157,11 +161,8 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 	path := fmt.Sprintf("%s/%d", prPath(projectKey, repoSlug), prID)
 
 	start := time.Now()
-	resp, body, err := pr.client.do(ctx, http.MethodPut, path, payload)
-	statusCode := http.StatusOK
-	if resp != nil {
-		statusCode = resp.StatusCode
-	} else if err != nil {
+	statusCode, body, err := pr.client.do(ctx, http.MethodPut, path, payload)
+	if err != nil {
 		statusCode = http.StatusInternalServerError
 	}
 	metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationUpdate, statusCode, time.Since(start), nil)
@@ -169,8 +170,8 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 	if err != nil {
 		return fmt.Errorf("failed to update pull request: %w", err)
 	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code %d when updating pull request: %s", resp.StatusCode, string(body))
+	if statusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status code %d when updating pull request: %s", statusCode, string(body))
 	}
 
 	logger.V(4).Info("Bitbucket DataCenter pull request updated", "id", prID)
@@ -178,6 +179,8 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 }
 
 // Close declines (closes) an existing pull request.
+//
+//nolint:dupl // Close and Merge are intentionally structurally similar operations; they differ only in the path suffix and error messages.
 func (pr *PullRequest) Close(ctx context.Context, prObj v1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
 
@@ -205,11 +208,8 @@ func (pr *PullRequest) Close(ctx context.Context, prObj v1alpha1.PullRequest) er
 	path := fmt.Sprintf("%s/%d/decline?version=%d", prPath(projectKey, repoSlug), prID, current.Version)
 
 	start := time.Now()
-	resp, body, err := pr.client.do(ctx, http.MethodPost, path, nil)
-	statusCode := http.StatusOK
-	if resp != nil {
-		statusCode = resp.StatusCode
-	} else if err != nil {
+	statusCode, body, err := pr.client.do(ctx, http.MethodPost, path, nil)
+	if err != nil {
 		statusCode = http.StatusInternalServerError
 	}
 	metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationClose, statusCode, time.Since(start), nil)
@@ -217,8 +217,8 @@ func (pr *PullRequest) Close(ctx context.Context, prObj v1alpha1.PullRequest) er
 	if err != nil {
 		return fmt.Errorf("failed to decline pull request: %w", err)
 	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code %d when declining pull request: %s", resp.StatusCode, string(body))
+	if statusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status code %d when declining pull request: %s", statusCode, string(body))
 	}
 
 	logger.V(4).Info("Bitbucket DataCenter pull request declined", "id", prID)
@@ -226,6 +226,8 @@ func (pr *PullRequest) Close(ctx context.Context, prObj v1alpha1.PullRequest) er
 }
 
 // Merge merges an existing pull request.
+//
+//nolint:dupl // Merge and Close are intentionally structurally similar operations; they differ only in the path suffix and error messages.
 func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
 
@@ -253,11 +255,8 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) er
 	path := fmt.Sprintf("%s/%d/merge?version=%d", prPath(projectKey, repoSlug), prID, current.Version)
 
 	start := time.Now()
-	resp, body, err := pr.client.do(ctx, http.MethodPost, path, nil)
-	statusCode := http.StatusOK
-	if resp != nil {
-		statusCode = resp.StatusCode
-	} else if err != nil {
+	statusCode, body, err := pr.client.do(ctx, http.MethodPost, path, nil)
+	if err != nil {
 		statusCode = http.StatusInternalServerError
 	}
 	metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, statusCode, time.Since(start), nil)
@@ -265,8 +264,8 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) er
 	if err != nil {
 		return fmt.Errorf("failed to merge pull request: %w", err)
 	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code %d when merging pull request: %s", resp.StatusCode, string(body))
+	if statusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status code %d when merging pull request: %s", statusCode, string(body))
 	}
 
 	logger.V(4).Info("Bitbucket DataCenter pull request merged", "id", prID)
@@ -296,11 +295,8 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	)
 
 	start := time.Now()
-	resp, body, err := pr.client.do(ctx, http.MethodGet, path, nil)
-	statusCode := http.StatusOK
-	if resp != nil {
-		statusCode = resp.StatusCode
-	} else if err != nil {
+	statusCode, body, err := pr.client.do(ctx, http.MethodGet, path, nil)
+	if err != nil {
 		statusCode = http.StatusInternalServerError
 	}
 	metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
@@ -308,8 +304,8 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	if err != nil {
 		return false, "", time.Time{}, fmt.Errorf("failed to list pull requests: %w", err)
 	}
-	if resp.StatusCode != http.StatusOK {
-		return false, "", time.Time{}, fmt.Errorf("unexpected status code %d when listing pull requests: %s", resp.StatusCode, string(body))
+	if statusCode != http.StatusOK {
+		return false, "", time.Time{}, fmt.Errorf("unexpected status code %d when listing pull requests: %s", statusCode, string(body))
 	}
 
 	var list prListResponse

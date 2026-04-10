@@ -18,8 +18,8 @@ import (
 
 // Client is an HTTP client for the Bitbucket DataCenter/Server REST API.
 type Client struct {
-	baseURL    string
 	httpClient *http.Client
+	baseURL    string
 	authHeader string
 }
 
@@ -50,19 +50,20 @@ func GetClient(domain string, secret corev1.Secret) (*Client, error) {
 }
 
 // do executes an authenticated HTTP request against the Bitbucket DataCenter API.
-func (c *Client) do(ctx context.Context, method, path string, body any) (*http.Response, []byte, error) {
+// It reads the response body, closes it, and returns the HTTP status code and body bytes.
+func (c *Client) do(ctx context.Context, method, path string, body any) (int, []byte, error) {
 	var bodyReader io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to marshal request body: %w", err)
+			return 0, nil, fmt.Errorf("failed to marshal request body: %w", err)
 		}
 		bodyReader = bytes.NewReader(data)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bodyReader)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create request: %w", err)
+		return 0, nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Authorization", c.authHeader)
@@ -71,16 +72,19 @@ func (c *Client) do(ctx context.Context, method, path string, body any) (*http.R
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, nil, fmt.Errorf("request failed: %w", err)
+		return 0, nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	if resp == nil {
+		return 0, nil, fmt.Errorf("received nil response from %s %s", method, path)
+	}
+	defer resp.Body.Close() //nolint:errcheck // Closing response body; read error checked below
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return resp, nil, fmt.Errorf("failed to read response body: %w", err)
+		return resp.StatusCode, nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	return resp, respBody, nil
+	return resp.StatusCode, respBody, nil
 }
 
 // ApplyHTTPAuth applies Bitbucket DataCenter authentication to the HTTP request.
@@ -114,38 +118,32 @@ func phaseToBuildState(phase v1alpha1.CommitStatusPhase) string {
 	}
 }
 
-// buildStateToPhase converts a Bitbucket DataCenter/Server build state to a CommitStatusPhase.
-func buildStateToPhase(buildState string) v1alpha1.CommitStatusPhase {
-	switch buildState {
-	case "SUCCESSFUL":
-		return v1alpha1.CommitPhaseSuccess
-	case "INPROGRESS":
-		return v1alpha1.CommitPhasePending
-	default:
-		return v1alpha1.CommitPhaseFailure
-	}
+// pullRequestRefProject is the project identifier within a pull-request branch reference.
+type pullRequestRefProject struct {
+	Key string `json:"key"`
+}
+
+// pullRequestRefRepository is the nested repository JSON structure for a pull-request branch reference.
+type pullRequestRefRepository struct {
+	Project pullRequestRefProject `json:"project"`
+	Slug    string                `json:"slug"`
 }
 
 // pullRequestRef is the JSON structure for a Bitbucket DataCenter pull-request branch reference.
 type pullRequestRef struct {
-	ID         string `json:"id"`
-	Repository struct {
-		Slug    string `json:"slug"`
-		Project struct {
-			Key string `json:"key"`
-		} `json:"project"`
-	} `json:"repository"`
+	Repository pullRequestRefRepository `json:"repository"`
+	ID         string                   `json:"id"`
 }
 
 // pullRequestPayload is the request body for creating or updating a pull request.
 type pullRequestPayload struct {
-	ID          int            `json:"id,omitempty"`
-	Version     int            `json:"version,omitempty"`
-	Title       string         `json:"title"`
-	Description string         `json:"description"`
 	FromRef     pullRequestRef `json:"fromRef"`
 	ToRef       pullRequestRef `json:"toRef"`
+	Title       string         `json:"title"`
+	Description string         `json:"description"`
 	Reviewers   []any          `json:"reviewers"`
+	ID          int            `json:"id,omitempty"`
+	Version     int            `json:"version,omitempty"`
 }
 
 // newPullRequestRef creates a pullRequestRef for the given branch and repository details.

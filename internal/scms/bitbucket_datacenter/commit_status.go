@@ -71,14 +71,11 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 		Description: commitStatus.Spec.Description,
 	}
 
-	path := fmt.Sprintf("/rest/build-status/1.0/commits/%s", commitStatus.Spec.Sha)
+	path := "/rest/build-status/1.0/commits/" + commitStatus.Spec.Sha
 
 	start := time.Now()
-	resp, _, err := cs.client.do(ctx, http.MethodPost, path, payload)
-	statusCode := http.StatusNoContent
-	if resp != nil {
-		statusCode = resp.StatusCode
-	} else if err != nil {
+	statusCode, _, err := cs.client.do(ctx, http.MethodPost, path, payload)
+	if err != nil {
 		statusCode = http.StatusInternalServerError
 	}
 	metrics.RecordSCMCall(repo, metrics.SCMAPICommitStatus, metrics.SCMOperationCreate, statusCode, time.Since(start), nil)
@@ -86,11 +83,11 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 	if err != nil {
 		return nil, fmt.Errorf("failed to set build status: %w", err)
 	}
-	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code %d when setting build status", resp.StatusCode)
+	if statusCode != http.StatusNoContent && statusCode != http.StatusCreated && statusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code %d when setting build status", statusCode)
 	}
 
-	logger.V(4).Info("Bitbucket DataCenter build status set", "status", resp.StatusCode)
+	logger.V(4).Info("Bitbucket DataCenter build status set", "status", statusCode)
 
 	commitStatus.Status.Phase = commitStatus.Spec.Phase
 	commitStatus.Status.Sha = commitStatus.Spec.Sha
