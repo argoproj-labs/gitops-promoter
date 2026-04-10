@@ -66,7 +66,7 @@ Use **`spec.mode.context`** to choose **`environments`** (default) or **`promoti
 | Value | HTTP requests per WebRequestCommitStatus (when the trigger allows) | `CommitStatus` resources |
 |-------|------------------------------------------------------|---------------------------|
 | `environments` (default) | One per applicable environment | One per environment; each request uses that environment’s templates and SHA |
-| `promotionstrategy` | **One** for the whole `WebRequestCommitStatus` | Still one per environment, but all are updated from the **same** response; each row uses that environment’s `reportOn` SHA |
+| `promotionstrategy` | **One** for the whole `WebRequestCommitStatus` | Still one per environment, but all are derived from the **same** response; each CommitStatus reports on that environment's `reportOn` SHA |
 
 The controller reconciles when the `WebRequestCommitStatus` or the referenced **`PromotionStrategy`** changes (for example environment SHAs moving), so promotion-strategy context stays in sync with the strategy.
 
@@ -76,8 +76,6 @@ Use it when a **single** external API call represents validation for the whole P
 
 - One “release train” or “deployment pipeline” status API keyed by application or repo, not by individual environment branch
 - A batch endpoint that returns status for multiple environments in one JSON payload (pair with a success expression that returns [per-branch phases](#success-expression-return-types-promotionstrategy-context))
-
-Keep **`environments`** context when each environment should hit a **different** URL or body (typical `{{ .Branch }}` / SHA-from-PromotionStrategy per call).
 
 ### Template and trigger variables (`promotionstrategy` context)
 
@@ -108,6 +106,8 @@ The `success.when.expression` is evaluated **every reconcile**, regardless of wh
 ```
 Response != nil ? Response.StatusCode == 200 : Phase == "success"
 ```
+
+This is the **carry-forward pattern**: when an HTTP response is available, evaluate it (`Response.StatusCode == 200`). When no request was made this reconcile (`Response` is `nil`), fall back to `Phase` -- which holds the phase from the previous reconcile. If the previous reconcile already determined `"success"`, the expression preserves it without needing another HTTP call. On the very first reconcile `Phase` is `""` (empty), so the fallback returns `false` and the phase starts as `pending`.
 
 ### Success expression return types (`promotionstrategy` context)
 
