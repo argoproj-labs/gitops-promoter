@@ -275,7 +275,7 @@ func (pr *PullRequest) getMapKey(pullRequest v1alpha1.PullRequest, owner, name s
 }
 
 // DeletePullRequest deletes a pull request from the fake provider's internal map.
-// This is used for testing to simulate externally merged/closed PRs.
+// This is used for testing to simulate a PR no longer open on the SCM (externally merged/closed, or fully removed).
 func (pr *PullRequest) DeletePullRequest(ctx context.Context, pullRequest v1alpha1.PullRequest) error {
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {

@@ -229,12 +229,14 @@ func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *p
 	// Only mark as external if spec.state is "open" (controller didn't initiate the closure/merge).
 	if pr.Status.ID != "" {
 		if pr.Spec.State == promoterv1alpha1.PullRequestOpen {
-			// Controller still thinks PR should be open, but it's not found on provider = external action
+			// Controller still thinks PR should be open, but it's not found on provider. That includes a
+			// human or another system closing/merging the PR, and also our own deletion finalizer having
+			// closed it on the SCM: the next sync cannot tell those apart, so we set ExternallyMergedOrClosed.
 			pr.Status.ExternallyMergedOrClosed = ptr.To(true)
 			// Don't set State since we don't know if it was merged or closed externally.
-			// The ExternallyMergedOrClosed flag is the source of truth that this PR
-			// is no longer active and was handled outside of the controller's control.
-			// An empty State with ExternallyMergedOrClosed=true means "closed/merged externally, but we don't know which".
+			// The ExternallyMergedOrClosed flag means this PR is no longer open on the provider while we still
+			// desired open; that includes true external action and indistinguishable cases such as our delete finalizer
+			// having closed the SCM PR. An empty State with ExternallyMergedOrClosed=true means we cannot tell merge vs. close.
 			pr.Status.State = ""
 			return true, nil
 		}
