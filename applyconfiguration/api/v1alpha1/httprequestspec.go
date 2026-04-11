@@ -32,16 +32,16 @@ import (
 // the previous run (trigger mode only).
 //
 // Template variables:
-// - {{ .ReportedSha }}: the commit SHA being reported on (environments context only; empty in promotionstrategy context)
-// - {{ .LastSuccessfulSha }}: last SHA that achieved success (environments context only; empty in promotionstrategy context)
-// - {{ .Phase }}: phase from previous reconcile (success/pending/failure, defaults to pending); in promotionstrategy context, aggregate of all branches (success only if all succeeded, failure if any failed, pending otherwise)
-// - {{ .PromotionStrategy }}: full PromotionStrategy object
-// - {{ .Environment }}: current environment status from PromotionStrategy (environments context only; nil in promotionstrategy context)
+// - {{ .Branch }}: the environment branch currently being processed (empty for shared HTTP request in promotionstrategy context)
+// - {{ .Phase }}: phase from previous reconcile (success/pending/failure, defaults to pending); in promotionstrategy context, aggregate of all branches
+// - {{ .PromotionStrategy }}: full PromotionStrategy object (use with Branch to look up per-environment data)
+// - {{ .WebRequestCommitStatus }}: full WebRequestCommitStatus spec and status (snapshot from previous reconcile)
 // - {{ .NamespaceMetadata.Labels }}: map of labels from the namespace
 // - {{ .NamespaceMetadata.Annotations }}: map of annotations from the namespace
 // - {{ index .TriggerOutput "key" }}, {{ index .ResponseOutput "key" }}: (trigger mode only) from previous reconcile
+// - {{ index .SuccessOutput "key" }}: custom data from the previous success.when.output.expression evaluation
 //
-// Example: "https://api.example.com/validate/{{ .Environment.Branch }}/{{ .ReportedSha }}"
+// Example: "https://api.example.com/validate/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
 type HTTPRequestSpecApplyConfiguration struct {
 	// URLTemplate is the HTTP endpoint to request.
 	// Supports Go templates (see HTTPRequestSpec for available variables).
