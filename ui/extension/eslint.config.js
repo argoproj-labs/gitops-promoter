@@ -36,6 +36,8 @@ export default [
         setInterval: 'readonly',
         clearInterval: 'readonly',
         fetch: 'readonly',
+        URL: 'readonly',
+        URLSearchParams: 'readonly',
         EventSource: 'readonly',
         MessageEvent: 'readonly',
         // Node globals
@@ -89,7 +91,7 @@ export default [
 
   // Test files override
   {
-    files: ['test/**/*.{ts,tsx,js,jsx}'],
+    files: ['test/**/*.{ts,tsx,js,jsx}', '**/*.test.{ts,tsx,js,jsx}'],
     languageOptions: {
       globals: {
         // Mocha globals
@@ -103,6 +105,8 @@ export default [
         require: 'readonly',
         // DOM globals used in tests
         HTMLDivElement: 'readonly',
+        MouseEvent: 'readonly',
+        Response: 'readonly',
       },
     },
     rules: {

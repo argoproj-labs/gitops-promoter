@@ -26,22 +26,22 @@ import (
 //
 // HTTPRequestSpec defines the HTTP request configuration.
 //
-// URLTemplate, HeaderTemplates, and BodyTemplate support Go templates (same Sprig/exclusions as DescriptionTemplate).
+// URLTemplate, HeaderTemplates, and BodyTemplate support Go templates. Sprig functions are available except env, expandenv, and getHostByName; urlQueryEscape is also available.
 // These fields are rendered with previous-attempt data: they are evaluated before the current HTTP request is made,
 // so they never contain the response from the request being built. Use TriggerOutput/ResponseOutput for state from
 // the previous run (trigger mode only).
 //
 // Template variables:
-// - {{ .ReportedSha }}: the commit SHA being reported on (based on reportOn setting)
-// - {{ .LastSuccessfulSha }}: last SHA that achieved success (empty until first success)
-// - {{ .Phase }}: phase from previous reconcile (success/pending/failure, defaults to pending)
-// - {{ .PromotionStrategy }}: full PromotionStrategy object
-// - {{ .Environment }}: current environment status from PromotionStrategy
+// - {{ .Branch }}: the environment branch currently being processed (empty for shared HTTP request in promotionstrategy context)
+// - {{ .Phase }}: phase from previous reconcile (success/pending/failure, defaults to pending); in promotionstrategy context, aggregate of all branches
+// - {{ .PromotionStrategy }}: full PromotionStrategy object (use with Branch to look up per-environment data)
+// - {{ .WebRequestCommitStatus }}: full WebRequestCommitStatus spec and status (snapshot from previous reconcile)
 // - {{ .NamespaceMetadata.Labels }}: map of labels from the namespace
 // - {{ .NamespaceMetadata.Annotations }}: map of annotations from the namespace
 // - {{ index .TriggerOutput "key" }}, {{ index .ResponseOutput "key" }}: (trigger mode only) from previous reconcile
+// - {{ index .SuccessOutput "key" }}: custom data from the previous success.when.output.expression evaluation
 //
-// Example: "https://api.example.com/validate/{{ .Environment.Branch }}/{{ .ReportedSha }}"
+// Example: "https://api.example.com/validate/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
 type HTTPRequestSpecApplyConfiguration struct {
 	// URLTemplate is the HTTP endpoint to request.
 	// Supports Go templates (see HTTPRequestSpec for available variables).
@@ -64,8 +64,10 @@ type HTTPRequestSpecApplyConfiguration struct {
 	// - Bearer Token: Bearer token authentication (e.g., API keys, JWTs)
 	// - OAuth2: OAuth2 client credentials flow for obtaining access tokens
 	// - TLS: Mutual TLS (mTLS) with client certificates
+	// - SCM: Reuses credentials from the ScmProvider referenced by the PromotionStrategy (no extra secret needed)
 	//
-	// All credentials must be stored in Kubernetes secrets and referenced via secretRef fields.
+	// For Basic, Bearer, OAuth2, and TLS, credentials must be stored in Kubernetes secrets and referenced via secretRef fields.
+	// For SCM, credentials are obtained automatically from the SCM provider; just set scm: {}.
 	//
 	// Examples:
 	// # Basic Auth
@@ -92,6 +94,10 @@ type HTTPRequestSpecApplyConfiguration struct {
 	// tls:
 	// secretRef:
 	// name: my-tls-cert
+	//
+	// # SCM Provider Credentials
+	// authentication:
+	// scm: {}
 	Authentication *HTTPAuthenticationApplyConfiguration `json:"authentication,omitempty"`
 }
 

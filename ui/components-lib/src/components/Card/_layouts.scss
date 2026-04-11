@@ -19,12 +19,12 @@ $extension-wrapper-gap: 20px;
     overflow-x: auto;
     width: 100%;
     gap: 20px;
-    justify-content: center; 
+    justify-content: center;
     scroll-behavior: smooth;
     box-sizing: border-box;
     margin: 0;
   }
-  
+
   .env-cards-wrapper {
     padding: 0;
     display: flex;
@@ -33,33 +33,33 @@ $extension-wrapper-gap: 20px;
     justify-content: center;
     gap: $card-gap-vertical;
   }
-  
+
   .env-card-column {
     flex: 0 0 auto;
     display: flex;
   }
-  
+
   .env-card {
     flex: 1;
     width: 425px;
     min-height: 400px;
     display: flex;
     flex-direction: column;
-    
+
     &.single-commit-group {
       min-height: 250px;
     }
   }
-  
+
   // Force height override for single-commit-group in vertical layout
   .env-card.single-commit-group {
     min-height: 300px;
   }
-  
+
   .commit-group.proposed {
     flex: 1;
   }
-  
+
   .arrow-separator {
     display: flex;
     align-items: start;
@@ -74,7 +74,7 @@ $extension-wrapper-gap: 20px;
     width: 100%;
     overflow-x: auto;
   }
-  
+
   .env-cards-wrapper {
     flex-direction: column;
     align-items: center;
@@ -84,43 +84,41 @@ $extension-wrapper-gap: 20px;
     justify-content: center;
     gap: $card-gap-vertical;
   }
-  
+
   .env-card-column {
     width: 90%;
     max-width: 100%;
     margin-bottom: $card-gap-horizontal;
   }
-  
+
   .env-card {
     display: grid;
     grid-template-columns: 1fr 1fr;
     grid-template-rows: auto 1fr;
     max-width: 100%;
     box-sizing: border-box;
-    
+
     &.single-commit-group {
       grid-template-columns: 1fr;
-      max-width: 70%; 
-      margin: 0; 
+      max-width: 70%;
+      margin: 0;
       min-height: 250px;
     }
   }
-  
 
-  
   .env-card__title {
     grid-column: 1 / -1;
     grid-row: 1;
     margin-bottom: 20px;
   }
-  
+
   .commit-group:not(.proposed) {
     grid-column: 1;
     grid-row: 2;
     min-width: 0;
-    padding-right: 16px; 
+    padding-right: 16px;
   }
-  
+
   .commit-group.proposed {
     grid-column: 2;
     grid-row: 1 / -1;
@@ -136,7 +134,16 @@ $extension-wrapper-gap: 20px;
     background: linear-gradient(135deg, rgba(13, 173, 234, 0.06) 0%, rgba(13, 173, 234, 0.03) 100%);
     min-width: 0;
   }
-  
+
+  .env-card.history-mode .commit-group.proposed {
+    border-left-color: $argo-color-gray-4;
+    background: linear-gradient(
+      135deg,
+      rgba(108, 117, 125, 0.06) 0%,
+      rgba(108, 117, 125, 0.03) 100%
+    );
+  }
+
   .arrow-separator {
     display: flex;
     align-items: center;
@@ -146,5 +153,3 @@ $extension-wrapper-gap: 20px;
     margin-left: 70%;
   }
 }
-
- 

@@ -15,5 +15,5 @@
       "@lib/*": ["../components-lib/src/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "test/**/*.ts", "vitest.config.ts"]
 }

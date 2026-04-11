@@ -19,15 +19,12 @@ package controller
 import (
 	"context"
 	_ "embed"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
@@ -58,194 +55,8 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 			By("creating the custom resource for the Kind ControllerConfiguration")
 			err := k8sClient.Get(ctx, typeNamespacedName, controllerconfiguration)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &promoterv1alpha1.ControllerConfiguration{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
-					Spec: promoterv1alpha1.ControllerConfigurationSpec{
-						PromotionStrategy: promoterv1alpha1.PromotionStrategyConfiguration{
-							WorkQueue: promoterv1alpha1.WorkQueue{
-								RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-								MaxConcurrentReconciles: 10,
-								RateLimiter: promoterv1alpha1.RateLimiter{
-									MaxOf: []promoterv1alpha1.RateLimiterTypes{
-										{
-											Bucket: &promoterv1alpha1.Bucket{
-												Qps:    100,
-												Bucket: 1000,
-											},
-										},
-										{
-											ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-												BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-												MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-											},
-										},
-									},
-								},
-							},
-						},
-						ChangeTransferPolicy: promoterv1alpha1.ChangeTransferPolicyConfiguration{
-							WorkQueue: promoterv1alpha1.WorkQueue{
-								RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-								MaxConcurrentReconciles: 10,
-								RateLimiter: promoterv1alpha1.RateLimiter{
-									MaxOf: []promoterv1alpha1.RateLimiterTypes{
-										{
-											Bucket: &promoterv1alpha1.Bucket{
-												Qps:    100,
-												Bucket: 1000,
-											},
-										},
-										{
-											ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-												BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-												MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-											},
-										},
-									},
-								},
-							},
-						},
-						PullRequest: promoterv1alpha1.PullRequestConfiguration{
-							Template: promoterv1alpha1.PullRequestTemplate{
-								Title:       "Promote {{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }} to `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`",
-								Description: "This PR is promoting the environment branch `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}` which is currently on dry sha {{ .ChangeTransferPolicy.Status.Active.Dry.Sha }} to dry sha {{ .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}.",
-							},
-							WorkQueue: promoterv1alpha1.WorkQueue{
-								RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-								MaxConcurrentReconciles: 10,
-								RateLimiter: promoterv1alpha1.RateLimiter{
-									MaxOf: []promoterv1alpha1.RateLimiterTypes{
-										{
-											Bucket: &promoterv1alpha1.Bucket{
-												Qps:    100,
-												Bucket: 1000,
-											},
-										},
-										{
-											ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-												BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-												MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-											},
-										},
-									},
-								},
-							},
-						},
-						CommitStatus: promoterv1alpha1.CommitStatusConfiguration{
-							WorkQueue: promoterv1alpha1.WorkQueue{
-								RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-								MaxConcurrentReconciles: 10,
-								RateLimiter: promoterv1alpha1.RateLimiter{
-									MaxOf: []promoterv1alpha1.RateLimiterTypes{
-										{
-											Bucket: &promoterv1alpha1.Bucket{
-												Qps:    100,
-												Bucket: 1000,
-											},
-										},
-										{
-											ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-												BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-												MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-											},
-										},
-									},
-								},
-							},
-						},
-						ArgoCDCommitStatus: promoterv1alpha1.ArgoCDCommitStatusConfiguration{
-							WorkQueue: promoterv1alpha1.WorkQueue{
-								RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-								MaxConcurrentReconciles: 10,
-								RateLimiter: promoterv1alpha1.RateLimiter{
-									MaxOf: []promoterv1alpha1.RateLimiterTypes{
-										{
-											Bucket: &promoterv1alpha1.Bucket{
-												Qps:    100,
-												Bucket: 1000,
-											},
-										},
-										{
-											ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-												BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-												MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-											},
-										},
-									},
-								},
-							},
-						},
-						TimedCommitStatus: promoterv1alpha1.TimedCommitStatusConfiguration{
-							WorkQueue: promoterv1alpha1.WorkQueue{
-								RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-								MaxConcurrentReconciles: 10,
-								RateLimiter: promoterv1alpha1.RateLimiter{
-									MaxOf: []promoterv1alpha1.RateLimiterTypes{
-										{
-											Bucket: &promoterv1alpha1.Bucket{
-												Qps:    100,
-												Bucket: 1000,
-											},
-										},
-										{
-											ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-												BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-												MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-											},
-										},
-									},
-								},
-							},
-						},
-						GitCommitStatus: promoterv1alpha1.GitCommitStatusConfiguration{
-							WorkQueue: promoterv1alpha1.WorkQueue{
-								RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-								MaxConcurrentReconciles: 10,
-								RateLimiter: promoterv1alpha1.RateLimiter{
-									MaxOf: []promoterv1alpha1.RateLimiterTypes{
-										{
-											Bucket: &promoterv1alpha1.Bucket{
-												Qps:    100,
-												Bucket: 1000,
-											},
-										},
-										{
-											ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-												BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-												MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-											},
-										},
-									},
-								},
-							},
-						},
-						WebRequestCommitStatus: promoterv1alpha1.WebRequestCommitStatusConfiguration{
-							WorkQueue: promoterv1alpha1.WorkQueue{
-								RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-								MaxConcurrentReconciles: 10,
-								RateLimiter: promoterv1alpha1.RateLimiter{
-									MaxOf: []promoterv1alpha1.RateLimiterTypes{
-										{
-											Bucket: &promoterv1alpha1.Bucket{
-												Qps:    100,
-												Bucket: 1000,
-											},
-										},
-										{
-											ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-												BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-												MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				}
+				resource, loadErr := loadShippedControllerConfigurationForTests("default", resourceName)
+				Expect(loadErr).NotTo(HaveOccurred())
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
 		})

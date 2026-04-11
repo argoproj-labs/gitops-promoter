@@ -115,3 +115,15 @@ Labels:
 A counter for the number of times the ArgoCD application watch event handler is called. This metric increments each time the controller processes an Argo CD application event.
 
 No labels.
+
+## promoter_kubernetes_resources
+
+A gauge of how many `promoter.argoproj.io` custom resources currently exist in the **local** Kubernetes cluster, broken out by API kind (for example `PromotionStrategy`, `GitRepository`).
+
+The controller refreshes this metric on a fixed interval (30 seconds) by listing each kind via the manager client (same view as the controller cache). It does **not** count resources on remote clusters that are reconciled only through multicluster configuration.
+
+If a list request fails for a kind, that kind's gauge is set to `0` and an error is logged.
+
+Labels:
+
+* `kind`: Kubernetes API kind of the custom resource (matches the thirteen root CRDs reconciled by GitOps Promoter, such as `ArgoCDCommitStatus`, `ChangeTransferPolicy`, `ClusterScmProvider`, `CommitStatus`, `ControllerConfiguration`, `GitCommitStatus`, `GitRepository`, `PromotionStrategy`, `PullRequest`, `RevertCommit`, `ScmProvider`, `TimedCommitStatus`, `WebRequestCommitStatus`).

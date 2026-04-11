@@ -107,11 +107,9 @@ func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
 
 	c, _ := GinkgoConfiguration()
-	// c.FocusFiles = []string{
-	// 	"changetransferpolicy_controller_test.go",
-	// 	"pullrequest_controller_test.go",
-	// 	"promotionstrategy_controller_test.go",
-	// }
+	// Narrow iteration without editing specs: run `FOCUS='SubString' make test-parallel` (see Makefile).
+	// Or scope by file (do not commit):
+	// c.FocusFiles = []string{"promotionstrategy_controller_test.go"}
 	// GinkgoWriter.TeeTo(os.Stdout)
 
 	RunSpecs(t, "Controller Suite", c)
@@ -179,195 +177,8 @@ var _ = BeforeSuite(func() {
 
 	k8sManager := multiClusterManager.GetLocalManager()
 
-	controllerConfiguration := &promoterv1alpha1.ControllerConfiguration{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "promoter-controller-configuration",
-			Namespace: "default",
-		},
-		Spec: promoterv1alpha1.ControllerConfigurationSpec{
-			PromotionStrategy: promoterv1alpha1.PromotionStrategyConfiguration{
-				WorkQueue: promoterv1alpha1.WorkQueue{
-					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-					MaxConcurrentReconciles: 10,
-					RateLimiter: promoterv1alpha1.RateLimiter{
-						MaxOf: []promoterv1alpha1.RateLimiterTypes{
-							{
-								Bucket: &promoterv1alpha1.Bucket{
-									Qps:    10,
-									Bucket: 100,
-								},
-							},
-							{
-								ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-									BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-									MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-								},
-							},
-						},
-					},
-				},
-			},
-			ChangeTransferPolicy: promoterv1alpha1.ChangeTransferPolicyConfiguration{
-				WorkQueue: promoterv1alpha1.WorkQueue{
-					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-					MaxConcurrentReconciles: 10,
-					RateLimiter: promoterv1alpha1.RateLimiter{
-						MaxOf: []promoterv1alpha1.RateLimiterTypes{
-							{
-								Bucket: &promoterv1alpha1.Bucket{
-									Qps:    10,
-									Bucket: 100,
-								},
-							},
-							{
-								ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-									BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-									MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-								},
-							},
-						},
-					},
-				},
-			},
-			PullRequest: promoterv1alpha1.PullRequestConfiguration{
-				Template: promoterv1alpha1.PullRequestTemplate{
-					Title:       "Promote {{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }} to `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`",
-					Description: "This PR is promoting the environment branch `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}` which is currently on dry sha {{ .ChangeTransferPolicy.Status.Active.Dry.Sha }} to dry sha {{ .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}.",
-				},
-				WorkQueue: promoterv1alpha1.WorkQueue{
-					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-					MaxConcurrentReconciles: 10,
-					RateLimiter: promoterv1alpha1.RateLimiter{
-						MaxOf: []promoterv1alpha1.RateLimiterTypes{
-							{
-								Bucket: &promoterv1alpha1.Bucket{
-									Qps:    10,
-									Bucket: 100,
-								},
-							},
-							{
-								ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-									BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-									MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-								},
-							},
-						},
-					},
-				},
-			},
-			CommitStatus: promoterv1alpha1.CommitStatusConfiguration{
-				WorkQueue: promoterv1alpha1.WorkQueue{
-					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-					MaxConcurrentReconciles: 10,
-					RateLimiter: promoterv1alpha1.RateLimiter{
-						MaxOf: []promoterv1alpha1.RateLimiterTypes{
-							{
-								Bucket: &promoterv1alpha1.Bucket{
-									Qps:    10,
-									Bucket: 100,
-								},
-							},
-							{
-								ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-									BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-									MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-								},
-							},
-						},
-					},
-				},
-			},
-			ArgoCDCommitStatus: promoterv1alpha1.ArgoCDCommitStatusConfiguration{
-				WatchLocalApplications: true,
-				WorkQueue: promoterv1alpha1.WorkQueue{
-					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-					MaxConcurrentReconciles: 10,
-					RateLimiter: promoterv1alpha1.RateLimiter{
-						MaxOf: []promoterv1alpha1.RateLimiterTypes{
-							{
-								Bucket: &promoterv1alpha1.Bucket{
-									Qps:    10,
-									Bucket: 100,
-								},
-							},
-							{
-								ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-									BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-									MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-								},
-							},
-						},
-					},
-				},
-			},
-			TimedCommitStatus: promoterv1alpha1.TimedCommitStatusConfiguration{
-				WorkQueue: promoterv1alpha1.WorkQueue{
-					RequeueDuration:         metav1.Duration{Duration: time.Second * 1},
-					MaxConcurrentReconciles: 10,
-					RateLimiter: promoterv1alpha1.RateLimiter{
-						MaxOf: []promoterv1alpha1.RateLimiterTypes{
-							{
-								Bucket: &promoterv1alpha1.Bucket{
-									Qps:    10,
-									Bucket: 100,
-								},
-							},
-							{
-								ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-									BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-									MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-								},
-							},
-						},
-					},
-				},
-			},
-			GitCommitStatus: promoterv1alpha1.GitCommitStatusConfiguration{
-				WorkQueue: promoterv1alpha1.WorkQueue{
-					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-					MaxConcurrentReconciles: 10,
-					RateLimiter: promoterv1alpha1.RateLimiter{
-						MaxOf: []promoterv1alpha1.RateLimiterTypes{
-							{
-								Bucket: &promoterv1alpha1.Bucket{
-									Qps:    10,
-									Bucket: 100,
-								},
-							},
-							{
-								ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-									BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-									MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-								},
-							},
-						},
-					},
-				},
-			},
-			WebRequestCommitStatus: promoterv1alpha1.WebRequestCommitStatusConfiguration{
-				WorkQueue: promoterv1alpha1.WorkQueue{
-					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-					MaxConcurrentReconciles: 10,
-					RateLimiter: promoterv1alpha1.RateLimiter{
-						MaxOf: []promoterv1alpha1.RateLimiterTypes{
-							{
-								Bucket: &promoterv1alpha1.Bucket{
-									Qps:    10,
-									Bucket: 100,
-								},
-							},
-							{
-								ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-									BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-									MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
+	controllerConfiguration, err := loadShippedControllerConfigurationForTests("default", settings.ControllerConfigurationName)
+	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient.Create(ctx, controllerConfiguration)).To(Succeed())
 
 	settingsMgr := settings.NewManager(k8sManager.GetClient(), k8sManager.GetAPIReader(), settings.ManagerConfig{
@@ -603,7 +414,12 @@ func startGitServer(gitStoragePath string) (string, *http.Server) {
 	return gitServerPortStr, server
 }
 
-func setupInitialTestGitRepoWithoutActiveMetadata(owner string, name string) {
+// testGitRepoCloneURL is the http URL of the fake repository on the in-process test git server (from GitRepository.Spec.Fake).
+func testGitRepoCloneURL(repo *promoterv1alpha1.GitRepository) string {
+	return fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repo.Spec.Fake.Owner, repo.Spec.Fake.Name)
+}
+
+func setupInitialTestGitRepoWithoutActiveMetadata(repo *promoterv1alpha1.GitRepository) {
 	gitPath, err := os.MkdirTemp("", "*")
 	if err != nil {
 		panic("could not make temp dir for repo server")
@@ -615,7 +431,7 @@ func setupInitialTestGitRepoWithoutActiveMetadata(owner string, name string) {
 		}
 	}()
 
-	_, err = runGitCmd(ctx, gitPath, "clone", fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, owner, name), ".")
+	_, err = runGitCmd(ctx, gitPath, "clone", testGitRepoCloneURL(repo), ".")
 	Expect(err).NotTo(HaveOccurred())
 
 	_, err = runGitCmd(ctx, gitPath, "config", "user.name", "testuser")
@@ -669,7 +485,7 @@ func setupInitialTestGitRepoWithoutActiveMetadata(owner string, name string) {
 	}
 }
 
-func setupInitialTestGitRepoOnServer(ctx context.Context, owner string, name string) {
+func setupInitialTestGitRepoOnServer(ctx context.Context, repo *promoterv1alpha1.GitRepository) {
 	gitPath, err := os.MkdirTemp("", "*")
 	if err != nil {
 		panic("could not make temp dir for repo server")
@@ -681,7 +497,7 @@ func setupInitialTestGitRepoOnServer(ctx context.Context, owner string, name str
 		}
 	}()
 
-	_, err = runGitCmd(ctx, gitPath, "clone", fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, owner, name), ".")
+	_, err = runGitCmd(ctx, gitPath, "clone", testGitRepoCloneURL(repo), ".")
 	Expect(err).NotTo(HaveOccurred())
 
 	_, err = runGitCmd(ctx, gitPath, "config", "user.name", "testuser")
@@ -745,8 +561,8 @@ func setupInitialTestGitRepoOnServer(ctx context.Context, owner string, name str
 	GinkgoLogr.Info("Git repository initialized", "path", gitPath)
 }
 
-func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string, dryCommitMessage string, hydratedCommitMessage string) (string, string) {
-	repoURL := fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repoOwner, repoName)
+func makeChangeAndHydrateRepo(gitPath string, repo *promoterv1alpha1.GitRepository, dryCommitMessage string, hydratedCommitMessage string) (string, string) {
+	repoURL := testGitRepoCloneURL(repo)
 	_, err := runGitCmd(ctx, gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", repoURL, ".")
 	Expect(err).NotTo(HaveOccurred())
 
@@ -799,7 +615,8 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 	sha, err := runGitCmd(ctx, gitPath, "rev-parse", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
 	sha = strings.TrimSpace(sha)
-	shortSha, err := runGitCmd(ctx, gitPath, "rev-parse", "--short=7", defaultBranch)
+	// --short=5 aligns with shipped ControllerConfiguration pullRequest.template (trunc 5 on dry SHA).
+	shortSha, err := runGitCmd(ctx, gitPath, "rev-parse", "--short=5", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
 	shortSha = strings.TrimSpace(shortSha)
 
@@ -970,14 +787,14 @@ func sendWebhookForPush(ctx context.Context, sha, branch string) {
 	}
 }
 
-// cloneTestRepo clones the test repo and configures git user. Returns the temp directory path.
-func cloneTestRepo(ctx context.Context, repoName string) (gitPath string, err error) {
+// cloneTestRepo clones the test repo for gitRepo.Spec.Fake and configures git user. Returns the temp directory path.
+func cloneTestRepo(ctx context.Context, repo *promoterv1alpha1.GitRepository) (gitPath string, err error) {
 	gitPath, err = os.MkdirTemp("", "*")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp dir: %w", err)
 	}
 
-	repoURL := fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repoName, repoName)
+	repoURL := testGitRepoCloneURL(repo)
 	_, err = runGitCmd(ctx, gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", repoURL, ".")
 	if err != nil {
 		_ = os.RemoveAll(gitPath)

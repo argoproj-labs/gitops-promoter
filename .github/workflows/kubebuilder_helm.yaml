@@ -27,7 +27,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@4aaadf42668403795cdfdb15b1c4250e9fed12b9 # pin@v5
         with:
-          go-version: "1.25"
+          go-version: "1.26.1"
 
       - name: Install kubebuilder
         run: |
@@ -36,7 +36,7 @@ jobs:
           kubebuilder version
 
       - name: Set up Helm
-        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # pin v4.3
+        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # pin v4.3
         with:
           version: v3.20.0
 
@@ -47,6 +47,8 @@ jobs:
       - name: Update example blocks from generated CRDs
         run: |
           sed -i 's/{{- if eq \(.Environment\)/{{ `{{- if eq .Environment` }}/g; s/{{- else if eq \(.Environment\)/{{ `{{- else if eq .Environment` }}/g; s/{{- end -}}/{{ `{{- end -}}` }}/g; s/{{- range \$key, \$value := \.ArgoCDCommitStatus/{{ `{{- range $key, $value := .ArgoCDCommitStatus` }}/g' tmp_chart/chart/templates/crd/argocdcommitstatuses.promoter.argoproj.io.yaml
+          # Kubebuilder leaves {{ range }}/{{ if }} in urlTemplate example as real Helm actions; wrap as a raw string (same pattern as ArgoCD CRD above).
+          sed -i 's|{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch \$\.Branch }}{{ "{{ .Proposed.Hydrated.Sha }}" }}{{ "{{ end }}" }}{{ "{{ end }}" }}|{{ `{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}` }}|g' tmp_chart/chart/templates/crd/webrequestcommitstatuses.promoter.argoproj.io.yaml
 
       - name: Lint Helm chart
         run: |
@@ -54,7 +56,7 @@ jobs:
           helm lint --debug ./tmp_chart/chart  --set crd.enable=true --set webhook.enable=true
 
       - name: Upload Helm chart artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         if: always()
         with:
           name: helm-chart

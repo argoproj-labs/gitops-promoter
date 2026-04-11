@@ -219,12 +219,16 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.WebRequestCommitStatusConfigurationApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("WebRequestCommitStatusEnvironmentStatus"):
 		return &apiv1alpha1.WebRequestCommitStatusEnvironmentStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("WebRequestCommitStatusLastSuccessfulShaItem"):
+		return &apiv1alpha1.WebRequestCommitStatusLastSuccessfulShaItemApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("WebRequestCommitStatusPhasePerBranchItem"):
+		return &apiv1alpha1.WebRequestCommitStatusPhasePerBranchItemApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("WebRequestCommitStatusPromotionStrategyContextStatus"):
+		return &apiv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("WebRequestCommitStatusSpec"):
 		return &apiv1alpha1.WebRequestCommitStatusSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("WebRequestCommitStatusStatus"):
 		return &apiv1alpha1.WebRequestCommitStatusStatusApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("WhenSpec"):
-		return &apiv1alpha1.WhenSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("WhenWithOutputSpec"):
 		return &apiv1alpha1.WhenWithOutputSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("WorkQueue"):

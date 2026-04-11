@@ -7,6 +7,15 @@ coverage:
     project:
       default:
         threshold: 0.1
+      # Vitest lcov from CI (ui/dashboard, ui/extension) + any hits under shared UI packages
+      ui:
+        target: auto
+        threshold: 0.1
+        paths:
+          - ui/dashboard
+          - ui/extension
+          - ui/components-lib
+          - ui/shared
 ignore:
   - 'api/v1alpha1'
   - 'applyconfiguration'

@@ -143,7 +143,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "non-hydrator-test", "default")
 
 			// Set up a real git repository on the test server
-			setupInitialTestGitRepoOnServer(ctx, name, name)
+			setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 			// Simplify to just one environment for this test
 			promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
@@ -162,7 +162,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				_ = os.RemoveAll(workTreePath)
 			}()
 
-			_, err = runGitCmd(ctx, workTreePath, "clone", fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, name, name), ".")
+			_, err = runGitCmd(ctx, workTreePath, "clone", testGitRepoCloneURL(gitRepo), ".")
 			Expect(err).ToNot(HaveOccurred())
 			_, err = runGitCmd(ctx, workTreePath, "checkout", testBranchStaging)
 			Expect(err).ToNot(HaveOccurred())
@@ -186,7 +186,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				},
 				Spec: argocd.ApplicationSpec{
 					Source: &argocd.Source{
-						RepoURL:        fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, name, name),
+						RepoURL:        testGitRepoCloneURL(gitRepo),
 						TargetRevision: testBranchStaging,
 					},
 				},
@@ -248,7 +248,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "sync-bug-test", "default")
 
 			// Set up a real git repository on the test server
-			setupInitialTestGitRepoOnServer(ctx, name, name)
+			setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 			// Simplify to just one environment for this test
 			promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
@@ -260,150 +260,6 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
-			// Create ControllerConfiguration to enable watching local applications
-			controllerConfig := &promoterv1alpha1.ControllerConfiguration{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "controller-config",
-					Namespace: "default",
-				},
-				Spec: promoterv1alpha1.ControllerConfigurationSpec{
-					ArgoCDCommitStatus: promoterv1alpha1.ArgoCDCommitStatusConfiguration{
-						WatchLocalApplications: true,
-						WorkQueue: promoterv1alpha1.WorkQueue{
-							RequeueDuration:         metav1.Duration{Duration: 5 * 60 * 1000000000}, // 5 minutes in nanoseconds
-							MaxConcurrentReconciles: 10,
-							RateLimiter: promoterv1alpha1.RateLimiter{
-								MaxOf: []promoterv1alpha1.RateLimiterTypes{
-									{
-										Bucket: &promoterv1alpha1.Bucket{
-											Qps:    100,
-											Bucket: 1000,
-										},
-									},
-								},
-							},
-						},
-					},
-					PromotionStrategy: promoterv1alpha1.PromotionStrategyConfiguration{
-						WorkQueue: promoterv1alpha1.WorkQueue{
-							RequeueDuration:         metav1.Duration{Duration: 5 * 60 * 1000000000},
-							MaxConcurrentReconciles: 10,
-							RateLimiter: promoterv1alpha1.RateLimiter{
-								MaxOf: []promoterv1alpha1.RateLimiterTypes{
-									{
-										Bucket: &promoterv1alpha1.Bucket{
-											Qps:    100,
-											Bucket: 1000,
-										},
-									},
-								},
-							},
-						},
-					},
-					ChangeTransferPolicy: promoterv1alpha1.ChangeTransferPolicyConfiguration{
-						WorkQueue: promoterv1alpha1.WorkQueue{
-							RequeueDuration:         metav1.Duration{Duration: 5 * 60 * 1000000000},
-							MaxConcurrentReconciles: 10,
-							RateLimiter: promoterv1alpha1.RateLimiter{
-								MaxOf: []promoterv1alpha1.RateLimiterTypes{
-									{
-										Bucket: &promoterv1alpha1.Bucket{
-											Qps:    100,
-											Bucket: 1000,
-										},
-									},
-								},
-							},
-						},
-					},
-					PullRequest: promoterv1alpha1.PullRequestConfiguration{
-						Template: promoterv1alpha1.PullRequestTemplate{
-							Title:       "Test PR",
-							Description: "Test Description",
-						},
-						WorkQueue: promoterv1alpha1.WorkQueue{
-							RequeueDuration:         metav1.Duration{Duration: 5 * 60 * 1000000000},
-							MaxConcurrentReconciles: 10,
-							RateLimiter: promoterv1alpha1.RateLimiter{
-								MaxOf: []promoterv1alpha1.RateLimiterTypes{
-									{
-										Bucket: &promoterv1alpha1.Bucket{
-											Qps:    100,
-											Bucket: 1000,
-										},
-									},
-								},
-							},
-						},
-					},
-					CommitStatus: promoterv1alpha1.CommitStatusConfiguration{
-						WorkQueue: promoterv1alpha1.WorkQueue{
-							RequeueDuration:         metav1.Duration{Duration: 5 * 60 * 1000000000},
-							MaxConcurrentReconciles: 10,
-							RateLimiter: promoterv1alpha1.RateLimiter{
-								MaxOf: []promoterv1alpha1.RateLimiterTypes{
-									{
-										Bucket: &promoterv1alpha1.Bucket{
-											Qps:    100,
-											Bucket: 1000,
-										},
-									},
-								},
-							},
-						},
-					},
-					TimedCommitStatus: promoterv1alpha1.TimedCommitStatusConfiguration{
-						WorkQueue: promoterv1alpha1.WorkQueue{
-							RequeueDuration:         metav1.Duration{Duration: 5 * 60 * 1000000000},
-							MaxConcurrentReconciles: 10,
-							RateLimiter: promoterv1alpha1.RateLimiter{
-								MaxOf: []promoterv1alpha1.RateLimiterTypes{
-									{
-										Bucket: &promoterv1alpha1.Bucket{
-											Qps:    100,
-											Bucket: 1000,
-										},
-									},
-								},
-							},
-						},
-					},
-					GitCommitStatus: promoterv1alpha1.GitCommitStatusConfiguration{
-						WorkQueue: promoterv1alpha1.WorkQueue{
-							RequeueDuration:         metav1.Duration{Duration: 5 * 60 * 1000000000},
-							MaxConcurrentReconciles: 10,
-							RateLimiter: promoterv1alpha1.RateLimiter{
-								MaxOf: []promoterv1alpha1.RateLimiterTypes{
-									{
-										Bucket: &promoterv1alpha1.Bucket{
-											Qps:    100,
-											Bucket: 1000,
-										},
-									},
-								},
-							},
-						},
-					},
-					WebRequestCommitStatus: promoterv1alpha1.WebRequestCommitStatusConfiguration{
-						WorkQueue: promoterv1alpha1.WorkQueue{
-							RequeueDuration:         metav1.Duration{Duration: 5 * 60 * 1000000000},
-							MaxConcurrentReconciles: 10,
-							RateLimiter: promoterv1alpha1.RateLimiter{
-								MaxOf: []promoterv1alpha1.RateLimiterTypes{
-									{
-										Bucket: &promoterv1alpha1.Bucket{
-											Qps:    100,
-											Bucket: 1000,
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			}
-			Expect(k8sClient.Create(ctx, controllerConfig)).To(Succeed())
-
 			// Clone the repo to a work tree so we can read and make commits
 			workTreePath, err := os.MkdirTemp("", "*")
 			Expect(err).ToNot(HaveOccurred())
@@ -411,7 +267,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				_ = os.RemoveAll(workTreePath)
 			}()
 
-			_, err = runGitCmd(ctx, workTreePath, "clone", fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, name, name), ".")
+			_, err = runGitCmd(ctx, workTreePath, "clone", testGitRepoCloneURL(gitRepo), ".")
 			Expect(err).ToNot(HaveOccurred())
 			_, err = runGitCmd(ctx, workTreePath, "config", "user.name", "testuser")
 			Expect(err).ToNot(HaveOccurred())
@@ -450,7 +306,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 							TargetBranch: testBranchStaging,
 						},
 						DrySource: argocd.DrySource{
-							RepoURL: fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, name, name),
+							RepoURL: testGitRepoCloneURL(gitRepo),
 						},
 					},
 				},
@@ -594,7 +450,6 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			// Clean up
 			Expect(k8sClient.Delete(ctx, app)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, commitStatus)).To(Succeed())
-			Expect(k8sClient.Delete(ctx, controllerConfig)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())

@@ -1,6 +1,53 @@
-import { expect } from 'chai';
+import { describe, it, beforeEach, afterEach, expect, vi } from 'vitest';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
+import App from '../src/App';
+import DashboardPage from '../src/pages/DashboardPage';
+import PromotionStrategyPage from '../src/pages/PromotionStrategyPage';
+import { TopBar } from '../src/components/TopBar';
+
+vi.stubGlobal(
+  'fetch',
+  vi.fn(() =>
+    Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({}),
+      text: () => Promise.resolve(''),
+    }),
+  ),
+);
+
+vi.stubGlobal(
+  'matchMedia',
+  vi.fn((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(() => true),
+  })),
+);
+
+vi.stubGlobal(
+  'ResizeObserver',
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  },
+);
+
+vi.stubGlobal(
+  'IntersectionObserver',
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  },
+);
 
 describe('Dashboard Page Load Tests', () => {
   let container: HTMLDivElement;
@@ -19,32 +66,22 @@ describe('Dashboard Page Load Tests', () => {
 
   describe('App Component', () => {
     it('should render the App component without crashing', () => {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const App = require('../src/App').default;
-
       const root = createRoot(container);
 
-      // Should not throw an error
       expect(() => {
         root.render(React.createElement(App));
-      }).to.not.throw();
+      }).not.toThrow();
 
-      // Clean up
       root.unmount();
     });
 
     it('should render the TopBar component', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const App = require('../src/App').default;
-
       const root = createRoot(container);
       root.render(React.createElement(App));
 
-      // Wait for render
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      // Check that something rendered
-      expect(container.innerHTML).to.not.equal('');
+      expect(container.innerHTML).not.toBe('');
 
       root.unmount();
     });
@@ -52,14 +89,11 @@ describe('Dashboard Page Load Tests', () => {
 
   describe('DashboardPage Component', () => {
     it('should render the DashboardPage component without crashing', () => {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const DashboardPage = require('../src/pages/DashboardPage').default;
-
       const root = createRoot(container);
 
       expect(() => {
         root.render(React.createElement(DashboardPage));
-      }).to.not.throw();
+      }).not.toThrow();
 
       root.unmount();
     });
@@ -67,14 +101,11 @@ describe('Dashboard Page Load Tests', () => {
 
   describe('PromotionStrategyPage Component', () => {
     it('should render the PromotionStrategyPage component without crashing', () => {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const PromotionStrategyPage = require('../src/pages/PromotionStrategyPage').default;
-
       const root = createRoot(container);
 
       expect(() => {
         root.render(React.createElement(PromotionStrategyPage, { namespace: 'test-namespace' }));
-      }).to.not.throw();
+      }).not.toThrow();
 
       root.unmount();
     });
@@ -82,14 +113,11 @@ describe('Dashboard Page Load Tests', () => {
 
   describe('TopBar Component', () => {
     it('should render the TopBar component without crashing', () => {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const { TopBar } = require('../src/components/TopBar');
-
       const root = createRoot(container);
 
       expect(() => {
         root.render(React.createElement(TopBar));
-      }).to.not.throw();
+      }).not.toThrow();
 
       root.unmount();
     });

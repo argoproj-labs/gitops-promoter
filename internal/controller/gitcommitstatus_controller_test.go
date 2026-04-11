@@ -58,7 +58,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			{Key: "test-validation"},
 		}
 
-		setupInitialTestGitRepoOnServer(ctx, name, name)
+		setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -483,7 +483,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			// Make a change with hydrated commit message that starts with "feat:"
 			// Note: dryCommitMessage is for dry branch, hydratedCommitMessage is for hydrated branches (what we validate)
-			makeChangeAndHydrateRepo(gitPath, name, name, "new commit", "feat: new feature content")
+			makeChangeAndHydrateRepo(gitPath, gitRepo, "new commit", "feat: new feature content")
 
 			By("Waiting for PromotionStrategy to update")
 			var developmentProposedSHA string
@@ -673,7 +673,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			}()
 
 			// Clone the repo
-			repoURL := "http://localhost:" + gitServerPort + "/" + name + "/" + name
+			repoURL := testGitRepoCloneURL(gitRepo)
 			_, err = runGitCmd(ctx, gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", repoURL, ".")
 			Expect(err).NotTo(HaveOccurred())
 
@@ -824,7 +824,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				}
 			}
 
-			setupInitialTestGitRepoOnServer(ctx, gatingName, gatingName)
+			setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -862,7 +862,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = os.RemoveAll(gitPath) }()
 
-			drySha, shortSha := makeChangeAndHydrateRepo(gitPath, gatingName, gatingName, "test commit for gating", "hydrated commit for gating")
+			drySha, shortSha := makeChangeAndHydrateRepo(gitPath, gitRepo, "test commit for gating", "hydrated commit for gating")
 			GinkgoLogr.Info("Created hydrated commit", "drySha", drySha, "shortSha", shortSha)
 
 			By("Waiting for PromotionStrategy to pick up the hydrated commits with correct SHAs")

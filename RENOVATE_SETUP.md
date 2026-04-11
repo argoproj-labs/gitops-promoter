@@ -88,13 +88,17 @@ The Renovate workflow (`.github/workflows/renovate.yaml`) runs:
 
 The workflow uses a GitHub App token for authentication, which provides better rate limits and permissions than a PAT.
 
+### Scheduling
+
+Renovate is triggered by `.github/workflows/renovate.yaml` (Sun/Wed/Sat). A separate `schedule` in `renovate.json5` that only allowed weekends would block mid-week runs from creating PRs even though the workflow executed.
+
 ### Update Detection
 
 Renovate uses regex managers to detect version strings in various files:
 
-- **Go version** in `go.mod`: `go 1.25.0`
-- **Go version** in workflows: `go-version: "1.25"`
-- **Go version** in Dockerfiles: `FROM golang:1.25`
+- **Go version** in `go.mod`: `go 1.26.1`
+- **Go version** in workflows: `go-version: "1.26.1"` (patch segment optional in the regex)
+- **Go version** in Dockerfiles: `FROM golang:1.26.1@sha256:...`
 - **golangci-lint** in Makefile: `GOLANGCI_LINT_VERSION ?= v2.5.0`
 - **golangci-lint** in workflows: `version: v2.5.0`
 

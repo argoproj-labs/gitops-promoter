@@ -1,0 +1,38 @@
+name: zizmor
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  zizmor:
+    name: GitHub Actions Security Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # Required for SARIF upload
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Run zizmor
+        id: zizmor
+        uses: zizmorcore/zizmor-action@71321a20a9ded102f6e9ce5718a2fcec2c4f70d8 # v0.5.2
+
+      - name: Check for findings
+        run: |
+          findings=$(jq '[.runs[].results[]] | length' "$SARIF")
+          if [ "$findings" -gt 0 ]; then
+            echo "::error::zizmor found $findings finding(s)"
+            exit 1
+          fi
+        env:
+          SARIF: ${{ steps.zizmor.outputs.output-file }}

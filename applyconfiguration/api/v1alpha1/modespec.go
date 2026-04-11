@@ -17,11 +17,24 @@ limitations under the License.
 
 package v1alpha1
 
+import (
+	apiv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+)
+
 // ModeSpecApplyConfiguration represents a declarative configuration of the ModeSpec type for use
 // with apply.
 //
-// ModeSpec defines the operating mode for the WebRequestCommitStatus controller.
-// Exactly one of Polling or Trigger must be specified.
+// ModeSpec defines how the WebRequestCommitStatus controller issues HTTP requests.
+//
+// Exactly one of Polling or Trigger must be set.
+//
+// Context (the context field below) controls request fan-out and what data is available in templates and trigger expressions:
+//
+// - "environments" (default): one HTTP request per environment; each environment has its own phase and status; success.when.expression is evaluated per response and must return a boolean (true → success, false → pending; failure is not expressible).
+//
+// - "promotionstrategy": at most one HTTP request per WebRequestCommitStatus resource; CommitStatuses remain one per environment on each environment’s reportOn SHA. success.when.expression runs once on that shared response — see WhenWithOutputSpec.Expression for boolean vs per-branch object return shapes.
+//
+// When context is "promotionstrategy", Branch is empty for the shared HTTP request and trigger expressions. Use PromotionStrategy (e.g. status environments) for branch-specific values. For description and url templates, {{ .Branch }} and {{ .Phase }} are set per environment when rendering that environment’s CommitStatus.
 type ModeSpecApplyConfiguration struct {
 	// Polling enables interval-based polling mode.
 	// The controller will poll the HTTP endpoint at the specified interval.
@@ -29,6 +42,8 @@ type ModeSpecApplyConfiguration struct {
 	// Trigger enables expression-based triggering mode.
 	// The controller will evaluate the expression to determine when to make HTTP requests.
 	Trigger *TriggerModeSpecApplyConfiguration `json:"trigger,omitempty"`
+	// Context is "environments" (default) or "promotionstrategy". See the ModeSpec type documentation for behavior, template limits, and success expression rules.
+	Context *apiv1alpha1.ContextMode `json:"context,omitempty"`
 }
 
 // ModeSpecApplyConfiguration constructs a declarative configuration of the ModeSpec type for use with
@@ -50,5 +65,13 @@ func (b *ModeSpecApplyConfiguration) WithPolling(value *PollingModeSpecApplyConf
 // If called multiple times, the Trigger field is set to the value of the last call.
 func (b *ModeSpecApplyConfiguration) WithTrigger(value *TriggerModeSpecApplyConfiguration) *ModeSpecApplyConfiguration {
 	b.Trigger = value
+	return b
+}
+
+// WithContext sets the Context field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Context field is set to the value of the last call.
+func (b *ModeSpecApplyConfiguration) WithContext(value apiv1alpha1.ContextMode) *ModeSpecApplyConfiguration {
+	b.Context = &value
 	return b
 }

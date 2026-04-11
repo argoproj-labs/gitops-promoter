@@ -3,14 +3,14 @@ import { timeAgo, formatDate } from '../../../shared/src/utils/util';
 
 interface TimeAgoProps {
   date: string | Date;
-  interval?: number; 
+  interval?: number;
 }
 
 const TimeAgo: React.FC<TimeAgoProps> = ({ date, interval = 60000 }) => {
   const [, setTick] = useState(0);
 
   useEffect(() => {
-    const timer = setInterval(() => setTick(tick => tick + 1), interval);
+    const timer = setInterval(() => setTick((tick) => tick + 1), interval);
     return () => clearInterval(timer);
   }, [interval]);
 
@@ -18,4 +18,4 @@ const TimeAgo: React.FC<TimeAgoProps> = ({ date, interval = 60000 }) => {
   return <span title={formatDate(dateString)}>{timeAgo(dateString)}</span>;
 };
 
-export default TimeAgo; 
+export default TimeAgo;

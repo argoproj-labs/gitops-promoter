@@ -112,6 +112,43 @@ test-parallel: test-deps ## Run tests in parallel
 test-parallel-repeat3: test-deps ## Run tests in parallel 3 times to check for flakiness --repeat does not count the first run
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GINKGO) -p -procs=4 -r -v -cover -coverprofile=cover.out -coverpkg=./... --junit-report=junit.xml --repeat=2 internal/
 
+##@ Fuzzing
+
+# Packages that define native Go fuzz targets (Fuzz* in fuzz_test.go).
+FUZZ_PACKAGES ?= ./internal/utils
+# Duration per target for `fuzz-explore` (scheduled workflow and local; each Fuzz* runs sequentially within a package).
+FUZZ_TIME ?= 30s
+
+.PHONY: fuzz-replay fuzz-explore
+fuzz-replay: ## Replay seeds (`f.Add`) + corpus (`testdata/fuzz`); regression only (no `-fuzz`).
+	@set -euo pipefail; \
+	for pkg in $(FUZZ_PACKAGES); do \
+	  list=$$(go test $$pkg -list Fuzz); \
+	  fuzzes=$$(echo "$$list" | { grep '^Fuzz' || true; }); \
+	  if [ -z "$$fuzzes" ]; then \
+	    continue; \
+	  fi; \
+	  for fuzz in $$fuzzes; do \
+	    echo "fuzz-replay $$pkg $$fuzz"; \
+	    go test $$pkg -count=1 -run=^$$fuzz$$; \
+	  done; \
+	done
+
+# Bounded exploratory fuzzing: mutates beyond seeds (`f.Add`) + corpus (`testdata/fuzz`) for FUZZ_TIME per target (scheduled workflow uses this variable too).
+fuzz-explore: ## Exploratory fuzzing for FUZZ_TIME per target (default $(FUZZ_TIME); see Makefile).
+	@set -euo pipefail; \
+	for pkg in $(FUZZ_PACKAGES); do \
+	  list=$$(go test $$pkg -list Fuzz); \
+	  fuzzes=$$(echo "$$list" | { grep '^Fuzz' || true; }); \
+	  if [ -z "$$fuzzes" ]; then \
+	    continue; \
+	  fi; \
+	  for fuzz in $$fuzzes; do \
+	    echo "fuzz-explore $$pkg $$fuzz ($(FUZZ_TIME))"; \
+	    go test $$pkg -count=1 -run=^$$fuzz$$ -fuzz=$$fuzz -fuzztime=$(FUZZ_TIME); \
+	  done; \
+	done
+
 .PHONY: lint nilaway-no-test
 lint: golangci-lint ## Run golangci-lint linter & yamllint
 	$(GOLANGCI_LINT) run
@@ -173,15 +210,21 @@ lint-dashboard: ## Run dashboard type-check, lint and audit checks
 lint-extension: ## Run extension type-check, lint and audit checks
 	cd ui/extension && npm run type-check && npm run lint && npm run format:check && npm audit --omit=dev
 
+# LCOV paths: vitest coverage uses istanbul lcov reporter with projectRoot = repo root (see vitest.config).
 .PHONY: test-unit-test-extension
-test-unit-test-extension: ## Run unit tests for the extension
+test-unit-test-extension: ## Run extension unit tests (with coverage)
 	cd ui/extension && npm test
 
+.PHONY: lint-components-lib
+lint-components-lib: ## Run components-lib type-check and format checks (includes shared/)
+	cd ui/components-lib && npm run type-check && npm run format:check
+	cd ui/components-lib && npx prettier --check '../shared/**/*.{ts,tsx}'
+
 .PHONY: lint-ui
-lint-ui: lint-dashboard lint-extension ## Run all UI checks
+lint-ui: lint-dashboard lint-extension lint-components-lib ## Run all UI checks
 
 .PHONY: test-ui-test-dashboard
-test-ui-test-dashboard: ## Run unit tests for the dashboard
+test-ui-test-dashboard: ## Run dashboard unit tests (with coverage)
 	cd ui/dashboard && npm test
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
@@ -275,7 +318,7 @@ GORELEASER ?= $(LOCALBIN)/goreleaser-$(GORELEASER_VERSION)
 KUSTOMIZE_VERSION ?= v5.3.0
 CONTROLLER_TOOLS_VERSION ?= v0.20.1
 ENVTEST_VERSION ?= release-0.19
-GOLANGCI_LINT_VERSION ?= v2.11.1
+GOLANGCI_LINT_VERSION ?= v2.11.4
 MOCKERY_VERSION ?= v2.42.2
 NILAWAY_VERSION ?= latest
 GINKGO_VERSION=$(shell go list -m all | grep github.com/onsi/ginkgo/v2 | awk '{print $$2}')
@@ -328,7 +371,7 @@ serve-docs:
 
 .PHONY: lint-docs
 lint-docs:  ## Build docs and fail if there are warnings
-	@mkdocs build 2>&1 | tee mkdocs-lint.log
+	@DISABLE_MKDOCS_2_WARNING=true mkdocs build 2>&1 | tee mkdocs-lint.log
 	@if grep -q 'WARNING' mkdocs-lint.log; then \
 	  echo "MkDocs build produced warnings!"; \
 	  cat mkdocs-lint.log; \

@@ -20,12 +20,10 @@ package v1alpha1
 // SuccessSpecApplyConfiguration represents a declarative configuration of the SuccessSpec type for use
 // with apply.
 //
-// SuccessSpec defines when the HTTP response is considered successful (commit status phase success).
+// SuccessSpec defines when the commit status phase is success.
 type SuccessSpecApplyConfiguration struct {
-	// When holds the boolean expression evaluated against the HTTP response (expr library).
-	// Available variables: Response.StatusCode (int), Response.Body (parsed JSON as map[string]any, or raw string if not JSON), Response.Headers (map[string][]string).
-	// The expression must return true for validation to pass. Example: "Response.StatusCode == 200 && Response.Body.approved == true"
-	When *WhenSpecApplyConfiguration `json:"when,omitempty"`
+	// When is evaluated every reconcile. See WhenWithOutputSpec.Expression.
+	When *WhenWithOutputSpecApplyConfiguration `json:"when,omitempty"`
 }
 
 // SuccessSpecApplyConfiguration constructs a declarative configuration of the SuccessSpec type for use with
@@ -37,7 +35,7 @@ func SuccessSpec() *SuccessSpecApplyConfiguration {
 // WithWhen sets the When field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the When field is set to the value of the last call.
-func (b *SuccessSpecApplyConfiguration) WithWhen(value *WhenSpecApplyConfiguration) *SuccessSpecApplyConfiguration {
+func (b *SuccessSpecApplyConfiguration) WithWhen(value *WhenWithOutputSpecApplyConfiguration) *SuccessSpecApplyConfiguration {
 	b.When = value
 	return b
 }

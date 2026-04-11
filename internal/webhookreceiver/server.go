@@ -77,7 +77,7 @@ func (wr *WebhookReceiver) Start(ctx context.Context, addr string) error {
 	logger.Info("webhook receiver server stopped")
 
 	if err := server.Shutdown(ctx); err != nil {
-		logger.Error(err, "webhook receiver server shutdown failed", "error", err)
+		logger.Error(err, "webhook receiver server shutdown failed")
 	}
 	logger.Info("webhook receiver server exited properly")
 
@@ -163,7 +163,7 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: add a configurable payload max side for DoS protection.
+	// TODO: add a configurable payload max size for DoS protection.
 	jsonBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		responseCode = http.StatusInternalServerError
@@ -277,7 +277,7 @@ func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provide
 		return nil, fmt.Errorf("no changetransferpolicies found from webhook receiver sha: %s, ref: %s", beforeSha, ref)
 	}
 	if len(ctpLists.Items) > 1 {
-		return nil, fmt.Errorf("too many changetranferpolicies found for sha: %s, ref: %s", beforeSha, ref)
+		return nil, fmt.Errorf("too many changetransferpolicies found for sha: %s, ref: %s", beforeSha, ref)
 	}
 
 	return &ctpLists.Items[0], nil
@@ -287,7 +287,6 @@ func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provide
 func (wr *WebhookReceiver) extractDeliveryID(r *http.Request) string {
 	// Check common headers in a sensible order and return the first non-empty value.
 	// GitHub
-	fmt.Println("received a webhook event")
 	if id := r.Header.Get("X-Github-Delivery"); id != "" {
 		return id
 	}

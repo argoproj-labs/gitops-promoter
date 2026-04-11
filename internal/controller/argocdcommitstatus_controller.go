@@ -52,6 +52,7 @@ import (
 	mcbuilder "sigs.k8s.io/multicluster-runtime/pkg/builder"
 	mchandler "sigs.k8s.io/multicluster-runtime/pkg/handler"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
+	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
 	mcreconcile "sigs.k8s.io/multicluster-runtime/pkg/reconcile"
 	"sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
 
@@ -159,14 +160,14 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		if err != nil {
 			clusterNameMsg := "on the local cluster"
 			if clusterName != "" {
-				clusterNameMsg = "on cluster " + clusterName
+				clusterNameMsg = "on cluster " + clusterName.String()
 			}
 			return ctrl.Result{}, fmt.Errorf("failed to list ArgoCDApplications %s: %w", clusterNameMsg, err)
 		}
 
 		apps = append(apps, ApplicationsInEnvironment{
 			ApplicationList: clusterArgoCDApps,
-			ClusterName:     clusterName,
+			ClusterName:     clusterName.String(),
 		})
 	}
 
@@ -421,7 +422,7 @@ func getMostRecentLastTransitionTime(apps []*argocd.Application) *metav1.Time {
 }
 
 func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchandler.TypedEventHandlerFunc[client.Object, mcreconcile.Request] {
-	return func(clusterName string, cl cluster.Cluster) handler.TypedEventHandler[client.Object, mcreconcile.Request] {
+	return func(clusterName multicluster.ClusterName, cl cluster.Cluster) handler.TypedEventHandler[client.Object, mcreconcile.Request] {
 		return handler.TypedEnqueueRequestsFromMapFunc(func(ctx context.Context, argoCDApplication client.Object) []mcreconcile.Request {
 			metrics.ApplicationWatchEventsHandled.Inc()
 

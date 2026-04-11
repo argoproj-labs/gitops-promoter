@@ -15,7 +15,7 @@ GitHub, GitHub Enterprise, GitLab, Forgejo (including Codeberg), Gitea, Bitbucke
 To install GitOps Promoter, you can use the following command:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.24.0/install.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.26.3/install.yaml
 ```
 
 Alternatively, you can install GitOps Promoter using Helm. See the [ArtifactHub page](https://artifacthub.io/packages/helm/gitops-promoter/gitops-promoter) for instructions.
@@ -166,6 +166,10 @@ spec:
   scmProviderRef:
     name: <your-scmprovider-name> # The secret that contains the GitLab Access Token
 ```
+
+> [!WARNING]
+> GitLab does not support updating existing commit statuses without transitioning the state. So a pending CommitStatus's
+> description or URL may go stale if updated after creation.
 
 ## Gitea Configuration
 
@@ -335,7 +339,7 @@ spec:
     name: <repo-name>
   scmProviderRef:
     name: <your-scmprovider-name>
- ```
+```
 
 ### Webhooks (Optional - but highly recommended)
 

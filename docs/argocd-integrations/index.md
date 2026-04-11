@@ -25,9 +25,9 @@ spec:
             - name: EXTENSION_NAME
               value: gitops-promoter
             - name: EXTENSION_URL
-              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.24.0/gitops-promoter-argocd-extension.tar.gz
+              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.26.3/gitops-promoter-argocd-extension.tar.gz
             - name: EXTENSION_CHECKSUM_URL
-              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.24.0/gitops-promoter_0.24.0_checksums.txt
+              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.26.3/gitops-promoter_0.26.3_checksums.txt
           volumeMounts:
             - name: extensions
               mountPath: /tmp/extensions/
@@ -63,9 +63,9 @@ server:
         - name: EXTENSION_NAME
           value: gitops-promoter
         - name: EXTENSION_URL
-          value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.24.0/gitops-promoter-argocd-extension.tar.gz
+          value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.26.3/gitops-promoter-argocd-extension.tar.gz
         - name: EXTENSION_CHECKSUM_URL
-          value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.24.0/gitops-promoter_0.24.0_checksums.txt
+          value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.26.3/gitops-promoter_0.26.3_checksums.txt
       volumeMounts:
         - name: extensions
           mountPath: /tmp/extensions/
@@ -110,6 +110,33 @@ kind: Application
 metadata:
   labels:
     promoter.argoproj.io/has-promotionstrategy: "true"
+```
+
+### Linking from Pull Requests
+
+You can link to the extension view by constructing the URL from PromotionStrategy metadata:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ControllerConfiguration
+spec:
+  pullRequest:
+    template:
+      description: |
+        ...
+
+        {{- with .PromotionStrategy }}
+        {{- $promoURL := urlParse "https://argocd.example.com" }}
+        {{- $promoTrackID := index .Annotations "argocd.argoproj.io/tracking-id" }}
+        {{- if $promoTrackID }}
+        {{- $promoApp := index (splitList ":" $promoTrackID) 0 }}
+        {{- $promoQuery := printf "promotionstrategy=%s%%2F%s" .Namespace .Name }}
+        {{- $promoRawQuery := join "&" (list "resource=" "view=GitOps+Promoter" $promoQuery) }}
+        {{- $_ := set $promoURL "path" (printf "/applications/%s" $promoApp) }}
+        {{- $_ = set $promoURL "query" $promoRawQuery }}
+        [View PromotionStrategy in Argo CD]({{ urlJoin $promoURL }})
+        {{- end }}
+        {{- end }}
 ```
 
 ## Deep Links
