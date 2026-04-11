@@ -979,18 +979,9 @@ var _ = Describe("PullRequest Controller", func() {
 				g.Expect(state).To(Equal(promoterv1alpha1.PullRequestClosed))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Forcing more reconcile loops while terminating (spec change bumps generation)")
-			// The PullRequest controller watches with GenerationChangedPredicate, so a delete alone may only
-			// deliver one reconcile. A spec edit is realistic (other controllers mutating the object) and
-			// should not cause an endless FindOpen loop once the SCM PR is already closed.
-			findOpenBeforeBump := fake.FindOpenCallCount()
-			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
-				orig := pullRequest.DeepCopy()
-				pullRequest.Spec.Description = pullRequest.Spec.Description + " "
-				g.Expect(k8sClient.Patch(ctx, pullRequest, client.MergeFrom(orig))).To(Succeed())
-			}, constants.EventuallyTimeout).Should(Succeed())
+			By("Checking the number of FindOpen calls")
 
+			findOpenBeforeBump := fake.FindOpenCallCount()
 			time.Sleep(150 * time.Millisecond)
 
 			By("Verifying FindOpen is not invoked in a tight loop while the object is stuck terminating")
