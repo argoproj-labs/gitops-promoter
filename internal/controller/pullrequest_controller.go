@@ -50,6 +50,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
@@ -302,6 +303,24 @@ func (r *PullRequestReconciler) handleStateTransitions(ctx context.Context, pr *
 	return false, nil
 }
 
+// pullRequestDeletionFinalizerLengthChangedPredicate matches Update events where the object is
+// terminating (deletionTimestamp set) and the finalizer count changed. This is important because
+// the CTP controller sets a finalizer, and we need to reconcile when it's removed to ensure
+// quick cleanup of the PR.
+func pullRequestDeletionFinalizerLengthChangedPredicate() predicate.Predicate {
+	return predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			if e.ObjectOld == nil || e.ObjectNew == nil {
+				return false
+			}
+			if e.ObjectNew.GetDeletionTimestamp().IsZero() {
+				return false
+			}
+			return len(e.ObjectOld.GetFinalizers()) != len(e.ObjectNew.GetFinalizers())
+		},
+	}
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *PullRequestReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	// Use Direct methods to read configuration from the API server without cache during setup.
@@ -317,7 +336,10 @@ func (r *PullRequestReconciler) SetupWithManager(ctx context.Context, mgr ctrl.M
 	}
 
 	err = ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.PullRequest{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		For(&promoterv1alpha1.PullRequest{}, builder.WithPredicates(predicate.Or(
+			predicate.GenerationChangedPredicate{},
+			pullRequestDeletionFinalizerLengthChangedPredicate(),
+		))).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Complete(r)
 	if err != nil {
