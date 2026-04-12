@@ -229,8 +229,6 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.WebRequestCommitStatusSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("WebRequestCommitStatusStatus"):
 		return &apiv1alpha1.WebRequestCommitStatusStatusApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("WhenSpec"):
-		return &apiv1alpha1.WhenSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("WhenWithOutputSpec"):
 		return &apiv1alpha1.WhenWithOutputSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("WorkQueue"):
