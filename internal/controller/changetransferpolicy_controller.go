@@ -874,6 +874,56 @@ func ctpPullRequestListOptions(ctp *promoterv1alpha1.ChangeTransferPolicy) *clie
 	}
 }
 
+// ownerReferenceToApply maps a live OwnerReference into an apply configuration fragment.
+func ownerReferenceToApply(ref metav1.OwnerReference) *acmetav1.OwnerReferenceApplyConfiguration {
+	return acmetav1.OwnerReference().
+		WithAPIVersion(ref.APIVersion).
+		WithKind(ref.Kind).
+		WithName(ref.Name).
+		WithUID(ref.UID).
+		WithController(ptr.Deref(ref.Controller, false)).
+		WithBlockOwnerDeletion(ptr.Deref(ref.BlockOwnerDeletion, false))
+}
+
+// pullRequestApplyOwnedByChangeTransferPolicy builds the Server-Side Apply configuration this reconciler uses for
+// PullRequests it manages (labels, owner references, spec, and optionally the CTP PullRequest finalizer).
+// When includeCTPFinalizer is false, the CTP finalizer is omitted so SSA withdraws this field manager's claim and
+// the entry is removed from the live object.
+func pullRequestApplyOwnedByChangeTransferPolicy(pr *promoterv1alpha1.PullRequest, specStateOverride *promoterv1alpha1.PullRequestState, includeCTPFinalizer bool) *acv1alpha1.PullRequestApplyConfiguration {
+	specState := pr.Spec.State
+	if specStateOverride != nil {
+		specState = *specStateOverride
+	}
+
+	prSpec := acv1alpha1.PullRequestSpec().
+		WithRepositoryReference(acv1alpha1.ObjectReference().WithName(pr.Spec.RepositoryReference.Name)).
+		WithTitle(pr.Spec.Title).
+		WithTargetBranch(pr.Spec.TargetBranch).
+		WithSourceBranch(pr.Spec.SourceBranch).
+		WithMergeSha(pr.Spec.MergeSha).
+		WithState(specState)
+
+	if pr.Spec.Description != "" {
+		prSpec = prSpec.WithDescription(pr.Spec.Description)
+	}
+	if pr.Spec.Commit.Message != "" {
+		prSpec = prSpec.WithCommit(acv1alpha1.CommitConfiguration().WithMessage(pr.Spec.Commit.Message))
+	}
+
+	prApply := acv1alpha1.PullRequest(pr.Name, pr.Namespace).
+		WithLabels(pr.Labels)
+
+	for i := range pr.OwnerReferences {
+		prApply = prApply.WithOwnerReferences(ownerReferenceToApply(pr.OwnerReferences[i]))
+	}
+
+	if includeCTPFinalizer {
+		prApply = prApply.WithFinalizers(promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer)
+	}
+
+	return prApply.WithSpec(prSpec)
+}
+
 // handleCTPCleanupOnDelete removes ChangeTransferPolicyPullRequestFinalizer from all PullRequests for this CTP.
 // After that, the PullRequest controller and kube garbage collection (on a real cluster) complete removal; envtest
 // does not run the garbage collector, so owned PullRequests are not cascade-deleted by the apiserver alone.
@@ -889,16 +939,32 @@ func (r *ChangeTransferPolicyReconciler) handleCTPCleanupOnDelete(ctx context.Co
 	}
 
 	for i := range prList.Items {
-		prItem := &prList.Items[i]
+		prKey := client.ObjectKeyFromObject(&prList.Items[i])
 
-		// Remove the CTP's PR finalizer so the PR can be deleted.
-		if controllerutil.ContainsFinalizer(prItem, promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer) {
-			logger.Info("Removing ChangeTransferPolicy PullRequest finalizer during ChangeTransferPolicy deletion",
-				"pullRequest", prItem.Name)
-			controllerutil.RemoveFinalizer(prItem, promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer)
-			if err := r.Update(ctx, prItem); err != nil {
-				return fmt.Errorf("failed to remove PullRequest finalizer for %q: %w", prItem.Name, err)
+		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			var livePR promoterv1alpha1.PullRequest
+			if err := r.Get(ctx, prKey, &livePR); err != nil {
+				if k8s_errors.IsNotFound(err) {
+					return nil
+				}
+				return err //nolint:wrapcheck // RetryOnConflict wraps
 			}
+			if !controllerutil.ContainsFinalizer(&livePR, promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer) {
+				return nil
+			}
+
+			logger.Info("Removing ChangeTransferPolicy PullRequest finalizer during ChangeTransferPolicy deletion",
+				"pullRequest", livePR.Name)
+
+			prApply := pullRequestApplyOwnedByChangeTransferPolicy(&livePR, nil, false)
+			prObj := &promoterv1alpha1.PullRequest{}
+			prObj.Name = livePR.Name
+			prObj.Namespace = livePR.Namespace
+			return r.Patch(ctx, prObj, utils.ApplyPatch{ApplyConfig: prApply},
+				client.FieldOwner(constants.ChangeTransferPolicyControllerFieldOwner), client.ForceOwnership)
+		})
+		if err != nil {
+			return fmt.Errorf("failed to remove PullRequest finalizer for %q: %w", prKey.Name, err)
 		}
 	}
 
@@ -1165,38 +1231,8 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 	}
 
 	// Update the PR state to merged using SSA.
-	// Re-specify this controller's ownerReference, finalizers, and labels to preserve them in the apply.
-	kind := reflect.TypeOf(promoterv1alpha1.ChangeTransferPolicy{}).Name()
-	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
-
-	ownerRef := acmetav1.OwnerReference().
-		WithAPIVersion(gvk.GroupVersion().String()).
-		WithKind(gvk.Kind).
-		WithName(ctp.Name).
-		WithUID(ctp.UID).
-		WithController(true).
-		WithBlockOwnerDeletion(true)
-
-	prSpec := acv1alpha1.PullRequestSpec().
-		WithRepositoryReference(acv1alpha1.ObjectReference().WithName(pullRequest.Spec.RepositoryReference.Name)).
-		WithTitle(pullRequest.Spec.Title).
-		WithTargetBranch(pullRequest.Spec.TargetBranch).
-		WithSourceBranch(pullRequest.Spec.SourceBranch).
-		WithMergeSha(pullRequest.Spec.MergeSha).
-		WithState(promoterv1alpha1.PullRequestMerged)
-
-	if pullRequest.Spec.Description != "" {
-		prSpec = prSpec.WithDescription(pullRequest.Spec.Description)
-	}
-	if pullRequest.Spec.Commit.Message != "" {
-		prSpec = prSpec.WithCommit(acv1alpha1.CommitConfiguration().WithMessage(pullRequest.Spec.Commit.Message))
-	}
-
-	prApply := acv1alpha1.PullRequest(pullRequest.Name, pullRequest.Namespace).
-		WithLabels(pullRequest.Labels).
-		WithOwnerReferences(ownerRef).
-		WithFinalizers(promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer).
-		WithSpec(prSpec)
+	// Re-specify labels, owner references, finalizers, and spec so this field manager stays consistent with creatOrUpdatePullRequest.
+	prApply := pullRequestApplyOwnedByChangeTransferPolicy(&pullRequest, ptr.To(promoterv1alpha1.PullRequestMerged), true)
 
 	// Apply using Server-Side Apply with Patch to get the result directly
 	pr := &promoterv1alpha1.PullRequest{}

@@ -15,6 +15,8 @@ Follow these conventions (use the **singular, lowercase** API resource kind in t
 
 The controller that **owns** the cleanup logic is responsible for **adding** and **removing** the finalizer it defines. Names should stay stable across releases once shipped; changing a string strands objects that still list the old value in `metadata.finalizers`.
 
+**Cross-resource updates (same field manager):** When a controller adds or removes a finalizer on **another** API object, use **Server-Side Apply** (`client.Patch` with `ApplyPatchType`, a typed apply configuration, a stable `client.FieldOwner`, and `ForceOwnership` where appropriate) so the change merges cleanly with other managers and matches how other fields on that object are already owned. Avoid `Update` for that path unless you have a strong reason (for example a resource type that cannot be applied yet). Finalizers on **the object being reconciled** can stay on the usual `controllerutil` + `Update` pattern used elsewhere in this project.
+
 ## Who sets finalizers
 
 **Cluster users should not be asked to add promoter finalizers by hand.** Manifests and Helm values are not the right place to wire in cleanup finalizers.
