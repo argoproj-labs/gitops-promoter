@@ -116,16 +116,8 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, fmt.Errorf("failed to get ChangeTransferPolicy: %w", err)
 	}
 
-	err = r.handleFinalizer(ctx, &ctp)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to handle finalizer: %w", err)
-	}
-
-	// If the CTP is being deleted, stop here. handleFinalizer has already performed cleanup
-	// (removing the CTP's PR finalizer from owned PullRequests). We must not continue and
-	// re-add those finalizers via creatOrUpdatePullRequest or mergePullRequests.
-	if !ctp.DeletionTimestamp.IsZero() {
-		return ctrl.Result{}, nil
+	if deleted, err := r.handleFinalizer(ctx, &ctp); err != nil || deleted {
+		return ctrl.Result{}, err
 	}
 
 	// Handle PR finalizer removal if PR is being deleted and CTP status is already synced
@@ -1252,17 +1244,20 @@ func (r *ChangeTransferPolicyReconciler) gitMergeStrategyOurs(ctx context.Contex
 // handleFinalizer ensures ChangeTransferPolicyPullRequestCleanupFinalizer is on the CTP while it exists so deletion
 // runs handleCTPCleanupOnDelete (strip ChangeTransferPolicyPullRequestFinalizer from PullRequests) before the policy
 // is removed. This is reconciled at entry, separate from PullRequest SSA in creatOrUpdatePullRequest / mergePullRequests.
-func (r *ChangeTransferPolicyReconciler) handleFinalizer(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
+//
+// The first bool is true when Reconcile should not run normal promotion work (for example the CTP is deleting, so we
+// must not re-add PR finalizers via creatOrUpdatePullRequest / mergePullRequests).
+func (r *ChangeTransferPolicyReconciler) handleFinalizer(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) (bool, error) {
 	finalizer := promoterv1alpha1.ChangeTransferPolicyPullRequestCleanupFinalizer
 
 	if ctp.DeletionTimestamp.IsZero() {
 		if controllerutil.ContainsFinalizer(ctp, finalizer) {
 			// Not being deleted and already has finalizer, nothing to do.
-			return nil
+			return false, nil
 		}
 
 		// Finalizer is missing, add it.
-		return retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck // RetryOnConflict returns wrapped error
+		return false, retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck // RetryOnConflict returns wrapped error
 			if err := r.Get(ctx, client.ObjectKeyFromObject(ctp), ctp); err != nil {
 				return err //nolint:wrapcheck // error will be wrapped by caller
 			}
@@ -1275,21 +1270,21 @@ func (r *ChangeTransferPolicyReconciler) handleFinalizer(ctx context.Context, ct
 
 	// If we're here, the object is being deleted
 	if !controllerutil.ContainsFinalizer(ctp, finalizer) {
-		// Finalizer already removed, nothing to do.
-		return nil
+		// Finalizer already removed; still skip normal reconcile while terminating.
+		return true, nil
 	}
 
 	// Remove CTP finalizers from any PRs. The CTP is being deleted, we don't care about monitoring those PRs anymore.
 	err := r.handleCTPCleanupOnDelete(ctx, ctp)
 	if err != nil {
-		return fmt.Errorf("failed to clean up PullRequest finalizers for deleted ChangeTransferPolicy: %w", err)
+		return false, fmt.Errorf("failed to clean up PullRequest finalizers for deleted ChangeTransferPolicy: %w", err)
 	}
 
 	controllerutil.RemoveFinalizer(ctp, finalizer)
 	if err := r.Update(ctx, ctp); err != nil {
-		return fmt.Errorf("failed to remove finalizer: %w", err)
+		return true, fmt.Errorf("failed to remove finalizer: %w", err)
 	}
-	return nil
+	return true, nil
 }
 
 // TemplatePullRequest renders the title and description of a pull request using the provided data map.
