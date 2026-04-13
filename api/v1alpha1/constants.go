@@ -39,7 +39,7 @@ const ChangeTransferPolicyPullRequestFinalizer = "changetransferpolicy.promoter.
 // ChangeTransferPolicyPullRequestCleanupFinalizer is set on ChangeTransferPolicy while PullRequests may carry
 // ChangeTransferPolicyPullRequestFinalizer. On ChangeTransferPolicy deletion, the controller removes the PR finalizers
 // and clears this finalizer so the policy can finish deleting without waiting for per-PR status propagation.
-const ChangeTransferPolicyPullRequestCleanupFinalizer = "changetransferpolicy.promoter.argoproj.io/pullrequest-finalizer-cleanup"
+const ChangeTransferPolicyPullRequestCleanupFinalizer = "changetransferpolicy.promoter.argoproj.io/finalizer"
 
 // GitRepositoryFinalizer prevents deletion of GitRepository while PullRequests reference it
 const GitRepositoryFinalizer = "gitrepository.promoter.argoproj.io/finalizer"

@@ -13,7 +13,7 @@ All promoter-defined finalizer strings live in the API package as constants (see
 | ---------------- | ------- | ------- |
 | `pullrequest.promoter.argoproj.io/finalizer` | `PullRequest` | Blocks removal of the `PullRequest` CR until the controller has closed (or otherwise reconciled) the corresponding pull request in the SCM, when a real SCM ID exists. |
 | `changetransferpolicy.promoter.argoproj.io/pullrequest-finalizer` | `PullRequest` | Ensures the owning `ChangeTransferPolicy` can observe pull request status (for example ID and state) on the CR before the `PullRequest` is deleted, so promotion state stays consistent. |
-| `changetransferpolicy.promoter.argoproj.io/pullrequest-finalizer-cleanup` | `ChangeTransferPolicy` | On policy deletion, forces a reconcile pass that strips the CTP-owned finalizer from related `PullRequest`s (and related cleanup) before the policy object can finish deleting. |
+| `changetransferpolicy.promoter.argoproj.io/finalizer` | `ChangeTransferPolicy` | On policy deletion, forces a reconcile pass that strips the CTP-owned finalizer from related `PullRequest`s (and related cleanup) before the policy object can finish deleting. |
 | `gitrepository.promoter.argoproj.io/finalizer` | `GitRepository` | Prevents deleting a `GitRepository` while non-deleting `PullRequest`s still reference that repository. |
 | `scmprovider.promoter.argoproj.io/finalizer` | `ScmProvider` | Prevents deleting an `ScmProvider` while `GitRepository`s in the same namespace still reference it. |
 | `clusterscmprovider.promoter.argoproj.io/finalizer` | `ClusterScmProvider` | Same dependency idea as `ScmProvider`, for cluster-scoped SCM configuration. |
@@ -32,7 +32,7 @@ Removing a finalizer **does not run** the controller logic that would have run o
 - **`PullRequest` (`changetransferpolicy.promoter.argoproj.io/pullrequest-finalizer`)**  
   **Risk:** The `ChangeTransferPolicy` may never record the final PR identity/state from that object. Downstream status, history, or “externally closed” handling can be wrong or racy.
 
-- **`ChangeTransferPolicy` (`changetransferpolicy.promoter.argoproj.io/pullrequest-finalizer-cleanup`)**  
+- **`ChangeTransferPolicy` (`changetransferpolicy.promoter.argoproj.io/finalizer`)**  
   **Risk:** The policy CR can be removed from etcd while related `PullRequest`s still carry the CTP finalizer or are not cleaned up the way the controller expects. You can leave policies “gone” but PR objects stuck terminating or inconsistent with Git.
 
 - **`GitRepository` / `ScmProvider` / `ClusterScmProvider`**  
