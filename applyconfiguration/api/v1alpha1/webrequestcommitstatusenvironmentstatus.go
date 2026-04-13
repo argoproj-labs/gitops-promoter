@@ -28,8 +28,8 @@ import (
 //
 // WebRequestCommitStatusEnvironmentStatus defines the observed status for a specific environment.
 //
-// TriggerOutput and ResponseOutput hold JSON maps written by trigger mode: when.output.expression and response.output.expression respectively.
-// They are surfaced on the next reconcile as TriggerOutput and ResponseOutput in expr and templates (see WhenWithOutputSpec and HTTPRequestSpec).
+// TriggerOutput, ResponseOutput, and SuccessOutput hold JSON maps written by their respective output expressions.
+// They are surfaced on the next reconcile as TriggerOutput, ResponseOutput, and SuccessOutput in expr and templates (see WhenWithOutputSpec and HTTPRequestSpec).
 type WebRequestCommitStatusEnvironmentStatusApplyConfiguration struct {
 	// Branch is the name of the branch/environment.
 	Branch *string `json:"branch,omitempty"`
@@ -51,6 +51,10 @@ type WebRequestCommitStatusEnvironmentStatusApplyConfiguration struct {
 	TriggerOutput *apiextensionsv1.JSON `json:"triggerOutput,omitempty"`
 	// ResponseOutput is the map from spec.mode.trigger.response.output.expression when spec.mode.trigger.response is set; otherwise nil.
 	ResponseOutput *apiextensionsv1.JSON `json:"responseOutput,omitempty"`
+	// SuccessOutput is the map from spec.success.when.output.expression (arbitrary JSON keys).
+	// Evaluated every reconcile (whether or not an HTTP request was made). The result is stored here and
+	// exposed on the next reconcile as SuccessOutput in trigger/success expressions and templates.
+	SuccessOutput *apiextensionsv1.JSON `json:"successOutput,omitempty"`
 }
 
 // WebRequestCommitStatusEnvironmentStatusApplyConfiguration constructs a declarative configuration of the WebRequestCommitStatusEnvironmentStatus type for use with
@@ -120,5 +124,13 @@ func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithTriggerO
 // If called multiple times, the ResponseOutput field is set to the value of the last call.
 func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithResponseOutput(value apiextensionsv1.JSON) *WebRequestCommitStatusEnvironmentStatusApplyConfiguration {
 	b.ResponseOutput = &value
+	return b
+}
+
+// WithSuccessOutput sets the SuccessOutput field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the SuccessOutput field is set to the value of the last call.
+func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithSuccessOutput(value apiextensionsv1.JSON) *WebRequestCommitStatusEnvironmentStatusApplyConfiguration {
+	b.SuccessOutput = &value
 	return b
 }
