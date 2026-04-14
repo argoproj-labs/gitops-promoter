@@ -4119,6 +4119,17 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = os.RemoveAll(gitPath) }()
 
+			By("Setting staging's active commit status to success (simulates healthy initial deployment)")
+			stagingActiveSha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+ctpStaging.Spec.ActiveBranch)
+			Expect(err).NotTo(HaveOccurred())
+			stagingActiveSha = strings.TrimSpace(stagingActiveSha)
+			_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, activeCommitStatusStaging, func() error {
+				activeCommitStatusStaging.Spec.Sha = stagingActiveSha
+				activeCommitStatusStaging.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+				return nil
+			})
+			Expect(err).To(Succeed())
+
 			drySha, err := makeDryCommit(ctx, gitPath, "change affecting dev and prod only")
 			Expect(err).NotTo(HaveOccurred())
 
@@ -4285,7 +4296,8 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		// | Y        | N    | -       | Y      | N       | BLOCK (commit status) |
 		// | Y        | N    | -       | Y      | Y       | ALLOW |
 		// | Y        | Y    | Y       | -      | -       | BLOCK (pending changes from previous commit) |
-		// | Y        | Y    | N       | -      | -       | RECURSE (or ALLOW if base case) |
+		// | Y        | Y    | N       | -      | N       | BLOCK (commit status on no-op env) |
+		// | Y        | Y    | N       | -      | Y       | RECURSE (or ALLOW if base case) |
 
 		// Single preceding environment tests - covers the truth table
 		DescribeTable("single preceding environment - truth table coverage",
@@ -4321,12 +4333,40 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				"OLD", "ABC", "ABC", // curr
 				false, ""),
 
-			// Case 5: Hydrated, IS no-op → ALLOW (base case with single env)
-			Entry("allows when preceding env is no-op (base case)",
+			// Case 7: Hydrated, IS no-op, healthy → ALLOW (base case with single env)
+			Entry("allows when preceding env is no-op and healthy (base case)",
 				"OLD", "OLD", "ABC", // prev: no-op (note=ABC != proposed=OLD)
 				"OLD", "ABC", "ABC", // curr
 				false, ""),
 		)
+
+		// Case 6: Hydrated, IS no-op, no pending changes, NOT healthy → BLOCK
+		// This is the exact scenario that caused premature promotions: a newer no-op dry SHA
+		// arrives while a real promotion has merged but apps haven't become healthy yet.
+		It("blocks when no-op env has unhealthy active commit statuses", func() {
+			prevEnvStatus := promoterv1alpha1.EnvironmentStatus{
+				Branch: "environments/staging",
+				Active: promoterv1alpha1.CommitBranchState{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha:        "COMMIT1",
+						CommitTime: olderTime,
+					},
+					CommitStatuses: []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+						{Key: "argocd-health", Phase: string(promoterv1alpha1.CommitPhasePending)},
+					},
+				},
+				Proposed: promoterv1alpha1.CommitBranchState{
+					Dry:  promoterv1alpha1.CommitShaState{Sha: "COMMIT1", CommitTime: olderTime},
+					Note: &promoterv1alpha1.HydratorMetadata{DrySha: "COMMIT2"},
+				},
+			}
+			currEnvStatus := makeEnvStatus("OLD", "COMMIT1", "COMMIT2")
+
+			isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{prevEnvStatus}, getEffectiveHydratedDrySha(currEnvStatus), currEnvStatus.Active.Dry.CommitTime)
+
+			Expect(isPending).To(BeTrue())
+			Expect(reason).To(Equal(`Waiting for "environments/staging" environment's "argocd-health" commit status to be successful`))
+		})
 
 		// Case 3 needs unhealthy status - separate test since DescribeTable helper sets healthy
 		It("blocks when merged but commit statuses not passing", func() {
@@ -4454,6 +4494,71 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				env3 := makeEnv("env3", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
 
 				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
+
+				Expect(isPending).To(BeFalse())
+				Expect(reason).To(BeEmpty())
+			})
+
+			// Regression test: newer no-op dry SHA causes premature promotion through all envs.
+			//
+			// Scenario (dev → staging → prod, all with activeCommitStatuses: [argocd-health]):
+			// - COMMIT1 changes all three envs, gets promoted through dev (healthy), staging merges
+			// - COMMIT2 arrives and is a no-op for all envs (note updated, no new hydrated commit)
+			// - Staging just merged COMMIT1 but argocd-health is still pending (apps deploying)
+			// - Production should NOT be allowed to promote because staging is not healthy
+			//
+			// Bug: the no-op check saw staging as (note=COMMIT2 != proposed=COMMIT1 → no-op) and
+			// (active=COMMIT1 == proposed=COMMIT1 → no pending changes), so it recursed past staging.
+			// Same for dev. Hit the base case and allowed promotion without checking any health.
+			It("blocks when newer no-op SHA causes all preceding envs to look like no-ops but staging is unhealthy", func() {
+				dev := makeEnv("environments/development",
+					"COMMIT1", // active: merged COMMIT1, healthy
+					"COMMIT1", // proposed: same as active
+					"COMMIT2", // note: hydrator saw COMMIT2 (no-op)
+					newerTime,
+					string(promoterv1alpha1.CommitPhaseSuccess))
+
+				staging := makeEnv("environments/staging",
+					"COMMIT1", // active: just merged COMMIT1, NOT healthy yet
+					"COMMIT1", // proposed: same as active
+					"COMMIT2", // note: hydrator saw COMMIT2 (no-op)
+					newerTime,
+					string(promoterv1alpha1.CommitPhasePending)) // apps still deploying
+
+				prod := makeEnv("environments/production",
+					"OLD",     // active: still on previous version
+					"COMMIT1", // proposed: trying to promote COMMIT1
+					"COMMIT2", // note: hydrator saw COMMIT2 (no-op)
+					olderTime,
+					string(promoterv1alpha1.CommitPhaseSuccess))
+
+				isPending, reason := isPreviousEnvironmentPending(
+					[]promoterv1alpha1.EnvironmentStatus{dev, staging},
+					getEffectiveHydratedDrySha(prod),
+					prod.Active.Dry.CommitTime)
+
+				Expect(isPending).To(BeTrue())
+				Expect(reason).To(Equal(`Waiting for "environments/staging" environment's "health" commit status to be successful`))
+			})
+
+			// Same scenario but staging IS healthy - should allow promotion
+			It("allows when newer no-op SHA and all preceding envs are healthy", func() {
+				dev := makeEnv("environments/development",
+					"COMMIT1", "COMMIT1", "COMMIT2",
+					newerTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				staging := makeEnv("environments/staging",
+					"COMMIT1", "COMMIT1", "COMMIT2",
+					newerTime, string(promoterv1alpha1.CommitPhaseSuccess)) // healthy
+
+				prod := makeEnv("environments/production",
+					"OLD", "COMMIT1", "COMMIT2",
+					olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				isPending, reason := isPreviousEnvironmentPending(
+					[]promoterv1alpha1.EnvironmentStatus{dev, staging},
+					getEffectiveHydratedDrySha(prod),
+					prod.Active.Dry.CommitTime)
 
 				Expect(isPending).To(BeFalse())
 				Expect(reason).To(BeEmpty())
