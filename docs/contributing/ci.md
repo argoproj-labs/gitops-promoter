@@ -25,12 +25,13 @@ The `UI Checks` job runs `npm audit --omit=dev` for each of the three UI package
 To fix these failures, dispatch the [**npm audit fix**](https://github.com/argoproj-labs/gitops-promoter/actions/workflows/npm-audit-fix.yaml) workflow:
 
 1. Go to **Actions → npm audit fix** in the repository.
-2. Click **Run workflow** (no inputs required).
+2. Click **Run workflow**. Enable the **Force** option if the fix requires a major-version bump (breaking changes).
 3. The workflow runs `npm audit fix` across all three UI packages and opens a pull request with the updated `package-lock.json` files.
-4. Review and merge the resulting PR. Once it merges, the `UI Checks` job will pass again.
+4. **Close and reopen the generated PR** to trigger CI checks.
+5. Review and merge the resulting PR. Once it merges, the `UI Checks` job will pass again.
 
 > [!NOTE]
-> `npm audit fix` only upgrades packages within their declared semver range. If the fix requires a major-version bump (a breaking change), the workflow will not automatically apply it. In that case, the vulnerability must be addressed manually or suppressed with an entry in the relevant `package.json` (see `npm audit fix --force` documentation for details).
+> Without the **Force** option, `npm audit fix` only upgrades packages within their declared semver range. Enable **Force** to allow major-version bumps, but review the diff carefully as it may introduce breaking changes.
 
 ### Zizmor findings
 
