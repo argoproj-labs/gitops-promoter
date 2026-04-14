@@ -1318,8 +1318,15 @@ func (r *ChangeTransferPolicyReconciler) handleFinalizer(ctx context.Context, ct
 		return false, fmt.Errorf("failed to clean up PullRequest finalizers for deleted ChangeTransferPolicy: %w", err)
 	}
 
-	controllerutil.RemoveFinalizer(ctp, finalizer)
-	if err := r.Update(ctx, ctp); err != nil {
+	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck // RetryOnConflict returns wrapped error
+		if err := r.Get(ctx, client.ObjectKeyFromObject(ctp), ctp); err != nil {
+			return err //nolint:wrapcheck // error will be wrapped by caller
+		}
+		if controllerutil.RemoveFinalizer(ctp, finalizer) {
+			return r.Update(ctx, ctp) //nolint:wrapcheck // error will be wrapped by caller
+		}
+		return nil
+	}); err != nil {
 		return true, fmt.Errorf("failed to remove finalizer: %w", err)
 	}
 	return true, nil
