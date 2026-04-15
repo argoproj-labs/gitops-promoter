@@ -36,11 +36,13 @@ type PullRequestStatusApplyConfiguration struct {
 	PRCreationTime *v1.Time `json:"prCreationTime,omitempty"`
 	// Url is the URL of the pull request.
 	Url *string `json:"url,omitempty"`
-	// ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
-	// This is set to true when the pull request has an ID but is no longer found on the SCM provider.
-	// When true, the State field will be empty ("") since we cannot determine if it was merged or closed.
-	// The PullRequest resource will be deleted after this flag is set, but the status is preserved in
-	// the owning ChangeTransferPolicy to maintain a record of the external action.
+	// ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the
+	// resource still desired it open (spec.state is "open"): either it was merged or closed outside the
+	// controller, or it was closed on the SCM because the PullRequest resource was deleted (finalizer)
+	// and a subsequent sync observed it missing. The controller does not distinguish those cases here.
+	// When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider.
+	// The PullRequest resource will be deleted after this flag is set when possible, but the status is
+	// preserved in the owning ChangeTransferPolicy to maintain a record.
 	ExternallyMergedOrClosed *bool `json:"externallyMergedOrClosed,omitempty"`
 	// Conditions Represents the observations of the current state.
 	Conditions []metav1.ConditionApplyConfiguration `json:"conditions,omitempty"`
