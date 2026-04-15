@@ -1105,7 +1105,7 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 		Headers:    resp.Header,
 	}
 
-	logger.V(4).Info("HTTP request completed", "statusCode", resp.StatusCode)
+	logger.V(4).Info("HTTP request completed", "statusCode", resp.StatusCode, "latency", time.Since(start))
 
 	return response, nil
 }
