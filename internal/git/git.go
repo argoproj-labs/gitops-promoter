@@ -525,7 +525,7 @@ func (g *EnvironmentOperations) MergeWithOursStrategyForPath(ctx context.Context
 		return fmt.Errorf("failed to stage files for path-scoped merge: %w (stderr: %s)", err, stderr)
 	}
 
-	_, stderr, err = g.runCmd(ctx, gitPath, "commit", "-m", fmt.Sprintf("Resolve conflicts for %s", activePath))
+	_, stderr, err = g.runCmd(ctx, gitPath, "commit", "-m", "Resolve conflicts for "+activePath)
 	if err != nil {
 		logger.Error(err, "Failed to commit path-scoped merge", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "activePath", activePath, "stderr", stderr)
 		return fmt.Errorf("failed to commit path-scoped merge for branch %q: %w (stderr: %s)", proposedBranch, err, stderr)

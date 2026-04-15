@@ -1196,9 +1196,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 		AfterEach(func() {
 			By("Cleaning up resources")
-			for _, ps := range promotionStrategies {
-				psCopy := ps
-				_ = k8sClient.Delete(ctx, &psCopy)
+			for i := range promotionStrategies {
+				_ = k8sClient.Delete(ctx, &promotionStrategies[i])
 			}
 			_ = k8sClient.Delete(ctx, gitRepo)
 			_ = k8sClient.Delete(ctx, scmProvider)
@@ -1285,8 +1284,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: promotionStrategies[i].Namespace,
 				}, &strategy)).To(Succeed())
 
-				drySha := makeDryCommitForPath(cfg.activePath, fmt.Sprintf("dry commit for %s", cfg.nameSuffix))
-				promotePathOnSharedActiveBranch(cfg.activePath, testBranchDevelopment, drySha, fmt.Sprintf("hydrated commit for %s", cfg.nameSuffix))
+				drySha := makeDryCommitForPath(cfg.activePath, "dry commit for "+cfg.nameSuffix)
+				promotePathOnSharedActiveBranch(cfg.activePath, testBranchDevelopment, drySha, "hydrated commit for "+cfg.nameSuffix)
 				expectedDryByPath[cfg.activePath] = drySha
 
 				By(fmt.Sprintf("Verifying app %q promoted while previously promoted apps stayed stable", cfg.nameSuffix))
