@@ -1197,11 +1197,11 @@ var _ = Describe("PromotionStrategy Controller", func() {
 		AfterEach(func() {
 			By("Cleaning up resources")
 			for i := range promotionStrategies {
-				_ = k8sClient.Delete(ctx, &promotionStrategies[i])
+				Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, &promotionStrategies[i]))).To(Succeed())
 			}
-			_ = k8sClient.Delete(ctx, gitRepo)
-			_ = k8sClient.Delete(ctx, scmProvider)
-			_ = k8sClient.Delete(ctx, scmSecret)
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, gitRepo))).To(Succeed())
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, scmProvider))).To(Succeed())
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, scmSecret))).To(Succeed())
 		})
 
 		It("should track three app-specific dry commits independently on a shared active branch", func() {
