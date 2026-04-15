@@ -112,7 +112,7 @@ type BranchShas struct {
 	Hydrated string
 }
 
-func hydratorMetadataPath(activePath string) string {
+func buildHydratorMetadataPath(activePath string) string {
 	if activePath == "" {
 		return "hydrator.metadata"
 	}
@@ -151,7 +151,7 @@ func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch, activ
 	logger.V(4).Info("Got hydrated branch sha", "branch", branch, "sha", shas.Hydrated)
 
 	// Get the metadata file contents directly from the remote branch
-	metadataFileStdout, stderr, err := g.runCmd(ctx, gitPath, "show", "origin/"+branch+":"+hydratorMetadataPath(activePath))
+	metadataFileStdout, stderr, err := g.runCmd(ctx, gitPath, "show", "origin/"+branch+":"+buildHydratorMetadataPath(activePath))
 	if err != nil {
 		if strings.Contains(stderr, "does not exist") || strings.Contains(stderr, "Path not in") {
 			logger.Info("hydrator.metadata file not found", "branch", branch)
@@ -182,7 +182,7 @@ func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha,
 		return v1alpha1.CommitShaState{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
-	metadataFileStdout, stderr, err := g.runCmd(ctx, gitPath, "show", sha+":"+hydratorMetadataPath(activePath))
+	metadataFileStdout, stderr, err := g.runCmd(ctx, gitPath, "show", sha+":"+buildHydratorMetadataPath(activePath))
 	if err != nil {
 		logger.V(4).Info("could not git show file", "sha", sha, "gitError", stderr, "err", err)
 		return v1alpha1.CommitShaState{}, nil

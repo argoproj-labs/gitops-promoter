@@ -3,7 +3,6 @@ package git_test
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -426,11 +425,11 @@ var _ = Describe("ActivePath support", func() {
 
 		appOneContent, err := os.ReadFile(filepath.Join(workDir, "apps", "app-one", "config.yaml"))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(strings.TrimSpace(string(appOneContent))).To(Equal("version: proposed"), fmt.Sprintf("app-one should keep proposed content"))
+		Expect(strings.TrimSpace(string(appOneContent))).To(Equal("version: proposed"), "app-one should keep proposed content")
 
 		appTwoContent, err := os.ReadFile(filepath.Join(workDir, "apps", "app-two", "config.yaml"))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(strings.TrimSpace(string(appTwoContent))).To(Equal("version: active"), fmt.Sprintf("app-two should use active content"))
+		Expect(strings.TrimSpace(string(appTwoContent))).To(Equal("version: active"), "app-two should use active content")
 	})
 })
 
