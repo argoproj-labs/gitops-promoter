@@ -1088,6 +1088,71 @@ var _ = Describe("PromotionStrategy Controller", func() {
 		})
 	})
 
+	Context("When reconciling a resource with activePath configured", func() {
+		var name string
+		var gitRepo *promoterv1alpha1.GitRepository
+		var promotionStrategy *promoterv1alpha1.PromotionStrategy
+		var typeNamespacedName types.NamespacedName
+		var ctpDev, ctpStaging, ctpProd promoterv1alpha1.ChangeTransferPolicy
+
+		BeforeEach(func() {
+			By("Creating the resources")
+			var scmSecret *v1.Secret
+			var scmProvider *promoterv1alpha1.ScmProvider
+			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "promotion-strategy-active-path", "default")
+			setupInitialTestGitRepoOnServer(ctx, gitRepo)
+			promotionStrategy.Spec.ActivePath = "apps/app-one"
+
+			typeNamespacedName = types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			By("Cleaning up resources")
+			_ = k8sClient.Delete(ctx, promotionStrategy)
+		})
+
+		It("should build CTP branches using activePath convention", func() {
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpProd)
+				g.Expect(err).To(Succeed())
+
+				g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testBranchDevelopment))
+				g.Expect(ctpDev.Spec.ActivePath).To(Equal("apps/app-one"))
+				g.Expect(ctpDev.Spec.ProposedBranch).To(Equal("environment/development/apps/app-one-next"))
+
+				g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testBranchStaging))
+				g.Expect(ctpStaging.Spec.ActivePath).To(Equal("apps/app-one"))
+				g.Expect(ctpStaging.Spec.ProposedBranch).To(Equal("environment/staging/apps/app-one-next"))
+
+				g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testBranchProduction))
+				g.Expect(ctpProd.Spec.ActivePath).To(Equal("apps/app-one"))
+				g.Expect(ctpProd.Spec.ProposedBranch).To(Equal("environment/production/apps/app-one-next"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
 	Context("When reconciling a resource with active commit statuses", func() {
 		Context("When git repo is initialized with active commit statuses", func() {
 			var name string

@@ -215,7 +215,7 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 
 	history := make([]promoterv1alpha1.History, 0, len(shaListActive))
 	for _, sha := range shaListActive {
-		historyEntry, shouldInclude, err := r.buildHistoryEntry(ctx, sha, gitOperations)
+		historyEntry, shouldInclude, err := r.buildHistoryEntry(ctx, sha, ctp.Spec.ActivePath, gitOperations)
 		if err != nil {
 			logger.V(4).Info("failed to build history entry", "sha", sha, "err", err)
 			continue
@@ -230,7 +230,7 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 }
 
 // buildHistoryEntry creates a single history entry for the given SHA
-func (r *ChangeTransferPolicyReconciler) buildHistoryEntry(ctx context.Context, sha string, gitOperations *git.EnvironmentOperations) (promoterv1alpha1.History, bool, error) {
+func (r *ChangeTransferPolicyReconciler) buildHistoryEntry(ctx context.Context, sha, activePath string, gitOperations *git.EnvironmentOperations) (promoterv1alpha1.History, bool, error) {
 	activeTrailers, err := gitOperations.GetTrailers(ctx, sha)
 	if err != nil {
 		return promoterv1alpha1.History{}, false, fmt.Errorf("failed to get trailers for SHA %q: %w", sha, err)
@@ -242,7 +242,7 @@ func (r *ChangeTransferPolicyReconciler) buildHistoryEntry(ctx context.Context, 
 		PullRequest: &promoterv1alpha1.PullRequestCommonStatus{},
 	}
 
-	r.populateActiveMetadata(ctx, &historyEntry, sha, gitOperations)
+	r.populateActiveMetadata(ctx, &historyEntry, sha, activePath, gitOperations)
 	r.populateProposedMetadata(ctx, &historyEntry, activeTrailers, gitOperations)
 	r.populatePullRequestMetadata(ctx, &historyEntry, activeTrailers)
 	r.populateCommitStatuses(ctx, &historyEntry, activeTrailers)
@@ -259,7 +259,7 @@ func getFirstTrailerValue(trailers map[string][]string, key string) string {
 }
 
 // populateActiveMetadata populates the active metadata for a history entry
-func (r *ChangeTransferPolicyReconciler) populateActiveMetadata(ctx context.Context, h *promoterv1alpha1.History, sha string, gitOperations *git.EnvironmentOperations) {
+func (r *ChangeTransferPolicyReconciler) populateActiveMetadata(ctx context.Context, h *promoterv1alpha1.History, sha, activePath string, gitOperations *git.EnvironmentOperations) {
 	logger := log.FromContext(ctx)
 	activeHydrated, err := gitOperations.GetShaMetadataFromGit(ctx, sha)
 	if err != nil {
@@ -268,7 +268,7 @@ func (r *ChangeTransferPolicyReconciler) populateActiveMetadata(ctx context.Cont
 	h.Active.Hydrated = activeHydrated
 	h.Active.Hydrated.Body = removeKnownTrailers(h.Active.Hydrated.Body)
 
-	activeDry, err := gitOperations.GetShaMetadataFromFile(ctx, sha)
+	activeDry, err := gitOperations.GetShaMetadataFromFile(ctx, sha, activePath)
 	if err != nil {
 		logger.V(4).Info("failed to get active historic metadata from file", "sha", sha, "error", err)
 	}
@@ -526,7 +526,7 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 
 	// TODO: consider parallelizing parts of this function that are network-bound work.
 
-	proposedShas, err := gitOperations.GetBranchShas(ctx, ctp.Spec.ProposedBranch)
+	proposedShas, err := gitOperations.GetBranchShas(ctx, ctp.Spec.ProposedBranch, ctp.Spec.ActivePath)
 	if err != nil {
 		// If the proposed branch doesn't exist, it's likely because the hydrator hasn't run yet
 		if strings.Contains(err.Error(), "couldn't find remote ref") {
@@ -535,7 +535,7 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 		return fmt.Errorf("failed to get SHAs for proposed branch %q: %w", ctp.Spec.ProposedBranch, err)
 	}
 
-	activeShas, err := gitOperations.GetBranchShas(ctx, ctp.Spec.ActiveBranch)
+	activeShas, err := gitOperations.GetBranchShas(ctx, ctp.Spec.ActiveBranch, ctp.Spec.ActivePath)
 	if err != nil {
 		return fmt.Errorf("failed to get SHAs for active branch %q: %w", ctp.Spec.ActiveBranch, err)
 	}
@@ -613,13 +613,13 @@ func (e *TooManyMatchingShaError) Error() string {
 func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations, activeHydratedSha, proposedHydratedSha string) error {
 	logger := log.FromContext(ctx)
 
-	activeCommitMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, activeHydratedSha)
+	activeCommitMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, activeHydratedSha, ctp.Spec.ActivePath)
 	if err != nil {
 		return fmt.Errorf("failed to get commit metadata for hydrated SHA %q: %w", activeHydratedSha, err)
 	}
 	ctp.Status.Active.Dry = activeCommitMetadata
 
-	proposedCommitMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, proposedHydratedSha)
+	proposedCommitMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, proposedHydratedSha, ctp.Spec.ActivePath)
 	if err != nil {
 		return fmt.Errorf("failed to get commit metadata for hydrated SHA %q: %w", activeHydratedSha, err)
 	}
@@ -1267,9 +1267,13 @@ func (r *ChangeTransferPolicyReconciler) gitMergeStrategyOurs(ctx context.Contex
 	}
 
 	// If we have a conflict, perform a merge with "ours" strategy
-	logger.Info("Conflicts detected, performing merge with 'ours' strategy", "proposed", ctp.Spec.ProposedBranch, "active", ctp.Spec.ActiveBranch)
+	logger.Info("Conflicts detected, performing merge with 'ours' strategy", "proposed", ctp.Spec.ProposedBranch, "active", ctp.Spec.ActiveBranch, "activePath", ctp.Spec.ActivePath)
 
-	err = gitOperations.MergeWithOursStrategy(ctx, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+	if ctp.Spec.ActivePath != "" {
+		err = gitOperations.MergeWithOursStrategyForPath(ctx, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, ctp.Spec.ActivePath)
+	} else {
+		err = gitOperations.MergeWithOursStrategy(ctx, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to merge branches %q and %q with 'ours' strategy: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
 	}
