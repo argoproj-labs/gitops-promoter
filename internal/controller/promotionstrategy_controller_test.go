@@ -1153,6 +1153,180 @@ var _ = Describe("PromotionStrategy Controller", func() {
 		})
 	})
 
+	Context("When reconciling multiple PromotionStrategies sharing one active branch with different activePath", func() {
+		type appConfig struct {
+			nameSuffix string
+			activePath string
+		}
+
+		var gitRepo *promoterv1alpha1.GitRepository
+		var scmSecret *v1.Secret
+		var scmProvider *promoterv1alpha1.ScmProvider
+		var promotionStrategies []promoterv1alpha1.PromotionStrategy
+		var appConfigs []appConfig
+
+		BeforeEach(func() {
+			By("Creating shared SCM and GitRepository resources")
+			var baseStrategy *promoterv1alpha1.PromotionStrategy
+			_, scmSecret, scmProvider, gitRepo, _, _, baseStrategy = promotionStrategyResource(ctx, "promotion-strategy-shared-active-path", "default")
+			setupInitialTestGitRepoOnServer(ctx, gitRepo)
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+
+			appConfigs = []appConfig{
+				{nameSuffix: "app-one", activePath: "apps/app-one"},
+				{nameSuffix: "app-two", activePath: "apps/app-two"},
+				{nameSuffix: "app-three", activePath: "apps/app-three"},
+			}
+
+			By("Creating three PromotionStrategies that share one active branch and differ by activePath")
+			for _, cfg := range appConfigs {
+				ps := baseStrategy.DeepCopy()
+				ps.Name = fmt.Sprintf("%s-%s", baseStrategy.Name, cfg.nameSuffix)
+				ps.Spec.ActivePath = cfg.activePath
+				ps.Spec.Environments = []promoterv1alpha1.Environment{
+					{Branch: testBranchDevelopment, AutoMerge: ptr.To(true)},
+				}
+				Expect(k8sClient.Create(ctx, ps)).To(Succeed())
+				promotionStrategies = append(promotionStrategies, *ps)
+			}
+		})
+
+		AfterEach(func() {
+			By("Cleaning up resources")
+			for _, ps := range promotionStrategies {
+				psCopy := ps
+				_ = k8sClient.Delete(ctx, &psCopy)
+			}
+			_ = k8sClient.Delete(ctx, gitRepo)
+			_ = k8sClient.Delete(ctx, scmProvider)
+			_ = k8sClient.Delete(ctx, scmSecret)
+		})
+
+		It("should track three app-specific dry commits independently on a shared active branch", func() {
+			By("Preparing a git workspace for dry commits and shared active-branch hydration commits")
+			gitPath, err := cloneTestRepo(ctx, gitRepo)
+			Expect(err).ToNot(HaveOccurred())
+			defer func() {
+				_ = os.RemoveAll(gitPath)
+			}()
+
+			makeDryCommitForPath := func(activePath, commitMessage string) string {
+				_, err = runGitCmd(ctx, gitPath, "fetch", "origin")
+				Expect(err).ToNot(HaveOccurred())
+
+				defaultBranch, err := runGitCmd(ctx, gitPath, "rev-parse", "--abbrev-ref", "origin/HEAD")
+				Expect(err).ToNot(HaveOccurred())
+				defaultBranch = strings.TrimSpace(strings.TrimPrefix(defaultBranch, "origin/"))
+
+				_, err = runGitCmd(ctx, gitPath, "checkout", defaultBranch)
+				Expect(err).ToNot(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "pull", "origin", defaultBranch)
+				Expect(err).ToNot(HaveOccurred())
+
+				beforeSha, err := runGitCmd(ctx, gitPath, "rev-parse", defaultBranch)
+				Expect(err).ToNot(HaveOccurred())
+				beforeSha = strings.TrimSpace(beforeSha)
+
+				err = os.MkdirAll(path.Join(gitPath, activePath), 0o755)
+				Expect(err).ToNot(HaveOccurred())
+				err = os.WriteFile(path.Join(gitPath, activePath, "manifests-fake.yaml"), []byte(fmt.Sprintf("app: %s\ntime: %s\n", activePath, time.Now().Format(time.RFC3339Nano))), 0o644)
+				Expect(err).ToNot(HaveOccurred())
+
+				_, err = runGitCmd(ctx, gitPath, "add", path.Join(activePath, "manifests-fake.yaml"))
+				Expect(err).ToNot(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "commit", "-m", commitMessage)
+				Expect(err).ToNot(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", defaultBranch)
+				Expect(err).ToNot(HaveOccurred())
+
+				drySha, err := runGitCmd(ctx, gitPath, "rev-parse", defaultBranch)
+				Expect(err).ToNot(HaveOccurred())
+				drySha = strings.TrimSpace(drySha)
+				sendWebhookForPush(ctx, beforeSha, defaultBranch)
+				return drySha
+			}
+
+			promotePathOnSharedActiveBranch := func(activePath, activeBranch, drySha, commitMessage string) {
+				_, err = runGitCmd(ctx, gitPath, "fetch", "origin")
+				Expect(err).ToNot(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "checkout", "-B", activeBranch, "origin/"+activeBranch)
+				Expect(err).ToNot(HaveOccurred())
+
+				beforeSha, err := runGitCmd(ctx, gitPath, "rev-parse", activeBranch)
+				Expect(err).ToNot(HaveOccurred())
+				beforeSha = strings.TrimSpace(beforeSha)
+
+				err = os.MkdirAll(path.Join(gitPath, activePath), 0o755)
+				Expect(err).ToNot(HaveOccurred())
+				err = os.WriteFile(path.Join(gitPath, activePath, "hydrator.metadata"), []byte(fmt.Sprintf("{\"drySHA\": \"%s\"}", drySha)), 0o644)
+				Expect(err).ToNot(HaveOccurred())
+				err = os.WriteFile(path.Join(gitPath, activePath, "manifests-fake.yaml"), []byte(fmt.Sprintf("hydrated: %s\ntime: %s\n", drySha, time.Now().Format(time.RFC3339Nano))), 0o644)
+				Expect(err).ToNot(HaveOccurred())
+
+				_, err = runGitCmd(ctx, gitPath, "add", path.Join(activePath, "hydrator.metadata"), path.Join(activePath, "manifests-fake.yaml"))
+				Expect(err).ToNot(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "commit", "-m", commitMessage)
+				Expect(err).ToNot(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", activeBranch)
+				Expect(err).ToNot(HaveOccurred())
+
+				sendWebhookForPush(ctx, beforeSha, activeBranch)
+			}
+
+			By("Applying three independent dry commits and app-path promotions on the shared active branch")
+			expectedDryByPath := map[string]string{}
+			for i, cfg := range appConfigs {
+				var strategy promoterv1alpha1.PromotionStrategy
+				Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Name:      promotionStrategies[i].Name,
+					Namespace: promotionStrategies[i].Namespace,
+				}, &strategy)).To(Succeed())
+
+				drySha := makeDryCommitForPath(cfg.activePath, fmt.Sprintf("dry commit for %s", cfg.nameSuffix))
+				promotePathOnSharedActiveBranch(cfg.activePath, testBranchDevelopment, drySha, fmt.Sprintf("hydrated commit for %s", cfg.nameSuffix))
+				expectedDryByPath[cfg.activePath] = drySha
+
+				By(fmt.Sprintf("Verifying app %q promoted while previously promoted apps stayed stable", cfg.nameSuffix))
+				Eventually(func(g Gomega) {
+					_, err = runGitCmd(ctx, gitPath, "fetch", "origin")
+					g.Expect(err).ToNot(HaveOccurred())
+					_, err = runGitCmd(ctx, gitPath, "checkout", "-B", testBranchDevelopment, "origin/"+testBranchDevelopment)
+					g.Expect(err).ToNot(HaveOccurred())
+
+					for idx, promoted := range appConfigs[:i+1] {
+						var promotedPS promoterv1alpha1.PromotionStrategy
+						err := k8sClient.Get(ctx, types.NamespacedName{
+							Name:      promotionStrategies[idx].Name,
+							Namespace: promotionStrategies[idx].Namespace,
+						}, &promotedPS)
+						g.Expect(err).To(Succeed())
+
+						var ctp promoterv1alpha1.ChangeTransferPolicy
+						err = k8sClient.Get(ctx, types.NamespacedName{
+							Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotedPS.Name, testBranchDevelopment)),
+							Namespace: promotedPS.Namespace,
+						}, &ctp)
+						g.Expect(err).To(Succeed())
+						g.Expect(ctp.Spec.ActiveBranch).To(Equal(testBranchDevelopment))
+						g.Expect(ctp.Spec.ActivePath).To(Equal(promoted.activePath))
+
+						content, readErr := os.ReadFile(path.Join(gitPath, promoted.activePath, "manifests-fake.yaml"))
+						g.Expect(readErr).ToNot(HaveOccurred())
+						g.Expect(string(content)).To(ContainSubstring(expectedDryByPath[promoted.activePath]))
+					}
+
+					for _, notYetPromoted := range appConfigs[i+1:] {
+						_, readErr := os.ReadFile(path.Join(gitPath, notYetPromoted.activePath, "manifests-fake.yaml"))
+						g.Expect(os.IsNotExist(readErr)).To(BeTrue())
+					}
+				}, constants.EventuallyTimeout).Should(Succeed())
+			}
+		})
+	})
+
 	Context("When reconciling a resource with active commit statuses", func() {
 		Context("When git repo is initialized with active commit statuses", func() {
 			var name string

@@ -41,8 +41,9 @@ Use:
 - `ArgoCDCommitStatus.spec.commitStatusKey` to isolate commit status keys per app
 - a hydrator that writes metadata at `<activePath>/hydrator.metadata` and does not overwrite other app directories
 
-In this pattern, `PromotionStrategy.spec.activePath` and `ApplicationSet.spec.template.spec.source.path` should point to
-the same app directory so the hydrator writes and Argo CD reads from the same location.
+In this pattern, `PromotionStrategy.spec.activePath`, `sourceHydrator.drySource.path`, and
+`sourceHydrator.syncSource.path` should point to the same app directory so the hydrator writes and Argo CD reads from
+the same location.
 
 Example (dev/test/prod, simple list generator):
 
@@ -83,21 +84,30 @@ spec:
     - list:
         elements:
           - env: dev
-            branch: environment/dev
+            syncBranch: environment/dev
+            hydrateToBranch: environment/dev/apps/payments-next
           - env: test
-            branch: environment/test
+            syncBranch: environment/test
+            hydrateToBranch: environment/test/apps/payments-next
           - env: prod
-            branch: environment/prod
+            syncBranch: environment/prod
+            hydrateToBranch: environment/prod/apps/payments-next
   template:
     metadata:
       name: "payments-{{env}}"
       labels:
         app.kubernetes.io/name: payments
     spec:
-      source:
-        repoURL: https://github.com/example/platform-config
-        targetRevision: "{{branch}}"
-        path: apps/payments
+      sourceHydrator:
+        drySource:
+          repoURL: https://github.com/example/platform-config
+          targetRevision: HEAD
+          path: apps/payments
+        hydrateTo:
+          targetBranch: "{{hydrateToBranch}}"
+        syncSource:
+          targetBranch: "{{syncBranch}}"
+          path: apps/payments
       destination:
         server: https://kubernetes.default.svc
         namespace: payments-{{env}}
