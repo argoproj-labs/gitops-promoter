@@ -1298,18 +1298,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 					for idx, promoted := range appConfigs[:i+1] {
 						var promotedPS promoterv1alpha1.PromotionStrategy
-						err := k8sClient.Get(ctx, types.NamespacedName{
+						getErr := k8sClient.Get(ctx, types.NamespacedName{
 							Name:      promotionStrategies[idx].Name,
 							Namespace: promotionStrategies[idx].Namespace,
 						}, &promotedPS)
-						g.Expect(err).To(Succeed())
+						g.Expect(getErr).To(Succeed())
 
 						var ctp promoterv1alpha1.ChangeTransferPolicy
-						err = k8sClient.Get(ctx, types.NamespacedName{
+						getErr = k8sClient.Get(ctx, types.NamespacedName{
 							Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotedPS.Name, testBranchDevelopment)),
 							Namespace: promotedPS.Namespace,
 						}, &ctp)
-						g.Expect(err).To(Succeed())
+						g.Expect(getErr).To(Succeed())
 						g.Expect(ctp.Spec.ActiveBranch).To(Equal(testBranchDevelopment))
 						g.Expect(ctp.Spec.ActivePath).To(Equal(promoted.activePath))
 
@@ -1320,6 +1320,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 					for _, notYetPromoted := range appConfigs[i+1:] {
 						_, readErr := os.ReadFile(path.Join(gitPath, notYetPromoted.activePath, "manifests-fake.yaml"))
+						g.Expect(readErr).To(HaveOccurred())
 						g.Expect(os.IsNotExist(readErr)).To(BeTrue())
 					}
 				}, constants.EventuallyTimeout).Should(Succeed())
