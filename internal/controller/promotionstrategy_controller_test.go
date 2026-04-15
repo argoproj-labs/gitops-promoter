@@ -3340,6 +3340,173 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		})
 	})
 
+	Context("When an environment is removed from PromotionStrategy", func() {
+		var name string
+		var gitRepo *promoterv1alpha1.GitRepository
+		var promotionStrategy *promoterv1alpha1.PromotionStrategy
+		var typeNamespacedName types.NamespacedName
+
+		BeforeEach(func() {
+			By("Creating repository and SCM resources (PromotionStrategy created in test after hydration)")
+			var scmSecret *v1.Secret
+			var scmProvider *promoterv1alpha1.ScmProvider
+			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "promotion-strategy-remove-env", "default")
+
+			setupInitialTestGitRepoOnServer(ctx, gitRepo)
+
+			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "test-validation"}, // Will never pass, and that's okay. We're just trying to confirm that PRs get cleaned up, not that they get merged.
+			}
+			promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
+				{
+					Branch:    testBranchDevelopment,
+					AutoMerge: ptr.To(true),
+				},
+				{
+					Branch:    testBranchStaging,
+					AutoMerge: ptr.To(true),
+				},
+				{
+					Branch:    testBranchProduction,
+					AutoMerge: ptr.To(true),
+				},
+			}
+
+			typeNamespacedName = types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			By("Cleaning up resources")
+			_ = k8sClient.Delete(ctx, promotionStrategy)
+		})
+
+		// Orphan cleanup when an environment is removed: production ChangeTransferPolicy should be deleted via
+		// cleanupOrphanedChangeTransferPolicies. For the owned PullRequest, envtest does not run kube garbage
+		// collection like a real cluster, so we accept either PullRequest deletion or removal of
+		// ChangeTransferPolicyPullRequestFinalizer—either proves the CTP is no longer blocking PR cleanup.
+		It("should delete the orphaned ChangeTransferPolicy and unblock production PullRequest cleanup for the removed environment", func() {
+			By("Hydrating proposed branches then creating PromotionStrategy")
+			gitPath, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+			defer func() { _ = os.RemoveAll(gitPath) }()
+			makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+			var ctpDev, ctpStaging, ctpProd promoterv1alpha1.ChangeTransferPolicy
+			var pullRequestDev, pullRequestStaging, pullRequestProd promoterv1alpha1.PullRequest
+			var ctpProdName, prProdName string
+
+			By("Waiting for ChangeTransferPolicies and PullRequests for all three environments")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
+				g.Expect(err).To(Succeed())
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, testBranchDevelopment)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpDev.Status.PullRequest).ToNot(BeNil())
+				g.Expect(ctpDev.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				g.Expect(ctpDev.Status.PullRequest.ID).ToNot(BeZero())
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, testBranchStaging)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpStaging.Status.PullRequest).ToNot(BeNil())
+				g.Expect(ctpStaging.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				g.Expect(ctpStaging.Status.PullRequest.ID).ToNot(BeZero())
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, testBranchProduction)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpProd)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpProd.Status.PullRequest).ToNot(BeNil())
+				g.Expect(ctpProd.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				g.Expect(ctpProd.Status.PullRequest.ID).ToNot(BeZero())
+
+				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestDev)
+				g.Expect(err).To(Succeed())
+
+				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestStaging)
+				g.Expect(err).To(Succeed())
+
+				ctpProdName = utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, testBranchProduction))
+				prProdName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prProdName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestProd)
+				g.Expect(err).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Removing production environment from PromotionStrategy")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
+				g.Expect(err).To(Succeed())
+
+				promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
+					{
+						Branch:    testBranchDevelopment,
+						AutoMerge: ptr.To(true),
+					},
+					{
+						Branch:    testBranchStaging,
+						AutoMerge: ptr.To(true),
+					},
+				}
+
+				err = k8sClient.Update(ctx, promotionStrategy)
+				g.Expect(err).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying production ChangeTransferPolicy is deleted")
+			Eventually(func(g Gomega) {
+				ctp := &promoterv1alpha1.ChangeTransferPolicy{}
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpProdName,
+					Namespace: typeNamespacedName.Namespace,
+				}, ctp)
+				g.Expect(errors.IsNotFound(err)).To(BeTrue(), "production ChangeTransferPolicy should be deleted when removed from PromotionStrategy, but it was present with finalizers: "+fmt.Sprint(ctp.Finalizers))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying production PullRequest is deleted or no longer has the ChangeTransferPolicy finalizer")
+			Eventually(func(g Gomega) {
+				pr := &promoterv1alpha1.PullRequest{}
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prProdName,
+					Namespace: typeNamespacedName.Namespace,
+				}, pr)
+				if errors.IsNotFound(err) {
+					return
+				}
+				g.Expect(err).To(Succeed())
+				g.Expect(pr.Finalizers).NotTo(ContainElement(promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer),
+					"production PullRequest should be gone or no longer blocked by CTP; finalizers were: "+fmt.Sprint(pr.Finalizers))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
+		})
+	})
+
 	Context("Out-of-order hydration protection", func() {
 		// This test verifies that the system correctly blocks downstream environments
 		// from promoting when upstream environments haven't been hydrated yet.
