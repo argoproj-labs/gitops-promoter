@@ -13,7 +13,8 @@ A counter of git clone operations.
 Labels:
 
 * `git_repository`: The name of the GitRepository resource associated with the operation.
-* `scm_provider`: The name of the ScmProvider resource associated with the operation.
+* `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
+* `scm_provider_kind`: The kind of that reference: `ScmProvider` (namespaced) or `ClusterScmProvider` (cluster-scoped).
 * `operation`: The type of git operation (clone, fetch, pull, push, ls-remote).
 * `result`: Whether the operation succeeded (success, failure).
 
@@ -24,7 +25,8 @@ A histogram of the duration of git clone operations.
 Labels:
 
 * `git_repository`: The name of the GitRepository resource associated with the operation.
-* `scm_provider`: The name of the ScmProvider resource associated with the operation.
+* `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
+* `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
 * `operation`: The type of git operation (clone, fetch, pull, push, ls-remote).
 * `result`: Whether the operation succeeded (success, failure).
 
@@ -35,7 +37,8 @@ A counter of SCM API calls.
 Labels:
 
 * `git_repository`: The name of the GitRepository resource associated with the operation.
-* `scm_provider`: The name of the ScmProvider resource associated with the operation.
+* `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
+* `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
 * `api`: The SCM API being called (CommitStatus, PullRequest)
 * `operation`: The type of SCM operation.
   * For CommitStatus, this is always create.
@@ -49,6 +52,8 @@ A histogram of the duration of SCM API calls.
 Labels:
 
 * `git_repository`: The name of the GitRepository resource associated with the operation.
+* `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
+* `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
 * `api`: The SCM API being called (CommitStatus, PullRequest)
 * `operation`: The type of SCM operation.
   * For CommitStatus, this is always create.
@@ -57,23 +62,25 @@ Labels:
 
 ## scm_calls_rate_limit_limit
 
-A counter for the rate limit of SCM API calls.
+A gauge for the rate limit of SCM API calls.
 
 This metric is currently only produced for GitHub.
 
 Labels:
 
-* `scm_provider`: The name of the ScmProvider resource associated with the operation.
+* `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
+* `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
 
 ## scm_calls_rate_limit_remaining
 
-A counter for the remaining rate limit of SCM API calls.
+A gauge for the remaining rate limit of SCM API calls.
 
 This metric is currently only produced for GitHub.
 
 Labels:
 
-* `scm_provider`: The name of the ScmProvider resource associated with the operation.
+* `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
+* `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
 
 ## scm_calls_rate_limit_reset_remaining_seconds
 
@@ -83,7 +90,8 @@ This metric is currently only produced for GitHub.
 
 Labels:
 
-* `scm_provider`: The name of the ScmProvider resource associated with the operation.
+* `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
+* `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
 
 ## webhook_processing_duration_seconds
 

@@ -33,9 +33,10 @@ nav:
   - Getting Started: getting-started.md
   - Contributing:
       - Overview: contributing/index.md
-      - Using Finalizers: contributing/using-finalizers.md
+      - Adding an SCM Provider: contributing/adding-an-scm-provider.md
       - Continuous Integration: contributing/ci.md
       - Cutting a Release: contributing/cutting-a-release.md
+      - Using Finalizers: contributing/using-finalizers.md
   - Security: security.md
   - Debugging:
       - Overview: debugging/index.md

@@ -85,11 +85,11 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 	statusCode := 201 // Created status as per Azure DevOps API
 	if err != nil {
 		statusCode = 500
-		metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, statusCode, time.Since(start), nil)
+		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, statusCode, time.Since(start), nil)
 		return "", fmt.Errorf("failed to create pull request: %w", err)
 	}
 
-	metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, statusCode, time.Since(start), nil)
+	metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, statusCode, time.Since(start), nil)
 
 	logger.Info("Azure DevOps pull request created successfully", "prId", *createdPR.PullRequestId)
 
@@ -135,11 +135,11 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pu
 	statusCode := 200
 	if err != nil {
 		statusCode = 500
-		metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationUpdate, statusCode, time.Since(start), nil)
+		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationUpdate, statusCode, time.Since(start), nil)
 		return fmt.Errorf("failed to update pull request: %w", err)
 	}
 
-	metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationUpdate, statusCode, time.Since(start), nil)
+	metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationUpdate, statusCode, time.Since(start), nil)
 
 	logger.V(4).Info("Azure DevOps pull request updated successfully", "prId", prId)
 
@@ -185,11 +185,11 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullReque
 	statusCode := 200
 	if err != nil {
 		statusCode = 500
-		metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationClose, statusCode, time.Since(start), nil)
+		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationClose, statusCode, time.Since(start), nil)
 		return fmt.Errorf("failed to close pull request: %w", err)
 	}
 
-	metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationClose, statusCode, time.Since(start), nil)
+	metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationClose, statusCode, time.Since(start), nil)
 
 	logger.V(4).Info("Azure DevOps pull request closed successfully", "prId", prId)
 
@@ -243,11 +243,11 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 	statusCode := 200
 	if err != nil {
 		statusCode = 500
-		metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, statusCode, time.Since(start), nil)
+		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, statusCode, time.Since(start), nil)
 		return fmt.Errorf("failed to merge pull request: %w", err)
 	}
 
-	metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, statusCode, time.Since(start), nil)
+	metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, statusCode, time.Since(start), nil)
 
 	logger.V(4).Info("Azure DevOps pull request merged successfully", "prId", prId)
 
@@ -292,11 +292,11 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	statusCode := 200
 	if err != nil {
 		statusCode = 500
-		metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
+		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
 		return false, "", time.Time{}, fmt.Errorf("failed to search pull requests: %w", err)
 	}
 
-	metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
+	metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
 
 	if len(*pullRequests) > 0 {
 		firstPR := (*pullRequests)[0]
