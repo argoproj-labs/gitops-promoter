@@ -999,11 +999,6 @@ func (r *WebRequestCommitStatusReconciler) getApplicableEnvironments(ps *promote
 // domains before the request is made, to prevent SCM credentials leaking to unintended hosts.
 func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, templateData templateData) (httpResponse, error) {
 	logger := log.FromContext(ctx)
-	start := time.Now()
-	var recordedHTTPStatusCode int
-	defer func() {
-		metrics.RecordWebRequestCommitStatusHTTPRequest(wrcs, recordedHTTPStatusCode, time.Since(start))
-	}()
 
 	// Render URL template
 	url, err := utils.RenderStringTemplate(wrcs.Spec.HTTPRequest.URLTemplate, templateData)
@@ -1071,15 +1066,17 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 
 	logger.V(4).Info("Making HTTP request", "method", wrcs.Spec.HTTPRequest.Method, "url", url)
 
-	// Execute request
+	// Execute request (metrics: counter and histogram only after Do; duration is Do through body read).
+	httpMetricsStart := time.Now()
 	resp, err := clientToUse.Do(req)
 	if err != nil {
+		metrics.RecordWebRequestCommitStatusHTTPRequest(wrcs, resp.StatusCode, time.Since(httpMetricsStart))
 		return httpResponse{}, fmt.Errorf("HTTP request failed: %w", err)
 	}
 	if resp == nil {
+		metrics.RecordWebRequestCommitStatusHTTPRequest(wrcs, resp.StatusCode, time.Since(httpMetricsStart))
 		return httpResponse{}, errors.New("HTTP response is nil")
 	}
-	recordedHTTPStatusCode = resp.StatusCode
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
 			logger.V(4).Info("Failed to close response body", "error", closeErr)
@@ -1089,8 +1086,11 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	// Read response body
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
+		metrics.RecordWebRequestCommitStatusHTTPRequest(wrcs, resp.StatusCode, time.Since(httpMetricsStart))
 		return httpResponse{}, fmt.Errorf("failed to read response body: %w", err)
 	}
+	httpRequestMetricsDuration := time.Since(httpMetricsStart)
+	metrics.RecordWebRequestCommitStatusHTTPRequest(wrcs, resp.StatusCode, httpRequestMetricsDuration)
 
 	// Try to parse body as JSON
 	var parsedBody any
@@ -1105,7 +1105,7 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 		Headers:    resp.Header,
 	}
 
-	logger.V(4).Info("HTTP request completed", "statusCode", resp.StatusCode, "latency", time.Since(start))
+	logger.V(4).Info("HTTP request completed", "statusCode", resp.StatusCode, "latency", httpRequestMetricsDuration)
 
 	return response, nil
 }

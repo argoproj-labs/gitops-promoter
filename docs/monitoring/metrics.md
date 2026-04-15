@@ -57,19 +57,19 @@ Labels:
 
 ## webrequest_commit_status_http_requests_total
 
-A counter of outbound HTTP requests performed while reconciling a `WebRequestCommitStatus` (one increment per `makeHTTPRequest` attempt, including template render, authentication, transport, and reading the response body).
+A counter of outbound HTTP requests from `WebRequestCommitStatus` reconciliation: one increment each time `http.Client.Do` runs for the resource (including when `Do` returns an error or a nil response). Failures before `Do` (template render, auth, and so on) are not counted.
 
 Labels:
 
 * `namespace`: Namespace of the `WebRequestCommitStatus` resource.
 * `name`: Name of the `WebRequestCommitStatus` resource.
-* `response_code`: The HTTP status code from the response when a status line was received. The value **`0`** (label string `"0"`) means no HTTP status was produced—for example template or auth setup failed, the transport returned an error before a response, or the response was nil.
+* `response_code`: The HTTP status code from the response when a status line was received. The value **`0`** (label string `"0"`) means `Do` ran but no HTTP status was available—for example a transport error before headers, or a nil response.
 
 Each distinct combination of labels is its own Prometheus time series. Clusters with very many `WebRequestCommitStatus` objects or many different status codes should expect proportionally more series.
 
 ## webrequest_commit_status_http_request_duration_seconds
 
-A histogram of wall-clock duration for the same outbound HTTP attempts counted by `webrequest_commit_status_http_requests_total` (from start of request handling through return, including rendering, auth, `Do`, and body read).
+A histogram of elapsed time from `http.Client.Do` through reading the response body (`io.ReadAll` on the response) for the same attempts counted by `webrequest_commit_status_http_requests_total`. If `Do` returns an error, the observation covers only the `Do` call; if a response is received, it includes reading the full body. No observation is recorded when reconciliation fails before `Do`.
 
 Labels:
 

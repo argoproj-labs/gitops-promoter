@@ -175,15 +175,16 @@ var (
 	webRequestCommitStatusHTTPRequestsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "webrequest_commit_status_http_requests_total",
-			Help: "A counter of outbound HTTP requests made by WebRequestCommitStatus reconciliation.",
+			Help: "A counter of outbound HTTP requests made by WebRequestCommitStatus reconciliation (one increment per http.Client.Do).",
 		},
 		webRequestCommitStatusHTTPLabels,
 	)
 
 	webRequestCommitStatusHTTPRequestDurationSeconds = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "webrequest_commit_status_http_request_duration_seconds",
-			Help:    "A histogram of the duration of outbound HTTP requests made by WebRequestCommitStatus reconciliation.",
+			Name: "webrequest_commit_status_http_request_duration_seconds",
+			Help: "A histogram of the duration of outbound HTTP from http.Client.Do through reading the response body " +
+				"(WebRequestCommitStatus reconciliation; only observed when Do runs).",
 			Buckets: prometheus.DefBuckets,
 		},
 		webRequestCommitStatusHTTPLabels,
@@ -272,9 +273,10 @@ func RecordWebhookCall(ctpFound bool, responseCode int, duration time.Duration) 
 	webhookProcessingDurationSeconds.With(labels).Observe(duration.Seconds())
 }
 
-// RecordWebRequestCommitStatusHTTPRequest records count and duration for one outbound HTTP attempt
-// from WebRequestCommitStatus reconciliation. responseCode is the HTTP status when a response was
-// received; use 0 when no status line was produced (template/auth errors, transport failure, nil response).
+// RecordWebRequestCommitStatusHTTPRequest records count and duration after http.Client.Do was invoked
+// for WebRequestCommitStatus reconciliation. responseCode is the HTTP status when a response was
+// received; use 0 when there was no status line (transport failure before headers, nil response, etc.).
+// duration is the time from Do through reading the response body (or through Do only if the body was not read).
 func RecordWebRequestCommitStatusHTTPRequest(wrcs *v1alpha1.WebRequestCommitStatus, responseCode int, duration time.Duration) {
 	labels := prometheus.Labels{
 		"namespace":     wrcs.Namespace,
