@@ -1070,11 +1070,9 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	httpMetricsStart := time.Now()
 	resp, err := clientToUse.Do(req)
 	if err != nil {
-		metrics.RecordWebRequestCommitStatusHTTPRequest(wrcs, resp.StatusCode, time.Since(httpMetricsStart))
 		return httpResponse{}, fmt.Errorf("HTTP request failed: %w", err)
 	}
 	if resp == nil {
-		metrics.RecordWebRequestCommitStatusHTTPRequest(wrcs, resp.StatusCode, time.Since(httpMetricsStart))
 		return httpResponse{}, errors.New("HTTP response is nil")
 	}
 	defer func() {
@@ -1086,7 +1084,6 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	// Read response body
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		metrics.RecordWebRequestCommitStatusHTTPRequest(wrcs, resp.StatusCode, time.Since(httpMetricsStart))
 		return httpResponse{}, fmt.Errorf("failed to read response body: %w", err)
 	}
 	httpRequestMetricsDuration := time.Since(httpMetricsStart)
