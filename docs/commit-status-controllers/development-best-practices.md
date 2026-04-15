@@ -61,7 +61,7 @@ for different apps can target the same active commit SHA. In this setup, control
 ### ArgoCDCommitStatus Controller
 
 The ArgoCDCommitStatus controller sets:
-- `promoter.argoproj.io/commit-status: "argocd-health"`
+- `promoter.argoproj.io/commit-status: <spec.commitStatusKey>` (defaults to `argocd-health`)
 - `promoter.argoproj.io/environment: <branch>`
 
 See: `internal/controller/argocdcommitstatus_controller.go` lines 557-560

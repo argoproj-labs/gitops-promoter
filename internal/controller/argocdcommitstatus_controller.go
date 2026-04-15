@@ -560,6 +560,7 @@ var applicationPredicate predicate.Predicate = predicate.Funcs{
 // If err is nil, the returned CommitStatus is guaranteed to be non-nil.
 func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.Context, promotionStrategy *promoterv1alpha1.PromotionStrategy, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, targetBranch string, sha string, phase promoterv1alpha1.CommitStatusPhase, desc string) (*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
+	commitStatusKey := argoCDCommitStatus.Spec.GetCommitStatusKey()
 
 	commitStatusName := targetBranch + "/health"
 	resourceName := strings.ReplaceAll(commitStatusName, "/", "-") + "-" + hash([]byte(argoCDCommitStatus.Name))
@@ -606,7 +607,7 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 	// Build the apply configuration
 	commitStatusApply := acv1alpha1.CommitStatus(resourceName, argoCDCommitStatus.Namespace).
 		WithLabels(map[string]string{
-			promoterv1alpha1.CommitStatusLabel: "argocd-health",
+			promoterv1alpha1.CommitStatusLabel: commitStatusKey,
 			promoterv1alpha1.EnvironmentLabel:  utils.KubeSafeLabel(targetBranch),
 		}).
 		WithOwnerReferences(acmetav1.OwnerReference().
