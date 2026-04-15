@@ -94,6 +94,9 @@ var (
 	// Labels for scm_calls_rate_limit metrics
 	scmCallRateLimitLabels = []string{"scm_provider"}
 
+	// Labels for WebRequestCommitStatus outbound HTTP metrics
+	webRequestCommitStatusHTTPLabels = []string{"namespace", "name", "response_code"}
+
 	// git_operations_total
 	gitOperationsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -169,6 +172,23 @@ var (
 		[]string{"ctp_found", "response_code"},
 	)
 
+	webRequestCommitStatusHTTPRequestsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "webrequest_commit_status_http_requests_total",
+			Help: "A counter of outbound HTTP requests made by WebRequestCommitStatus reconciliation.",
+		},
+		webRequestCommitStatusHTTPLabels,
+	)
+
+	webRequestCommitStatusHTTPRequestDurationSeconds = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "webrequest_commit_status_http_request_duration_seconds",
+			Help:    "A histogram of the duration of outbound HTTP requests made by WebRequestCommitStatus reconciliation.",
+			Buckets: prometheus.DefBuckets,
+		},
+		webRequestCommitStatusHTTPLabels,
+	)
+
 	// FinalizerDependentCount tracks the current number of dependent resources blocking deletion
 	FinalizerDependentCount = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -200,6 +220,8 @@ func init() {
 		scmCallsRateLimitRemaining,
 		scmCallsRateLimitResetRemainingSeconds,
 		webhookProcessingDurationSeconds,
+		webRequestCommitStatusHTTPRequestsTotal,
+		webRequestCommitStatusHTTPRequestDurationSeconds,
 		FinalizerDependentCount,
 		ApplicationWatchEventsHandled,
 	)
@@ -248,4 +270,17 @@ func RecordWebhookCall(ctpFound bool, responseCode int, duration time.Duration) 
 	}
 	webhookCallsTotal.With(labels).Inc()
 	webhookProcessingDurationSeconds.With(labels).Observe(duration.Seconds())
+}
+
+// RecordWebRequestCommitStatusHTTPRequest records count and duration for one outbound HTTP attempt
+// from WebRequestCommitStatus reconciliation. responseCode is the HTTP status when a response was
+// received; use 0 when no status line was produced (template/auth errors, transport failure, nil response).
+func RecordWebRequestCommitStatusHTTPRequest(wrcs *v1alpha1.WebRequestCommitStatus, responseCode int, duration time.Duration) {
+	labels := prometheus.Labels{
+		"namespace":     wrcs.Namespace,
+		"name":          wrcs.Name,
+		"response_code": strconv.Itoa(responseCode),
+	}
+	webRequestCommitStatusHTTPRequestsTotal.With(labels).Inc()
+	webRequestCommitStatusHTTPRequestDurationSeconds.With(labels).Observe(duration.Seconds())
 }

@@ -55,6 +55,28 @@ Labels:
   * For PullRequest, this is create, update, merge, close, or list.
 * `response_code`: The HTTP response code.
 
+## webrequest_commit_status_http_requests_total
+
+A counter of outbound HTTP requests performed while reconciling a `WebRequestCommitStatus` (one increment per `makeHTTPRequest` attempt, including template render, authentication, transport, and reading the response body).
+
+Labels:
+
+* `namespace`: Namespace of the `WebRequestCommitStatus` resource.
+* `name`: Name of the `WebRequestCommitStatus` resource.
+* `response_code`: The HTTP status code from the response when a status line was received. The value **`0`** (label string `"0"`) means no HTTP status was produced—for example template or auth setup failed, the transport returned an error before a response, or the response was nil.
+
+Each distinct combination of labels is its own Prometheus time series. Clusters with very many `WebRequestCommitStatus` objects or many different status codes should expect proportionally more series.
+
+## webrequest_commit_status_http_request_duration_seconds
+
+A histogram of wall-clock duration for the same outbound HTTP attempts counted by `webrequest_commit_status_http_requests_total` (from start of request handling through return, including rendering, auth, `Do`, and body read).
+
+Labels:
+
+* `namespace`: Namespace of the `WebRequestCommitStatus` resource.
+* `name`: Name of the `WebRequestCommitStatus` resource.
+* `response_code`: Same semantics as for `webrequest_commit_status_http_requests_total`.
+
 ## scm_calls_rate_limit_limit
 
 A counter for the rate limit of SCM API calls.

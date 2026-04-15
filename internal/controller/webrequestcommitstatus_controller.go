@@ -48,6 +48,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -998,6 +999,11 @@ func (r *WebRequestCommitStatusReconciler) getApplicableEnvironments(ps *promote
 // domains before the request is made, to prevent SCM credentials leaking to unintended hosts.
 func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, templateData templateData) (httpResponse, error) {
 	logger := log.FromContext(ctx)
+	start := time.Now()
+	var recordedHTTPStatusCode int
+	defer func() {
+		metrics.RecordWebRequestCommitStatusHTTPRequest(wrcs, recordedHTTPStatusCode, time.Since(start))
+	}()
 
 	// Render URL template
 	url, err := utils.RenderStringTemplate(wrcs.Spec.HTTPRequest.URLTemplate, templateData)
@@ -1073,6 +1079,7 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	if resp == nil {
 		return httpResponse{}, errors.New("HTTP response is nil")
 	}
+	recordedHTTPStatusCode = resp.StatusCode
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
 			logger.V(4).Info("Failed to close response body", "error", closeErr)
