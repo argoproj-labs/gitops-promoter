@@ -57,7 +57,7 @@ Labels:
 
 ## webrequest_commit_status_http_requests_total
 
-A counter of completed outbound HTTP round-trips from `WebRequestCommitStatus` reconciliation. It increments once after `http.Client.Do` succeeds, the response is non-nil, and the full response body has been read successfully. There is no increment when `Do` fails, the response is nil, the body read fails, or reconciliation fails before `Do` (for example during template rendering or authentication setup).
+A counter of completed outbound HTTP round-trips from `WebRequestCommitStatus` reconciliation. It increments once after `http.Client.Do` succeeds. There is no increment when `Do` fails, the response is nil, the body read fails, or reconciliation fails before `Do` (for example during template rendering or authentication setup).
 
 Labels:
 
