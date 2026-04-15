@@ -48,6 +48,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -1065,7 +1066,8 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 
 	logger.V(4).Info("Making HTTP request", "method", wrcs.Spec.HTTPRequest.Method, "url", url)
 
-	// Execute request
+	// Execute request (metrics: counter and histogram only after Do; duration is Do through body read).
+	httpMetricsStart := time.Now()
 	resp, err := clientToUse.Do(req)
 	if err != nil {
 		return httpResponse{}, fmt.Errorf("HTTP request failed: %w", err)
@@ -1084,6 +1086,8 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	if err != nil {
 		return httpResponse{}, fmt.Errorf("failed to read response body: %w", err)
 	}
+	httpRequestMetricsDuration := time.Since(httpMetricsStart)
+	metrics.RecordWebRequestCommitStatusHTTPRequest(wrcs, resp.StatusCode, httpRequestMetricsDuration)
 
 	// Try to parse body as JSON
 	var parsedBody any
@@ -1098,7 +1102,7 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 		Headers:    resp.Header,
 	}
 
-	logger.V(4).Info("HTTP request completed", "statusCode", resp.StatusCode)
+	logger.V(4).Info("HTTP request completed", "statusCode", resp.StatusCode, "latency", httpRequestMetricsDuration)
 
 	return response, nil
 }

@@ -96,6 +96,9 @@ var (
 	// Labels for scm_calls_rate_limit metrics
 	scmCallRateLimitLabels = []string{"scm_provider", "scm_provider_kind"}
 
+	// Labels for WebRequestCommitStatus outbound HTTP metrics
+	webRequestCommitStatusHTTPLabels = []string{"namespace", "name", "response_code"}
+
 	// git_operations_total
 	gitOperationsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -171,6 +174,25 @@ var (
 		[]string{"ctp_found", "response_code"},
 	)
 
+	webRequestCommitStatusHTTPRequestsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "webrequest_commit_status_http_requests_total",
+			Help: "A counter of completed outbound HTTP round-trips from WebRequestCommitStatus reconciliation " +
+				"(Do succeeded, response non-nil, body read successfully).",
+		},
+		webRequestCommitStatusHTTPLabels,
+	)
+
+	webRequestCommitStatusHTTPRequestDurationSeconds = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "webrequest_commit_status_http_request_duration_seconds",
+			Help: "A histogram of duration from http.Client.Do through reading the response body for successful " +
+				"WebRequestCommitStatus outbound HTTP round-trips.",
+			Buckets: prometheus.DefBuckets,
+		},
+		webRequestCommitStatusHTTPLabels,
+	)
+
 	// FinalizerDependentCount tracks the current number of dependent resources blocking deletion
 	FinalizerDependentCount = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -202,6 +224,8 @@ func init() {
 		scmCallsRateLimitRemaining,
 		scmCallsRateLimitResetRemainingSeconds,
 		webhookProcessingDurationSeconds,
+		webRequestCommitStatusHTTPRequestsTotal,
+		webRequestCommitStatusHTTPRequestDurationSeconds,
 		FinalizerDependentCount,
 		ApplicationWatchEventsHandled,
 	)
@@ -278,4 +302,17 @@ func RecordWebhookCall(ctpFound bool, responseCode int, duration time.Duration) 
 	}
 	webhookCallsTotal.With(labels).Inc()
 	webhookProcessingDurationSeconds.With(labels).Observe(duration.Seconds())
+}
+
+// RecordWebRequestCommitStatusHTTPRequest records count and duration for a completed outbound HTTP
+// round-trip (Do succeeded, response read). responseCode is the HTTP status from the response;
+// duration is elapsed time from Do through finishing the body read.
+func RecordWebRequestCommitStatusHTTPRequest(wrcs *v1alpha1.WebRequestCommitStatus, responseCode int, duration time.Duration) {
+	labels := prometheus.Labels{
+		"namespace":     wrcs.Namespace,
+		"name":          wrcs.Name,
+		"response_code": strconv.Itoa(responseCode),
+	}
+	webRequestCommitStatusHTTPRequestsTotal.With(labels).Inc()
+	webRequestCommitStatusHTTPRequestDurationSeconds.With(labels).Observe(duration.Seconds())
 }
