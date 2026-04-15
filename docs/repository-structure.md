@@ -41,6 +41,9 @@ Use:
 - `ArgoCDCommitStatus.spec.commitStatusKey` to isolate commit status keys per app
 - a hydrator that writes metadata at `<activePath>/hydrator.metadata` and does not overwrite other app directories
 
+In this pattern, `PromotionStrategy.spec.activePath` and `ApplicationSet.spec.template.spec.source.path` should point to
+the same app directory so the hydrator writes and Argo CD reads from the same location.
+
 Example (dev/test/prod, simple list generator):
 
 ```yaml
