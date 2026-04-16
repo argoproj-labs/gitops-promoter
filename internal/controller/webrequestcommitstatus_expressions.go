@@ -171,6 +171,9 @@ func (r *WebRequestCommitStatusReconciler) enrichWhenExprEnv(ctx context.Context
 		return nil, err
 	}
 	out := maps.Clone(base)
+	if out == nil {
+		out = make(map[string]any)
+	}
 	out["Vars"] = varsResult
 	return out, nil
 }

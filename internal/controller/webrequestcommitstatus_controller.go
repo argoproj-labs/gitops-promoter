@@ -758,6 +758,34 @@ type triggerDecision struct {
 	ShouldFire     bool
 }
 
+// evaluateTriggerWhenBranch evaluates trigger.when (variables, bool expression, optional output map).
+func (r *WebRequestCommitStatusReconciler) evaluateTriggerWhenBranch(
+	ctx context.Context,
+	trigger *promoterv1alpha1.TriggerModeSpec,
+	td templateData,
+) (shouldFire bool, newTriggerData map[string]any, err error) {
+	base := td.triggerExprData()
+	exprEnv, err := r.enrichWhenExprEnv(ctx, trigger.When, base)
+	if err != nil {
+		return false, nil, fmt.Errorf("failed to evaluate trigger.when.variables: %w", err)
+	}
+	tr, err := r.evaluateTriggerExpression(ctx, trigger.When.Expression, exprEnv)
+	if err != nil {
+		return false, nil, fmt.Errorf("failed to evaluate trigger expression: %w", err)
+	}
+	shouldFire = tr.Trigger
+
+	out := trigger.When.Output
+	if out == nil || strings.TrimSpace(out.Expression) == "" {
+		return shouldFire, nil, nil
+	}
+	newTriggerData, err = r.evaluateTriggerDataExpression(ctx, out.Expression, exprEnv)
+	if err != nil {
+		return false, nil, fmt.Errorf("failed to evaluate trigger data expression: %w", err)
+	}
+	return shouldFire, newTriggerData, nil
+}
+
 // evaluateTriggerDecision determines whether the HTTP request should fire this reconcile.
 // For polling mode it checks whether the polling interval has elapsed since lastRequestTime.
 // For trigger mode it evaluates the trigger expression and optionally the trigger output expression.
@@ -780,22 +808,12 @@ func (r *WebRequestCommitStatusReconciler) evaluateTriggerDecision(
 	}
 
 	if mode.Trigger != nil {
-		base := td.triggerExprData()
-		exprEnv, err := r.enrichWhenExprEnv(ctx, mode.Trigger.When, base)
+		sf, ntd, err := r.evaluateTriggerWhenBranch(ctx, mode.Trigger, td)
 		if err != nil {
-			return triggerDecision{}, fmt.Errorf("failed to evaluate trigger.when.variables: %w", err)
+			return triggerDecision{}, err
 		}
-		tr, err := r.evaluateTriggerExpression(ctx, mode.Trigger.When.Expression, exprEnv)
-		if err != nil {
-			return triggerDecision{}, fmt.Errorf("failed to evaluate trigger expression: %w", err)
-		}
-		shouldFire = tr.Trigger
-		if mode.Trigger.When.Output != nil && mode.Trigger.When.Output.Expression != "" {
-			newTriggerData, err = r.evaluateTriggerDataExpression(ctx, mode.Trigger.When.Output.Expression, exprEnv)
-			if err != nil {
-				return triggerDecision{}, fmt.Errorf("failed to evaluate trigger data expression: %w", err)
-			}
-		}
+		shouldFire = sf
+		newTriggerData = ntd
 	}
 
 	return triggerDecision{ShouldFire: shouldFire, NewTriggerData: newTriggerData}, nil
