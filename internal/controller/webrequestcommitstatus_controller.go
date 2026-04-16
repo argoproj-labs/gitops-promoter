@@ -728,6 +728,10 @@ func (r *WebRequestCommitStatusReconciler) fireOrCarryForward(
 
 	// Run success.when even without a request, passing Response=nil.
 	exprData := successWhenExprData(td, nil)
+	exprData, err := r.enrichWhenExprEnv(ctx, wrcs.Spec.Success.When, exprData)
+	if err != nil {
+		return httpValidationResult{}, fmt.Errorf("failed to evaluate success.when.variables: %w", err)
+	}
 	phase, phasePerBranch, err := r.evaluateSuccessPhase(ctx, wrcs, exprData)
 	if err != nil {
 		return httpValidationResult{}, fmt.Errorf("failed to evaluate success.when expression: %w", err)
@@ -776,13 +780,18 @@ func (r *WebRequestCommitStatusReconciler) evaluateTriggerDecision(
 	}
 
 	if mode.Trigger != nil {
-		tr, err := r.evaluateTriggerExpression(ctx, mode.Trigger.When.Expression, td)
+		base := td.triggerExprData()
+		exprEnv, err := r.enrichWhenExprEnv(ctx, mode.Trigger.When, base)
+		if err != nil {
+			return triggerDecision{}, fmt.Errorf("failed to evaluate trigger.when.variables: %w", err)
+		}
+		tr, err := r.evaluateTriggerExpression(ctx, mode.Trigger.When.Expression, exprEnv)
 		if err != nil {
 			return triggerDecision{}, fmt.Errorf("failed to evaluate trigger expression: %w", err)
 		}
 		shouldFire = tr.Trigger
 		if mode.Trigger.When.Output != nil && mode.Trigger.When.Output.Expression != "" {
-			newTriggerData, err = r.evaluateTriggerDataExpression(ctx, mode.Trigger.When.Output.Expression, td)
+			newTriggerData, err = r.evaluateTriggerDataExpression(ctx, mode.Trigger.When.Output.Expression, exprEnv)
 			if err != nil {
 				return triggerDecision{}, fmt.Errorf("failed to evaluate trigger data expression: %w", err)
 			}
@@ -896,6 +905,10 @@ func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx co
 	}
 
 	exprData := successWhenExprData(td, &response)
+	exprData, err = r.enrichWhenExprEnv(ctx, wrcs.Spec.Success.When, exprData)
+	if err != nil {
+		return httpValidationResult{}, fmt.Errorf("failed to evaluate success.when.variables: %w", err)
+	}
 	phase, phasePerBranch, err := r.evaluateSuccessPhase(ctx, wrcs, exprData)
 	if err != nil {
 		return httpValidationResult{}, fmt.Errorf("failed to evaluate validation expression: %w", err)

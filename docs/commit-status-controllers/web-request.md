@@ -59,6 +59,20 @@ Uses expressions to dynamically control when HTTP requests are made. Powerful fo
 - Can store and access custom state from success evaluation via `SuccessOutput` (via `success.when.output.expression`)
 - Always reconciles at `requeueDuration` interval (default: 1 minute)
 
+### Shared trigger and success expr (`when.variables`)
+
+Optional **`when.variables`** (same shape as `when.output`: an `expression` string) runs **once per evaluation** of that `when` block, **before** `when.expression` and optional `when.output.expression`. It must return a **JSON object** (expr map). The result is injected as top-level binding **`Vars`** for those two expressions only.
+
+**Order:** `when.variables` (if set) → `when.expression` (boolean) → `when.output` (if set, map persisted to `triggerOutput` or `successOutput`).
+
+**Base environment** for `when.variables` is the same as for `when.expression`: `Branch`, `Phase`, `PromotionStrategy`, `WebRequestCommitStatus`, `TriggerOutput`, `ResponseOutput`, `SuccessOutput` (and `Response` for **`success.when`** only). There is **no** `Vars` binding inside the variables program itself.
+
+**Downstream:** use `Vars.<key>` in `when.expression` and `when.output.expression`, for example `Vars.fingerprint == (TriggerOutput.lastFingerprint ?? "")`.
+
+**Not in scope:** `Vars` is **not** passed to `response.output.expression` (that program only receives `Response`) or to Go templates for URL/body/description.
+
+The same field exists on **`spec.success.when`**: variables run before the success boolean (and optional `success.when.output`), with `Response` included when an HTTP response exists for that reconcile.
+
 ## Request scope: environments vs promotionstrategy
 
 Use **`spec.mode.context`** to choose **`environments`** (default) or **`promotionstrategy`**. This field controls **how many HTTP requests** the controller performs per `WebRequestCommitStatus` and **how** the success expression’s result maps to `CommitStatus` resources.
@@ -81,7 +95,7 @@ Use it when a **single** external API call represents validation for the whole P
 
 For the **HTTP request** (URL, headers, body), **trigger** `when.expression`, and **trigger** `when.output.expression`, `Branch` is empty (`""`) because there is no single current environment for that one request. Use `PromotionStrategy` (e.g. status environments) for branch-specific values.
 
-**You can use:** `PromotionStrategy` (full spec and status), `WebRequestCommitStatus` (full spec and status snapshot), `Phase` (aggregate of all applicable branches' phases), `TriggerOutput`, `ResponseOutput` (trigger mode), `SuccessOutput`, and `NamespaceMetadata` labels and annotations.
+**You can use:** `PromotionStrategy` (full spec and status), `WebRequestCommitStatus` (full spec and status snapshot), `Phase` (aggregate of all applicable branches' phases), `TriggerOutput`, `ResponseOutput` (trigger mode), `SuccessOutput`, **`Vars`** (when `when.variables` is set), and `NamespaceMetadata` labels and annotations.
 
 When rendering **CommitStatus** `descriptionTemplate` and `urlTemplate`, the controller sets **`{{ .Branch }}`** to that environment's branch and **`{{ .Phase }}`** to that environment's resolved phase (`success`, `pending`, or `failure`). Use `{{ .Branch }}` with `{{ .PromotionStrategy }}` to look up branch-specific data.
 
@@ -99,6 +113,7 @@ The `success.when.expression` is evaluated **every reconcile**, regardless of wh
 | `TriggerOutput` | map[string]any | Custom data from the previous `when.output.expression` evaluation (trigger mode only). |
 | `ResponseOutput` | map[string]any | Response data from the previous HTTP request's `response.output.expression` (trigger mode only). |
 | `SuccessOutput` | map[string]any | Custom data from the previous `success.when.output.expression` evaluation. |
+| `Vars` | map[string]any | Present when `success.when.variables` is set: object returned by `variables.expression` this reconcile. |
 
 > [!IMPORTANT]
 > Since the expression runs every reconcile, it must handle `Response` being `nil` (no HTTP request this reconcile). Expressions that only reference `Response.*` will error when `Response` is `nil`, causing the reconcile to return an error and requeue. Guard `Response` access:
@@ -137,6 +152,46 @@ In trigger mode, **`triggerOutput`**, **`responseOutput`**, and **`successOutput
 When **`mode.polling`** is set, **`reportOn` is `proposed`**, and context is **`promotionstrategy`**, the controller can **skip** issuing a new HTTP request if **every** applicable environment is already **success** and each branch’s current proposed SHA matches the **`lastSuccessfulSha`** value in **`lastSuccessfulShas`** for that branch. It still refreshes `CommitStatus` resources and requeues on the polling interval. This avoids hammering the API when nothing has changed.
 
 ### Examples
+
+#### Trigger mode with `when.variables` (shared expr)
+
+`when.variables` computes a map once; `when.expression` and `when.output.expression` read it as **`Vars`**. This avoids duplicating the same `let` / lookup logic in both expressions. The example uses **`environments`** context (per-environment HTTP); `Branch` is set for each reconcile.
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: trigger-with-vars-example
+spec:
+  promotionStrategyRef:
+    name: my-app
+  key: sha-change-gate
+  reportOn: proposed
+  httpRequest:
+    urlTemplate: "https://hooks.example.com/promo/{{ .Branch }}"
+    method: GET
+    timeout: 30s
+  success:
+    when:
+      variables:
+        expression: '{ "requireApproval": true }'
+      expression: >-
+        Response != nil ? (Response.StatusCode == 200 && Vars.requireApproval) : Phase == "success"
+  mode:
+    trigger:
+      requeueDuration: 1m
+      when:
+        variables:
+          expression: |
+            {
+              currentSha: find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha
+            }
+        expression: 'Vars.currentSha != (TriggerOutput["trackedSha"] ?? "")'
+        output:
+          expression: "{ trackedSha: Vars.currentSha }"
+```
+
+The **`success.when`** block shows the same pattern: optional `variables` (map) then a boolean `expression` that can reference **`Vars`** when `Response` is present.
 
 #### Single boolean — one API for the whole strategy
 

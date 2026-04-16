@@ -20,6 +20,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"strings"
 
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
@@ -98,6 +100,12 @@ func (r *WebRequestCommitStatusReconciler) getCompiledResponseDataExpression(exp
 	return r.getCompiledExpression(expressionCacheKey{Prefix: "responsedata", Expression: expression})
 }
 
+// getCompiledWhenVariablesExpression returns a cached or newly compiled when.variables expression program.
+// The expression must return a map/object; the result is exposed as Vars to when.expression and when.output.expression.
+func (r *WebRequestCommitStatusReconciler) getCompiledWhenVariablesExpression(expression string) (*vm.Program, error) {
+	return r.getCompiledExpression(expressionCacheKey{Prefix: "whenvariables", Expression: expression})
+}
+
 // triggerExprData builds the expression data map for trigger and trigger output expressions.
 func (td templateData) triggerExprData() map[string]any {
 	return map[string]any{
@@ -128,9 +136,48 @@ func successWhenExprData(td templateData, resp *httpResponse) map[string]any {
 	return exprData
 }
 
+// evaluateWhenVariablesExpression runs spec.when.variables.expression against base env (no Vars yet).
+// The expression must return map[string]any.
+func (r *WebRequestCommitStatusReconciler) evaluateWhenVariablesExpression(ctx context.Context, expression string, base map[string]any) (map[string]any, error) {
+	logger := log.FromContext(ctx)
+
+	program, err := r.getCompiledWhenVariablesExpression(expression)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compile when.variables expression: %w", err)
+	}
+
+	output, err := expr.Run(program, base)
+	if err != nil {
+		return nil, fmt.Errorf("failed to evaluate when.variables expression: %w", err)
+	}
+
+	result, ok := output.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("when.variables expression must return a map/object, got %T", output)
+	}
+
+	logger.V(4).Info("When variables expression evaluated", "whenVariables", result)
+	return result, nil
+}
+
+// enrichWhenExprEnv returns a copy of base with Vars set when whenSpec.Variables is non-empty.
+// When Variables is unset or expression is empty, returns base unchanged.
+func (r *WebRequestCommitStatusReconciler) enrichWhenExprEnv(ctx context.Context, whenSpec promoterv1alpha1.WhenWithOutputSpec, base map[string]any) (map[string]any, error) {
+	if whenSpec.Variables == nil || strings.TrimSpace(whenSpec.Variables.Expression) == "" {
+		return base, nil
+	}
+	varsResult, err := r.evaluateWhenVariablesExpression(ctx, whenSpec.Variables.Expression, base)
+	if err != nil {
+		return nil, err
+	}
+	out := maps.Clone(base)
+	out["Vars"] = varsResult
+	return out, nil
+}
+
 // evaluateTriggerExpression runs the trigger expression to decide whether to perform the HTTP request.
 // Returns true when the controller should issue the request; false keeps the phase from the last reconcile and skips.
-func (r *WebRequestCommitStatusReconciler) evaluateTriggerExpression(ctx context.Context, expression string, td templateData) (triggerResult, error) {
+func (r *WebRequestCommitStatusReconciler) evaluateTriggerExpression(ctx context.Context, expression string, exprEnv map[string]any) (triggerResult, error) {
 	logger := log.FromContext(ctx)
 
 	program, err := r.getCompiledTriggerExpression(expression)
@@ -138,7 +185,7 @@ func (r *WebRequestCommitStatusReconciler) evaluateTriggerExpression(ctx context
 		return triggerResult{}, fmt.Errorf("failed to compile trigger expression: %w", err)
 	}
 
-	output, err := expr.Run(program, td.triggerExprData())
+	output, err := expr.Run(program, exprEnv)
 	if err != nil {
 		return triggerResult{}, fmt.Errorf("failed to evaluate trigger expression: %w", err)
 	}
@@ -154,7 +201,7 @@ func (r *WebRequestCommitStatusReconciler) evaluateTriggerExpression(ctx context
 
 // evaluateTriggerDataExpression runs the trigger when.output expression to produce state that is persisted
 // across reconcile cycles in status.triggerOutput. Must return a map[string]any.
-func (r *WebRequestCommitStatusReconciler) evaluateTriggerDataExpression(ctx context.Context, expression string, td templateData) (map[string]any, error) {
+func (r *WebRequestCommitStatusReconciler) evaluateTriggerDataExpression(ctx context.Context, expression string, exprEnv map[string]any) (map[string]any, error) {
 	logger := log.FromContext(ctx)
 
 	program, err := r.getCompiledTriggerDataExpression(expression)
@@ -162,7 +209,7 @@ func (r *WebRequestCommitStatusReconciler) evaluateTriggerDataExpression(ctx con
 		return nil, fmt.Errorf("failed to compile trigger data expression: %w", err)
 	}
 
-	output, err := expr.Run(program, td.triggerExprData())
+	output, err := expr.Run(program, exprEnv)
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate trigger data expression: %w", err)
 	}

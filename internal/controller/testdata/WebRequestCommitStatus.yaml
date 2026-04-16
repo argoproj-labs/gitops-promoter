@@ -50,9 +50,11 @@ spec:
     # trigger:
     #   requeueDuration: 1m     # optional, default 1m
     #   when:
-    #     expression: ""        # required; boolean expr deciding whether to fire the request
+    #     variables:            # optional; expr returning a map, exposed as Vars to expression + output below
+    #       expression: '{ "ready": true }'
+    #     expression: "Vars.ready"   # required; boolean expr deciding whether to fire the request
     #     output:
-    #       expression: ""      # optional; expr returning map, stored in status.triggerOutput
+    #       expression: '{ tracked: Vars.ready }'  # optional; map stored in status.triggerOutput
     #   response:               # optional
     #     output:
     #       expression: ""      # expr returning map, stored in status.responseOutput
