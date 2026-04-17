@@ -41,12 +41,14 @@ func ConditionsToApply(conds []metav1.Condition) []*acmetav1.ConditionApplyConfi
 // JSON round-trip into the typed apply configuration. This is used for the normal path
 // where the controller owns the entire status.
 //
-// When conditionsOnly is true, only status.conditions is populated. This is used as a
-// fallback when the full-status apply is rejected by server-side schema/CEL validation:
-// SSA on /status is atomic, so a rejection loses the Ready condition that describes the
-// failure. Re-applying under the same field owner with only conditions ensures the
-// Ready=False condition reaches users, and a subsequent successful full apply naturally
-// re-owns conditions along with every other status field (no managedFields drift).
+// When conditionsOnly is true, only status.conditions and status.observedGeneration are
+// populated. This is used as a fallback when the full-status apply is rejected by
+// server-side schema/CEL validation: SSA on /status is atomic, so a rejection loses the
+// Ready condition that describes the failure. Re-applying under the same field owner
+// with just conditions and observedGeneration ensures the Ready=False condition reaches
+// users (and that observedGeneration still advances so consumers don't perceive the
+// status as stale). A subsequent successful full apply naturally re-owns every status
+// field alongside these (no managedFields drift).
 //
 // Dispatch is via type switch because api/v1alpha1 cannot import
 // applyconfiguration/api/v1alpha1 (that package already imports api/v1alpha1).
@@ -82,7 +84,9 @@ func statusApplyConfig(obj client.Object, conditionsOnly bool) (any, error) {
 func changeTransferPolicyStatusApply(o *promoterv1alpha1.ChangeTransferPolicy, conditionsOnly bool) (any, error) {
 	statusAC := acv1alpha1.ChangeTransferPolicyStatus()
 	if conditionsOnly {
-		statusAC = statusAC.WithConditions(ConditionsToApply(o.Status.Conditions)...)
+		statusAC = statusAC.
+			WithObservedGeneration(o.Status.ObservedGeneration).
+			WithConditions(ConditionsToApply(o.Status.Conditions)...)
 	} else if err := jsonRoundTrip(&o.Status, statusAC); err != nil {
 		return nil, err
 	}
@@ -92,7 +96,9 @@ func changeTransferPolicyStatusApply(o *promoterv1alpha1.ChangeTransferPolicy, c
 func promotionStrategyStatusApply(o *promoterv1alpha1.PromotionStrategy, conditionsOnly bool) (any, error) {
 	statusAC := acv1alpha1.PromotionStrategyStatus()
 	if conditionsOnly {
-		statusAC = statusAC.WithConditions(ConditionsToApply(o.Status.Conditions)...)
+		statusAC = statusAC.
+			WithObservedGeneration(o.Status.ObservedGeneration).
+			WithConditions(ConditionsToApply(o.Status.Conditions)...)
 	} else if err := jsonRoundTrip(&o.Status, statusAC); err != nil {
 		return nil, err
 	}
@@ -102,7 +108,9 @@ func promotionStrategyStatusApply(o *promoterv1alpha1.PromotionStrategy, conditi
 func commitStatusStatusApply(o *promoterv1alpha1.CommitStatus, conditionsOnly bool) (any, error) {
 	statusAC := acv1alpha1.CommitStatusStatus()
 	if conditionsOnly {
-		statusAC = statusAC.WithConditions(ConditionsToApply(o.Status.Conditions)...)
+		statusAC = statusAC.
+			WithObservedGeneration(o.Status.ObservedGeneration).
+			WithConditions(ConditionsToApply(o.Status.Conditions)...)
 	} else if err := jsonRoundTrip(&o.Status, statusAC); err != nil {
 		return nil, err
 	}
@@ -112,7 +120,9 @@ func commitStatusStatusApply(o *promoterv1alpha1.CommitStatus, conditionsOnly bo
 func webRequestCommitStatusStatusApply(o *promoterv1alpha1.WebRequestCommitStatus, conditionsOnly bool) (any, error) {
 	statusAC := acv1alpha1.WebRequestCommitStatusStatus()
 	if conditionsOnly {
-		statusAC = statusAC.WithConditions(ConditionsToApply(o.Status.Conditions)...)
+		statusAC = statusAC.
+			WithObservedGeneration(o.Status.ObservedGeneration).
+			WithConditions(ConditionsToApply(o.Status.Conditions)...)
 	} else if err := jsonRoundTrip(&o.Status, statusAC); err != nil {
 		return nil, err
 	}
@@ -122,7 +132,9 @@ func webRequestCommitStatusStatusApply(o *promoterv1alpha1.WebRequestCommitStatu
 func timedCommitStatusStatusApply(o *promoterv1alpha1.TimedCommitStatus, conditionsOnly bool) (any, error) {
 	statusAC := acv1alpha1.TimedCommitStatusStatus()
 	if conditionsOnly {
-		statusAC = statusAC.WithConditions(ConditionsToApply(o.Status.Conditions)...)
+		statusAC = statusAC.
+			WithObservedGeneration(o.Status.ObservedGeneration).
+			WithConditions(ConditionsToApply(o.Status.Conditions)...)
 	} else if err := jsonRoundTrip(&o.Status, statusAC); err != nil {
 		return nil, err
 	}
@@ -132,7 +144,9 @@ func timedCommitStatusStatusApply(o *promoterv1alpha1.TimedCommitStatus, conditi
 func gitCommitStatusStatusApply(o *promoterv1alpha1.GitCommitStatus, conditionsOnly bool) (any, error) {
 	statusAC := acv1alpha1.GitCommitStatusStatus()
 	if conditionsOnly {
-		statusAC = statusAC.WithConditions(ConditionsToApply(o.Status.Conditions)...)
+		statusAC = statusAC.
+			WithObservedGeneration(o.Status.ObservedGeneration).
+			WithConditions(ConditionsToApply(o.Status.Conditions)...)
 	} else if err := jsonRoundTrip(&o.Status, statusAC); err != nil {
 		return nil, err
 	}
@@ -142,7 +156,9 @@ func gitCommitStatusStatusApply(o *promoterv1alpha1.GitCommitStatus, conditionsO
 func argoCDCommitStatusStatusApply(o *promoterv1alpha1.ArgoCDCommitStatus, conditionsOnly bool) (any, error) {
 	statusAC := acv1alpha1.ArgoCDCommitStatusStatus()
 	if conditionsOnly {
-		statusAC = statusAC.WithConditions(ConditionsToApply(o.Status.Conditions)...)
+		statusAC = statusAC.
+			WithObservedGeneration(o.Status.ObservedGeneration).
+			WithConditions(ConditionsToApply(o.Status.Conditions)...)
 	} else if err := jsonRoundTrip(&o.Status, statusAC); err != nil {
 		return nil, err
 	}
@@ -152,7 +168,9 @@ func argoCDCommitStatusStatusApply(o *promoterv1alpha1.ArgoCDCommitStatus, condi
 func pullRequestStatusApply(o *promoterv1alpha1.PullRequest, conditionsOnly bool) (any, error) {
 	statusAC := acv1alpha1.PullRequestStatus()
 	if conditionsOnly {
-		statusAC = statusAC.WithConditions(ConditionsToApply(o.Status.Conditions)...)
+		statusAC = statusAC.
+			WithObservedGeneration(o.Status.ObservedGeneration).
+			WithConditions(ConditionsToApply(o.Status.Conditions)...)
 	} else if err := jsonRoundTrip(&o.Status, statusAC); err != nil {
 		return nil, err
 	}
@@ -162,7 +180,9 @@ func pullRequestStatusApply(o *promoterv1alpha1.PullRequest, conditionsOnly bool
 func gitRepositoryStatusApply(o *promoterv1alpha1.GitRepository, conditionsOnly bool) (any, error) {
 	statusAC := acv1alpha1.GitRepositoryStatus()
 	if conditionsOnly {
-		statusAC = statusAC.WithConditions(ConditionsToApply(o.Status.Conditions)...)
+		statusAC = statusAC.
+			WithObservedGeneration(o.Status.ObservedGeneration).
+			WithConditions(ConditionsToApply(o.Status.Conditions)...)
 	} else if err := jsonRoundTrip(&o.Status, statusAC); err != nil {
 		return nil, err
 	}
@@ -172,7 +192,9 @@ func gitRepositoryStatusApply(o *promoterv1alpha1.GitRepository, conditionsOnly 
 func scmProviderStatusApply(o *promoterv1alpha1.ScmProvider, conditionsOnly bool) (any, error) {
 	statusAC := acv1alpha1.ScmProviderStatus()
 	if conditionsOnly {
-		statusAC = statusAC.WithConditions(ConditionsToApply(o.Status.Conditions)...)
+		statusAC = statusAC.
+			WithObservedGeneration(o.Status.ObservedGeneration).
+			WithConditions(ConditionsToApply(o.Status.Conditions)...)
 	} else if err := jsonRoundTrip(&o.Status, statusAC); err != nil {
 		return nil, err
 	}
@@ -182,7 +204,9 @@ func scmProviderStatusApply(o *promoterv1alpha1.ScmProvider, conditionsOnly bool
 func clusterScmProviderStatusApply(o *promoterv1alpha1.ClusterScmProvider, conditionsOnly bool) (any, error) {
 	statusAC := acv1alpha1.ScmProviderStatus()
 	if conditionsOnly {
-		statusAC = statusAC.WithConditions(ConditionsToApply(o.Status.Conditions)...)
+		statusAC = statusAC.
+			WithObservedGeneration(o.Status.ObservedGeneration).
+			WithConditions(ConditionsToApply(o.Status.Conditions)...)
 	} else if err := jsonRoundTrip(&o.Status, statusAC); err != nil {
 		return nil, err
 	}

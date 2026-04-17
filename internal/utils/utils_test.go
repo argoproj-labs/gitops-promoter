@@ -274,6 +274,36 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 		Expect(updated.Status.ObservedGeneration).To(Equal(obj.Generation))
 	})
 
+	It("should overwrite a stale ReconciliationError Ready condition on a successful reconcile", func() {
+		var err error
+		// Simulate the object being fetched with a stale Ready=False condition left over
+		// from a previous failed reconcile (e.g. an SSA schema mismatch).
+		obj.Status.Conditions = []metav1.Condition{{
+			Type:               string(conditions.Ready),
+			Status:             metav1.ConditionFalse,
+			Reason:             string(conditions.ReconciliationError),
+			Message:            "Reconciliation succeeded but failed to apply status: some old error",
+			ObservedGeneration: obj.Generation,
+			LastTransitionTime: metav1.Now(),
+		}}
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(obj).Build()
+		Expect(fakeClient.Create(ctx, obj)).To(Succeed())
+
+		// Reconcile succeeds — the helper must not re-apply the stale error condition.
+		func() {
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err)
+		}()
+		Expect(err).ToNot(HaveOccurred())
+
+		updated := &promoterv1alpha1.PromotionStrategy{}
+		Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(obj), updated)).To(Succeed())
+		readyCondition := meta.FindStatusCondition(*updated.GetConditions(), string(conditions.Ready))
+		Expect(readyCondition).ToNot(BeNil())
+		Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
+		Expect(readyCondition.Reason).To(Equal(string(conditions.ReconciliationSuccess)))
+		Expect(readyCondition.Message).To(Equal("Reconciliation successful"))
+	})
+
 	It("should clear result when panic occurs with a non-nil result", func() {
 		var err error
 		result := reconcile.Result{Requeue: true, RequeueAfter: 5 * time.Second}
@@ -432,6 +462,11 @@ var _ = Describe("HandleReconciliationResult fallback status apply", func() {
 		Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
 		Expect(readyCondition.Reason).To(Equal(string(conditions.ReconciliationError)))
 		Expect(readyCondition.Message).To(ContainSubstring("Reconciliation succeeded but failed to apply status"))
+
+		// The conditions-only fallback must also advance status.observedGeneration so
+		// consumers watching for stale status can still tell the controller reconciled
+		// this generation, even if the full apply was rejected.
+		Expect(updated.Status.ObservedGeneration).To(Equal(obj.Generation))
 	})
 
 	It("should report error when both full apply and fallback fail", func() {
