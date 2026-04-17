@@ -101,7 +101,7 @@ func (r *WebRequestCommitStatusReconciler) getCompiledResponseDataExpression(exp
 }
 
 // getCompiledWhenVariablesExpression returns a cached or newly compiled when.variables expression program.
-// The expression must return a map/object; the result is exposed as Vars to when.expression and when.output.expression.
+// The expression must return a map/object; the result is exposed as Variables to when.expression and when.output.expression.
 func (r *WebRequestCommitStatusReconciler) getCompiledWhenVariablesExpression(expression string) (*vm.Program, error) {
 	return r.getCompiledExpression(expressionCacheKey{Prefix: "whenvariables", Expression: expression})
 }
@@ -136,7 +136,7 @@ func successWhenExprData(td templateData, resp *httpResponse) map[string]any {
 	return exprData
 }
 
-// evaluateWhenVariablesExpression runs spec.when.variables.expression against base env (no Vars yet).
+// evaluateWhenVariablesExpression runs spec.when.variables.expression against base env (no Variables binding yet).
 // The expression must return map[string]any.
 func (r *WebRequestCommitStatusReconciler) evaluateWhenVariablesExpression(ctx context.Context, expression string, base map[string]any) (map[string]any, error) {
 	logger := log.FromContext(ctx)
@@ -160,7 +160,7 @@ func (r *WebRequestCommitStatusReconciler) evaluateWhenVariablesExpression(ctx c
 	return result, nil
 }
 
-// enrichWhenExprEnv returns a copy of base with Vars set when whenSpec.Variables is non-empty.
+// enrichWhenExprEnv returns a copy of base with Variables set when whenSpec.Variables is non-empty.
 // When Variables is unset or expression is empty, returns base unchanged.
 func (r *WebRequestCommitStatusReconciler) enrichWhenExprEnv(ctx context.Context, whenSpec promoterv1alpha1.WhenWithOutputSpec, base map[string]any) (map[string]any, error) {
 	if whenSpec.Variables == nil || strings.TrimSpace(whenSpec.Variables.Expression) == "" {
@@ -174,7 +174,7 @@ func (r *WebRequestCommitStatusReconciler) enrichWhenExprEnv(ctx context.Context
 	if out == nil {
 		out = make(map[string]any)
 	}
-	out["Vars"] = varsResult
+	out["Variables"] = varsResult
 	return out, nil
 }
 

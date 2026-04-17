@@ -179,7 +179,7 @@ Key features:
 - **Optional response expression:** Extract a subset of the HTTP response into `ResponseOutput` for use in the next trigger evaluation and in description/URL templates
 - **TriggerOutput:** Trigger when.output expression can return extra fields that are stored and available on the next run and in templates
 - **SuccessOutput:** Success when.output expression can return extra fields that are stored and available on the next run in trigger, success expressions, and templates
-- **Shared expr (`when.variables`):** Optional map expression whose result is available as **`Vars`** to `when.expression` and `when.output.expression` on the same `when` block (trigger and success); see [Web Request Commit Status](commit-status-controllers/web-request.md#shared-trigger-and-success-expr-whenvariables)
+- **Shared expr (`when.variables`):** Optional map expression whose result is available as **`Variables`** to `when.expression` and `when.output.expression` on the same `when` block (trigger and success); see [Web Request Commit Status](commit-status-controllers/web-request.md#shared-trigger-and-success-expr-whenvariables)
 - **Templated URL, headers, body:** Go templates with `Branch`, `Phase`, `PromotionStrategy`, `WebRequestCommitStatus`, `TriggerOutput`, `ResponseOutput`, `SuccessOutput`, namespace metadata, etc.
 - **Authentication:** Basic, Bearer, OAuth2, or mutual TLS via Secrets
 - **reportOn:** Report on the proposed commit (default) or the active (deployed) commit

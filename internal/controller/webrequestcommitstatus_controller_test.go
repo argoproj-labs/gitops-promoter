@@ -615,7 +615,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 		})
 	})
 
-	Describe("Trigger mode — when.variables (Vars)", func() {
+	Describe("Trigger mode — when.variables (Variables)", func() {
 		var webRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
 		var triggerMu sync.Mutex
 		var triggerRequestCount int
@@ -647,7 +647,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
-							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true && Vars.approvedGate) : Phase == "success"`,
+							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true && Variables.approvedGate) : Phase == "success"`,
 							Variables: &promoterv1alpha1.OutputSpec{
 								Expression: `{ approvedGate: true }`,
 							},
@@ -660,9 +660,9 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 								Variables: &promoterv1alpha1.OutputSpec{
 									Expression: `{ currentSha: find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha }`,
 								},
-								Expression: `Vars.currentSha != (TriggerOutput["trackedSha"] ?? "")`,
+								Expression: `Variables.currentSha != (TriggerOutput["trackedSha"] ?? "")`,
 								Output: &promoterv1alpha1.OutputSpec{
-									Expression: `{ trackedSha: Vars.currentSha, echoedLen: len(string(Vars.currentSha)) }`,
+									Expression: `{ trackedSha: Variables.currentSha, echoedLen: len(string(Variables.currentSha)) }`,
 								},
 							},
 						},
@@ -679,7 +679,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 			_ = k8sClient.Delete(ctx, webRequestCommitStatus)
 		})
 
-		It("should evaluate variables once and expose Vars to trigger when and output expressions", func() {
+		It("should evaluate variables once and expose Variables to trigger when and output expressions", func() {
 			Eventually(func(g Gomega) {
 				triggerMu.Lock()
 				c := triggerRequestCount
