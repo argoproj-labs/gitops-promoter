@@ -296,10 +296,19 @@ type StatusConditionUpdater interface {
 // It applies the object's status subresource via Server-Side Apply under the provided
 // fieldOwner with ForceOwnership. If the full-status apply is rejected (e.g. by an
 // OpenAPI schema or CEL validation rule on some status field), a second SSA patch that
-// populates only status.conditions is attempted under the same fieldOwner so the
-// Ready=False condition describing the failure still reaches the user. A successful
-// subsequent reconcile naturally re-owns conditions alongside the rest of the status,
-// leaving no managedFields drift.
+// populates only status.conditions is attempted under a DISTINCT fallback FieldOwner
+// (fieldOwner + "-fallback"). Using a separate owner is deliberate: SSA deletes fields
+// that a manager previously owned but dropped from a new apply body, so reusing the
+// main fieldOwner for a conditions-only patch would wipe every other status field
+// (status.proposed, status.active, status.history, ...). The fallback owner only ever
+// declares status.conditions, so the main owner's fields stay untouched. On the next
+// successful full reconcile the main owner reclaims conditions via ForceOwnership.
+//
+// The fallback patch also deliberately OMITS status.observedGeneration. The stored
+// top-level value stays pinned to the last successful full apply so consumers can
+// detect that the persisted status body is stale; the Ready condition's own
+// ObservedGeneration field records the generation the controller attempted to
+// reconcile, so users still see which generation produced the failure message.
 //
 // If result is non-nil and this function sets an error (e.g. status apply failed), it
 // clears any Requeue/RequeueAfter in *result so the caller does not return both a
