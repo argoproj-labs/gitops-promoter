@@ -32,6 +32,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
@@ -56,8 +57,8 @@ func (r *ClusterScmProviderReconciler) Reconcile(ctx context.Context, req ctrl.R
 	startTime := time.Now()
 
 	var clusterScmProvider promoterv1alpha1.ClusterScmProvider
-	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &clusterScmProvider, r.Client, r.Recorder, &result, &err)
+	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
+	defer utils.HandleReconciliationResult(ctx, startTime, &clusterScmProvider, r.Client, r.Recorder, constants.ClusterScmProviderControllerFieldOwner, &result, &err)
 
 	if err := r.Get(ctx, req.NamespacedName, &clusterScmProvider); err != nil {
 		if k8serrors.IsNotFound(err) {

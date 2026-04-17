@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
@@ -55,8 +56,8 @@ func (r *ScmProviderReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	startTime := time.Now()
 
 	var scmProvider promoterv1alpha1.ScmProvider
-	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &scmProvider, r.Client, r.Recorder, &result, &err)
+	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
+	defer utils.HandleReconciliationResult(ctx, startTime, &scmProvider, r.Client, r.Recorder, constants.ScmProviderControllerFieldOwner, &result, &err)
 
 	if err := r.Get(ctx, req.NamespacedName, &scmProvider); err != nil {
 		if k8serrors.IsNotFound(err) {
