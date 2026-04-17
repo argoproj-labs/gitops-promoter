@@ -24,13 +24,14 @@ var logger = ctrl.Log.WithName("webhookReceiver")
 
 // Provider type constants
 const (
-	ProviderGitHub         = "github"
-	ProviderGitLab         = "gitlab"
-	ProviderForgejo        = "forgejo"
-	ProviderGitea          = "gitea"
-	ProviderBitbucketCloud = "bitbucketCloud"
-	ProviderAzureDevops    = "azureDevOps"
-	ProviderUnknown        = ""
+	ProviderGitHub              = "github"
+	ProviderGitLab              = "gitlab"
+	ProviderForgejo             = "forgejo"
+	ProviderGitea               = "gitea"
+	ProviderBitbucketCloud      = "bitbucketCloud"
+	ProviderBitbucketDataCenter = "bitbucketDataCenter"
+	ProviderAzureDevops         = "azureDevOps"
+	ProviderUnknown             = ""
 )
 
 // EnqueueFunc is a function type that can be used to enqueue CTP reconcile requests
@@ -85,7 +86,7 @@ func (wr *WebhookReceiver) Start(ctx context.Context, addr string) error {
 }
 
 // DetectProvider determines the SCM provider based on webhook headers.
-// Returns ProviderGitHub, ProviderGitLab, ProviderForgejo, ProviderGitea, ProviderBitbucketCloud, ProviderAzureDevops or ProviderUnknown.
+// Returns ProviderGitHub, ProviderGitLab, ProviderForgejo, ProviderGitea, ProviderBitbucketCloud, ProviderBitbucketDataCenter, ProviderAzureDevops or ProviderUnknown.
 func (wr *WebhookReceiver) DetectProvider(r *http.Request) string {
 	// Check for GitHub webhook headers
 	if r.Header.Get("X-Github-Event") != "" || r.Header.Get("X-Github-Delivery") != "" {
@@ -107,9 +108,14 @@ func (wr *WebhookReceiver) DetectProvider(r *http.Request) string {
 		return ProviderGitea
 	}
 
-	// Check for Bitbucket Cloud webhook headers
+	// Check for Bitbucket Cloud webhook headers (X-Hook-Uuid is Bitbucket Cloud-specific)
 	if r.Header.Get("X-Hook-Uuid") != "" {
 		return ProviderBitbucketCloud
+	}
+
+	// Check for Bitbucket DataCenter/Server webhook headers (X-Event-Key without X-Hook-Uuid)
+	if r.Header.Get("X-Event-Key") != "" {
+		return ProviderBitbucketDataCenter
 	}
 
 	if r.ContentLength > 0 {
@@ -232,6 +238,18 @@ func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provide
 				}
 			}
 		}
+	case ProviderBitbucketDataCenter:
+		// Bitbucket DataCenter/Server webhook format (repo:refs_changed event)
+		if gjson.GetBytes(jsonBytes, "changes").Exists() && gjson.GetBytes(jsonBytes, "eventKey").Exists() {
+			changes := gjson.GetBytes(jsonBytes, "changes")
+			if changes.IsArray() && len(changes.Array()) > 0 {
+				firstChange := changes.Array()[0]
+				beforeSha = firstChange.Get("fromHash").String()
+				if refID := firstChange.Get("ref.id"); refID.Exists() {
+					ref = refID.String()
+				}
+			}
+		}
 	case ProviderAzureDevops:
 		// Azure DevOps webhook format
 		if gjson.GetBytes(jsonBytes, "resource.refUpdates").Exists() {
@@ -316,6 +334,10 @@ func (wr *WebhookReceiver) extractDeliveryID(r *http.Request) string {
 		return id
 	}
 	if id := r.Header.Get("X-Hook-Uuid"); id != "" {
+		return id
+	}
+	// Bitbucket DataCenter/Server
+	if id := r.Header.Get("X-Request-Id"); id != "" {
 		return id
 	}
 	return ""
