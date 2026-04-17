@@ -463,10 +463,15 @@ var _ = Describe("HandleReconciliationResult fallback status apply", func() {
 		Expect(readyCondition.Reason).To(Equal(string(conditions.ReconciliationError)))
 		Expect(readyCondition.Message).To(ContainSubstring("Reconciliation succeeded but failed to apply status"))
 
-		// The conditions-only fallback must also advance status.observedGeneration so
-		// consumers watching for stale status can still tell the controller reconciled
-		// this generation, even if the full apply was rejected.
-		Expect(updated.Status.ObservedGeneration).To(Equal(obj.Generation))
+		// The Ready condition's own ObservedGeneration records the generation the
+		// controller attempted to reconcile, even when the full status apply failed.
+		Expect(readyCondition.ObservedGeneration).To(Equal(obj.Generation))
+
+		// The top-level status.observedGeneration is deliberately NOT advanced by the
+		// conditions-only fallback. It stays pinned to the last successful full apply so
+		// consumers can detect that the stored status body is stale. Here there has been
+		// no prior successful apply, so it should remain zero.
+		Expect(updated.Status.ObservedGeneration).To(BeZero())
 	})
 
 	It("should report error when both full apply and fallback fail", func() {
@@ -497,6 +502,85 @@ var _ = Describe("HandleReconciliationResult fallback status apply", func() {
 
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("applying only the Ready condition also failed"))
+	})
+
+	It("should preserve other status fields when the conditions-only fallback runs", func() {
+		var err error
+		patchCallCount := 0
+
+		// First full apply succeeds (populating status.applicationsSelected). Second
+		// full apply fails; the conditions-only fallback runs. The fields owned by the
+		// main FieldOwner on the first apply must survive the fallback because the
+		// fallback uses a distinct FieldOwner and doesn't declare them.
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithStatusSubresource(obj).
+			WithInterceptorFuncs(interceptor.Funcs{
+				SubResourcePatch: func(ctx context.Context, c client.Client, subResourceName string, patchObj client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error {
+					patchCallCount++
+					// Second call is the second reconcile's full apply — fail it so the
+					// fallback runs. All other calls pass through.
+					if patchCallCount == 2 {
+						return apierrors.NewInvalid(
+							schema.GroupKind{Group: "promoter.argoproj.io", Kind: "ArgoCDCommitStatus"},
+							patchObj.GetName(),
+							nil,
+						)
+					}
+					return c.SubResource(subResourceName).Patch(ctx, patchObj, patch, opts...)
+				},
+			}).
+			Build()
+
+		Expect(fakeClient.Create(ctx, obj)).To(Succeed())
+
+		// First reconcile: populate a non-conditions status field via the in-memory
+		// object and run the successful full apply through the helper.
+		obj.Status.ApplicationsSelected = []promoterv1alpha1.ApplicationsSelected{{
+			Namespace: "argocd",
+			Name:      "my-app",
+			Phase:     promoterv1alpha1.CommitPhaseSuccess,
+		}}
+		func() {
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, constants.ArgoCDCommitStatusControllerFieldOwner, nil, &err)
+		}()
+		Expect(err).ToNot(HaveOccurred())
+
+		// Confirm the first apply landed the field on the stored object.
+		afterFirst := &promoterv1alpha1.ArgoCDCommitStatus{}
+		Expect(fakeClient.Get(ctx, types.NamespacedName{Name: obj.Name, Namespace: obj.Namespace}, afterFirst)).To(Succeed())
+		Expect(afterFirst.Status.ApplicationsSelected).To(HaveLen(1))
+		storedObservedGeneration := afterFirst.Status.ObservedGeneration
+
+		// Second reconcile: refetch (to reset managedFields state) and bump the
+		// generation so the new full apply writes a different set of fields. The
+		// interceptor will reject this full apply, forcing the conditions-only fallback.
+		obj2 := &promoterv1alpha1.ArgoCDCommitStatus{}
+		Expect(fakeClient.Get(ctx, types.NamespacedName{Name: obj.Name, Namespace: obj.Namespace}, obj2)).To(Succeed())
+		obj2.Generation = 2
+		result := reconcile.Result{}
+		func() {
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj2, fakeClient, recorder, constants.ArgoCDCommitStatusControllerFieldOwner, &result, &err)
+		}()
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("applying only the Ready condition succeeded"))
+
+		// The conditions-only fallback must NOT have wiped status.applicationsSelected.
+		// The main FieldOwner still owns that field and the fallback owner only declared
+		// status.conditions, so the field persists untouched.
+		afterFallback := &promoterv1alpha1.ArgoCDCommitStatus{}
+		Expect(fakeClient.Get(ctx, types.NamespacedName{Name: obj.Name, Namespace: obj.Namespace}, afterFallback)).To(Succeed())
+		Expect(afterFallback.Status.ApplicationsSelected).To(HaveLen(1), "fallback must not wipe other status fields")
+		Expect(afterFallback.Status.ApplicationsSelected[0].Name).To(Equal("my-app"))
+
+		// Top-level observedGeneration must stay pinned to the last successful apply.
+		Expect(afterFallback.Status.ObservedGeneration).To(Equal(storedObservedGeneration))
+
+		// The Ready condition must reflect the latest attempted generation.
+		readyCondition := meta.FindStatusCondition(*afterFallback.GetConditions(), string(conditions.Ready))
+		Expect(readyCondition).ToNot(BeNil())
+		Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
+		Expect(readyCondition.ObservedGeneration).To(Equal(int64(2)))
 	})
 
 	It("should include original reconciliation error in fallback condition", func() {

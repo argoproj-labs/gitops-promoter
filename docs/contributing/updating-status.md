@@ -21,9 +21,13 @@ writing or modifying controllers and need to know how to populate status correct
    applies the whole status subresource via **Server-Side Apply** under the
    per-controller `FieldOwner` with `ForceOwnership`.
 4. If the full apply is rejected (for example, OpenAPI schema or CEL validation on some
-   status field), the helper retries with a conditions-only SSA so the `Ready=False`
-   condition describing the failure still reaches the user. The next successful reconcile
-   naturally re-owns all fields.
+   status field), the helper retries with a conditions-only SSA under a **separate**
+   `FieldOwner` (`<main>-fallback`) so the `Ready=False` condition still reaches the user
+   **without** wiping the other status fields owned by the main manager. The fallback
+   patch deliberately omits `status.observedGeneration`; the stored value stays pinned
+   to the last successful reconcile, serving as the "stored status is stale" signal,
+   while the Ready condition's own `ObservedGeneration` records the attempted generation.
+   The next successful reconcile naturally reclaims conditions via `ForceOwnership`.
 
 ## `status.observedGeneration`
 
@@ -34,13 +38,19 @@ silently overwrite a newer status. `status.observedGeneration` is the canonical 
 that consumers use to detect this:
 
 - If `status.observedGeneration == metadata.generation`, the status reflects the current spec.
-- If it is less than `metadata.generation`, reconciliation has not caught up yet.
+- If it is less than `metadata.generation`, reconciliation has not caught up yet — either
+  because the controller is still working or because the latest full-status apply was
+  rejected (in which case the Ready condition carries the error and its own
+  `observedGeneration` shows the attempted generation).
 - A quickly-oscillating value between reconciles is a symptom of two controller replicas
   racing against each other (check leader election).
 
-`HandleReconciliationResult` sets `status.observedGeneration` on every reconcile via
-`StatusConditionUpdater.SetObservedGeneration`. New CRDs must implement this method and
-include the field in their `Status` struct.
+`HandleReconciliationResult` stamps `status.observedGeneration` on every **successful**
+full apply via `StatusConditionUpdater.SetObservedGeneration`. When the fallback path
+runs, it deliberately does **not** advance the top-level field; consumers then see a
+stale `status.observedGeneration` alongside a `Ready=False` condition whose own
+`observedGeneration` records the generation the controller tried to reconcile. New CRDs
+must implement `SetObservedGeneration` and include the field in their `Status` struct.
 
 ## Per-controller `FieldOwner`
 
@@ -85,9 +95,11 @@ controller-gen output), add a test that exercises the round-trip.
 
 - **Do not** write `r.Status().Update` or `r.Status().Patch` from inside a reconciler.
   Mutate `obj.Status` and let the defer flush it.
-- **Do not** use a different field owner for conditions vs. other status fields. The
-  helper uses one owner per controller for the whole subresource; mixing owners breaks
-  the "subsequent apply re-owns everything" guarantee of the conditions-only fallback.
+- **Do not** invent additional field owners for the per-controller status writes. The
+  helper already splits ownership into two names: the main `<controller>` owner for the
+  full status, and `<controller>-fallback` scoped to `status.conditions` only. Adding
+  more owners to the mix would fragment field ownership and defeat the "subsequent full
+  apply reclaims everything via ForceOwnership" guarantee.
 - **Do not** add `ForceOwnership` guard logic to individual controllers — SSA with
   `ForceOwnership` is the project-wide contract for status subresource writes.
 

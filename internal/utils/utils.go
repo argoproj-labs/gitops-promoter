@@ -420,7 +420,22 @@ func HandleReconciliationResult(
 	// Ready condition explaining the failure still lands on the object. SSA on /status is
 	// atomic, so a validation rejection (OpenAPI or CEL) on any other status field loses
 	// the Ready condition we just set in memory.
-	logger.V(4).Info("full status apply failed, attempting conditions-only apply", "error", patchErr)
+	//
+	// The fallback uses a DISTINCT FieldOwner so it only claims ownership of
+	// status.conditions. Under SSA, when a manager re-applies and drops fields it
+	// previously owned, those fields are deleted from the live object unless another
+	// manager owns them. If we used the same FieldOwner here, this conditions-only patch
+	// would wipe status.proposed, status.active, status.history, etc. — a severe UX
+	// regression. Using a separate owner leaves those fields untouched under the main
+	// owner until the next successful full apply reclaims conditions via ForceOwnership.
+	//
+	// Also note: this patch deliberately does NOT include status.observedGeneration.
+	// Keeping the stored top-level observedGeneration pinned to the last successful
+	// reconcile is the canonical "status is stale" signal; the Ready condition's own
+	// ObservedGeneration field records the generation that was attempted.
+	fallbackFieldOwner := fieldOwner + "-fallback"
+	logger.V(4).Info("full status apply failed, attempting conditions-only apply",
+		"error", patchErr, "fallbackFieldOwner", fallbackFieldOwner)
 
 	// Rewrite the in-memory Ready condition to describe the apply failure. If the
 	// reconcile already produced an error, we keep that as the primary cause; otherwise
@@ -455,7 +470,7 @@ func HandleReconciliationResult(
 	//nolint:forcetypeassert // Type assertion is guaranteed to succeed for all CRDs in this codebase.
 	fallbackObj := obj.DeepCopyObject().(StatusConditionUpdater)
 	fallbackErr := c.Status().Patch(ctx, fallbackObj, ApplyPatch{ApplyConfig: condCfg},
-		client.FieldOwner(fieldOwner), client.ForceOwnership)
+		client.FieldOwner(fallbackFieldOwner), client.ForceOwnership)
 	if fallbackErr != nil {
 		if k8serrors.IsNotFound(fallbackErr) {
 			logger.V(4).Info("conditions-only status apply skipped, object no longer exists", "error", fallbackErr)
