@@ -26,6 +26,11 @@ import (
 //
 // ArgoCDCommitStatusStatus defines the observed state of ArgoCDCommitStatus.
 type ArgoCDCommitStatusStatusApplyConfiguration struct {
+	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
+	// Because status is written via Server-Side Apply with ForceOwnership (which has no
+	// optimistic-concurrency check), this field is the canonical way to detect stale
+	// status writes: compare status.observedGeneration with metadata.generation.
+	ObservedGeneration *int64 `json:"observedGeneration,omitempty"`
 	// ApplicationsSelected represents the Argo CD applications that are selected by the commit status.
 	// This field is sorted by environment (same order as the referenced PromotionStrategy), then namespace, then name.
 	ApplicationsSelected []ApplicationsSelectedApplyConfiguration `json:"applicationsSelected,omitempty"`
@@ -37,6 +42,14 @@ type ArgoCDCommitStatusStatusApplyConfiguration struct {
 // apply.
 func ArgoCDCommitStatusStatus() *ArgoCDCommitStatusStatusApplyConfiguration {
 	return &ArgoCDCommitStatusStatusApplyConfiguration{}
+}
+
+// WithObservedGeneration sets the ObservedGeneration field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ObservedGeneration field is set to the value of the last call.
+func (b *ArgoCDCommitStatusStatusApplyConfiguration) WithObservedGeneration(value int64) *ArgoCDCommitStatusStatusApplyConfiguration {
+	b.ObservedGeneration = &value
+	return b
 }
 
 // WithApplicationsSelected adds the given value to the ApplicationsSelected field in the declarative configuration

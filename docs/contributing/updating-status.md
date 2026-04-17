@@ -17,12 +17,30 @@ writing or modifying controllers and need to know how to populate status correct
 2. During reconciliation, the controller mutates `obj.Status` in memory. **Do not call
    `r.Status().Update` or `r.Status().Patch` yourself.**
 3. At the end of the reconcile, the deferred helper sets the `Ready` condition based on
-   whether `*err` is nil, then applies the whole status subresource via
-   **Server-Side Apply** under the per-controller `FieldOwner` with `ForceOwnership`.
+   whether `*err` is nil, stamps `status.observedGeneration = metadata.generation`, then
+   applies the whole status subresource via **Server-Side Apply** under the
+   per-controller `FieldOwner` with `ForceOwnership`.
 4. If the full apply is rejected (for example, OpenAPI schema or CEL validation on some
    status field), the helper retries with a conditions-only SSA so the `Ready=False`
    condition describing the failure still reaches the user. The next successful reconcile
    naturally re-owns all fields.
+
+## `status.observedGeneration`
+
+Every reconciled CRD has a top-level `status.observedGeneration` field. SSA with
+`ForceOwnership` performs no optimistic-concurrency check (unlike `Update`, which fails
+on a stale `resourceVersion`), so a reconcile working from a stale cached object can
+silently overwrite a newer status. `status.observedGeneration` is the canonical signal
+that consumers use to detect this:
+
+- If `status.observedGeneration == metadata.generation`, the status reflects the current spec.
+- If it is less than `metadata.generation`, reconciliation has not caught up yet.
+- A quickly-oscillating value between reconciles is a symptom of two controller replicas
+  racing against each other (check leader election).
+
+`HandleReconciliationResult` sets `status.observedGeneration` on every reconcile via
+`StatusConditionUpdater.SetObservedGeneration`. New CRDs must implement this method and
+include the field in their `Status` struct.
 
 ## Per-controller `FieldOwner`
 
@@ -50,10 +68,13 @@ For each reconciled CRD there is one case that:
 
 When you add a **new reconciled CRD**:
 
-1. Generate apply configurations with `make build-installer`.
-2. Add a new `case *promoterv1alpha1.<Kind>:` branch to `statusApplyConfig` in
+1. Add a top-level `ObservedGeneration int64` field (with `json:"observedGeneration,omitempty"`)
+   to the CRD's `Status` struct and implement
+   `func (o *<Kind>) SetObservedGeneration(generation int64) { o.Status.ObservedGeneration = generation }`.
+2. Generate apply configurations with `make build-installer`.
+3. Add a new `case *promoterv1alpha1.<Kind>:` branch to `statusApplyConfig` in
    `internal/utils/status_apply.go` that mirrors an existing case.
-3. Add the corresponding field-owner constant (above).
+4. Add the corresponding field-owner constant (above).
 
 When you add a **new field to an existing status struct**, no code changes are needed in
 `status_apply.go` — the JSON round-trip picks up the new field automatically. If the

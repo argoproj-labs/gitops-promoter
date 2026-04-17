@@ -333,6 +333,13 @@ type HTTPRequestSpec struct {
 
 // WebRequestCommitStatusStatus defines the observed state of WebRequestCommitStatus.
 type WebRequestCommitStatusStatus struct {
+	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
+	// Because status is written via Server-Side Apply with ForceOwnership (which has no
+	// optimistic-concurrency check), this field is the canonical way to detect stale
+	// status writes: compare status.observedGeneration with metadata.generation.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// Environments holds the status of each environment when context is "environments".
 	// When context is "promotionstrategy", this slice is empty and PromotionStrategyContext is used instead.
 	// +listType=map
@@ -524,6 +531,11 @@ type WebRequestCommitStatusList struct {
 // GetConditions returns the conditions of the WebRequestCommitStatus.
 func (wrcs *WebRequestCommitStatus) GetConditions() *[]metav1.Condition {
 	return &wrcs.Status.Conditions
+}
+
+// SetObservedGeneration records the object generation that produced the current status.
+func (wrcs *WebRequestCommitStatus) SetObservedGeneration(generation int64) {
+	wrcs.Status.ObservedGeneration = generation
 }
 
 func init() {

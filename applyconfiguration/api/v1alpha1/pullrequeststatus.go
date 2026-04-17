@@ -28,6 +28,11 @@ import (
 //
 // PullRequestStatus defines the observed state of PullRequest
 type PullRequestStatusApplyConfiguration struct {
+	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
+	// Because status is written via Server-Side Apply with ForceOwnership (which has no
+	// optimistic-concurrency check), this field is the canonical way to detect stale
+	// status writes: compare status.observedGeneration with metadata.generation.
+	ObservedGeneration *int64 `json:"observedGeneration,omitempty"`
 	// ID the id of the pull request
 	ID *string `json:"id,omitempty"`
 	// State of the merge request closed/merged/open
@@ -52,6 +57,14 @@ type PullRequestStatusApplyConfiguration struct {
 // apply.
 func PullRequestStatus() *PullRequestStatusApplyConfiguration {
 	return &PullRequestStatusApplyConfiguration{}
+}
+
+// WithObservedGeneration sets the ObservedGeneration field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ObservedGeneration field is set to the value of the last call.
+func (b *PullRequestStatusApplyConfiguration) WithObservedGeneration(value int64) *PullRequestStatusApplyConfiguration {
+	b.ObservedGeneration = &value
+	return b
 }
 
 // WithID sets the ID field in the declarative configuration to the given value

@@ -55,6 +55,13 @@ type TimedCommitStatusStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
+	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
+	// Because status is written via Server-Side Apply with ForceOwnership (which has no
+	// optimistic-concurrency check), this field is the canonical way to detect stale
+	// status writes: compare status.observedGeneration with metadata.generation.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// Environments holds the status of each environment being tracked.
 	// +listType=map
 	// +listMapKey=branch
@@ -138,6 +145,11 @@ type TimedCommitStatusList struct {
 // GetConditions returns the conditions of the TimedCommitStatus.
 func (tcs *TimedCommitStatus) GetConditions() *[]metav1.Condition {
 	return &tcs.Status.Conditions
+}
+
+// SetObservedGeneration records the object generation that produced the current status.
+func (tcs *TimedCommitStatus) SetObservedGeneration(generation int64) {
+	tcs.Status.ObservedGeneration = generation
 }
 
 func init() {

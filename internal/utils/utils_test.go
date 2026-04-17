@@ -266,6 +266,12 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 
 		// No error should be set
 		Expect(err).ToNot(HaveOccurred())
+
+		// The helper must stamp status.observedGeneration so consumers can detect stale
+		// status writes; SSA with ForceOwnership has no optimistic-concurrency guard.
+		updated := &promoterv1alpha1.PromotionStrategy{}
+		Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(obj), updated)).To(Succeed())
+		Expect(updated.Status.ObservedGeneration).To(Equal(obj.Generation))
 	})
 
 	It("should clear result when panic occurs with a non-nil result", func() {

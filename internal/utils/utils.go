@@ -280,10 +280,16 @@ func AreCommitStatusesPassing(commitStatuses []promoterv1alpha1.ChangeRequestPol
 	return true
 }
 
-// StatusConditionUpdater defines the interface for objects that can have their status conditions updated
+// StatusConditionUpdater defines the interface for objects that can have their status conditions updated.
+// Implementers must also expose SetObservedGeneration so the generic reconciliation helper can stamp
+// status.observedGeneration before the SSA status patch. This is the primary mechanism for detecting
+// stale status writes: SSA with ForceOwnership performs no optimistic-concurrency check, so a stale
+// cached reconcile could otherwise silently overwrite a newer status. Consumers should compare
+// status.observedGeneration with metadata.generation.
 type StatusConditionUpdater interface {
 	client.Object
 	GetConditions() *[]metav1.Condition
+	SetObservedGeneration(generation int64)
 }
 
 // HandleReconciliationResult handles reconciliation results for any object with status conditions.
@@ -367,6 +373,12 @@ func HandleReconciliationResult(
 			ObservedGeneration: obj.GetGeneration(),
 		})
 	}
+
+	// Stamp status.observedGeneration before building the apply configuration so the SSA
+	// patch records which spec generation produced this status. SSA with ForceOwnership
+	// has no optimistic-concurrency guard, so observedGeneration is the only signal a
+	// consumer can use to tell whether a status reflects the current spec.
+	obj.SetObservedGeneration(obj.GetGeneration())
 
 	// Build the full status apply configuration and SSA-patch the status subresource.
 	// This function should be the only place status is written for reconciled resources.
