@@ -74,6 +74,13 @@ type PullRequestStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
+	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
+	// Because status is written via Server-Side Apply with ForceOwnership (which has no
+	// optimistic-concurrency check), this field is the canonical way to detect stale
+	// status writes: compare status.observedGeneration with metadata.generation.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// ID the id of the pull request
 	ID string `json:"id,omitempty"`
 	// State of the merge request closed/merged/open
@@ -105,6 +112,11 @@ type PullRequestStatus struct {
 // GetConditions returns the conditions of the PullRequest.
 func (ps *PullRequest) GetConditions() *[]metav1.Condition {
 	return &ps.Status.Conditions
+}
+
+// SetObservedGeneration records the object generation that produced the current status.
+func (ps *PullRequest) SetObservedGeneration(generation int64) {
+	ps.Status.ObservedGeneration = generation
 }
 
 // +kubebuilder:ac:generate=true

@@ -72,8 +72,8 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	startTime := time.Now()
 
 	var tcs promoterv1alpha1.TimedCommitStatus
-	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &tcs, r.Client, r.Recorder, &result, &err)
+	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
+	defer utils.HandleReconciliationResult(ctx, startTime, &tcs, r.Client, r.Recorder, constants.TimedCommitStatusControllerFieldOwner, &result, &err)
 
 	// 1. Fetch the TimedCommitStatus instance
 	err = r.Get(ctx, req.NamespacedName, &tcs, &client.GetOptions{})

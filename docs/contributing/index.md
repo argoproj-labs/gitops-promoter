@@ -55,6 +55,7 @@ To add a **`prepare-commit-msg`** hook that signs off automatically, follow [Arg
 - **Metrics** — Register operational metrics in `internal/metrics` and describe them for operators in [Metrics](../monitoring/metrics.md) (see the note in [`internal/metrics/metrics.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/metrics/metrics.go)).
 - **SCM providers** — New or extended provider code lives under `internal/scms/<provider>/`. Call [`metrics.RecordSCMCall`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/metrics/metrics.go) for every SCM REST request so metrics and debug logs stay correct; see [Adding an SCM Provider](adding-an-scm-provider.md).
 - **Finalizers** — When adding or changing deletion ordering, follow [Using finalizers](using-finalizers.md) (naming, who adds them, and how to watch related objects during delete).
+- **Status writes** — Status subresource updates go through the deferred `utils.HandleReconciliationResult` using per-controller SSA; see [Maintaining resource status](updating-status.md).
 
 ## Questions?
 

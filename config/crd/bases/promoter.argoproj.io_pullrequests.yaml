@@ -211,6 +211,14 @@ spec:
               id:
                 description: ID the id of the pull request
                 type: string
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the .metadata.generation that this status was reconciled from.
+                  Because status is written via Server-Side Apply with ForceOwnership (which has no
+                  optimistic-concurrency check), this field is the canonical way to detect stale
+                  status writes: compare status.observedGeneration with metadata.generation.
+                format: int64
+                type: integer
               prCreationTime:
                 description: PRCreationTime the time the PR was created
                 format: date-time

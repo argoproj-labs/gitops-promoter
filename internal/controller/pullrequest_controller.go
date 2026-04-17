@@ -78,8 +78,8 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	startTime := time.Now()
 
 	var pr promoterv1alpha1.PullRequest
-	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &pr, r.Client, r.Recorder, &result, &err)
+	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
+	defer utils.HandleReconciliationResult(ctx, startTime, &pr, r.Client, r.Recorder, constants.PullRequestControllerFieldOwner, &result, &err)
 
 	if err := r.Get(ctx, req.NamespacedName, &pr); err != nil {
 		if errors.IsNotFound(err) {

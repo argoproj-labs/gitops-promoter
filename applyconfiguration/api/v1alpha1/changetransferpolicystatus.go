@@ -26,6 +26,11 @@ import (
 //
 // ChangeTransferPolicyStatus defines the observed state of ChangeTransferPolicy
 type ChangeTransferPolicyStatusApplyConfiguration struct {
+	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
+	// Because status is written via Server-Side Apply with ForceOwnership (which has no
+	// optimistic-concurrency check), this field is the canonical way to detect stale
+	// status writes: compare status.observedGeneration with metadata.generation.
+	ObservedGeneration *int64 `json:"observedGeneration,omitempty"`
 	// Proposed is the state of the proposed branch.
 	Proposed *CommitBranchStateApplyConfiguration `json:"proposed,omitempty"`
 	// Active is the state of the active branch.
@@ -46,6 +51,14 @@ type ChangeTransferPolicyStatusApplyConfiguration struct {
 // apply.
 func ChangeTransferPolicyStatus() *ChangeTransferPolicyStatusApplyConfiguration {
 	return &ChangeTransferPolicyStatusApplyConfiguration{}
+}
+
+// WithObservedGeneration sets the ObservedGeneration field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ObservedGeneration field is set to the value of the last call.
+func (b *ChangeTransferPolicyStatusApplyConfiguration) WithObservedGeneration(value int64) *ChangeTransferPolicyStatusApplyConfiguration {
+	b.ObservedGeneration = &value
+	return b
 }
 
 // WithProposed sets the Proposed field in the declarative configuration to the given value
