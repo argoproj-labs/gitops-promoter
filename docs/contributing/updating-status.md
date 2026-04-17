@@ -1,4 +1,4 @@
-# Updating resource status
+# Maintaining resource status
 
 Every reconciled CRD has its `status` subresource written through a single chokepoint:
 the deferred [`utils.HandleReconciliationResult`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/utils/utils.go)
@@ -14,13 +14,23 @@ writing or modifying controllers and need to know how to populate status correct
         constants.<Kind>ControllerFieldOwner,
         &result, &err)
     ```
-2. During reconciliation, the controller mutates `obj.Status` in memory. **Do not call
+2. After fetching the object, **clear any existing Ready condition** so stale state from
+   the previous reconcile doesn't bleed into this one:
+    ```go
+    meta.RemoveStatusCondition(obj.GetConditions(), string(promoterConditions.Ready))
+    ```
+   This is required: the deferred helper reads the in-memory Ready condition to decide
+   whether to preserve a deliberately-set state (e.g. from
+   `InheritNotReadyConditionFromObjects`) or build a fresh success/error condition. It
+   cannot distinguish "this reconcile set this" from "a previous reconcile left this
+   behind", so the controller must clear it up front.
+3. During reconciliation, the controller mutates `obj.Status` in memory. **Do not call
    `r.Status().Update` or `r.Status().Patch` yourself.**
-3. At the end of the reconcile, the deferred helper sets the `Ready` condition based on
+4. At the end of the reconcile, the deferred helper sets the `Ready` condition based on
    whether `*err` is nil, stamps `status.observedGeneration = metadata.generation`, then
    applies the whole status subresource via **Server-Side Apply** under the
    per-controller `FieldOwner` with `ForceOwnership`.
-4. If the full apply is rejected (for example, OpenAPI schema or CEL validation on some
+5. If the full apply is rejected (for example, OpenAPI schema or CEL validation on some
    status field), the helper retries with a conditions-only SSA under a **separate**
    `FieldOwner` (`<main>-fallback`) so the `Ready=False` condition still reaches the user
    **without** wiping the other status fields owned by the main manager. The fallback

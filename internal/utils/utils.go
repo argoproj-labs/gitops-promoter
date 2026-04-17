@@ -345,15 +345,12 @@ func HandleReconciliationResult(
 	}
 
 	conditions := obj.GetConditions() // GetConditions() is guaranteed to be non-nil for our CRDs.
+	// Controllers are expected to call meta.RemoveStatusCondition(..., "Ready") at the
+	// top of Reconcile so stale conditions from a previous reconcile don't bleed into
+	// this one. If FindStatusCondition still returns non-nil here, the reconciler
+	// deliberately set a Ready state during this reconcile (e.g. via
+	// InheritNotReadyConditionFromObjects) and we preserve it.
 	readyCondition := meta.FindStatusCondition(*conditions, string(promoterConditions.Ready))
-	// Only this helper writes Reason=ReconciliationError. Finding one here means it's a stale
-	// leftover from a previous failed reconcile; discard it so a successful reconcile can
-	// install a fresh success condition below. Without this, SSA would keep re-applying the
-	// stale condition forever because the deferred helper reads conditions back from the
-	// in-memory object (which still carries whatever was persisted by the previous reconcile).
-	if readyCondition != nil && readyCondition.Reason == string(promoterConditions.ReconciliationError) {
-		readyCondition = nil
-	}
 	if readyCondition == nil {
 		// If the condition hasn't already been set by the caller, assume success.
 		readyCondition = &metav1.Condition{
