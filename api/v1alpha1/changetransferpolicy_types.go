@@ -157,6 +157,13 @@ func (b *CommitBranchState) DryShaShort() string {
 
 // ChangeTransferPolicyStatus defines the observed state of ChangeTransferPolicy
 type ChangeTransferPolicyStatus struct {
+	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
+	// Because status is written via Server-Side Apply with ForceOwnership (which has no
+	// optimistic-concurrency check), this field is the canonical way to detect stale
+	// status writes: compare status.observedGeneration with metadata.generation.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// Proposed is the state of the proposed branch.
 	Proposed CommitBranchState `json:"proposed,omitempty"`
 	// Active is the state of the active branch.
@@ -229,6 +236,11 @@ type PullRequestCommonStatus struct {
 // GetConditions returns the conditions of the ChangeTransferPolicy
 func (ps *ChangeTransferPolicy) GetConditions() *[]metav1.Condition {
 	return &ps.Status.Conditions
+}
+
+// SetObservedGeneration records the object generation that produced the current status.
+func (ps *ChangeTransferPolicy) SetObservedGeneration(generation int64) {
+	ps.Status.ObservedGeneration = generation
 }
 
 // +kubebuilder:ac:generate=true

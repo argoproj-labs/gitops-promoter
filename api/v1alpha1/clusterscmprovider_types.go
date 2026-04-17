@@ -47,6 +47,11 @@ func (s *ClusterScmProvider) GetConditions() *[]metav1.Condition {
 	return &s.Status.Conditions
 }
 
+// SetObservedGeneration records the object generation that produced the current status.
+func (s *ClusterScmProvider) SetObservedGeneration(generation int64) {
+	s.Status.ObservedGeneration = generation
+}
+
 // +kubebuilder:object:root=true
 
 // ClusterScmProviderList contains a list of ClusterScmProvider.
