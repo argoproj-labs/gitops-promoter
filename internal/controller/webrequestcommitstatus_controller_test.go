@@ -3110,8 +3110,16 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 		By("Setting up test git repository and resources")
 		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "wrcs-sw-test", "default")
 
+		// Each sub-describe below uses a distinct Key so that leftover
+		// CommitStatus objects from earlier sibling specs (envtest has no
+		// garbage collector, so owner-reference GC does not clean them up)
+		// do not collide on the same key+SHA and trigger
+		// TooManyMatchingShaError in the ChangeTransferPolicy reconciler.
 		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-			{Key: "external-approval"},
+			{Key: "external-approval-enriched-env"},
+			{Key: "external-approval-enriched-ps"},
+			{Key: "external-approval-guard"},
+			{Key: "external-approval-expiry"},
 		}
 
 		setupInitialTestGitRepoOnServer(ctx, gitRepo)
@@ -3162,7 +3170,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 				},
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
-					Key:                  "external-approval",
+					Key:                  "external-approval-enriched-env",
 					ReportOn:             constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
 						URLTemplate: testServer.URL + "/validate",
@@ -3254,7 +3262,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 				},
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
-					Key:                  "external-approval",
+					Key:                  "external-approval-enriched-ps",
 					ReportOn:             constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
 						URLTemplate: testServer.URL + "/validate",
@@ -3337,7 +3345,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 				},
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
-					Key:                  "external-approval",
+					Key:                  "external-approval-guard",
 					ReportOn:             constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
 						URLTemplate: testServer.URL + "/validate",
@@ -3439,7 +3447,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 				},
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
-					Key:                  "external-approval",
+					Key:                  "external-approval-expiry",
 					ReportOn:             constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
 						URLTemplate: testServer.URL + "/validate",
