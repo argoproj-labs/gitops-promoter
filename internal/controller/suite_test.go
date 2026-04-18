@@ -171,7 +171,7 @@ var _ = BeforeSuite(func() {
 	// are in flight, and it manifests as a misleading "failed to run manager /
 	// failed waiting for all runnables to end within grace period" AfterSuite
 	// failure even though every spec passed.
-	gracefulShutdownTimeout := 2 * time.Minute
+	gracefulShutdownTimeout := 45 * time.Second
 	multiClusterManager, err := mcmanager.New(cfg, kubeconfigProvider, ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
