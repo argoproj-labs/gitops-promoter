@@ -31,6 +31,8 @@ export interface PullRequest {
   id: string;
   url?: string;
   prMergeTime?: string;
+  state?: string;
+  externallyMergedOrClosed?: boolean;
 }
 
 export interface History {
@@ -138,6 +140,7 @@ export interface EnrichedEnvDetails {
 
   // History
   historyMergeTimeAgo: string | null;
+  activeMergeTimeAgo: string | null;
 }
 
 export type PromotionPhase = 'promoted' | 'failure' | 'pending' | 'unknown';
