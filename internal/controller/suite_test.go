@@ -163,11 +163,21 @@ var _ = BeforeSuite(func() {
 	err = createKubeconfigSecret(ctx, "testenv-staging", constants.KubeconfigSecretNamespace, cfgStaging, k8sClient)
 	Expect(err).NotTo(HaveOccurred())
 
+	// Give controllers a generous window to drain on shutdown. envtest has no
+	// garbage collector, so tests can leak owned resources that keep reconcilers
+	// churning (e.g. "timer" CommitStatuses in timedcommitstatus_controller_test.go
+	// producing repeated TooManyMatchingShaError retries). The upstream default is
+	// 30s which is too tight when AfterSuite cancels the context while those loops
+	// are in flight, and it manifests as a misleading "failed to run manager /
+	// failed waiting for all runnables to end within grace period" AfterSuite
+	// failure even though every spec passed.
+	gracefulShutdownTimeout := 45 * time.Second
 	multiClusterManager, err := mcmanager.New(cfg, kubeconfigProvider, ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress: "0",
 		},
+		GracefulShutdownTimeout: &gracefulShutdownTimeout,
 	})
 	Expect(err).ToNot(HaveOccurred())
 
