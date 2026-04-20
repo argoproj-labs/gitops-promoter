@@ -95,6 +95,14 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
+              commitStatusKey:
+                default: argocd-health
+                description: CommitStatusKey is the key used for created CommitStatus
+                  resources.
+                maxLength: 63
+                minLength: 1
+                pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
+                type: string
               promotionStrategyRef:
                 description: PromotionStrategyRef is a reference to the promotion
                   strategy that this commit status applies to.

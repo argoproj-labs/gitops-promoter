@@ -23,6 +23,9 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
+// DefaultArgoCDCommitStatusKey is the default key used for commit statuses created by the ArgoCDCommitStatus controller.
+const DefaultArgoCDCommitStatusKey = "argocd-health"
+
 // ArgoCDCommitStatusSpec defines the desired state of ArgoCDCommitStatus.
 type ArgoCDCommitStatusSpec struct {
 	// PromotionStrategyRef is a reference to the promotion strategy that this commit status applies to.
@@ -36,6 +39,22 @@ type ArgoCDCommitStatusSpec struct {
 	// URL generates the URL to use in the CommitStatus, for example a link to the Argo CD UI.
 	// +kubebuilder:validation:Optional
 	URL URLConfig `json:"url,omitempty"`
+
+	// CommitStatusKey is the key used for created CommitStatus resources.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default:=argocd-health
+	// +kubebuilder:validation:MinLength:=1
+	// +kubebuilder:validation:MaxLength:=63
+	// +kubebuilder:validation:Pattern:=([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
+	CommitStatusKey string `json:"commitStatusKey,omitempty"`
+}
+
+// GetCommitStatusKey returns the configured commit status key or the default when unset.
+func (s *ArgoCDCommitStatusSpec) GetCommitStatusKey() string {
+	if s.CommitStatusKey == "" {
+		return DefaultArgoCDCommitStatusKey
+	}
+	return s.CommitStatusKey
 }
 
 // URLConfig is a template that can be rendered using the Go template engine.
