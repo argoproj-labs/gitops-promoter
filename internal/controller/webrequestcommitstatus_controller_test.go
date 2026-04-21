@@ -615,6 +615,139 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 		})
 	})
 
+	Describe("Trigger mode — when.variables (Variables)", func() {
+		var webRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
+		var triggerMu sync.Mutex
+		var triggerRequestCount int
+
+		BeforeEach(func() {
+			triggerRequestCount = 0
+			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				triggerMu.Lock()
+				triggerRequestCount++
+				triggerMu.Unlock()
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(map[string]any{"approved": true})
+			}))
+
+			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-trigger-when-variables",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  "external-approval",
+					ReportOn:             constants.CommitRefProposed,
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: testServer.URL + "/validate",
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+					},
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
+							Expression: `Response != nil ? (Response.StatusCode == 200 && Response.Body.approved == true && Variables.approvedGate) : Phase == "success"`,
+							Variables: &promoterv1alpha1.OutputSpec{
+								Expression: `{ approvedGate: true }`,
+							},
+						},
+					},
+					Mode: promoterv1alpha1.ModeSpec{
+						Trigger: &promoterv1alpha1.TriggerModeSpec{
+							RequeueDuration: metav1.Duration{Duration: 5 * time.Second},
+							When: promoterv1alpha1.WhenWithOutputSpec{
+								Variables: &promoterv1alpha1.OutputSpec{
+									Expression: `{ currentSha: find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha }`,
+								},
+								Expression: `Variables.currentSha != (TriggerOutput["trackedSha"] ?? "")`,
+								Output: &promoterv1alpha1.OutputSpec{
+									Expression: `{ trackedSha: Variables.currentSha, echoedLen: len(string(Variables.currentSha)) }`,
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if testServer != nil {
+				testServer.Close()
+			}
+			_ = k8sClient.Delete(ctx, webRequestCommitStatus)
+		})
+
+		It("should evaluate variables once and expose Variables to trigger when and output expressions", func() {
+			Eventually(func(g Gomega) {
+				triggerMu.Lock()
+				c := triggerRequestCount
+				triggerMu.Unlock()
+				g.Expect(c).To(BeNumerically(">=", 1))
+
+				var wrcs promoterv1alpha1.WebRequestCommitStatus
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name + "-trigger-when-variables",
+					Namespace: "default",
+				}, &wrcs)).To(Succeed())
+
+				var dev *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
+				for i := range wrcs.Status.Environments {
+					if wrcs.Status.Environments[i].Branch == testBranchDevelopment {
+						dev = &wrcs.Status.Environments[i]
+						break
+					}
+				}
+				g.Expect(dev).ToNot(BeNil())
+				g.Expect(dev.TriggerOutput).ToNot(BeNil())
+				var trig map[string]any
+				g.Expect(json.Unmarshal(dev.TriggerOutput.Raw, &trig)).To(Succeed())
+				g.Expect(trig).To(HaveKey("trackedSha"))
+				g.Expect(trig).To(HaveKey("echoedLen"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should set Ready=False when when.variables expression does not return a map", func() {
+			bad := webRequestCommitStatus.DeepCopy()
+			bad.Name = name + "-trigger-when-variables-bad"
+			bad.UID = ""
+			bad.ResourceVersion = ""
+			bad.Generation = 0
+			bad.CreationTimestamp = metav1.Time{}
+			bad.ManagedFields = nil
+			bad.Status = promoterv1alpha1.WebRequestCommitStatusStatus{}
+			bad.Spec.Mode.Trigger.When.Variables = &promoterv1alpha1.OutputSpec{
+				Expression: `true`,
+			}
+			bad.Spec.Mode.Trigger.When.Expression = `true`
+			bad.Spec.Mode.Trigger.When.Output = nil
+			Expect(k8sClient.Create(ctx, bad)).To(Succeed())
+			defer func() { _ = k8sClient.Delete(ctx, bad) }()
+
+			Eventually(func(g Gomega) {
+				var fetched promoterv1alpha1.WebRequestCommitStatus
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name + "-trigger-when-variables-bad",
+					Namespace: "default",
+				}, &fetched)).To(Succeed())
+				var ready *metav1.Condition
+				for i := range fetched.Status.Conditions {
+					if fetched.Status.Conditions[i].Type == "Ready" {
+						ready = &fetched.Status.Conditions[i]
+						break
+					}
+				}
+				g.Expect(ready).ToNot(BeNil())
+				g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(ready.Message).To(Or(
+					ContainSubstring("when.variables expression must return"),
+					ContainSubstring("failed to evaluate trigger.when.variables"),
+				))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
 	Describe("Template Rendering", func() {
 		var webRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
 		var requestsByEnv map[string]struct {

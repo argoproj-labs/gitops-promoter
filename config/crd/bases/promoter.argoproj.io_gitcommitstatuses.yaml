@@ -300,6 +300,14 @@ spec:
                 x-kubernetes-list-map-keys:
                 - branch
                 x-kubernetes-list-type: map
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the .metadata.generation that this status was reconciled from.
+                  Because status is written via Server-Side Apply with ForceOwnership (which has no
+                  optimistic-concurrency check), this field is the canonical way to detect stale
+                  status writes: compare status.observedGeneration with metadata.generation.
+                format: int64
+                type: integer
             type: object
         required:
         - spec

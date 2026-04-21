@@ -221,7 +221,7 @@ func (cs *CommitStatus) handleCheckRunResponse(
 	// Record metrics and log rate limit info if response is available
 	if response != nil {
 		duration := time.Since(startTime)
-		metrics.RecordSCMCall(gitRepo, metrics.SCMAPICommitStatus, operation, response.StatusCode, duration, getRateLimitMetrics(response.Rate))
+		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPICommitStatus, operation, response.StatusCode, duration, getRateLimitMetrics(response.Rate))
 
 		logger.Info("github rate limit",
 			"limit", response.Rate.Limit,

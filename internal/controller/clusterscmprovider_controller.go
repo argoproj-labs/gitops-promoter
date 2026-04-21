@@ -22,6 +22,7 @@ import (
 	"time"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -32,6 +33,8 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
+	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
@@ -56,8 +59,8 @@ func (r *ClusterScmProviderReconciler) Reconcile(ctx context.Context, req ctrl.R
 	startTime := time.Now()
 
 	var clusterScmProvider promoterv1alpha1.ClusterScmProvider
-	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &clusterScmProvider, r.Client, r.Recorder, &result, &err)
+	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
+	defer utils.HandleReconciliationResult(ctx, startTime, &clusterScmProvider, r.Client, r.Recorder, constants.ClusterScmProviderControllerFieldOwner, &result, &err)
 
 	if err := r.Get(ctx, req.NamespacedName, &clusterScmProvider); err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -66,6 +69,9 @@ func (r *ClusterScmProviderReconciler) Reconcile(ctx context.Context, req ctrl.R
 		}
 		return ctrl.Result{}, fmt.Errorf("failed to get ClusterScmProvider: %w", err)
 	}
+
+	// Remove any existing Ready condition. We want to start fresh.
+	meta.RemoveStatusCondition(clusterScmProvider.GetConditions(), string(promoterConditions.Ready))
 
 	if deleted, err := r.handleFinalizer(ctx, &clusterScmProvider); err != nil || deleted {
 		return ctrl.Result{}, err

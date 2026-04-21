@@ -179,6 +179,14 @@ type TriggerModeSpec struct {
 
 // WhenWithOutputSpec holds a when condition (boolean expression) and optional output (map expression).
 type WhenWithOutputSpec struct {
+	// Variables optionally holds an expression that runs before Expression and Output.Expression.
+	// It receives the same variables as Expression (see Expression documentation below) and must return a map/object.
+	// The result is injected as top-level binding Variables (map) for Expression and Output.Expression only — use Variables.<key> in those expressions.
+	// The Variables binding is not set when spec.variables is omitted. It is not available to response.output.expression or to Go templates.
+	//
+	// +optional
+	Variables *OutputSpec `json:"variables,omitempty"`
+
 	// Expression is a boolean expr expression that decides whether the HTTP request should be made.
 	// It is evaluated BEFORE each potential HTTP request. When it returns true the request is made;
 	// when false the controller keeps the previous phase and skips the request.
@@ -191,6 +199,7 @@ type WhenWithOutputSpec struct {
 	//   - TriggerOutput (map[string]any): custom data from the previous when.output.expression evaluation
 	//   - ResponseOutput (map[string]any): response data from the previous HTTP request (if any)
 	//   - SuccessOutput (map[string]any): custom data from the previous success.when.output.expression evaluation
+	//   - Variables (map[string]any): when spec.variables is set, the map returned by variables.expression this reconcile; omitted otherwise
 	//
 	// Note: PromotionStrategy.Status.Environments is an ordered array representing the promotion sequence.
 	// Use Branch + filter/find to look up environment-specific data:
@@ -333,6 +342,13 @@ type HTTPRequestSpec struct {
 
 // WebRequestCommitStatusStatus defines the observed state of WebRequestCommitStatus.
 type WebRequestCommitStatusStatus struct {
+	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
+	// Because status is written via Server-Side Apply with ForceOwnership (which has no
+	// optimistic-concurrency check), this field is the canonical way to detect stale
+	// status writes: compare status.observedGeneration with metadata.generation.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// Environments holds the status of each environment when context is "environments".
 	// When context is "promotionstrategy", this slice is empty and PromotionStrategyContext is used instead.
 	// +listType=map
@@ -524,6 +540,11 @@ type WebRequestCommitStatusList struct {
 // GetConditions returns the conditions of the WebRequestCommitStatus.
 func (wrcs *WebRequestCommitStatus) GetConditions() *[]metav1.Condition {
 	return &wrcs.Status.Conditions
+}
+
+// SetObservedGeneration records the object generation that produced the current status.
+func (wrcs *WebRequestCommitStatus) SetObservedGeneration(generation int64) {
+	wrcs.Status.ObservedGeneration = generation
 }
 
 func init() {

@@ -1,10 +1,12 @@
 package metrics
 
 import (
+	"context"
 	"strconv"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -86,13 +88,16 @@ type RateLimit struct {
 
 var (
 	// Labels for git_operations metrics
-	gitOperationLabels = []string{"git_repository", "scm_provider", "operation", "result"}
+	gitOperationLabels = []string{"git_repository", "scm_provider", "scm_provider_kind", "operation", "result"}
 
 	// Labels for scm_calls metrics
-	scmCallLabels = []string{"git_repository", "scm_provider", "api", "operation", "response_code"}
+	scmCallLabels = []string{"git_repository", "scm_provider", "scm_provider_kind", "api", "operation", "response_code"}
 
 	// Labels for scm_calls_rate_limit metrics
-	scmCallRateLimitLabels = []string{"scm_provider"}
+	scmCallRateLimitLabels = []string{"scm_provider", "scm_provider_kind"}
+
+	// Labels for WebRequestCommitStatus outbound HTTP metrics
+	webRequestCommitStatusHTTPLabels = []string{"namespace", "name", "response_code"}
 
 	// git_operations_total
 	gitOperationsTotal = prometheus.NewCounterVec(
@@ -169,6 +174,25 @@ var (
 		[]string{"ctp_found", "response_code"},
 	)
 
+	webRequestCommitStatusHTTPRequestsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "webrequest_commit_status_http_requests_total",
+			Help: "A counter of completed outbound HTTP round-trips from WebRequestCommitStatus reconciliation " +
+				"(Do succeeded, response non-nil, body read successfully).",
+		},
+		webRequestCommitStatusHTTPLabels,
+	)
+
+	webRequestCommitStatusHTTPRequestDurationSeconds = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "webrequest_commit_status_http_request_duration_seconds",
+			Help: "A histogram of duration from http.Client.Do through reading the response body for successful " +
+				"WebRequestCommitStatus outbound HTTP round-trips.",
+			Buckets: prometheus.DefBuckets,
+		},
+		webRequestCommitStatusHTTPLabels,
+	)
+
 	// FinalizerDependentCount tracks the current number of dependent resources blocking deletion
 	FinalizerDependentCount = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -200,38 +224,68 @@ func init() {
 		scmCallsRateLimitRemaining,
 		scmCallsRateLimitResetRemainingSeconds,
 		webhookProcessingDurationSeconds,
+		webRequestCommitStatusHTTPRequestsTotal,
+		webRequestCommitStatusHTTPRequestDurationSeconds,
 		FinalizerDependentCount,
 		ApplicationWatchEventsHandled,
 	)
 }
 
+// scmProviderKindLabel returns spec.scmProviderRef.kind, defaulting to ScmProvider when unset (matches the CRD default).
+func scmProviderKindLabel(gitRepo *v1alpha1.GitRepository) string {
+	if gitRepo == nil {
+		return "ScmProvider"
+	}
+	if gitRepo.Spec.ScmProviderRef.Kind == "" {
+		return "ScmProvider"
+	}
+	return gitRepo.Spec.ScmProviderRef.Kind
+}
+
 // RecordGitOperation records both the increment and observation for git operations.
 func RecordGitOperation(gitRepo *v1alpha1.GitRepository, operation GitOperation, result GitOperationResult, duration time.Duration) {
+	kind := scmProviderKindLabel(gitRepo)
 	labels := prometheus.Labels{
-		"git_repository": gitRepo.Name,
-		"scm_provider":   gitRepo.Spec.ScmProviderRef.Name,
-		"operation":      string(operation),
-		"result":         string(result),
+		"git_repository":    gitRepo.Name,
+		"scm_provider":      gitRepo.Spec.ScmProviderRef.Name,
+		"scm_provider_kind": kind,
+		"operation":         string(operation),
+		"result":            string(result),
 	}
 	gitOperationsTotal.With(labels).Inc()
 	gitOperationsDurationSeconds.With(labels).Observe(duration.Seconds())
 }
 
 // RecordSCMCall records both the increment and observation for SCM API calls, and optionally observes rate limit metrics.
-func RecordSCMCall(gitRepo *v1alpha1.GitRepository, api SCMAPI, operation SCMOperation, responseCode int, duration time.Duration, rateLimit *RateLimit) {
+// It emits a structured debug log (verbosity V(1); enable with e.g. --zap-log-level=1) for each call, matching metric labels.
+func RecordSCMCall(ctx context.Context, gitRepo *v1alpha1.GitRepository, api SCMAPI, operation SCMOperation, responseCode int, duration time.Duration, rateLimit *RateLimit) {
+	kind := scmProviderKindLabel(gitRepo)
 	labels := prometheus.Labels{
-		"git_repository": gitRepo.Name,
-		"scm_provider":   gitRepo.Spec.ScmProviderRef.Name,
-		"api":            string(api),
-		"operation":      string(operation),
-		"response_code":  strconv.Itoa(responseCode),
+		"git_repository":    gitRepo.Name,
+		"scm_provider":      gitRepo.Spec.ScmProviderRef.Name,
+		"scm_provider_kind": kind,
+		"api":               string(api),
+		"operation":         string(operation),
+		"response_code":     strconv.Itoa(responseCode),
 	}
 	scmCallsTotal.With(labels).Inc()
 	scmCallsDurationSeconds.With(labels).Observe(duration.Seconds())
 
+	log.FromContext(ctx).V(1).Info("SCM API call",
+		"git_repository", gitRepo.Name,
+		"git_repository_namespace", gitRepo.Namespace,
+		"scm_provider", gitRepo.Spec.ScmProviderRef.Name,
+		"scm_provider_kind", kind,
+		"api", string(api),
+		"operation", string(operation),
+		"response_code", responseCode,
+		"duration_seconds", duration.Seconds(),
+	)
+
 	if rateLimit != nil {
 		rateLimitLabels := prometheus.Labels{
-			"scm_provider": gitRepo.Spec.ScmProviderRef.Name,
+			"scm_provider":      gitRepo.Spec.ScmProviderRef.Name,
+			"scm_provider_kind": kind,
 		}
 
 		scmCallsRateLimitLimit.With(rateLimitLabels).Set(float64(rateLimit.Limit))
@@ -248,4 +302,17 @@ func RecordWebhookCall(ctpFound bool, responseCode int, duration time.Duration) 
 	}
 	webhookCallsTotal.With(labels).Inc()
 	webhookProcessingDurationSeconds.With(labels).Observe(duration.Seconds())
+}
+
+// RecordWebRequestCommitStatusHTTPRequest records count and duration for a completed outbound HTTP
+// round-trip (Do succeeded, response read). responseCode is the HTTP status from the response;
+// duration is elapsed time from Do through finishing the body read.
+func RecordWebRequestCommitStatusHTTPRequest(wrcs *v1alpha1.WebRequestCommitStatus, responseCode int, duration time.Duration) {
+	labels := prometheus.Labels{
+		"namespace":     wrcs.Namespace,
+		"name":          wrcs.Name,
+		"response_code": strconv.Itoa(responseCode),
+	}
+	webRequestCommitStatusHTTPRequestsTotal.With(labels).Inc()
+	webRequestCommitStatusHTTPRequestDurationSeconds.With(labels).Observe(duration.Seconds())
 }

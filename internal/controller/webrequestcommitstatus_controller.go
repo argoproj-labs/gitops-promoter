@@ -48,6 +48,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -149,8 +150,8 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 	startTime := time.Now()
 
 	var wrcs promoterv1alpha1.WebRequestCommitStatus
-	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &wrcs, r.Client, r.Recorder, &result, &err)
+	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
+	defer utils.HandleReconciliationResult(ctx, startTime, &wrcs, r.Client, r.Recorder, constants.WebRequestCommitStatusControllerFieldOwner, &result, &err)
 
 	// 1. Fetch the WebRequestCommitStatus instance
 	err = r.Get(ctx, req.NamespacedName, &wrcs)
@@ -727,6 +728,10 @@ func (r *WebRequestCommitStatusReconciler) fireOrCarryForward(
 
 	// Run success.when even without a request, passing Response=nil.
 	exprData := successWhenExprData(td, nil)
+	exprData, err := r.enrichWhenExprEnv(ctx, wrcs.Spec.Success.When, exprData)
+	if err != nil {
+		return httpValidationResult{}, fmt.Errorf("failed to evaluate success.when.variables: %w", err)
+	}
 	phase, phasePerBranch, err := r.evaluateSuccessPhase(ctx, wrcs, exprData)
 	if err != nil {
 		return httpValidationResult{}, fmt.Errorf("failed to evaluate success.when expression: %w", err)
@@ -753,6 +758,34 @@ type triggerDecision struct {
 	ShouldFire     bool
 }
 
+// evaluateTriggerWhenBranch evaluates trigger.when (variables, bool expression, optional output map).
+func (r *WebRequestCommitStatusReconciler) evaluateTriggerWhenBranch(
+	ctx context.Context,
+	trigger *promoterv1alpha1.TriggerModeSpec,
+	td templateData,
+) (shouldFire bool, newTriggerData map[string]any, err error) {
+	base := td.triggerExprData()
+	exprEnv, err := r.enrichWhenExprEnv(ctx, trigger.When, base)
+	if err != nil {
+		return false, nil, fmt.Errorf("failed to evaluate trigger.when.variables: %w", err)
+	}
+	tr, err := r.evaluateTriggerExpression(ctx, trigger.When.Expression, exprEnv)
+	if err != nil {
+		return false, nil, fmt.Errorf("failed to evaluate trigger expression: %w", err)
+	}
+	shouldFire = tr.Trigger
+
+	out := trigger.When.Output
+	if out == nil || strings.TrimSpace(out.Expression) == "" {
+		return shouldFire, nil, nil
+	}
+	newTriggerData, err = r.evaluateTriggerDataExpression(ctx, out.Expression, exprEnv)
+	if err != nil {
+		return false, nil, fmt.Errorf("failed to evaluate trigger data expression: %w", err)
+	}
+	return shouldFire, newTriggerData, nil
+}
+
 // evaluateTriggerDecision determines whether the HTTP request should fire this reconcile.
 // For polling mode it checks whether the polling interval has elapsed since lastRequestTime.
 // For trigger mode it evaluates the trigger expression and optionally the trigger output expression.
@@ -775,17 +808,12 @@ func (r *WebRequestCommitStatusReconciler) evaluateTriggerDecision(
 	}
 
 	if mode.Trigger != nil {
-		tr, err := r.evaluateTriggerExpression(ctx, mode.Trigger.When.Expression, td)
+		sf, ntd, err := r.evaluateTriggerWhenBranch(ctx, mode.Trigger, td)
 		if err != nil {
-			return triggerDecision{}, fmt.Errorf("failed to evaluate trigger expression: %w", err)
+			return triggerDecision{}, err
 		}
-		shouldFire = tr.Trigger
-		if mode.Trigger.When.Output != nil && mode.Trigger.When.Output.Expression != "" {
-			newTriggerData, err = r.evaluateTriggerDataExpression(ctx, mode.Trigger.When.Output.Expression, td)
-			if err != nil {
-				return triggerDecision{}, fmt.Errorf("failed to evaluate trigger data expression: %w", err)
-			}
-		}
+		shouldFire = sf
+		newTriggerData = ntd
 	}
 
 	return triggerDecision{ShouldFire: shouldFire, NewTriggerData: newTriggerData}, nil
@@ -895,6 +923,10 @@ func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx co
 	}
 
 	exprData := successWhenExprData(td, &response)
+	exprData, err = r.enrichWhenExprEnv(ctx, wrcs.Spec.Success.When, exprData)
+	if err != nil {
+		return httpValidationResult{}, fmt.Errorf("failed to evaluate success.when.variables: %w", err)
+	}
 	phase, phasePerBranch, err := r.evaluateSuccessPhase(ctx, wrcs, exprData)
 	if err != nil {
 		return httpValidationResult{}, fmt.Errorf("failed to evaluate validation expression: %w", err)
@@ -1065,7 +1097,8 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 
 	logger.V(4).Info("Making HTTP request", "method", wrcs.Spec.HTTPRequest.Method, "url", url)
 
-	// Execute request
+	// Execute request (metrics: counter and histogram only after Do; duration is Do through body read).
+	httpMetricsStart := time.Now()
 	resp, err := clientToUse.Do(req)
 	if err != nil {
 		return httpResponse{}, fmt.Errorf("HTTP request failed: %w", err)
@@ -1084,6 +1117,8 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	if err != nil {
 		return httpResponse{}, fmt.Errorf("failed to read response body: %w", err)
 	}
+	httpRequestMetricsDuration := time.Since(httpMetricsStart)
+	metrics.RecordWebRequestCommitStatusHTTPRequest(wrcs, resp.StatusCode, httpRequestMetricsDuration)
 
 	// Try to parse body as JSON
 	var parsedBody any
@@ -1098,7 +1133,7 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 		Headers:    resp.Header,
 	}
 
-	logger.V(4).Info("HTTP request completed", "statusCode", resp.StatusCode)
+	logger.V(4).Info("HTTP request completed", "statusCode", resp.StatusCode, "latency", httpRequestMetricsDuration)
 
 	return response, nil
 }
