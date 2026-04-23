@@ -67,7 +67,12 @@ func writePullRequestResult(w io.Writer, format string, result PullRequestRender
 
 // writeWebRequestResults writes a slice of WebRequestStepResult in the chosen output format.
 // pal is used only for the default human format (YAML/JSON ignore it).
-func writeWebRequestResults(w io.Writer, format string, results []controller.WebRequestStepResult, pal humanPalette) error {
+func writeWebRequestResults(
+	w io.Writer,
+	format string,
+	results []controller.WebRequestStepResult,
+	pal humanPalette,
+) error {
 	switch format {
 	case outputJSON:
 		enc := json.NewEncoder(w)

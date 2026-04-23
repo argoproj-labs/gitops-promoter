@@ -17,6 +17,7 @@ limitations under the License.
 package templates
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -99,7 +100,7 @@ expressions without running the controller or hitting real HTTP endpoints.`,
 				return err
 			}
 			if responseUpdatedPath != "" && psUpdatedPath == "" && wrcsUpdatedPath == "" {
-				return fmt.Errorf("--response-updated requires --promotion-strategy-updated and/or --web-request-updated")
+				return errors.New("--response-updated requires --promotion-strategy-updated and/or --web-request-updated")
 			}
 			var mockUpdated *controller.SimulationMockResponse
 			if responseUpdatedPath != "" {
@@ -156,7 +157,8 @@ expressions without running the controller or hitting real HTTP endpoints.`,
 	cmd.Flags().StringVar(&responsePath, "response", "",
 		"Path to a YAML file with the mocked HTTP response {statusCode, body, headers} used when a step injects")
 	cmd.Flags().StringVar(&responseUpdatedPath, "response-updated", "",
-		"Optional: alternate mock response YAML for the 'after-state-change' step only (requires --promotion-strategy-updated and/or --web-request-updated)")
+		"Optional: alternate mock response YAML for the 'after-state-change' step only "+
+			"(requires --promotion-strategy-updated and/or --web-request-updated)")
 	cmd.Flags().StringVar(&branch, "branch", "",
 		"Optional: restrict simulation to a single environment branch (environments context only)")
 	cmd.Flags().StringVarP(&outputFormat, "output", "o", outputHuman, "Output format: human|yaml|json")

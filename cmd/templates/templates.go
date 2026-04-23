@@ -133,8 +133,9 @@ func loadNamespaceLabels(path string) (NamespaceLabelsFile, error) {
 	return nsLabels, nil
 }
 
-// MockResponseFile is the on-disk shape of the `--response` and `--response-updated` inputs: a YAML object with statusCode, body
-// (any, typically a JSON-compatible scalar/map/slice or a string), and headers (map[string][]string).
+// MockResponseFile is the on-disk shape of the `--response` and `--response-updated` inputs:
+// a YAML object with statusCode, body (any, typically a JSON-compatible scalar/map/slice or a string),
+// and headers (map[string][]string).
 type MockResponseFile struct {
 	Body       any                 `json:"body,omitempty"`
 	Headers    map[string][]string `json:"headers,omitempty"`
