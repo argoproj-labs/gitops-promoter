@@ -54,12 +54,13 @@ This is the most comprehensive of the examples: it exercises nearly every featur
    `success.when.variables` recomputes `fingerprint` which still matches `TriggerOutput.lastFingerprint`,
    so success is carried forward. Every carried-over `ResponseOutput` field remains visible in
    the SCM `descriptionTemplate`.
-3. **after-state-change** *(optional, when `--promotion-strategy-updated` is provided)* — uses the
-   `ps-step4.yaml` fixture, where `environments/production.proposed.note.drySha` has advanced.
-   `Variables.fingerprint` changes and **no longer matches** `TriggerOutput.lastFingerprint`, so
-   the trigger fires again → mock response is injected again → the simulator re-renders the body
-   template and re-evaluates `success.when` on the HTTP branch. Under the 202 mock this stays
-   success; flip the mock to a non-202 response to see the re-fire stay pending.
+3. **after-state-change** *(optional, when `--promotion-strategy-updated` is provided)* — uses
+   `ps-step4.yaml`, where **only** production’s `proposed.note.drySha` has advanced; development and
+   staging still show the prior SHA. `success.when.variables` recomputes `fingerprint`, which no
+   longer matches `TriggerOutput.lastFingerprint` from the first two steps. The trigger **does not**
+   fire, because `allNoteDryShasMatch` is false until every environment’s dry SHA lines up again.
+   With no HTTP call, `success.when` uses the carry-forward branch (`Response == nil`) and returns
+   pending — the change-management gate has decayed until the pipeline catches lower envs up.
 
 ## Run (2 steps, default)
 
@@ -84,9 +85,10 @@ two steps always use `--response`.
 
 ### Via `--promotion-strategy-updated` (upstream SHA advances)
 
-Use this when the change you want to simulate is "a new dry SHA arrived upstream." The updated
-PromotionStrategy changes `Proposed.Note.DrySha`, which recomputes the fingerprint — making the
-trigger re-fire against a persisted `lastFingerprint` that no longer matches.
+Use this when the change you want to simulate is "upstream status moved." The bundled
+`ps-step4.yaml` advances production’s dry SHA alone so the fingerprint string changes while the
+full trigger gate stays false; combine with `--response-updated` if you later model a fixture where
+the third step injects again.
 
 ```bash
 go run ./cmd templates webrequest \

@@ -21,6 +21,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -165,7 +167,6 @@ func SimulateWebRequestTemplates(
 		opts.WebRequestCommitStatusUpdated == nil {
 		return nil, errors.New("SimulateWebRequestOptions.MockResponseUpdated requires PromotionStrategyUpdated and/or WebRequestCommitStatusUpdated")
 	}
-
 	// The evaluation helpers live on WebRequestCommitStatusReconciler, but they only touch
 	// r.expressionCache — not the k8s client or settings manager. A bare reconciler is fine.
 	r := &WebRequestCommitStatusReconciler{}
@@ -177,16 +178,12 @@ func SimulateWebRequestTemplates(
 		return nil, fmt.Errorf("no applicable environments: WebRequestCommitStatus key %q does not match any entry in the PromotionStrategy ProposedCommitStatuses/ActiveCommitStatuses", wrcs.Spec.Key)
 	}
 	if branchFilter != "" {
-		filtered := make([]promoterv1alpha1.Environment, 0, 1)
-		for _, env := range applicableEnvs {
-			if env.Branch == branchFilter {
-				filtered = append(filtered, env)
-			}
-		}
-		if len(filtered) == 0 {
+		applicableEnvs = slices.DeleteFunc(applicableEnvs, func(env promoterv1alpha1.Environment) bool {
+			return env.Branch != branchFilter
+		})
+		if len(applicableEnvs) == 0 {
 			return nil, fmt.Errorf("branch %q is not an applicable environment for this WebRequestCommitStatus", branchFilter)
 		}
-		applicableEnvs = filtered
 	}
 
 	psEnvStatusMap := buildPSEnvStatusMap(ps)
@@ -263,13 +260,46 @@ func simStepCount(psUpdated *promoterv1alpha1.PromotionStrategy, wrcsUpdated *pr
 	return len(simStepLabels) - 1
 }
 
-// mockForStep returns the mock HTTP response to use for this simulator step index.
-// The after-state-change step uses mockUpdated when set; all other steps use the primary mock.
-func (in contextSimInputs) mockForStep(stepIdx int) SimulationMockResponse {
-	if stepIdx < len(simStepLabels) && simStepLabels[stepIdx] == SimStepAfterStateChange && in.mockUpdated != nil {
-		return *in.mockUpdated
+// resolvedStep bundles the per-step values both simulators need: which WRCS / PS / SHAs / mock apply
+// to this step, what label to tag it with, and whether it is the optional after-state-change step.
+// Returned by contextSimInputs.resolveStep so the two step loops don't repeat the "swap in updated
+// values for the last step" logic.
+type resolvedStep struct {
+	label              string
+	ps                 *promoterv1alpha1.PromotionStrategy
+	wrcs               *promoterv1alpha1.WebRequestCommitStatus
+	shas               map[string]string
+	mock               SimulationMockResponse
+	isAfterStateChange bool
+}
+
+// resolveStep returns the resources, label, and mock to use for stepIdx. For the after-state-change
+// step it swaps in psUpdated / wrcsUpdated / updatedShas / mockUpdated when those are set, falling
+// back to the primary values otherwise.
+func (in contextSimInputs) resolveStep(stepIdx int) resolvedStep {
+	label := simStepLabels[stepIdx]
+	step := resolvedStep{
+		label: label,
+		ps:    in.ps,
+		wrcs:  in.wrcs,
+		shas:  in.currentShas,
+		mock:  in.mock,
 	}
-	return in.mock
+	if label != SimStepAfterStateChange {
+		return step
+	}
+	step.isAfterStateChange = true
+	if in.psUpdated != nil {
+		step.ps = in.psUpdated
+		step.shas = in.updatedShas
+	}
+	if in.wrcsUpdated != nil {
+		step.wrcs = in.wrcsUpdated
+	}
+	if in.mockUpdated != nil {
+		step.mock = *in.mockUpdated
+	}
+	return step
 }
 
 // simEnvState tracks derived per-environment state carried forward between steps of the simulation.
@@ -317,43 +347,19 @@ func persistSimEnvState(s simEnvState) simEnvState {
 	}
 }
 
-// seedSimStateFromStatus builds the simulator's "prior state" map from a WebRequestCommitStatus's
-// status block, mirroring what the real controller does at the start of each reconcile via
-// lastReconciledStateFromEnvironment / lastReconciledStateFromContext. This lets simulation fixtures
-// express "this is the state the controller left behind on the previous reconcile" — critical for
-// scenarios that depend on persisted values like TriggerOutput.lastRequestTime (polling cooldown),
-// TriggerOutput.lastFingerprint (fingerprint drift), or a pre-existing Phase ("already success").
-//
-// For mode.context = environments: returns one entry per branch found in status.environments,
-// keyed by that branch.
-// For mode.context = promotionstrategy: returns a single entry keyed by "" (matching the simulator's
-// promotionstrategy-context state convention of a shared unkeyed state).
-// Missing or empty status in either case yields an empty map, and the caller falls back to cold-start
-// simEnvState{}.
-func seedSimStateFromStatus(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus) map[string]simEnvState {
-	if wrcs == nil {
+// seedEnvStateFromStatus builds a per-branch simEnvState map from wrcs.Status.Environments,
+// mirroring what the real controller does at the start of each reconcile in environments context
+// via lastReconciledStateFromEnvironment. This lets simulation fixtures express "this is the state
+// the controller left behind on the previous reconcile" — critical for scenarios that depend on
+// persisted values like TriggerOutput.lastRequestTime (polling cooldown), TriggerOutput.lastFingerprint
+// (fingerprint drift), or a pre-existing Phase ("already success"). Returns nil when wrcs is nil or
+// has no environment status entries; callers fall back to cold-start simEnvState{} for branches not
+// present in the returned map.
+func seedEnvStateFromStatus(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus) map[string]simEnvState {
+	if wrcs == nil || len(wrcs.Status.Environments) == 0 {
 		return nil
 	}
-	out := make(map[string]simEnvState)
-
-	if wrcs.Spec.Mode.Context == promoterv1alpha1.ContextPromotionStrategy {
-		if wrcs.Status.PromotionStrategyContext == nil {
-			return nil
-		}
-		ls := lastReconciledStateFromContext(ctx, wrcs.Status.PromotionStrategyContext)
-		out[""] = simEnvState{
-			TriggerOutput:  ls.TriggerData,
-			ResponseOutput: ls.ResponseData,
-			SuccessOutput:  ls.SuccessData,
-			Phase:          ls.Phase,
-			PhasePerBranch: ls.PhasePerBranch,
-		}
-		return out
-	}
-
-	if len(wrcs.Status.Environments) == 0 {
-		return nil
-	}
+	out := make(map[string]simEnvState, len(wrcs.Status.Environments))
 	for i := range wrcs.Status.Environments {
 		envStatus := &wrcs.Status.Environments[i]
 		ls := lastReconciledStateFromEnvironment(ctx, envStatus)
@@ -366,6 +372,23 @@ func seedSimStateFromStatus(ctx context.Context, wrcs *promoterv1alpha1.WebReque
 		}
 	}
 	return out
+}
+
+// seedSharedStateFromStatus builds the single shared simEnvState from wrcs.Status.PromotionStrategyContext
+// for promotionstrategy context simulations. Returns (zero, false) when wrcs is nil or has no shared
+// context status; callers fall back to a cold-start simEnvState{}.
+func seedSharedStateFromStatus(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus) (simEnvState, bool) {
+	if wrcs == nil || wrcs.Status.PromotionStrategyContext == nil {
+		return simEnvState{}, false
+	}
+	ls := lastReconciledStateFromContext(ctx, wrcs.Status.PromotionStrategyContext)
+	return simEnvState{
+		TriggerOutput:  ls.TriggerData,
+		ResponseOutput: ls.ResponseData,
+		SuccessOutput:  ls.SuccessData,
+		Phase:          ls.Phase,
+		PhasePerBranch: ls.PhasePerBranch,
+	}, true
 }
 
 // simulateEnvironmentsContext runs the simulation for mode.context = "environments".
@@ -381,45 +404,29 @@ func simulateEnvironmentsContext(
 	// Seed "reconcile" prior state from wrcs.Status when populated (mirrors how the real controller
 	// starts a reconcile on a resource with existing status). When status is absent or empty,
 	// statePerEnv entries fall back to zero-valued simEnvState — the cold-start behavior.
-	seedFromBase := seedSimStateFromStatus(ctx, in.wrcs)
+	seedFromBase := seedEnvStateFromStatus(ctx, in.wrcs)
 	statePerEnv := make(map[string]simEnvState, len(in.applicableEnvs))
 	for _, env := range in.applicableEnvs {
-		if seeded, ok := seedFromBase[env.Branch]; ok {
-			statePerEnv[env.Branch] = seeded
-		} else {
-			statePerEnv[env.Branch] = simEnvState{}
-		}
+		statePerEnv[env.Branch] = seedFromBase[env.Branch]
 	}
 
 	// Precompute a re-seed for "after-state-change" when wrcsUpdated carries populated status. If
 	// wrcsUpdated is nil or has no status, the step simply inherits the prior step's carry-forward
 	// via statePerEnv.
-	reseedForAfterStateChange := seedSimStateFromStatus(ctx, in.wrcsUpdated)
+	reseedForAfterStateChange := seedEnvStateFromStatus(ctx, in.wrcsUpdated)
 
 	totalSteps := simStepCount(in.psUpdated, in.wrcsUpdated)
 	results := make([]WebRequestStepResult, 0, totalSteps)
 	for stepIdx := 0; stepIdx < totalSteps; stepIdx++ {
-		label := simStepLabels[stepIdx]
-		stepPS := in.ps
-		stepShas := in.currentShas
-		stepWRCS := in.wrcs
-		if simStepLabels[stepIdx] == SimStepAfterStateChange {
-			if in.psUpdated != nil {
-				stepPS = in.psUpdated
-				stepShas = in.updatedShas
-			}
-			if in.wrcsUpdated != nil {
-				stepWRCS = in.wrcsUpdated
-			}
+		step := in.resolveStep(stepIdx)
+		if step.isAfterStateChange {
 			// Re-seed per-branch carry-forward when the updated WRCS carries status for the branch.
 			// Branches not present keep their prior-step carry-forward state.
-			for branch, seeded := range reseedForAfterStateChange {
-				statePerEnv[branch] = seeded
-			}
+			maps.Copy(statePerEnv, reseedForAfterStateChange)
 		}
 
 		stepResult := WebRequestStepResult{
-			Label:   label,
+			Label:   step.label,
 			Context: string(promoterv1alpha1.ContextEnvironments),
 		}
 
@@ -430,8 +437,8 @@ func simulateEnvironmentsContext(
 			td := templateData{
 				Branch:                 branch,
 				Phase:                  prior.Phase,
-				PromotionStrategy:      stepPS,
-				WebRequestCommitStatus: stepWRCS,
+				PromotionStrategy:      step.ps,
+				WebRequestCommitStatus: step.wrcs,
 				NamespaceMetadata:      in.nsMeta,
 				TriggerOutput:          prior.TriggerOutput,
 				ResponseOutput:         prior.ResponseOutput,
@@ -439,11 +446,11 @@ func simulateEnvironmentsContext(
 			}
 
 			eval, next, cs := runOneStepForBranch(ctx, r, stepInputs{
-				wrcs:   stepWRCS,
+				wrcs:   step.wrcs,
 				td:     td,
-				mock:   in.mockForStep(stepIdx),
+				mock:   step.mock,
 				branch: branch,
-				sha:    stepShas[branch],
+				sha:    step.shas[branch],
 			})
 			// JSON-roundtrip at the step boundary to mirror how the real controller persists
 			// status: time.Time written by now() becomes a string, etc. See persistSimEnvState.
@@ -471,45 +478,28 @@ func simulatePromotionStrategyContext(
 ) ([]WebRequestStepResult, error) {
 	// Seed "reconcile" prior state from wrcs.Status.PromotionStrategyContext when populated. Empty
 	// or missing status falls back to zero-valued simEnvState (cold-start, pre-existing behavior).
-	var prior simEnvState
-	if seeded := seedSimStateFromStatus(ctx, in.wrcs); seeded != nil {
-		if s, ok := seeded[""]; ok {
-			prior = s
-		}
-	}
-	reseedForAfterStateChange := seedSimStateFromStatus(ctx, in.wrcsUpdated)
+	prior, _ := seedSharedStateFromStatus(ctx, in.wrcs)
+	reseedForAfterStateChange, hasReseed := seedSharedStateFromStatus(ctx, in.wrcsUpdated)
 
 	totalSteps := simStepCount(in.psUpdated, in.wrcsUpdated)
 	results := make([]WebRequestStepResult, 0, totalSteps)
 	for stepIdx := 0; stepIdx < totalSteps; stepIdx++ {
-		label := simStepLabels[stepIdx]
-		stepPS := in.ps
-		stepShas := in.currentShas
-		stepWRCS := in.wrcs
-		if simStepLabels[stepIdx] == SimStepAfterStateChange {
-			if in.psUpdated != nil {
-				stepPS = in.psUpdated
-				stepShas = in.updatedShas
-			}
-			if in.wrcsUpdated != nil {
-				stepWRCS = in.wrcsUpdated
-			}
-			// If the updated WRCS carries a shared promotionstrategy-context status, re-seed the
+		step := in.resolveStep(stepIdx)
+		if step.isAfterStateChange && hasReseed {
+			// The updated WRCS carries a shared promotionstrategy-context status, so re-seed the
 			// single shared prior from it. Otherwise the step inherits the prior step's carry-forward.
-			if seeded, ok := reseedForAfterStateChange[""]; ok {
-				prior = seeded
-			}
+			prior = reseedForAfterStateChange
 		}
 
 		stepResult := WebRequestStepResult{
-			Label:   label,
+			Label:   step.label,
 			Context: string(promoterv1alpha1.ContextPromotionStrategy),
 		}
 
 		td := templateData{
 			Phase:                  prior.Phase,
-			PromotionStrategy:      stepPS,
-			WebRequestCommitStatus: stepWRCS,
+			PromotionStrategy:      step.ps,
+			WebRequestCommitStatus: step.wrcs,
 			NamespaceMetadata:      in.nsMeta,
 			TriggerOutput:          prior.TriggerOutput,
 			ResponseOutput:         prior.ResponseOutput,
@@ -517,9 +507,9 @@ func simulatePromotionStrategyContext(
 		}
 
 		eval, next, _ := runOneStepForBranch(ctx, r, stepInputs{
-			wrcs:      stepWRCS,
+			wrcs:      step.wrcs,
 			td:        td,
-			mock:      in.mockForStep(stepIdx),
+			mock:      step.mock,
 			psContext: true,
 		})
 		// JSON-roundtrip at the step boundary to mirror how the real controller persists status:
@@ -528,31 +518,14 @@ func simulatePromotionStrategyContext(
 
 		// Render one CommitStatus per applicable environment using resolved per-branch phase.
 		resolved := resolveAllBranchPhases(in.applicableEnvs, promoterv1alpha1.CommitStatusPhase(eval.Phase), next.PhasePerBranch)
-		commitTd := td.withLatestOutputs(nil, eval.TriggerOutput, nil)
-		if next.ResponseOutput != nil {
-			commitTd.ResponseOutput = next.ResponseOutput
-		}
-		if next.SuccessOutput != nil {
-			commitTd.SuccessOutput = next.SuccessOutput
-		}
+		commitTd := buildCommitTemplateData(td, next, eval.TriggerOutput)
 		for _, env := range in.applicableEnvs {
-			envPhase := resolved[env.Branch]
-			envTd := commitTd
-			envTd.Branch = env.Branch
-			envTd.Phase = string(envPhase)
-			rendered, err := renderCommitStatusTemplates(stepWRCS, envTd)
+			envPhase := string(resolved[env.Branch])
+			cs, err := renderCommitStatusForBranch(step.wrcs, commitTd, env.Branch, step.shas[env.Branch], envPhase)
 			if err != nil {
 				stepResult.Errors = append(stepResult.Errors, fmt.Sprintf("render CommitStatus templates for branch %q: %v", env.Branch, err))
-				stepResult.CommitStatuses = append(stepResult.CommitStatuses, RenderedCommitStatus{Branch: env.Branch, Sha: stepShas[env.Branch], Phase: string(envPhase)})
-				continue
 			}
-			stepResult.CommitStatuses = append(stepResult.CommitStatuses, RenderedCommitStatus{
-				Branch:      env.Branch,
-				Sha:         stepShas[env.Branch],
-				Phase:       string(envPhase),
-				Description: rendered.Description,
-				URL:         rendered.URL,
-			})
+			stepResult.CommitStatuses = append(stepResult.CommitStatuses, cs)
 		}
 
 		stepResult.Evaluations = append(stepResult.Evaluations, eval)
@@ -560,6 +533,46 @@ func simulatePromotionStrategyContext(
 	}
 
 	return results, nil
+}
+
+// buildCommitTemplateData returns a templateData for rendering the CommitStatus description/url,
+// with the latest TriggerOutput applied and ResponseOutput/SuccessOutput overridden from the
+// post-step state whenever those outputs were refreshed during the step. baseTd's Branch and Phase
+// are left untouched; callers set them per environment via renderCommitStatusForBranch.
+func buildCommitTemplateData(baseTd templateData, next simEnvState, triggerOutput map[string]any) templateData {
+	commitTd := baseTd.withLatestOutputs(nil, triggerOutput, nil)
+	if next.ResponseOutput != nil {
+		commitTd.ResponseOutput = next.ResponseOutput
+	}
+	if next.SuccessOutput != nil {
+		commitTd.SuccessOutput = next.SuccessOutput
+	}
+	return commitTd
+}
+
+// renderCommitStatusForBranch renders the CommitStatus description/url templates for a single
+// (branch, sha, phase) using commitTd as the base. On template error it returns a
+// RenderedCommitStatus with only Branch/Sha/Phase populated along with the error so the caller
+// can record the failure in step-level diagnostics while still emitting the phase.
+func renderCommitStatusForBranch(
+	wrcs *promoterv1alpha1.WebRequestCommitStatus,
+	commitTd templateData,
+	branch, sha, phase string,
+) (RenderedCommitStatus, error) {
+	envTd := commitTd
+	envTd.Branch = branch
+	envTd.Phase = phase
+	rendered, err := renderCommitStatusTemplates(wrcs, envTd)
+	if err != nil {
+		return RenderedCommitStatus{Branch: branch, Sha: sha, Phase: phase}, err
+	}
+	return RenderedCommitStatus{
+		Branch:      branch,
+		Sha:         sha,
+		Phase:       phase,
+		Description: rendered.Description,
+		URL:         rendered.URL,
+	}, nil
 }
 
 // stepInputs bundles the arguments runOneStepForBranch needs. Using a struct keeps the parameter list
@@ -629,16 +642,18 @@ func runOneStepForBranch(
 	// 2. Decide whether to inject the mock response and, if so, render HTTP templates and process
 	// response output. Matches the controller on every simulated reconcile: trigger mode injects iff
 	// trigger.when.expression fires without error; polling mode always injects (no gate expression).
-	shouldInject := false
-	switch {
-	case wrcs.Spec.Mode.Trigger != nil:
-		shouldInject = eval.TriggerEval.Evaluated && eval.TriggerEval.Error == "" && eval.TriggerEval.ShouldFire
-	case wrcs.Spec.Mode.Polling != nil:
-		shouldInject = true
-	}
 	var resp *httpResponse
-	if shouldInject {
-		resp = injectMockResponse(ctx, r, wrcs, &td, &next, &eval, mock)
+	if shouldInjectMock(wrcs.Spec.Mode, eval.TriggerEval) {
+		injection := injectMockResponse(ctx, r, wrcs, td, mock)
+		eval.ResponseInjected = true
+		eval.MockResponse = &mock
+		eval.RenderedRequest = injection.renderedRequest
+		eval.Errors = append(eval.Errors, injection.errors...)
+		resp = injection.resp
+		if injection.responseOutputSet {
+			td.ResponseOutput = injection.responseOutput
+			next.ResponseOutput = injection.responseOutput
+		}
 	}
 	eval.ResponseOutput = td.ResponseOutput
 
@@ -681,49 +696,61 @@ func runOneStepForBranch(
 	if psContext {
 		return eval, next, RenderedCommitStatus{}
 	}
-	commitTd := td.withLatestOutputs(nil, next.TriggerOutput, nil)
-	if next.ResponseOutput != nil {
-		commitTd.ResponseOutput = next.ResponseOutput
-	}
-	if next.SuccessOutput != nil {
-		commitTd.SuccessOutput = next.SuccessOutput
-	}
-	commitTd.Phase = eval.Phase
-	rendered, err := renderCommitStatusTemplates(wrcs, commitTd)
+	commitTd := buildCommitTemplateData(td, next, next.TriggerOutput)
+	cs, err := renderCommitStatusForBranch(wrcs, commitTd, branch, sha, eval.Phase)
 	if err != nil {
 		eval.Errors = append(eval.Errors, fmt.Sprintf("render CommitStatus templates: %v", err))
-		return eval, next, RenderedCommitStatus{Branch: branch, Sha: sha, Phase: eval.Phase}
 	}
-	return eval, next, RenderedCommitStatus{
-		Branch:      branch,
-		Sha:         sha,
-		Phase:       eval.Phase,
-		Description: rendered.Description,
-		URL:         rendered.URL,
-	}
+	return eval, next, cs
 }
 
-// injectMockResponse renders the HTTP request templates and applies the mock response as if the
-// controller had just performed the HTTP call. It populates eval.RenderedRequest, eval.MockResponse,
-// runs the optional response.output expression to refresh ResponseOutput on both td and next, and
-// returns a pointer to the synthetic httpResponse for success.when to consume.
+// shouldInjectMock returns whether the simulator should perform the mock HTTP injection for this
+// step. It mirrors the real controller: trigger mode injects iff trigger.when.expression fires
+// without error; polling mode always injects (no gate expression); any other shape returns false.
+func shouldInjectMock(mode promoterv1alpha1.ModeSpec, tr TriggerEvalResult) bool {
+	switch {
+	case mode.Trigger != nil:
+		return tr.Evaluated && tr.Error == "" && tr.ShouldFire
+	case mode.Polling != nil:
+		return true
+	}
+	return false
+}
+
+// mockInjection is the outcome of running a mock HTTP injection for a single simulator step: the
+// synthetic httpResponse that success.when will consume, the rendered HTTP request (if templates
+// rendered successfully), any extracted response.output map, and the errors produced along the way.
+// responseOutputSet distinguishes "response.output expression was configured and produced nil or an
+// empty map" from "response.output expression was not configured"; only when true should the caller
+// overwrite td.ResponseOutput / next.ResponseOutput.
+//
+//nolint:govet // field ordering optimized for readability; internal struct with negligible allocation pressure
+type mockInjection struct {
+	resp              *httpResponse
+	renderedRequest   *RenderedHTTPRequest
+	responseOutput    map[string]any
+	errors            []string
+	responseOutputSet bool
+}
+
+// injectMockResponse renders the HTTP request templates, synthesizes the mock response, and runs
+// the optional response.output expression. It returns a mockInjection describing what changed so
+// the caller can apply the updates to templateData / simEnvState / WebRequestStepEvaluation
+// explicitly, making the "what did injection touch" data flow visible at the call site.
 func injectMockResponse(
 	ctx context.Context,
 	r *WebRequestCommitStatusReconciler,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
-	td *templateData,
-	next *simEnvState,
-	eval *WebRequestStepEvaluation,
+	td templateData,
 	mock SimulationMockResponse,
-) *httpResponse {
-	eval.ResponseInjected = true
-	eval.MockResponse = &mock
+) mockInjection {
+	out := mockInjection{}
 
-	rendered, err := renderHTTPRequestTemplates(wrcs, *td)
+	rendered, err := renderHTTPRequestTemplates(wrcs, td)
 	if err != nil {
-		eval.Errors = append(eval.Errors, fmt.Sprintf("render HTTP request templates: %v", err))
+		out.errors = append(out.errors, fmt.Sprintf("render HTTP request templates: %v", err))
 	} else {
-		eval.RenderedRequest = &RenderedHTTPRequest{
+		out.renderedRequest = &RenderedHTTPRequest{
 			Method:  wrcs.Spec.HTTPRequest.Method,
 			URL:     rendered.URL,
 			Body:    rendered.Body,
@@ -732,17 +759,18 @@ func injectMockResponse(
 	}
 
 	resp := httpResponse(mock)
+	out.resp = &resp
 
 	if wrcs.Spec.Mode.Trigger != nil && wrcs.Spec.Mode.Trigger.Response != nil {
 		extracted, err := r.evaluateResponseDataExpression(ctx, wrcs.Spec.Mode.Trigger.Response.Output.Expression, resp)
 		if err != nil {
-			eval.Errors = append(eval.Errors, fmt.Sprintf("response.output expression: %v", err))
+			out.errors = append(out.errors, fmt.Sprintf("response.output expression: %v", err))
 		} else {
-			td.ResponseOutput = extracted
-			next.ResponseOutput = extracted
+			out.responseOutput = extracted
+			out.responseOutputSet = true
 		}
 	}
-	return &resp
+	return out
 }
 
 // evaluateSuccessPhaseForSim dispatches success.when expression evaluation to the appropriate helper

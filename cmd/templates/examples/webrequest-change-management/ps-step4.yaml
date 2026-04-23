@@ -1,13 +1,18 @@
 # PromotionStrategy snapshot for the optional `after-state-change` step.
-# Identical to ps.yaml EXCEPT: environments/production.proposed.note.drySha has advanced to a new
-# value. This simulates a new hydrator dry commit arriving on production between reconciles.
+# Identical to ps.yaml EXCEPT: only environments/production.proposed.note.drySha has advanced.
+# Development and staging still show the previous dry SHA, so allNoteDryShasMatch is false.
 #
 # Expected simulator behavior:
-#   - trigger.when.variables recomputes fingerprint from the new DrySha.
-#   - The new fingerprint no longer matches TriggerOutput.lastFingerprint (still equal to the
-#     reconcile step's persisted fingerprint), so the trigger RE-FIRES → fresh HTTP call →
-#     response.output / success.when run again against the mock. Controller-faithful: a state
-#     drift drives a new reconcile, not a silent carry-forward invalidation.
+#   - success.when.variables recomputes fingerprint — it includes production's new DrySha, so the
+#     string no longer matches TriggerOutput.lastFingerprint from the prior steps (uniform SHA).
+#   - The trigger does NOT fire: hasOpenPR && allNoteDryShasMatch && … requires matching dry SHAs
+#     across every spec environment, which fails once production has drifted ahead alone.
+#   - No mock HTTP injection → success.when uses the carry-forward branch (Response == nil).
+#     Phase was success but fingerprint != lastFingerprint → commit status decays to pending.
+#
+# Contrast: if every branch advanced together (same new DrySha everywhere), allNoteDryShasMatch
+# would stay true and the trigger would re-fire for a fresh POST — see git history or use
+# `--web-request-updated` with a stale seeded fingerprint to model other paths.
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: PromotionStrategy
 metadata:
@@ -28,9 +33,9 @@ status:
       proposed:
         hydrated:
           sha: "a111111111111111111111111111111111111111"
-        # DrySha advanced on all branches — a new dry snapshot has been queued.
+        # Unchanged from ps.yaml — still aligned with staging.
         note:
-          drySha: "fee15baddecafc0ffeefee15baddecafc0ffeefa"
+          drySha: "73a80cb8dc22bf7b17c0fdd8dda2ef6627e92974"
       active:
         hydrated:
           sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -39,7 +44,7 @@ status:
         hydrated:
           sha: "b222222222222222222222222222222222222222"
         note:
-          drySha: "fee15baddecafc0ffeefee15baddecafc0ffeefa"
+          drySha: "73a80cb8dc22bf7b17c0fdd8dda2ef6627e92974"
       active:
         hydrated:
           sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
@@ -47,13 +52,12 @@ status:
       proposed:
         hydrated:
           sha: "c333333333333333333333333333333333333333"
+        # Only production has moved to a new dry snapshot — breaks allNoteDryShasMatch.
         note:
           drySha: "fee15baddecafc0ffeefee15baddecafc0ffeefa"
       active:
         hydrated:
           sha: "cccccccccccccccccccccccccccccccccccccccc"
-      # Production now has a fresh open PR for the new dry SHA — this would be created by the
-      # controller on the next reconcile once it detects the new fingerprint.
       pullRequest:
         id: "2710"
         state: open

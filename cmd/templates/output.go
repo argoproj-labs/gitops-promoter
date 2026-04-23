@@ -254,9 +254,25 @@ func writeMockResponse(b *strings.Builder, mock *controller.SimulationMockRespon
 	}
 	if mock.Body != nil {
 		b.WriteString("    Body:\n")
-		b.WriteString(indent(fmt.Sprintf("%v", mock.Body), "      "))
+		b.WriteString(indent(formatBodyValue(mock.Body), "      "))
 		b.WriteString("\n")
 	}
+}
+
+// formatBodyValue renders a mock response body for human output. Plain strings render as-is
+// (users commonly supply raw JSON / text / XML strings as the mock body). Maps and slices — which
+// is what a YAML/JSON mock body with nested objects deserializes into — render as indented JSON so
+// the reader can actually read them instead of Go's noisy `map[k:v ...]` default. Anything else
+// falls back to `%v`.
+func formatBodyValue(body any) string {
+	if s, ok := body.(string); ok {
+		return s
+	}
+	raw, err := json.MarshalIndent(body, "", "  ")
+	if err != nil {
+		return fmt.Sprintf("%v", body)
+	}
+	return string(raw)
 }
 
 // formatCommitStatus formats a single RenderedCommitStatus for human output.
