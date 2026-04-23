@@ -112,7 +112,7 @@ Once the app is created. Go to Install app and install it in your account.
 
 #### Using the webhook
 
-The webhook notifies the Promoter and Argo CD that a new commit was push/merged to the main branch. It greatly reduces the latency between deployments.
+The webhook notifies the Promoter and Argo CD that a new commit was pushed/merged to the main branch. It greatly reduces the latency between deployments.
 
 If you want your local demo to be very responsive, you can use [Smee.io](https://smee.io/) to forward the webhook events to your local machine.
 
