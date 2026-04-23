@@ -59,7 +59,7 @@ func SuccessWhenExprData(td TemplateData, resp *HTTPResponse) map[string]any {
 func (td TemplateData) WithLatestOutputs(responseDataJSON *apiextensionsv1.JSON, newTriggerData map[string]any, successDataJSON *apiextensionsv1.JSON) TemplateData {
 	result := td
 	if responseDataJSON != nil {
-		if data, err := unmarshalJSONMap(responseDataJSON); err == nil && data != nil {
+		if data, err := UnmarshalJSONMap(responseDataJSON); err == nil && data != nil {
 			result.ResponseOutput = data
 		}
 	}
@@ -67,15 +67,17 @@ func (td TemplateData) WithLatestOutputs(responseDataJSON *apiextensionsv1.JSON,
 		result.TriggerOutput = newTriggerData
 	}
 	if successDataJSON != nil {
-		if data, err := unmarshalJSONMap(successDataJSON); err == nil && data != nil {
+		if data, err := UnmarshalJSONMap(successDataJSON); err == nil && data != nil {
 			result.SuccessOutput = data
 		}
 	}
 	return result
 }
 
-// unmarshalJSONMap unmarshals an apiextensionsv1.JSON into a map. Returns (nil, nil) when raw is nil.
-func unmarshalJSONMap(raw *apiextensionsv1.JSON) (map[string]any, error) {
+// UnmarshalJSONMap unmarshals an apiextensionsv1.JSON into a map. Returns (nil, nil) when raw is nil.
+// Exported so callers outside this package (e.g. the simulator) can convert persisted status JSON
+// into map form for expression environments.
+func UnmarshalJSONMap(raw *apiextensionsv1.JSON) (map[string]any, error) {
 	if raw == nil {
 		return nil, nil
 	}
@@ -84,4 +86,17 @@ func unmarshalJSONMap(raw *apiextensionsv1.JSON) (map[string]any, error) {
 		return nil, fmt.Errorf("failed to unmarshal JSON map: %w", err)
 	}
 	return result, nil
+}
+
+// MarshalJSONMap marshals a map into an apiextensionsv1.JSON. Returns (nil, nil) when data is nil.
+// Exported so the controller and simulator can persist trigger/response/success output into status.
+func MarshalJSONMap(data map[string]any) (*apiextensionsv1.JSON, error) {
+	if data == nil {
+		return nil, nil
+	}
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal JSON map: %w", err)
+	}
+	return &apiextensionsv1.JSON{Raw: raw}, nil
 }
