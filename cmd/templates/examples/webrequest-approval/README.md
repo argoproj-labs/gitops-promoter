@@ -9,15 +9,15 @@ for any approval / dashboard / ticketing integration.
 
 ## What the simulation shows
 
-1. **before-response** — fresh resource: no prior outputs, `Response=nil`, `Phase=pending`,
-   CommitStatus description is `"waiting for <branch>"`.
-2. **with-response** — mock approval body `{ approved: true, sha: d3adb33f }` is injected:
+1. **reconcile** — fresh resource. The trigger expression `Phase != "success"` is true, so the
+   mock approval body `{ approved: true, sha: d3adb33f }` is injected:
    - URL / body / headers templates are rendered
    - `response.output` extracts `{ approved, sha }` into `ResponseOutput`
    - `success.when` flips to `Phase=success`
    - CommitStatus description becomes `"approved (d3adb33f)"`
-3. **after-response** — `Response=nil` again, but `ResponseOutput` is carried forward from step 2,
-   and `Phase=success` is preserved by the carry-forward branch of `success.when`.
+2. **next-reconcile** — `Response=nil` because the trigger is now false (`Phase` is success).
+   `ResponseOutput` is carried forward from reconcile, and
+   `Phase=success` is preserved by the carry-forward branch of `success.when`.
 
 Flip `approved: false` in `response.yaml` to see the failure-path carry-forward behavior.
 

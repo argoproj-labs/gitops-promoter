@@ -21,8 +21,9 @@ Two subcommands are available:
 
 - `promoter templates pullrequest` — render the `PullRequestTemplate` title and description using a
   `ChangeTransferPolicy` and an optional `PromotionStrategy`.
-- `promoter templates webrequest` — simulate a `WebRequestCommitStatus` through **three fixed steps**
-  that together exercise every template and expression path.
+- `promoter templates webrequest` — simulate a `WebRequestCommitStatus` through **two
+  reconcile-shaped steps** (plus an optional third) that together exercise every template and
+  expression path.
 
 All subcommands support `--output human|yaml|json` (default `human`).
 
@@ -79,56 +80,55 @@ Description:
 
 ## `promoter templates webrequest`
 
-Simulates a `WebRequestCommitStatus` through three fixed steps (plus an optional fourth), each
-threading derived outputs into the next step (mirroring the real controller's carry-forward
+Simulates a `WebRequestCommitStatus` through two reconcile-shaped steps (plus an optional third),
+each threading derived outputs into the next step (mirroring the real controller's carry-forward
 behavior):
 
-1. **before-response** — `Response = nil`; no prior outputs. Exercises your success expression's
-   carry-forward branch on a fresh resource, and confirms your CommitStatus templates do not crash
-   with empty `ResponseOutput` / `SuccessOutput`.
-2. **with-response** — `Response = mock`; prior outputs carried from step 1. Renders your HTTP URL /
-   body / header templates, runs `response.output`, evaluates `success.when` with a non-nil
-   `Response`, runs `success.when.output`, and renders the CommitStatus description / URL with the
-   latest outputs.
-3. **after-response** — `Response = nil` again; prior outputs (including `ResponseOutput`) carried
-   from step 2. Exercises your carry-forward branch again on a resource that has already seen a
-   successful request.
-4. **after-state-change** *(optional, when `--promotion-strategy-updated` or
-   `--web-request-updated` is provided)* — runs exactly like `after-response` (Response=nil, all
-   prior outputs carried from step 3), but swaps in the updated `PromotionStrategy` and/or the
-   updated `WebRequestCommitStatus` for that step only. Use this to exercise scenarios where state
-   changes between reconciles:
+1. **reconcile** — first reconcile. The trigger expression is evaluated and the mock HTTP response
+   is injected **iff the trigger fires** (or, for polling-mode WRCS, unconditionally — polling has
+   no gate). When injected, renders your HTTP URL / body / header templates, runs `response.output`,
+   evaluates `success.when` with a non-nil `Response`, runs `success.when.output`, and renders the
+   CommitStatus description / URL with the latest outputs. When not injected, behaves as a
+   no-request reconcile (`Response = nil`) — exercises your success expression's carry-forward
+   branch on the seeded state.
+2. **next-reconcile** — second reconcile with state carried forward from "reconcile". The mock
+   `Response` is injected under the same rules as step 1 (trigger fires, or polling mode). When the
+   trigger is false, you see carry-forward with `Response = nil` (e.g. fingerprint already recorded in
+   `TriggerOutput.lastFingerprint`). The trigger is always evaluated and shown in the output.
+3. **after-state-change** *(optional, when `--promotion-strategy-updated` or
+   `--web-request-updated` is provided)* — a later reconcile after upstream state changed, with
+   the updated `PromotionStrategy` and/or `WebRequestCommitStatus` swapped in. Like the default
+   steps, the mock is injected iff the trigger re-fires (or polling is configured). Use this to exercise
+   scenarios where state changes between reconciles:
 
     - `--promotion-strategy-updated`: upstream state change (e.g. a new
-      `Proposed.Note.DrySha` arrives) — the canonical case is fingerprint-based carry-forward
-      where `success.when.variables.fingerprint` will no longer match
-      `TriggerOutput.lastFingerprint` and a previously-successful gate flips back to pending.
+      `Proposed.Note.DrySha` arrives) — fingerprint-based carry-forward where a bump to
+      `success.when.variables.fingerprint` makes the trigger re-fire (if your trigger compares
+      against `TriggerOutput.lastFingerprint`), causing a fresh HTTP call and re-evaluation.
     - `--web-request-updated`: the WRCS itself differs next reconcile, typically because the
       **controller wrote back updated status** (e.g. new `Status.Environments[*].TriggerOutput` /
       `ResponseOutput` / `LastRequestTime` / conditions). Templates and expressions that reference
-      `.WebRequestCommitStatus.Status.*` see the new values in step 4 while step 3's carry-forward
-      outputs (`TriggerOutput`, `ResponseOutput`, `SuccessOutput`, `Phase`) are still propagated.
-      Less commonly, this also models an admin editing the spec (template tweak, tightened
-      expression) — either way, point the flag at a WRCS fixture that reflects the post-change
-      state.
+      `.WebRequestCommitStatus.Status.*` see the new values here, while the prior step's
+      carry-forward outputs (`TriggerOutput`, `ResponseOutput`, `SuccessOutput`, `Phase`) are still
+      propagated unless overridden by a populated `wrcsUpdated.status` seed. Less commonly, this
+      also models an admin editing the spec (template tweak, tightened expression).
 
     Both flags can be used together to simulate both kinds of change arriving in the same
     reconcile.
 
-The `trigger.when.expression` is always evaluated and its result is surfaced in the output as
-**information only** — it does **not** gate whether the mock `Response` is injected. This is driven
-by the step. The `trigger.when.output` expression, however, runs in every step to match the real
-controller's behavior (`when.output` runs every reconcile regardless of whether the request fires)
-— its result goes into `status.triggerOutput` for the **next** step, not into the current step's
-`success.when` environment (matching how the reconciler persists its status at the end of a
-reconcile).
+The `trigger.when.expression` is evaluated on every step and its result is surfaced in the output.
+It **gates** whether the mock `Response` is injected on every step (including "next-reconcile"), same
+as the controller; polling mode injects unconditionally on every step. The `trigger.when.output` expression runs in every step to match the real controller's
+behavior (`when.output` runs every reconcile regardless of whether the request fires) — its result
+goes into `status.triggerOutput` for the **next** step, not into the current step's `success.when`
+environment (matching how the reconciler persists its status at the end of a reconcile).
 
 ### Seeding step state from `wrcs.status`
 
 The simulator mirrors the real controller's behavior of reading persisted status at the start of a
 reconcile. If the input WRCS carries a populated `status` block, those values become the initial
-`simEnvState` used by step 1 — exactly as if the controller were reconciling a resource that
-already had this status written back by a previous run.
+`simEnvState` used by the "reconcile" step — exactly as if the controller were reconciling a
+resource that already had this status written back by a previous run.
 
 Specifically, the simulator extracts `TriggerOutput`, `ResponseOutput`, `SuccessOutput`, `Phase`,
 and `PhasePerBranch` from:
@@ -144,10 +144,10 @@ it left off" — useful for testing any status-dependent expression such as:
 - Carry-forward success branches that gate on `Phase == "success"`.
 - Change-window expiry checks that examine timestamps stored in `ResponseOutput`.
 
-The same seeding applies when `--web-request-updated` is provided: step 4 re-seeds from the
-updated WRCS's status, overriding step 3's carry-forward for any branch present in the updated
-status. Branches not present in `wrcsUpdated.status` keep their step-3 carry-forward. A cold-start
-simulation (no `status` block) behaves exactly as before.
+The same seeding applies when `--web-request-updated` is provided: the "after-state-change" step
+re-seeds from the updated WRCS's status, overriding the prior step's carry-forward for any branch
+present in the updated status. Branches not present in `wrcsUpdated.status` keep their prior-step
+carry-forward. A cold-start simulation (no `status` block) behaves exactly as before.
 
 ### Usage
 
@@ -157,10 +157,12 @@ promoter templates webrequest \
   --promotion-strategy ps.yaml \
   --namespace-labels ns-labels.yaml \
   --response response.yaml \
-  [--promotion-strategy-updated ps-new.yaml] \     # optional; activates step 4
-  [--web-request-updated wrcs-new.yaml] \          # optional; activates step 4
+  [--promotion-strategy-updated ps-new.yaml] \     # optional; activates after-state-change
+  [--web-request-updated wrcs-new.yaml] \          # optional; activates after-state-change
+  [--response-updated response-new.yaml] \        # optional; mock for after-state-change only
   [--branch environment/dev] \
-  [--output human|yaml|json]
+  [--output human|yaml|json] \
+  [--color auto|always|never]
 ```
 
 ### Fixture shapes
@@ -181,7 +183,8 @@ annotations:
   owner: platform
 ```
 
-`response.yaml` — the mocked HTTP response injected in the with-response step:
+`response.yaml` — the mocked HTTP response injected whenever a step's trigger fires (or on every
+step in polling mode):
 
 ```yaml
 statusCode: 200
@@ -193,6 +196,12 @@ headers:
     - application/json
 ```
 
+`response-updated.yaml` *(optional)* — same shape as `response.yaml`. When you pass
+`--promotion-strategy-updated` and/or `--web-request-updated`, you can also pass
+`--response-updated` to use this mock **only** for the third `after-state-change` step when it
+injects (for example a different `statusCode` or body than the first two steps). If omitted, that
+step reuses the primary `--response` file.
+
 `body` is parsed as YAML; use a nested map/list/scalar to match what your real endpoint would return
 and what your `response.output` / `success.when` expressions expect. Use a string for non-JSON
 endpoints.
@@ -200,22 +209,7 @@ endpoints.
 ### Example output (human)
 
 ```
-=== Step: before-response (context=environments) ===================
-Environment: environment/dev
-  Trigger expression (info): true
-  Response: nil
-  TriggerOutput:  {"trackedBranch":"environment/dev"}
-  ResponseOutput: {}
-  SuccessOutput:  {}
-  Phase: pending
-CommitStatuses:
-  [environment/dev]
-    Sha:         deadbeef…
-    Phase:       pending
-    Description: waiting for environment/dev
-    URL:         https://approvals.example.com/environment/dev
-
-=== Step: with-response (context=environments) =====================
+=== Step: reconcile (context=environments) =========================
 Environment: environment/dev
   Trigger expression (info): true
   Rendered HTTP request:
@@ -232,7 +226,7 @@ CommitStatuses:
   [environment/dev]
     Description: approved (deadbeef)
 
-=== Step: after-response (context=environments) ====================
+=== Step: next-reconcile (context=environments) ====================
 Environment: environment/dev
   Trigger expression (info): false
   Response: nil
@@ -264,9 +258,14 @@ for diffing expected vs. actual behavior across commits or for piping into other
 ## Limitations
 
 - No real HTTP calls are made. Authentication (`httpRequest.authentication`) and SCM host validation
-  are **skipped** in the simulator; the mock response is always injected in the with-response step
-  regardless of credentials or allowed hosts.
+  are **skipped** in the simulator; when the trigger fires (or in polling mode), the mock response
+  is injected regardless of credentials or allowed hosts.
 - Polling-mode `lastRequestTime` / polling interval logic is **not** simulated — the simulator is not
-  time-aware. Expressions that use `now()` will be evaluated at the time the command runs.
+  time-aware. Expressions that use `now()` will be evaluated at the time the command runs. Use
+  status seeding + `--web-request-updated` to simulate elapsed-time scenarios.
+- By default the same `--response` mock is used for every injecting step. Pass `--response-updated`
+  together with `--promotion-strategy-updated` and/or `--web-request-updated` to use a different mock
+  for the third step only. You can still combine with `--web-request-updated` status seeding to model
+  other intermediate state.
 - The simulator uses the WebRequestCommitStatus expression cache for the duration of the command
   only; it is discarded on exit.

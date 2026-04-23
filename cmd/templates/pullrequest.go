@@ -41,6 +41,7 @@ func newPullRequestCommand() *cobra.Command {
 		psPath       string
 		ctpPath      string
 		outputFormat string
+		colorMode    string
 	)
 
 	cmd := &cobra.Command{
@@ -81,7 +82,12 @@ in production.`,
 			}
 
 			result := PullRequestRenderResult{Title: title, Description: description}
-			return writePullRequestResult(cmd.OutOrStdout(), outputFormat, result)
+			colorize, err := resolveHumanColor(colorMode, cmd.OutOrStdout())
+			if err != nil {
+				return err
+			}
+			pal := newHumanPalette(colorize)
+			return writePullRequestResult(cmd.OutOrStdout(), outputFormat, result, pal)
 		},
 	}
 
@@ -92,6 +98,8 @@ in production.`,
 	cmd.Flags().StringVar(&ctpPath, "change-transfer-policy", "",
 		"Path to a YAML file containing a ChangeTransferPolicy manifest")
 	cmd.Flags().StringVarP(&outputFormat, "output", "o", outputHuman, "Output format: human|yaml|json")
+	cmd.Flags().StringVar(&colorMode, "color", "auto",
+		"Colorize human output: auto (TTY + NO_COLOR/FORCE_COLOR), always, or never")
 
 	if err := cmd.MarkFlagRequired("pull-request-template"); err != nil {
 		panic(err)

@@ -1,7 +1,8 @@
-# Step-4 re-seed fixture for the change-management-approval example.
+# Re-seed fixture for the change-management-approval example's `after-state-change` step.
 #
-# Scenario: "cooldown has elapsed since step 3 AND the upstream dry SHA has drifted."
-# The combination makes step 4 demonstrate TWO independent triggers for re-firing:
+# Scenario: "cooldown has elapsed since next-reconcile AND the upstream dry SHA has drifted."
+# The combination makes the `after-state-change` step demonstrate TWO independent triggers for
+# re-firing:
 #
 #   1. shouldTriggerByTime = (now() - lastRequestTime) >= 1m  → true
 #      (because lastRequestTime below is an ancient timestamp)
@@ -10,12 +11,9 @@
 #      (because lastFingerprint below is a stale value that no longer matches PS state)
 #
 # Both feed into `Variables.isFirstRun || Variables.isNewFingerprint || Variables.shouldTriggerByTime`
-# in the trigger.when.expression — step 4's info output shows the trigger would fire again.
-#
-# Additionally, success.when's carry-forward branch requires
-# `Variables.fingerprint == TriggerOutput.lastFingerprint`, so the stale lastFingerprint below
-# flips Phase from "success" (step 3) back to "pending" in step 4 — proving the carry-forward
-# correctly invalidates when the fingerprint drifts.
+# in the trigger.when.expression — so the trigger fires and the mock HTTP response is injected
+# again. This is the controller-faithful outcome of "state drifted, fresh reconcile runs fresh
+# HTTP."
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: WebRequestCommitStatus
 metadata:
@@ -60,7 +58,7 @@ status:
       - branch: environments/production
         phase: success
     triggerOutput:
-      # Ancient → shouldTriggerByTime=true at step 4
+      # Ancient → shouldTriggerByTime=true at `after-state-change`
       lastRequestTime: "2020-01-01T00:00:00Z"
-      # Stale → carry-forward success.when fails, isNewFingerprint=true
+      # Stale → isNewFingerprint=true → trigger re-fires
       lastFingerprint: "ancient-fingerprint-that-no-longer-matches-anything"

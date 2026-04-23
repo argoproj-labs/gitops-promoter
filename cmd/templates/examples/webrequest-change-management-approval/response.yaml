@@ -5,8 +5,8 @@ body:
   # as approved and `success.when` HTTP path return true.
   #
   # To exercise the "records exist but none are in-window" path, narrow the window (e.g. set
-  # start_time/end_time to times in the past) and re-run — step 2 will fail and step 3's
-  # carry-forward will stay pending.
+  # start_time/end_time to times in the past) and re-run — `reconcile` will fail success.when and
+  # `next-reconcile` carry-forward will stay pending.
   change_records:
     - id: "e4c72189-c8d1-48a7-8930-ee312b4a9025"
       servicenow_cr: "CHG6401089"

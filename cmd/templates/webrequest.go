@@ -31,31 +31,35 @@ import (
 // or the network.
 func newWebRequestCommand() *cobra.Command {
 	var (
-		wrcsPath        string
-		wrcsUpdatedPath string
-		psPath          string
-		psUpdatedPath   string
-		nsLabelsPath    string
-		responsePath    string
-		branch          string
-		outputFormat    string
+		wrcsPath            string
+		wrcsUpdatedPath     string
+		psPath              string
+		psUpdatedPath       string
+		nsLabelsPath        string
+		responsePath        string
+		responseUpdatedPath string
+		branch              string
+		outputFormat        string
+		colorMode           string
 	)
 
 	cmd := &cobra.Command{
 		Use:   "webrequest",
 		Short: "Simulate WebRequestCommitStatus templates and expressions offline",
-		Long: `Simulate a WebRequestCommitStatus through three reconcile steps — "before-response"
-(Response=nil, empty prior outputs), "with-response" (Response=mock, HTTP URL/body/headers templates
-rendered, response.output expression run, outputs carried forward), and "after-response" (Response=nil
-again, carry-forward state from step 2). The trigger expression is always evaluated and reported as
-information, but does not gate whether the mock Response is injected — that is driven by the step.
+		Long: `Simulate a WebRequestCommitStatus through reconcile-shaped steps — "reconcile"
+(first reconcile) and "next-reconcile" (second reconcile with state carried forward from the first).
+On each step the mock HTTP response is injected iff the trigger fires, or unconditionally in polling
+mode — the same gating the controller uses. The trigger expression is always evaluated and its
+result is shown in the output.
 
-When --promotion-strategy-updated or --web-request-updated is provided, an optional fourth
-"after-state-change" step is appended: it runs exactly like after-response (Response=nil, all prior
-outputs carried from step 3) but swaps in the updated PromotionStrategy and/or WebRequestCommitStatus
-for that step only. Use this to exercise scenarios where state changes between reconciles — e.g.
-to test fingerprint-based carry-forward when a new Proposed.Note.DrySha invalidates a successful
-gate, or to verify a re-authored success expression still behaves correctly against carried state.
+When --promotion-strategy-updated or --web-request-updated is provided, an optional third
+"after-state-change" step is appended. It represents a later reconcile after upstream state changed
+(new Proposed.Note.DrySha, edited template, re-seeded status, etc.); it swaps the updated inputs in
+and, like the default steps, injects iff the trigger re-fires or polling is configured. Use this to
+exercise fingerprint-based invalidation or verify re-authored expressions behave as intended.
+
+Optional --response-updated supplies a different mocked HTTP response used only for that third step
+when it injects; omit it to reuse the primary --response mock for every step.
 
 Useful for iterating on URL, body, header, description, and url templates plus trigger/response/success
 expressions without running the controller or hitting real HTTP endpoints.`,
@@ -95,6 +99,21 @@ expressions without running the controller or hitting real HTTP endpoints.`,
 			if err != nil {
 				return err
 			}
+			if responseUpdatedPath != "" && psUpdatedPath == "" && wrcsUpdatedPath == "" {
+				return fmt.Errorf("--response-updated requires --promotion-strategy-updated and/or --web-request-updated")
+			}
+			var mockUpdated *controller.SimulationMockResponse
+			if responseUpdatedPath != "" {
+				mu, err := loadMockResponseFlag("--response-updated", responseUpdatedPath)
+				if err != nil {
+					return err
+				}
+				mockUpdated = &controller.SimulationMockResponse{
+					StatusCode: mu.StatusCode,
+					Body:       mu.Body,
+					Headers:    mu.Headers,
+				}
+			}
 
 			results, err := controller.SimulateWebRequestTemplates(
 				cmd.Context(),
@@ -113,13 +132,19 @@ expressions without running the controller or hitting real HTTP endpoints.`,
 				controller.SimulateWebRequestOptions{
 					PromotionStrategyUpdated:      psUpdated,
 					WebRequestCommitStatusUpdated: wrcsUpdated,
+					MockResponseUpdated:           mockUpdated,
 				},
 			)
 			if err != nil {
 				return fmt.Errorf("simulate WebRequest templates: %w", err)
 			}
 
-			return writeWebRequestResults(cmd.OutOrStdout(), outputFormat, results)
+			colorize, err := resolveHumanColor(colorMode, cmd.OutOrStdout())
+			if err != nil {
+				return err
+			}
+			pal := newHumanPalette(colorize)
+			return writeWebRequestResults(cmd.OutOrStdout(), outputFormat, results, pal)
 		},
 	}
 
@@ -137,10 +162,14 @@ expressions without running the controller or hitting real HTTP endpoints.`,
 	cmd.Flags().StringVar(&nsLabelsPath, "namespace-labels", "",
 		"Path to a YAML file with {labels, annotations} maps exposed to templates as .NamespaceMetadata")
 	cmd.Flags().StringVar(&responsePath, "response", "",
-		"Path to a YAML file with the mocked HTTP response {statusCode, body, headers} injected in 'with-response' step")
+		"Path to a YAML file with the mocked HTTP response {statusCode, body, headers} used when a step injects")
+	cmd.Flags().StringVar(&responseUpdatedPath, "response-updated", "",
+		"Optional: alternate mock response YAML for the 'after-state-change' step only (requires --promotion-strategy-updated and/or --web-request-updated)")
 	cmd.Flags().StringVar(&branch, "branch", "",
 		"Optional: restrict simulation to a single environment branch (environments context only)")
 	cmd.Flags().StringVarP(&outputFormat, "output", "o", outputHuman, "Output format: human|yaml|json")
+	cmd.Flags().StringVar(&colorMode, "color", "auto",
+		"Colorize human output: auto (TTY + NO_COLOR/FORCE_COLOR), always, or never")
 
 	for _, name := range []string{"web-request", "promotion-strategy", "namespace-labels", "response"} {
 		if err := cmd.MarkFlagRequired(name); err != nil {

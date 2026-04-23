@@ -29,7 +29,8 @@ import (
 )
 
 // writePullRequestResult writes a PullRequestRenderResult in the chosen output format.
-func writePullRequestResult(w io.Writer, format string, result PullRequestRenderResult) error {
+// pal is used only for the default human format (YAML/JSON ignore it).
+func writePullRequestResult(w io.Writer, format string, result PullRequestRenderResult, pal humanPalette) error {
 	switch format {
 	case outputJSON:
 		enc := json.NewEncoder(w)
@@ -49,9 +50,12 @@ func writePullRequestResult(w io.Writer, format string, result PullRequestRender
 		return nil
 	default:
 		var b strings.Builder
-		b.WriteString("Title:\n")
+		b.WriteString(pal.prSection.Sprint("Title:"))
+		b.WriteString("\n")
 		b.WriteString(indent(result.Title, "  "))
-		b.WriteString("\n\nDescription:\n")
+		b.WriteString("\n\n")
+		b.WriteString(pal.prSection.Sprint("Description:"))
+		b.WriteString("\n")
 		b.WriteString(indent(result.Description, "  "))
 		b.WriteString("\n")
 		if _, err := io.WriteString(w, b.String()); err != nil {
@@ -62,7 +66,8 @@ func writePullRequestResult(w io.Writer, format string, result PullRequestRender
 }
 
 // writeWebRequestResults writes a slice of WebRequestStepResult in the chosen output format.
-func writeWebRequestResults(w io.Writer, format string, results []controller.WebRequestStepResult) error {
+// pal is used only for the default human format (YAML/JSON ignore it).
+func writeWebRequestResults(w io.Writer, format string, results []controller.WebRequestStepResult, pal humanPalette) error {
 	switch format {
 	case outputJSON:
 		enc := json.NewEncoder(w)
@@ -81,30 +86,32 @@ func writeWebRequestResults(w io.Writer, format string, results []controller.Web
 		}
 		return nil
 	default:
-		return writeWebRequestResultsHuman(w, results)
+		return writeWebRequestResultsHuman(w, results, pal)
 	}
 }
 
 // writeWebRequestResultsHuman prints the step-by-step simulation output in a human-friendly format.
-func writeWebRequestResultsHuman(w io.Writer, results []controller.WebRequestStepResult) error {
+func writeWebRequestResultsHuman(w io.Writer, results []controller.WebRequestStepResult, pal humanPalette) error {
 	var b strings.Builder
 	for _, step := range results {
-		b.WriteString(stepHeader(step))
+		b.WriteString(stepHeader(step, pal))
 		b.WriteString("\n")
 		for _, eval := range step.Evaluations {
-			b.WriteString(formatEvaluation(eval, step.Context))
+			b.WriteString(formatEvaluation(eval, step.Context, pal))
 		}
 		if len(step.CommitStatuses) > 0 {
-			b.WriteString("CommitStatuses:\n")
+			b.WriteString(pal.section.Sprint("CommitStatuses:"))
+			b.WriteString("\n")
 			for _, cs := range step.CommitStatuses {
-				b.WriteString(formatCommitStatus(cs))
+				b.WriteString(formatCommitStatus(cs, pal))
 			}
 		}
 		if len(step.Errors) > 0 {
-			b.WriteString("Step errors:\n")
+			b.WriteString(pal.errHeader.Sprint("Step errors:"))
+			b.WriteString("\n")
 			for _, msg := range step.Errors {
 				b.WriteString("  - ")
-				b.WriteString(msg)
+				b.WriteString(pal.errItem.Sprint(msg))
 				b.WriteString("\n")
 			}
 		}
@@ -117,54 +124,89 @@ func writeWebRequestResultsHuman(w io.Writer, results []controller.WebRequestSte
 }
 
 // stepHeader returns a one-line header announcing the step, padded with `=` to 68 columns when there
-// is room. The label text mirrors the simulator labels (before-response / with-response / after-response).
-func stepHeader(step controller.WebRequestStepResult) string {
+// is room. The label text mirrors the simulator labels (reconcile / next-reconcile /
+// after-state-change). Fire-capable steps ("reconcile" and "after-state-change") are highlighted.
+func stepHeader(step controller.WebRequestStepResult, pal humanPalette) string {
 	title := fmt.Sprintf("=== Step: %s (context=%s) ", step.Label, step.Context)
 	if len(title) < 68 {
 		title += strings.Repeat("=", 68-len(title))
 	}
-	return title
+	if step.Label == "reconcile" || step.Label == controller.SimStepAfterStateChange {
+		return pal.stepHighlight.Sprint(title)
+	}
+	return pal.stepDefault.Sprint(title)
 }
 
 // formatEvaluation formats a single WebRequestStepEvaluation for human output.
-func formatEvaluation(eval controller.WebRequestStepEvaluation, context string) string {
+func formatEvaluation(eval controller.WebRequestStepEvaluation, context string, pal humanPalette) string {
 	var b strings.Builder
 	if eval.Branch != "" {
-		fmt.Fprintf(&b, "Environment: %s\n", eval.Branch)
+		b.WriteString(pal.envLine.Sprintf("Environment: %s", eval.Branch))
+		b.WriteString("\n")
 	} else if context == "promotionstrategy" {
-		b.WriteString("Shared evaluation (context=promotionstrategy)\n")
+		b.WriteString(pal.envLine.Sprint("Shared evaluation (context=promotionstrategy)"))
+		b.WriteString("\n")
 	}
 	if eval.TriggerEval.Evaluated {
+		b.WriteString(pal.trigLabel.Sprint("  Trigger expression (info):"))
+		b.WriteString(" ")
 		if eval.TriggerEval.Error != "" {
-			fmt.Fprintf(&b, "  Trigger expression (info): ERROR: %s\n", eval.TriggerEval.Error)
+			b.WriteString(pal.trigErr.Sprintf("ERROR: %s", eval.TriggerEval.Error))
+			b.WriteString("\n")
+		} else if eval.TriggerEval.ShouldFire {
+			b.WriteString(pal.trigTrue.Sprintf("%t", true))
+			b.WriteString("\n")
 		} else {
-			fmt.Fprintf(&b, "  Trigger expression (info): %t\n", eval.TriggerEval.ShouldFire)
+			b.WriteString(pal.trigFalse.Sprintf("%t", false))
+			b.WriteString("\n")
 		}
 	} else {
-		b.WriteString("  Trigger expression (info): (no trigger mode configured)\n")
+		b.WriteString(pal.trigLabel.Sprint("  Trigger expression (info):"))
+		b.WriteString(" ")
+		b.WriteString(pal.subtle.Sprint("(no trigger mode configured)"))
+		b.WriteString("\n")
 	}
 
 	if eval.ResponseInjected {
-		writeRenderedRequest(&b, eval.RenderedRequest)
-		writeMockResponse(&b, eval.MockResponse)
+		writeRenderedRequest(&b, eval.RenderedRequest, pal)
+		writeMockResponse(&b, eval.MockResponse, pal)
 	} else {
-		b.WriteString("  Response: nil\n")
+		b.WriteString(pal.subtle.Sprint("  Response: nil"))
+		b.WriteString("\n")
 	}
 
-	writeOutputMap(&b, "TriggerOutput", eval.TriggerOutput)
-	writeOutputMap(&b, "ResponseOutput", eval.ResponseOutput)
-	writeOutputMap(&b, "SuccessOutput", eval.SuccessOutput)
-	fmt.Fprintf(&b, "  Phase: %s\n", nonEmpty(eval.Phase, "(empty)"))
+	writeOutputMap(&b, "TriggerOutput", eval.TriggerOutput, pal)
+	writeOutputMap(&b, "ResponseOutput", eval.ResponseOutput, pal)
+	writeOutputMap(&b, "SuccessOutput", eval.SuccessOutput, pal)
+	phaseShown := nonEmpty(eval.Phase, "(empty)")
+	phaseCol := pal.phasePainter(eval.Phase)
+	if phaseShown == "(empty)" {
+		phaseCol = pal.phaseEmpty
+	}
+	b.WriteString("  Phase: ")
+	b.WriteString(phaseCol.Sprint(phaseShown))
+	b.WriteString("\n")
 	if len(eval.PhasePerBranch) > 0 {
-		b.WriteString("  PhasePerBranch:\n")
+		b.WriteString(pal.section.Sprint("  PhasePerBranch:"))
+		b.WriteString("\n")
 		for _, key := range sortedKeys(eval.PhasePerBranch) {
-			fmt.Fprintf(&b, "    %s: %s\n", key, eval.PhasePerBranch[key])
+			ph := eval.PhasePerBranch[key]
+			pbCol := pal.phasePainter(ph)
+			if strings.TrimSpace(ph) == "" {
+				pbCol = pal.phaseEmpty
+			}
+			fmt.Fprintf(&b, "    %s: ", key)
+			b.WriteString(pbCol.Sprint(ph))
+			b.WriteString("\n")
 		}
 	}
 	if len(eval.Errors) > 0 {
-		b.WriteString("  Evaluation errors:\n")
+		b.WriteString(pal.errHeader.Sprint("  Evaluation errors:"))
+		b.WriteString("\n")
 		for _, msg := range eval.Errors {
-			fmt.Fprintf(&b, "    - %s\n", msg)
+			b.WriteString("    - ")
+			b.WriteString(pal.errItem.Sprint(msg))
+			b.WriteString("\n")
 		}
 	}
 	return b.String()
@@ -172,11 +214,12 @@ func formatEvaluation(eval controller.WebRequestStepEvaluation, context string) 
 
 // writeRenderedRequest prints the rendered HTTP request (URL / body / headers) for the with-response
 // step. When rendered is nil the section is skipped (e.g. if template rendering failed).
-func writeRenderedRequest(b *strings.Builder, rendered *controller.RenderedHTTPRequest) {
+func writeRenderedRequest(b *strings.Builder, rendered *controller.RenderedHTTPRequest, pal humanPalette) {
 	if rendered == nil {
 		return
 	}
-	b.WriteString("  Rendered HTTP request:\n")
+	b.WriteString(pal.section.Sprint("  Rendered HTTP request:"))
+	b.WriteString("\n")
 	fmt.Fprintf(b, "    Method:  %s\n", nonEmpty(rendered.Method, "GET"))
 	fmt.Fprintf(b, "    URL:     %s\n", rendered.URL)
 	if len(rendered.Headers) > 0 {
@@ -194,11 +237,12 @@ func writeRenderedRequest(b *strings.Builder, rendered *controller.RenderedHTTPR
 
 // writeMockResponse prints the mock response applied in the with-response step. When mock is nil
 // the section is skipped.
-func writeMockResponse(b *strings.Builder, mock *controller.SimulationMockResponse) {
+func writeMockResponse(b *strings.Builder, mock *controller.SimulationMockResponse, pal humanPalette) {
 	if mock == nil {
 		return
 	}
-	b.WriteString("  Mock response (applied):\n")
+	b.WriteString(pal.section.Sprint("  Mock response (applied):"))
+	b.WriteString("\n")
 	fmt.Fprintf(b, "    StatusCode: %d\n", mock.StatusCode)
 	if len(mock.Headers) > 0 {
 		b.WriteString("    Headers:\n")
@@ -214,13 +258,23 @@ func writeMockResponse(b *strings.Builder, mock *controller.SimulationMockRespon
 }
 
 // formatCommitStatus formats a single RenderedCommitStatus for human output.
-func formatCommitStatus(cs controller.RenderedCommitStatus) string {
+func formatCommitStatus(cs controller.RenderedCommitStatus, pal humanPalette) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "  [%s]\n", cs.Branch)
-	fmt.Fprintf(&b, "    Sha:         %s\n", nonEmpty(cs.Sha, "(n/a)"))
-	fmt.Fprintf(&b, "    Phase:       %s\n", nonEmpty(cs.Phase, "(empty)"))
-	fmt.Fprintf(&b, "    Description: %s\n", cs.Description)
-	fmt.Fprintf(&b, "    URL:         %s\n", cs.URL)
+	b.WriteString(pal.section.Sprintf("  [%s]", cs.Branch))
+	b.WriteString("\n")
+	fmt.Fprintf(&b, "    %s %s\n", pal.subtle.Sprint("Sha:"), nonEmpty(cs.Sha, "(n/a)"))
+	b.WriteString("    ")
+	b.WriteString(pal.subtle.Sprint("Phase:"))
+	b.WriteString("       ")
+	phaseShown := nonEmpty(cs.Phase, "(empty)")
+	phCol := pal.phasePainter(cs.Phase)
+	if phaseShown == "(empty)" {
+		phCol = pal.phaseEmpty
+	}
+	b.WriteString(phCol.Sprint(phaseShown))
+	b.WriteString("\n")
+	fmt.Fprintf(&b, "    %s %s\n", pal.subtle.Sprint("Description:"), cs.Description)
+	fmt.Fprintf(&b, "    %s %s\n", pal.subtle.Sprint("URL:"), cs.URL)
 	return b.String()
 }
 
@@ -238,9 +292,11 @@ func formatCommitStatus(cs controller.RenderedCommitStatus) string {
 //
 // All lines are indented by 2 spaces from the column where step sections start, so the block
 // lines up with the per-evaluation fields above and below it.
-func writeOutputMap(b *strings.Builder, label string, data map[string]any) {
+func writeOutputMap(b *strings.Builder, label string, data map[string]any, pal humanPalette) {
 	if len(data) == 0 {
-		fmt.Fprintf(b, "  %s: {}\n", label)
+		b.WriteString("  ")
+		b.WriteString(pal.subtle.Sprint(label + ":"))
+		b.WriteString(" {}\n")
 		return
 	}
 	// Prefix "  " is prepended to every line AFTER the first by MarshalIndent. We write the
@@ -248,10 +304,14 @@ func writeOutputMap(b *strings.Builder, label string, data map[string]any) {
 	// with "{", which we'd duplicate — so we strip MarshalIndent's first byte.
 	raw, err := json.MarshalIndent(data, "  ", "  ")
 	if err != nil {
-		fmt.Fprintf(b, "  %s: (unmarshalable: %v)\n", label, err)
+		b.WriteString("  ")
+		b.WriteString(pal.subtle.Sprint(label + ":"))
+		fmt.Fprintf(b, " (unmarshalable: %v)\n", err)
 		return
 	}
-	fmt.Fprintf(b, "  %s: %s\n", label, string(raw))
+	b.WriteString("  ")
+	b.WriteString(pal.subtle.Sprint(label + ":"))
+	fmt.Fprintf(b, " %s\n", string(raw))
 }
 
 // indent prefixes each line of s with prefix. An empty s yields an empty string.

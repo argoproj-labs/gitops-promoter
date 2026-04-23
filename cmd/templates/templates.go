@@ -141,13 +141,18 @@ type MockResponseFile struct {
 	StatusCode int                 `json:"statusCode"`
 }
 
-// loadMockResponse decodes a YAML file containing a MockResponseFile.
-func loadMockResponse(path string) (MockResponseFile, error) {
+// loadMockResponseFlag decodes a YAML file containing a MockResponseFile, using flagName in errors.
+func loadMockResponseFlag(flagName, path string) (MockResponseFile, error) {
 	var mock MockResponseFile
-	if err := decodeYAMLFile("--response", path, &mock); err != nil {
+	if err := decodeYAMLFile(flagName, path, &mock); err != nil {
 		return MockResponseFile{}, err
 	}
 	return mock, nil
+}
+
+// loadMockResponse decodes a YAML file containing a MockResponseFile.
+func loadMockResponse(path string) (MockResponseFile, error) {
+	return loadMockResponseFlag("--response", path)
 }
 
 // PullRequestTemplateFile accepts either a bare PullRequestTemplate ({title, description}) or a full

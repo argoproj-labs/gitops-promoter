@@ -1,13 +1,13 @@
-# PromotionStrategy snapshot for the optional step 4 (after-state-change).
+# PromotionStrategy snapshot for the optional `after-state-change` step.
 # Identical to ps.yaml EXCEPT: environments/production.proposed.note.drySha has advanced to a new
 # value. This simulates a new hydrator dry commit arriving on production between reconciles.
 #
 # Expected simulator behavior:
-#   - success.when.variables recomputes fingerprint from the new DrySha.
-#   - The new fingerprint no longer matches TriggerOutput.lastFingerprint (still equal to step 2's
-#     fingerprint).
-#   - success.when carry-forward branch (Response == nil) returns false → Phase flips from "success"
-#     back to "pending".
+#   - trigger.when.variables recomputes fingerprint from the new DrySha.
+#   - The new fingerprint no longer matches TriggerOutput.lastFingerprint (still equal to the
+#     reconcile step's persisted fingerprint), so the trigger RE-FIRES → fresh HTTP call →
+#     response.output / success.when run again against the mock. Controller-faithful: a state
+#     drift drives a new reconcile, not a silent carry-forward invalidation.
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: PromotionStrategy
 metadata:

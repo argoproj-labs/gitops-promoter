@@ -10,8 +10,8 @@ for simulating warm reconciles and mid-sequence state changes.
 
 ## Features demonstrated
 
-- **Polling trigger with `shouldTriggerByTime`** — fires again once `(now() - lastRequestTime) >= 1m`.
-  Demonstrated at step 1 via a seeded `status.…triggerOutput.lastRequestTime: "2020-01-01T00:00:00Z"`.
+- **Trigger with `shouldTriggerByTime`** — fires again once `(now() - lastRequestTime) >= 1m`,
+  demonstrated via a seeded `status.…triggerOutput.lastRequestTime: "2020-01-01T00:00:00Z"`.
 - **`trigger.when.variables` gate chain** — shared computation of `isFirstRun`, `isNewFingerprint`,
   `shouldTriggerByTime`, `hasOpenPR`, `allNoteDryShasMatch`, `preGateNoOpenPR`, exposed as
   `Variables.*` to both `trigger.when.expression` (fire decision) and
@@ -22,17 +22,18 @@ for simulating warm reconciles and mid-sequence state changes.
 - **Carry-forward with fingerprint integrity** — `success.when` Response=nil branch checks
   `Phase == "success" && Variables.fingerprint == TriggerOutput.lastFingerprint`, so a fingerprint
   drift invalidates a previously-successful gate.
-- **Step-4 re-seed** via `--web-request-updated` with a populated `status` block — exercises the
-  "controller wrote back status and the next reconcile reads it" path without needing a spec change.
+- **`after-state-change` re-seed** via `--web-request-updated` with a populated `status` block —
+  exercises the "controller wrote back status and the next reconcile reads it" path without
+  needing a spec change.
 - **NamespaceMetadata injection** — `asset-id` label drives the `urlTemplate` query parameter via
   `{{ index .NamespaceMetadata.Labels "asset-id" }}`.
 
 ## What each step does
 
-### Step 1 — before-response (seeded warm reconcile)
+### Step 1 — `reconcile` (seeded warm reconcile, trigger fires)
 
-The base `wrcs.yaml` has a `status` block that seeds step 1's prior state with
-`lastRequestTime: 2020-01-01` and empty `lastFingerprint`. Step 1 computes:
+The base `wrcs.yaml` has a `status` block that seeds prior state with
+`lastRequestTime: 2020-01-01` and empty `lastFingerprint`. The `reconcile` step computes:
 
 - `isFirstRun = false` (lastRequestTime is set)
 - `isNewFingerprint = true` (empty seed vs. current computed fingerprint)
@@ -41,34 +42,31 @@ The base `wrcs.yaml` has a `status` block that seeds step 1's prior state with
 - `allNoteDryShasMatch = true` (all 3 branches share the same dry SHA in `ps.yaml`)
 - `preGateNoOpenPR = true` (development and staging have no open PRs)
 
-→ `trigger.when.expression` returns `true` (all gates pass) — info only; step 1 doesn't actually fire.
-`success.when` Response=nil branch fails because Phase is empty → **Phase = pending**.
+→ `trigger.when.expression` returns `true` (all gates pass) → mock HTTP response is injected.
+`response.output` filters `change_records` by time window → both records counted as approved.
+`success.when` HTTP path returns true (`StatusCode=200, len(records)>0, any(records, start <= now <= end)`)
+→ **Phase = success**. Rendered description template:
+`success: 2/2 approved in window (last check: …)`.
 
-### Step 2 — with-response (mock HTTP injected)
+### Step 2 — `next-reconcile` (carry-forward)
 
-Mock response in `response.yaml` has 2 change records with wide time windows (`start: 2020-01-01`,
-`end: 2099-12-31`). `response.output` filters → both records counted as approved
-(`approvedCount: 2, totalRecordCount: 2`). `success.when` HTTP path returns true
-(`StatusCode=200, len(records)>0, any(records, start <= now <= end)`). → **Phase = success**.
+`Response = nil` because the trigger is false. Phase = success carries forward from `reconcile`, and
+`Variables.fingerprint` still matches `TriggerOutput.lastFingerprint`. `shouldTriggerByTime` is
+now false (the `reconcile` step's `when.output` persisted a fresh `lastRequestTime`). The trigger
+info shows false. → **Phase = success**.
 
-Rendered description template: `success: 2/2 approved in window (last check: …)`.
+### Step 3 — `after-state-change` (optional, via `--web-request-updated`)
 
-### Step 3 — after-response (carry-forward)
+`wrcs-step4.yaml` re-seeds prior state with `lastFingerprint: "ancient-fingerprint-…"` and
+`lastRequestTime: 2020-01-01`. `Variables.fingerprint` recomputed from `ps.yaml` (unchanged) →
+mismatch → `isNewFingerprint = true` AND `shouldTriggerByTime = true` → trigger fires again → mock
+response is injected again → `success.when` HTTP path → **Phase = success** (records still in
+window).
 
-Response is nil, but Phase=success carries forward from step 2, and `Variables.fingerprint` still
-matches `TriggerOutput.lastFingerprint`. → **Phase = success**.
+Use this to demonstrate "cooldown elapsed AND fingerprint drifted — controller re-fires fresh HTTP
+to re-check approval state" at once.
 
-### Step 4 — after-state-change (optional, via `--web-request-updated`)
-
-`wrcs-step4.yaml` re-seeds step 4 with `lastFingerprint: "ancient-fingerprint-…"`. Step 4
-recomputes `Variables.fingerprint` from `ps.yaml` (unchanged) → mismatch → carry-forward success.when
-returns false → **Phase = pending**.
-
-The same step-4 fixture also seeds `lastRequestTime: 2020-01-01` so `shouldTriggerByTime` remains
-visible as true in the trigger info output — demonstrating "cooldown elapsed AND fingerprint
-drifted" at once.
-
-## Run (3 steps, default)
+## Run (2 steps, default)
 
 From the repo root:
 
@@ -80,9 +78,9 @@ go run ./cmd templates webrequest \
   --response           cmd/templates/examples/webrequest-change-management-approval/response.yaml
 ```
 
-Expected: steps 1 → pending, 2 → success, 3 → success.
+Expected: reconcile → success, next-reconcile → success.
 
-## Run (4 steps, with state-change)
+## Run (3 steps, with state-change)
 
 ```bash
 go run ./cmd templates webrequest \
@@ -93,16 +91,17 @@ go run ./cmd templates webrequest \
   --response            cmd/templates/examples/webrequest-change-management-approval/response.yaml
 ```
 
-Expected: steps 1 → pending, 2 → success, 3 → success, 4 → pending.
+Expected: reconcile → success, next-reconcile → success, after-state-change → success (fresh HTTP
+call driven by the stale fingerprint; approvals are still in window).
 
 ## Exercising different paths
 
 | What to tweak | Effect |
 |---|---|
-| Delete the `status:` block in `wrcs.yaml` | Step 1 becomes cold start (`isFirstRun=true`), trigger still fires but via the first-run path rather than cooldown-elapsed |
-| Change `lastRequestTime` in `wrcs.yaml.status` to `"<real-wall-clock less than 1m ago>"` | Step 1 sees `shouldTriggerByTime=false` → trigger won't naturally fire on cooldown; still fires via `isFirstRun=false && isNewFingerprint=true` |
-| Narrow the `start_time` / `end_time` in `response.yaml` to times in the past | No records match the in-window filter → `approvedCount=0` → step 2 fails, step 3 carry-forward stays pending |
-| Remove `pullRequest` from `environments/production` in `ps.yaml` | `hasOpenPR=false` → trigger would not fire naturally (still exercised via the simulator's forced step-2 injection) |
-| Set `pullRequest.state: open` on `environments/staging` in `ps.yaml` | `preGateNoOpenPR=false` → trigger would not fire naturally (staging is in `lowerSpecs` for the production-only gated key) |
-| In `wrcs-step4.yaml`, change `lastFingerprint` to the current value | Step 4 carry-forward passes → stays success |
-| In `wrcs-step4.yaml`, set `lastRequestTime` close to real now | Step 4 info shows `shouldTriggerByTime=false` — simulating "we're still within cooldown when the next reconcile happens" |
+| Delete the `status:` block in `wrcs.yaml` | `reconcile` becomes cold start (`isFirstRun=true`), trigger fires via the first-run path rather than cooldown-elapsed |
+| Change `lastRequestTime` in `wrcs.yaml.status` to `"<real-wall-clock less than 1m ago>"` | `shouldTriggerByTime=false` → trigger won't fire on cooldown; still fires via `isFirstRun=false && isNewFingerprint=true`. If you also seed a matching `lastFingerprint`, the trigger won't fire at all and no mock response is injected |
+| Narrow the `start_time` / `end_time` in `response.yaml` to times in the past | No records match the in-window filter → `approvedCount=0` → `success.when` HTTP path fails → Phase = pending |
+| Remove `pullRequest` from `environments/production` in `ps.yaml` | `hasOpenPR=false` → trigger does not fire → `reconcile` step shows `Response: nil` (no HTTP call) |
+| Set `pullRequest.state: open` on `environments/staging` in `ps.yaml` | `preGateNoOpenPR=false` → trigger does not fire (staging is in `lowerSpecs` for the production-only gated key) |
+| In `wrcs-step4.yaml`, change `lastFingerprint` to the current value AND `lastRequestTime` close to real now | `after-state-change` trigger returns false → no re-fire → carry-forward success.when passes → stays success |
+| In `wrcs-step4.yaml`, set `lastRequestTime` close to real now (keep stale `lastFingerprint`) | `shouldTriggerByTime=false` but `isNewFingerprint=true` → trigger still fires via the fingerprint path; simulating "cooldown not elapsed but state drifted, so we re-check anyway" |

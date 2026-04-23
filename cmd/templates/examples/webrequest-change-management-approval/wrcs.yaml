@@ -156,10 +156,10 @@ spec:
           : (Phase == "success" && Variables.fingerprint == (TriggerOutput["lastFingerprint"] ?? ""))
 
 # --- Seeded status ---
-# The simulator re-seeds step 1's carry-forward state from this block (mirroring how the real
-# controller starts each reconcile). Ancient lastRequestTime means step 1's
-# `shouldTriggerByTime` evaluates true against real wall-clock now(); empty lastFingerprint makes
-# `isNewFingerprint` true; missing lastSuccessfulShas means the resource has never succeeded yet.
+# The simulator re-seeds the `reconcile` step's carry-forward state from this block (mirroring how
+# the real controller starts each reconcile). Ancient lastRequestTime means `shouldTriggerByTime`
+# evaluates true against real wall-clock now(); empty lastFingerprint makes `isNewFingerprint`
+# true; missing lastSuccessfulShas means the resource has never succeeded yet.
 # Delete this whole `status:` block to exercise the cold-start (first-ever reconcile) path.
 status:
   promotionStrategyContext:

@@ -33,8 +33,9 @@ type SimulationNamespaceMetadata struct {
 	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
-// SimulationMockResponse is a user-supplied mock HTTP response fed into the "with-response" step of the
-// simulator. Body is any (plain string or JSON-decoded map/slice/scalar). Headers follow http.Header shape.
+// SimulationMockResponse is a user-supplied mock HTTP response the simulator injects when a step
+// performs a synthetic HTTP call. Body is any (plain string or JSON-decoded map/slice/scalar).
+// Headers follow http.Header shape.
 type SimulationMockResponse struct {
 	Body       any                 `json:"body,omitempty"`
 	Headers    map[string][]string `json:"headers,omitempty"`
@@ -62,7 +63,8 @@ type RenderedCommitStatus struct {
 }
 
 // TriggerEvalResult captures what trigger.when.expression returned (or the error from evaluating it).
-// The simulator records this as information only — it does not gate whether Response is injected in step 2.
+// In trigger mode it gates mock injection together with Evaluated and Error; in polling mode the
+// trigger block is unused and injection does not consult this field.
 type TriggerEvalResult struct {
 	Error      string `json:"error,omitempty"`
 	Evaluated  bool   `json:"evaluated"`
@@ -97,36 +99,51 @@ type WebRequestStepResult struct {
 	Errors         []string                   `json:"errors,omitempty"`
 }
 
-// SimulateWebRequestOptions holds the optional knobs that enable the 4th "after-state-change" step
-// of SimulateWebRequestTemplates. Either or both may be non-nil: if set, step 4 is appended and the
-// updated values are used in place of ps / wrcs for that step only (step 3's derived outputs still
-// carry forward). If both are nil the simulator returns the default 3 steps.
+// SimulateWebRequestOptions holds the optional knobs that enable the third "after-state-change" step
+// of SimulateWebRequestTemplates. Either or both may be non-nil: if set, that step is appended and the
+// updated values are used in place of ps / wrcs for that step only (prior steps' derived outputs still
+// carry forward). If both are nil the simulator returns the default two steps.
 type SimulateWebRequestOptions struct {
-	// PromotionStrategyUpdated swaps the PromotionStrategy used in step 4. Typical use: simulate a
+	// PromotionStrategyUpdated swaps the PromotionStrategy used in after-state-change. Typical use: simulate a
 	// new Proposed.Note.DrySha arriving between reconciles to exercise fingerprint-based
 	// invalidation in success.when carry-forward.
 	PromotionStrategyUpdated *promoterv1alpha1.PromotionStrategy
-	// WebRequestCommitStatusUpdated swaps the WebRequestCommitStatus used in step 4. Typical use:
+	// WebRequestCommitStatusUpdated swaps the WebRequestCommitStatus used in after-state-change. Typical use:
 	// model the controller having written back updated status between reconciles (new
 	// Status.Environments[*].TriggerOutput / ResponseOutput / LastRequestTime / conditions) so
 	// templates and expressions that reference .WebRequestCommitStatus.Status.* see the new
 	// values. Less commonly, it also models an admin editing the spec between reconciles.
 	WebRequestCommitStatusUpdated *promoterv1alpha1.WebRequestCommitStatus
+	// MockResponseUpdated, when non-nil, is used as the mock HTTP response for the
+	// "after-state-change" step only when that step injects. When nil, the primary mock passed to
+	// SimulateWebRequestTemplates is used for every step (including after-state-change).
+	MockResponseUpdated *SimulationMockResponse
 }
 
-// SimulateWebRequestTemplates runs the 3-step templates simulation (before-response → with-response
-// → after-response) for a WebRequestCommitStatus against the given PromotionStrategy and namespace
-// metadata, using mock as the injected HTTP response in the "with-response" step. The trigger expression
-// is always evaluated and its result is surfaced informationally, but does not gate whether the mock
-// Response is injected. If branchFilter is non-empty the environments context iterates only the matching
-// environment; promotionstrategy context always runs the shared flow for all applicable environments.
-// The simulator does not touch Kubernetes or the network.
+// SimulateWebRequestTemplates runs a reconcile-shaped templates simulation for a
+// WebRequestCommitStatus against the given PromotionStrategy and namespace metadata, using mock as
+// the HTTP response injected whenever a step's trigger says fire (or whenever polling mode is
+// configured, since polling has no gate expression). The simulator emits two steps by default:
+//
+//   - "reconcile":      first reconcile. Evaluates trigger.when; injects the mock response iff the
+//     trigger says fire (or polling mode is configured). Runs response.output /
+//     success.when / trigger.when.output as configured and renders CommitStatus
+//     templates with the resulting state.
+//   - "next-reconcile": second reconcile with state carried forward from "reconcile". Like the real
+//     controller, the mock response is injected iff the trigger fires (or polling mode is configured).
+//     When the trigger is false (typical fingerprint carry-forward), no injection runs and
+//     success.when sees Response=nil — the same pattern as reconcile.
+//
+// If branchFilter is non-empty the environments context iterates only the matching environment;
+// promotionstrategy context always runs the shared flow for all applicable environments. The
+// simulator does not touch Kubernetes or the network.
 //
 // When opts.PromotionStrategyUpdated or opts.WebRequestCommitStatusUpdated is non-nil, an optional
-// fourth "after-state-change" step is appended. Step 4 runs exactly like after-response (Response=nil,
-// all prior outputs carried from step 3) but swaps the corresponding input for the updated value.
-// This is how users exercise scenarios where upstream state changes between reconciles (new dry SHA,
-// edited template, etc.) and verify their carry-forward logic behaves as expected.
+// third "after-state-change" step is appended. It represents a later reconcile after upstream state
+// changed between reconciles (new dry SHA, edited template, etc.); like "reconcile" it injects iff
+// the (re-evaluated) trigger fires or polling is configured, so users can verify fingerprint-based
+// invalidation and re-fire logic behaves as expected. When opts.MockResponseUpdated is set, that
+// step uses it as the injected mock instead of the primary mock (e.g. different status/body).
 func SimulateWebRequestTemplates(
 	ctx context.Context,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
@@ -172,7 +189,7 @@ func SimulateWebRequestTemplates(
 		return nil, fmt.Errorf("resolve current SHAs: %w", err)
 	}
 
-	// For step 4 we re-resolve SHAs against psUpdated (the updated status may point at new SHAs).
+	// For after-state-change we re-resolve SHAs against psUpdated (the updated status may point at new SHAs).
 	// applicableEnvs is determined by wrcs.Spec.Key vs. ps.Spec — we keep the same env list rather
 	// than re-resolving against psUpdated, because changing which envs are applicable mid-simulation
 	// would require rerouting carry-forward state and is out of scope for the "state mutated"
@@ -181,7 +198,7 @@ func SimulateWebRequestTemplates(
 	if opts.PromotionStrategyUpdated != nil {
 		updatedShas, err = resolveCurrentShas(applicableEnvs, buildPSEnvStatusMap(opts.PromotionStrategyUpdated), wrcs.Spec.ReportOn)
 		if err != nil {
-			return nil, fmt.Errorf("resolve updated SHAs for step 4: %w", err)
+			return nil, fmt.Errorf("resolve updated SHAs for after-state-change: %w", err)
 		}
 	}
 
@@ -195,6 +212,7 @@ func SimulateWebRequestTemplates(
 		currentShas:    currentShas,
 		updatedShas:    updatedShas,
 		mock:           mock,
+		mockUpdated:    opts.MockResponseUpdated,
 	}
 
 	if wrcs.Spec.Mode.Context == promoterv1alpha1.ContextPromotionStrategy {
@@ -218,13 +236,24 @@ type contextSimInputs struct {
 	applicableEnvs []promoterv1alpha1.Environment
 	nsMeta         namespaceMetadata
 	mock           SimulationMockResponse
+	mockUpdated    *SimulationMockResponse
 }
 
-// simStepLabels are the step labels in order. The 4th label is used only when psUpdated is provided.
-var simStepLabels = []string{"before-response", "with-response", "after-response", "after-state-change"}
+// mockForStep returns the mock HTTP response to use for this simulator step index.
+// Step 2 ("after-state-change") uses mockUpdated when set; otherwise all steps use mock.
+func (in contextSimInputs) mockForStep(stepIdx int) SimulationMockResponse {
+	if stepIdx == 2 && in.mockUpdated != nil {
+		return *in.mockUpdated
+	}
+	return in.mock
+}
 
-// SimStepAfterStateChange is the label for the optional 4th step — exposed so CLI consumers and
-// tests can reference it without repeating the literal. The first three step labels are implementation
+// simStepLabels are the step labels in order. The 3rd label is used only when psUpdated or
+// wrcsUpdated is provided.
+var simStepLabels = []string{"reconcile", "next-reconcile", "after-state-change"}
+
+// SimStepAfterStateChange is the label for the optional final step — exposed so CLI consumers and
+// tests can reference it without repeating the literal. The first two step labels are implementation
 // details of the simulator, so they are not individually exported.
 const SimStepAfterStateChange = "after-state-change"
 
@@ -326,15 +355,15 @@ func seedSimStateFromStatus(ctx context.Context, wrcs *promoterv1alpha1.WebReque
 
 // simulateEnvironmentsContext runs the simulation for mode.context = "environments".
 // Each applicable environment has its own carry-forward state (TriggerOutput / ResponseOutput /
-// SuccessOutput / Phase) propagated between steps. When in.psUpdated is non-nil a 4th "after-state-
-// change" step is appended using in.psUpdated as the PromotionStrategy (with in.updatedShas as the
-// reported SHAs) while preserving step 3's derived outputs.
+// SuccessOutput / Phase) propagated between steps. When in.psUpdated or in.wrcsUpdated is non-nil
+// an "after-state-change" step is appended using the updated values (with in.updatedShas as the
+// reported SHAs when the PS changed) while preserving the prior step's derived outputs.
 func simulateEnvironmentsContext(
 	ctx context.Context,
 	r *WebRequestCommitStatusReconciler,
 	in contextSimInputs,
 ) ([]WebRequestStepResult, error) {
-	// Seed step-1 prior state from wrcs.Status when populated (mirrors how the real controller
+	// Seed "reconcile" prior state from wrcs.Status when populated (mirrors how the real controller
 	// starts a reconcile on a resource with existing status). When status is absent or empty,
 	// statePerEnv entries fall back to zero-valued simEnvState — the cold-start behavior.
 	seedFromBase := seedSimStateFromStatus(ctx, in.wrcs)
@@ -347,23 +376,23 @@ func simulateEnvironmentsContext(
 		}
 	}
 
-	// Precompute a re-seed for step 4 when wrcsUpdated carries populated status. If wrcsUpdated is
-	// nil or has no status, step 4 simply inherits step 3's carry-forward via statePerEnv.
-	reseedForStep4 := seedSimStateFromStatus(ctx, in.wrcsUpdated)
+	// Precompute a re-seed for "after-state-change" when wrcsUpdated carries populated status. If
+	// wrcsUpdated is nil or has no status, the step simply inherits the prior step's carry-forward
+	// via statePerEnv.
+	reseedForAfterStateChange := seedSimStateFromStatus(ctx, in.wrcsUpdated)
 
-	totalSteps := 3
+	totalSteps := 2
 	if in.psUpdated != nil || in.wrcsUpdated != nil {
-		totalSteps = 4
+		totalSteps = 3
 	}
 
 	results := make([]WebRequestStepResult, 0, totalSteps)
 	for stepIdx := 0; stepIdx < totalSteps; stepIdx++ {
 		label := simStepLabels[stepIdx]
-		injectResponse := stepIdx == 1
 		stepPS := in.ps
 		stepShas := in.currentShas
 		stepWRCS := in.wrcs
-		if stepIdx == 3 {
+		if stepIdx == 2 {
 			if in.psUpdated != nil {
 				stepPS = in.psUpdated
 				stepShas = in.updatedShas
@@ -372,8 +401,8 @@ func simulateEnvironmentsContext(
 				stepWRCS = in.wrcsUpdated
 			}
 			// Re-seed per-branch carry-forward when the updated WRCS carries status for the branch.
-			// Branches not present in reseedForStep4 keep their step-3 carry-forward state.
-			for branch, seeded := range reseedForStep4 {
+			// Branches not present keep their prior-step carry-forward state.
+			for branch, seeded := range reseedForAfterStateChange {
 				statePerEnv[branch] = seeded
 			}
 		}
@@ -399,12 +428,11 @@ func simulateEnvironmentsContext(
 			}
 
 			eval, next, cs := runOneStepForBranch(ctx, r, stepInputs{
-				wrcs:           stepWRCS,
-				td:             td,
-				mock:           in.mock,
-				branch:         branch,
-				sha:            stepShas[branch],
-				injectResponse: injectResponse,
+				wrcs:   stepWRCS,
+				td:     td,
+				mock:   in.mockForStep(stepIdx),
+				branch: branch,
+				sha:    stepShas[branch],
 			})
 			// JSON-roundtrip at the step boundary to mirror how the real controller persists
 			// status: time.Time written by now() becomes a string, etc. See persistSimEnvState.
@@ -422,37 +450,36 @@ func simulateEnvironmentsContext(
 // simulatePromotionStrategyContext runs the simulation for mode.context = "promotionstrategy".
 // A single shared evaluation (trigger / HTTP request / success) is carried forward between steps,
 // and CommitStatuses are rendered per applicable environment using PhasePerBranch when present.
-// When in.psUpdated or in.wrcsUpdated is non-nil a 4th "after-state-change" step is appended with
+// When in.psUpdated or in.wrcsUpdated is non-nil an "after-state-change" step is appended with
 // those values swapped in (and in.updatedShas as the reported SHAs when the PS changed) while
-// preserving step 3's derived outputs.
+// preserving the prior step's derived outputs.
 func simulatePromotionStrategyContext(
 	ctx context.Context,
 	r *WebRequestCommitStatusReconciler,
 	in contextSimInputs,
 ) ([]WebRequestStepResult, error) {
-	// Seed step-1 prior state from wrcs.Status.PromotionStrategyContext when populated. Empty or
-	// missing status falls back to zero-valued simEnvState (cold-start, pre-existing behavior).
+	// Seed "reconcile" prior state from wrcs.Status.PromotionStrategyContext when populated. Empty
+	// or missing status falls back to zero-valued simEnvState (cold-start, pre-existing behavior).
 	var prior simEnvState
 	if seeded := seedSimStateFromStatus(ctx, in.wrcs); seeded != nil {
 		if s, ok := seeded[""]; ok {
 			prior = s
 		}
 	}
-	reseedForStep4 := seedSimStateFromStatus(ctx, in.wrcsUpdated)
+	reseedForAfterStateChange := seedSimStateFromStatus(ctx, in.wrcsUpdated)
 
-	totalSteps := 3
+	totalSteps := 2
 	if in.psUpdated != nil || in.wrcsUpdated != nil {
-		totalSteps = 4
+		totalSteps = 3
 	}
 
 	results := make([]WebRequestStepResult, 0, totalSteps)
 	for stepIdx := 0; stepIdx < totalSteps; stepIdx++ {
 		label := simStepLabels[stepIdx]
-		injectResponse := stepIdx == 1
 		stepPS := in.ps
 		stepShas := in.currentShas
 		stepWRCS := in.wrcs
-		if stepIdx == 3 {
+		if stepIdx == 2 {
 			if in.psUpdated != nil {
 				stepPS = in.psUpdated
 				stepShas = in.updatedShas
@@ -461,8 +488,8 @@ func simulatePromotionStrategyContext(
 				stepWRCS = in.wrcsUpdated
 			}
 			// If the updated WRCS carries a shared promotionstrategy-context status, re-seed the
-			// single shared prior from it. Otherwise step 4 inherits step 3's carry-forward.
-			if seeded, ok := reseedForStep4[""]; ok {
+			// single shared prior from it. Otherwise the step inherits the prior step's carry-forward.
+			if seeded, ok := reseedForAfterStateChange[""]; ok {
 				prior = seeded
 			}
 		}
@@ -483,11 +510,10 @@ func simulatePromotionStrategyContext(
 		}
 
 		eval, next, _ := runOneStepForBranch(ctx, r, stepInputs{
-			wrcs:           stepWRCS,
-			td:             td,
-			mock:           in.mock,
-			injectResponse: injectResponse,
-			psContext:      true,
+			wrcs:      stepWRCS,
+			td:        td,
+			mock:      in.mockForStep(stepIdx),
+			psContext: true,
 		})
 		// JSON-roundtrip at the step boundary to mirror how the real controller persists status:
 		// time.Time written by now() becomes a string, etc. See persistSimEnvState.
@@ -532,20 +558,20 @@ func simulatePromotionStrategyContext(
 // stepInputs bundles the arguments runOneStepForBranch needs. Using a struct keeps the parameter list
 // manageable and lets the simulator steps stay readable.
 type stepInputs struct {
-	wrcs           *promoterv1alpha1.WebRequestCommitStatus
-	td             templateData
-	mock           SimulationMockResponse
-	branch         string
-	sha            string
-	injectResponse bool
-	psContext      bool
+	wrcs      *promoterv1alpha1.WebRequestCommitStatus
+	td        templateData
+	mock      SimulationMockResponse
+	branch    string
+	sha       string
+	psContext bool
 }
 
 // runOneStepForBranch executes a single simulation step for a single (branch, sha) pair — or, in
-// promotionstrategy context, the shared evaluation with empty branch/sha. It always evaluates
-// trigger.when (reporting its result informationally), optionally injects the mock HTTP response,
-// runs trigger output / response output / success.when / success.when.output as configured, and
-// renders the CommitStatus description and URL. It never touches the network or the Kubernetes API.
+// promotionstrategy context, the shared evaluation with empty branch/sha. It evaluates trigger.when
+// (reporting its result), injects the mock HTTP response iff either the trigger says fire or polling
+// mode is configured, runs trigger output / response output / success.when / success.when.output as
+// configured, and renders the CommitStatus description and URL. It never touches the network or the
+// Kubernetes API.
 //
 // Returns (eval, nextState, renderedCommitStatus). In promotionstrategy context the caller renders
 // CommitStatuses itself (one per applicable environment using PhasePerBranch).
@@ -559,7 +585,6 @@ func runOneStepForBranch(
 	branch := in.branch
 	sha := in.sha
 	mock := in.mock
-	injectResponse := in.injectResponse
 	psContext := in.psContext
 	eval := WebRequestStepEvaluation{Branch: branch}
 	next := simEnvState{
@@ -594,9 +619,18 @@ func runOneStepForBranch(
 	}
 	eval.TriggerOutput = next.TriggerOutput
 
-	// 2. When injecting response, render HTTP templates and process response output.
+	// 2. Decide whether to inject the mock response and, if so, render HTTP templates and process
+	// response output. Matches the controller on every simulated reconcile: trigger mode injects iff
+	// trigger.when.expression fires without error; polling mode always injects (no gate expression).
+	shouldInject := false
+	switch {
+	case wrcs.Spec.Mode.Trigger != nil:
+		shouldInject = eval.TriggerEval.Evaluated && eval.TriggerEval.Error == "" && eval.TriggerEval.ShouldFire
+	case wrcs.Spec.Mode.Polling != nil:
+		shouldInject = true
+	}
 	var resp *httpResponse
-	if injectResponse {
+	if shouldInject {
 		resp = injectMockResponse(ctx, r, wrcs, &td, &next, &eval, mock)
 	}
 	eval.ResponseOutput = td.ResponseOutput
