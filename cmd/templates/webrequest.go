@@ -26,9 +26,8 @@ import (
 )
 
 // newWebRequestCommand constructs the `promoter templates webrequest` subcommand. It runs the
-// WebRequestCommitStatus templates simulation (before-response → with-response → after-response
-// → optional after-state-change) against user-supplied YAML fixtures, without touching Kubernetes
-// or the network.
+// WebRequestCommitStatus templates simulation (reconcile, next-reconcile, and optionally
+// after-state-change) against user-supplied YAML fixtures, without touching Kubernetes or the network.
 func newWebRequestCommand() *cobra.Command {
 	var (
 		wrcsPath            string
@@ -108,11 +107,8 @@ expressions without running the controller or hitting real HTTP endpoints.`,
 				if err != nil {
 					return err
 				}
-				mockUpdated = &controller.SimulationMockResponse{
-					StatusCode: mu.StatusCode,
-					Body:       mu.Body,
-					Headers:    mu.Headers,
-				}
+				m := simulationMockFromFile(mu)
+				mockUpdated = &m
 			}
 
 			results, err := controller.SimulateWebRequestTemplates(
@@ -123,11 +119,7 @@ expressions without running the controller or hitting real HTTP endpoints.`,
 					Labels:      nsLabels.Labels,
 					Annotations: nsLabels.Annotations,
 				},
-				controller.SimulationMockResponse{
-					StatusCode: mock.StatusCode,
-					Body:       mock.Body,
-					Headers:    mock.Headers,
-				},
+				simulationMockFromFile(mock),
 				branch,
 				controller.SimulateWebRequestOptions{
 					PromotionStrategyUpdated:      psUpdated,
@@ -178,4 +170,12 @@ expressions without running the controller or hitting real HTTP endpoints.`,
 	}
 
 	return cmd
+}
+
+func simulationMockFromFile(m MockResponseFile) controller.SimulationMockResponse {
+	return controller.SimulationMockResponse{
+		StatusCode: m.StatusCode,
+		Body:       m.Body,
+		Headers:    m.Headers,
+	}
 }

@@ -125,16 +125,18 @@ func writeWebRequestResultsHuman(w io.Writer, results []controller.WebRequestSte
 
 // stepHeader returns a one-line header announcing the step, padded with `=` to 68 columns when there
 // is room. The label text mirrors the simulator labels (reconcile / next-reconcile /
-// after-state-change). Fire-capable steps ("reconcile" and "after-state-change") are highlighted.
+// after-state-change). All known step labels use the same emphasis so output stays easy to scan.
 func stepHeader(step controller.WebRequestStepResult, pal humanPalette) string {
 	title := fmt.Sprintf("=== Step: %s (context=%s) ", step.Label, step.Context)
 	if len(title) < 68 {
 		title += strings.Repeat("=", 68-len(title))
 	}
-	if step.Label == "reconcile" || step.Label == controller.SimStepAfterStateChange {
+	switch step.Label {
+	case "reconcile", "next-reconcile", controller.SimStepAfterStateChange:
 		return pal.stepHighlight.Sprint(title)
+	default:
+		return pal.stepDefault.Sprint(title)
 	}
-	return pal.stepDefault.Sprint(title)
 }
 
 // formatEvaluation formats a single WebRequestStepEvaluation for human output.

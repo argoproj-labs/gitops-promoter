@@ -397,6 +397,17 @@ var _ = Describe("SimulateWebRequestTemplates — after-state-change step", func
 		Expect(results[2].Evaluations[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 	})
 
+	It("returns an error when MockResponseUpdated is set without PromotionStrategyUpdated or WebRequestCommitStatusUpdated", func() {
+		wrcs := makeFingerprintWRCS()
+		ps := makeFingerprintPS("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+		upd := SimulationMockResponse{StatusCode: 500}
+		_, err := SimulateWebRequestTemplates(ctx, wrcs, ps, SimulationNamespaceMetadata{}, SimulationMockResponse{StatusCode: 200}, "", SimulateWebRequestOptions{
+			MockResponseUpdated: &upd,
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("MockResponseUpdated"))
+	})
+
 	It("uses MockResponseUpdated for after-state-change when set", func() {
 		wrcs := makeFingerprintWRCS()
 		psOld := makeFingerprintPS("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")

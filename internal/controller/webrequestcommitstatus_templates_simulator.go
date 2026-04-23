@@ -87,7 +87,8 @@ type WebRequestStepEvaluation struct {
 	ResponseInjected bool                    `json:"responseInjected"`
 }
 
-// WebRequestStepResult is the outcome of one of the three simulation steps. For environments context it
+// WebRequestStepResult is the outcome of one simulation step (two by default, or three when
+// after-state-change is enabled). For environments context it
 // contains one Evaluation per applicable environment and one RenderedCommitStatus per environment.
 // For promotionstrategy context it contains a single Evaluation (the shared HTTP/trigger/success run)
 // and one RenderedCommitStatus per applicable environment (with phases resolved via PhasePerBranch).
@@ -99,10 +100,10 @@ type WebRequestStepResult struct {
 	Errors         []string                   `json:"errors,omitempty"`
 }
 
-// SimulateWebRequestOptions holds the optional knobs that enable the third "after-state-change" step
-// of SimulateWebRequestTemplates. Either or both may be non-nil: if set, that step is appended and the
-// updated values are used in place of ps / wrcs for that step only (prior steps' derived outputs still
-// carry forward). If both are nil the simulator returns the default two steps.
+// SimulateWebRequestOptions configures the optional third reconcile ("after-state-change") and an
+// alternate mock for that step. Set PromotionStrategyUpdated and/or WebRequestCommitStatusUpdated to
+// append that step (swap those resources in for the third step only; prior outputs still carry forward).
+// If both are nil, the simulator runs two steps and MockResponseUpdated must be nil.
 type SimulateWebRequestOptions struct {
 	// PromotionStrategyUpdated swaps the PromotionStrategy used in after-state-change. Typical use: simulate a
 	// new Proposed.Note.DrySha arriving between reconciles to exercise fingerprint-based
@@ -114,9 +115,9 @@ type SimulateWebRequestOptions struct {
 	// templates and expressions that reference .WebRequestCommitStatus.Status.* see the new
 	// values. Less commonly, it also models an admin editing the spec between reconciles.
 	WebRequestCommitStatusUpdated *promoterv1alpha1.WebRequestCommitStatus
-	// MockResponseUpdated, when non-nil, is used as the mock HTTP response for the
-	// "after-state-change" step only when that step injects. When nil, the primary mock passed to
-	// SimulateWebRequestTemplates is used for every step (including after-state-change).
+	// MockResponseUpdated, when non-nil, is the mock HTTP response for the after-state-change step
+	// when that step injects (requires PromotionStrategyUpdated and/or WebRequestCommitStatusUpdated).
+	// When nil, the primary mock passed to SimulateWebRequestTemplates is used for every step.
 	MockResponseUpdated *SimulationMockResponse
 }
 
@@ -158,6 +159,11 @@ func SimulateWebRequestTemplates(
 	}
 	if ps == nil {
 		return nil, errors.New("PromotionStrategy is required")
+	}
+	if opts.MockResponseUpdated != nil &&
+		opts.PromotionStrategyUpdated == nil &&
+		opts.WebRequestCommitStatusUpdated == nil {
+		return nil, errors.New("SimulateWebRequestOptions.MockResponseUpdated requires PromotionStrategyUpdated and/or WebRequestCommitStatusUpdated")
 	}
 
 	// The evaluation helpers live on WebRequestCommitStatusReconciler, but they only touch
@@ -239,15 +245,6 @@ type contextSimInputs struct {
 	mockUpdated    *SimulationMockResponse
 }
 
-// mockForStep returns the mock HTTP response to use for this simulator step index.
-// Step 2 ("after-state-change") uses mockUpdated when set; otherwise all steps use mock.
-func (in contextSimInputs) mockForStep(stepIdx int) SimulationMockResponse {
-	if stepIdx == 2 && in.mockUpdated != nil {
-		return *in.mockUpdated
-	}
-	return in.mock
-}
-
 // simStepLabels are the step labels in order. The 3rd label is used only when psUpdated or
 // wrcsUpdated is provided.
 var simStepLabels = []string{"reconcile", "next-reconcile", "after-state-change"}
@@ -256,6 +253,24 @@ var simStepLabels = []string{"reconcile", "next-reconcile", "after-state-change"
 // tests can reference it without repeating the literal. The first two step labels are implementation
 // details of the simulator, so they are not individually exported.
 const SimStepAfterStateChange = "after-state-change"
+
+// simStepCount returns how many steps to run: default is reconcile + next-reconcile; a third step
+// runs when simulating upstream or WRCS changes between reconciles.
+func simStepCount(psUpdated *promoterv1alpha1.PromotionStrategy, wrcsUpdated *promoterv1alpha1.WebRequestCommitStatus) int {
+	if psUpdated != nil || wrcsUpdated != nil {
+		return len(simStepLabels)
+	}
+	return len(simStepLabels) - 1
+}
+
+// mockForStep returns the mock HTTP response to use for this simulator step index.
+// The after-state-change step uses mockUpdated when set; all other steps use the primary mock.
+func (in contextSimInputs) mockForStep(stepIdx int) SimulationMockResponse {
+	if stepIdx < len(simStepLabels) && simStepLabels[stepIdx] == SimStepAfterStateChange && in.mockUpdated != nil {
+		return *in.mockUpdated
+	}
+	return in.mock
+}
 
 // simEnvState tracks derived per-environment state carried forward between steps of the simulation.
 // It mirrors the subset of lastReconciledState the simulator needs.
@@ -381,18 +396,14 @@ func simulateEnvironmentsContext(
 	// via statePerEnv.
 	reseedForAfterStateChange := seedSimStateFromStatus(ctx, in.wrcsUpdated)
 
-	totalSteps := 2
-	if in.psUpdated != nil || in.wrcsUpdated != nil {
-		totalSteps = 3
-	}
-
+	totalSteps := simStepCount(in.psUpdated, in.wrcsUpdated)
 	results := make([]WebRequestStepResult, 0, totalSteps)
 	for stepIdx := 0; stepIdx < totalSteps; stepIdx++ {
 		label := simStepLabels[stepIdx]
 		stepPS := in.ps
 		stepShas := in.currentShas
 		stepWRCS := in.wrcs
-		if stepIdx == 2 {
+		if simStepLabels[stepIdx] == SimStepAfterStateChange {
 			if in.psUpdated != nil {
 				stepPS = in.psUpdated
 				stepShas = in.updatedShas
@@ -468,18 +479,14 @@ func simulatePromotionStrategyContext(
 	}
 	reseedForAfterStateChange := seedSimStateFromStatus(ctx, in.wrcsUpdated)
 
-	totalSteps := 2
-	if in.psUpdated != nil || in.wrcsUpdated != nil {
-		totalSteps = 3
-	}
-
+	totalSteps := simStepCount(in.psUpdated, in.wrcsUpdated)
 	results := make([]WebRequestStepResult, 0, totalSteps)
 	for stepIdx := 0; stepIdx < totalSteps; stepIdx++ {
 		label := simStepLabels[stepIdx]
 		stepPS := in.ps
 		stepShas := in.currentShas
 		stepWRCS := in.wrcs
-		if stepIdx == 2 {
+		if simStepLabels[stepIdx] == SimStepAfterStateChange {
 			if in.psUpdated != nil {
 				stepPS = in.psUpdated
 				stepShas = in.updatedShas
@@ -594,7 +601,7 @@ func runOneStepForBranch(
 		Phase:          td.Phase,
 	}
 
-	// 1. Trigger evaluation (information only) + trigger.when.output refresh.
+	// 1. Trigger evaluation + trigger.when.output refresh.
 	//
 	// IMPORTANT: The result of trigger.when.output is the NEXT reconcile's TriggerOutput. The real
 	// controller persists it to status at the end of the reconcile; within the current reconcile,
