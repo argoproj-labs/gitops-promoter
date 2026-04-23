@@ -16,6 +16,7 @@ import (
 	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 )
 
 const resourceCountInterval = 30 * time.Second
@@ -51,7 +52,7 @@ func readinessFromObject(obj any) string {
 		return ""
 	}
 	for _, c := range *conditions {
-		if c.Type == "Ready" {
+		if c.Type == string(promoterConditions.Ready) {
 			return string(c.Status)
 		}
 	}
