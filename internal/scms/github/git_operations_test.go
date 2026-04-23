@@ -82,9 +82,7 @@ var _ = Describe("GetClient", func() {
 			// mutating package-level state here is safe as long as all specs in
 			// this suite restore it before returning (the defer below does that for
 			// http.DefaultTransport; installationIds is always re-initialised here).
-			appInstallationIdCacheMutex.Lock()
-			installationIds = make(map[orgAppId]int64)
-			appInstallationIdCacheMutex.Unlock()
+			installationIds = sync.Map{}
 
 			domain := strings.TrimPrefix(server.URL, "https://")
 			scmProvider := &v1alpha1.ScmProvider{

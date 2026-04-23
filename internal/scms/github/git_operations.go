@@ -110,17 +110,17 @@ func getUrls(domain string) (enterprise bool, baseUrl, uploadUrl string) {
 	return true, baseUrl, uploadUrl
 }
 
-// installationIds caches installation IDs for organizations to avoid redundant API calls.
-var installationIds = make(map[orgAppId]int64)
+// installationIds caches installation IDs for organizations to avoid redundant
+// API calls.  It is a grow-only cache (entries are written once and read many
+// times), which is exactly the use-case for sync.Map.  The map key is
+// orgAppId and the value type is int64.
+var installationIds sync.Map
 
 // orgAppId is a composite key of organization and app ID for caching installation IDs.
 type orgAppId struct {
 	org string
 	id  int64
 }
-
-// appInstallationIdCacheMutex protects access to the installationIds map.
-var appInstallationIdCacheMutex sync.RWMutex
 
 // appInstallationIdGroup deduplicates concurrent ListInstallations calls that
 // share the same GitHub App and domain so only one network round-trip is made
@@ -156,13 +156,11 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 		return getInstallationClient(scmProvider, secret, scmProvider.GetSpec().GitHub.InstallationID)
 	}
 
-	appInstallationIdCacheMutex.RLock()
-	if id, found := installationIds[orgAppId{org: org, id: scmProvider.GetSpec().GitHub.AppID}]; found {
-		appInstallationIdCacheMutex.RUnlock()
+	if val, found := installationIds.Load(orgAppId{org: org, id: scmProvider.GetSpec().GitHub.AppID}); found {
+		id := val.(int64)
 		logger.V(4).Info("found cached installation ID", "org", org, "id", id, "scmProvider", scmProvider.GetName())
 		return getInstallationClient(scmProvider, secret, id)
 	}
-	appInstallationIdCacheMutex.RUnlock()
 
 	// Slow path: the cache was cold. Use singleflight so that concurrent
 	// goroutines that all discovered the empty cache only make one network
@@ -191,14 +189,12 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 		// generic.
 		logger.Info("github list installations time", "duration", time.Since(startTime), "count", len(allInstallations))
 
-		appInstallationIdCacheMutex.Lock()
 		for _, installation := range allInstallations {
 			if installation.Account != nil && installation.Account.Login != nil && installation.ID != nil {
-				installationIds[orgAppId{org: *installation.Account.Login, id: scmProvider.GetSpec().GitHub.AppID}] = *installation.ID
+				installationIds.Store(orgAppId{org: *installation.Account.Login, id: scmProvider.GetSpec().GitHub.AppID}, *installation.ID)
 				logger.V(4).Info("cached installation ID", "org", *installation.Account.Login, "id", *installation.ID, "scmProvider", scmProvider.GetName())
 			}
 		}
-		appInstallationIdCacheMutex.Unlock()
 
 		// The installation IDs are stored in the shared cache above; the
 		// singleflight return value is not used directly.
@@ -211,12 +207,11 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 		logger.V(4).Info("singleflight deduplicated concurrent installations lookup", "org", org, "scmProvider", scmProvider.GetName())
 	}
 
-	appInstallationIdCacheMutex.RLock()
-	id, found := installationIds[orgAppId{org: org, id: scmProvider.GetSpec().GitHub.AppID}]
-	appInstallationIdCacheMutex.RUnlock()
+	val, found := installationIds.Load(orgAppId{org: org, id: scmProvider.GetSpec().GitHub.AppID})
 	if !found {
 		return nil, nil, fmt.Errorf("installation of app %d not found for org: %s", scmProvider.GetSpec().GitHub.AppID, org)
 	}
+	id := val.(int64)
 	logger.V(4).Info("found installation ID after listing installations", "org", org, "id", id, "scmProvider", scmProvider.GetName())
 	return getInstallationClient(scmProvider, secret, id)
 }
