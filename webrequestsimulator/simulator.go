@@ -18,6 +18,7 @@ package webrequestsimulator
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/webrequest"
 	"github.com/argoproj-labs/gitops-promoter/internal/webrequest/simulator"
@@ -43,7 +44,7 @@ func Simulate(ctx context.Context, in Input) (*Result, error) {
 		HTTPResponse: toInternalHTTPResponse(in.HTTPResponse),
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("simulate: %w", err)
 	}
 	return fromInternalResult(res), nil
 }

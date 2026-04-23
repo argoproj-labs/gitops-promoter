@@ -498,7 +498,11 @@ func simulateEvaluateSuccessOutput(
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate success data expression: %w", err)
 	}
-	return webrequest.MarshalJSONMap(extractedData)
+	out, err := webrequest.MarshalJSONMap(extractedData)
+	if err != nil {
+		return nil, fmt.Errorf("marshal success output data: %w", err)
+	}
+	return out, nil
 }
 
 // allBranchesSucceededForCurrentShas mirrors the controller helper: true when

@@ -54,9 +54,9 @@ type NamespaceMetadata struct {
 // JSON-decodes string bodies when it can, so mirror that shape here if you want
 // the expression environment to match production exactly.
 type HTTPResponse struct {
-	StatusCode int
 	Body       any
 	Headers    map[string][]string
+	StatusCode int
 }
 
 // Result mirrors what the controller produces for a single reconcile.

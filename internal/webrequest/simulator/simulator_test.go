@@ -30,6 +30,9 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/webrequest/simulator"
 )
 
+// testWRCSKey is the CommitStatus key used by twoEnvPromotionStrategy and basicWRCS in this package.
+const testWRCSKey = "my-key"
+
 // jsonMap marshals a map into an apiextensionsv1.JSON for status fixtures.
 func jsonMap(m map[string]any) *apiextensionsv1.JSON {
 	raw, err := json.Marshal(m)
@@ -38,15 +41,15 @@ func jsonMap(m map[string]any) *apiextensionsv1.JSON {
 }
 
 // twoEnvPromotionStrategy builds a minimal PromotionStrategy that gates
-// branches "dev" and "prod" on the key "my-key" via per-env ProposedCommitStatuses.
-func twoEnvPromotionStrategy(key string) *promoterv1alpha1.PromotionStrategy {
+// branches "dev" and "prod" on testWRCSKey via per-env ProposedCommitStatuses.
+func twoEnvPromotionStrategy() *promoterv1alpha1.PromotionStrategy {
 	return &promoterv1alpha1.PromotionStrategy{
 		ObjectMeta: metav1.ObjectMeta{Name: "ps", Namespace: "default"},
 		Spec: promoterv1alpha1.PromotionStrategySpec{
 			RepositoryReference: promoterv1alpha1.ObjectReference{Name: "repo"},
 			Environments: []promoterv1alpha1.Environment{
-				{Branch: "dev", ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{{Key: key}}},
-				{Branch: "prod", ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{{Key: key}}},
+				{Branch: "dev", ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{{Key: testWRCSKey}}},
+				{Branch: "prod", ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{{Key: testWRCSKey}}},
 			},
 		},
 		Status: promoterv1alpha1.PromotionStrategyStatus{
@@ -68,12 +71,12 @@ func twoEnvPromotionStrategy(key string) *promoterv1alpha1.PromotionStrategy {
 
 // basicWRCS builds a minimal WebRequestCommitStatus for the environments context
 // with polling mode and a trivially-true success expression.
-func basicWRCS(key string, mode promoterv1alpha1.ModeSpec, successExpr string) *promoterv1alpha1.WebRequestCommitStatus {
+func basicWRCS(mode promoterv1alpha1.ModeSpec, successExpr string) *promoterv1alpha1.WebRequestCommitStatus {
 	return &promoterv1alpha1.WebRequestCommitStatus{
 		ObjectMeta: metav1.ObjectMeta{Name: "wrcs", Namespace: "default"},
 		Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 			PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "ps"},
-			Key:                  key,
+			Key:                  testWRCSKey,
 			ReportOn:             "proposed",
 			HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
 				URLTemplate: "https://example.com/{{ .Branch }}",
@@ -94,11 +97,11 @@ var _ = Describe("Simulate", func() {
 
 	Describe("environments context", func() {
 		It("fires for polling mode and returns success with a rendered request per env", func() {
-			wrcs := basicWRCS("my-key",
+			wrcs := basicWRCS(
 				promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
 				"Response.StatusCode == 200",
 			)
-			ps := twoEnvPromotionStrategy("my-key")
+			ps := twoEnvPromotionStrategy()
 
 			result, err := simulator.Simulate(ctx, simulator.Args{
 				WebRequestCommitStatus: wrcs,
@@ -124,7 +127,7 @@ var _ = Describe("Simulate", func() {
 		})
 
 		It("carries forward previous phase and outputs when the trigger is false", func() {
-			wrcs := basicWRCS("my-key",
+			wrcs := basicWRCS(
 				promoterv1alpha1.ModeSpec{Trigger: &promoterv1alpha1.TriggerModeSpec{
 					RequeueDuration: metav1.Duration{Duration: 0},
 					When:            promoterv1alpha1.WhenWithOutputSpec{Expression: "false"},
@@ -135,7 +138,7 @@ var _ = Describe("Simulate", func() {
 				{Branch: "dev", ReportedSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Phase: promoterv1alpha1.CommitPhasePending, TriggerOutput: jsonMap(map[string]any{"note": "prev-dev"})},
 				{Branch: "prod", ReportedSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", Phase: promoterv1alpha1.CommitPhaseSuccess, TriggerOutput: jsonMap(map[string]any{"note": "prev-prod"})},
 			}
-			ps := twoEnvPromotionStrategy("my-key")
+			ps := twoEnvPromotionStrategy()
 
 			result, err := simulator.Simulate(ctx, simulator.Args{
 				WebRequestCommitStatus: wrcs,
@@ -154,7 +157,7 @@ var _ = Describe("Simulate", func() {
 		})
 
 		It("round-trips: previous Status.Environments outputs surface to expressions", func() {
-			wrcs := basicWRCS("my-key",
+			wrcs := basicWRCS(
 				promoterv1alpha1.ModeSpec{Trigger: &promoterv1alpha1.TriggerModeSpec{
 					RequeueDuration: metav1.Duration{Duration: 0},
 					When: promoterv1alpha1.WhenWithOutputSpec{
@@ -164,7 +167,7 @@ var _ = Describe("Simulate", func() {
 				}},
 				"Response.StatusCode == 200",
 			)
-			ps := twoEnvPromotionStrategy("my-key")
+			ps := twoEnvPromotionStrategy()
 
 			first, err := simulator.Simulate(ctx, simulator.Args{
 				WebRequestCommitStatus: wrcs,
@@ -190,11 +193,11 @@ var _ = Describe("Simulate", func() {
 		})
 
 		It("surfaces an error when the trigger fires but HTTPResponse is nil", func() {
-			wrcs := basicWRCS("my-key",
+			wrcs := basicWRCS(
 				promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
 				"true",
 			)
-			ps := twoEnvPromotionStrategy("my-key")
+			ps := twoEnvPromotionStrategy()
 
 			_, err := simulator.Simulate(ctx, simulator.Args{
 				WebRequestCommitStatus: wrcs,
@@ -206,11 +209,11 @@ var _ = Describe("Simulate", func() {
 		})
 
 		It("surfaces a compile error for invalid expressions", func() {
-			wrcs := basicWRCS("my-key",
+			wrcs := basicWRCS(
 				promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
 				"this is not expr",
 			)
-			ps := twoEnvPromotionStrategy("my-key")
+			ps := twoEnvPromotionStrategy()
 
 			_, err := simulator.Simulate(ctx, simulator.Args{
 				WebRequestCommitStatus: wrcs,
@@ -223,14 +226,14 @@ var _ = Describe("Simulate", func() {
 
 	Describe("promotionstrategy context", func() {
 		It("issues one shared request and resolves per-branch phases from an object return", func() {
-			wrcs := basicWRCS("my-key",
+			wrcs := basicWRCS(
 				promoterv1alpha1.ModeSpec{
 					Context: promoterv1alpha1.ContextPromotionStrategy,
 					Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}},
 				},
 				`{ defaultPhase: "pending", environments: [{ branch: "dev", phase: "success" }, { branch: "prod", phase: "failure" }] }`,
 			)
-			ps := twoEnvPromotionStrategy("my-key")
+			ps := twoEnvPromotionStrategy()
 
 			result, err := simulator.Simulate(ctx, simulator.Args{
 				WebRequestCommitStatus: wrcs,
@@ -261,7 +264,7 @@ var _ = Describe("Simulate", func() {
 		})
 
 		It("surfaces previous promotionstrategy-context outputs to expressions", func() {
-			wrcs := basicWRCS("my-key",
+			wrcs := basicWRCS(
 				promoterv1alpha1.ModeSpec{
 					Context: promoterv1alpha1.ContextPromotionStrategy,
 					Trigger: &promoterv1alpha1.TriggerModeSpec{
@@ -274,7 +277,7 @@ var _ = Describe("Simulate", func() {
 			wrcs.Status.PromotionStrategyContext = &promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus{
 				TriggerOutput: jsonMap(map[string]any{"lastTag": "v1"}),
 			}
-			ps := twoEnvPromotionStrategy("my-key")
+			ps := twoEnvPromotionStrategy()
 
 			result, err := simulator.Simulate(ctx, simulator.Args{
 				WebRequestCommitStatus: wrcs,
@@ -287,7 +290,7 @@ var _ = Describe("Simulate", func() {
 		})
 
 		It("renders URL/body/headers/description with Sprig functions and latest outputs", func() {
-			wrcs := basicWRCS("my-key",
+			wrcs := basicWRCS(
 				promoterv1alpha1.ModeSpec{
 					Context: promoterv1alpha1.ContextPromotionStrategy,
 					Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}},
@@ -302,7 +305,7 @@ var _ = Describe("Simulate", func() {
 			wrcs.Spec.DescriptionTemplate = `{{ .Phase }} for {{ .Branch }}`
 			wrcs.Spec.UrlTemplate = `https://dash.example.com/{{ .Branch }}`
 
-			ps := twoEnvPromotionStrategy("my-key")
+			ps := twoEnvPromotionStrategy()
 
 			result, err := simulator.Simulate(ctx, simulator.Args{
 				WebRequestCommitStatus: wrcs,
@@ -328,13 +331,13 @@ var _ = Describe("Simulate", func() {
 	Describe("validation", func() {
 		It("rejects nil WebRequestCommitStatus", func() {
 			_, err := simulator.Simulate(ctx, simulator.Args{
-				PromotionStrategy: twoEnvPromotionStrategy("my-key"),
+				PromotionStrategy: twoEnvPromotionStrategy(),
 			})
 			Expect(err).To(MatchError(ContainSubstring("WebRequestCommitStatus is required")))
 		})
 		It("rejects nil PromotionStrategy", func() {
 			_, err := simulator.Simulate(ctx, simulator.Args{
-				WebRequestCommitStatus: basicWRCS("my-key",
+				WebRequestCommitStatus: basicWRCS(
 					promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{}},
 					"true",
 				),

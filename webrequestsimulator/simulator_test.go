@@ -32,21 +32,31 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 
 	BeforeEach(func() { ctx = context.Background() })
 
-	// newPS builds a minimal PromotionStrategy with two branches gated on key.
-	newPS := func(key string) *promoterv1alpha1.PromotionStrategy {
+	// newPS builds a minimal PromotionStrategy with two branches gated on key "k".
+	newPS := func() *promoterv1alpha1.PromotionStrategy {
 		return &promoterv1alpha1.PromotionStrategy{
 			ObjectMeta: metav1.ObjectMeta{Name: "ps", Namespace: "default"},
 			Spec: promoterv1alpha1.PromotionStrategySpec{
 				RepositoryReference: promoterv1alpha1.ObjectReference{Name: "repo"},
 				Environments: []promoterv1alpha1.Environment{
-					{Branch: "dev", ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{{Key: key}}},
-					{Branch: "prod", ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{{Key: key}}},
+					{Branch: "dev", ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{{Key: "k"}}},
+					{Branch: "prod", ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{{Key: "k"}}},
 				},
 			},
 			Status: promoterv1alpha1.PromotionStrategyStatus{
 				Environments: []promoterv1alpha1.EnvironmentStatus{
-					{Branch: "dev", Proposed: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}},
-					{Branch: "prod", Proposed: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}},
+					{
+						Branch: "dev",
+						Proposed: promoterv1alpha1.CommitBranchState{
+							Hydrated: promoterv1alpha1.CommitShaState{Sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+						},
+					},
+					{
+						Branch: "prod",
+						Proposed: promoterv1alpha1.CommitBranchState{
+							Hydrated: promoterv1alpha1.CommitShaState{Sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+						},
+					},
 				},
 			},
 		}
@@ -54,7 +64,11 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 
 	// newWRCS builds a minimal WebRequestCommitStatus with polling mode and the
 	// supplied success expression.
-	newWRCS := func(key string, mode promoterv1alpha1.ModeSpec, successExpr string) *promoterv1alpha1.WebRequestCommitStatus {
+	newWRCS := func(
+		key string,
+		mode promoterv1alpha1.ModeSpec,
+		successExpr string,
+	) *promoterv1alpha1.WebRequestCommitStatus {
 		return &promoterv1alpha1.WebRequestCommitStatus{
 			ObjectMeta: metav1.ObjectMeta{Name: "wrcs", Namespace: "default"},
 			Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
@@ -79,7 +93,7 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 
 		r, err := webrequestsimulator.Simulate(ctx, webrequestsimulator.Input{
 			WebRequestCommitStatus: wrcs,
-			PromotionStrategy:      newPS("k"),
+			PromotionStrategy:      newPS(),
 			HTTPResponse:           &webrequestsimulator.HTTPResponse{StatusCode: 200},
 		})
 		Expect(err).ToNot(HaveOccurred())
@@ -99,7 +113,7 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 		)
 		_, err := webrequestsimulator.Simulate(ctx, webrequestsimulator.Input{
 			WebRequestCommitStatus: wrcs,
-			PromotionStrategy:      newPS("k"),
+			PromotionStrategy:      newPS(),
 			// HTTPResponse deliberately nil to force the "required" error path.
 		})
 		Expect(err).To(MatchError(ContainSubstring("HTTPResponse is required")))
@@ -115,7 +129,7 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 		)
 		r, err := webrequestsimulator.Simulate(ctx, webrequestsimulator.Input{
 			WebRequestCommitStatus: wrcs,
-			PromotionStrategy:      newPS("k"),
+			PromotionStrategy:      newPS(),
 			HTTPResponse:           &webrequestsimulator.HTTPResponse{StatusCode: 200},
 		})
 		Expect(err).ToNot(HaveOccurred())
@@ -133,7 +147,7 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 		wrcs.Spec.HTTPRequest.URLTemplate = "https://example.com/{{ index .NamespaceMetadata.Labels \"team\" }}/{{ .Branch }}"
 		r, err := webrequestsimulator.Simulate(ctx, webrequestsimulator.Input{
 			WebRequestCommitStatus: wrcs,
-			PromotionStrategy:      newPS("k"),
+			PromotionStrategy:      newPS(),
 			NamespaceMetadata:      webrequestsimulator.NamespaceMetadata{Labels: map[string]string{"team": "payments"}},
 			HTTPResponse:           &webrequestsimulator.HTTPResponse{StatusCode: 200},
 		})
