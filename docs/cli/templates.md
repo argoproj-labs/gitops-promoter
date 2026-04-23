@@ -13,7 +13,7 @@ running the controller.
     - `webrequest-approval/` — external approval workflow (environments context)
     - `webrequest-shared-gate/` — deployment gate with per-branch phases (promotionstrategy context)
     - `webrequest-change-management/` — real-world CM-record workflow with `when.variables`, fingerprint-based carry-forward, and complex body template
-    - `webrequest-change-management-approval/` — polling-based approval flow with time-window checks (`shouldTriggerByTime`, record-window filter) demonstrated via the status-seed mechanism
+    - `webrequest-change-management-approval/` — trigger-mode approval flow with time-window checks (`shouldTriggerByTime`, record-window filter) demonstrated via the status-seed mechanism
 
     Each directory has a `README.md` with the exact command to run.
 
@@ -21,9 +21,9 @@ Two subcommands are available:
 
 - `promoter templates pullrequest` — render the `PullRequestTemplate` title and description using a
   `ChangeTransferPolicy` and an optional `PromotionStrategy`.
-- `promoter templates webrequest` — simulate a `WebRequestCommitStatus` through **two
-  reconcile-shaped steps** (plus an optional third) that together exercise every template and
-  expression path.
+- `promoter templates webrequest` — simulate a `WebRequestCommitStatus` through two default
+  reconcile-shaped steps (`reconcile`, `next-reconcile`) plus an optional third (`after-state-change`)
+  that together exercise every template and expression path.
 
 All subcommands support `--output human|yaml|json` (default `human`).
 
@@ -116,6 +116,13 @@ behavior):
     Both flags can be used together to simulate both kinds of change arriving in the same
     reconcile.
 
+    - **`--response-updated`**: optional YAML with the same shape as `--response`. When set (and a
+      third step is active), that file is used as the mock HTTP response **only** for
+      `after-state-change` when that step injects; steps 1–2 always use `--response`. Omit it to
+      reuse the primary mock for all injecting steps. The API equivalent is
+      `SimulateWebRequestOptions.MockResponseUpdated`, which returns an error if set without
+      `PromotionStrategyUpdated` / `WebRequestCommitStatusUpdated`.
+
 The `trigger.when.expression` is evaluated on every step and its result is surfaced in the output.
 It **gates** whether the mock `Response` is injected on every step (including "next-reconcile"), same
 as the controller; polling mode injects unconditionally on every step. The `trigger.when.output` expression runs in every step to match the real controller's
@@ -139,7 +146,8 @@ and `PhasePerBranch` from:
 Populating this is the supported way to express "the controller already ran N times; here's where
 it left off" — useful for testing any status-dependent expression such as:
 
-- Polling-cooldown checks that compare `now()` to `TriggerOutput.lastRequestTime`.
+- Cooldown / time-since-last-request checks that compare `now()` to `TriggerOutput.lastRequestTime`
+  (trigger or polling mode).
 - Fingerprint-drift checks that compare a recomputed fingerprint to `TriggerOutput.lastFingerprint`.
 - Carry-forward success branches that gate on `Phase == "success"`.
 - Change-window expiry checks that examine timestamps stored in `ResponseOutput`.
@@ -260,9 +268,9 @@ for diffing expected vs. actual behavior across commits or for piping into other
 - No real HTTP calls are made. Authentication (`httpRequest.authentication`) and SCM host validation
   are **skipped** in the simulator; when the trigger fires (or in polling mode), the mock response
   is injected regardless of credentials or allowed hosts.
-- Polling-mode `lastRequestTime` / polling interval logic is **not** simulated — the simulator is not
-  time-aware. Expressions that use `now()` will be evaluated at the time the command runs. Use
-  status seeding + `--web-request-updated` to simulate elapsed-time scenarios.
+- The simulator does **not** wait real wall-clock time between steps (no `requeueDuration` countdown
+  between `reconcile` and `next-reconcile`). Expressions that use `now()` are evaluated when the
+  command runs. Use status seeding + `--web-request-updated` to simulate elapsed-time scenarios.
 - By default the same `--response` mock is used for every injecting step. Pass `--response-updated`
   together with `--promotion-strategy-updated` and/or `--web-request-updated` to use a different mock
   for the third step only. You can still combine with `--web-request-updated` status seeding to model

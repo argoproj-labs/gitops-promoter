@@ -34,6 +34,8 @@ This is the most comprehensive of the examples: it exercises nearly every featur
   spec as `wrcs.yaml` but seeds the `after-state-change` step's carry-forward `TriggerOutput` /
   `Phase` / etc. via a populated `status` block. Used with `--web-request-updated`, this simulates
   "the controller wrote back status and the next reconcile reads it" without needing a spec change.
+- **Optional `--response-updated`** — documented in [`docs/cli/templates.md`](../../../../docs/cli/templates.md);
+  supplies a different mock HTTP response for the third step only when it injects.
 - **Per-branch gating** — the key `change-management-open` is configured **only on production** (not
   global), so `preGateNoOpenPR` ensures we only open a CM record once development and staging
   have merged their PRs.
@@ -75,6 +77,10 @@ go run ./cmd templates webrequest \
 
 There are two ways to exercise the `after-state-change` step. Both demonstrate how an upstream
 state change drives a fresh reconcile with a new trigger evaluation.
+
+For either command, you can append **`--response-updated path/to/other-response.yaml`** (same shape
+as `--response`) so the **third** step uses a different mock HTTP payload when it injects; the first
+two steps always use `--response`.
 
 ### Via `--promotion-strategy-updated` (upstream SHA advances)
 

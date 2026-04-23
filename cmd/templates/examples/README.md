@@ -9,7 +9,7 @@ Ready-to-run fixture directories for the `promoter templates` subcommands. Each 
 | [webrequest-approval](./webrequest-approval) | `webrequest` | External approval workflow using `mode.context: environments` and `trigger` mode with `response.output`. |
 | [webrequest-shared-gate](./webrequest-shared-gate) | `webrequest` | Shared deployment gate using `mode.context: promotionstrategy` with per-branch phases returned from `success.when`. |
 | [webrequest-change-management](./webrequest-change-management) | `webrequest` | Real-world production CM-record workflow: `when.variables` + `when.output` + `response.output` + `success.when.variables`, fingerprint-based carry-forward, complex body template with Markdown description. |
-| [webrequest-change-management-approval](./webrequest-change-management-approval) | `webrequest` | Polling-based approval workflow with time-window checks (`shouldTriggerByTime`, `date(start) <= now() <= date(end)`). Demonstrates the status-seed mechanism for simulating warm reconciles and cooldown-elapsed scenarios without any time override. |
+| [webrequest-change-management-approval](./webrequest-change-management-approval) | `webrequest` | Trigger-mode approval workflow with time-window checks (`shouldTriggerByTime`, `date(start) <= now() <= date(end)`). Demonstrates the status-seed mechanism for simulating warm reconciles and cooldown-elapsed scenarios without any time override. |
 
 Run any example from the repo root, e.g.:
 

@@ -906,6 +906,24 @@ How it works:
 
 No `success.when.output` expression is needed. The controller's existing `LastSuccessfulShas` tracking (accessible via `WebRequestCommitStatus.Status.PromotionStrategyContext.LastSuccessfulShas`) replaces the manual `SuccessOutput` bookkeeping that was previously required.
 
+## Offline template and expression simulation
+
+Use **`promoter templates webrequest`** to dry-run a `WebRequestCommitStatus` end to end: HTTP URL,
+headers, and body templates; `trigger` / `response` / `success` expressions; and CommitStatus
+description and URL templates. The command has **no Kubernetes client** and does **not** call real
+HTTP endpoints; it applies a YAML mock response whenever the same logic the controller uses would
+perform a request (trigger mode, or every step in polling mode).
+
+By default the tool runs two reconcile-shaped steps (`reconcile`, then `next-reconcile`) so you can
+see how carry-forward state behaves. Optional flags add a third **`after-state-change`** step when
+you supply updated `PromotionStrategy` and/or `WebRequestCommitStatus` fixtures, and an optional
+**`--response-updated`** mock for that step only.
+
+Full flag list, fixture shapes, limitations, and worked examples live in
+[`docs/cli/templates.md`](../cli/templates.md#promoter-templates-webrequest). Ready-to-run YAML
+directories are under [`cmd/templates/examples/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/cmd/templates/examples)
+in the repository (for example `webrequest-approval/`, `webrequest-change-management/`).
+
 ## Field reference
 
 Field-level documentation (required/optional, template variables, expression variables, defaults) is maintained on the API types. Use either:

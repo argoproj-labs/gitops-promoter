@@ -1,6 +1,6 @@
 # Example: webrequest-change-management-approval
 
-A polling-based approval workflow using `mode.context: promotionstrategy` + `mode.trigger`. The WRCS
+A trigger-mode approval workflow using `mode.context: promotionstrategy` + `mode.trigger`. The WRCS
 queries a change-management service for approved change records whose time window brackets `now()`
 — effectively "is there a currently-active approved change ticket that allows this promotion?"
 
@@ -66,6 +66,9 @@ window).
 Use this to demonstrate "cooldown elapsed AND fingerprint drifted — controller re-fires fresh HTTP
 to re-check approval state" at once.
 
+Optional **`--response-updated`** (same YAML shape as `--response`) supplies a different mock **only**
+for this third step when it injects; the default two steps always use `--response`.
+
 ## Run (2 steps, default)
 
 From the repo root:
@@ -90,6 +93,8 @@ go run ./cmd templates webrequest \
   --namespace-labels    cmd/templates/examples/webrequest-change-management-approval/namespace-labels.yaml \
   --response            cmd/templates/examples/webrequest-change-management-approval/response.yaml
 ```
+
+Append `--response-updated path/to/other-response.yaml` (same shape as `--response`) to use a different mock for the third step only.
 
 Expected: reconcile → success, next-reconcile → success, after-state-change → success (fresh HTTP
 call driven by the stale fingerprint; approvals are still in window).
