@@ -8,7 +8,6 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -63,8 +62,8 @@ var _ = Describe("GetClient", func() {
 					Login string `json:"login"`
 				}
 				type fakeInstallation struct {
-					ID      int64       `json:"id"`
 					Account fakeAccount `json:"account"`
+					ID      int64       `json:"id"`
 				}
 				w.Header().Set("Content-Type", "application/json")
 				_ = json.NewEncoder(w).Encode([]fakeInstallation{
@@ -89,7 +88,7 @@ var _ = Describe("GetClient", func() {
 
 			domain := strings.TrimPrefix(server.URL, "https://")
 			scmProvider := &v1alpha1.ScmProvider{
-				ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("test-provider-%s", domain)},
+				ObjectMeta: metav1.ObjectMeta{Name: "test-provider-" + domain},
 				Spec: v1alpha1.ScmProviderSpec{
 					GitHub: &v1alpha1.GitHub{
 						AppID:  1,
