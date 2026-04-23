@@ -289,11 +289,11 @@ var _ = Describe("Pure helpers", func() {
 		})
 	})
 
-	Describe("ResolveAllBranchPhases", func() {
+	Describe("GetPhasesByBranch", func() {
 		It("builds an entry for every environment, filling in the default", func() {
 			envs := []promoterv1alpha1.Environment{{Branch: "a"}, {Branch: "b"}, {Branch: "c"}}
 			overrides := map[string]promoterv1alpha1.CommitStatusPhase{"b": promoterv1alpha1.CommitPhaseFailure}
-			got := webrequest.ResolveAllBranchPhases(envs, promoterv1alpha1.CommitPhaseSuccess, overrides)
+			got := webrequest.GetPhasesByBranch(envs, promoterv1alpha1.CommitPhaseSuccess, overrides)
 			Expect(got).To(HaveLen(3))
 			Expect(got).To(HaveKeyWithValue("a", promoterv1alpha1.CommitPhaseSuccess))
 			Expect(got).To(HaveKeyWithValue("b", promoterv1alpha1.CommitPhaseFailure))

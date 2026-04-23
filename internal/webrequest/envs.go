@@ -23,8 +23,8 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 )
 
-// BuildPSEnvStatusMap builds a map from branch name to EnvironmentStatus for fast lookups.
-func BuildPSEnvStatusMap(ps *promoterv1alpha1.PromotionStrategy) map[string]*promoterv1alpha1.EnvironmentStatus {
+// GetEnvsByBranch builds a map from branch name to EnvironmentStatus for fast lookups.
+func GetEnvsByBranch(ps *promoterv1alpha1.PromotionStrategy) map[string]*promoterv1alpha1.EnvironmentStatus {
 	m := make(map[string]*promoterv1alpha1.EnvironmentStatus, len(ps.Status.Environments))
 	for i := range ps.Status.Environments {
 		m[ps.Status.Environments[i].Branch] = &ps.Status.Environments[i]
@@ -32,9 +32,9 @@ func BuildPSEnvStatusMap(ps *promoterv1alpha1.PromotionStrategy) map[string]*pro
 	return m
 }
 
-// ResolveCurrentShas builds a map of branch to reported SHA for each applicable environment,
+// GetCurrentShasByBranch builds a map of branch to reported SHA for each applicable environment,
 // validating that every branch has a status entry and a non-empty SHA.
-func ResolveCurrentShas(
+func GetCurrentShasByBranch(
 	applicableEnvs []promoterv1alpha1.Environment,
 	psEnvStatusMap map[string]*promoterv1alpha1.EnvironmentStatus,
 	reportOn string,
@@ -190,9 +190,9 @@ func ResolvePhaseForBranch(branch string, defaultPhase promoterv1alpha1.CommitSt
 	return defaultPhase
 }
 
-// ResolveAllBranchPhases builds a complete PhasePerBranch map for all applicable environments,
+// GetPhasesByBranch builds a complete PhasePerBranch map for all applicable environments,
 // merging the default phase with any per-branch overrides from the expression result.
-func ResolveAllBranchPhases(envs []promoterv1alpha1.Environment, defaultPhase promoterv1alpha1.CommitStatusPhase, phasePerBranch map[string]promoterv1alpha1.CommitStatusPhase) map[string]promoterv1alpha1.CommitStatusPhase {
+func GetPhasesByBranch(envs []promoterv1alpha1.Environment, defaultPhase promoterv1alpha1.CommitStatusPhase, phasePerBranch map[string]promoterv1alpha1.CommitStatusPhase) map[string]promoterv1alpha1.CommitStatusPhase {
 	resolved := make(map[string]promoterv1alpha1.CommitStatusPhase, len(envs))
 	for _, env := range envs {
 		resolved[env.Branch] = ResolvePhaseForBranch(env.Branch, defaultPhase, phasePerBranch)

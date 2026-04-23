@@ -241,9 +241,9 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		statusByEnv[lastReconciledStatus.Environments[i].Branch] = &lastReconciledStatus.Environments[i]
 	}
 
-	psEnvStatusMap := webrequest.BuildPSEnvStatusMap(ps)
+	psEnvStatusMap := webrequest.GetEnvsByBranch(ps)
 	applicableEnvs := webrequest.GetApplicableEnvironments(ps, wrcs.Spec.Key, wrcs.Spec.ReportOn)
-	currentShas, err := webrequest.ResolveCurrentShas(applicableEnvs, psEnvStatusMap, wrcs.Spec.ReportOn)
+	currentShas, err := webrequest.GetCurrentShasByBranch(applicableEnvs, psEnvStatusMap, wrcs.Spec.ReportOn)
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("failed to resolve current SHAs: %w", err)
 	}
@@ -355,8 +355,8 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 		return nil, nil, 0, fmt.Errorf("unexpected nil from DeepCopy for WebRequestCommitStatus %s/%s", wrcs.Namespace, wrcs.Name)
 	}
 
-	psEnvStatusMap := webrequest.BuildPSEnvStatusMap(ps)
-	currentShaPerBranch, err := webrequest.ResolveCurrentShas(applicableEnvs, psEnvStatusMap, wrcs.Spec.ReportOn)
+	psEnvStatusMap := webrequest.GetEnvsByBranch(ps)
+	currentShaPerBranch, err := webrequest.GetCurrentShasByBranch(applicableEnvs, psEnvStatusMap, wrcs.Spec.ReportOn)
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("failed to resolve current SHAs (context=promotionstrategy): %w", err)
 	}
@@ -417,7 +417,7 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 	}
 
 	// Resolve all applicable branches into a complete PhasePerBranch map.
-	resolvedPhases := webrequest.ResolveAllBranchPhases(applicableEnvs, result.Phase, result.PhasePerBranch)
+	resolvedPhases := webrequest.GetPhasesByBranch(applicableEnvs, result.Phase, result.PhasePerBranch)
 
 	// Update status
 	wrcs.Status.Environments = nil
