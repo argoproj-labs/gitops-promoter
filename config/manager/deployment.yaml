@@ -34,9 +34,16 @@ spec:
             - /gitops-promoter
             - controller
           args:
-            - --leader-elect
+            - "--health-probe-bind-address=:8081"
+            - "--metrics-bind-address=:8443"
+            - "--metrics-secure=true"
+            - "--leader-elect"
           image: quay.io/argoprojlabs/gitops-promoter:latest
           name: manager
+          ports:
+            - containerPort: 8443
+              name: https
+              protocol: TCP
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
