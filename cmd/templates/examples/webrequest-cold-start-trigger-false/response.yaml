@@ -1,0 +1,7 @@
+# Used when the trigger eventually fires (e.g. after you change `ready` to true in wrcs.yaml).
+statusCode: 200
+body:
+  ok: true
+headers:
+  Content-Type:
+    - application/json

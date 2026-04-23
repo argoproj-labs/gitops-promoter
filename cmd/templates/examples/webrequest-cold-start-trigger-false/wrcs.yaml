@@ -1,0 +1,46 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: cold-start-gate
+  namespace: default
+spec:
+  promotionStrategyRef:
+    name: cold-start-gate-ps
+  key: cold-start-gate
+  reportOn: proposed
+  descriptionTemplate: >-
+    {{ .Phase }} · HTTP this reconcile={{ if .ResponseOutput }}yes{{ else }}no{{ end }}{{ if .TriggerOutput }}
+    · ready={{ index .TriggerOutput "ready" }}{{ end }}
+  urlTemplate: "https://example.invalid/gate"
+  httpRequest:
+    method: GET
+    urlTemplate: "https://example.invalid/gate/status"
+    headerTemplates:
+      Accept: application/json
+  mode:
+    context: promotionstrategy
+    trigger:
+      requeueDuration: 5m
+      when:
+        variables:
+          expression: |
+            // Fixture models a gate that is false on the first reconcile (no HTTP).
+            // In a real WRCS this might be `hasOpenPR`, `preGateNoOpenPR`, etc.
+            { "ready": false }
+        expression: Variables.ready
+        output:
+          expression: |
+            {
+              "evaluatedAt": string(now()),
+              "ready": Variables.ready
+            }
+      response:
+        output:
+          expression: |
+            { "statusCode": Response.StatusCode, "ok": Response.Body.ok ?? false }
+  success:
+    when:
+      expression: |
+        Response != nil
+          ? (Response.StatusCode == 200 && Response.Body != nil && Response.Body.ok == true)
+          : (Phase == "success")
