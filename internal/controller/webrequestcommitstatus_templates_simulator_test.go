@@ -19,14 +19,29 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"runtime"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/yaml"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
+
+// templatesExamplesJoin returns an absolute path under the repo's cmd/templates/examples/ tree.
+// It is anchored to this test file's directory (internal/controller → repo root).
+func templatesExamplesJoin(parts ...string) string {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		panic("runtime.Caller failed")
+	}
+	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
+	return filepath.Join(append([]string{repoRoot, "cmd", "templates", "examples"}, parts...)...)
+}
 
 // makeSimPromotionStrategy builds a minimal PromotionStrategy suitable for the templates simulator
 // tests: one environment ("environment/dev") with the SHA-bearing Status entry the simulator uses
@@ -576,6 +591,95 @@ var _ = Describe("SimulateWebRequestTemplates — seed from WRCS status", func()
 		// and overrode whatever next-reconcile's carry-forward produced.
 		Expect(results[2].Evaluations[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)),
 			"re-seeded stale fingerprint in the after-state-change step must make carry-forward success.when fail")
+	})
+})
+
+var _ = Describe("SimulateWebRequestTemplates — webrequest-change-management example fixtures", func() {
+	ctx := context.Background()
+
+	readChangeMgmtFixture := func(name string) []byte {
+		base := templatesExamplesJoin("webrequest-change-management")
+		b, err := os.ReadFile(filepath.Join(base, name))
+		Expect(err).ToNot(HaveOccurred(), "read fixture %q", name)
+		return b
+	}
+
+	It("matches the default 2-step offline CLI run (inject 202 then fingerprint carry-forward)", func() {
+		var wrcs promoterv1alpha1.WebRequestCommitStatus
+		Expect(yaml.Unmarshal(readChangeMgmtFixture("wrcs.yaml"), &wrcs)).To(Succeed())
+		var ps promoterv1alpha1.PromotionStrategy
+		Expect(yaml.Unmarshal(readChangeMgmtFixture("ps.yaml"), &ps)).To(Succeed())
+		var ns SimulationNamespaceMetadata
+		Expect(yaml.Unmarshal(readChangeMgmtFixture("namespace-labels.yaml"), &ns)).To(Succeed())
+		var mock SimulationMockResponse
+		Expect(yaml.Unmarshal(readChangeMgmtFixture("response.yaml"), &mock)).To(Succeed())
+
+		results, err := SimulateWebRequestTemplates(ctx, &wrcs, &ps, ns, mock, "", SimulateWebRequestOptions{})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(results).To(HaveLen(2))
+
+		Expect(results[0].Label).To(Equal("reconcile"))
+		Expect(results[0].Evaluations[0].TriggerEval.ShouldFire).To(BeTrue())
+		Expect(results[0].Evaluations[0].ResponseInjected).To(BeTrue())
+		Expect(results[0].Evaluations[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+		Expect(results[0].Evaluations[0].ResponseOutput).ToNot(BeNil())
+
+		Expect(results[1].Label).To(Equal("next-reconcile"))
+		Expect(results[1].Evaluations[0].TriggerEval.ShouldFire).To(BeFalse())
+		Expect(results[1].Evaluations[0].ResponseInjected).To(BeFalse())
+		Expect(results[1].Evaluations[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+
+		byBranch := make(map[string]RenderedCommitStatus, len(results[0].CommitStatuses))
+		for _, cs := range results[0].CommitStatuses {
+			byBranch[cs.Branch] = cs
+		}
+		Expect(byBranch).To(HaveKey("environments/production"))
+		Expect(byBranch["environments/production"].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+		Expect(byBranch["environments/production"].Description).To(ContainSubstring("e4c72189-c8d1-48a7-8930-ee312b4a9025"))
+	})
+
+	It("matches the 3-step CLI run with ps-step4 (no HTTP on step 3; gate decay to pending)", func() {
+		var wrcs promoterv1alpha1.WebRequestCommitStatus
+		Expect(yaml.Unmarshal(readChangeMgmtFixture("wrcs.yaml"), &wrcs)).To(Succeed())
+		var ps promoterv1alpha1.PromotionStrategy
+		Expect(yaml.Unmarshal(readChangeMgmtFixture("ps.yaml"), &ps)).To(Succeed())
+		var psStep4 promoterv1alpha1.PromotionStrategy
+		Expect(yaml.Unmarshal(readChangeMgmtFixture("ps-step4.yaml"), &psStep4)).To(Succeed())
+		var ns SimulationNamespaceMetadata
+		Expect(yaml.Unmarshal(readChangeMgmtFixture("namespace-labels.yaml"), &ns)).To(Succeed())
+		var mock SimulationMockResponse
+		Expect(yaml.Unmarshal(readChangeMgmtFixture("response.yaml"), &mock)).To(Succeed())
+
+		results, err := SimulateWebRequestTemplates(ctx, &wrcs, &ps, ns, mock, "", SimulateWebRequestOptions{
+			PromotionStrategyUpdated: &psStep4,
+		})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(results).To(HaveLen(3))
+		Expect(results[2].Label).To(Equal(SimStepAfterStateChange))
+
+		Expect(results[0].Evaluations[0].TriggerEval.ShouldFire).To(BeTrue())
+		Expect(results[0].Evaluations[0].ResponseInjected).To(BeTrue())
+		Expect(results[0].Evaluations[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+
+		Expect(results[1].Evaluations[0].TriggerEval.ShouldFire).To(BeFalse())
+		Expect(results[1].Evaluations[0].ResponseInjected).To(BeFalse())
+		Expect(results[1].Evaluations[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+
+		// ps-step4: production dry SHA advanced alone → allNoteDryShasMatch false → no POST; fingerprint
+		// no longer matches persisted lastFingerprint → carry-forward success.when → pending.
+		Expect(results[2].Evaluations[0].TriggerEval.ShouldFire).To(BeFalse())
+		Expect(results[2].Evaluations[0].ResponseInjected).To(BeFalse())
+		Expect(results[2].Evaluations[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)))
+
+		var prod *RenderedCommitStatus
+		for i := range results[2].CommitStatuses {
+			if results[2].CommitStatuses[i].Branch == "environments/production" {
+				prod = &results[2].CommitStatuses[i]
+				break
+			}
+		}
+		Expect(prod).ToNot(BeNil())
+		Expect(prod.Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)))
 	})
 })
 
