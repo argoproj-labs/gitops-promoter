@@ -1,0 +1,56 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PromotionStrategy
+metadata:
+  name: argocon-demo
+  namespace: default
+spec:
+  gitRepositoryRef:
+    name: argocon-demo
+  environments:
+    - branch: environments/development
+    - branch: environments/staging
+    # change-management-open is gated per-env on production only.
+    # This ensures preGateNoOpenPR checks development + staging first.
+    - branch: environments/production
+      proposedCommitStatuses:
+        - key: change-management-open
+status:
+  environments:
+    - branch: environments/development
+      # Proposed note dry SHA is the same across all branches — indicates the same dry snapshot
+      # has reached the head of each environment's promotion queue. All three must match for
+      # allNoteDryShasMatch=true.
+      proposed:
+        hydrated:
+          sha: "a111111111111111111111111111111111111111"
+        note:
+          drySha: "73a80cb8dc22bf7b17c0fdd8dda2ef6627e92974"
+      active:
+        hydrated:
+          sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      # No open PR — development's promotion is done. preGateNoOpenPR sees this and passes.
+    - branch: environments/staging
+      proposed:
+        hydrated:
+          sha: "b222222222222222222222222222222222222222"
+        note:
+          drySha: "73a80cb8dc22bf7b17c0fdd8dda2ef6627e92974"
+      active:
+        hydrated:
+          sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      # No open PR — staging has merged. preGateNoOpenPR passes.
+    - branch: environments/production
+      proposed:
+        hydrated:
+          sha: "c333333333333333333333333333333333333333"
+        note:
+          drySha: "73a80cb8dc22bf7b17c0fdd8dda2ef6627e92974"
+      active:
+        hydrated:
+          sha: "cccccccccccccccccccccccccccccccccccccccc"
+      # Open PR on production — hasOpenPR=true because production carries the change-management-open
+      # key and has an open PR. This is what gates the CM record creation.
+      pullRequest:
+        id: "2707"
+        state: open
+        url: "https://github.com/your-org/argocon-demo/pull/2707"

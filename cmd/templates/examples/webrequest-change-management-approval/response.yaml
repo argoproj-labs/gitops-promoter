@@ -1,0 +1,67 @@
+statusCode: 200
+body:
+  # Two approved change records, both with a wide time window that brackets real-now() for any
+  # wall-clock time between 2020 and 2099. This makes the `response.output` filter count both
+  # as approved and `success.when` HTTP path return true.
+  #
+  # To exercise the "records exist but none are in-window" path, narrow the window (e.g. set
+  # start_time/end_time to times in the past) and re-run — step 2 will fail and step 3's
+  # carry-forward will stay pending.
+  change_records:
+    - id: "e4c72189-c8d1-48a7-8930-ee312b4a9025"
+      servicenow_cr: "CHG6401089"
+      status: "CLOSED_SUCCESS"
+      message: "change record details"
+      change_request:
+        asset_id: "1372489579564901493"
+        caller_id: "6275783674070128182"
+        category: "Application"
+        sub_category: "Release"
+        environment: "production"
+        type: "standard"
+        risk: "low"
+        short_description: "Automated prod promotion (multi-env)"
+        on_behalf_of: "zaller"
+        commit_id: "73a80cb8dc22bf7b17c0fdd8dda2ef6627e92974"
+        start_time: "2020-01-01T00:00:00Z"
+        end_time: "2099-12-31T23:59:59Z"
+        actual_start_time: "2020-01-01T00:00:00Z"
+        actual_end_time: ""
+        repo_url: "https://github.com/your-org/argocon-demo"
+        release_url: ""
+        incident_number: ""
+        swimlane: ""
+        description: "Production change-management record for GitOps promotion strategy `argocon-demo`."
+        backout_plan: "Rollback can be initiated via DevPortal or Argo CD."
+        change_plan: "Automated GitOps promotion"
+        test_plan: "Covered by pipeline tests"
+    - id: "e69edaf4-ff42-4a19-8bdf-14fc060a3094"
+      servicenow_cr: "CHG6401090"
+      status: "CLOSED_SUCCESS"
+      message: "change record details"
+      change_request:
+        asset_id: "1372489579564901493"
+        caller_id: "6275783674070128182"
+        category: "Application"
+        sub_category: "Release"
+        environment: "production"
+        type: "standard"
+        risk: "low"
+        short_description: "Automated prod promotion (multi-env) - follow-up"
+        on_behalf_of: "zaller"
+        commit_id: "73a80cb8dc22bf7b17c0fdd8dda2ef6627e92974"
+        start_time: "2020-01-01T00:00:00Z"
+        end_time: "2099-12-31T23:59:59Z"
+        actual_start_time: "2020-01-01T00:00:00Z"
+        actual_end_time: ""
+        repo_url: "https://github.com/your-org/argocon-demo"
+        release_url: ""
+        incident_number: ""
+        swimlane: ""
+        description: "Production change-management record for GitOps promotion strategy `argocon-demo`."
+        backout_plan: "Rollback can be initiated via DevPortal or Argo CD."
+        change_plan: "Automated GitOps promotion"
+        test_plan: "Covered by pipeline tests"
+headers:
+  Content-Type:
+    - application/json

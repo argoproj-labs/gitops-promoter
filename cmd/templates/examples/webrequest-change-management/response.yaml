@@ -1,0 +1,31 @@
+statusCode: 202
+body:
+  id: "e4c72189-c8d1-48a7-8930-ee312b4a9025"
+  message: "accepted record change request"
+  change_request:
+    asset_id: "1372489579564901493"
+    caller_id: "6275783674070128182"
+    category: "Application"
+    sub_category: "Release"
+    environment: "production"
+    type: "standard"
+    risk: "low"
+    short_description: "Automated prod promotion (multi-env)"
+    start_time: "2026-04-20T15:56:31-05:00"
+    end_time: "2026-04-20T16:26:31-05:00"
+    actual_start_time: ""
+    actual_end_time: ""
+    on_behalf_of: "zaller"
+    commit_id: "73a80cb8dc22bf7b17c0fdd8dda2ef6627e92974"
+    repo_url: "https://github.com/your-org/argocon-demo"
+    release_url: ""
+    incident_number: ""
+    change_reference: ""
+    swimlane: ""
+    description: "Production change-management record for GitOps promotion strategy `argocon-demo`."
+    backout_plan: "Rollback can be initiated via DevPortal or Argo CD."
+    change_plan: "Automated GitOps promotion"
+    test_plan: "Covered by pipeline tests"
+headers:
+  Content-Type:
+    - application/json

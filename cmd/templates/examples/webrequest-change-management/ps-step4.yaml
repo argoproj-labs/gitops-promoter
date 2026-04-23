@@ -1,0 +1,60 @@
+# PromotionStrategy snapshot for the optional step 4 (after-state-change).
+# Identical to ps.yaml EXCEPT: environments/production.proposed.note.drySha has advanced to a new
+# value. This simulates a new hydrator dry commit arriving on production between reconciles.
+#
+# Expected simulator behavior:
+#   - success.when.variables recomputes fingerprint from the new DrySha.
+#   - The new fingerprint no longer matches TriggerOutput.lastFingerprint (still equal to step 2's
+#     fingerprint).
+#   - success.when carry-forward branch (Response == nil) returns false → Phase flips from "success"
+#     back to "pending".
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PromotionStrategy
+metadata:
+  name: argocon-demo
+  namespace: default
+spec:
+  gitRepositoryRef:
+    name: argocon-demo
+  environments:
+    - branch: environments/development
+    - branch: environments/staging
+    - branch: environments/production
+      proposedCommitStatuses:
+        - key: change-management-open
+status:
+  environments:
+    - branch: environments/development
+      proposed:
+        hydrated:
+          sha: "a111111111111111111111111111111111111111"
+        # DrySha advanced on all branches — a new dry snapshot has been queued.
+        note:
+          drySha: "fee15baddecafc0ffeefee15baddecafc0ffeefa"
+      active:
+        hydrated:
+          sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    - branch: environments/staging
+      proposed:
+        hydrated:
+          sha: "b222222222222222222222222222222222222222"
+        note:
+          drySha: "fee15baddecafc0ffeefee15baddecafc0ffeefa"
+      active:
+        hydrated:
+          sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    - branch: environments/production
+      proposed:
+        hydrated:
+          sha: "c333333333333333333333333333333333333333"
+        note:
+          drySha: "fee15baddecafc0ffeefee15baddecafc0ffeefa"
+      active:
+        hydrated:
+          sha: "cccccccccccccccccccccccccccccccccccccccc"
+      # Production now has a fresh open PR for the new dry SHA — this would be created by the
+      # controller on the next reconcile once it detects the new fingerprint.
+      pullRequest:
+        id: "2710"
+        state: open
+        url: "https://github.com/your-org/argocon-demo/pull/2710"

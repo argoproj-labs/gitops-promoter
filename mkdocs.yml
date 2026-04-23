@@ -58,6 +58,8 @@ nav:
       - Events: monitoring/events.md
       - Logs: monitoring/logs.md
       - Metrics: monitoring/metrics.md
+  - CLI:
+      - Templates (offline playground): cli/templates.md
   - Tool Comparison: tool-comparison.md
   - FAQs: faqs.md
   - Tutorials:

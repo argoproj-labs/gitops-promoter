@@ -1,0 +1,12 @@
+statusCode: 200
+body:
+  environments:
+    - branch: environment/dev
+      phase: success
+    - branch: environment/staging
+      phase: success
+    - branch: environment/production
+      phase: pending
+headers:
+  Content-Type:
+    - application/json

@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
 
 	"github.com/argoproj-labs/gitops-promoter/cmd/demo"
+	"github.com/argoproj-labs/gitops-promoter/cmd/templates"
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -463,6 +464,7 @@ func newCommand() *cobra.Command {
 	cmd.AddCommand(newControllerCommand(clientConfig))
 	cmd.AddCommand(newDashboardCommand(clientConfig))
 	cmd.AddCommand(demo.NewDemoCommand())
+	cmd.AddCommand(templates.NewTemplatesCommand())
 	return cmd
 }
 

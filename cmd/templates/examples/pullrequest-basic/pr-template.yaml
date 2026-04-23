@@ -1,0 +1,8 @@
+title: "Promote {{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }} to `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`"
+description: |
+  Promote to {{ .ChangeTransferPolicy.Spec.ActiveBranch }}
+  From:     {{ .ChangeTransferPolicy.Spec.ProposedBranch }}
+  {{- if .PromotionStrategy }}
+  Strategy: {{ .PromotionStrategy.Name }}
+  Repo:     {{ .PromotionStrategy.Spec.RepositoryReference.Name }}
+  {{- end }}

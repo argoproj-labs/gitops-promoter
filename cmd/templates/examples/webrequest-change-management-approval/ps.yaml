@@ -1,0 +1,56 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PromotionStrategy
+metadata:
+  name: argocon-demo
+  namespace: default
+spec:
+  gitRepositoryRef:
+    name: argocon-demo
+  environments:
+    - branch: environments/development
+    - branch: environments/staging
+    # change-management-approval gate is on production ONLY — so `lowerSpecs` in the when.variables
+    # expression becomes [development, staging], and `preGateNoOpenPR` requires those two branches
+    # to have no open PR. Otherwise the approval gate blocks firing.
+    - branch: environments/production
+      proposedCommitStatuses:
+        - key: change-management-approval
+status:
+  environments:
+    # All three branches share the SAME proposed.note.drySha → allNoteDryShasMatch=true and the
+    # canonical fingerprint is stable. Change any one to a different value to simulate mid-promotion
+    # drift and watch `allNoteDryShasMatch` flip false.
+    - branch: environments/development
+      proposed:
+        hydrated:
+          sha: "a111111111111111111111111111111111111111"
+        note:
+          drySha: "73a80cb8dc22bf7b17c0fdd8dda2ef6627e92974"
+      active:
+        hydrated:
+          sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      # No open PR — promotion on development is already merged.
+    - branch: environments/staging
+      proposed:
+        hydrated:
+          sha: "b222222222222222222222222222222222222222"
+        note:
+          drySha: "73a80cb8dc22bf7b17c0fdd8dda2ef6627e92974"
+      active:
+        hydrated:
+          sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      # No open PR — staging is merged. preGateNoOpenPR passes.
+    - branch: environments/production
+      proposed:
+        hydrated:
+          sha: "c333333333333333333333333333333333333333"
+        note:
+          drySha: "73a80cb8dc22bf7b17c0fdd8dda2ef6627e92974"
+      active:
+        hydrated:
+          sha: "cccccccccccccccccccccccccccccccccccccccc"
+      # OPEN PR on production → hasOpenPR=true (production carries the gated key, so this counts).
+      pullRequest:
+        id: "2707"
+        state: open
+        url: "https://github.com/your-org/argocon-demo/pull/2707"

@@ -1,0 +1,29 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PromotionStrategy
+metadata:
+  name: sample-ps
+  namespace: default
+spec:
+  gitRepositoryRef:
+    name: sample-repo
+  proposedCommitStatuses:
+    - key: external-approval
+  environments:
+    - branch: environment/staging
+    - branch: environment/production
+status:
+  environments:
+    - branch: environment/staging
+      proposed:
+        hydrated:
+          sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      active:
+        hydrated:
+          sha: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    - branch: environment/production
+      proposed:
+        hydrated:
+          sha: d3adb33fd3adb33fd3adb33fd3adb33fd3adb33f
+      active:
+        hydrated:
+          sha: cccccccccccccccccccccccccccccccccccccccc

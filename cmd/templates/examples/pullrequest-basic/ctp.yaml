@@ -1,0 +1,12 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ChangeTransferPolicy
+metadata:
+  name: sample-ps-environment-production
+  namespace: default
+spec:
+  activeBranch: environment/production
+  proposedBranch: environment/staging
+status:
+  proposed:
+    dry:
+      sha: 5d6f0a1b2c3d4e5f6789a0b1c2d3e4f5a6b7c8d9

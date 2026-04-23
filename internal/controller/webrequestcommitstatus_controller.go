@@ -1022,6 +1022,82 @@ func (r *WebRequestCommitStatusReconciler) getApplicableEnvironments(ps *promote
 	return applicable
 }
 
+// renderedHTTPRequest holds the rendered URL, body, and headers for an HTTP request, produced by
+// renderHTTPRequestTemplates from the WebRequestCommitStatus spec and templateData. Body is a pointer
+// so callers can distinguish "no body template" (nil) from "empty body template" (pointer to "").
+type renderedHTTPRequest struct {
+	Body    *string
+	Headers map[string]string
+	URL     string
+}
+
+// renderHTTPRequestTemplates renders the URL, body, and header templates from wrcs.Spec.HTTPRequest
+// using the provided templateData. It does not make any HTTP call, does not apply authentication, and
+// does not perform SCM host validation — it is a pure template-rendering helper used by both the
+// reconciler (as the first step of makeHTTPRequest) and the templates simulator CLI.
+func renderHTTPRequestTemplates(wrcs *promoterv1alpha1.WebRequestCommitStatus, td templateData) (renderedHTTPRequest, error) {
+	out := renderedHTTPRequest{}
+
+	url, err := utils.RenderStringTemplate(wrcs.Spec.HTTPRequest.URLTemplate, td)
+	if err != nil {
+		return renderedHTTPRequest{}, fmt.Errorf("failed to render URL template: %w", err)
+	}
+	out.URL = url
+
+	if wrcs.Spec.HTTPRequest.BodyTemplate != "" {
+		bodyStr, err := utils.RenderStringTemplate(wrcs.Spec.HTTPRequest.BodyTemplate, td)
+		if err != nil {
+			return renderedHTTPRequest{}, fmt.Errorf("failed to render body template: %w", err)
+		}
+		out.Body = &bodyStr
+	}
+
+	if len(wrcs.Spec.HTTPRequest.HeaderTemplates) > 0 {
+		out.Headers = make(map[string]string, len(wrcs.Spec.HTTPRequest.HeaderTemplates))
+	}
+	for headerName, headerTemplate := range wrcs.Spec.HTTPRequest.HeaderTemplates {
+		headerValue, err := utils.RenderStringTemplate(headerTemplate, td)
+		if err != nil {
+			return renderedHTTPRequest{}, fmt.Errorf("failed to render header template %q: %w", headerName, err)
+		}
+		out.Headers[headerName] = headerValue
+	}
+
+	return out, nil
+}
+
+// renderedCommitStatusTemplates holds the rendered description and URL for a CommitStatus resource,
+// produced by renderCommitStatusTemplates from the WebRequestCommitStatus spec and templateData.
+type renderedCommitStatusTemplates struct {
+	Description string
+	URL         string
+}
+
+// renderCommitStatusTemplates renders the SCM CommitStatus description and URL templates from
+// wrcs.Spec using the provided templateData. It is a pure template-rendering helper used by both the
+// reconciler (as the first step of upsertCommitStatus) and the templates simulator CLI.
+func renderCommitStatusTemplates(wrcs *promoterv1alpha1.WebRequestCommitStatus, td templateData) (renderedCommitStatusTemplates, error) {
+	out := renderedCommitStatusTemplates{}
+
+	if wrcs.Spec.DescriptionTemplate != "" {
+		rendered, err := utils.RenderStringTemplate(wrcs.Spec.DescriptionTemplate, td)
+		if err != nil {
+			return renderedCommitStatusTemplates{}, fmt.Errorf("failed to render description template: %w", err)
+		}
+		out.Description = rendered
+	}
+
+	if wrcs.Spec.UrlTemplate != "" {
+		renderedURL, err := utils.RenderStringTemplate(wrcs.Spec.UrlTemplate, td)
+		if err != nil {
+			return renderedCommitStatusTemplates{}, fmt.Errorf("failed to render URL template: %w", err)
+		}
+		out.URL = renderedURL
+	}
+
+	return out, nil
+}
+
 // makeHTTPRequest builds and executes the HTTP request from the WebRequestCommitStatus spec. It renders
 // URL, body, and headers from templateData, applies authentication (basic, bearer, OAuth2, or TLS), uses the
 // configured timeout, and parses the response body as JSON or plain text. The returned httpResponse is used
@@ -1031,11 +1107,11 @@ func (r *WebRequestCommitStatusReconciler) getApplicableEnvironments(ps *promote
 func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, templateData templateData) (httpResponse, error) {
 	logger := log.FromContext(ctx)
 
-	// Render URL template
-	url, err := utils.RenderStringTemplate(wrcs.Spec.HTTPRequest.URLTemplate, templateData)
+	rendered, err := renderHTTPRequestTemplates(wrcs, templateData)
 	if err != nil {
-		return httpResponse{}, fmt.Errorf("failed to render URL template: %w", err)
+		return httpResponse{}, err
 	}
+	url := rendered.URL
 
 	// When Scm is configured, credentials are sourced directly from the SCM provider, so the
 	// URL host must belong to that provider's allowed domains to prevent credential leakage.
@@ -1045,28 +1121,17 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 		}
 	}
 
-	// Render body template if present
 	var body io.Reader
-	if wrcs.Spec.HTTPRequest.BodyTemplate != "" {
-		bodyStr, err := utils.RenderStringTemplate(wrcs.Spec.HTTPRequest.BodyTemplate, templateData)
-		if err != nil {
-			return httpResponse{}, fmt.Errorf("failed to render body template: %w", err)
-		}
-		body = strings.NewReader(bodyStr)
+	if rendered.Body != nil {
+		body = strings.NewReader(*rendered.Body)
 	}
 
-	// Create request
 	req, err := http.NewRequestWithContext(ctx, wrcs.Spec.HTTPRequest.Method, url, body)
 	if err != nil {
 		return httpResponse{}, fmt.Errorf("failed to create HTTP request: %w", err)
 	}
 
-	// Render and set headers
-	for headerName, headerTemplate := range wrcs.Spec.HTTPRequest.HeaderTemplates {
-		headerValue, err := utils.RenderStringTemplate(headerTemplate, templateData)
-		if err != nil {
-			return httpResponse{}, fmt.Errorf("failed to render header template %q: %w", headerName, err)
-		}
+	for headerName, headerValue := range rendered.Headers {
 		req.Header.Set(headerName, headerValue)
 	}
 
@@ -1219,14 +1284,9 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 	// Generate a consistent name for the CommitStatus
 	commitStatusName := utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-webrequest", wrcs.Name, branch))
 
-	// Render description template
-	var description string
-	if wrcs.Spec.DescriptionTemplate != "" {
-		rendered, err := utils.RenderStringTemplate(wrcs.Spec.DescriptionTemplate, templateData)
-		if err != nil {
-			return nil, fmt.Errorf("failed to render description template: %w", err)
-		}
-		description = rendered
+	rendered, err := renderCommitStatusTemplates(wrcs, templateData)
+	if err != nil {
+		return nil, err
 	}
 
 	// Build owner reference
@@ -1237,17 +1297,12 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 	commitStatusSpec := acv1alpha1.CommitStatusSpec().
 		WithRepositoryReference(acv1alpha1.ObjectReference().WithName(repositoryRefName)).
 		WithName(wrcs.Spec.Key + "/" + branch).
-		WithDescription(description).
+		WithDescription(rendered.Description).
 		WithPhase(phase).
 		WithSha(sha)
 
-	// Render URL template if present
-	if wrcs.Spec.UrlTemplate != "" {
-		renderedURL, err := utils.RenderStringTemplate(wrcs.Spec.UrlTemplate, templateData)
-		if err != nil {
-			return nil, fmt.Errorf("failed to render URL template: %w", err)
-		}
-		commitStatusSpec = commitStatusSpec.WithUrl(renderedURL)
+	if rendered.URL != "" {
+		commitStatusSpec = commitStatusSpec.WithUrl(rendered.URL)
 	}
 
 	// Build the apply configuration

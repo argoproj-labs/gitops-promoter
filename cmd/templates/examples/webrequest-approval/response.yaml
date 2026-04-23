@@ -1,0 +1,8 @@
+statusCode: 200
+body:
+  approved: true
+  sha: d3adb33f
+  approver: alice@example.com
+headers:
+  Content-Type:
+    - application/json

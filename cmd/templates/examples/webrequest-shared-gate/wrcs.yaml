@@ -1,0 +1,31 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: deployment-gate
+  namespace: default
+spec:
+  promotionStrategyRef:
+    name: sample-ps
+  key: deployment-gate
+  descriptionTemplate: '{{ .Branch }} gate: {{ .Phase }}'
+  urlTemplate: 'https://deployments.example.com/apps/{{ .PromotionStrategy.Spec.RepositoryReference.Name }}/status/{{ .Branch }}'
+  reportOn: proposed
+  httpRequest:
+    method: GET
+    urlTemplate: 'https://deployments.example.com/apps/{{ .PromotionStrategy.Spec.RepositoryReference.Name }}/status'
+    headerTemplates:
+      Accept: application/json
+  success:
+    when:
+      # Expression returns an object { defaultPhase?, environments? } so each branch can have its
+      # own phase. When Response is nil (carry-forward step), the previous aggregate Phase is used.
+      # The mock response body already uses the { branch, phase } shape expr expects, so we can
+      # pass it through directly.
+      expression: |
+        Response != nil
+          ? { "defaultPhase": "pending", "environments": Response.Body.environments }
+          : { "defaultPhase": Phase == "success" ? "success" : "pending" }
+  mode:
+    context: promotionstrategy
+    polling:
+      interval: 2m

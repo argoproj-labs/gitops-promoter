@@ -1,0 +1,169 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: change-management-approval
+  namespace: default
+spec:
+  promotionStrategyRef:
+    name: argocon-demo
+  key: change-management-approval
+  reportOn: proposed
+  descriptionTemplate: >-
+    {{ .Phase }}: {{ if .ResponseOutput }}{{ .ResponseOutput.approvedCount |
+    default 0 }}/{{ .ResponseOutput.totalRecordCount | default 0 }} approved
+    in window (last check: {{ .ResponseOutput.lastCheckedAt | default "—"
+    }}){{ else }}checking for approved change records in current time window
+    {{ end }}
+
+  httpRequest:
+    method: GET
+    timeout: 30s
+    headerTemplates:
+      Accept: application/json
+    urlTemplate: >-
+      http://localhost:8987/v1/change-management-service/changes/search?asset_id={{
+      index .NamespaceMetadata.Labels "asset-id" }}&commit_id={{- $sha := ""
+      -}}{{- range $se := $.PromotionStrategy.Spec.Environments -}}{{- if eq
+      $sha "" -}}{{- range $st := $.PromotionStrategy.Status.Environments -}}
+      {{- if and (eq $st.Branch $se.Branch) $st.Proposed.Note (ne
+      $st.Proposed.Note.DrySha "") -}}{{- $sha = $st.Proposed.Note.DrySha -}}
+      {{- end -}}{{- end -}}{{- end -}}{{- end -}}{{- $sha -}}&limit=25
+
+  mode:
+    context: promotionstrategy
+    trigger:
+      requeueDuration: 15s
+      when:
+        variables:
+          expression: |
+            let key = "change-management-approval";
+            let specEnvsList = PromotionStrategy.Spec.Environments ?? [];
+            let globalHasKey = any(PromotionStrategy.Spec.ProposedCommitStatuses ?? [], {#.Key == key});
+            let firstGatedIdx = findIndex(specEnvsList, {
+              globalHasKey || any(#.ProposedCommitStatuses ?? [], {#.Key == key})
+            });
+            let lowerSpecs = (firstGatedIdx != nil && firstGatedIdx > 0)
+              ? take(specEnvsList, firstGatedIdx)
+              : [];
+            let statusList = PromotionStrategy.Status.Environments ?? [];
+            let preGateNoOpenPR = all(lowerSpecs, {
+              let se = #;
+              let st = find(statusList, { #.Branch == se.Branch });
+              st == nil || st.PullRequest == nil || string(st.PullRequest.State) != "open"
+            });
+            let allSpecBranchesHaveNoteDrySha = len(specEnvsList) > 0 && all(specEnvsList, {
+              let se = #;
+              let st = find(statusList, { #.Branch == se.Branch });
+              st != nil && st.Proposed.Note != nil && st.Proposed.Note.DrySha != ""
+            });
+            let firstSpecBranch = len(specEnvsList) > 0 ? specEnvsList[0].Branch : "";
+            let stCanonical = find(statusList, { #.Branch == firstSpecBranch });
+            let canonicalNoteDrySha = stCanonical != nil && stCanonical.Proposed.Note != nil ? stCanonical.Proposed.Note.DrySha : "";
+            let allNoteDryShasMatch = allSpecBranchesHaveNoteDrySha && all(specEnvsList, {
+              let se = #;
+              let st = find(statusList, { #.Branch == se.Branch });
+              st != nil && st.Proposed.Note != nil && st.Proposed.Note.DrySha == canonicalNoteDrySha
+            });
+            let fingerprint = join(map(specEnvsList, {
+              let se = #;
+              let st = find(statusList, { #.Branch == se.Branch });
+              se.Branch + ":" + (st != nil && st.Proposed.Note != nil && st.Proposed.Note.DrySha != "" ? st.Proposed.Note.DrySha : "")
+            }), "|");
+            let hasOpenPR = any(specEnvsList, {
+              let se = #;
+              let envHasKey = globalHasKey || any(se.ProposedCommitStatuses ?? [], {#.Key == key});
+              let st = find(statusList, { #.Branch == se.Branch });
+              envHasKey && st != nil && st.PullRequest != nil && string(st.PullRequest.State) == "open"
+            });
+            let pollingIntervalMinutes = 1;
+            let isFirstRun = TriggerOutput.lastRequestTime == nil;
+            let isNewFingerprint = fingerprint != (TriggerOutput.lastFingerprint ?? "");
+            let shouldTriggerByTime = !isFirstRun && (
+              (now() - date(TriggerOutput.lastRequestTime)) >= duration(string(pollingIntervalMinutes) + "m")
+            );
+            {
+              hasOpenPR: hasOpenPR,
+              allNoteDryShasMatch: allNoteDryShasMatch,
+              preGateNoOpenPR: preGateNoOpenPR,
+              fingerprint: fingerprint,
+              canonicalNoteDrySha: canonicalNoteDrySha,
+              isFirstRun: isFirstRun,
+              isNewFingerprint: isNewFingerprint,
+              shouldTriggerByTime: shouldTriggerByTime
+            }
+        expression: |
+          // Fire GET when Variables gates pass (shared computation in when.variables).
+          Variables.hasOpenPR && Variables.allNoteDryShasMatch &&
+          (Variables.isFirstRun || Variables.isNewFingerprint || Variables.shouldTriggerByTime) &&
+          Variables.preGateNoOpenPR
+        output:
+          expression: |
+            let shouldTrigger = Variables.hasOpenPR && Variables.allNoteDryShasMatch &&
+              (Variables.isFirstRun || Variables.isNewFingerprint || Variables.shouldTriggerByTime) &&
+              Variables.preGateNoOpenPR;
+            {
+              lastFingerprint: Variables.fingerprint,
+              lastRequestTime: shouldTrigger ? now() : TriggerOutput.lastRequestTime,
+              preGateNoOpenPR: Variables.preGateNoOpenPR,
+              hasOpenPR: Variables.hasOpenPR,
+              allNoteDryShasMatch: Variables.allNoteDryShasMatch,
+              isNewFingerprint: Variables.isNewFingerprint,
+              shouldTriggerByTime: Variables.shouldTriggerByTime,
+              shouldTrigger: shouldTrigger,
+              fingerprint: Variables.fingerprint,
+              canonicalNoteDrySha: Variables.canonicalNoteDrySha,
+              strategyBranches: map(PromotionStrategy.Spec.Environments, { #.Branch }),
+              evaluatedAt: string(now())
+            }
+      response:
+        output:
+          expression: |
+            let approvedRecords = filter(Response.Body.change_records ?? [], {
+              date(#.change_request.start_time) <= now() && date(#.change_request.end_time) >= now()
+            });
+            {
+              statusCode: Response.StatusCode,
+              totalRecordCount: len(Response.Body.change_records ?? []),
+              approvedRecords: approvedRecords,
+              approvedCount: len(approvedRecords),
+              lastCheckedAt: string(now())
+            }
+
+  success:
+    when:
+      variables:
+        expression: |
+          let specEnvsList = PromotionStrategy.Spec.Environments ?? [];
+          let statusList = PromotionStrategy.Status.Environments ?? [];
+          let fingerprint = join(map(specEnvsList, {
+            let se = #;
+            let st = find(statusList, { #.Branch == se.Branch });
+            se.Branch + ":" + (st != nil && st.Proposed.Note != nil && st.Proposed.Note.DrySha != "" ? st.Proposed.Note.DrySha : "")
+          }), "|");
+          { fingerprint: fingerprint }
+      expression: |
+        // HTTP path: success iff 200, non-empty change_records, and at least one record's
+        // change_request start_time/end_time bracket now().
+        // Carry-forward path: success iff Phase == "success" AND Variables.fingerprint ==
+        // TriggerOutput.lastFingerprint (unchanged upstream state).
+        Response != nil
+          ? (Response.StatusCode == 200 &&
+             len(Response.Body.change_records) > 0 &&
+             any(Response.Body.change_records, {
+               date(#.change_request.start_time) <= now() &&
+               date(#.change_request.end_time) >= now()
+             }))
+          : (Phase == "success" && Variables.fingerprint == (TriggerOutput["lastFingerprint"] ?? ""))
+
+# --- Seeded status ---
+# The simulator re-seeds step 1's carry-forward state from this block (mirroring how the real
+# controller starts each reconcile). Ancient lastRequestTime means step 1's
+# `shouldTriggerByTime` evaluates true against real wall-clock now(); empty lastFingerprint makes
+# `isNewFingerprint` true; missing lastSuccessfulShas means the resource has never succeeded yet.
+# Delete this whole `status:` block to exercise the cold-start (first-ever reconcile) path.
+status:
+  promotionStrategyContext:
+    lastRequestTime: "2020-01-01T00:00:00Z"
+    triggerOutput:
+      lastFingerprint: ""
+      lastRequestTime: "2020-01-01T00:00:00Z"

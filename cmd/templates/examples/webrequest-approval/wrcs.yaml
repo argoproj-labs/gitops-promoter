@@ -1,0 +1,38 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: external-approval
+  namespace: default
+spec:
+  promotionStrategyRef:
+    name: sample-ps
+  key: external-approval
+  descriptionTemplate: '{{ if .ResponseOutput.approved }}approved ({{ .ResponseOutput.sha }}){{ else }}waiting for {{ .Branch }}{{ end }}'
+  urlTemplate: 'https://approvals.example.com/{{ .Branch }}'
+  reportOn: proposed
+  httpRequest:
+    method: POST
+    urlTemplate: 'https://approvals.example.com/api/check'
+    headerTemplates:
+      Content-Type: application/json
+      X-Branch: '{{ .Branch }}'
+      X-Owner: '{{ index .NamespaceMetadata.Annotations "owner" }}'
+    bodyTemplate: |
+      {
+        "branch": "{{ .Branch }}",
+        "sha":    "{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
+      }
+  success:
+    when:
+      expression: 'Response != nil ? (Response.StatusCode == 200 && ResponseOutput.approved == true) : Phase == "success"'
+  mode:
+    context: environments
+    trigger:
+      requeueDuration: 2m
+      when:
+        expression: 'Phase != "success"'
+        output:
+          expression: '{ "trackedBranch": Branch }'
+      response:
+        output:
+          expression: '{ "approved": Response.Body.approved, "sha": Response.Body.sha }'

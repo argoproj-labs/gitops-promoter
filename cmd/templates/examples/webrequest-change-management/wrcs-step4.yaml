@@ -1,0 +1,69 @@
+# WebRequestCommitStatus snapshot for the optional step 4 (after-state-change), used via
+# --web-request-updated.
+#
+# The `spec` is identical to wrcs.yaml. The interesting part is the `status` block: the simulator
+# re-seeds step 4's carry-forward state from status.promotionStrategyContext here, mirroring what
+# the real controller does when it starts a reconcile after writing back status to the API.
+#
+# Expected simulator behavior:
+#   - Steps 1–3 run as usual (cold start → success via HTTP → carry-forward success).
+#   - Step 4 re-seeds TriggerOutput.lastFingerprint from status below. The value is intentionally
+#     set to a DIFFERENT fingerprint than the one step 2 established, so success.when's
+#     carry-forward branch (Variables.fingerprint == TriggerOutput.lastFingerprint) now returns
+#     false → Phase flips back to "pending".
+#
+# This is the status-only equivalent of using --promotion-strategy-updated with ps-step4.yaml:
+# either way, the fingerprint stops matching and the previously-successful gate invalidates.
+# Use this form when the upstream change is best described as "the controller wrote back new
+# status" rather than "a spec/SHA change happened upstream."
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: change-management-open
+  namespace: default
+spec:
+  # Same spec as wrcs.yaml — copy it through so the WRCS round-trips unchanged.
+  # (Only the status block below actually differs from wrcs.yaml.)
+  promotionStrategyRef:
+    name: argocon-demo
+  key: change-management-open
+  reportOn: proposed
+  descriptionTemplate: "{{ .Phase }}"
+  httpRequest:
+    method: POST
+    urlTemplate: http://localhost:8987/v1/change-management-service/change
+    timeout: 30s
+  mode:
+    context: promotionstrategy
+    trigger:
+      requeueDuration: 30s
+      when:
+        expression: "true"
+  success:
+    when:
+      variables:
+        expression: |
+          let specEnvsList = PromotionStrategy.Spec.Environments ?? [];
+          let statusList = PromotionStrategy.Status.Environments ?? [];
+          let fingerprint = join(map(specEnvsList, {
+            let se = #;
+            let st = find(statusList, { #.Branch == se.Branch });
+            se.Branch + ":" + (st != nil && st.Proposed.Note != nil && st.Proposed.Note.DrySha != "" ? st.Proposed.Note.DrySha : "")
+          }), "|");
+          { fingerprint: fingerprint }
+      expression: |
+        Response != nil
+          ? (Response.StatusCode == 202 && Response.Body != nil && Response.Body.id != nil && Response.Body.id != "")
+          : (Phase == "success" && Variables.fingerprint == (TriggerOutput["lastFingerprint"] ?? ""))
+status:
+  # Step 4's re-seeded carry-forward state.
+  #
+  # NOTE: when the simulator re-seeds from this, it IGNORES step 3's computed outputs and uses the
+  # values here instead. That's why we can force a fingerprint mismatch here without having to
+  # modify the PromotionStrategy.
+  promotionStrategyContext:
+    phasePerBranch:
+      - branch: environments/production
+        phase: success
+    triggerOutput:
+      lastFingerprint: "ancient-fingerprint-that-no-longer-matches-anything"

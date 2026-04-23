@@ -1,0 +1,8 @@
+labels:
+  env: sandbox
+  team: platform
+  # Consumed by wrcs.yaml urlTemplate via `{{ index .NamespaceMetadata.Labels "asset-id" }}`.
+  # In production, this is typically stamped by a namespace-owner admission controller.
+  asset-id: "1372489579564901493"
+annotations:
+  owner: platform-team@example.com

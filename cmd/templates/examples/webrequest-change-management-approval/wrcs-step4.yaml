@@ -1,0 +1,66 @@
+# Step-4 re-seed fixture for the change-management-approval example.
+#
+# Scenario: "cooldown has elapsed since step 3 AND the upstream dry SHA has drifted."
+# The combination makes step 4 demonstrate TWO independent triggers for re-firing:
+#
+#   1. shouldTriggerByTime = (now() - lastRequestTime) >= 1m  → true
+#      (because lastRequestTime below is an ancient timestamp)
+#
+#   2. isNewFingerprint = Variables.fingerprint != TriggerOutput.lastFingerprint  → true
+#      (because lastFingerprint below is a stale value that no longer matches PS state)
+#
+# Both feed into `Variables.isFirstRun || Variables.isNewFingerprint || Variables.shouldTriggerByTime`
+# in the trigger.when.expression — step 4's info output shows the trigger would fire again.
+#
+# Additionally, success.when's carry-forward branch requires
+# `Variables.fingerprint == TriggerOutput.lastFingerprint`, so the stale lastFingerprint below
+# flips Phase from "success" (step 3) back to "pending" in step 4 — proving the carry-forward
+# correctly invalidates when the fingerprint drifts.
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: change-management-approval
+  namespace: default
+spec:
+  # Same spec as wrcs.yaml — status-only change for the step-4 re-seed.
+  promotionStrategyRef:
+    name: argocon-demo
+  key: change-management-approval
+  reportOn: proposed
+  descriptionTemplate: "{{ .Phase }}"
+  httpRequest:
+    method: GET
+    timeout: 30s
+    urlTemplate: "http://localhost:8987/v1/change-management-service/changes/search"
+  mode:
+    context: promotionstrategy
+    trigger:
+      requeueDuration: 15s
+      when:
+        expression: "true"
+  success:
+    when:
+      variables:
+        expression: |
+          let specEnvsList = PromotionStrategy.Spec.Environments ?? [];
+          let statusList = PromotionStrategy.Status.Environments ?? [];
+          let fingerprint = join(map(specEnvsList, {
+            let se = #;
+            let st = find(statusList, { #.Branch == se.Branch });
+            se.Branch + ":" + (st != nil && st.Proposed.Note != nil && st.Proposed.Note.DrySha != "" ? st.Proposed.Note.DrySha : "")
+          }), "|");
+          { fingerprint: fingerprint }
+      expression: |
+        Response != nil
+          ? Response.StatusCode == 200
+          : (Phase == "success" && Variables.fingerprint == (TriggerOutput["lastFingerprint"] ?? ""))
+status:
+  promotionStrategyContext:
+    phasePerBranch:
+      - branch: environments/production
+        phase: success
+    triggerOutput:
+      # Ancient → shouldTriggerByTime=true at step 4
+      lastRequestTime: "2020-01-01T00:00:00Z"
+      # Stale → carry-forward success.when fails, isNewFingerprint=true
+      lastFingerprint: "ancient-fingerprint-that-no-longer-matches-anything"

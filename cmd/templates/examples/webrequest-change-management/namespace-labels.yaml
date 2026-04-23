@@ -1,0 +1,8 @@
+labels:
+  env: sandbox
+  team: platform
+  # Consumed by wrcs.yaml bodyTemplate as the change-management asset id.
+  # In production, this is typically set by a namespace-owner policy or Kyverno/OPA admission.
+  asset-id: "1372489579564901493"
+annotations:
+  owner: platform-team@example.com

@@ -1,0 +1,11 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PromotionStrategy
+metadata:
+  name: sample-ps
+  namespace: default
+spec:
+  gitRepositoryRef:
+    name: sample-repo
+  environments:
+    - branch: environment/staging
+    - branch: environment/production

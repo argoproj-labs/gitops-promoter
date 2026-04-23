@@ -1,0 +1,5 @@
+labels:
+  env: sandbox
+  team: platform
+annotations:
+  owner: platform-team@example.com
