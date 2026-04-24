@@ -198,7 +198,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 	// Clear the promotionstrategy-context status; this path uses per-environment status instead.
 	wrcs.Status.PromotionStrategyContext = nil
 
-	out, err := webrequest.ProcessWebRequestCommitStatusEnvironments(ctx, webrequest.ProcessWebRequestCommitStatusEnvironmentsInput{
+	out, err := webrequest.ProcessWebRequestCommitStatusEnvironments(ctx, webrequest.ProcessWebRequestCommitStatusInput{
 		Evaluator:              r.evaluator,
 		HttpExec:               r,
 		WebRequestCommitStatus: wrcs,
@@ -217,7 +217,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 // processContextPromotionStrategy runs when mode.context is "promotionstrategy": at most one HTTP request
 // per WebRequestCommitStatus; phase(s) are applied to a CommitStatus per environment (each with that environment's reportOn SHA).
 func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, namespaceMeta webrequest.NamespaceMetadata) ([]string, []*promoterv1alpha1.CommitStatus, time.Duration, error) {
-	out, err := webrequest.ProcessWebRequestCommitStatusPromotionStrategyContext(ctx, webrequest.ProcessWebRequestCommitStatusPromotionStrategyInput{
+	out, err := webrequest.ProcessWebRequestCommitStatusPromotionStrategyContext(ctx, webrequest.ProcessWebRequestCommitStatusInput{
 		Evaluator:              r.evaluator,
 		HttpExec:               r,
 		WebRequestCommitStatus: wrcs,

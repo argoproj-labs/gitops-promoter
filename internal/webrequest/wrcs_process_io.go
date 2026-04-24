@@ -20,8 +20,9 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
-// ProcessWebRequestCommitStatusEnvironmentsInput carries dependencies for the per-environment context path.
-type ProcessWebRequestCommitStatusEnvironmentsInput struct {
+// ProcessWebRequestCommitStatusInput carries shared dependencies for WRCS processing
+// (per-environment context and promotionstrategy context).
+type ProcessWebRequestCommitStatusInput struct {
 	Evaluator              *Evaluator
 	HttpExec               HTTPEXecutor
 	WebRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
@@ -37,17 +38,6 @@ type ProcessWebRequestCommitStatusEnvironmentsOutput struct {
 	Environments         []promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
 	CommitStatuses       []*promoterv1alpha1.CommitStatus
 	TransitionedBranches []string
-}
-
-// ProcessWebRequestCommitStatusPromotionStrategyInput carries dependencies for context=promotionstrategy.
-type ProcessWebRequestCommitStatusPromotionStrategyInput struct {
-	Evaluator              *Evaluator
-	HttpExec               HTTPEXecutor
-	WebRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
-	PromotionStrategy      *promoterv1alpha1.PromotionStrategy
-	NamespaceMeta          NamespaceMetadata
-	CommitEmitter          CommitStatusEmitter
-	RenderedHTTPSink       RenderedHTTPSink // optional; same semantics as environments path
 }
 
 // ProcessWebRequestCommitStatusPromotionStrategyOutput is the computed status for promotionstrategy context.

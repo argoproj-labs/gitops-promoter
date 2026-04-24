@@ -118,7 +118,7 @@ func detectPromotionStrategyTransitionsAndLastSuccessfulShas(
 
 // ProcessWebRequestCommitStatusEnvironments runs the per-environment WebRequestCommitStatus reconcile logic.
 // It does not mutate wrcs.Status; callers apply Environments and handle PromotionStrategyContext clearing.
-func ProcessWebRequestCommitStatusEnvironments(ctx context.Context, in ProcessWebRequestCommitStatusEnvironmentsInput) (*ProcessWebRequestCommitStatusEnvironmentsOutput, error) {
+func ProcessWebRequestCommitStatusEnvironments(ctx context.Context, in ProcessWebRequestCommitStatusInput) (*ProcessWebRequestCommitStatusEnvironmentsOutput, error) {
 	logger := log.FromContext(ctx)
 	wrcs := in.WebRequestCommitStatus
 	ps := in.PromotionStrategy
@@ -244,7 +244,7 @@ func ProcessWebRequestCommitStatusEnvironments(ctx context.Context, in ProcessWe
 // ProcessWebRequestCommitStatusPromotionStrategyContext runs context=promotionstrategy reconcile logic.
 // It does not mutate wrcs.Status. Callers interpret ApplicableEnvsEmpty, PollingAllSuccessSkip, and PSC;
 // on PollingAllSuccessSkip, wrcs.Status is unchanged from the caller's input (same as production).
-func ProcessWebRequestCommitStatusPromotionStrategyContext(ctx context.Context, in ProcessWebRequestCommitStatusPromotionStrategyInput) (*ProcessWebRequestCommitStatusPromotionStrategyOutput, error) {
+func ProcessWebRequestCommitStatusPromotionStrategyContext(ctx context.Context, in ProcessWebRequestCommitStatusInput) (*ProcessWebRequestCommitStatusPromotionStrategyOutput, error) {
 	logger := log.FromContext(ctx)
 	wrcs := in.WebRequestCommitStatus
 	ps := in.PromotionStrategy

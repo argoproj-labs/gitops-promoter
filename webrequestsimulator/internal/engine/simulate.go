@@ -79,7 +79,7 @@ func simulateEnvironments(
 	var rendered []simulatortypes.RenderedRequest
 	renderedHTTP := &renderedRequestsCollector{out: &rendered}
 
-	out, err := webrequest.ProcessWebRequestCommitStatusEnvironments(ctx, webrequest.ProcessWebRequestCommitStatusEnvironmentsInput{
+	out, err := webrequest.ProcessWebRequestCommitStatusEnvironments(ctx, webrequest.ProcessWebRequestCommitStatusInput{
 		Evaluator:              evaluator,
 		HttpExec:               exec,
 		WebRequestCommitStatus: wrcs,
@@ -113,7 +113,7 @@ func simulatePromotionStrategy(
 	var rendered []simulatortypes.RenderedRequest
 	renderedHTTP := &renderedRequestsCollector{out: &rendered}
 
-	out, err := webrequest.ProcessWebRequestCommitStatusPromotionStrategyContext(ctx, webrequest.ProcessWebRequestCommitStatusPromotionStrategyInput{
+	out, err := webrequest.ProcessWebRequestCommitStatusPromotionStrategyContext(ctx, webrequest.ProcessWebRequestCommitStatusInput{
 		Evaluator:              evaluator,
 		HttpExec:               exec,
 		WebRequestCommitStatus: wrcs,
