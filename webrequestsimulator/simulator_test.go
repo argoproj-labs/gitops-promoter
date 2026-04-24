@@ -62,10 +62,9 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 		}
 	}
 
-	// newWRCS builds a minimal WebRequestCommitStatus with polling mode and the
-	// supplied success expression.
+	// newWRCS builds a minimal WebRequestCommitStatus with polling mode, key "k"
+	// (matching newPS), and the supplied success expression.
 	newWRCS := func(
-		key string,
 		mode promoterv1alpha1.ModeSpec,
 		successExpr string,
 	) *promoterv1alpha1.WebRequestCommitStatus {
@@ -73,7 +72,7 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 			ObjectMeta: metav1.ObjectMeta{Name: "wrcs", Namespace: "default"},
 			Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "ps"},
-				Key:                  key,
+				Key:                  "k",
 				ReportOn:             "proposed",
 				HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
 					URLTemplate: "https://example.com/{{ .Branch }}",
@@ -86,7 +85,7 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 	}
 
 	It("returns Status that matches what the controller would write (environments context)", func() {
-		wrcs := newWRCS("k",
+		wrcs := newWRCS(
 			promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
 			"Response.StatusCode == 200",
 		)
@@ -107,7 +106,7 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 	})
 
 	It("propagates errors from the internal simulator", func() {
-		wrcs := newWRCS("k",
+		wrcs := newWRCS(
 			promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
 			"true",
 		)
@@ -120,7 +119,7 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 	})
 
 	It("produces a single shared request with Branch=\"\" in promotionstrategy context", func() {
-		wrcs := newWRCS("k",
+		wrcs := newWRCS(
 			promoterv1alpha1.ModeSpec{
 				Context: promoterv1alpha1.ContextPromotionStrategy,
 				Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}},
@@ -140,7 +139,7 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 	})
 
 	It("passes NamespaceMetadata through to templates", func() {
-		wrcs := newWRCS("k",
+		wrcs := newWRCS(
 			promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
 			"true",
 		)
