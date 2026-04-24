@@ -59,9 +59,9 @@ type NamespaceMetadata struct {
 // pre-parsed map/slice/primitive or raw string — the controller JSON-decodes
 // string bodies when it can).
 type Response struct {
-	StatusCode int
 	Body       any
 	Headers    map[string][]string
+	StatusCode int
 }
 
 // HTTPResponse pairs routing metadata with a stand-in Response for one mock entry.
@@ -71,8 +71,8 @@ type Response struct {
 // environment branch strings). For Context=promotionstrategy only
 // HTTPResponses[0] is consulted; Branch on that entry is ignored.
 type HTTPResponse struct {
-	Branch   string
 	Response Response
+	Branch   string
 }
 
 // Result mirrors what the controller produces for a single reconcile.

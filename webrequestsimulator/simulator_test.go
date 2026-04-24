@@ -1079,7 +1079,12 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			expectAllBranches(promoterv1alpha1.CommitPhasePending, r.Status.PromotionStrategyContext)
 		},
 		Entry("HTTP branch: status 200 with id still fails (requires 202)",
-			&simulatortypes.HTTPResponse{Response: simulatortypes.Response{StatusCode: 200, Body: map[string]any{"id": "x"}}},
+			&simulatortypes.HTTPResponse{
+				Response: simulatortypes.Response{
+					StatusCode: 200,
+					Body:       map[string]any{"id": "x"},
+				},
+			},
 		),
 		Entry("HTTP branch: 202 with Body.id null fails id check",
 			&simulatortypes.HTTPResponse{
@@ -1098,7 +1103,12 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			},
 		),
 		Entry("HTTP branch: 202 with no id key — id nil in body map, changeId empty in response.output",
-			&simulatortypes.HTTPResponse{Response: simulatortypes.Response{StatusCode: 202, Body: map[string]any{"message": "m"}}},
+			&simulatortypes.HTTPResponse{
+				Response: simulatortypes.Response{
+					StatusCode: 202,
+					Body:       map[string]any{"message": "m"},
+				},
+			},
 		),
 	)
 
