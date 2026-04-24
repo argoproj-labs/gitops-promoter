@@ -139,12 +139,12 @@ func simulatePromotionStrategy(
 		if wrcs.Status.PromotionStrategyContext != nil {
 			st.PromotionStrategyContext = wrcs.Status.PromotionStrategyContext.DeepCopy()
 		}
-		cpy := st.DeepCopy()
-		if cpy == nil {
+		statusCopy := st.DeepCopy()
+		if statusCopy == nil {
 			return nil, errors.New("internal error: DeepCopy returned nil for carried status snapshot")
 		}
 		return &simulatortypes.Result{
-			Status:           *cpy,
+			Status:           *statusCopy,
 			RenderedRequests: rendered,
 			CommitStatuses:   out.CommitStatuses,
 		}, nil
