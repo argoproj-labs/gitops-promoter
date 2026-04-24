@@ -19,10 +19,11 @@ package engine
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/webrequest"
-	"github.com/argoproj-labs/gitops-promoter/webrequestsimulator/types"
+	"github.com/argoproj-labs/gitops-promoter/webrequestsimulator/simulatortypes"
 )
 
 // simCommitRenderer implements webrequest.CommitStatusEmitter via local CommitStatus rendering.
@@ -33,13 +34,13 @@ func (simCommitRenderer) EmitCommitStatus(ctx context.Context, wrcs *promoterv1a
 }
 
 // renderedRequestsCollector implements webrequest.RenderedHTTPSink by appending into the slice
-// that becomes types.Result.RenderedRequests.
+// that becomes simulatortypes.Result.RenderedRequests.
 type renderedRequestsCollector struct {
-	out *[]types.RenderedRequest
+	out *[]simulatortypes.RenderedRequest
 }
 
 func (c *renderedRequestsCollector) CollectRenderedHTTP(r webrequest.RenderedHTTPRequest) {
-	*c.out = append(*c.out, types.RenderedRequest{
+	*c.out = append(*c.out, simulatortypes.RenderedRequest{
 		Branch: r.Branch, Method: r.Method, URL: r.URL, Headers: r.Headers, Body: r.Body,
 	})
 }
@@ -49,7 +50,7 @@ func (c *renderedRequestsCollector) CollectRenderedHTTP(r webrequest.RenderedHTT
 // matches what the controller would write to WebRequestCommitStatus.Status.
 //
 // Safe for concurrent use: a fresh Evaluator is created per call.
-func Simulate(ctx context.Context, args Args) (*types.Result, error) {
+func Simulate(ctx context.Context, args Args) (*simulatortypes.Result, error) {
 	if args.WebRequestCommitStatus == nil {
 		return nil, errors.New("WebRequestCommitStatus is required")
 	}
@@ -71,11 +72,11 @@ func simulateEnvironments(
 	args Args,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
 	ps *promoterv1alpha1.PromotionStrategy,
-) (*types.Result, error) {
+) (*simulatortypes.Result, error) {
 	evaluator := webrequest.NewEvaluator()
 	exec := &mockHTTPEXecutor{response: args.HTTPResponse}
 
-	var rendered []types.RenderedRequest
+	var rendered []simulatortypes.RenderedRequest
 	renderedHTTP := &renderedRequestsCollector{out: &rendered}
 
 	out, err := webrequest.ProcessWebRequestCommitStatusEnvironments(ctx, webrequest.ProcessWebRequestCommitStatusEnvironmentsInput{
@@ -88,10 +89,10 @@ func simulateEnvironments(
 		RenderedHTTPSink:       renderedHTTP,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("simulate environments reconcile: %w", err)
 	}
 
-	return &types.Result{
+	return &simulatortypes.Result{
 		Status: promoterv1alpha1.WebRequestCommitStatusStatus{
 			Environments: out.Environments,
 		},
@@ -105,11 +106,11 @@ func simulatePromotionStrategy(
 	args Args,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
 	ps *promoterv1alpha1.PromotionStrategy,
-) (*types.Result, error) {
+) (*simulatortypes.Result, error) {
 	evaluator := webrequest.NewEvaluator()
 	exec := &mockHTTPEXecutor{response: args.HTTPResponse}
 
-	var rendered []types.RenderedRequest
+	var rendered []simulatortypes.RenderedRequest
 	renderedHTTP := &renderedRequestsCollector{out: &rendered}
 
 	out, err := webrequest.ProcessWebRequestCommitStatusPromotionStrategyContext(ctx, webrequest.ProcessWebRequestCommitStatusPromotionStrategyInput{
@@ -122,11 +123,11 @@ func simulatePromotionStrategy(
 		RenderedHTTPSink:       renderedHTTP,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("simulate promotionstrategy reconcile: %w", err)
 	}
 
 	if out.ApplicableEnvsEmpty {
-		return &types.Result{}, nil
+		return &simulatortypes.Result{}, nil
 	}
 	if out.PollingAllSuccessSkip {
 		// Core does not write WRCS status on this path; mirror the pre-refactor simulator snapshot for round-tripping.
@@ -142,14 +143,14 @@ func simulatePromotionStrategy(
 		if cpy == nil {
 			return nil, errors.New("internal error: DeepCopy returned nil for carried status snapshot")
 		}
-		return &types.Result{
+		return &simulatortypes.Result{
 			Status:           *cpy,
 			RenderedRequests: rendered,
 			CommitStatuses:   out.CommitStatuses,
 		}, nil
 	}
 
-	return &types.Result{
+	return &simulatortypes.Result{
 		Status: promoterv1alpha1.WebRequestCommitStatusStatus{
 			PromotionStrategyContext: out.PromotionStrategyContext,
 		},

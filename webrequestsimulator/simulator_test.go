@@ -32,7 +32,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/webrequestsimulator"
-	"github.com/argoproj-labs/gitops-promoter/webrequestsimulator/types"
+	"github.com/argoproj-labs/gitops-promoter/webrequestsimulator/simulatortypes"
 )
 
 //go:embed testdata/change_management_webrequests.yaml
@@ -242,14 +242,22 @@ func twoEnvPromotionStrategy() *promoterv1alpha1.PromotionStrategy {
 		Status: promoterv1alpha1.PromotionStrategyStatus{
 			Environments: []promoterv1alpha1.EnvironmentStatus{
 				{
-					Branch:   "dev",
-					Proposed: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
-					Active:   promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "1111111111111111111111111111111111111111"}},
+					Branch: "dev",
+					Proposed: promoterv1alpha1.CommitBranchState{
+						Hydrated: promoterv1alpha1.CommitShaState{Sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+					},
+					Active: promoterv1alpha1.CommitBranchState{
+						Hydrated: promoterv1alpha1.CommitShaState{Sha: "1111111111111111111111111111111111111111"},
+					},
 				},
 				{
-					Branch:   "prod",
-					Proposed: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}},
-					Active:   promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "2222222222222222222222222222222222222222"}},
+					Branch: "prod",
+					Proposed: promoterv1alpha1.CommitBranchState{
+						Hydrated: promoterv1alpha1.CommitShaState{Sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+					},
+					Active: promoterv1alpha1.CommitBranchState{
+						Hydrated: promoterv1alpha1.CommitShaState{Sha: "2222222222222222222222222222222222222222"},
+					},
 				},
 			},
 		},
@@ -343,10 +351,10 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 			"Response.StatusCode == 200",
 		)
 
-		r, err := webrequestsimulator.Simulate(ctx, types.Input{
+		r, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 			WebRequestCommitStatus: wrcs,
 			PromotionStrategy:      newPS(),
-			HTTPResponse:           &types.HTTPResponse{StatusCode: 200},
+			HTTPResponse:           &simulatortypes.HTTPResponse{StatusCode: 200},
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(r.Status.Environments).To(HaveLen(2))
@@ -365,7 +373,7 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 			promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
 			"true",
 		)
-		_, err := webrequestsimulator.Simulate(ctx, types.Input{
+		_, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 			WebRequestCommitStatus: wrcs,
 			PromotionStrategy:      newPS(),
 			// HTTPResponse deliberately nil to force the "required" error path.
@@ -383,10 +391,10 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 			},
 			"true",
 		)
-		r, err := webrequestsimulator.Simulate(ctx, types.Input{
+		r, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 			WebRequestCommitStatus: wrcs,
 			PromotionStrategy:      newPS(),
-			HTTPResponse:           &types.HTTPResponse{StatusCode: 200},
+			HTTPResponse:           &simulatortypes.HTTPResponse{StatusCode: 200},
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(r.RenderedRequests).To(HaveLen(1))
@@ -402,11 +410,11 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 			"true",
 		)
 		wrcs.Spec.HTTPRequest.URLTemplate = "https://example.com/{{ index .NamespaceMetadata.Labels \"team\" }}/{{ .Branch }}"
-		r, err := webrequestsimulator.Simulate(ctx, types.Input{
+		r, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 			WebRequestCommitStatus: wrcs,
 			PromotionStrategy:      newPS(),
-			NamespaceMetadata:      types.NamespaceMetadata{Labels: map[string]string{"team": "payments"}},
-			HTTPResponse:           &types.HTTPResponse{StatusCode: 200},
+			NamespaceMetadata:      simulatortypes.NamespaceMetadata{Labels: map[string]string{"team": "payments"}},
+			HTTPResponse:           &simulatortypes.HTTPResponse{StatusCode: 200},
 		})
 		Expect(err).ToNot(HaveOccurred())
 		for _, req := range r.RenderedRequests {
@@ -430,10 +438,10 @@ var _ = Describe("Simulate engine", func() {
 			)
 			ps := twoEnvPromotionStrategy()
 
-			result, err := webrequestsimulator.Simulate(ctx, types.Input{
+			result, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 				WebRequestCommitStatus: wrcs,
 				PromotionStrategy:      ps,
-				HTTPResponse:           &types.HTTPResponse{StatusCode: 200, Body: map[string]any{"ok": true}},
+				HTTPResponse:           &simulatortypes.HTTPResponse{StatusCode: 200, Body: map[string]any{"ok": true}},
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result.Status.Environments).To(HaveLen(2))
@@ -462,12 +470,22 @@ var _ = Describe("Simulate engine", func() {
 				"true",
 			)
 			wrcs.Status.Environments = []promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus{
-				{Branch: "dev", ReportedSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Phase: promoterv1alpha1.CommitPhasePending, TriggerOutput: jsonMap(map[string]any{"note": "prev-dev"})},
-				{Branch: "prod", ReportedSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", Phase: promoterv1alpha1.CommitPhaseSuccess, TriggerOutput: jsonMap(map[string]any{"note": "prev-prod"})},
+				{
+					Branch:        "dev",
+					ReportedSha:   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+					Phase:         promoterv1alpha1.CommitPhasePending,
+					TriggerOutput: jsonMap(map[string]any{"note": "prev-dev"}),
+				},
+				{
+					Branch:        "prod",
+					ReportedSha:   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+					Phase:         promoterv1alpha1.CommitPhaseSuccess,
+					TriggerOutput: jsonMap(map[string]any{"note": "prev-prod"}),
+				},
 			}
 			ps := twoEnvPromotionStrategy()
 
-			result, err := webrequestsimulator.Simulate(ctx, types.Input{
+			result, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 				WebRequestCommitStatus: wrcs,
 				PromotionStrategy:      ps,
 			})
@@ -495,17 +513,17 @@ var _ = Describe("Simulate engine", func() {
 			)
 			ps := twoEnvPromotionStrategy()
 
-			first, err := webrequestsimulator.Simulate(ctx, types.Input{
+			first, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 				WebRequestCommitStatus: wrcs,
 				PromotionStrategy:      ps,
-				HTTPResponse:           &types.HTTPResponse{StatusCode: 200},
+				HTTPResponse:           &simulatortypes.HTTPResponse{StatusCode: 200},
 			})
 			Expect(err).ToNot(HaveOccurred())
 			wrcs.Status = first.Status
-			second, err := webrequestsimulator.Simulate(ctx, types.Input{
+			second, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 				WebRequestCommitStatus: wrcs,
 				PromotionStrategy:      ps,
-				HTTPResponse:           &types.HTTPResponse{StatusCode: 200},
+				HTTPResponse:           &simulatortypes.HTTPResponse{StatusCode: 200},
 			})
 			Expect(err).ToNot(HaveOccurred())
 			for _, e := range second.Status.Environments {
@@ -523,7 +541,7 @@ var _ = Describe("Simulate engine", func() {
 			)
 			ps := twoEnvPromotionStrategy()
 
-			_, err := webrequestsimulator.Simulate(ctx, types.Input{
+			_, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 				WebRequestCommitStatus: wrcs,
 				PromotionStrategy:      ps,
 				HTTPResponse:           nil,
@@ -539,10 +557,10 @@ var _ = Describe("Simulate engine", func() {
 			)
 			ps := twoEnvPromotionStrategy()
 
-			_, err := webrequestsimulator.Simulate(ctx, types.Input{
+			_, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 				WebRequestCommitStatus: wrcs,
 				PromotionStrategy:      ps,
-				HTTPResponse:           &types.HTTPResponse{StatusCode: 200},
+				HTTPResponse:           &simulatortypes.HTTPResponse{StatusCode: 200},
 			})
 			Expect(err).To(HaveOccurred())
 		})
@@ -550,19 +568,21 @@ var _ = Describe("Simulate engine", func() {
 
 	Describe("promotionstrategy context", func() {
 		It("issues one shared request and resolves per-branch phases from an object return", func() {
+			successExpr := `{ defaultPhase: "pending", environments: ` +
+				`[{ branch: "dev", phase: "success" }, { branch: "prod", phase: "failure" }] }`
 			wrcs := basicWRCS(
 				promoterv1alpha1.ModeSpec{
 					Context: promoterv1alpha1.ContextPromotionStrategy,
 					Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}},
 				},
-				`{ defaultPhase: "pending", environments: [{ branch: "dev", phase: "success" }, { branch: "prod", phase: "failure" }] }`,
+				successExpr,
 			)
 			ps := twoEnvPromotionStrategy()
 
-			result, err := webrequestsimulator.Simulate(ctx, types.Input{
+			result, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 				WebRequestCommitStatus: wrcs,
 				PromotionStrategy:      ps,
-				HTTPResponse:           &types.HTTPResponse{StatusCode: 200},
+				HTTPResponse:           &simulatortypes.HTTPResponse{StatusCode: 200},
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result.RenderedRequests).To(HaveLen(1), "promotionstrategy context should issue at most one request")
@@ -602,10 +622,10 @@ var _ = Describe("Simulate engine", func() {
 			}
 			ps := twoEnvPromotionStrategy()
 
-			result, err := webrequestsimulator.Simulate(ctx, types.Input{
+			result, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 				WebRequestCommitStatus: wrcs,
 				PromotionStrategy:      ps,
-				HTTPResponse:           &types.HTTPResponse{StatusCode: 200},
+				HTTPResponse:           &simulatortypes.HTTPResponse{StatusCode: 200},
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result.RenderedRequests).To(HaveLen(1))
@@ -629,10 +649,10 @@ var _ = Describe("Simulate engine", func() {
 
 			ps := twoEnvPromotionStrategy()
 
-			result, err := webrequestsimulator.Simulate(ctx, types.Input{
+			result, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 				WebRequestCommitStatus: wrcs,
 				PromotionStrategy:      ps,
-				HTTPResponse:           &types.HTTPResponse{StatusCode: 200},
+				HTTPResponse:           &simulatortypes.HTTPResponse{StatusCode: 200},
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result.RenderedRequests).To(HaveLen(1))
@@ -652,13 +672,13 @@ var _ = Describe("Simulate engine", func() {
 
 	Describe("validation", func() {
 		It("rejects nil WebRequestCommitStatus", func() {
-			_, err := webrequestsimulator.Simulate(ctx, types.Input{
+			_, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 				PromotionStrategy: twoEnvPromotionStrategy(),
 			})
 			Expect(err).To(MatchError(ContainSubstring("WebRequestCommitStatus is required")))
 		})
 		It("rejects nil PromotionStrategy", func() {
-			_, err := webrequestsimulator.Simulate(ctx, types.Input{
+			_, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 				WebRequestCommitStatus: basicWRCS(
 					promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{}},
 					"true",
@@ -707,10 +727,10 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 		w := loadChangeManagementWRCSByName("change-management-open")
 		ps := changeManagementArgoconDemoPS()
 
-		r1, err := webrequestsimulator.Simulate(ctx, types.Input{
+		r1, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 			WebRequestCommitStatus: w,
 			PromotionStrategy:      ps,
-			HTTPResponse: &types.HTTPResponse{
+			HTTPResponse: &simulatortypes.HTTPResponse{
 				StatusCode: 202,
 				Body:       openOKBody(),
 			},
@@ -753,7 +773,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 
 		w2 := w.DeepCopy()
 		w2.Status = r1.Status
-		r2, err := webrequestsimulator.Simulate(ctx, types.Input{
+		r2, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 			WebRequestCommitStatus: w2,
 			PromotionStrategy:      ps,
 			HTTPResponse:           nil,
@@ -773,10 +793,10 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 		"(assert trigger output booleans)",
 		func(ps *promoterv1alpha1.PromotionStrategy, want map[string]any) {
 			w := loadChangeManagementWRCSByName("change-management-open")
-			r, err := webrequestsimulator.Simulate(ctx, types.Input{
+			r, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 				WebRequestCommitStatus: w,
 				PromotionStrategy:      ps,
-				HTTPResponse: &types.HTTPResponse{
+				HTTPResponse: &simulatortypes.HTTPResponse{
 					StatusCode: 202,
 					Body:       openOKBody(),
 				},
@@ -813,10 +833,10 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 	It("change-management-open (YAML): strategy-level keys, firstGatedIdx=0, POST succeeds", func() {
 		w := loadChangeManagementWRCSByName("change-management-open")
 		ps := changeManagementPSStrategyGlobalKeys()
-		r, err := webrequestsimulator.Simulate(ctx, types.Input{
+		r, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 			WebRequestCommitStatus: w,
 			PromotionStrategy:      ps,
-			HTTPResponse: &types.HTTPResponse{
+			HTTPResponse: &simulatortypes.HTTPResponse{
 				StatusCode: 202,
 				Body:       openOKBody(),
 			},
@@ -836,10 +856,10 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 		w := loadChangeManagementWRCSByName("change-management-open")
 		ps := changeManagementArgoconDemoPS()
 
-		r1, err := webrequestsimulator.Simulate(ctx, types.Input{
+		r1, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 			WebRequestCommitStatus: w,
 			PromotionStrategy:      ps,
-			HTTPResponse: &types.HTTPResponse{
+			HTTPResponse: &simulatortypes.HTTPResponse{
 				StatusCode: 503,
 				Body:       map[string]any{"error": "unavailable"},
 			},
@@ -854,10 +874,10 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 
 		w2 := w.DeepCopy()
 		w2.Status = *r1.Status.DeepCopy()
-		r2, err := webrequestsimulator.Simulate(ctx, types.Input{
+		r2, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 			WebRequestCommitStatus: w2,
 			PromotionStrategy:      ps,
-			HTTPResponse: &types.HTTPResponse{
+			HTTPResponse: &simulatortypes.HTTPResponse{
 				StatusCode: 202,
 				Body:       openOKBody(),
 			},
@@ -877,10 +897,10 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 	It("change-management-open (YAML): 400 not retryable; second reconcile skips HTTP", func() {
 		w := loadChangeManagementWRCSByName("change-management-open")
 		ps := changeManagementArgoconDemoPS()
-		r1, err := webrequestsimulator.Simulate(ctx, types.Input{
+		r1, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 			WebRequestCommitStatus: w,
 			PromotionStrategy:      ps,
-			HTTPResponse:           &types.HTTPResponse{StatusCode: 400, Body: map[string]any{"error": "bad"}},
+			HTTPResponse:           &simulatortypes.HTTPResponse{StatusCode: 400, Body: map[string]any{"error": "bad"}},
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(r1.RenderedRequests).To(HaveLen(1))
@@ -891,7 +911,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 
 		w2 := w.DeepCopy()
 		w2.Status = *r1.Status.DeepCopy()
-		r2, err := webrequestsimulator.Simulate(ctx, types.Input{
+		r2, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 			WebRequestCommitStatus: w2,
 			PromotionStrategy:      ps,
 			HTTPResponse:           nil,
@@ -907,10 +927,10 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 	It("change-management-open (fixture YAML): 429 then 202 exercises isRetryable for status code 429", func() {
 		w := loadChangeManagementWRCSByName("change-management-open")
 		ps := changeManagementArgoconDemoPS()
-		r1, err := webrequestsimulator.Simulate(ctx, types.Input{
+		r1, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 			WebRequestCommitStatus: w,
 			PromotionStrategy:      ps,
-			HTTPResponse: &types.HTTPResponse{
+			HTTPResponse: &simulatortypes.HTTPResponse{
 				StatusCode: 429,
 				Body:       map[string]any{"error": "rate limited"},
 			},
@@ -921,10 +941,10 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 
 		w2 := w.DeepCopy()
 		w2.Status = *r1.Status.DeepCopy()
-		r2, err := webrequestsimulator.Simulate(ctx, types.Input{
+		r2, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 			WebRequestCommitStatus: w2,
 			PromotionStrategy:      ps,
-			HTTPResponse:           &types.HTTPResponse{StatusCode: 202, Body: openOKBody()},
+			HTTPResponse:           &simulatortypes.HTTPResponse{StatusCode: 202, Body: openOKBody()},
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(r2.RenderedRequests).To(HaveLen(1))
@@ -934,10 +954,10 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 	// Trigger still true (happy PS); each HTTP response fails success.when’s Response != nil branch
 	// (status not 202, or id missing/empty). Phases stay pending after one POST.
 	DescribeTable("change-management-open (fixture YAML): success.when HTTP ternary fails unless 202 + non-empty id",
-		func(resp *types.HTTPResponse) {
+		func(resp *simulatortypes.HTTPResponse) {
 			w := loadChangeManagementWRCSByName("change-management-open")
 			ps := changeManagementArgoconDemoPS()
-			r, err := webrequestsimulator.Simulate(ctx, types.Input{
+			r, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 				WebRequestCommitStatus: w,
 				PromotionStrategy:      ps,
 				HTTPResponse:           resp,
@@ -947,16 +967,16 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			expectAllBranches(promoterv1alpha1.CommitPhasePending, r.Status.PromotionStrategyContext)
 		},
 		Entry("HTTP branch: status 200 with id still fails (requires 202)",
-			&types.HTTPResponse{StatusCode: 200, Body: map[string]any{"id": "x"}},
+			&simulatortypes.HTTPResponse{StatusCode: 200, Body: map[string]any{"id": "x"}},
 		),
 		Entry("HTTP branch: 202 with Body.id null fails id check",
-			&types.HTTPResponse{StatusCode: 202, Body: map[string]any{"id": nil, "message": "m"}},
+			&simulatortypes.HTTPResponse{StatusCode: 202, Body: map[string]any{"id": nil, "message": "m"}},
 		),
 		Entry("HTTP branch: 202 with Body.id empty string fails",
-			&types.HTTPResponse{StatusCode: 202, Body: map[string]any{"id": "", "message": "m"}},
+			&simulatortypes.HTTPResponse{StatusCode: 202, Body: map[string]any{"id": "", "message": "m"}},
 		),
 		Entry("HTTP branch: 202 with no id key — id nil in body map, changeId empty in response.output",
-			&types.HTTPResponse{StatusCode: 202, Body: map[string]any{"message": "m"}},
+			&simulatortypes.HTTPResponse{StatusCode: 202, Body: map[string]any{"message": "m"}},
 		),
 	)
 
@@ -964,10 +984,10 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 	It("change-management-open (fixture YAML): response.output maps nil Body.id and nil message to empty strings", func() {
 		w := loadChangeManagementWRCSByName("change-management-open")
 		ps := changeManagementArgoconDemoPS()
-		r, err := webrequestsimulator.Simulate(ctx, types.Input{
+		r, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 			WebRequestCommitStatus: w,
 			PromotionStrategy:      ps,
-			HTTPResponse: &types.HTTPResponse{
+			HTTPResponse: &simulatortypes.HTTPResponse{
 				StatusCode: 202,
 				Body:       map[string]any{"message": nil},
 			},
@@ -988,10 +1008,10 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 		start := time.Now().UTC().Add(-30 * time.Minute).Format(time.RFC3339)
 		end := time.Now().UTC().Add(30 * time.Minute).Format(time.RFC3339)
 
-		r1, err := webrequestsimulator.Simulate(ctx, types.Input{
+		r1, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 			WebRequestCommitStatus: w,
 			PromotionStrategy:      ps,
-			HTTPResponse: &types.HTTPResponse{
+			HTTPResponse: &simulatortypes.HTTPResponse{
 				StatusCode: 200,
 				Body: map[string]any{
 					"change_records": []any{
@@ -1036,7 +1056,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 
 		w2 := w.DeepCopy()
 		w2.Status = *r1.Status.DeepCopy()
-		r2, err := webrequestsimulator.Simulate(ctx, types.Input{
+		r2, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 			WebRequestCommitStatus: w2,
 			PromotionStrategy:      ps,
 			HTTPResponse:           nil,
@@ -1055,10 +1075,10 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			w := loadChangeManagementWRCSByName("change-management-approval")
 			start := time.Now().UTC().Add(-10 * time.Minute).Format(time.RFC3339)
 			end := time.Now().UTC().Add(10 * time.Minute).Format(time.RFC3339)
-			r, err := webrequestsimulator.Simulate(ctx, types.Input{
+			r, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 				WebRequestCommitStatus: w,
 				PromotionStrategy:      ps,
-				HTTPResponse: &types.HTTPResponse{
+				HTTPResponse: &simulatortypes.HTTPResponse{
 					StatusCode: 200,
 					Body: map[string]any{
 						"change_records": []any{
@@ -1112,10 +1132,10 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			},
 		}
 
-		r1, err := webrequestsimulator.Simulate(ctx, types.Input{
+		r1, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 			WebRequestCommitStatus: w,
 			PromotionStrategy:      ps,
-			HTTPResponse:           &types.HTTPResponse{StatusCode: 200, Body: okBody},
+			HTTPResponse:           &simulatortypes.HTTPResponse{StatusCode: 200, Body: okBody},
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(r1.RenderedRequests).To(HaveLen(1))
@@ -1126,10 +1146,10 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			m["lastRequestTime"] = time.Now().UTC().Add(-125 * time.Minute).Format(time.RFC3339Nano)
 		})
 
-		r2, err := webrequestsimulator.Simulate(ctx, types.Input{
+		r2, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 			WebRequestCommitStatus: w2,
 			PromotionStrategy:      ps,
-			HTTPResponse:           &types.HTTPResponse{StatusCode: 200, Body: okBody},
+			HTTPResponse:           &simulatortypes.HTTPResponse{StatusCode: 200, Body: okBody},
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(r2.RenderedRequests).To(HaveLen(1))
@@ -1141,10 +1161,10 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 	// Trigger fires (happy PS); each response fails success.when’s HTTP branch (wrong status, empty list, or dates).
 	// response.output still runs; approvedCount is 0 for the filter expression.
 	DescribeTable("change-management-approval (fixture YAML): success.when needs 200, records, in-window times",
-		func(http *types.HTTPResponse) {
+		func(http *simulatortypes.HTTPResponse) {
 			w := loadChangeManagementWRCSByName("change-management-approval")
 			ps := changeManagementArgoconDemoPS()
-			r, err := webrequestsimulator.Simulate(ctx, types.Input{
+			r, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 				WebRequestCommitStatus: w,
 				PromotionStrategy:      ps,
 				HTTPResponse:           http,
@@ -1155,16 +1175,16 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			out := decodeJSONMap(r.Status.PromotionStrategyContext.ResponseOutput)
 			Expect(out["approvedCount"]).To(BeNumerically("==", 0))
 		},
-		Entry("HTTP branch: non-200 status", &types.HTTPResponse{
+		Entry("HTTP branch: non-200 status", &simulatortypes.HTTPResponse{
 			StatusCode: 201,
 			Body:       map[string]any{"change_records": []any{}},
 		}),
-		Entry("HTTP branch: 200 with empty change_records", &types.HTTPResponse{
+		Entry("HTTP branch: 200 with empty change_records", &simulatortypes.HTTPResponse{
 			StatusCode: 200,
 			Body:       map[string]any{"change_records": []any{}},
 		}),
 		Entry("HTTP branch: 200 but no record brackets now()",
-			&types.HTTPResponse{StatusCode: 200, Body: map[string]any{"change_records": []any{
+			&simulatortypes.HTTPResponse{StatusCode: 200, Body: map[string]any{"change_records": []any{
 				map[string]any{"change_request": map[string]any{
 					"start_time": time.Now().UTC().Add(-48 * time.Hour).Format(time.RFC3339),
 					"end_time":   time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339),
@@ -1181,10 +1201,10 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 		inEnd := time.Now().UTC().Add(5 * time.Minute).Format(time.RFC3339)
 		outStart := time.Now().UTC().Add(-72 * time.Hour).Format(time.RFC3339)
 		outEnd := time.Now().UTC().Add(-48 * time.Hour).Format(time.RFC3339)
-		r, err := webrequestsimulator.Simulate(ctx, types.Input{
+		r, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 			WebRequestCommitStatus: w,
 			PromotionStrategy:      ps,
-			HTTPResponse: &types.HTTPResponse{
+			HTTPResponse: &simulatortypes.HTTPResponse{
 				StatusCode: 200,
 				Body: map[string]any{
 					"change_records": []any{

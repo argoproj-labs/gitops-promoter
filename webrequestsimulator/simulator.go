@@ -22,7 +22,7 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/internal/webrequest"
 	"github.com/argoproj-labs/gitops-promoter/webrequestsimulator/internal/engine"
-	"github.com/argoproj-labs/gitops-promoter/webrequestsimulator/types"
+	"github.com/argoproj-labs/gitops-promoter/webrequestsimulator/simulatortypes"
 )
 
 // Simulate runs one WebRequestCommitStatus reconcile against the supplied
@@ -34,7 +34,7 @@ import (
 // follow-up reconcile with accumulated trigger/response/success outputs.
 //
 // Safe for concurrent use.
-func Simulate(ctx context.Context, in types.Input) (*types.Result, error) {
+func Simulate(ctx context.Context, in simulatortypes.Input) (*simulatortypes.Result, error) {
 	res, err := engine.Simulate(ctx, engine.Args{
 		WebRequestCommitStatus: in.WebRequestCommitStatus,
 		PromotionStrategy:      in.PromotionStrategy,
@@ -50,7 +50,7 @@ func Simulate(ctx context.Context, in types.Input) (*types.Result, error) {
 	return res, nil
 }
 
-func toInternalHTTPResponse(r *types.HTTPResponse) *webrequest.HTTPResponse {
+func toInternalHTTPResponse(r *simulatortypes.HTTPResponse) *webrequest.HTTPResponse {
 	if r == nil {
 		return nil
 	}

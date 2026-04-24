@@ -217,7 +217,7 @@ func fireOrCarryForward(
 	}
 	resp, err := exec.Execute(ctx, wrcs, td)
 	if err != nil {
-		return validationResult{}, err
+		return validationResult{}, fmt.Errorf("HTTP request execution: %w", err)
 	}
 	return validationResultFromHTTPResponse(ctx, evaluator, wrcs, td, resp)
 }

@@ -23,7 +23,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/webrequest"
 )
 
-// Args carries everything the engine needs; the parent maps types.Input here.
+// Args carries everything the engine needs; the parent maps simulatortypes.Input here.
 type Args struct {
 	WebRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
 	PromotionStrategy      *promoterv1alpha1.PromotionStrategy

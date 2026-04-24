@@ -14,8 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package types holds the value types for webrequestsimulator.Simulate.
-package types
+// Package simulatortypes holds the value types for webrequestsimulator.Simulate.
+package simulatortypes
 
 import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"

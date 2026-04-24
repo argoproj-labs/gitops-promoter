@@ -207,7 +207,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		CommitEmitter:          wrcsCommitUpserter{r: r},
 	})
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, 0, fmt.Errorf("process WebRequestCommitStatus environments: %w", err)
 	}
 
 	wrcs.Status.Environments = out.Environments
@@ -226,7 +226,7 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 		CommitEmitter:          wrcsCommitUpserter{r: r},
 	})
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, 0, fmt.Errorf("process WebRequestCommitStatus promotionstrategy context: %w", err)
 	}
 
 	if out.ApplicableEnvsEmpty {

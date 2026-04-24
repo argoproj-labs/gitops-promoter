@@ -55,45 +55,6 @@ type RenderedHTTPSink interface {
 	CollectRenderedHTTP(r RenderedHTTPRequest)
 }
 
-// ProcessWebRequestCommitStatusEnvironmentsInput carries dependencies for the per-environment context path.
-type ProcessWebRequestCommitStatusEnvironmentsInput struct {
-	Evaluator              *Evaluator
-	HttpExec               HTTPEXecutor
-	WebRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
-	PromotionStrategy      *promoterv1alpha1.PromotionStrategy
-	// NamespaceMeta is passed into TemplateData for template rendering.
-	NamespaceMeta    NamespaceMetadata
-	CommitEmitter    CommitStatusEmitter
-	RenderedHTTPSink RenderedHTTPSink // optional; when non-nil, CollectRenderedHTTP is called after a successful template render when the trigger fires
-}
-
-// ProcessWebRequestCommitStatusEnvironmentsOutput is the computed status and CommitStatus list for one reconcile.
-type ProcessWebRequestCommitStatusEnvironmentsOutput struct {
-	Environments         []promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
-	CommitStatuses       []*promoterv1alpha1.CommitStatus
-	TransitionedBranches []string
-}
-
-// ProcessWebRequestCommitStatusPromotionStrategyInput carries dependencies for context=promotionstrategy.
-type ProcessWebRequestCommitStatusPromotionStrategyInput struct {
-	Evaluator              *Evaluator
-	HttpExec               HTTPEXecutor
-	WebRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
-	PromotionStrategy      *promoterv1alpha1.PromotionStrategy
-	NamespaceMeta          NamespaceMetadata
-	CommitEmitter          CommitStatusEmitter
-	RenderedHTTPSink       RenderedHTTPSink // optional; same semantics as environments path
-}
-
-// ProcessWebRequestCommitStatusPromotionStrategyOutput is the computed status for promotionstrategy context.
-type ProcessWebRequestCommitStatusPromotionStrategyOutput struct {
-	PromotionStrategyContext *promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus
-	CommitStatuses           []*promoterv1alpha1.CommitStatus
-	TransitionedBranches     []string
-	ApplicableEnvsEmpty      bool
-	PollingAllSuccessSkip    bool
-}
-
 // renderHTTPRequestTemplates renders URL, headers, and body from WebRequestCommitStatus HTTP templates.
 func renderHTTPRequestTemplates(wrcs *promoterv1alpha1.WebRequestCommitStatus, td TemplateData) (RenderedHTTPRequest, error) {
 	req := RenderedHTTPRequest{
