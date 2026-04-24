@@ -150,7 +150,8 @@ func changeManagementPSPreGateOpenPROnLowerEnv() *promoterv1alpha1.PromotionStra
 	return ps
 }
 
-// changeManagementPSOneBranchMissingNoteDrySha removes proposed.note on production so allSpecBranchesHaveNoteDrySha fails.
+// changeManagementPSOneBranchMissingNoteDrySha removes proposed.note on production so
+// allSpecBranchesHaveNoteDrySha fails.
 func changeManagementPSOneBranchMissingNoteDrySha() *promoterv1alpha1.PromotionStrategy {
 	ps := changeManagementArgoconDemoPS()
 	ps.Status.Environments[2].Proposed.Note = nil
@@ -188,6 +189,8 @@ func decodeJSONMap(raw []byte) map[string]any {
 	return out
 }
 
+// Smoke tests for the public webrequestsimulator.Simulate API using minimal inline WRCS + PromotionStrategy
+// (not the change-management YAML fixtures).
 var _ = Describe("webrequestsimulator.Simulate", func() {
 	var ctx context.Context
 
@@ -245,7 +248,10 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 		}
 	}
 
-	It("returns Status that matches what the controller would write (environments context)", func() {
+	// Uses mode.context=environments with polling interval 0 so every branch fires immediately.
+	// Asserts per-environment Status rows, two rendered GETs (one per branch), and success.when
+	// from HTTP 200 — mirrors controller behavior for the default request scope.
+	It("Simulate: environments context — GET per branch, Environments status, no PS context", func() {
 		wrcs := newWRCS(
 			promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
 			"Response.StatusCode == 200",
@@ -266,7 +272,9 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 		}
 	})
 
-	It("propagates errors from the internal simulator", func() {
+	// Polling always evaluates as "should fire"; simulator requires HTTPResponse when a request runs.
+	// Omitting HTTPResponse exercises the public error wrap from webrequestsimulator.Simulate.
+	It("Simulate returns a wrapped error when polling would fire but HTTPResponse is nil", func() {
 		wrcs := newWRCS(
 			promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
 			"true",
@@ -279,7 +287,9 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 		Expect(err).To(MatchError(ContainSubstring("HTTPResponse is required")))
 	})
 
-	It("produces a single shared request with Branch=\"\" in promotionstrategy context", func() {
+	// mode.context=promotionstrategy collapses to one shared HTTP call; RenderedRequests[0].Branch is "".
+	// Status is written to PromotionStrategyContext, not per-environment Status slice.
+	It("Simulate: promotionstrategy context — one GET, empty Branch, PS context status", func() {
 		wrcs := newWRCS(
 			promoterv1alpha1.ModeSpec{
 				Context: promoterv1alpha1.ContextPromotionStrategy,
@@ -299,7 +309,8 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 		Expect(r.CommitStatuses).To(HaveLen(2))
 	})
 
-	It("passes NamespaceMetadata through to templates", func() {
+	// Input.NamespaceMetadata is forwarded as template data; URL template reads .NamespaceMetadata.Labels.
+	It("Simulate forwards NamespaceMetadata into Go template rendering for URLTemplate", func() {
 		wrcs := newWRCS(
 			promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
 			"true",
@@ -318,27 +329,41 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 	})
 })
 
+// End-to-end expr + template coverage for real change-management manifests (testdata YAML) and a
+// matching four-branch PromotionStrategy. Each case calls webrequestsimulator.Simulate once or twice
+// and asserts rendered HTTP, status JSON (trigger/response), and CommitStatus phases.
 var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)", func() {
 	var ctx context.Context
-
 	BeforeEach(func() { ctx = context.Background() })
 
+	// openOKBody is a minimal valid POST body for change-management-open success.when (202 + non-empty id).
 	openOKBody := func() map[string]any {
 		return map[string]any{
-			"id":             "9f515fd4-0354-40d7-9c71-a83856372bc3",
-			"message":        "accepted",
-			"change_request": map[string]any{"short_description": "cr", "start_time": "2020-01-01T00:00:00Z", "end_time": "2030-01-01T00:00:00Z"},
+			"id":      "9f515fd4-0354-40d7-9c71-a83856372bc3",
+			"message": "accepted",
+			"change_request": map[string]any{
+				"short_description": "cr",
+				"start_time":        "2020-01-01T00:00:00Z",
+				"end_time":          "2030-01-01T00:00:00Z",
+			},
 		}
 	}
 
-	expectAllBranches := func(phase promoterv1alpha1.CommitStatusPhase, st *promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus) {
+	// expectAllBranches asserts every entry in PromotionStrategyContext.phasePerBranch (applicable envs only).
+	expectAllBranches := func(
+		phase promoterv1alpha1.CommitStatusPhase,
+		st *promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus,
+	) {
 		Expect(st).ToNot(BeNil())
 		for _, p := range st.PhasePerBranch {
 			Expect(p.Phase).To(Equal(phase))
 		}
 	}
 
-	It("runs change-management-open: full trigger + success + response output on happy path, then no-HTTP carry-forward", func() {
+	// First reconcile: gates pass (isNewFingerprint), POST returns 202 + id → success.when HTTP branch;
+	// trigger/response output maps are asserted. Second reconcile: same PS fingerprint, nil HTTPResponse —
+	// trigger is false (no isNewFingerprint/needsRetry); success.when no-HTTP branch keeps success.
+	It("change-management-open (YAML): happy-path POST, trigger/response output, carry-forward", func() {
 		w := loadChangeManagementWRCSByName("change-management-open")
 		ps := changeManagementArgoconDemoPS()
 
@@ -402,7 +427,10 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 		expectAllBranches(promoterv1alpha1.CommitPhaseSuccess, r2.Status.PromotionStrategyContext)
 	})
 
-	DescribeTable("change-management-open: POST suppressed when a trigger gate fails (when.variables / when.expression)",
+	// Each row uses a PS variant that breaks exactly one of Variables.hasOpenPR | allNoteDryShasMatch | preGateNoOpenPR.
+	// Trigger still evaluates when.output (shouldTrigger false); no POST; phases stay pending.
+	DescribeTable("change-management-open (fixture YAML): POST not sent when one trigger gate is false "+
+		"(assert trigger output booleans)",
 		func(ps *promoterv1alpha1.PromotionStrategy, want map[string]any) {
 			w := loadChangeManagementWRCSByName("change-management-open")
 			r, err := webrequestsimulator.Simulate(ctx, webrequestsimulator.Input{
@@ -422,25 +450,27 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			}
 			expectAllBranches(promoterv1alpha1.CommitPhasePending, r.Status.PromotionStrategyContext)
 		},
-		Entry("hasOpenPR false when keyed branches have no open PR",
+		Entry("gate: hasOpenPR — no open PR on branches that list the WRCS key",
 			changeManagementPSKeyedBranchesNoOpenPR(),
 			map[string]any{"hasOpenPR": false, "allNoteDryShasMatch": true, "preGateNoOpenPR": true},
 		),
-		Entry("allNoteDryShasMatch false when one branch note dry SHA differs",
+		Entry("gate: allNoteDryShasMatch — one branch has a different proposed.note.drySha",
 			changeManagementPSMisalignedNoteDrySha(),
 			map[string]any{"hasOpenPR": true, "allNoteDryShasMatch": false, "preGateNoOpenPR": true},
 		),
-		Entry("preGateNoOpenPR false when a lower (pre-first-keyed) env has an open PR",
+		Entry("gate: preGateNoOpenPR — open promotion PR on a spec-ordered env before the first keyed env",
 			changeManagementPSPreGateOpenPROnLowerEnv(),
 			map[string]any{"hasOpenPR": true, "allNoteDryShasMatch": true, "preGateNoOpenPR": false},
 		),
-		Entry("allNoteDryShasMatch false when any spec branch lacks proposed.note.drySha",
+		Entry("gate: allNoteDryShasMatch — a spec branch has no proposed.note / drySha",
 			changeManagementPSOneBranchMissingNoteDrySha(),
 			map[string]any{"hasOpenPR": true, "allNoteDryShasMatch": false, "preGateNoOpenPR": true},
 		),
 	)
 
-	It("change-management-open: strategy-level proposedCommitStatuses still satisfies globalHasKey + lowerSpecs edge (firstGatedIdx=0)", func() {
+	// Strategy-level proposedCommitStatuses makes globalHasKey true → firstGatedIdx 0 → lowerSpecs empty
+	// → preGateNoOpenPR vacuously true; POST still fires with baseline PR state on prod branches.
+	It("change-management-open (YAML): strategy-level keys, firstGatedIdx=0, POST succeeds", func() {
 		w := loadChangeManagementWRCSByName("change-management-open")
 		ps := changeManagementPSStrategyGlobalKeys()
 		r, err := webrequestsimulator.Simulate(ctx, webrequestsimulator.Input{
@@ -459,14 +489,20 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 		expectAllBranches(promoterv1alpha1.CommitPhaseSuccess, r.Status.PromotionStrategyContext)
 	})
 
-	It("change-management-open: needsRetry fires a second POST after a retryable failure on the same fingerprint (isNewFingerprint false)", func() {
+	// Reconcile 1: POST returns 503 → pending; persisted fingerprint matches next reconcile.
+	// Reconcile 2: isNewFingerprint false, needsRetry true (same fp, pending, ResponseOutput.statusCode retryable);
+	// POST returns 202 → success. Asserts needsRetry stays true in persisted trigger output (computed pre-HTTP).
+	It("change-management-open (YAML): needsRetry — 503 then 202 on same fingerprint", func() {
 		w := loadChangeManagementWRCSByName("change-management-open")
 		ps := changeManagementArgoconDemoPS()
 
 		r1, err := webrequestsimulator.Simulate(ctx, webrequestsimulator.Input{
 			WebRequestCommitStatus: w,
 			PromotionStrategy:      ps,
-			HTTPResponse:           &webrequestsimulator.HTTPResponse{StatusCode: 503, Body: map[string]any{"error": "unavailable"}},
+			HTTPResponse: &webrequestsimulator.HTTPResponse{
+				StatusCode: 503,
+				Body:       map[string]any{"error": "unavailable"},
+			},
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(r1.RenderedRequests).To(HaveLen(1))
@@ -497,7 +533,8 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 		expectAllBranches(promoterv1alpha1.CommitPhaseSuccess, r2.Status.PromotionStrategyContext)
 	})
 
-	It("change-management-open: non-retryable HTTP status does not set needsRetry (isRetryable uses 429 or >=500 only)", func() {
+	// 400 is not retryable (expr: 429 or >=500). Second reconcile: no POST (shouldTrigger false), needsRetry false.
+	It("change-management-open (YAML): 400 not retryable; second reconcile skips HTTP", func() {
 		w := loadChangeManagementWRCSByName("change-management-open")
 		ps := changeManagementArgoconDemoPS()
 		r1, err := webrequestsimulator.Simulate(ctx, webrequestsimulator.Input{
@@ -526,13 +563,17 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 		Expect(t2["needsRetry"]).To(BeFalse())
 	})
 
-	It("change-management-open: 429 is retryable like 5xx (needsRetry path)", func() {
+	// Same two-step pattern as 503: 429 is explicitly retryable, then 202 completes the change.
+	It("change-management-open (fixture YAML): 429 then 202 exercises isRetryable for status code 429", func() {
 		w := loadChangeManagementWRCSByName("change-management-open")
 		ps := changeManagementArgoconDemoPS()
 		r1, err := webrequestsimulator.Simulate(ctx, webrequestsimulator.Input{
 			WebRequestCommitStatus: w,
 			PromotionStrategy:      ps,
-			HTTPResponse:           &webrequestsimulator.HTTPResponse{StatusCode: 429, Body: map[string]any{"error": "rate limited"}},
+			HTTPResponse: &webrequestsimulator.HTTPResponse{
+				StatusCode: 429,
+				Body:       map[string]any{"error": "rate limited"},
+			},
 		})
 		Expect(err).ToNot(HaveOccurred())
 		t1 := decodeJSONMap(r1.Status.PromotionStrategyContext.TriggerOutput.Raw)
@@ -550,7 +591,9 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 		expectAllBranches(promoterv1alpha1.CommitPhaseSuccess, r2.Status.PromotionStrategyContext)
 	})
 
-	DescribeTable("change-management-open: success HTTP branch requires 202 + non-empty id (ternary true branch)",
+	// Trigger still true (happy PS); each HTTP response fails success.when’s Response != nil branch
+	// (status not 202, or id missing/empty). Phases stay pending after one POST.
+	DescribeTable("change-management-open (fixture YAML): success.when HTTP ternary fails unless 202 + non-empty id",
 		func(resp *webrequestsimulator.HTTPResponse) {
 			w := loadChangeManagementWRCSByName("change-management-open")
 			ps := changeManagementArgoconDemoPS()
@@ -563,21 +606,22 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			Expect(r.RenderedRequests).To(HaveLen(1))
 			expectAllBranches(promoterv1alpha1.CommitPhasePending, r.Status.PromotionStrategyContext)
 		},
-		Entry("non-202 success status",
+		Entry("HTTP branch: status 200 with id still fails (requires 202)",
 			&webrequestsimulator.HTTPResponse{StatusCode: 200, Body: map[string]any{"id": "x"}},
 		),
-		Entry("202 but Body.id nil",
+		Entry("HTTP branch: 202 with Body.id null fails id check",
 			&webrequestsimulator.HTTPResponse{StatusCode: 202, Body: map[string]any{"id": nil, "message": "m"}},
 		),
-		Entry("202 but Body.id empty string",
+		Entry("HTTP branch: 202 with Body.id empty string fails",
 			&webrequestsimulator.HTTPResponse{StatusCode: 202, Body: map[string]any{"id": "", "message": "m"}},
 		),
-		Entry("202 but Body missing id key (response expr still runs)",
+		Entry("HTTP branch: 202 with no id key — id nil in body map, changeId empty in response.output",
 			&webrequestsimulator.HTTPResponse{StatusCode: 202, Body: map[string]any{"message": "m"}},
 		),
 	)
 
-	It("change-management-open: response.output maps nil id/message to empty strings", func() {
+	// response.output expression uses string(id) / string(message) with nil guards — assert persisted map.
+	It("change-management-open (fixture YAML): response.output maps nil Body.id and nil message to empty strings", func() {
 		w := loadChangeManagementWRCSByName("change-management-open")
 		ps := changeManagementArgoconDemoPS()
 		r, err := webrequestsimulator.Simulate(ctx, webrequestsimulator.Input{
@@ -595,7 +639,9 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 		Expect(out["message"]).To(Equal(""))
 	})
 
-	It("runs change-management-approval: happy path + trigger variables + response filter counts", func() {
+	// GET returns in-window change_records → success.when HTTP branch; response.output approvedCount/totalRecordCount.
+	// Second reconcile nil HTTP: trigger false (isFirstRun false, isNewFingerprint false, shouldTriggerByTime false).
+	It("change-management-approval (YAML): happy GET, outputs, carry-forward without HTTP", func() {
 		w := loadChangeManagementWRCSByName("change-management-approval")
 		ps := changeManagementArgoconDemoPS()
 
@@ -662,7 +708,9 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 		expectAllBranches(promoterv1alpha1.CommitPhaseSuccess, r2.Status.PromotionStrategyContext)
 	})
 
-	DescribeTable("change-management-approval: GET suppressed when a trigger gate fails",
+	// Same gate variables as open; approval trigger adds isFirstRun || isNewFingerprint || shouldTriggerByTime.
+	// First run: isFirstRun true would allow GET — we break a gate so shouldTrigger is false and no GET is sent.
+	DescribeTable("change-management-approval (fixture YAML): GET not sent when a trigger gate is false",
 		func(ps *promoterv1alpha1.PromotionStrategy, want map[string]any) {
 			w := loadChangeManagementWRCSByName("change-management-approval")
 			start := time.Now().UTC().Add(-10 * time.Minute).Format(time.RFC3339)
@@ -673,7 +721,14 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 				HTTPResponse: &webrequestsimulator.HTTPResponse{
 					StatusCode: 200,
 					Body: map[string]any{
-						"change_records": []any{map[string]any{"change_request": map[string]any{"start_time": start, "end_time": end}}},
+						"change_records": []any{
+							map[string]any{
+								"change_request": map[string]any{
+									"start_time": start,
+									"end_time":   end,
+								},
+							},
+						},
 					},
 				},
 			})
@@ -685,17 +740,37 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 				Expect(trig[k]).To(Equal(v), "field %q", k)
 			}
 		},
-		Entry("hasOpenPR false", changeManagementPSKeyedBranchesNoOpenPR(), map[string]any{"hasOpenPR": false, "preGateNoOpenPR": true}),
-		Entry("preGateNoOpenPR false", changeManagementPSPreGateOpenPROnLowerEnv(), map[string]any{"hasOpenPR": true, "preGateNoOpenPR": false}),
-		Entry("allNoteDryShasMatch false", changeManagementPSMisalignedNoteDrySha(), map[string]any{"hasOpenPR": true, "allNoteDryShasMatch": false}),
+		Entry("gate: hasOpenPR false",
+			changeManagementPSKeyedBranchesNoOpenPR(),
+			map[string]any{"hasOpenPR": false, "preGateNoOpenPR": true},
+		),
+		Entry("gate: preGateNoOpenPR false",
+			changeManagementPSPreGateOpenPROnLowerEnv(),
+			map[string]any{"hasOpenPR": true, "preGateNoOpenPR": false},
+		),
+		Entry("gate: allNoteDryShasMatch false",
+			changeManagementPSMisalignedNoteDrySha(),
+			map[string]any{"hasOpenPR": true, "allNoteDryShasMatch": false},
+		),
 	)
 
-	It("change-management-approval: shouldTriggerByTime after polling interval with stable fingerprint", func() {
+	// After first GET, patch TriggerOutput.lastRequestTime to >1m ago while fingerprint unchanged;
+	// shouldTriggerByTime becomes true so a second GET runs (isNewFingerprint still false).
+	It("change-management-approval (YAML): stale lastRequestTime forces second GET", func() {
 		w := loadChangeManagementWRCSByName("change-management-approval")
 		ps := changeManagementArgoconDemoPS()
 		start := time.Now().UTC().Add(-5 * time.Minute).Format(time.RFC3339)
 		end := time.Now().UTC().Add(5 * time.Minute).Format(time.RFC3339)
-		okBody := map[string]any{"change_records": []any{map[string]any{"change_request": map[string]any{"start_time": start, "end_time": end}}}}
+		okBody := map[string]any{
+			"change_records": []any{
+				map[string]any{
+					"change_request": map[string]any{
+						"start_time": start,
+						"end_time":   end,
+					},
+				},
+			},
+		}
 
 		r1, err := webrequestsimulator.Simulate(ctx, webrequestsimulator.Input{
 			WebRequestCommitStatus: w,
@@ -723,7 +798,9 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 		Expect(t2["isNewFingerprint"]).To(BeFalse())
 	})
 
-	DescribeTable("change-management-approval: success HTTP branch requires 200 + records + in-window change_request",
+	// Trigger fires (happy PS); each response fails success.when’s HTTP branch (wrong status, empty list, or dates).
+	// response.output still runs; approvedCount is 0 for the filter expression.
+	DescribeTable("change-management-approval (fixture YAML): success.when needs 200, records, in-window times",
 		func(http *webrequestsimulator.HTTPResponse) {
 			w := loadChangeManagementWRCSByName("change-management-approval")
 			ps := changeManagementArgoconDemoPS()
@@ -738,9 +815,15 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			out := decodeJSONMap(r.Status.PromotionStrategyContext.ResponseOutput.Raw)
 			Expect(out["approvedCount"]).To(BeNumerically("==", 0))
 		},
-		Entry("wrong status", &webrequestsimulator.HTTPResponse{StatusCode: 201, Body: map[string]any{"change_records": []any{}}}),
-		Entry("empty change_records", &webrequestsimulator.HTTPResponse{StatusCode: 200, Body: map[string]any{"change_records": []any{}}}),
-		Entry("no in-window records",
+		Entry("HTTP branch: non-200 status", &webrequestsimulator.HTTPResponse{
+			StatusCode: 201,
+			Body:       map[string]any{"change_records": []any{}},
+		}),
+		Entry("HTTP branch: 200 with empty change_records", &webrequestsimulator.HTTPResponse{
+			StatusCode: 200,
+			Body:       map[string]any{"change_records": []any{}},
+		}),
+		Entry("HTTP branch: 200 but no record brackets now()",
 			&webrequestsimulator.HTTPResponse{StatusCode: 200, Body: map[string]any{"change_records": []any{
 				map[string]any{"change_request": map[string]any{
 					"start_time": time.Now().UTC().Add(-48 * time.Hour).Format(time.RFC3339),
@@ -750,7 +833,8 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 		),
 	)
 
-	It("change-management-approval: response.output approvedCount filters to in-window records only", func() {
+	// response.output filters with the same date predicate as success.when; totalRecordCount is raw list length.
+	It("change-management-approval (YAML): approvedCount in-window; totalRecordCount all records", func() {
 		w := loadChangeManagementWRCSByName("change-management-approval")
 		ps := changeManagementArgoconDemoPS()
 		inStart := time.Now().UTC().Add(-5 * time.Minute).Format(time.RFC3339)
@@ -775,5 +859,4 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 		Expect(out["totalRecordCount"]).To(BeNumerically("==", 2))
 		Expect(out["approvedCount"]).To(BeNumerically("==", 1))
 	})
-
 })
