@@ -50,9 +50,9 @@ type CommitStatusEmitter interface {
 }
 
 // RenderedHTTPSink receives fully rendered HTTP templates when the trigger fires (e.g. simulator output).
-// Leave nil in production: HTTPEXecutor already renders on the wire; recording here would duplicate template work.
+// Leave nil in production: HTTPEXecutor already renders on the wire; collecting here would duplicate template work.
 type RenderedHTTPSink interface {
-	RecordRenderedHTTP(r RenderedHTTPRequest)
+	CollectRenderedHTTP(r RenderedHTTPRequest)
 }
 
 // ProcessWebRequestCommitStatusEnvironmentsInput carries dependencies for the per-environment context path.
@@ -64,7 +64,7 @@ type ProcessWebRequestCommitStatusEnvironmentsInput struct {
 	// NamespaceMeta is passed into TemplateData for template rendering.
 	NamespaceMeta    NamespaceMetadata
 	CommitEmitter    CommitStatusEmitter
-	RenderedHTTPSink RenderedHTTPSink // optional; when non-nil, RecordRenderedHTTP is called after a successful template render when the trigger fires
+	RenderedHTTPSink RenderedHTTPSink // optional; when non-nil, CollectRenderedHTTP is called after a successful template render when the trigger fires
 }
 
 // ProcessWebRequestCommitStatusEnvironmentsOutput is the computed status and CommitStatus list for one reconcile.
@@ -238,7 +238,7 @@ func ProcessWebRequestCommitStatusEnvironments(ctx context.Context, in ProcessWe
 			if err != nil {
 				return nil, fmt.Errorf("failed to render HTTP request for environment %q: %w", branch, err)
 			}
-			in.RenderedHTTPSink.RecordRenderedHTTP(req)
+			in.RenderedHTTPSink.CollectRenderedHTTP(req)
 		}
 
 		result, err := FireOrCarryForward(ctx, in.Evaluator, wrcs, td, decision, lastState, in.HttpExec)
@@ -361,7 +361,7 @@ func ProcessWebRequestCommitStatusPromotionStrategyContext(ctx context.Context, 
 		if err != nil {
 			return nil, fmt.Errorf("failed to render shared HTTP request (context=promotionstrategy): %w", err)
 		}
-		in.RenderedHTTPSink.RecordRenderedHTTP(req)
+		in.RenderedHTTPSink.CollectRenderedHTTP(req)
 	}
 
 	result, err := FireOrCarryForward(ctx, in.Evaluator, wrcs, td, decision, lastState, in.HttpExec)

@@ -39,7 +39,7 @@ type renderedRequestsCollector struct {
 	out *[]types.RenderedRequest
 }
 
-func (c *renderedRequestsCollector) RecordRenderedHTTP(r webrequest.RenderedHTTPRequest) {
+func (c *renderedRequestsCollector) CollectRenderedHTTP(r webrequest.RenderedHTTPRequest) {
 	*c.out = append(*c.out, types.RenderedRequest{
 		Branch: r.Branch, Method: r.Method, URL: r.URL, Headers: r.Headers, Body: r.Body,
 	})
