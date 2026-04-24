@@ -71,13 +71,13 @@ func pscHTTPMocks(r *simulatortypes.HTTPResponse) []simulatortypes.HTTPResponse 
 	return []simulatortypes.HTTPResponse{x}
 }
 
-// envHTTPMocksSame returns one HTTPResponses entry per branch with the same StatusCode and Body.
-func envHTTPMocksSame(branches []string, code int, body any) []simulatortypes.HTTPResponse {
+// envHTTPMocksSame returns one HTTPResponses entry per branch with StatusCode 200 and the same Body.
+func envHTTPMocksSame(branches []string, body any) []simulatortypes.HTTPResponse {
 	out := make([]simulatortypes.HTTPResponse, 0, len(branches))
 	for _, b := range branches {
 		out = append(out, simulatortypes.HTTPResponse{
 			Branch: b,
-			Resp:   webrequest.HTTPResponse{StatusCode: code, Body: body},
+			Resp:   webrequest.HTTPResponse{StatusCode: 200, Body: body},
 		})
 	}
 	return out
@@ -377,7 +377,7 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 		r, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 			WebRequestCommitStatus: wrcs,
 			PromotionStrategy:      newPS(),
-			HTTPResponses:          envHTTPMocksSame([]string{"dev", "prod"}, 200, nil),
+			HTTPResponses:          envHTTPMocksSame([]string{"dev", "prod"}, nil),
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(r.Status.Environments).To(HaveLen(2))
@@ -437,7 +437,7 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 			WebRequestCommitStatus: wrcs,
 			PromotionStrategy:      newPS(),
 			NamespaceMetadata:      simulatortypes.NamespaceMetadata{Labels: map[string]string{"team": "payments"}},
-			HTTPResponses:          envHTTPMocksSame([]string{"dev", "prod"}, 200, nil),
+			HTTPResponses:          envHTTPMocksSame([]string{"dev", "prod"}, nil),
 		})
 		Expect(err).ToNot(HaveOccurred())
 		for _, req := range r.RenderedRequests {
@@ -464,7 +464,7 @@ var _ = Describe("Simulate engine", func() {
 			result, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 				WebRequestCommitStatus: wrcs,
 				PromotionStrategy:      ps,
-				HTTPResponses:          envHTTPMocksSame([]string{"dev", "prod"}, 200, map[string]any{"ok": true}),
+				HTTPResponses:          envHTTPMocksSame([]string{"dev", "prod"}, map[string]any{"ok": true}),
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result.Status.Environments).To(HaveLen(2))
@@ -539,14 +539,14 @@ var _ = Describe("Simulate engine", func() {
 			first, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 				WebRequestCommitStatus: wrcs,
 				PromotionStrategy:      ps,
-				HTTPResponses:          envHTTPMocksSame([]string{"dev", "prod"}, 200, nil),
+				HTTPResponses:          envHTTPMocksSame([]string{"dev", "prod"}, nil),
 			})
 			Expect(err).ToNot(HaveOccurred())
 			wrcs.Status = first.Status
 			second, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 				WebRequestCommitStatus: wrcs,
 				PromotionStrategy:      ps,
-				HTTPResponses:          envHTTPMocksSame([]string{"dev", "prod"}, 200, nil),
+				HTTPResponses:          envHTTPMocksSame([]string{"dev", "prod"}, nil),
 			})
 			Expect(err).ToNot(HaveOccurred())
 			for _, e := range second.Status.Environments {
@@ -583,7 +583,7 @@ var _ = Describe("Simulate engine", func() {
 			_, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 				WebRequestCommitStatus: wrcs,
 				PromotionStrategy:      ps,
-				HTTPResponses:          envHTTPMocksSame([]string{"dev", "prod"}, 200, nil),
+				HTTPResponses:          envHTTPMocksSame([]string{"dev", "prod"}, nil),
 			})
 			Expect(err).To(HaveOccurred())
 		})
@@ -1061,10 +1061,20 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			&simulatortypes.HTTPResponse{Resp: webrequest.HTTPResponse{StatusCode: 200, Body: map[string]any{"id": "x"}}},
 		),
 		Entry("HTTP branch: 202 with Body.id null fails id check",
-			&simulatortypes.HTTPResponse{Resp: webrequest.HTTPResponse{StatusCode: 202, Body: map[string]any{"id": nil, "message": "m"}}},
+			&simulatortypes.HTTPResponse{
+				Resp: webrequest.HTTPResponse{
+					StatusCode: 202,
+					Body:       map[string]any{"id": nil, "message": "m"},
+				},
+			},
 		),
 		Entry("HTTP branch: 202 with Body.id empty string fails",
-			&simulatortypes.HTTPResponse{Resp: webrequest.HTTPResponse{StatusCode: 202, Body: map[string]any{"id": "", "message": "m"}}},
+			&simulatortypes.HTTPResponse{
+				Resp: webrequest.HTTPResponse{
+					StatusCode: 202,
+					Body:       map[string]any{"id": "", "message": "m"},
+				},
+			},
 		),
 		Entry("HTTP branch: 202 with no id key — id nil in body map, changeId empty in response.output",
 			&simulatortypes.HTTPResponse{Resp: webrequest.HTTPResponse{StatusCode: 202, Body: map[string]any{"message": "m"}}},
@@ -1289,12 +1299,17 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			},
 		}),
 		Entry("HTTP branch: 200 but no record brackets now()",
-			&simulatortypes.HTTPResponse{Resp: webrequest.HTTPResponse{StatusCode: 200, Body: map[string]any{"change_records": []any{
-				map[string]any{"change_request": map[string]any{
-					"start_time": time.Now().UTC().Add(-48 * time.Hour).Format(time.RFC3339),
-					"end_time":   time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339),
-				}},
-			}}}},
+			&simulatortypes.HTTPResponse{
+				Resp: webrequest.HTTPResponse{
+					StatusCode: 200,
+					Body: map[string]any{"change_records": []any{
+						map[string]any{"change_request": map[string]any{
+							"start_time": time.Now().UTC().Add(-48 * time.Hour).Format(time.RFC3339),
+							"end_time":   time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339),
+						}},
+					}},
+				},
+			},
 		),
 	)
 
