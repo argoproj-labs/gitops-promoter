@@ -37,7 +37,7 @@ type ProcessWebRequestCommitStatusInput struct {
 	// NamespaceMeta is passed into TemplateData for template rendering.
 	NamespaceMeta    NamespaceMetadata
 	CommitEmitter    CommitStatusEmitter
-	RenderedHTTPSink RenderedHTTPSink // optional; when non-nil, CollectRenderedHTTP is called after a successful template render when the trigger fires
+	RenderedHTTPCollector RenderedHTTPCollector // optional; when non-nil, CollectRenderedHTTP is called after a successful template render when the trigger fires
 }
 
 // ProcessWebRequestCommitStatusEnvironmentsOutput is the computed status and CommitStatus list for one reconcile.
@@ -78,9 +78,9 @@ type CommitStatusEmitter interface {
 	) (*promoterv1alpha1.CommitStatus, error)
 }
 
-// RenderedHTTPSink receives fully rendered HTTP templates when the trigger fires (e.g. simulator output).
+// RenderedHTTPCollector receives fully rendered HTTP templates when the trigger fires (e.g. simulator output).
 // Leave nil in production: HTTPEXecutor already renders on the wire; collecting here would duplicate template work.
-type RenderedHTTPSink interface {
+type RenderedHTTPCollector interface {
 	CollectRenderedHTTP(r RenderedHTTPRequest)
 }
 
@@ -218,12 +218,12 @@ func ProcessWebRequestCommitStatusEnvironments(ctx context.Context, in ProcessWe
 			return nil, fmt.Errorf("trigger decision for environment %q: %w", branch, err)
 		}
 
-		if decision.ShouldFire && in.RenderedHTTPSink != nil {
+		if decision.ShouldFire && in.RenderedHTTPCollector != nil {
 			req, err := renderHTTPRequestTemplates(wrcs, td)
 			if err != nil {
 				return nil, fmt.Errorf("failed to render HTTP request for environment %q: %w", branch, err)
 			}
-			in.RenderedHTTPSink.CollectRenderedHTTP(req)
+			in.RenderedHTTPCollector.CollectRenderedHTTP(req)
 		}
 
 		result, err := fireOrCarryForward(ctx, in.Evaluator, wrcs, td, decision, lastState, in.HttpExec)
@@ -341,12 +341,12 @@ func ProcessWebRequestCommitStatusPromotionStrategyContext(ctx context.Context, 
 		return nil, fmt.Errorf("trigger decision (context=promotionstrategy): %w", err)
 	}
 
-	if decision.ShouldFire && in.RenderedHTTPSink != nil {
+	if decision.ShouldFire && in.RenderedHTTPCollector != nil {
 		req, err := renderHTTPRequestTemplates(wrcs, td)
 		if err != nil {
 			return nil, fmt.Errorf("failed to render shared HTTP request (context=promotionstrategy): %w", err)
 		}
-		in.RenderedHTTPSink.CollectRenderedHTTP(req)
+		in.RenderedHTTPCollector.CollectRenderedHTTP(req)
 	}
 
 	result, err := fireOrCarryForward(ctx, in.Evaluator, wrcs, td, decision, lastState, in.HttpExec)

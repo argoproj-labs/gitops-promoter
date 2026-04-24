@@ -33,7 +33,7 @@ func (simCommitRenderer) EmitCommitStatus(ctx context.Context, wrcs *promoterv1a
 	return renderCommitStatus(ctx, wrcs, repositoryRefName, branch, sha, phase, td)
 }
 
-// renderedRequestsCollector implements webrequest.RenderedHTTPSink by appending into the slice
+// renderedRequestsCollector implements webrequest.RenderedHTTPCollector by appending into the slice
 // that becomes simulatortypes.Result.RenderedRequests.
 type renderedRequestsCollector struct {
 	out *[]simulatortypes.RenderedRequest
@@ -86,7 +86,7 @@ func simulateEnvironments(
 		PromotionStrategy:      ps,
 		NamespaceMeta:          args.NamespaceMetadata,
 		CommitEmitter:          simCommitRenderer{},
-		RenderedHTTPSink:       renderedHTTP,
+		RenderedHTTPCollector:  renderedHTTP,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("simulate environments reconcile: %w", err)
@@ -120,7 +120,7 @@ func simulatePromotionStrategy(
 		PromotionStrategy:      ps,
 		NamespaceMeta:          args.NamespaceMetadata,
 		CommitEmitter:          simCommitRenderer{},
-		RenderedHTTPSink:       renderedHTTP,
+		RenderedHTTPCollector:  renderedHTTP,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("simulate promotionstrategy reconcile: %w", err)
