@@ -27,6 +27,35 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
+// ProcessWebRequestCommitStatusInput carries shared dependencies for WRCS processing
+// (per-environment context and promotionstrategy context).
+type ProcessWebRequestCommitStatusInput struct {
+	Evaluator              *Evaluator
+	HttpExec               HTTPEXecutor
+	WebRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
+	PromotionStrategy      *promoterv1alpha1.PromotionStrategy
+	// NamespaceMeta is passed into TemplateData for template rendering.
+	NamespaceMeta    NamespaceMetadata
+	CommitEmitter    CommitStatusEmitter
+	RenderedHTTPSink RenderedHTTPSink // optional; when non-nil, CollectRenderedHTTP is called after a successful template render when the trigger fires
+}
+
+// ProcessWebRequestCommitStatusEnvironmentsOutput is the computed status and CommitStatus list for one reconcile.
+type ProcessWebRequestCommitStatusEnvironmentsOutput struct {
+	Environments         []promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
+	CommitStatuses       []*promoterv1alpha1.CommitStatus
+	TransitionedBranches []string
+}
+
+// ProcessWebRequestCommitStatusPromotionStrategyOutput is the computed status for promotionstrategy context.
+type ProcessWebRequestCommitStatusPromotionStrategyOutput struct {
+	PromotionStrategyContext *promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus
+	CommitStatuses           []*promoterv1alpha1.CommitStatus
+	TransitionedBranches     []string
+	ApplicableEnvsEmpty      bool
+	PollingAllSuccessSkip    bool
+}
+
 // RenderedHTTPRequest is a fully rendered HTTP request template snapshot (diagnostics).
 // Branch is set per environment in environments context; empty for promotionstrategy shared request.
 type RenderedHTTPRequest struct {
