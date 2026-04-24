@@ -23,6 +23,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/webrequest"
+	"github.com/argoproj-labs/gitops-promoter/webrequestsimulator/types"
 )
 
 // simCommitRenderer implements webrequest.CommitStatusEmitter via local CommitStatus rendering.
@@ -32,13 +33,13 @@ func (simCommitRenderer) EmitCommitStatus(ctx context.Context, wrcs *promoterv1a
 	return renderCommitStatus(ctx, wrcs, repositoryRefName, branch, sha, phase, td)
 }
 
-// simRenderedRequestsSink implements webrequest.RenderedHTTPSink into Result.RenderedRequests.
+// simRenderedRequestsSink implements webrequest.RenderedHTTPSink into types.Result.RenderedRequests.
 type simRenderedRequestsSink struct {
-	dst *[]RenderedRequest
+	dst *[]types.RenderedRequest
 }
 
 func (s *simRenderedRequestsSink) Accept(r webrequest.RenderedHTTPRequest) {
-	*s.dst = append(*s.dst, RenderedRequest{
+	*s.dst = append(*s.dst, types.RenderedRequest{
 		Branch: r.Branch, Method: r.Method, URL: r.URL, Headers: r.Headers, Body: r.Body,
 	})
 }
@@ -48,7 +49,7 @@ func (s *simRenderedRequestsSink) Accept(r webrequest.RenderedHTTPRequest) {
 // matches what the controller would write to WebRequestCommitStatus.Status.
 //
 // Safe for concurrent use: a fresh Evaluator is created per call.
-func Simulate(ctx context.Context, args Args) (*Result, error) {
+func Simulate(ctx context.Context, args Args) (*types.Result, error) {
 	if args.WebRequestCommitStatus == nil {
 		return nil, errors.New("WebRequestCommitStatus is required")
 	}
@@ -70,11 +71,11 @@ func simulateEnvironments(
 	args Args,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
 	ps *promoterv1alpha1.PromotionStrategy,
-) (*Result, error) {
+) (*types.Result, error) {
 	evaluator := webrequest.NewEvaluator()
 	exec := &mockHTTPEXecutor{response: args.HTTPResponse}
 
-	var rendered []RenderedRequest
+	var rendered []types.RenderedRequest
 	httpSink := &simRenderedRequestsSink{dst: &rendered}
 
 	out, err := webrequest.ProcessWebRequestCommitStatusEnvironments(ctx, webrequest.ProcessWebRequestCommitStatusEnvironmentsInput{
@@ -90,7 +91,7 @@ func simulateEnvironments(
 		return nil, err
 	}
 
-	return &Result{
+	return &types.Result{
 		Status: promoterv1alpha1.WebRequestCommitStatusStatus{
 			Environments: out.Environments,
 		},
@@ -104,11 +105,11 @@ func simulatePromotionStrategy(
 	args Args,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
 	ps *promoterv1alpha1.PromotionStrategy,
-) (*Result, error) {
+) (*types.Result, error) {
 	evaluator := webrequest.NewEvaluator()
 	exec := &mockHTTPEXecutor{response: args.HTTPResponse}
 
-	var rendered []RenderedRequest
+	var rendered []types.RenderedRequest
 	httpSink := &simRenderedRequestsSink{dst: &rendered}
 
 	out, err := webrequest.ProcessWebRequestCommitStatusPromotionStrategyContext(ctx, webrequest.ProcessWebRequestCommitStatusPromotionStrategyInput{
@@ -125,7 +126,7 @@ func simulatePromotionStrategy(
 	}
 
 	if out.ApplicableEnvsEmpty {
-		return &Result{}, nil
+		return &types.Result{}, nil
 	}
 	if out.PollingAllSuccessSkip {
 		// Core does not write WRCS status on this path; mirror the pre-refactor simulator snapshot for round-tripping.
@@ -141,14 +142,14 @@ func simulatePromotionStrategy(
 		if cpy == nil {
 			return nil, fmt.Errorf("internal error: DeepCopy returned nil for carried status snapshot")
 		}
-		return &Result{
+		return &types.Result{
 			Status:           *cpy,
 			RenderedRequests: rendered,
 			CommitStatuses:   out.CommitStatuses,
 		}, nil
 	}
 
-	return &Result{
+	return &types.Result{
 		Status: promoterv1alpha1.WebRequestCommitStatusStatus{
 			PromotionStrategyContext: out.PromotionStrategyContext,
 		},

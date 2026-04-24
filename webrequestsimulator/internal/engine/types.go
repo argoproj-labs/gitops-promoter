@@ -21,7 +21,6 @@ package engine
 import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/webrequest"
-	"github.com/argoproj-labs/gitops-promoter/webrequestsimulator/types"
 )
 
 // Args carries everything the engine needs; the parent maps types.Input here.
@@ -31,7 +30,3 @@ type Args struct {
 	NamespaceMetadata      webrequest.NamespaceMetadata
 	HTTPResponse           *webrequest.HTTPResponse
 }
-
-type Result = types.Result
-
-type RenderedRequest = types.RenderedRequest
