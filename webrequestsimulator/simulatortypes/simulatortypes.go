@@ -32,7 +32,8 @@ import (
 //
 // HTTPResponses supplies stand-in HTTP responses when the trigger fires (or
 // under polling when a request runs). Each element is an HTTPResponse (Branch
-// plus Response with StatusCode/Body/Headers). Context=environments: Branch must match the PromotionStrategy environment
+// plus Response with StatusCode/Body/Headers).
+// Context=environments: Branch must match the PromotionStrategy environment
 // branch for that mock; the first
 // matching entry wins when Branch values duplicate. Context=promotionstrategy:
 // only HTTPResponses[0] is used; Branch on that entry is ignored; extra slice
