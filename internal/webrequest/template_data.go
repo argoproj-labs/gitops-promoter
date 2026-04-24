@@ -23,8 +23,8 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 )
 
-// TriggerExprData builds the expression data map for trigger and trigger output expressions.
-func (td TemplateData) TriggerExprData() map[string]any {
+// triggerExprData builds the expression data map for trigger and trigger output expressions.
+func (td TemplateData) triggerExprData() map[string]any {
 	return map[string]any{
 		"Branch":                 td.Branch,
 		"Phase":                  td.Phase,
@@ -36,11 +36,11 @@ func (td TemplateData) TriggerExprData() map[string]any {
 	}
 }
 
-// SuccessWhenExprData builds the expression data map for success.when expressions.
-// It mirrors TriggerExprData and adds Response: the HTTP response map when a request was
+// successWhenExprData builds the expression data map for success.when expressions.
+// It mirrors triggerExprData and adds Response: the HTTP response map when a request was
 // made this reconcile, or nil otherwise.
-func SuccessWhenExprData(td TemplateData, resp *HTTPResponse) map[string]any {
-	exprData := td.TriggerExprData()
+func successWhenExprData(td TemplateData, resp *HTTPResponse) map[string]any {
+	exprData := td.triggerExprData()
 	if resp != nil {
 		exprData["Response"] = map[string]any{
 			"StatusCode": resp.StatusCode,
@@ -53,13 +53,13 @@ func SuccessWhenExprData(td TemplateData, resp *HTTPResponse) map[string]any {
 	return exprData
 }
 
-// WithLatestOutputs returns a copy of the template data with ResponseOutput, TriggerOutput, and SuccessOutput
+// withLatestOutputs returns a copy of the template data with ResponseOutput, TriggerOutput, and SuccessOutput
 // updated from the latest HTTP response, trigger evaluation, and success evaluation. Used before upserting
 // CommitStatuses so description/URL templates reflect current data.
-func (td TemplateData) WithLatestOutputs(responseDataJSON *apiextensionsv1.JSON, newTriggerData map[string]any, successDataJSON *apiextensionsv1.JSON) TemplateData {
+func (td TemplateData) withLatestOutputs(responseDataJSON *apiextensionsv1.JSON, newTriggerData map[string]any, successDataJSON *apiextensionsv1.JSON) TemplateData {
 	result := td
 	if responseDataJSON != nil {
-		if data, err := UnmarshalJSONMap(responseDataJSON); err == nil && data != nil {
+		if data, err := unmarshalJSONMap(responseDataJSON); err == nil && data != nil {
 			result.ResponseOutput = data
 		}
 	}
@@ -67,17 +67,15 @@ func (td TemplateData) WithLatestOutputs(responseDataJSON *apiextensionsv1.JSON,
 		result.TriggerOutput = newTriggerData
 	}
 	if successDataJSON != nil {
-		if data, err := UnmarshalJSONMap(successDataJSON); err == nil && data != nil {
+		if data, err := unmarshalJSONMap(successDataJSON); err == nil && data != nil {
 			result.SuccessOutput = data
 		}
 	}
 	return result
 }
 
-// UnmarshalJSONMap unmarshals an apiextensionsv1.JSON into a map. Returns (nil, nil) when raw is nil.
-// Exported so callers outside this package (e.g. the simulator) can convert persisted status JSON
-// into map form for expression environments.
-func UnmarshalJSONMap(raw *apiextensionsv1.JSON) (map[string]any, error) {
+// unmarshalJSONMap unmarshals an apiextensionsv1.JSON into a map. Returns (nil, nil) when raw is nil.
+func unmarshalJSONMap(raw *apiextensionsv1.JSON) (map[string]any, error) {
 	if raw == nil {
 		return nil, nil
 	}
@@ -88,9 +86,8 @@ func UnmarshalJSONMap(raw *apiextensionsv1.JSON) (map[string]any, error) {
 	return result, nil
 }
 
-// MarshalJSONMap marshals a map into an apiextensionsv1.JSON. Returns (nil, nil) when data is nil.
-// Exported so the controller and simulator can persist trigger/response/success output into status.
-func MarshalJSONMap(data map[string]any) (*apiextensionsv1.JSON, error) {
+// marshalJSONMap marshals a map into an apiextensionsv1.JSON. Returns (nil, nil) when data is nil.
+func marshalJSONMap(data map[string]any) (*apiextensionsv1.JSON, error) {
 	if data == nil {
 		return nil, nil
 	}

@@ -27,10 +27,10 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
-// LastReconciledState holds deserialized state from the previous reconcile, extracted from either
+// lastReconciledState holds deserialized state from the previous reconcile, extracted from either
 // WebRequestCommitStatusEnvironmentStatus (per-env path) or
 // WebRequestCommitStatusPromotionStrategyContextStatus (context=promotionstrategy path).
-type LastReconciledState struct {
+type lastReconciledState struct {
 	TriggerData            map[string]any
 	ResponseData           map[string]any
 	SuccessData            map[string]any
@@ -42,14 +42,14 @@ type LastReconciledState struct {
 	Phase                  string
 }
 
-// LastReconciledStateFromEnvironment extracts the previous reconcile's state from a per-environment
+// lastReconciledStateFromEnvironment extracts the previous reconcile's state from a per-environment
 // status entry, deserializing trigger and response output JSON into maps.
-func LastReconciledStateFromEnvironment(ctx context.Context, status *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus) LastReconciledState {
+func lastReconciledStateFromEnvironment(ctx context.Context, status *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus) lastReconciledState {
 	if status == nil {
-		return LastReconciledState{}
+		return lastReconciledState{}
 	}
 	logger := log.FromContext(ctx)
-	s := LastReconciledState{
+	s := lastReconciledState{
 		Phase:                  string(status.Phase),
 		LastRequestTime:        status.LastRequestTime,
 		LastResponseStatusCode: status.LastResponseStatusCode,
@@ -57,32 +57,32 @@ func LastReconciledStateFromEnvironment(ctx context.Context, status *promoterv1a
 		SuccessOutput:          status.SuccessOutput,
 	}
 	var err error
-	s.TriggerData, err = UnmarshalJSONMap(status.TriggerOutput)
+	s.TriggerData, err = unmarshalJSONMap(status.TriggerOutput)
 	if err != nil {
 		logger.Error(err, "Failed to unmarshal trigger data")
 	}
-	s.ResponseData, err = UnmarshalJSONMap(status.ResponseOutput)
+	s.ResponseData, err = unmarshalJSONMap(status.ResponseOutput)
 	if err != nil {
 		logger.Error(err, "Failed to unmarshal response data")
 	}
-	s.SuccessData, err = UnmarshalJSONMap(status.SuccessOutput)
+	s.SuccessData, err = unmarshalJSONMap(status.SuccessOutput)
 	if err != nil {
 		logger.Error(err, "Failed to unmarshal success data")
 	}
 	return s
 }
 
-// LastReconciledStateFromContext extracts the previous reconcile's state from the
+// lastReconciledStateFromContext extracts the previous reconcile's state from the
 // promotionstrategy-level context status, including per-branch phase overrides.
 // Phase is computed as an aggregate of PhasePerBranch (success only if all branches succeeded,
 // failure if any failed, pending otherwise).
-func LastReconciledStateFromContext(ctx context.Context, status *promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus) LastReconciledState {
+func lastReconciledStateFromContext(ctx context.Context, status *promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus) lastReconciledState {
 	if status == nil {
-		return LastReconciledState{}
+		return lastReconciledState{}
 	}
 	logger := log.FromContext(ctx)
 	phaseMap := phasePerBranchMapFromSlice(status.PhasePerBranch)
-	s := LastReconciledState{
+	s := lastReconciledState{
 		Phase:                  aggregatePhase(phaseMap),
 		LastRequestTime:        status.LastRequestTime,
 		LastResponseStatusCode: status.LastResponseStatusCode,
@@ -91,15 +91,15 @@ func LastReconciledStateFromContext(ctx context.Context, status *promoterv1alpha
 		PhasePerBranch:         phaseMap,
 	}
 	var err error
-	s.TriggerData, err = UnmarshalJSONMap(status.TriggerOutput)
+	s.TriggerData, err = unmarshalJSONMap(status.TriggerOutput)
 	if err != nil {
 		logger.Error(err, "Failed to unmarshal trigger data (context=promotionstrategy)")
 	}
-	s.ResponseData, err = UnmarshalJSONMap(status.ResponseOutput)
+	s.ResponseData, err = unmarshalJSONMap(status.ResponseOutput)
 	if err != nil {
 		logger.Error(err, "Failed to unmarshal response data (context=promotionstrategy)")
 	}
-	s.SuccessData, err = UnmarshalJSONMap(status.SuccessOutput)
+	s.SuccessData, err = unmarshalJSONMap(status.SuccessOutput)
 	if err != nil {
 		logger.Error(err, "Failed to unmarshal success data (context=promotionstrategy)")
 	}

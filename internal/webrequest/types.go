@@ -25,7 +25,7 @@ import (
 )
 
 // TemplateData is the data passed to Go templates when rendering URL, headers, body, and description,
-// and (via TriggerExprData / SuccessWhenExprData) to expr expressions.
+// and (via triggerExprData / successWhenExprData) to expr expressions.
 //
 // Branch is the environment branch currently being processed — set per-iteration in both
 // environments and promotionstrategy contexts (empty for the shared HTTP request in promotionstrategy).
@@ -58,11 +58,11 @@ type HTTPResponse struct {
 	StatusCode int
 }
 
-// TriggerResult holds the result of EvaluateTriggerExpression. Trigger is true when the controller
+// triggerResult holds the result of evaluateTriggerExpression. Trigger is true when the controller
 // should perform the HTTP request. When when.output.expression is configured its map result is
 // stored in WebRequestCommitStatusEnvironmentStatus.TriggerOutput and on the next reconcile is
 // passed back into TemplateData.TriggerOutput for both trigger expressions and into the CommitStatus
 // description/URL templates.
-type TriggerResult struct {
+type triggerResult struct {
 	Trigger bool
 }

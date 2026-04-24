@@ -36,47 +36,47 @@ var _ = Describe("Evaluator", func() {
 		e = NewEvaluator()
 	})
 
-	Describe("EvaluateTriggerExpression", func() {
+	Describe("evaluateTriggerExpression", func() {
 		It("returns true for an expression evaluating to true", func() {
-			tr, err := e.EvaluateTriggerExpression(ctx, "true", map[string]any{})
+			tr, err := e.evaluateTriggerExpression(ctx, "true", map[string]any{})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(tr.Trigger).To(BeTrue())
 		})
 
 		It("returns false for an expression evaluating to false", func() {
-			tr, err := e.EvaluateTriggerExpression(ctx, "1 == 2", map[string]any{})
+			tr, err := e.evaluateTriggerExpression(ctx, "1 == 2", map[string]any{})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(tr.Trigger).To(BeFalse())
 		})
 
 		It("returns an error when the expression does not compile", func() {
-			_, err := e.EvaluateTriggerExpression(ctx, "this is not expr", map[string]any{})
+			_, err := e.evaluateTriggerExpression(ctx, "this is not expr", map[string]any{})
 			Expect(err).To(HaveOccurred())
 		})
 
 		It("reads variables from the env map", func() {
-			tr, err := e.EvaluateTriggerExpression(ctx, "Phase == 'success'", map[string]any{"Phase": "success"})
+			tr, err := e.evaluateTriggerExpression(ctx, "Phase == 'success'", map[string]any{"Phase": "success"})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(tr.Trigger).To(BeTrue())
 		})
 	})
 
-	Describe("EvaluateTriggerDataExpression", func() {
+	Describe("evaluateTriggerDataExpression", func() {
 		It("returns the map produced by the expression", func() {
-			result, err := e.EvaluateTriggerDataExpression(ctx, `{"foo": "bar"}`, map[string]any{})
+			result, err := e.evaluateTriggerDataExpression(ctx, `{"foo": "bar"}`, map[string]any{})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result).To(HaveKeyWithValue("foo", "bar"))
 		})
 
 		It("errors when the expression returns a non-map", func() {
-			_, err := e.EvaluateTriggerDataExpression(ctx, `"not a map"`, map[string]any{})
+			_, err := e.evaluateTriggerDataExpression(ctx, `"not a map"`, map[string]any{})
 			Expect(err).To(HaveOccurred())
 		})
 	})
 
-	Describe("EvaluateValidationExpression", func() {
+	Describe("evaluateValidationExpression", func() {
 		It("returns true for a boolean expression that evaluates to true", func() {
-			passed, err := e.EvaluateValidationExpression(ctx, "Response.StatusCode == 200", map[string]any{
+			passed, err := e.evaluateValidationExpression(ctx, "Response.StatusCode == 200", map[string]any{
 				"Response": map[string]any{"StatusCode": 200},
 			})
 			Expect(err).ToNot(HaveOccurred())
@@ -84,7 +84,7 @@ var _ = Describe("Evaluator", func() {
 		})
 
 		It("returns false when the boolean expression is false", func() {
-			passed, err := e.EvaluateValidationExpression(ctx, "Response.StatusCode == 200", map[string]any{
+			passed, err := e.evaluateValidationExpression(ctx, "Response.StatusCode == 200", map[string]any{
 				"Response": map[string]any{"StatusCode": 500},
 			})
 			Expect(err).ToNot(HaveOccurred())
@@ -92,16 +92,16 @@ var _ = Describe("Evaluator", func() {
 		})
 	})
 
-	Describe("EvaluateValidationExpressionForPromotionStrategy", func() {
+	Describe("evaluateValidationExpressionForPromotionStrategy", func() {
 		It("returns CommitPhaseSuccess when expression returns true", func() {
-			phase, phaseByBranch, err := e.EvaluateValidationExpressionForPromotionStrategy(ctx, "true", map[string]any{})
+			phase, phaseByBranch, err := e.evaluateValidationExpressionForPromotionStrategy(ctx, "true", map[string]any{})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 			Expect(phaseByBranch).To(BeNil())
 		})
 
 		It("returns CommitPhasePending when expression returns false", func() {
-			phase, phaseByBranch, err := e.EvaluateValidationExpressionForPromotionStrategy(ctx, "false", map[string]any{})
+			phase, phaseByBranch, err := e.evaluateValidationExpressionForPromotionStrategy(ctx, "false", map[string]any{})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(phase).To(Equal(promoterv1alpha1.CommitPhasePending))
 			Expect(phaseByBranch).To(BeNil())
@@ -115,7 +115,7 @@ var _ = Describe("Evaluator", func() {
 					{"branch": "env/prod", "phase": "failure"}
 				]
 			}`
-			phase, phaseByBranch, err := e.EvaluateValidationExpressionForPromotionStrategy(ctx, expression, map[string]any{})
+			phase, phaseByBranch, err := e.evaluateValidationExpressionForPromotionStrategy(ctx, expression, map[string]any{})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(phase).To(Equal(promoterv1alpha1.CommitPhasePending))
 			Expect(phaseByBranch).To(HaveKeyWithValue("env/dev", promoterv1alpha1.CommitPhaseSuccess))
@@ -123,13 +123,13 @@ var _ = Describe("Evaluator", func() {
 		})
 
 		It("defaults defaultPhase to pending when omitted", func() {
-			phase, _, err := e.EvaluateValidationExpressionForPromotionStrategy(ctx, `{"environments": []}`, map[string]any{})
+			phase, _, err := e.evaluateValidationExpressionForPromotionStrategy(ctx, `{"environments": []}`, map[string]any{})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(phase).To(Equal(promoterv1alpha1.CommitPhasePending))
 		})
 
 		It("errors when the expression returns a non-bool, non-object value", func() {
-			_, _, err := e.EvaluateValidationExpressionForPromotionStrategy(ctx, `"bogus"`, map[string]any{})
+			_, _, err := e.evaluateValidationExpressionForPromotionStrategy(ctx, `"bogus"`, map[string]any{})
 			Expect(err).To(HaveOccurred())
 		})
 
@@ -140,37 +140,37 @@ var _ = Describe("Evaluator", func() {
 					{"branch": "env/dev", "phase": "failure"}
 				]
 			}`
-			_, _, err := e.EvaluateValidationExpressionForPromotionStrategy(ctx, expression, map[string]any{})
+			_, _, err := e.evaluateValidationExpressionForPromotionStrategy(ctx, expression, map[string]any{})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("duplicate branch"))
 		})
 	})
 
-	Describe("EvaluateResponseDataExpression", func() {
+	Describe("evaluateResponseDataExpression", func() {
 		It("extracts values from a JSON body", func() {
 			resp := HTTPResponse{
 				StatusCode: 200,
 				Body:       map[string]any{"url": "https://example.com/run/42"},
 				Headers:    map[string][]string{},
 			}
-			result, err := e.EvaluateResponseDataExpression(ctx, `{"buildUrl": Response.Body.url}`, resp)
+			result, err := e.evaluateResponseDataExpression(ctx, `{"buildUrl": Response.Body.url}`, resp)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result).To(HaveKeyWithValue("buildUrl", "https://example.com/run/42"))
 		})
 	})
 
-	Describe("EvaluateSuccessDataExpression", func() {
+	Describe("evaluateSuccessDataExpression", func() {
 		It("returns the map produced by the expression", func() {
-			result, err := e.EvaluateSuccessDataExpression(ctx, `{"phase": Phase}`, map[string]any{"Phase": "success"})
+			result, err := e.evaluateSuccessDataExpression(ctx, `{"phase": Phase}`, map[string]any{"Phase": "success"})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result).To(HaveKeyWithValue("phase", "success"))
 		})
 	})
 
-	Describe("EnrichWhenExprEnv", func() {
+	Describe("enrichWhenExprEnv", func() {
 		It("returns base unchanged when variables is nil", func() {
 			base := map[string]any{"Phase": "pending"}
-			out, err := e.EnrichWhenExprEnv(ctx, promoterv1alpha1.WhenWithOutputSpec{}, base)
+			out, err := e.enrichWhenExprEnv(ctx, promoterv1alpha1.WhenWithOutputSpec{}, base)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(out).To(Equal(base))
 		})
@@ -179,7 +179,7 @@ var _ = Describe("Evaluator", func() {
 			spec := promoterv1alpha1.WhenWithOutputSpec{
 				Variables: &promoterv1alpha1.OutputSpec{Expression: `{"threshold": 3}`},
 			}
-			out, err := e.EnrichWhenExprEnv(ctx, spec, map[string]any{"Phase": "pending"})
+			out, err := e.enrichWhenExprEnv(ctx, spec, map[string]any{"Phase": "pending"})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(out).To(HaveKeyWithValue("Phase", "pending"))
 			Expect(out).To(HaveKey("Variables"))
@@ -192,9 +192,9 @@ var _ = Describe("Evaluator", func() {
 	Describe("compile cache", func() {
 		It("only compiles the same (prefix, expression) once", func() {
 			// Both calls on the same expression should hit the cache on the second invocation.
-			_, err := e.EvaluateTriggerExpression(ctx, "Phase == 'pending'", map[string]any{"Phase": "pending"})
+			_, err := e.evaluateTriggerExpression(ctx, "Phase == 'pending'", map[string]any{"Phase": "pending"})
 			Expect(err).ToNot(HaveOccurred())
-			tr, err := e.EvaluateTriggerExpression(ctx, "Phase == 'pending'", map[string]any{"Phase": "pending"})
+			tr, err := e.evaluateTriggerExpression(ctx, "Phase == 'pending'", map[string]any{"Phase": "pending"})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(tr.Trigger).To(BeTrue())
 		})
@@ -202,9 +202,9 @@ var _ = Describe("Evaluator", func() {
 		It("separates entries by prefix (trigger vs triggerdata) even with the same expression", func() {
 			// Trigger expression needs AsBool(); triggerdata does not. If they shared a cache
 			// entry, running the second with the first's program (or vice versa) would behave oddly.
-			_, err := e.EvaluateTriggerExpression(ctx, "true", map[string]any{})
+			_, err := e.evaluateTriggerExpression(ctx, "true", map[string]any{})
 			Expect(err).ToNot(HaveOccurred())
-			result, err := e.EvaluateTriggerDataExpression(ctx, `{"ok": true}`, map[string]any{})
+			result, err := e.evaluateTriggerDataExpression(ctx, `{"ok": true}`, map[string]any{})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result).To(HaveKeyWithValue("ok", true))
 		})
@@ -215,7 +215,7 @@ var _ = Describe("Pure helpers", func() {
 	Describe("TemplateData.TriggerExprData", func() {
 		It("exposes expected keys", func() {
 			td := TemplateData{Branch: "env/dev", Phase: "pending"}
-			m := td.TriggerExprData()
+			m := td.triggerExprData()
 			Expect(m).To(HaveKeyWithValue("Branch", "env/dev"))
 			Expect(m).To(HaveKeyWithValue("Phase", "pending"))
 			Expect(m).To(HaveKey("PromotionStrategy"))
@@ -226,17 +226,17 @@ var _ = Describe("Pure helpers", func() {
 		})
 	})
 
-	Describe("SuccessWhenExprData", func() {
+	Describe("successWhenExprData", func() {
 		It("sets Response to nil when response is nil", func() {
 			td := TemplateData{Branch: "env/dev"}
-			m := SuccessWhenExprData(td, nil)
+			m := successWhenExprData(td, nil)
 			Expect(m).To(HaveKeyWithValue("Response", BeNil()))
 		})
 
 		It("populates Response when a response is provided", func() {
 			td := TemplateData{Branch: "env/dev"}
 			resp := &HTTPResponse{StatusCode: 201, Body: "ok", Headers: map[string][]string{"X": {"y"}}}
-			m := SuccessWhenExprData(td, resp)
+			m := successWhenExprData(td, resp)
 			Expect(m).To(HaveKey("Response"))
 			r, ok := m["Response"].(map[string]any)
 			Expect(ok).To(BeTrue())

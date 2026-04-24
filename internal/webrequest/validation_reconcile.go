@@ -34,14 +34,14 @@ import (
 // would fire but no mock HTTPResponse was provided.
 var ErrHTTPResponseRequiredWhenTriggerFires = errors.New("HTTPResponse is required when the trigger fires (fill in a mock response, or craft inputs so the trigger does not fire)")
 
-// TriggerDecision is the result of EvaluateTriggerDecision: whether to perform the HTTP round-trip
+// triggerDecision is the result of evaluateTriggerDecision: whether to perform the HTTP round-trip
 // and any trigger output data for the next reconcile.
-type TriggerDecision struct {
+type triggerDecision struct {
 	NewTriggerData map[string]any
 	ShouldFire     bool
 }
 
-// ValidationResult holds the outcome of processing a fire or carry-forward path. Phase is derived
+// validationResult holds the outcome of processing a fire or carry-forward path. Phase is derived
 // from the success.when expression and is written to CommitStatus / simulated status.
 //
 // When context is promotionstrategy and the success expression returns an object { defaultPhase?, environments? },
@@ -54,7 +54,7 @@ type TriggerDecision struct {
 // expression can read it (e.g. ResponseOutput.buildUrl). When upserting the CommitStatus it is also
 // passed into the description and URL templates as ResponseOutput, so the SCM status can show links
 // or text derived from the response (e.g. a link to the CI run).
-type ValidationResult struct {
+type validationResult struct {
 	LastRequestTime        *metav1.Time
 	LastResponseStatusCode *int
 	ResponseDataJSON       *apiextensionsv1.JSON
@@ -70,16 +70,16 @@ type HTTPEXecutor interface {
 	Execute(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, td TemplateData) (HTTPResponse, error)
 }
 
-// EvaluateTriggerDecision determines whether the HTTP request should fire this reconcile.
+// evaluateTriggerDecision determines whether the HTTP request should fire this reconcile.
 // For polling mode it checks whether the polling interval has elapsed since lastRequestTime.
 // For trigger mode it evaluates the trigger expression and optionally the trigger output expression.
-func EvaluateTriggerDecision(
+func evaluateTriggerDecision(
 	ctx context.Context,
 	evaluator *Evaluator,
 	mode promoterv1alpha1.ModeSpec,
 	td TemplateData,
 	lastRequestTime *metav1.Time,
-) (TriggerDecision, error) {
+) (triggerDecision, error) {
 	logger := log.FromContext(ctx)
 	shouldFire := true
 	var newTriggerData map[string]any
@@ -93,26 +93,26 @@ func EvaluateTriggerDecision(
 	}
 
 	if mode.Trigger != nil {
-		sf, ntd, err := evaluator.EvaluateTriggerWhenBranch(ctx, mode.Trigger, td)
+		sf, ntd, err := evaluator.evaluateTriggerWhenBranch(ctx, mode.Trigger, td)
 		if err != nil {
-			return TriggerDecision{}, fmt.Errorf("failed to evaluate trigger.when: %w", err)
+			return triggerDecision{}, fmt.Errorf("failed to evaluate trigger.when: %w", err)
 		}
 		shouldFire = sf
 		newTriggerData = ntd
 	}
 
-	return TriggerDecision{ShouldFire: shouldFire, NewTriggerData: newTriggerData}, nil
+	return triggerDecision{ShouldFire: shouldFire, NewTriggerData: newTriggerData}, nil
 }
 
-// ValidationResultFromHTTPResponse runs response extraction and success.when evaluation after
+// validationResultFromHTTPResponse runs response extraction and success.when evaluation after
 // an HTTP response is available. It updates td.ResponseOutput when response data JSON is present.
-func ValidationResultFromHTTPResponse(
+func validationResultFromHTTPResponse(
 	ctx context.Context,
 	evaluator *Evaluator,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
 	td TemplateData,
 	response HTTPResponse,
-) (ValidationResult, error) {
+) (validationResult, error) {
 	logger := log.FromContext(ctx)
 
 	now := metav1.Now()
@@ -123,40 +123,40 @@ func ValidationResultFromHTTPResponse(
 
 	var responseDataJSON *apiextensionsv1.JSON
 	if wrcs.Spec.Mode.Trigger != nil && wrcs.Spec.Mode.Trigger.Response != nil {
-		extractedData, err := evaluator.EvaluateResponseDataExpression(ctx, wrcs.Spec.Mode.Trigger.Response.Output.Expression, response)
+		extractedData, err := evaluator.evaluateResponseDataExpression(ctx, wrcs.Spec.Mode.Trigger.Response.Output.Expression, response)
 		if err != nil {
-			return ValidationResult{}, fmt.Errorf("failed to evaluate response data expression: %w", err)
+			return validationResult{}, fmt.Errorf("failed to evaluate response data expression: %w", err)
 		}
 
 		responseDataBytes, err := json.Marshal(extractedData)
 		if err != nil {
-			return ValidationResult{}, fmt.Errorf("failed to marshal response data: %w", err)
+			return validationResult{}, fmt.Errorf("failed to marshal response data: %w", err)
 		}
 		responseDataJSON = &apiextensionsv1.JSON{Raw: responseDataBytes}
 	}
 
 	if responseDataJSON != nil {
-		if data, err := UnmarshalJSONMap(responseDataJSON); err == nil && data != nil {
+		if data, err := unmarshalJSONMap(responseDataJSON); err == nil && data != nil {
 			td.ResponseOutput = data
 		}
 	}
 
-	exprData := SuccessWhenExprData(td, &response)
-	exprData, err := evaluator.EnrichWhenExprEnv(ctx, wrcs.Spec.Success.When, exprData)
+	exprData := successWhenExprData(td, &response)
+	exprData, err := evaluator.enrichWhenExprEnv(ctx, wrcs.Spec.Success.When, exprData)
 	if err != nil {
-		return ValidationResult{}, fmt.Errorf("failed to evaluate success.when.variables: %w", err)
+		return validationResult{}, fmt.Errorf("failed to evaluate success.when.variables: %w", err)
 	}
 	phase, phasePerBranch, err := evaluateSuccessPhase(ctx, evaluator, wrcs, exprData)
 	if err != nil {
-		return ValidationResult{}, fmt.Errorf("failed to evaluate validation expression: %w", err)
+		return validationResult{}, fmt.Errorf("failed to evaluate validation expression: %w", err)
 	}
 
 	successDataJSON, err := evaluateSuccessOutput(ctx, evaluator, wrcs, exprData)
 	if err != nil {
-		return ValidationResult{}, fmt.Errorf("failed to evaluate success.when.output expression: %w", err)
+		return validationResult{}, fmt.Errorf("failed to evaluate success.when.output expression: %w", err)
 	}
 
-	return ValidationResult{
+	return validationResult{
 		Phase:                  phase,
 		PhasePerBranch:         phasePerBranch,
 		LastRequestTime:        lastRequestTime,
@@ -166,32 +166,32 @@ func ValidationResultFromHTTPResponse(
 	}, nil
 }
 
-// ValidationResultCarryForward evaluates success.when with Response=nil when the trigger does not fire,
+// validationResultCarryForward evaluates success.when with Response=nil when the trigger does not fire,
 // carrying forward last HTTP metadata from lastState.
-func ValidationResultCarryForward(
+func validationResultCarryForward(
 	ctx context.Context,
 	evaluator *Evaluator,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
 	td TemplateData,
-	lastState LastReconciledState,
-) (ValidationResult, error) {
-	exprData := SuccessWhenExprData(td, nil)
+	lastState lastReconciledState,
+) (validationResult, error) {
+	exprData := successWhenExprData(td, nil)
 	var err error
-	exprData, err = evaluator.EnrichWhenExprEnv(ctx, wrcs.Spec.Success.When, exprData)
+	exprData, err = evaluator.enrichWhenExprEnv(ctx, wrcs.Spec.Success.When, exprData)
 	if err != nil {
-		return ValidationResult{}, fmt.Errorf("failed to evaluate success.when.variables: %w", err)
+		return validationResult{}, fmt.Errorf("failed to evaluate success.when.variables: %w", err)
 	}
 	phase, phasePerBranch, err := evaluateSuccessPhase(ctx, evaluator, wrcs, exprData)
 	if err != nil {
-		return ValidationResult{}, fmt.Errorf("failed to evaluate success.when expression: %w", err)
+		return validationResult{}, fmt.Errorf("failed to evaluate success.when expression: %w", err)
 	}
 
 	successDataJSON, err := evaluateSuccessOutput(ctx, evaluator, wrcs, exprData)
 	if err != nil {
-		return ValidationResult{}, fmt.Errorf("failed to evaluate success.when.output expression: %w", err)
+		return validationResult{}, fmt.Errorf("failed to evaluate success.when.output expression: %w", err)
 	}
 
-	return ValidationResult{
+	return validationResult{
 		Phase:                  phase,
 		PhasePerBranch:         phasePerBranch,
 		LastRequestTime:        lastState.LastRequestTime,
@@ -201,25 +201,25 @@ func ValidationResultCarryForward(
 	}, nil
 }
 
-// FireOrCarryForward runs the HTTP executor when decision.ShouldFire, otherwise carries forward
+// fireOrCarryForward runs the HTTP executor when decision.ShouldFire, otherwise carries forward
 // without a new HTTP response.
-func FireOrCarryForward(
+func fireOrCarryForward(
 	ctx context.Context,
 	evaluator *Evaluator,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
 	td TemplateData,
-	decision TriggerDecision,
-	lastState LastReconciledState,
+	decision triggerDecision,
+	lastState lastReconciledState,
 	exec HTTPEXecutor,
-) (ValidationResult, error) {
+) (validationResult, error) {
 	if !decision.ShouldFire {
-		return ValidationResultCarryForward(ctx, evaluator, wrcs, td, lastState)
+		return validationResultCarryForward(ctx, evaluator, wrcs, td, lastState)
 	}
 	resp, err := exec.Execute(ctx, wrcs, td)
 	if err != nil {
-		return ValidationResult{}, err
+		return validationResult{}, err
 	}
-	return ValidationResultFromHTTPResponse(ctx, evaluator, wrcs, td, resp)
+	return validationResultFromHTTPResponse(ctx, evaluator, wrcs, td, resp)
 }
 
 func evaluateSuccessPhase(
@@ -229,13 +229,13 @@ func evaluateSuccessPhase(
 	exprData map[string]any,
 ) (promoterv1alpha1.CommitStatusPhase, map[string]promoterv1alpha1.CommitStatusPhase, error) {
 	if wrcs.Spec.Mode.Context == promoterv1alpha1.ContextPromotionStrategy {
-		phase, phasePerBranch, err := evaluator.EvaluateValidationExpressionForPromotionStrategy(ctx, wrcs.Spec.Success.When.Expression, exprData)
+		phase, phasePerBranch, err := evaluator.evaluateValidationExpressionForPromotionStrategy(ctx, wrcs.Spec.Success.When.Expression, exprData)
 		if err != nil {
 			return phase, phasePerBranch, fmt.Errorf("failed to evaluate validation expression (promotionstrategy context): %w", err)
 		}
 		return phase, phasePerBranch, nil
 	}
-	passed, err := evaluator.EvaluateValidationExpression(ctx, wrcs.Spec.Success.When.Expression, exprData)
+	passed, err := evaluator.evaluateValidationExpression(ctx, wrcs.Spec.Success.When.Expression, exprData)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to evaluate validation expression: %w", err)
 	}
@@ -255,10 +255,10 @@ func evaluateSuccessOutput(
 		return nil, nil
 	}
 
-	extractedData, err := evaluator.EvaluateSuccessDataExpression(ctx, wrcs.Spec.Success.When.Output.Expression, exprData)
+	extractedData, err := evaluator.evaluateSuccessDataExpression(ctx, wrcs.Spec.Success.When.Output.Expression, exprData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate success data expression: %w", err)
 	}
 
-	return MarshalJSONMap(extractedData)
+	return marshalJSONMap(extractedData)
 }

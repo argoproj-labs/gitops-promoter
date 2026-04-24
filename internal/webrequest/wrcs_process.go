@@ -198,7 +198,7 @@ func ProcessWebRequestCommitStatusEnvironments(ctx context.Context, in ProcessWe
 		reportedSha := currentShas[branch]
 
 		lastReconciledEnvStatus := statusByEnv[branch]
-		lastState := LastReconciledStateFromEnvironment(ctx, lastReconciledEnvStatus)
+		lastState := lastReconciledStateFromEnvironment(ctx, lastReconciledEnvStatus)
 		lastSuccessfulSha := ""
 		if lastReconciledEnvStatus != nil {
 			lastSuccessfulSha = lastReconciledEnvStatus.LastSuccessfulSha
@@ -228,7 +228,7 @@ func ProcessWebRequestCommitStatusEnvironments(ctx context.Context, in ProcessWe
 			}
 		}
 
-		decision, err := EvaluateTriggerDecision(ctx, in.Evaluator, wrcs.Spec.Mode, td, lastState.LastRequestTime)
+		decision, err := evaluateTriggerDecision(ctx, in.Evaluator, wrcs.Spec.Mode, td, lastState.LastRequestTime)
 		if err != nil {
 			return nil, fmt.Errorf("trigger decision for environment %q: %w", branch, err)
 		}
@@ -241,7 +241,7 @@ func ProcessWebRequestCommitStatusEnvironments(ctx context.Context, in ProcessWe
 			in.RenderedHTTPSink.CollectRenderedHTTP(req)
 		}
 
-		result, err := FireOrCarryForward(ctx, in.Evaluator, wrcs, td, decision, lastState, in.HttpExec)
+		result, err := fireOrCarryForward(ctx, in.Evaluator, wrcs, td, decision, lastState, in.HttpExec)
 		if err != nil {
 			return nil, err
 		}
@@ -254,7 +254,7 @@ func ProcessWebRequestCommitStatusEnvironments(ctx context.Context, in ProcessWe
 			logger.Info("Validation transitioned to success", "branch", branch, "sha", reportedSha)
 		}
 
-		triggerDataJSON, err := MarshalJSONMap(decision.NewTriggerData)
+		triggerDataJSON, err := marshalJSONMap(decision.NewTriggerData)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal trigger data: %w", err)
 		}
@@ -271,7 +271,7 @@ func ProcessWebRequestCommitStatusEnvironments(ctx context.Context, in ProcessWe
 			SuccessOutput:          result.SuccessDataJSON,
 		})
 
-		commitTd := td.WithLatestOutputs(result.ResponseDataJSON, decision.NewTriggerData, result.SuccessDataJSON)
+		commitTd := td.withLatestOutputs(result.ResponseDataJSON, decision.NewTriggerData, result.SuccessDataJSON)
 		commitTd.Phase = string(result.Phase)
 		cs, err := in.CommitEmitter.EmitCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, reportedSha, result.Phase, commitTd)
 		if err != nil {
@@ -310,7 +310,7 @@ func ProcessWebRequestCommitStatusPromotionStrategyContext(ctx context.Context, 
 	}
 
 	lastReconciledCtxStatus := wrcsSnapshot.Status.PromotionStrategyContext.DeepCopy()
-	lastState := LastReconciledStateFromContext(ctx, lastReconciledCtxStatus)
+	lastState := lastReconciledStateFromContext(ctx, lastReconciledCtxStatus)
 
 	if wrcs.Spec.Mode.Polling != nil && wrcs.Spec.ReportOn == constants.CommitRefProposed && lastReconciledCtxStatus != nil {
 		if allBranchesSucceededForCurrentShas(applicableEnvs, lastReconciledCtxStatus, currentShaPerBranch) {
@@ -351,7 +351,7 @@ func ProcessWebRequestCommitStatusPromotionStrategyContext(ctx context.Context, 
 		SuccessOutput:          lastState.SuccessData,
 	}
 
-	decision, err := EvaluateTriggerDecision(ctx, in.Evaluator, wrcs.Spec.Mode, td, lastState.LastRequestTime)
+	decision, err := evaluateTriggerDecision(ctx, in.Evaluator, wrcs.Spec.Mode, td, lastState.LastRequestTime)
 	if err != nil {
 		return nil, fmt.Errorf("trigger decision (context=promotionstrategy): %w", err)
 	}
@@ -364,12 +364,12 @@ func ProcessWebRequestCommitStatusPromotionStrategyContext(ctx context.Context, 
 		in.RenderedHTTPSink.CollectRenderedHTTP(req)
 	}
 
-	result, err := FireOrCarryForward(ctx, in.Evaluator, wrcs, td, decision, lastState, in.HttpExec)
+	result, err := fireOrCarryForward(ctx, in.Evaluator, wrcs, td, decision, lastState, in.HttpExec)
 	if err != nil {
 		return nil, err
 	}
 
-	triggerDataJSON, err := MarshalJSONMap(decision.NewTriggerData)
+	triggerDataJSON, err := marshalJSONMap(decision.NewTriggerData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal trigger data: %w", err)
 	}
@@ -393,7 +393,7 @@ func ProcessWebRequestCommitStatusPromotionStrategyContext(ctx context.Context, 
 		LastSuccessfulShas:     lastSuccessfulShasSliceFromMap(lastSuccessfulShas),
 	}
 
-	commitTd := td.WithLatestOutputs(result.ResponseDataJSON, decision.NewTriggerData, result.SuccessDataJSON)
+	commitTd := td.withLatestOutputs(result.ResponseDataJSON, decision.NewTriggerData, result.SuccessDataJSON)
 	commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0, len(applicableEnvs))
 	for _, env := range applicableEnvs {
 		branch := env.Branch

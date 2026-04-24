@@ -21,6 +21,7 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -30,13 +31,34 @@ import (
 	sigyaml "sigs.k8s.io/yaml"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	"github.com/argoproj-labs/gitops-promoter/internal/webrequest"
 	"github.com/argoproj-labs/gitops-promoter/webrequestsimulator"
 	"github.com/argoproj-labs/gitops-promoter/webrequestsimulator/types"
 )
 
 //go:embed testdata/change_management_webrequests.yaml
 var changeManagementWebrequestsYAML []byte
+
+func unmarshalJSONMap(raw *apiextensionsv1.JSON) (map[string]any, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	result := make(map[string]any)
+	if err := json.Unmarshal(raw.Raw, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal JSON map: %w", err)
+	}
+	return result, nil
+}
+
+func marshalJSONMap(data map[string]any) (*apiextensionsv1.JSON, error) {
+	if data == nil {
+		return nil, nil
+	}
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal JSON map: %w", err)
+	}
+	return &apiextensionsv1.JSON{Raw: raw}, nil
+}
 
 // changeMgmtNoteDrySha is the shared proposed.note.drySha across all branches in the
 // change-management fixture PromotionStrategy (must match expr + template expectations).
@@ -175,19 +197,19 @@ func patchPromotionStrategyTriggerOutput(st *promoterv1alpha1.WebRequestCommitSt
 	Expect(st).ToNot(BeNil())
 	Expect(st.PromotionStrategyContext).ToNot(BeNil())
 	Expect(st.PromotionStrategyContext.TriggerOutput).ToNot(BeNil())
-	m, err := webrequest.UnmarshalJSONMap(st.PromotionStrategyContext.TriggerOutput)
+	m, err := unmarshalJSONMap(st.PromotionStrategyContext.TriggerOutput)
 	Expect(err).ToNot(HaveOccurred())
 	if m == nil {
 		m = make(map[string]any)
 	}
 	mut(m)
-	st.PromotionStrategyContext.TriggerOutput, err = webrequest.MarshalJSONMap(m)
+	st.PromotionStrategyContext.TriggerOutput, err = marshalJSONMap(m)
 	Expect(err).ToNot(HaveOccurred())
 }
 
-// decodeJSONMap unmarshals persisted *apiextensionsv1.JSON status fields for assertions (via webrequest.UnmarshalJSONMap).
+// decodeJSONMap unmarshals persisted *apiextensionsv1.JSON status fields for assertions.
 func decodeJSONMap(j *apiextensionsv1.JSON) map[string]any {
-	m, err := webrequest.UnmarshalJSONMap(j)
+	m, err := unmarshalJSONMap(j)
 	Expect(err).ToNot(HaveOccurred())
 	if m == nil {
 		return make(map[string]any)
