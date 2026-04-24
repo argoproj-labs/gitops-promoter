@@ -220,3 +220,28 @@ func AggregatePhase(phasePerBranch map[string]promoterv1alpha1.CommitStatusPhase
 	}
 	return string(promoterv1alpha1.CommitPhasePending)
 }
+
+// LastSuccessfulShasForPromotionStrategyContext builds the map of branch to last successful SHA
+// for context=promotionstrategy: it seeds from the prior reconcile's PromotionStrategyContext status
+// and sets each branch's entry to the current reported SHA when that branch's resolved phase is success.
+func LastSuccessfulShasForPromotionStrategyContext(
+	applicableEnvs []promoterv1alpha1.Environment,
+	lastReconciledCtxStatus *promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus,
+	phase promoterv1alpha1.CommitStatusPhase,
+	phasePerBranch map[string]promoterv1alpha1.CommitStatusPhase,
+	currentShaPerBranch map[string]string,
+) map[string]string {
+	lastSuccessfulShas := make(map[string]string, len(applicableEnvs))
+	if lastReconciledCtxStatus != nil {
+		for _, it := range lastReconciledCtxStatus.LastSuccessfulShas {
+			lastSuccessfulShas[it.Branch] = it.LastSuccessfulSha
+		}
+	}
+	for _, env := range applicableEnvs {
+		branch := env.Branch
+		if ResolvePhaseForBranch(branch, phase, phasePerBranch) == promoterv1alpha1.CommitPhaseSuccess {
+			lastSuccessfulShas[branch] = currentShaPerBranch[branch]
+		}
+	}
+	return lastSuccessfulShas
+}

@@ -29,7 +29,6 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -66,28 +65,6 @@ type WebRequestCommitStatusReconciler struct {
 	EnqueueCTP  CTPEnqueueFunc
 	httpClient  *http.Client
 	evaluator   *webrequest.Evaluator
-}
-
-// httpValidationResult holds the outcome of handleHTTPRequestAndValidation. Phase (Success or Pending)
-// is derived from the validation expression and is written to the CommitStatus.
-//
-// When context is promotionstrategy and the success expression returns an object { defaultPhase?, environments? },
-// PhasePerBranch is set and used to set each environment's CommitStatus phase; Phase is the default for branches not in the per-branch map.
-//
-// ResponseDataJSON is set only in trigger mode when response.output.expression is configured: it is the
-// JSON-serialized map returned by the data expression (extract/transform from the HTTP response).
-// It is stored in WebRequestCommitStatusEnvironmentStatus.ResponseOutput so it persists across
-// reconciles. On the next run it is unmarshalled into templateData.ResponseOutput, so the trigger
-// expression can read it (e.g. ResponseOutput.buildUrl). When upserting the CommitStatus it is also
-// passed into the description and URL templates as ResponseOutput, so the SCM status can show links
-// or text derived from the response (e.g. a link to the CI run).
-type httpValidationResult struct {
-	LastRequestTime        *metav1.Time
-	LastResponseStatusCode *int
-	ResponseDataJSON       *apiextensionsv1.JSON
-	SuccessDataJSON        *apiextensionsv1.JSON
-	PhasePerBranch         map[string]promoterv1alpha1.CommitStatusPhase
-	Phase                  promoterv1alpha1.CommitStatusPhase
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=webrequestcommitstatuses,verbs=get;list;watch;create;update;patch;delete
@@ -287,12 +264,12 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 			}
 		}
 
-		decision, err := r.evaluateTriggerDecision(ctx, wrcs.Spec.Mode, td, lastState.LastRequestTime)
+		decision, err := webrequest.EvaluateTriggerDecision(ctx, r.evaluator, wrcs.Spec.Mode, td, lastState.LastRequestTime)
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("trigger decision for environment %q: %w", branch, err)
 		}
 
-		result, err := r.fireOrCarryForward(ctx, wrcs, td, decision, lastState)
+		result, err := webrequest.FireOrCarryForward(ctx, r.evaluator, wrcs, td, decision, lastState, r)
 		if err != nil {
 			return nil, nil, 0, err
 		}
@@ -393,12 +370,12 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 		SuccessOutput:          lastState.SuccessData,
 	}
 
-	decision, err := r.evaluateTriggerDecision(ctx, wrcs.Spec.Mode, td, lastState.LastRequestTime)
+	decision, err := webrequest.EvaluateTriggerDecision(ctx, r.evaluator, wrcs.Spec.Mode, td, lastState.LastRequestTime)
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("trigger decision (context=promotionstrategy): %w", err)
 	}
 
-	result, err := r.fireOrCarryForward(ctx, wrcs, td, decision, lastState)
+	result, err := webrequest.FireOrCarryForward(ctx, r.evaluator, wrcs, td, decision, lastState, r)
 	if err != nil {
 		return nil, nil, 0, err
 	}
@@ -408,9 +385,7 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 		return nil, nil, 0, fmt.Errorf("failed to marshal trigger data: %w", err)
 	}
 
-	transitionedEnvironments, lastSuccessfulShas := detectTransitionsAndUpdateShas(
-		applicableEnvs, lastReconciledCtxStatus, result.Phase, result.PhasePerBranch, lastState.Phase, lastState.PhasePerBranch, currentShaPerBranch,
-	)
+	transitionedEnvironments, lastSuccessfulShas := detectTransitionsAndUpdateShas(applicableEnvs, lastReconciledCtxStatus, result.Phase, result.PhasePerBranch, lastState.Phase, lastState.PhasePerBranch, currentShaPerBranch)
 	if len(transitionedEnvironments) > 0 {
 		logger.Info("Validation transitioned to success (context=promotionstrategy)", "branches", transitionedEnvironments)
 	}
@@ -460,19 +435,13 @@ func detectTransitionsAndUpdateShas(
 	lastReconciledPhasePerBranch map[string]promoterv1alpha1.CommitStatusPhase,
 	currentShaPerBranch map[string]string,
 ) ([]string, map[string]string) {
-	lastSuccessfulShas := make(map[string]string, len(applicableEnvs))
-	if lastReconciledCtxStatus != nil {
-		for _, it := range lastReconciledCtxStatus.LastSuccessfulShas {
-			lastSuccessfulShas[it.Branch] = it.LastSuccessfulSha
-		}
-	}
+	lastSuccessfulShas := webrequest.LastSuccessfulShasForPromotionStrategyContext(
+		applicableEnvs, lastReconciledCtxStatus, phase, phasePerBranch, currentShaPerBranch,
+	)
 	var transitioned []string
 	for _, env := range applicableEnvs {
 		branch := env.Branch
 		envPhase := webrequest.ResolvePhaseForBranch(branch, phase, phasePerBranch)
-		if envPhase == promoterv1alpha1.CommitPhaseSuccess {
-			lastSuccessfulShas[branch] = currentShaPerBranch[branch]
-		}
 		lastReconciledEnvPhase := webrequest.ResolvePhaseForBranch(branch, promoterv1alpha1.CommitStatusPhase(lastReconciledPhase), lastReconciledPhasePerBranch)
 		if lastReconciledEnvPhase != promoterv1alpha1.CommitPhaseSuccess && envPhase == promoterv1alpha1.CommitPhaseSuccess {
 			transitioned = append(transitioned, branch)
@@ -481,83 +450,13 @@ func detectTransitionsAndUpdateShas(
 	return transitioned, lastSuccessfulShas
 }
 
-// fireOrCarryForward executes the HTTP request when decision.ShouldFire is true, otherwise
-// evaluates success.when with Response=nil so it can determine phase from Phase,
-// PromotionStrategy, WebRequestCommitStatus, and output variables.
-func (r *WebRequestCommitStatusReconciler) fireOrCarryForward(
-	ctx context.Context,
-	wrcs *promoterv1alpha1.WebRequestCommitStatus,
-	td webrequest.TemplateData,
-	decision triggerDecision,
-	lastState webrequest.LastReconciledState,
-) (httpValidationResult, error) {
-	if decision.ShouldFire {
-		return r.handleHTTPRequestAndValidation(ctx, wrcs, td)
-	}
-
-	// Run success.when even without a request, passing Response=nil.
-	exprData := webrequest.SuccessWhenExprData(td, nil)
-	exprData, err := r.evaluator.EnrichWhenExprEnv(ctx, wrcs.Spec.Success.When, exprData)
+// Execute implements webrequest.HTTPEXecutor by performing the real HTTP round-trip.
+func (r *WebRequestCommitStatusReconciler) Execute(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, td webrequest.TemplateData) (webrequest.HTTPResponse, error) {
+	resp, err := r.makeHTTPRequest(ctx, wrcs, td)
 	if err != nil {
-		return httpValidationResult{}, fmt.Errorf("failed to evaluate success.when.variables: %w", err)
+		return webrequest.HTTPResponse{}, fmt.Errorf("failed to make HTTP request: %w", err)
 	}
-	phase, phasePerBranch, err := r.evaluateSuccessPhase(ctx, wrcs, exprData)
-	if err != nil {
-		return httpValidationResult{}, fmt.Errorf("failed to evaluate success.when expression: %w", err)
-	}
-
-	successDataJSON, err := r.evaluateSuccessOutput(ctx, wrcs, exprData)
-	if err != nil {
-		return httpValidationResult{}, fmt.Errorf("failed to evaluate success.when.output expression: %w", err)
-	}
-
-	return httpValidationResult{
-		Phase:                  phase,
-		PhasePerBranch:         phasePerBranch,
-		LastRequestTime:        lastState.LastRequestTime,
-		LastResponseStatusCode: lastState.LastResponseStatusCode,
-		ResponseDataJSON:       lastState.ResponseOutput,
-		SuccessDataJSON:        successDataJSON,
-	}, nil
-}
-
-// triggerDecision holds the result of evaluateTriggerDecision.
-type triggerDecision struct {
-	NewTriggerData map[string]any
-	ShouldFire     bool
-}
-
-// evaluateTriggerDecision determines whether the HTTP request should fire this reconcile.
-// For polling mode it checks whether the polling interval has elapsed since lastRequestTime.
-// For trigger mode it evaluates the trigger expression and optionally the trigger output expression.
-func (r *WebRequestCommitStatusReconciler) evaluateTriggerDecision(
-	ctx context.Context,
-	mode promoterv1alpha1.ModeSpec,
-	td webrequest.TemplateData,
-	lastRequestTime *metav1.Time,
-) (triggerDecision, error) {
-	logger := log.FromContext(ctx)
-	shouldFire := true
-	var newTriggerData map[string]any
-
-	if mode.Polling != nil && lastRequestTime != nil {
-		if elapsed := time.Since(lastRequestTime.Time); elapsed < mode.Polling.Interval.Duration {
-			logger.V(4).Info("Within polling interval, skipping HTTP request",
-				"elapsed", elapsed, "interval", mode.Polling.Interval.Duration)
-			shouldFire = false
-		}
-	}
-
-	if mode.Trigger != nil {
-		sf, ntd, err := r.evaluator.EvaluateTriggerWhenBranch(ctx, mode.Trigger, td)
-		if err != nil {
-			return triggerDecision{}, fmt.Errorf("failed to evaluate trigger.when: %w", err)
-		}
-		shouldFire = sf
-		newTriggerData = ntd
-	}
-
-	return triggerDecision{ShouldFire: shouldFire, NewTriggerData: newTriggerData}, nil
+	return resp, nil
 }
 
 // requeueDuration returns the requeue interval from the mode spec.
@@ -569,115 +468,6 @@ func requeueDuration(mode promoterv1alpha1.ModeSpec) time.Duration {
 		return mode.Trigger.RequeueDuration.Duration
 	}
 	return 0
-}
-
-// handleHTTPRequestAndValidation is called when the trigger fires (or in polling mode). It performs the
-// HTTP request, optionally runs the response expression to populate ResponseOutput, then runs the success.when
-// expression to set Phase. When context is "promotionstrategy", the expression may return an object
-// { defaultPhase?, environments? } to set per-environment phases; see evaluateValidationExpressionForPromotionStrategy.
-func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, td webrequest.TemplateData) (httpValidationResult, error) {
-	logger := log.FromContext(ctx)
-
-	response, err := r.makeHTTPRequest(ctx, wrcs, td)
-	if err != nil {
-		return httpValidationResult{}, fmt.Errorf("failed to make HTTP request: %w", err)
-	}
-
-	now := metav1.Now()
-	lastRequestTime := &now
-	lastResponseStatusCode := &response.StatusCode
-
-	logger.V(4).Info("HTTP response received", "statusCode", response.StatusCode)
-
-	var responseDataJSON *apiextensionsv1.JSON
-	if wrcs.Spec.Mode.Trigger != nil && wrcs.Spec.Mode.Trigger.Response != nil {
-		extractedData, err := r.evaluator.EvaluateResponseDataExpression(ctx, wrcs.Spec.Mode.Trigger.Response.Output.Expression, response)
-		if err != nil {
-			return httpValidationResult{}, fmt.Errorf("failed to evaluate response data expression: %w", err)
-		}
-
-		responseDataBytes, err := json.Marshal(extractedData)
-		if err != nil {
-			return httpValidationResult{}, fmt.Errorf("failed to marshal response data: %w", err)
-		}
-		responseDataJSON = &apiextensionsv1.JSON{Raw: responseDataBytes}
-	}
-
-	// Update td.ResponseOutput so success.when sees the current response data.
-	if responseDataJSON != nil {
-		if data, err := webrequest.UnmarshalJSONMap(responseDataJSON); err == nil && data != nil {
-			td.ResponseOutput = data
-		}
-	}
-
-	exprData := webrequest.SuccessWhenExprData(td, &response)
-	exprData, err = r.evaluator.EnrichWhenExprEnv(ctx, wrcs.Spec.Success.When, exprData)
-	if err != nil {
-		return httpValidationResult{}, fmt.Errorf("failed to evaluate success.when.variables: %w", err)
-	}
-	phase, phasePerBranch, err := r.evaluateSuccessPhase(ctx, wrcs, exprData)
-	if err != nil {
-		return httpValidationResult{}, fmt.Errorf("failed to evaluate validation expression: %w", err)
-	}
-
-	successDataJSON, err := r.evaluateSuccessOutput(ctx, wrcs, exprData)
-	if err != nil {
-		return httpValidationResult{}, fmt.Errorf("failed to evaluate success.when.output expression: %w", err)
-	}
-
-	return httpValidationResult{
-		Phase:                  phase,
-		PhasePerBranch:         phasePerBranch,
-		LastRequestTime:        lastRequestTime,
-		LastResponseStatusCode: lastResponseStatusCode,
-		ResponseDataJSON:       responseDataJSON,
-		SuccessDataJSON:        successDataJSON,
-	}, nil
-}
-
-// evaluateSuccessPhase evaluates the success.when expression and returns the phase and optional per-branch phases.
-// The exprData map is built by webrequest.SuccessWhenExprData; it includes Response (nil when no request
-// was made), Branch, Phase, PromotionStrategy, WebRequestCommitStatus, and output variables.
-func (r *WebRequestCommitStatusReconciler) evaluateSuccessPhase(
-	ctx context.Context,
-	wrcs *promoterv1alpha1.WebRequestCommitStatus,
-	exprData map[string]any,
-) (promoterv1alpha1.CommitStatusPhase, map[string]promoterv1alpha1.CommitStatusPhase, error) {
-	if wrcs.Spec.Mode.Context == promoterv1alpha1.ContextPromotionStrategy {
-		phase, phasePerBranch, err := r.evaluator.EvaluateValidationExpressionForPromotionStrategy(ctx, wrcs.Spec.Success.When.Expression, exprData)
-		if err != nil {
-			return phase, phasePerBranch, fmt.Errorf("failed to evaluate validation expression (promotionstrategy context): %w", err)
-		}
-		return phase, phasePerBranch, nil
-	}
-	passed, err := r.evaluator.EvaluateValidationExpression(ctx, wrcs.Spec.Success.When.Expression, exprData)
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to evaluate validation expression: %w", err)
-	}
-	if passed {
-		return promoterv1alpha1.CommitPhaseSuccess, nil, nil
-	}
-	return promoterv1alpha1.CommitPhasePending, nil, nil
-}
-
-// evaluateSuccessOutput evaluates the optional success.when.output expression and returns the
-// JSON-serialized map, or nil if no output expression is configured. The exprData map is the same
-// one used for success.when.expression (built by webrequest.SuccessWhenExprData).
-func (r *WebRequestCommitStatusReconciler) evaluateSuccessOutput(
-	ctx context.Context,
-	wrcs *promoterv1alpha1.WebRequestCommitStatus,
-	exprData map[string]any,
-) (*apiextensionsv1.JSON, error) {
-	if wrcs.Spec.Success.When.Output == nil || wrcs.Spec.Success.When.Output.Expression == "" {
-		return nil, nil
-	}
-
-	extractedData, err := r.evaluator.EvaluateSuccessDataExpression(ctx, wrcs.Spec.Success.When.Output.Expression, exprData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to evaluate success data expression: %w", err)
-	}
-
-	return webrequest.MarshalJSONMap(extractedData)
 }
 
 // makeHTTPRequest builds and executes the HTTP request from the WebRequestCommitStatus spec. It renders

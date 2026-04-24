@@ -18,13 +18,8 @@ package engine
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
-
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -53,24 +48,6 @@ func Simulate(ctx context.Context, args Args) (*Result, error) {
 	return simulateEnvironments(ctx, args, wrcs, ps)
 }
 
-// simulateValidationResult is the per-branch/per-reconcile outcome returned by
-// simulateFireOrCarryForward. Mirrors the controller's httpValidationResult but
-// does not wrap real HTTP state.
-type simulateValidationResult struct {
-	LastRequestTime        *metav1.Time
-	LastResponseStatusCode *int
-	ResponseDataJSON       *apiextensionsv1.JSON
-	SuccessDataJSON        *apiextensionsv1.JSON
-	PhasePerBranch         map[string]promoterv1alpha1.CommitStatusPhase
-	Phase                  promoterv1alpha1.CommitStatusPhase
-}
-
-// simulateTriggerDecision is the simulator's copy of the controller's triggerDecision.
-type simulateTriggerDecision struct {
-	NewTriggerData map[string]any
-	ShouldFire     bool
-}
-
 // simulateEnvironments mirrors the controller's processEnvironments but replaces
 // the real HTTP call with args.HTTPResponse when the trigger fires.
 func simulateEnvironments(
@@ -80,6 +57,7 @@ func simulateEnvironments(
 	ps *promoterv1alpha1.PromotionStrategy,
 ) (*Result, error) {
 	evaluator := webrequest.NewEvaluator()
+	exec := &mockHTTPEXecutor{response: args.HTTPResponse}
 	namespaceMeta := args.NamespaceMetadata
 
 	wrcsSnapshot := wrcs.DeepCopy()
@@ -144,7 +122,7 @@ func simulateEnvironments(
 			}
 		}
 
-		decision, err := simulateEvaluateTriggerDecision(ctx, evaluator, wrcs.Spec.Mode, td, lastState.LastRequestTime)
+		decision, err := webrequest.EvaluateTriggerDecision(ctx, evaluator, wrcs.Spec.Mode, td, lastState.LastRequestTime)
 		if err != nil {
 			return nil, fmt.Errorf("trigger decision for environment %q: %w", branch, err)
 		}
@@ -158,7 +136,7 @@ func simulateEnvironments(
 			renderedReq = &req
 		}
 
-		result, err := simulateFireOrCarryForward(ctx, evaluator, wrcs, td, decision, lastState, args.HTTPResponse)
+		result, err := webrequest.FireOrCarryForward(ctx, evaluator, wrcs, td, decision, lastState, exec)
 		if err != nil {
 			return nil, fmt.Errorf("environment %q: %w", branch, err)
 		}
@@ -208,6 +186,7 @@ func simulatePromotionStrategy(
 	ps *promoterv1alpha1.PromotionStrategy,
 ) (*Result, error) {
 	evaluator := webrequest.NewEvaluator()
+	exec := &mockHTTPEXecutor{response: args.HTTPResponse}
 	namespaceMeta := args.NamespaceMetadata
 
 	applicableEnvs := webrequest.GetApplicableEnvironments(ps, wrcs.Spec.Key, wrcs.Spec.ReportOn)
@@ -267,7 +246,7 @@ func simulatePromotionStrategy(
 		SuccessOutput:          lastState.SuccessData,
 	}
 
-	decision, err := simulateEvaluateTriggerDecision(ctx, evaluator, wrcs.Spec.Mode, td, lastState.LastRequestTime)
+	decision, err := webrequest.EvaluateTriggerDecision(ctx, evaluator, wrcs.Spec.Mode, td, lastState.LastRequestTime)
 	if err != nil {
 		return nil, fmt.Errorf("trigger decision (context=promotionstrategy): %w", err)
 	}
@@ -281,7 +260,7 @@ func simulatePromotionStrategy(
 		renderedReq = &req
 	}
 
-	result, err := simulateFireOrCarryForward(ctx, evaluator, wrcs, td, decision, lastState, args.HTTPResponse)
+	result, err := webrequest.FireOrCarryForward(ctx, evaluator, wrcs, td, decision, lastState, exec)
 	if err != nil {
 		return nil, fmt.Errorf("context=promotionstrategy: %w", err)
 	}
@@ -291,7 +270,9 @@ func simulatePromotionStrategy(
 		return nil, fmt.Errorf("failed to marshal trigger data: %w", err)
 	}
 
-	lastSuccessfulShas := buildLastSuccessfulShas(applicableEnvs, lastReconciledCtxStatus, result.Phase, result.PhasePerBranch, currentShaPerBranch)
+	lastSuccessfulShas := webrequest.LastSuccessfulShasForPromotionStrategyContext(
+		applicableEnvs, lastReconciledCtxStatus, result.Phase, result.PhasePerBranch, currentShaPerBranch,
+	)
 	resolvedPhases := webrequest.GetPhasesByBranch(applicableEnvs, result.Phase, result.PhasePerBranch)
 
 	out := &Result{
@@ -326,206 +307,4 @@ func simulatePromotionStrategy(
 	}
 
 	return out, nil
-}
-
-// simulateEvaluateTriggerDecision mirrors the controller's evaluateTriggerDecision.
-func simulateEvaluateTriggerDecision(
-	ctx context.Context,
-	evaluator *webrequest.Evaluator,
-	mode promoterv1alpha1.ModeSpec,
-	td webrequest.TemplateData,
-	lastRequestTime *metav1.Time,
-) (simulateTriggerDecision, error) {
-	shouldFire := true
-	var newTriggerData map[string]any
-
-	if mode.Polling != nil && lastRequestTime != nil {
-		if elapsed := time.Since(lastRequestTime.Time); elapsed < mode.Polling.Interval.Duration {
-			shouldFire = false
-		}
-	}
-
-	if mode.Trigger != nil {
-		sf, ntd, err := evaluator.EvaluateTriggerWhenBranch(ctx, mode.Trigger, td)
-		if err != nil {
-			return simulateTriggerDecision{}, fmt.Errorf("failed to evaluate trigger.when: %w", err)
-		}
-		shouldFire = sf
-		newTriggerData = ntd
-	}
-
-	return simulateTriggerDecision{ShouldFire: shouldFire, NewTriggerData: newTriggerData}, nil
-}
-
-// simulateFireOrCarryForward mirrors the controller's fireOrCarryForward. When the
-// trigger fires it uses mockResponse in place of a real HTTP call; when it does not
-// fire it runs success.when with Response=nil so phase can be derived from the
-// rest of the environment.
-func simulateFireOrCarryForward(
-	ctx context.Context,
-	evaluator *webrequest.Evaluator,
-	wrcs *promoterv1alpha1.WebRequestCommitStatus,
-	td webrequest.TemplateData,
-	decision simulateTriggerDecision,
-	lastState webrequest.LastReconciledState,
-	mockResponse *webrequest.HTTPResponse,
-) (simulateValidationResult, error) {
-	if decision.ShouldFire {
-		if mockResponse == nil {
-			return simulateValidationResult{}, errors.New("HTTPResponse is required when the trigger fires (fill in a mock response, or craft inputs so the trigger does not fire)")
-		}
-		return simulateHandleRequestAndValidation(ctx, evaluator, wrcs, td, *mockResponse)
-	}
-
-	exprData := webrequest.SuccessWhenExprData(td, nil)
-	exprData, err := evaluator.EnrichWhenExprEnv(ctx, wrcs.Spec.Success.When, exprData)
-	if err != nil {
-		return simulateValidationResult{}, fmt.Errorf("failed to evaluate success.when.variables: %w", err)
-	}
-	phase, phasePerBranch, err := simulateEvaluateSuccessPhase(ctx, evaluator, wrcs, exprData)
-	if err != nil {
-		return simulateValidationResult{}, fmt.Errorf("failed to evaluate success.when expression: %w", err)
-	}
-	successDataJSON, err := simulateEvaluateSuccessOutput(ctx, evaluator, wrcs, exprData)
-	if err != nil {
-		return simulateValidationResult{}, fmt.Errorf("failed to evaluate success.when.output expression: %w", err)
-	}
-
-	return simulateValidationResult{
-		Phase:                  phase,
-		PhasePerBranch:         phasePerBranch,
-		LastRequestTime:        lastState.LastRequestTime,
-		LastResponseStatusCode: lastState.LastResponseStatusCode,
-		ResponseDataJSON:       lastState.ResponseOutput,
-		SuccessDataJSON:        successDataJSON,
-	}, nil
-}
-
-// simulateHandleRequestAndValidation mirrors handleHTTPRequestAndValidation but
-// with mockResponse instead of a real HTTP roundtrip.
-func simulateHandleRequestAndValidation(
-	ctx context.Context,
-	evaluator *webrequest.Evaluator,
-	wrcs *promoterv1alpha1.WebRequestCommitStatus,
-	td webrequest.TemplateData,
-	mockResponse webrequest.HTTPResponse,
-) (simulateValidationResult, error) {
-	now := metav1.Now()
-	lastRequestTime := &now
-	statusCode := mockResponse.StatusCode
-	lastResponseStatusCode := &statusCode
-
-	var responseDataJSON *apiextensionsv1.JSON
-	if wrcs.Spec.Mode.Trigger != nil && wrcs.Spec.Mode.Trigger.Response != nil {
-		extractedData, err := evaluator.EvaluateResponseDataExpression(ctx, wrcs.Spec.Mode.Trigger.Response.Output.Expression, mockResponse)
-		if err != nil {
-			return simulateValidationResult{}, fmt.Errorf("failed to evaluate response data expression: %w", err)
-		}
-		responseDataBytes, err := json.Marshal(extractedData)
-		if err != nil {
-			return simulateValidationResult{}, fmt.Errorf("failed to marshal response data: %w", err)
-		}
-		responseDataJSON = &apiextensionsv1.JSON{Raw: responseDataBytes}
-	}
-
-	if responseDataJSON != nil {
-		if data, err := webrequest.UnmarshalJSONMap(responseDataJSON); err == nil && data != nil {
-			td.ResponseOutput = data
-		}
-	}
-
-	exprData := webrequest.SuccessWhenExprData(td, &mockResponse)
-	exprData, err := evaluator.EnrichWhenExprEnv(ctx, wrcs.Spec.Success.When, exprData)
-	if err != nil {
-		return simulateValidationResult{}, fmt.Errorf("failed to evaluate success.when.variables: %w", err)
-	}
-	phase, phasePerBranch, err := simulateEvaluateSuccessPhase(ctx, evaluator, wrcs, exprData)
-	if err != nil {
-		return simulateValidationResult{}, fmt.Errorf("failed to evaluate validation expression: %w", err)
-	}
-	successDataJSON, err := simulateEvaluateSuccessOutput(ctx, evaluator, wrcs, exprData)
-	if err != nil {
-		return simulateValidationResult{}, fmt.Errorf("failed to evaluate success.when.output expression: %w", err)
-	}
-
-	return simulateValidationResult{
-		Phase:                  phase,
-		PhasePerBranch:         phasePerBranch,
-		LastRequestTime:        lastRequestTime,
-		LastResponseStatusCode: lastResponseStatusCode,
-		ResponseDataJSON:       responseDataJSON,
-		SuccessDataJSON:        successDataJSON,
-	}, nil
-}
-
-// simulateEvaluateSuccessPhase mirrors evaluateSuccessPhase on the reconciler.
-func simulateEvaluateSuccessPhase(
-	ctx context.Context,
-	evaluator *webrequest.Evaluator,
-	wrcs *promoterv1alpha1.WebRequestCommitStatus,
-	exprData map[string]any,
-) (promoterv1alpha1.CommitStatusPhase, map[string]promoterv1alpha1.CommitStatusPhase, error) {
-	if wrcs.Spec.Mode.Context == promoterv1alpha1.ContextPromotionStrategy {
-		phase, phasePerBranch, err := evaluator.EvaluateValidationExpressionForPromotionStrategy(ctx, wrcs.Spec.Success.When.Expression, exprData)
-		if err != nil {
-			return phase, phasePerBranch, fmt.Errorf("failed to evaluate validation expression (promotionstrategy context): %w", err)
-		}
-		return phase, phasePerBranch, nil
-	}
-	passed, err := evaluator.EvaluateValidationExpression(ctx, wrcs.Spec.Success.When.Expression, exprData)
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to evaluate validation expression: %w", err)
-	}
-	if passed {
-		return promoterv1alpha1.CommitPhaseSuccess, nil, nil
-	}
-	return promoterv1alpha1.CommitPhasePending, nil, nil
-}
-
-// simulateEvaluateSuccessOutput mirrors evaluateSuccessOutput on the reconciler.
-func simulateEvaluateSuccessOutput(
-	ctx context.Context,
-	evaluator *webrequest.Evaluator,
-	wrcs *promoterv1alpha1.WebRequestCommitStatus,
-	exprData map[string]any,
-) (*apiextensionsv1.JSON, error) {
-	if wrcs.Spec.Success.When.Output == nil || wrcs.Spec.Success.When.Output.Expression == "" {
-		return nil, nil
-	}
-	extractedData, err := evaluator.EvaluateSuccessDataExpression(ctx, wrcs.Spec.Success.When.Output.Expression, exprData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to evaluate success data expression: %w", err)
-	}
-	out, err := webrequest.MarshalJSONMap(extractedData)
-	if err != nil {
-		return nil, fmt.Errorf("marshal success output data: %w", err)
-	}
-	return out, nil
-}
-
-// buildLastSuccessfulShas seeds the lastSuccessfulShas map from the previous
-// reconcile and updates branches that succeeded this reconcile with the current SHA.
-// This matches the subset of detectTransitionsAndUpdateShas that affects status
-// (transition detection is used only for CTP touches in production, which the
-// simulator has no business doing).
-func buildLastSuccessfulShas(
-	applicableEnvs []promoterv1alpha1.Environment,
-	lastReconciledCtxStatus *promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus,
-	phase promoterv1alpha1.CommitStatusPhase,
-	phasePerBranch map[string]promoterv1alpha1.CommitStatusPhase,
-	currentShaPerBranch map[string]string,
-) map[string]string {
-	lastSuccessfulShas := make(map[string]string, len(applicableEnvs))
-	if lastReconciledCtxStatus != nil {
-		for _, it := range lastReconciledCtxStatus.LastSuccessfulShas {
-			lastSuccessfulShas[it.Branch] = it.LastSuccessfulSha
-		}
-	}
-	for _, env := range applicableEnvs {
-		branch := env.Branch
-		if webrequest.ResolvePhaseForBranch(branch, phase, phasePerBranch) == promoterv1alpha1.CommitPhaseSuccess {
-			lastSuccessfulShas[branch] = currentShaPerBranch[branch]
-		}
-	}
-	return lastSuccessfulShas
 }
