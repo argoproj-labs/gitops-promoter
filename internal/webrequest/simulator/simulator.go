@@ -233,7 +233,7 @@ func simulatePromotionStrategy(
 
 	// Polling+proposed optimization: skip when all environments already succeeded for their current SHAs.
 	if wrcs.Spec.Mode.Polling != nil && wrcs.Spec.ReportOn == constants.CommitRefProposed && lastReconciledCtxStatus != nil {
-		if allBranchesSucceededForCurrentShas(applicableEnvs, lastReconciledCtxStatus, currentShaPerBranch) {
+		if webrequest.AllBranchesSucceededForCurrentShas(applicableEnvs, lastReconciledCtxStatus, currentShaPerBranch) {
 			baseTd := webrequest.TemplateData{
 				Phase:                  string(promoterv1alpha1.CommitPhaseSuccess),
 				PromotionStrategy:      ps,
@@ -503,29 +503,6 @@ func simulateEvaluateSuccessOutput(
 		return nil, fmt.Errorf("marshal success output data: %w", err)
 	}
 	return out, nil
-}
-
-// allBranchesSucceededForCurrentShas mirrors the controller helper: true when
-// every applicable env has already succeeded for its current SHA.
-func allBranchesSucceededForCurrentShas(
-	applicableEnvs []promoterv1alpha1.Environment,
-	lastReconciledCtxStatus *promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus,
-	currentShaPerBranch map[string]string,
-) bool {
-	if lastReconciledCtxStatus == nil || len(lastReconciledCtxStatus.LastSuccessfulShas) == 0 {
-		return false
-	}
-	phaseByBranch := webrequest.PhasePerBranchMapFromSlice(lastReconciledCtxStatus.PhasePerBranch)
-	shaByBranch := webrequest.LastSuccessfulShasMapFromSlice(lastReconciledCtxStatus.LastSuccessfulShas)
-	for _, env := range applicableEnvs {
-		if phaseByBranch[env.Branch] != promoterv1alpha1.CommitPhaseSuccess {
-			return false
-		}
-		if shaByBranch[env.Branch] != currentShaPerBranch[env.Branch] {
-			return false
-		}
-	}
-	return true
 }
 
 // buildLastSuccessfulShas seeds the lastSuccessfulShas map from the previous

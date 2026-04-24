@@ -305,7 +305,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 			logger.Info("Validation transitioned to success", "branch", branch, "sha", reportedSha)
 		}
 
-		triggerDataJSON, err := marshalJSONMap(decision.NewTriggerData)
+		triggerDataJSON, err := webrequest.MarshalJSONMap(decision.NewTriggerData)
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("failed to marshal trigger data: %w", err)
 		}
@@ -366,7 +366,7 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 
 	// Polling+proposed optimization: skip when all environments already succeeded for their current SHAs
 	if wrcs.Spec.Mode.Polling != nil && wrcs.Spec.ReportOn == constants.CommitRefProposed && lastReconciledCtxStatus != nil {
-		if allBranchesSucceededForCurrentShas(applicableEnvs, lastReconciledCtxStatus, currentShaPerBranch) {
+		if webrequest.AllBranchesSucceededForCurrentShas(applicableEnvs, lastReconciledCtxStatus, currentShaPerBranch) {
 			logger.V(4).Info("All environments already successful for current SHAs (context=promotionstrategy), skipping HTTP request")
 			baseTd := webrequest.TemplateData{Phase: string(promoterv1alpha1.CommitPhaseSuccess), PromotionStrategy: ps, WebRequestCommitStatus: wrcsSnapshot, NamespaceMetadata: namespaceMeta, TriggerOutput: lastState.TriggerData, ResponseOutput: lastState.ResponseData, SuccessOutput: lastState.SuccessData}
 			commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0, len(applicableEnvs))
@@ -403,7 +403,7 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 		return nil, nil, 0, err
 	}
 
-	triggerDataJSON, err := marshalJSONMap(decision.NewTriggerData)
+	triggerDataJSON, err := webrequest.MarshalJSONMap(decision.NewTriggerData)
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("failed to marshal trigger data: %w", err)
 	}
@@ -447,30 +447,6 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 	}
 
 	return transitionedEnvironments, commitStatuses, requeueDuration(wrcs.Spec.Mode), nil
-}
-
-// allBranchesSucceededForCurrentShas returns true when every applicable environment has already
-// succeeded for its current SHA, meaning the HTTP request can be skipped entirely.
-func allBranchesSucceededForCurrentShas(
-	applicableEnvs []promoterv1alpha1.Environment,
-	lastReconciledCtxStatus *promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus,
-	currentShaPerBranch map[string]string,
-) bool {
-	if lastReconciledCtxStatus == nil || len(lastReconciledCtxStatus.LastSuccessfulShas) == 0 {
-		return false
-	}
-	phaseByBranch := webrequest.PhasePerBranchMapFromSlice(lastReconciledCtxStatus.PhasePerBranch)
-	shaByBranch := webrequest.LastSuccessfulShasMapFromSlice(lastReconciledCtxStatus.LastSuccessfulShas)
-	for _, env := range applicableEnvs {
-		branchPhase := phaseByBranch[env.Branch]
-		if branchPhase != promoterv1alpha1.CommitPhaseSuccess {
-			return false
-		}
-		if shaByBranch[env.Branch] != currentShaPerBranch[env.Branch] {
-			return false
-		}
-	}
-	return true
 }
 
 // detectTransitionsAndUpdateShas builds the lastSuccessfulShas map (seeded from the last reconcile's state)
@@ -584,30 +560,6 @@ func (r *WebRequestCommitStatusReconciler) evaluateTriggerDecision(
 	return triggerDecision{ShouldFire: shouldFire, NewTriggerData: newTriggerData}, nil
 }
 
-// unmarshalJSONMap unmarshals an apiextensionsv1.JSON into a map. Returns (nil, nil) when raw is nil.
-func unmarshalJSONMap(raw *apiextensionsv1.JSON) (map[string]any, error) {
-	if raw == nil {
-		return nil, nil
-	}
-	result := make(map[string]any)
-	if err := json.Unmarshal(raw.Raw, &result); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal JSON map: %w", err)
-	}
-	return result, nil
-}
-
-// marshalJSONMap marshals a map into an apiextensionsv1.JSON. Returns (nil, nil) when data is nil.
-func marshalJSONMap(data map[string]any) (*apiextensionsv1.JSON, error) {
-	if data == nil {
-		return nil, nil
-	}
-	raw, err := json.Marshal(data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal JSON map: %w", err)
-	}
-	return &apiextensionsv1.JSON{Raw: raw}, nil
-}
-
 // requeueDuration returns the requeue interval from the mode spec.
 func requeueDuration(mode promoterv1alpha1.ModeSpec) time.Duration {
 	if mode.Polling != nil {
@@ -653,7 +605,7 @@ func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx co
 
 	// Update td.ResponseOutput so success.when sees the current response data.
 	if responseDataJSON != nil {
-		if data, err := unmarshalJSONMap(responseDataJSON); err == nil && data != nil {
+		if data, err := webrequest.UnmarshalJSONMap(responseDataJSON); err == nil && data != nil {
 			td.ResponseOutput = data
 		}
 	}
@@ -725,7 +677,7 @@ func (r *WebRequestCommitStatusReconciler) evaluateSuccessOutput(
 		return nil, fmt.Errorf("failed to evaluate success data expression: %w", err)
 	}
 
-	return marshalJSONMap(extractedData)
+	return webrequest.MarshalJSONMap(extractedData)
 }
 
 // makeHTTPRequest builds and executes the HTTP request from the WebRequestCommitStatus spec. It renders

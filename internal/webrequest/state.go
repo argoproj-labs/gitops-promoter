@@ -119,17 +119,26 @@ func PhasePerBranchMapFromSlice(items []promoterv1alpha1.WebRequestCommitStatusP
 	return m
 }
 
+// sortedStringKeys returns lexicographically sorted map keys (nil when m is empty).
+func sortedStringKeys[V any](m map[string]V) []string {
+	if len(m) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	return keys
+}
+
 // PhasePerBranchSliceFromMap converts a branch→phase map into a sorted slice of per-branch phase items.
 // Returns nil when the map is empty.
 func PhasePerBranchSliceFromMap(m map[string]promoterv1alpha1.CommitStatusPhase) []promoterv1alpha1.WebRequestCommitStatusPhasePerBranchItem {
 	if len(m) == 0 {
 		return nil
 	}
-	branches := make([]string, 0, len(m))
-	for b := range m {
-		branches = append(branches, b)
-	}
-	slices.Sort(branches)
+	branches := sortedStringKeys(m)
 	out := make([]promoterv1alpha1.WebRequestCommitStatusPhasePerBranchItem, 0, len(m))
 	for _, b := range branches {
 		out = append(out, promoterv1alpha1.WebRequestCommitStatusPhasePerBranchItem{Branch: b, Phase: m[b]})
@@ -156,14 +165,35 @@ func LastSuccessfulShasSliceFromMap(m map[string]string) []promoterv1alpha1.WebR
 	if len(m) == 0 {
 		return nil
 	}
-	branches := make([]string, 0, len(m))
-	for b := range m {
-		branches = append(branches, b)
-	}
-	slices.Sort(branches)
+	branches := sortedStringKeys(m)
 	out := make([]promoterv1alpha1.WebRequestCommitStatusLastSuccessfulShaItem, 0, len(m))
 	for _, b := range branches {
 		out = append(out, promoterv1alpha1.WebRequestCommitStatusLastSuccessfulShaItem{Branch: b, LastSuccessfulSha: m[b]})
 	}
 	return out
+}
+
+// AllBranchesSucceededForCurrentShas reports whether every applicable environment
+// already has CommitPhaseSuccess for its current SHA (per ReportOn), using the last
+// persisted PromotionStrategyContext. Used by WebRequestCommitStatus reconciliation
+// for the promotionstrategy-context polling+proposed fast path that skips HTTP.
+func AllBranchesSucceededForCurrentShas(
+	applicableEnvs []promoterv1alpha1.Environment,
+	lastReconciledCtxStatus *promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus,
+	currentShaPerBranch map[string]string,
+) bool {
+	if lastReconciledCtxStatus == nil || len(lastReconciledCtxStatus.LastSuccessfulShas) == 0 {
+		return false
+	}
+	phaseByBranch := PhasePerBranchMapFromSlice(lastReconciledCtxStatus.PhasePerBranch)
+	shaByBranch := LastSuccessfulShasMapFromSlice(lastReconciledCtxStatus.LastSuccessfulShas)
+	for _, env := range applicableEnvs {
+		if phaseByBranch[env.Branch] != promoterv1alpha1.CommitPhaseSuccess {
+			return false
+		}
+		if shaByBranch[env.Branch] != currentShaPerBranch[env.Branch] {
+			return false
+		}
+	}
+	return true
 }
