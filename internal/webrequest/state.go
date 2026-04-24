@@ -81,9 +81,9 @@ func LastReconciledStateFromContext(ctx context.Context, status *promoterv1alpha
 		return LastReconciledState{}
 	}
 	logger := log.FromContext(ctx)
-	phaseMap := PhasePerBranchMapFromSlice(status.PhasePerBranch)
+	phaseMap := phasePerBranchMapFromSlice(status.PhasePerBranch)
 	s := LastReconciledState{
-		Phase:                  AggregatePhase(phaseMap),
+		Phase:                  aggregatePhase(phaseMap),
 		LastRequestTime:        status.LastRequestTime,
 		LastResponseStatusCode: status.LastResponseStatusCode,
 		ResponseOutput:         status.ResponseOutput,
@@ -106,9 +106,9 @@ func LastReconciledStateFromContext(ctx context.Context, status *promoterv1alpha
 	return s
 }
 
-// PhasePerBranchMapFromSlice converts a slice of per-branch phase items into a map keyed by branch.
+// phasePerBranchMapFromSlice converts a slice of per-branch phase items into a map keyed by branch.
 // Returns nil when items is empty.
-func PhasePerBranchMapFromSlice(items []promoterv1alpha1.WebRequestCommitStatusPhasePerBranchItem) map[string]promoterv1alpha1.CommitStatusPhase {
+func phasePerBranchMapFromSlice(items []promoterv1alpha1.WebRequestCommitStatusPhasePerBranchItem) map[string]promoterv1alpha1.CommitStatusPhase {
 	if len(items) == 0 {
 		return nil
 	}
@@ -132,9 +132,9 @@ func sortedStringKeys[V any](m map[string]V) []string {
 	return keys
 }
 
-// PhasePerBranchSliceFromMap converts a branch→phase map into a sorted slice of per-branch phase items.
+// phasePerBranchSliceFromMap converts a branch→phase map into a sorted slice of per-branch phase items.
 // Returns nil when the map is empty.
-func PhasePerBranchSliceFromMap(m map[string]promoterv1alpha1.CommitStatusPhase) []promoterv1alpha1.WebRequestCommitStatusPhasePerBranchItem {
+func phasePerBranchSliceFromMap(m map[string]promoterv1alpha1.CommitStatusPhase) []promoterv1alpha1.WebRequestCommitStatusPhasePerBranchItem {
 	if len(m) == 0 {
 		return nil
 	}
@@ -146,9 +146,9 @@ func PhasePerBranchSliceFromMap(m map[string]promoterv1alpha1.CommitStatusPhase)
 	return out
 }
 
-// LastSuccessfulShasMapFromSlice converts a slice of last-successful-SHA items into a map keyed by branch.
+// lastSuccessfulShasMapFromSlice converts a slice of last-successful-SHA items into a map keyed by branch.
 // Returns nil when items is empty.
-func LastSuccessfulShasMapFromSlice(items []promoterv1alpha1.WebRequestCommitStatusLastSuccessfulShaItem) map[string]string {
+func lastSuccessfulShasMapFromSlice(items []promoterv1alpha1.WebRequestCommitStatusLastSuccessfulShaItem) map[string]string {
 	if len(items) == 0 {
 		return nil
 	}
@@ -159,9 +159,9 @@ func LastSuccessfulShasMapFromSlice(items []promoterv1alpha1.WebRequestCommitSta
 	return m
 }
 
-// LastSuccessfulShasSliceFromMap converts a branch→SHA map into a sorted slice of last-successful-SHA items.
+// lastSuccessfulShasSliceFromMap converts a branch→SHA map into a sorted slice of last-successful-SHA items.
 // Returns nil when the map is empty.
-func LastSuccessfulShasSliceFromMap(m map[string]string) []promoterv1alpha1.WebRequestCommitStatusLastSuccessfulShaItem {
+func lastSuccessfulShasSliceFromMap(m map[string]string) []promoterv1alpha1.WebRequestCommitStatusLastSuccessfulShaItem {
 	if len(m) == 0 {
 		return nil
 	}
@@ -173,11 +173,11 @@ func LastSuccessfulShasSliceFromMap(m map[string]string) []promoterv1alpha1.WebR
 	return out
 }
 
-// AllBranchesSucceededForCurrentShas reports whether every applicable environment
+// allBranchesSucceededForCurrentShas reports whether every applicable environment
 // already has CommitPhaseSuccess for its current SHA (per ReportOn), using the last
 // persisted PromotionStrategyContext. Used by WebRequestCommitStatus reconciliation
 // for the promotionstrategy-context polling+proposed fast path that skips HTTP.
-func AllBranchesSucceededForCurrentShas(
+func allBranchesSucceededForCurrentShas(
 	applicableEnvs []promoterv1alpha1.Environment,
 	lastReconciledCtxStatus *promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus,
 	currentShaPerBranch map[string]string,
@@ -185,8 +185,8 @@ func AllBranchesSucceededForCurrentShas(
 	if lastReconciledCtxStatus == nil || len(lastReconciledCtxStatus.LastSuccessfulShas) == 0 {
 		return false
 	}
-	phaseByBranch := PhasePerBranchMapFromSlice(lastReconciledCtxStatus.PhasePerBranch)
-	shaByBranch := LastSuccessfulShasMapFromSlice(lastReconciledCtxStatus.LastSuccessfulShas)
+	phaseByBranch := phasePerBranchMapFromSlice(lastReconciledCtxStatus.PhasePerBranch)
+	shaByBranch := lastSuccessfulShasMapFromSlice(lastReconciledCtxStatus.LastSuccessfulShas)
 	for _, env := range applicableEnvs {
 		if phaseByBranch[env.Branch] != promoterv1alpha1.CommitPhaseSuccess {
 			return false

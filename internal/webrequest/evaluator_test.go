@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package webrequest_test
+package webrequest
 
 import (
 	"context"
@@ -23,18 +23,17 @@ import (
 	. "github.com/onsi/gomega"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	"github.com/argoproj-labs/gitops-promoter/internal/webrequest"
 )
 
 var _ = Describe("Evaluator", func() {
 	var (
 		ctx context.Context
-		e   *webrequest.Evaluator
+		e   *Evaluator
 	)
 
 	BeforeEach(func() {
 		ctx = context.Background()
-		e = webrequest.NewEvaluator()
+		e = NewEvaluator()
 	})
 
 	Describe("EvaluateTriggerExpression", func() {
@@ -149,7 +148,7 @@ var _ = Describe("Evaluator", func() {
 
 	Describe("EvaluateResponseDataExpression", func() {
 		It("extracts values from a JSON body", func() {
-			resp := webrequest.HTTPResponse{
+			resp := HTTPResponse{
 				StatusCode: 200,
 				Body:       map[string]any{"url": "https://example.com/run/42"},
 				Headers:    map[string][]string{},
@@ -215,7 +214,7 @@ var _ = Describe("Evaluator", func() {
 var _ = Describe("Pure helpers", func() {
 	Describe("TemplateData.TriggerExprData", func() {
 		It("exposes expected keys", func() {
-			td := webrequest.TemplateData{Branch: "env/dev", Phase: "pending"}
+			td := TemplateData{Branch: "env/dev", Phase: "pending"}
 			m := td.TriggerExprData()
 			Expect(m).To(HaveKeyWithValue("Branch", "env/dev"))
 			Expect(m).To(HaveKeyWithValue("Phase", "pending"))
@@ -229,15 +228,15 @@ var _ = Describe("Pure helpers", func() {
 
 	Describe("SuccessWhenExprData", func() {
 		It("sets Response to nil when response is nil", func() {
-			td := webrequest.TemplateData{Branch: "env/dev"}
-			m := webrequest.SuccessWhenExprData(td, nil)
+			td := TemplateData{Branch: "env/dev"}
+			m := SuccessWhenExprData(td, nil)
 			Expect(m).To(HaveKeyWithValue("Response", BeNil()))
 		})
 
 		It("populates Response when a response is provided", func() {
-			td := webrequest.TemplateData{Branch: "env/dev"}
-			resp := &webrequest.HTTPResponse{StatusCode: 201, Body: "ok", Headers: map[string][]string{"X": {"y"}}}
-			m := webrequest.SuccessWhenExprData(td, resp)
+			td := TemplateData{Branch: "env/dev"}
+			resp := &HTTPResponse{StatusCode: 201, Body: "ok", Headers: map[string][]string{"X": {"y"}}}
+			m := SuccessWhenExprData(td, resp)
 			Expect(m).To(HaveKey("Response"))
 			r, ok := m["Response"].(map[string]any)
 			Expect(ok).To(BeTrue())
@@ -248,25 +247,25 @@ var _ = Describe("Pure helpers", func() {
 
 	Describe("AggregatePhase", func() {
 		It("returns pending for an empty map", func() {
-			Expect(webrequest.AggregatePhase(nil)).To(Equal("pending"))
+			Expect(aggregatePhase(nil)).To(Equal("pending"))
 		})
 
 		It("returns failure when any branch is failure", func() {
-			Expect(webrequest.AggregatePhase(map[string]promoterv1alpha1.CommitStatusPhase{
+			Expect(aggregatePhase(map[string]promoterv1alpha1.CommitStatusPhase{
 				"a": promoterv1alpha1.CommitPhaseSuccess,
 				"b": promoterv1alpha1.CommitPhaseFailure,
 			})).To(Equal("failure"))
 		})
 
 		It("returns success only when every branch succeeded", func() {
-			Expect(webrequest.AggregatePhase(map[string]promoterv1alpha1.CommitStatusPhase{
+			Expect(aggregatePhase(map[string]promoterv1alpha1.CommitStatusPhase{
 				"a": promoterv1alpha1.CommitPhaseSuccess,
 				"b": promoterv1alpha1.CommitPhaseSuccess,
 			})).To(Equal("success"))
 		})
 
 		It("returns pending when one branch is pending and none failed", func() {
-			Expect(webrequest.AggregatePhase(map[string]promoterv1alpha1.CommitStatusPhase{
+			Expect(aggregatePhase(map[string]promoterv1alpha1.CommitStatusPhase{
 				"a": promoterv1alpha1.CommitPhaseSuccess,
 				"b": promoterv1alpha1.CommitPhasePending,
 			})).To(Equal("pending"))
@@ -276,16 +275,16 @@ var _ = Describe("Pure helpers", func() {
 	Describe("ResolvePhaseForBranch", func() {
 		It("returns the branch-specific phase when present", func() {
 			m := map[string]promoterv1alpha1.CommitStatusPhase{"a": promoterv1alpha1.CommitPhaseFailure}
-			Expect(webrequest.ResolvePhaseForBranch("a", promoterv1alpha1.CommitPhaseSuccess, m)).To(Equal(promoterv1alpha1.CommitPhaseFailure))
+			Expect(resolvePhaseForBranch("a", promoterv1alpha1.CommitPhaseSuccess, m)).To(Equal(promoterv1alpha1.CommitPhaseFailure))
 		})
 
 		It("falls back to the default when the branch is missing", func() {
 			m := map[string]promoterv1alpha1.CommitStatusPhase{"a": promoterv1alpha1.CommitPhaseFailure}
-			Expect(webrequest.ResolvePhaseForBranch("b", promoterv1alpha1.CommitPhaseSuccess, m)).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			Expect(resolvePhaseForBranch("b", promoterv1alpha1.CommitPhaseSuccess, m)).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 		})
 
 		It("falls back to the default when the map is nil", func() {
-			Expect(webrequest.ResolvePhaseForBranch("a", promoterv1alpha1.CommitPhasePending, nil)).To(Equal(promoterv1alpha1.CommitPhasePending))
+			Expect(resolvePhaseForBranch("a", promoterv1alpha1.CommitPhasePending, nil)).To(Equal(promoterv1alpha1.CommitPhasePending))
 		})
 	})
 
@@ -293,7 +292,7 @@ var _ = Describe("Pure helpers", func() {
 		It("builds an entry for every environment, filling in the default", func() {
 			envs := []promoterv1alpha1.Environment{{Branch: "a"}, {Branch: "b"}, {Branch: "c"}}
 			overrides := map[string]promoterv1alpha1.CommitStatusPhase{"b": promoterv1alpha1.CommitPhaseFailure}
-			got := webrequest.GetPhasesByBranch(envs, promoterv1alpha1.CommitPhaseSuccess, overrides)
+			got := getPhasesByBranch(envs, promoterv1alpha1.CommitPhaseSuccess, overrides)
 			Expect(got).To(HaveLen(3))
 			Expect(got).To(HaveKeyWithValue("a", promoterv1alpha1.CommitPhaseSuccess))
 			Expect(got).To(HaveKeyWithValue("b", promoterv1alpha1.CommitPhaseFailure))

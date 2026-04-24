@@ -23,8 +23,8 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 )
 
-// GetEnvsByBranch builds a map from branch name to EnvironmentStatus for fast lookups.
-func GetEnvsByBranch(ps *promoterv1alpha1.PromotionStrategy) map[string]*promoterv1alpha1.EnvironmentStatus {
+// getEnvsByBranch builds a map from branch name to EnvironmentStatus for fast lookups.
+func getEnvsByBranch(ps *promoterv1alpha1.PromotionStrategy) map[string]*promoterv1alpha1.EnvironmentStatus {
 	m := make(map[string]*promoterv1alpha1.EnvironmentStatus, len(ps.Status.Environments))
 	for i := range ps.Status.Environments {
 		m[ps.Status.Environments[i].Branch] = &ps.Status.Environments[i]
@@ -32,9 +32,9 @@ func GetEnvsByBranch(ps *promoterv1alpha1.PromotionStrategy) map[string]*promote
 	return m
 }
 
-// GetCurrentShasByBranch builds a map of branch to reported SHA for each applicable environment,
+// getCurrentShasByBranch builds a map of branch to reported SHA for each applicable environment,
 // validating that every branch has a status entry and a non-empty SHA.
-func GetCurrentShasByBranch(
+func getCurrentShasByBranch(
 	applicableEnvs []promoterv1alpha1.Environment,
 	psEnvStatusMap map[string]*promoterv1alpha1.EnvironmentStatus,
 	reportOn string,
@@ -62,11 +62,11 @@ func resolveReportedSha(envStatus *promoterv1alpha1.EnvironmentStatus, reportOn 
 	return envStatus.Proposed.Hydrated.Sha
 }
 
-// GetApplicableEnvironments returns the PromotionStrategy environments that match a given
+// getApplicableEnvironments returns the PromotionStrategy environments that match a given
 // WebRequestCommitStatus key / reportOn combination. An environment is included if its key is
 // referenced in global or environment-specific ProposedCommitStatuses (when reportOn is "proposed"
 // or default) or ActiveCommitStatuses (when reportOn is "active").
-func GetApplicableEnvironments(ps *promoterv1alpha1.PromotionStrategy, key string, reportOn string) []promoterv1alpha1.Environment {
+func getApplicableEnvironments(ps *promoterv1alpha1.PromotionStrategy, key string, reportOn string) []promoterv1alpha1.Environment {
 	globalSelectors := ps.Spec.ProposedCommitStatuses
 	getEnvSelectors := func(e promoterv1alpha1.Environment) []promoterv1alpha1.CommitStatusSelector {
 		return e.ProposedCommitStatuses
@@ -179,9 +179,9 @@ func parsePhaseString(phaseStr string, defaultPhase promoterv1alpha1.CommitStatu
 	}
 }
 
-// ResolvePhaseForBranch returns the phase for a branch from phasePerBranch, falling back to defaultPhase
+// resolvePhaseForBranch returns the phase for a branch from phasePerBranch, falling back to defaultPhase
 // when phasePerBranch is nil or the branch is not in the map.
-func ResolvePhaseForBranch(branch string, defaultPhase promoterv1alpha1.CommitStatusPhase, phasePerBranch map[string]promoterv1alpha1.CommitStatusPhase) promoterv1alpha1.CommitStatusPhase {
+func resolvePhaseForBranch(branch string, defaultPhase promoterv1alpha1.CommitStatusPhase, phasePerBranch map[string]promoterv1alpha1.CommitStatusPhase) promoterv1alpha1.CommitStatusPhase {
 	if phasePerBranch != nil {
 		if p, ok := phasePerBranch[branch]; ok {
 			return p
@@ -190,19 +190,19 @@ func ResolvePhaseForBranch(branch string, defaultPhase promoterv1alpha1.CommitSt
 	return defaultPhase
 }
 
-// GetPhasesByBranch builds a complete PhasePerBranch map for all applicable environments,
+// getPhasesByBranch builds a complete PhasePerBranch map for all applicable environments,
 // merging the default phase with any per-branch overrides from the expression result.
-func GetPhasesByBranch(envs []promoterv1alpha1.Environment, defaultPhase promoterv1alpha1.CommitStatusPhase, phasePerBranch map[string]promoterv1alpha1.CommitStatusPhase) map[string]promoterv1alpha1.CommitStatusPhase {
+func getPhasesByBranch(envs []promoterv1alpha1.Environment, defaultPhase promoterv1alpha1.CommitStatusPhase, phasePerBranch map[string]promoterv1alpha1.CommitStatusPhase) map[string]promoterv1alpha1.CommitStatusPhase {
 	resolved := make(map[string]promoterv1alpha1.CommitStatusPhase, len(envs))
 	for _, env := range envs {
-		resolved[env.Branch] = ResolvePhaseForBranch(env.Branch, defaultPhase, phasePerBranch)
+		resolved[env.Branch] = resolvePhaseForBranch(env.Branch, defaultPhase, phasePerBranch)
 	}
 	return resolved
 }
 
-// AggregatePhase computes an overall phase from a PhasePerBranch map:
+// aggregatePhase computes an overall phase from a PhasePerBranch map:
 // success only if all branches succeeded, failure if any failed, pending otherwise.
-func AggregatePhase(phasePerBranch map[string]promoterv1alpha1.CommitStatusPhase) string {
+func aggregatePhase(phasePerBranch map[string]promoterv1alpha1.CommitStatusPhase) string {
 	if len(phasePerBranch) == 0 {
 		return string(promoterv1alpha1.CommitPhasePending)
 	}
@@ -221,10 +221,10 @@ func AggregatePhase(phasePerBranch map[string]promoterv1alpha1.CommitStatusPhase
 	return string(promoterv1alpha1.CommitPhasePending)
 }
 
-// LastSuccessfulShasForPromotionStrategyContext builds the map of branch to last successful SHA
+// lastSuccessfulShasForPromotionStrategyContext builds the map of branch to last successful SHA
 // for context=promotionstrategy: it seeds from the prior reconcile's PromotionStrategyContext status
 // and sets each branch's entry to the current reported SHA when that branch's resolved phase is success.
-func LastSuccessfulShasForPromotionStrategyContext(
+func lastSuccessfulShasForPromotionStrategyContext(
 	applicableEnvs []promoterv1alpha1.Environment,
 	lastReconciledCtxStatus *promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus,
 	phase promoterv1alpha1.CommitStatusPhase,
@@ -239,7 +239,7 @@ func LastSuccessfulShasForPromotionStrategyContext(
 	}
 	for _, env := range applicableEnvs {
 		branch := env.Branch
-		if ResolvePhaseForBranch(branch, phase, phasePerBranch) == promoterv1alpha1.CommitPhaseSuccess {
+		if resolvePhaseForBranch(branch, phase, phasePerBranch) == promoterv1alpha1.CommitPhaseSuccess {
 			lastSuccessfulShas[branch] = currentShaPerBranch[branch]
 		}
 	}

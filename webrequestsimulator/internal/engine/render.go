@@ -27,45 +27,6 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/webrequest"
 )
 
-// renderHTTPRequest renders the HTTP request templates (URL, headers, body) for
-// a WebRequestCommitStatus against the given TemplateData. Branch is copied onto
-// the result so callers can tell per-env requests apart in environments context.
-// Headers are rendered into a flat map (single value per header) which matches
-// how the controller sets them on http.Request.Header.
-func renderHTTPRequest(wrcs *promoterv1alpha1.WebRequestCommitStatus, td webrequest.TemplateData) (RenderedRequest, error) {
-	req := RenderedRequest{
-		Branch: td.Branch,
-		Method: wrcs.Spec.HTTPRequest.Method,
-	}
-
-	url, err := utils.RenderStringTemplate(wrcs.Spec.HTTPRequest.URLTemplate, td)
-	if err != nil {
-		return RenderedRequest{}, fmt.Errorf("failed to render URL template: %w", err)
-	}
-	req.URL = url
-
-	if wrcs.Spec.HTTPRequest.BodyTemplate != "" {
-		body, err := utils.RenderStringTemplate(wrcs.Spec.HTTPRequest.BodyTemplate, td)
-		if err != nil {
-			return RenderedRequest{}, fmt.Errorf("failed to render body template: %w", err)
-		}
-		req.Body = body
-	}
-
-	if len(wrcs.Spec.HTTPRequest.HeaderTemplates) > 0 {
-		req.Headers = make(map[string]string, len(wrcs.Spec.HTTPRequest.HeaderTemplates))
-		for name, headerTemplate := range wrcs.Spec.HTTPRequest.HeaderTemplates {
-			value, err := utils.RenderStringTemplate(headerTemplate, td)
-			if err != nil {
-				return RenderedRequest{}, fmt.Errorf("failed to render header template %q: %w", name, err)
-			}
-			req.Headers[name] = value
-		}
-	}
-
-	return req, nil
-}
-
 // renderCommitStatus builds a *promoterv1alpha1.CommitStatus matching what the
 // controller's upsertCommitStatus would produce: ObjectMeta.Name follows the
 // controller's KubeSafeUniqueName formula, labels match (WebRequestCommitStatus /
