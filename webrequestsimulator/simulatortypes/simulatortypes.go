@@ -32,9 +32,9 @@ import (
 // as the first reconcile.
 //
 // HTTPResponses supplies stand-in HTTP responses when the trigger fires (or
-// under polling when a request runs). Each element uses the same Branch + Resp
-// layout as the simulator engine (see HTTPResponse). Context=environments: Branch
-// must match the PromotionStrategy environment branch for that mock; the first
+// under polling when a request runs). Each element is an HTTPResponse (see type
+// below). Context=environments: Branch must match the PromotionStrategy environment
+// branch for that mock; the first
 // matching entry wins when Branch values duplicate. Context=promotionstrategy:
 // only HTTPResponses[0] is used; Branch on that entry is ignored; extra slice
 // elements are ignored. An empty slice is valid when no HTTP request runs this

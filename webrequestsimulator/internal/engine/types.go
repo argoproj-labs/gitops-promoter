@@ -21,19 +21,13 @@ package engine
 import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/webrequest"
+	"github.com/argoproj-labs/gitops-promoter/webrequestsimulator/simulatortypes"
 )
-
-// HTTPResponse is one simulator mock after conversion from simulatortypes: Branch is
-// routing metadata; Resp is the wire-shaped response passed to expressions.
-type HTTPResponse struct {
-	Branch string
-	Resp   webrequest.HTTPResponse
-}
 
 // Args carries everything the engine needs; the parent maps simulatortypes.Input here.
 type Args struct {
 	WebRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
 	PromotionStrategy      *promoterv1alpha1.PromotionStrategy
 	NamespaceMetadata      webrequest.NamespaceMetadata
-	HTTPResponse           []HTTPResponse
+	HTTPResponses          []simulatortypes.HTTPResponse
 }

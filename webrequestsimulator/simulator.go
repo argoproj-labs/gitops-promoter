@@ -42,21 +42,10 @@ func Simulate(ctx context.Context, in simulatortypes.Input) (*simulatortypes.Res
 			Labels:      in.NamespaceMetadata.Labels,
 			Annotations: in.NamespaceMetadata.Annotations,
 		},
-		HTTPResponse: toEngineHTTPResponses(in.HTTPResponses),
+		HTTPResponses: in.HTTPResponses,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("simulate: %w", err)
 	}
 	return res, nil
-}
-
-func toEngineHTTPResponses(in []simulatortypes.HTTPResponse) []engine.HTTPResponse {
-	if len(in) == 0 {
-		return nil
-	}
-	out := make([]engine.HTTPResponse, len(in))
-	for i := range in {
-		out[i] = engine.HTTPResponse{Branch: in[i].Branch, Resp: in[i].Resp}
-	}
-	return out
 }

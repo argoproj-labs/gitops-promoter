@@ -46,7 +46,7 @@ func (c *renderedRequestsCollector) CollectRenderedHTTP(r webrequest.RenderedHTT
 }
 
 // Simulate runs one WebRequestCommitStatus reconcile against args, using
-// args.HTTPResponse in place of any real HTTP call. The returned Result.Status
+// args.HTTPResponses in place of any real HTTP call. The returned Result.Status
 // matches what the controller would write to WebRequestCommitStatus.Status.
 //
 // Safe for concurrent use: a fresh Evaluator is created per call.
@@ -74,7 +74,7 @@ func simulateEnvironments(
 	ps *promoterv1alpha1.PromotionStrategy,
 ) (*simulatortypes.Result, error) {
 	evaluator := webrequest.NewEvaluator()
-	exec := newMockHTTPEXecutor(newResolveFromSliceByBranch(args.HTTPResponse))
+	exec := newMockHTTPEXecutor(newResolveFromSliceByBranch(args.HTTPResponses))
 
 	var rendered []simulatortypes.RenderedRequest
 	renderedHTTP := &renderedRequestsCollector{out: &rendered}
@@ -108,7 +108,7 @@ func simulatePromotionStrategy(
 	ps *promoterv1alpha1.PromotionStrategy,
 ) (*simulatortypes.Result, error) {
 	evaluator := webrequest.NewEvaluator()
-	exec := newMockHTTPEXecutor(newResolveFromSliceFirst(args.HTTPResponse))
+	exec := newMockHTTPEXecutor(newResolveFromSliceFirst(args.HTTPResponses))
 
 	var rendered []simulatortypes.RenderedRequest
 	renderedHTTP := &renderedRequestsCollector{out: &rendered}
@@ -161,7 +161,7 @@ func simulatePromotionStrategy(
 
 // newResolveFromSliceByBranch returns a resolve func that picks the first mock
 // whose Branch matches the reconcile branch (TemplateData.Branch).
-func newResolveFromSliceByBranch(entries []HTTPResponse) func(branch string) (*webrequest.HTTPResponse, error) {
+func newResolveFromSliceByBranch(entries []simulatortypes.HTTPResponse) func(branch string) (*webrequest.HTTPResponse, error) {
 	return func(branch string) (*webrequest.HTTPResponse, error) {
 		for i := range entries {
 			if entries[i].Branch == branch {
@@ -174,7 +174,7 @@ func newResolveFromSliceByBranch(entries []HTTPResponse) func(branch string) (*w
 
 // newResolveFromSliceFirst returns a resolve func for promotionstrategy context:
 // always uses entries[0]; ignores branch; empty slice yields nil.
-func newResolveFromSliceFirst(entries []HTTPResponse) func(branch string) (*webrequest.HTTPResponse, error) {
+func newResolveFromSliceFirst(entries []simulatortypes.HTTPResponse) func(branch string) (*webrequest.HTTPResponse, error) {
 	return func(branch string) (*webrequest.HTTPResponse, error) {
 		_ = branch
 		if len(entries) == 0 {
