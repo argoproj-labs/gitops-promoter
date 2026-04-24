@@ -212,7 +212,7 @@ var _ = Describe("Evaluator", func() {
 })
 
 var _ = Describe("Pure helpers", func() {
-	Describe("TemplateData.TriggerExprData", func() {
+	Describe("TemplateData.triggerExprData", func() {
 		It("exposes expected keys", func() {
 			td := TemplateData{Branch: "env/dev", Phase: "pending"}
 			m := td.triggerExprData()

@@ -87,16 +87,11 @@ type ProcessWebRequestCommitStatusPromotionStrategyInput struct {
 
 // ProcessWebRequestCommitStatusPromotionStrategyOutput is the computed status for promotionstrategy context.
 type ProcessWebRequestCommitStatusPromotionStrategyOutput struct {
-	// ApplicableEnvsEmpty means there are no environments referencing this key; callers clear Environments and PSC.
-	ApplicableEnvsEmpty bool
-
-	// PollingAllSuccessSkip is the polling+proposed optimization: no HTTP, no PSC mutation on the live object.
-	// CommitStatuses is populated. The controller leaves wrcs.Status unchanged on this path.
-	PollingAllSuccessSkip bool
-
 	PromotionStrategyContext *promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus
 	CommitStatuses           []*promoterv1alpha1.CommitStatus
 	TransitionedBranches     []string
+	ApplicableEnvsEmpty      bool
+	PollingAllSuccessSkip    bool
 }
 
 // renderHTTPRequestTemplates renders URL, headers, and body from WebRequestCommitStatus HTTP templates.

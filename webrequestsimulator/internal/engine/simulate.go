@@ -19,7 +19,6 @@ package engine
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/webrequest"
@@ -141,7 +140,7 @@ func simulatePromotionStrategy(
 		}
 		cpy := st.DeepCopy()
 		if cpy == nil {
-			return nil, fmt.Errorf("internal error: DeepCopy returned nil for carried status snapshot")
+			return nil, errors.New("internal error: DeepCopy returned nil for carried status snapshot")
 		}
 		return &types.Result{
 			Status:           *cpy,
