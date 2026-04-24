@@ -21,7 +21,8 @@ import (
 	"fmt"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/webrequest"
-	"github.com/argoproj-labs/gitops-promoter/internal/webrequest/simulator"
+	"github.com/argoproj-labs/gitops-promoter/webrequestsimulator/internal/engine"
+	"github.com/argoproj-labs/gitops-promoter/webrequestsimulator/types"
 )
 
 // Simulate runs one WebRequestCommitStatus reconcile against the supplied
@@ -33,8 +34,8 @@ import (
 // follow-up reconcile with accumulated trigger/response/success outputs.
 //
 // Safe for concurrent use.
-func Simulate(ctx context.Context, in Input) (*Result, error) {
-	res, err := simulator.Simulate(ctx, simulator.Args{
+func Simulate(ctx context.Context, in types.Input) (*types.Result, error) {
+	res, err := engine.Simulate(ctx, engine.Args{
 		WebRequestCommitStatus: in.WebRequestCommitStatus,
 		PromotionStrategy:      in.PromotionStrategy,
 		NamespaceMetadata: webrequest.NamespaceMetadata{
@@ -46,12 +47,10 @@ func Simulate(ctx context.Context, in Input) (*Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("simulate: %w", err)
 	}
-	return fromInternalResult(res), nil
+	return res, nil
 }
 
-// toInternalHTTPResponse converts the public HTTPResponse to the internal one.
-// Fields are identical — this is just a type-identity translation.
-func toInternalHTTPResponse(r *HTTPResponse) *webrequest.HTTPResponse {
+func toInternalHTTPResponse(r *types.HTTPResponse) *webrequest.HTTPResponse {
 	if r == nil {
 		return nil
 	}
@@ -60,31 +59,4 @@ func toInternalHTTPResponse(r *HTTPResponse) *webrequest.HTTPResponse {
 		Body:       r.Body,
 		Headers:    r.Headers,
 	}
-}
-
-// fromInternalResult builds a public Result from the internal simulator.Result.
-// CommitStatuses are pass-through (*v1alpha1.CommitStatus in both); RenderedRequest
-// is field-for-field copied because the shape is intentionally duplicated at the
-// public boundary.
-func fromInternalResult(res *simulator.Result) *Result {
-	if res == nil {
-		return nil
-	}
-	out := &Result{
-		Status:         res.Status,
-		CommitStatuses: res.CommitStatuses,
-	}
-	if len(res.RenderedRequests) > 0 {
-		out.RenderedRequests = make([]RenderedRequest, len(res.RenderedRequests))
-		for i, req := range res.RenderedRequests {
-			out.RenderedRequests[i] = RenderedRequest{
-				Branch:  req.Branch,
-				Method:  req.Method,
-				URL:     req.URL,
-				Headers: req.Headers,
-				Body:    req.Body,
-			}
-		}
-	}
-	return out
 }

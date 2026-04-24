@@ -14,10 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package webrequestsimulator
+// Package types holds the value types for webrequestsimulator.Simulate.
+package types
 
 import (
-	v1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
 // Input is the single argument to Simulate.
@@ -33,8 +34,8 @@ import (
 // is required when trigger mode evaluates to true or polling mode is used;
 // may be nil when the inputs are crafted so the trigger does not fire.
 type Input struct {
-	WebRequestCommitStatus *v1alpha1.WebRequestCommitStatus
-	PromotionStrategy      *v1alpha1.PromotionStrategy
+	WebRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
+	PromotionStrategy      *promoterv1alpha1.PromotionStrategy
 	NamespaceMetadata      NamespaceMetadata
 	HTTPResponse           *HTTPResponse
 }
@@ -80,9 +81,9 @@ type HTTPResponse struct {
 // ObjectMeta (Name/Namespace/Labels) and Spec are fully populated; OwnerReferences
 // and Status are left empty (the simulator has no live cluster to reference or observe).
 type Result struct {
-	Status           v1alpha1.WebRequestCommitStatusStatus
+	Status           promoterv1alpha1.WebRequestCommitStatusStatus
 	RenderedRequests []RenderedRequest
-	CommitStatuses   []*v1alpha1.CommitStatus
+	CommitStatuses   []*promoterv1alpha1.CommitStatus
 }
 
 // RenderedRequest is an HTTP request the controller would have made this

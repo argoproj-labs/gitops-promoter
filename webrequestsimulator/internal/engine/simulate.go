@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package simulator
+package engine
 
 import (
 	"context"
@@ -31,19 +31,17 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/webrequest"
 )
 
-// Simulate runs one WebRequestCommitStatus reconcile against the supplied args,
-// using args.HTTPResponse in place of any real HTTP call. The returned
-// Result.Status exactly matches what the controller would write to
-// WebRequestCommitStatus.Status, so the Status can be fed back into a follow-up
-// Simulate() call for round-tripping.
+// Simulate runs one WebRequestCommitStatus reconcile against args, using
+// args.HTTPResponse in place of any real HTTP call. The returned Result.Status
+// matches what the controller would write to WebRequestCommitStatus.Status.
 //
 // Safe for concurrent use: a fresh Evaluator is created per call.
 func Simulate(ctx context.Context, args Args) (*Result, error) {
 	if args.WebRequestCommitStatus == nil {
-		return nil, errors.New("Args.WebRequestCommitStatus is required")
+		return nil, errors.New("WebRequestCommitStatus is required")
 	}
 	if args.PromotionStrategy == nil {
-		return nil, errors.New("Args.PromotionStrategy is required")
+		return nil, errors.New("PromotionStrategy is required")
 	}
 
 	wrcs := args.WebRequestCommitStatus
@@ -137,7 +135,7 @@ func simulateEnvironments(
 		if wrcs.Spec.Mode.Polling != nil && wrcs.Spec.ReportOn == constants.CommitRefProposed {
 			if lastReconciledEnvStatus != nil && lastState.Phase == string(promoterv1alpha1.CommitPhaseSuccess) && lastSuccessfulSha == reportedSha {
 				out.Status.Environments = append(out.Status.Environments, *lastReconciledEnvStatus)
-				cs, err := RenderCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, reportedSha, promoterv1alpha1.CommitPhaseSuccess, td)
+				cs, err := renderCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, reportedSha, promoterv1alpha1.CommitPhaseSuccess, td)
 				if err != nil {
 					return nil, fmt.Errorf("failed to render CommitStatus for skipped environment %q: %w", branch, err)
 				}
@@ -153,7 +151,7 @@ func simulateEnvironments(
 
 		var renderedReq *RenderedRequest
 		if decision.ShouldFire {
-			req, err := RenderHTTPRequest(wrcs, td)
+			req, err := renderHTTPRequest(wrcs, td)
 			if err != nil {
 				return nil, fmt.Errorf("failed to render HTTP request for environment %q: %w", branch, err)
 			}
@@ -191,7 +189,7 @@ func simulateEnvironments(
 
 		commitTd := td.WithLatestOutputs(result.ResponseDataJSON, decision.NewTriggerData, result.SuccessDataJSON)
 		commitTd.Phase = string(result.Phase)
-		cs, err := RenderCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, reportedSha, result.Phase, commitTd)
+		cs, err := renderCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, reportedSha, result.Phase, commitTd)
 		if err != nil {
 			return nil, fmt.Errorf("failed to render CommitStatus for environment %q: %w", branch, err)
 		}
@@ -249,7 +247,7 @@ func simulatePromotionStrategy(
 			for _, env := range applicableEnvs {
 				perEnvTd := baseTd
 				perEnvTd.Branch = env.Branch
-				cs, err := RenderCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, env.Branch, currentShaPerBranch[env.Branch], promoterv1alpha1.CommitPhaseSuccess, perEnvTd)
+				cs, err := renderCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, env.Branch, currentShaPerBranch[env.Branch], promoterv1alpha1.CommitPhaseSuccess, perEnvTd)
 				if err != nil {
 					return nil, fmt.Errorf("failed to render CommitStatus for skipped environment %q (context=promotionstrategy): %w", env.Branch, err)
 				}
@@ -276,7 +274,7 @@ func simulatePromotionStrategy(
 
 	var renderedReq *RenderedRequest
 	if decision.ShouldFire {
-		req, err := RenderHTTPRequest(wrcs, td)
+		req, err := renderHTTPRequest(wrcs, td)
 		if err != nil {
 			return nil, fmt.Errorf("failed to render shared HTTP request (context=promotionstrategy): %w", err)
 		}
@@ -320,7 +318,7 @@ func simulatePromotionStrategy(
 		perEnvTd := commitTd
 		perEnvTd.Branch = branch
 		perEnvTd.Phase = string(envPhase)
-		cs, err := RenderCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, currentShaPerBranch[branch], envPhase, perEnvTd)
+		cs, err := renderCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, currentShaPerBranch[branch], envPhase, perEnvTd)
 		if err != nil {
 			return nil, fmt.Errorf("failed to render CommitStatus for environment %q (context=promotionstrategy): %w", branch, err)
 		}
@@ -374,7 +372,7 @@ func simulateFireOrCarryForward(
 ) (simulateValidationResult, error) {
 	if decision.ShouldFire {
 		if mockResponse == nil {
-			return simulateValidationResult{}, errors.New("Args.webrequest.HTTPResponse is required when the trigger fires (fill in a mock response, or craft inputs so the trigger does not fire)")
+			return simulateValidationResult{}, errors.New("HTTPResponse is required when the trigger fires (fill in a mock response, or craft inputs so the trigger does not fire)")
 		}
 		return simulateHandleRequestAndValidation(ctx, evaluator, wrcs, td, *mockResponse)
 	}

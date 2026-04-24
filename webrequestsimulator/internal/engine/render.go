@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package simulator
+package engine
 
 import (
 	"context"
@@ -27,12 +27,12 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/webrequest"
 )
 
-// RenderHTTPRequest renders the HTTP request templates (URL, headers, body) for
+// renderHTTPRequest renders the HTTP request templates (URL, headers, body) for
 // a WebRequestCommitStatus against the given TemplateData. Branch is copied onto
 // the result so callers can tell per-env requests apart in environments context.
 // Headers are rendered into a flat map (single value per header) which matches
 // how the controller sets them on http.Request.Header.
-func RenderHTTPRequest(wrcs *promoterv1alpha1.WebRequestCommitStatus, td webrequest.TemplateData) (RenderedRequest, error) {
+func renderHTTPRequest(wrcs *promoterv1alpha1.WebRequestCommitStatus, td webrequest.TemplateData) (RenderedRequest, error) {
 	req := RenderedRequest{
 		Branch: td.Branch,
 		Method: wrcs.Spec.HTTPRequest.Method,
@@ -66,7 +66,7 @@ func RenderHTTPRequest(wrcs *promoterv1alpha1.WebRequestCommitStatus, td webrequ
 	return req, nil
 }
 
-// RenderCommitStatus builds a *promoterv1alpha1.CommitStatus matching what the
+// renderCommitStatus builds a *promoterv1alpha1.CommitStatus matching what the
 // controller's upsertCommitStatus would produce: ObjectMeta.Name follows the
 // controller's KubeSafeUniqueName formula, labels match (WebRequestCommitStatus /
 // Environment / CommitStatus), and the spec is populated with the rendered
@@ -74,7 +74,7 @@ func RenderHTTPRequest(wrcs *promoterv1alpha1.WebRequestCommitStatus, td webrequ
 //
 // OwnerReferences and Status are intentionally omitted — the simulator does not
 // run against a live cluster, so it has no UID to reference and observes no state.
-func RenderCommitStatus(
+func renderCommitStatus(
 	ctx context.Context,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
 	repositoryRefName, branch, sha string,

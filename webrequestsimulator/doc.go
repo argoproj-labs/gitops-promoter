@@ -20,10 +20,11 @@ limitations under the License.
 // the simulator returns the rendered HTTP request, the rendered CommitStatus
 // resources, and the Status the controller would have written.
 //
+// Value types (Input, Result, etc.) live in subpackage types.
 // Because Result.Status mirrors WebRequestCommitStatus.Status exactly, it can
 // be fed back into a subsequent Simulate() call via Input.WebRequestCommitStatus.Status
 // to simulate a follow-up reconcile with the accumulated trigger/response/success outputs.
 //
-// The package is a thin adapter over internal/webrequest so external users can
-// consume the simulator with a stable public type surface.
+// Implementation lives under internal/engine and is not importable outside the
+// webrequestsimulator directory tree.
 package webrequestsimulator

@@ -26,7 +26,8 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomegag	corev1 "k8s.io/api/core/v1"
+	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -40,7 +41,8 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/webrequest"
-	"github.com/argoproj-labs/gitops-promoter/internal/webrequest/simulator"
+	"github.com/argoproj-labs/gitops-promoter/webrequestsimulator"
+	wrstypes "github.com/argoproj-labs/gitops-promoter/webrequestsimulator/types"
 )
 
 const (
@@ -176,11 +178,13 @@ var _ = Describe("WebRequestCommitStatus simulator parity", func() {
 		var got promoterv1alpha1.WebRequestCommitStatus
 		Expect(cl.Get(ctx, client.ObjectKeyFromObject(wrcs), &got)).To(Succeed())
 
-		nsMeta := webrequest.NamespaceMetadata{Labels: ns.Labels, Annotations: ns.Annotations}
-		simRes, err := simulator.Simulate(ctx, simulator.Args{
+		simRes, err := webrequestsimulator.Simulate(ctx, wrstypes.Input{
 			WebRequestCommitStatus: wrcsInput,
 			PromotionStrategy:      ps.DeepCopy(),
-			NamespaceMetadata:      nsMeta,
+			NamespaceMetadata: wrstypes.NamespaceMetadata{
+				Labels:      ns.Labels,
+				Annotations: ns.Annotations,
+			},
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -236,11 +240,10 @@ var _ = Describe("WebRequestCommitStatus simulator parity", func() {
 		var got promoterv1alpha1.WebRequestCommitStatus
 		Expect(cl.Get(ctx, client.ObjectKeyFromObject(wrcs), &got)).To(Succeed())
 
-		simRes, err := simulator.Simulate(ctx, simulator.Args{
+		simRes, err := webrequestsimulator.Simulate(ctx, wrstypes.Input{
 			WebRequestCommitStatus: wrcsInput,
 			PromotionStrategy:      ps.DeepCopy(),
-			NamespaceMetadata:      webrequest.NamespaceMetadata{},
-			HTTPResponse:           &webrequest.HTTPResponse{StatusCode: http.StatusOK, Body: map[string]any{"ok": true}},
+			HTTPResponse:           &wrstypes.HTTPResponse{StatusCode: http.StatusOK, Body: map[string]any{"ok": true}},
 		})
 		Expect(err).NotTo(HaveOccurred())
 
