@@ -159,13 +159,22 @@ func simulatePromotionStrategy(
 	}, nil
 }
 
+func simulatorHTTPResponseToWeb(m simulatortypes.HTTPResponse) webrequest.HTTPResponse {
+	return webrequest.HTTPResponse{
+		StatusCode: m.Response.StatusCode,
+		Body:       m.Response.Body,
+		Headers:    m.Response.Headers,
+	}
+}
+
 // newResolveFromSliceByBranch returns a resolve func that picks the first mock
 // whose Branch matches the reconcile branch (TemplateData.Branch).
 func newResolveFromSliceByBranch(entries []simulatortypes.HTTPResponse) func(branch string) (*webrequest.HTTPResponse, error) {
 	return func(branch string) (*webrequest.HTTPResponse, error) {
 		for i := range entries {
 			if entries[i].Branch == branch {
-				return &entries[i].Resp, nil
+				w := simulatorHTTPResponseToWeb(entries[i])
+				return &w, nil
 			}
 		}
 		return nil, nil
@@ -180,6 +189,7 @@ func newResolveFromSliceFirst(entries []simulatortypes.HTTPResponse) func(branch
 		if len(entries) == 0 {
 			return nil, nil
 		}
-		return &entries[0].Resp, nil
+		w := simulatorHTTPResponseToWeb(entries[0])
+		return &w, nil
 	}
 }

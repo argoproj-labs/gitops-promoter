@@ -19,7 +19,6 @@ package simulatortypes
 
 import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	"github.com/argoproj-labs/gitops-promoter/internal/webrequest"
 )
 
 // Input is the single argument to Simulate.
@@ -32,8 +31,8 @@ import (
 // as the first reconcile.
 //
 // HTTPResponses supplies stand-in HTTP responses when the trigger fires (or
-// under polling when a request runs). Each element is an HTTPResponse (see type
-// below). Context=environments: Branch must match the PromotionStrategy environment
+// under polling when a request runs). Each element is an HTTPResponse (Branch
+// plus Response with StatusCode/Body/Headers). Context=environments: Branch must match the PromotionStrategy environment
 // branch for that mock; the first
 // matching entry wins when Branch values duplicate. Context=promotionstrategy:
 // only HTTPResponses[0] is used; Branch on that entry is ignored; extra slice
@@ -54,21 +53,26 @@ type NamespaceMetadata struct {
 	Annotations map[string]string
 }
 
-// HTTPResponse is the stand-in HTTP response the simulator feeds to the
-// success/response expressions in place of a real network call.
+// Response is the stand-in HTTP payload (status, body, headers) the simulator
+// feeds to success/response expressions in place of a real network call. Fields
+// mirror what the controller records from a real round-trip (Body may be a
+// pre-parsed map/slice/primitive or raw string — the controller JSON-decodes
+// string bodies when it can).
+type Response struct {
+	StatusCode int
+	Body       any
+	Headers    map[string][]string
+}
+
+// HTTPResponse pairs routing metadata with a stand-in Response for one mock entry.
 //
 // Branch is simulator metadata only: for Context=environments it selects which
 // environment branch this mock applies to (must match PromotionStrategy
-// environment branch strings). It is not part of Resp. For
-// Context=promotionstrategy only HTTPResponses[0] is consulted; Branch there
-// is ignored.
-//
-// Resp uses the same type as production (webrequest.HTTPResponse): StatusCode,
-// Body (pre-parsed map/slice/primitive or raw string — the controller JSON-decodes
-// string bodies when it can), and Headers.
+// environment branch strings). For Context=promotionstrategy only
+// HTTPResponses[0] is consulted; Branch on that entry is ignored.
 type HTTPResponse struct {
-	Branch string
-	Resp   webrequest.HTTPResponse
+	Branch   string
+	Response Response
 }
 
 // Result mirrors what the controller produces for a single reconcile.

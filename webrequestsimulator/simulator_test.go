@@ -31,7 +31,6 @@ import (
 	sigyaml "sigs.k8s.io/yaml"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	"github.com/argoproj-labs/gitops-promoter/internal/webrequest"
 	"github.com/argoproj-labs/gitops-promoter/webrequestsimulator"
 	"github.com/argoproj-labs/gitops-promoter/webrequestsimulator/simulatortypes"
 )
@@ -77,7 +76,10 @@ func envHTTPMocksSame(branches []string, body any) []simulatortypes.HTTPResponse
 	for _, b := range branches {
 		out = append(out, simulatortypes.HTTPResponse{
 			Branch: b,
-			Resp:   webrequest.HTTPResponse{StatusCode: 200, Body: body},
+			Response: simulatortypes.Response{
+				StatusCode: 200,
+				Body:       body,
+			},
 		})
 	}
 	return out
@@ -402,6 +404,24 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 			// HTTPResponses deliberately omitted to force the "required" error path.
 		})
 		Expect(err).To(MatchError(ContainSubstring("HTTPResponse is required")))
+		Expect(err.Error()).To(ContainSubstring(`branch "dev"`))
+	})
+
+	It("Simulate returns branch \"\" in the error when promotionstrategy polling fires with no HTTPResponses", func() {
+		wrcs := newWRCS(
+			promoterv1alpha1.ModeSpec{
+				Context: promoterv1alpha1.ContextPromotionStrategy,
+				Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}},
+			},
+			"true",
+		)
+		_, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+			WebRequestCommitStatus: wrcs,
+			PromotionStrategy:      newPS(),
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("HTTPResponse is required"))
+		Expect(err.Error()).To(ContainSubstring(`branch ""`))
 	})
 
 	// mode.context=promotionstrategy collapses to one shared HTTP call; RenderedRequests[0].Branch is "".
@@ -417,7 +437,7 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 		r, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 			WebRequestCommitStatus: wrcs,
 			PromotionStrategy:      newPS(),
-			HTTPResponses:          []simulatortypes.HTTPResponse{{Resp: webrequest.HTTPResponse{StatusCode: 200}}},
+			HTTPResponses:          []simulatortypes.HTTPResponse{{Response: simulatortypes.Response{StatusCode: 200}}},
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(r.RenderedRequests).To(HaveLen(1))
@@ -571,6 +591,7 @@ var _ = Describe("Simulate engine", func() {
 			})
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("HTTPResponse is required"))
+			Expect(err.Error()).To(ContainSubstring(`branch "dev"`))
 		})
 
 		It("surfaces a compile error for invalid expressions", func() {
@@ -598,8 +619,8 @@ var _ = Describe("Simulate engine", func() {
 				WebRequestCommitStatus: wrcs,
 				PromotionStrategy:      ps,
 				HTTPResponses: []simulatortypes.HTTPResponse{
-					{Branch: "dev", Resp: webrequest.HTTPResponse{StatusCode: 200}},
-					{Branch: "prod", Resp: webrequest.HTTPResponse{StatusCode: 201}},
+					{Branch: "dev", Response: simulatortypes.Response{StatusCode: 200}},
+					{Branch: "prod", Response: simulatortypes.Response{StatusCode: 201}},
 				},
 			})
 			Expect(err).ToNot(HaveOccurred())
@@ -630,7 +651,7 @@ var _ = Describe("Simulate engine", func() {
 			result, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 				WebRequestCommitStatus: wrcs,
 				PromotionStrategy:      ps,
-				HTTPResponses:          []simulatortypes.HTTPResponse{{Resp: webrequest.HTTPResponse{StatusCode: 200}}},
+				HTTPResponses:          []simulatortypes.HTTPResponse{{Response: simulatortypes.Response{StatusCode: 200}}},
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result.RenderedRequests).To(HaveLen(1), "promotionstrategy context should issue at most one request")
@@ -669,8 +690,8 @@ var _ = Describe("Simulate engine", func() {
 				WebRequestCommitStatus: wrcs,
 				PromotionStrategy:      ps,
 				HTTPResponses: []simulatortypes.HTTPResponse{
-					{Resp: webrequest.HTTPResponse{StatusCode: 200}},
-					{Resp: webrequest.HTTPResponse{StatusCode: 503, Body: map[string]any{"would": "fail"}}},
+					{Response: simulatortypes.Response{StatusCode: 200}},
+					{Response: simulatortypes.Response{StatusCode: 503, Body: map[string]any{"would": "fail"}}},
 				},
 			})
 			Expect(err).ToNot(HaveOccurred())
@@ -700,7 +721,7 @@ var _ = Describe("Simulate engine", func() {
 			result, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 				WebRequestCommitStatus: wrcs,
 				PromotionStrategy:      ps,
-				HTTPResponses:          []simulatortypes.HTTPResponse{{Resp: webrequest.HTTPResponse{StatusCode: 200}}},
+				HTTPResponses:          []simulatortypes.HTTPResponse{{Response: simulatortypes.Response{StatusCode: 200}}},
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result.RenderedRequests).To(HaveLen(1))
@@ -727,7 +748,7 @@ var _ = Describe("Simulate engine", func() {
 			result, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 				WebRequestCommitStatus: wrcs,
 				PromotionStrategy:      ps,
-				HTTPResponses:          []simulatortypes.HTTPResponse{{Resp: webrequest.HTTPResponse{StatusCode: 200}}},
+				HTTPResponses:          []simulatortypes.HTTPResponse{{Response: simulatortypes.Response{StatusCode: 200}}},
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result.RenderedRequests).To(HaveLen(1))
@@ -806,7 +827,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			WebRequestCommitStatus: w,
 			PromotionStrategy:      ps,
 			HTTPResponses: pscHTTPMocks(&simulatortypes.HTTPResponse{
-				Resp: webrequest.HTTPResponse{
+				Response: simulatortypes.Response{
 					StatusCode: 202,
 					Body:       openOKBody(),
 				},
@@ -874,7 +895,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 				WebRequestCommitStatus: w,
 				PromotionStrategy:      ps,
 				HTTPResponses: pscHTTPMocks(&simulatortypes.HTTPResponse{
-					Resp: webrequest.HTTPResponse{
+					Response: simulatortypes.Response{
 						StatusCode: 202,
 						Body:       openOKBody(),
 					},
@@ -916,7 +937,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			WebRequestCommitStatus: w,
 			PromotionStrategy:      ps,
 			HTTPResponses: pscHTTPMocks(&simulatortypes.HTTPResponse{
-				Resp: webrequest.HTTPResponse{
+				Response: simulatortypes.Response{
 					StatusCode: 202,
 					Body:       openOKBody(),
 				},
@@ -941,7 +962,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			WebRequestCommitStatus: w,
 			PromotionStrategy:      ps,
 			HTTPResponses: pscHTTPMocks(&simulatortypes.HTTPResponse{
-				Resp: webrequest.HTTPResponse{
+				Response: simulatortypes.Response{
 					StatusCode: 503,
 					Body:       map[string]any{"error": "unavailable"},
 				},
@@ -961,7 +982,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			WebRequestCommitStatus: w2,
 			PromotionStrategy:      ps,
 			HTTPResponses: pscHTTPMocks(&simulatortypes.HTTPResponse{
-				Resp: webrequest.HTTPResponse{
+				Response: simulatortypes.Response{
 					StatusCode: 202,
 					Body:       openOKBody(),
 				},
@@ -986,7 +1007,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			WebRequestCommitStatus: w,
 			PromotionStrategy:      ps,
 			HTTPResponses: pscHTTPMocks(&simulatortypes.HTTPResponse{
-				Resp: webrequest.HTTPResponse{StatusCode: 400, Body: map[string]any{"error": "bad"}},
+				Response: simulatortypes.Response{StatusCode: 400, Body: map[string]any{"error": "bad"}},
 			}),
 		})
 		Expect(err).ToNot(HaveOccurred())
@@ -1018,7 +1039,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			WebRequestCommitStatus: w,
 			PromotionStrategy:      ps,
 			HTTPResponses: pscHTTPMocks(&simulatortypes.HTTPResponse{
-				Resp: webrequest.HTTPResponse{
+				Response: simulatortypes.Response{
 					StatusCode: 429,
 					Body:       map[string]any{"error": "rate limited"},
 				},
@@ -1034,7 +1055,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			WebRequestCommitStatus: w2,
 			PromotionStrategy:      ps,
 			HTTPResponses: pscHTTPMocks(&simulatortypes.HTTPResponse{
-				Resp: webrequest.HTTPResponse{StatusCode: 202, Body: openOKBody()},
+				Response: simulatortypes.Response{StatusCode: 202, Body: openOKBody()},
 			}),
 		})
 		Expect(err).ToNot(HaveOccurred())
@@ -1058,11 +1079,11 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			expectAllBranches(promoterv1alpha1.CommitPhasePending, r.Status.PromotionStrategyContext)
 		},
 		Entry("HTTP branch: status 200 with id still fails (requires 202)",
-			&simulatortypes.HTTPResponse{Resp: webrequest.HTTPResponse{StatusCode: 200, Body: map[string]any{"id": "x"}}},
+			&simulatortypes.HTTPResponse{Response: simulatortypes.Response{StatusCode: 200, Body: map[string]any{"id": "x"}}},
 		),
 		Entry("HTTP branch: 202 with Body.id null fails id check",
 			&simulatortypes.HTTPResponse{
-				Resp: webrequest.HTTPResponse{
+				Response: simulatortypes.Response{
 					StatusCode: 202,
 					Body:       map[string]any{"id": nil, "message": "m"},
 				},
@@ -1070,14 +1091,14 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 		),
 		Entry("HTTP branch: 202 with Body.id empty string fails",
 			&simulatortypes.HTTPResponse{
-				Resp: webrequest.HTTPResponse{
+				Response: simulatortypes.Response{
 					StatusCode: 202,
 					Body:       map[string]any{"id": "", "message": "m"},
 				},
 			},
 		),
 		Entry("HTTP branch: 202 with no id key — id nil in body map, changeId empty in response.output",
-			&simulatortypes.HTTPResponse{Resp: webrequest.HTTPResponse{StatusCode: 202, Body: map[string]any{"message": "m"}}},
+			&simulatortypes.HTTPResponse{Response: simulatortypes.Response{StatusCode: 202, Body: map[string]any{"message": "m"}}},
 		),
 	)
 
@@ -1089,7 +1110,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			WebRequestCommitStatus: w,
 			PromotionStrategy:      ps,
 			HTTPResponses: pscHTTPMocks(&simulatortypes.HTTPResponse{
-				Resp: webrequest.HTTPResponse{
+				Response: simulatortypes.Response{
 					StatusCode: 202,
 					Body:       map[string]any{"message": nil},
 				},
@@ -1115,7 +1136,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			WebRequestCommitStatus: w,
 			PromotionStrategy:      ps,
 			HTTPResponses: pscHTTPMocks(&simulatortypes.HTTPResponse{
-				Resp: webrequest.HTTPResponse{
+				Response: simulatortypes.Response{
 					StatusCode: 200,
 					Body: map[string]any{
 						"change_records": []any{
@@ -1184,7 +1205,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 				WebRequestCommitStatus: w,
 				PromotionStrategy:      ps,
 				HTTPResponses: pscHTTPMocks(&simulatortypes.HTTPResponse{
-					Resp: webrequest.HTTPResponse{
+					Response: simulatortypes.Response{
 						StatusCode: 200,
 						Body: map[string]any{
 							"change_records": []any{
@@ -1243,7 +1264,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			WebRequestCommitStatus: w,
 			PromotionStrategy:      ps,
 			HTTPResponses: pscHTTPMocks(&simulatortypes.HTTPResponse{
-				Resp: webrequest.HTTPResponse{StatusCode: 200, Body: okBody},
+				Response: simulatortypes.Response{StatusCode: 200, Body: okBody},
 			}),
 		})
 		Expect(err).ToNot(HaveOccurred())
@@ -1259,7 +1280,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			WebRequestCommitStatus: w2,
 			PromotionStrategy:      ps,
 			HTTPResponses: pscHTTPMocks(&simulatortypes.HTTPResponse{
-				Resp: webrequest.HTTPResponse{StatusCode: 200, Body: okBody},
+				Response: simulatortypes.Response{StatusCode: 200, Body: okBody},
 			}),
 		})
 		Expect(err).ToNot(HaveOccurred())
@@ -1287,20 +1308,20 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			Expect(out["approvedCount"]).To(BeNumerically("==", 0))
 		},
 		Entry("HTTP branch: non-200 status", &simulatortypes.HTTPResponse{
-			Resp: webrequest.HTTPResponse{
+			Response: simulatortypes.Response{
 				StatusCode: 201,
 				Body:       map[string]any{"change_records": []any{}},
 			},
 		}),
 		Entry("HTTP branch: 200 with empty change_records", &simulatortypes.HTTPResponse{
-			Resp: webrequest.HTTPResponse{
+			Response: simulatortypes.Response{
 				StatusCode: 200,
 				Body:       map[string]any{"change_records": []any{}},
 			},
 		}),
 		Entry("HTTP branch: 200 but no record brackets now()",
 			&simulatortypes.HTTPResponse{
-				Resp: webrequest.HTTPResponse{
+				Response: simulatortypes.Response{
 					StatusCode: 200,
 					Body: map[string]any{"change_records": []any{
 						map[string]any{"change_request": map[string]any{
@@ -1325,7 +1346,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			WebRequestCommitStatus: w,
 			PromotionStrategy:      ps,
 			HTTPResponses: pscHTTPMocks(&simulatortypes.HTTPResponse{
-				Resp: webrequest.HTTPResponse{
+				Response: simulatortypes.Response{
 					StatusCode: 200,
 					Body: map[string]any{
 						"change_records": []any{

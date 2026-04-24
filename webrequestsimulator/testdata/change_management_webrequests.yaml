@@ -34,7 +34,7 @@ spec:
         "start_time": "{{ now | date "2006-01-02T15:04:05Z07:00" }}",
         "end_time": "{{ now | dateModify "+30m" | date "2006-01-02T15:04:05Z07:00" }}",
         "risk": "low",
-        "repo_url": "https://github.intuit.com/your-org/your-repo"
+        "repo_url": "https://github.example.com/your-org/your-repo"
       }
   success:
     when:

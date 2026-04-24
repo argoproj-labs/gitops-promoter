@@ -18,6 +18,7 @@ package engine
 
 import (
 	"context"
+	"fmt"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/webrequest"
@@ -41,7 +42,7 @@ func (e *mockHTTPEXecutor) Execute(_ context.Context, _ *promoterv1alpha1.WebReq
 		return webrequest.HTTPResponse{}, err
 	}
 	if resp == nil {
-		return webrequest.HTTPResponse{}, webrequest.ErrHTTPResponseRequiredWhenTriggerFires
+		return webrequest.HTTPResponse{}, fmt.Errorf("branch %q: %w", td.Branch, webrequest.ErrHTTPResponseRequiredWhenTriggerFires)
 	}
 	return *resp, nil
 }

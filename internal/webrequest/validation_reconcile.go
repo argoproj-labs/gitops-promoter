@@ -31,7 +31,8 @@ import (
 )
 
 // ErrHTTPResponseRequiredWhenTriggerFires is returned by a simulator HTTPEXecutor when the trigger
-// would fire but no mock HTTPResponse was provided.
+// would fire but no mock HTTPResponse was provided. Callers may wrap it with fmt.Errorf("... %w", err)
+// (for example to attach the environment branch).
 var ErrHTTPResponseRequiredWhenTriggerFires = errors.New("HTTPResponse is required when the trigger fires (fill in a mock response, or craft inputs so the trigger does not fire)")
 
 // triggerDecision is the result of evaluateTriggerDecision: whether to perform the HTTP round-trip
