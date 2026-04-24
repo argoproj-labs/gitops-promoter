@@ -74,7 +74,7 @@ func simulateEnvironments(
 	ps *promoterv1alpha1.PromotionStrategy,
 ) (*simulatortypes.Result, error) {
 	evaluator := webrequest.NewEvaluator()
-	exec := &mockHTTPEXecutor{response: args.HTTPResponse}
+	exec := newMockHTTPEXecutor(newResolveFromSliceByBranch(args.HTTPResponse))
 
 	var rendered []simulatortypes.RenderedRequest
 	renderedHTTP := &renderedRequestsCollector{out: &rendered}
@@ -108,7 +108,7 @@ func simulatePromotionStrategy(
 	ps *promoterv1alpha1.PromotionStrategy,
 ) (*simulatortypes.Result, error) {
 	evaluator := webrequest.NewEvaluator()
-	exec := &mockHTTPEXecutor{response: args.HTTPResponse}
+	exec := newMockHTTPEXecutor(newResolveFromSliceFirst(args.HTTPResponse))
 
 	var rendered []simulatortypes.RenderedRequest
 	renderedHTTP := &renderedRequestsCollector{out: &rendered}
@@ -157,4 +157,29 @@ func simulatePromotionStrategy(
 		RenderedRequests: rendered,
 		CommitStatuses:   out.CommitStatuses,
 	}, nil
+}
+
+// newResolveFromSliceByBranch returns a resolve func that picks the first mock
+// whose Branch matches the reconcile branch (TemplateData.Branch).
+func newResolveFromSliceByBranch(entries []HTTPResponse) func(branch string) (*webrequest.HTTPResponse, error) {
+	return func(branch string) (*webrequest.HTTPResponse, error) {
+		for i := range entries {
+			if entries[i].Branch == branch {
+				return &entries[i].Resp, nil
+			}
+		}
+		return nil, nil
+	}
+}
+
+// newResolveFromSliceFirst returns a resolve func for promotionstrategy context:
+// always uses entries[0]; ignores branch; empty slice yields nil.
+func newResolveFromSliceFirst(entries []HTTPResponse) func(branch string) (*webrequest.HTTPResponse, error) {
+	return func(branch string) (*webrequest.HTTPResponse, error) {
+		_ = branch
+		if len(entries) == 0 {
+			return nil, nil
+		}
+		return &entries[0].Resp, nil
+	}
 }

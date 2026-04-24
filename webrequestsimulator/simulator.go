@@ -26,7 +26,7 @@ import (
 )
 
 // Simulate runs one WebRequestCommitStatus reconcile against the supplied
-// Input, using Input.HTTPResponse in place of any real HTTP call.
+// Input, using Input.HTTPResponses in place of any real HTTP call.
 //
 // Result.Status matches exactly what the controller would write to
 // WebRequestCommitStatus.Status, so the Status can be fed back in as
@@ -42,7 +42,7 @@ func Simulate(ctx context.Context, in simulatortypes.Input) (*simulatortypes.Res
 			Labels:      in.NamespaceMetadata.Labels,
 			Annotations: in.NamespaceMetadata.Annotations,
 		},
-		HTTPResponse: toInternalHTTPResponse(in.HTTPResponse),
+		HTTPResponse: toEngineHTTPResponses(in.HTTPResponses),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("simulate: %w", err)
@@ -50,13 +50,13 @@ func Simulate(ctx context.Context, in simulatortypes.Input) (*simulatortypes.Res
 	return res, nil
 }
 
-func toInternalHTTPResponse(r *simulatortypes.HTTPResponse) *webrequest.HTTPResponse {
-	if r == nil {
+func toEngineHTTPResponses(in []simulatortypes.HTTPResponse) []engine.HTTPResponse {
+	if len(in) == 0 {
 		return nil
 	}
-	return &webrequest.HTTPResponse{
-		StatusCode: r.StatusCode,
-		Body:       r.Body,
-		Headers:    r.Headers,
+	out := make([]engine.HTTPResponse, len(in))
+	for i := range in {
+		out[i] = engine.HTTPResponse{Branch: in[i].Branch, Resp: in[i].Resp}
 	}
+	return out
 }

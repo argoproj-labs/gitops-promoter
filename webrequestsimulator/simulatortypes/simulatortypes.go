@@ -19,6 +19,7 @@ package simulatortypes
 
 import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/webrequest"
 )
 
 // Input is the single argument to Simulate.
@@ -30,14 +31,19 @@ import (
 // the same. Status is optional — when empty the simulator treats the run
 // as the first reconcile.
 //
-// HTTPResponse is the stand-in response used whenever the trigger fires. It
-// is required when trigger mode evaluates to true or polling mode is used;
-// may be nil when the inputs are crafted so the trigger does not fire.
+// HTTPResponses supplies stand-in HTTP responses when the trigger fires (or
+// under polling when a request runs). Each element uses the same Branch + Resp
+// layout as the simulator engine (see HTTPResponse). Context=environments: Branch
+// must match the PromotionStrategy environment branch for that mock; the first
+// matching entry wins when Branch values duplicate. Context=promotionstrategy:
+// only HTTPResponses[0] is used; Branch on that entry is ignored; extra slice
+// elements are ignored. An empty slice is valid when no HTTP request runs this
+// reconcile; otherwise a matching mock is required or Simulate returns an error.
 type Input struct {
 	WebRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
 	PromotionStrategy      *promoterv1alpha1.PromotionStrategy
 	NamespaceMetadata      NamespaceMetadata
-	HTTPResponse           *HTTPResponse
+	HTTPResponses          []HTTPResponse
 }
 
 // NamespaceMetadata holds the labels and annotations of the
@@ -51,13 +57,18 @@ type NamespaceMetadata struct {
 // HTTPResponse is the stand-in HTTP response the simulator feeds to the
 // success/response expressions in place of a real network call.
 //
-// Body may be pre-parsed (a map/slice/primitive) or a raw string. The controller
-// JSON-decodes string bodies when it can, so mirror that shape here if you want
-// the expression environment to match production exactly.
+// Branch is simulator metadata only: for Context=environments it selects which
+// environment branch this mock applies to (must match PromotionStrategy
+// environment branch strings). It is not part of Resp. For
+// Context=promotionstrategy only HTTPResponses[0] is consulted; Branch there
+// is ignored.
+//
+// Resp uses the same type as production (webrequest.HTTPResponse): StatusCode,
+// Body (pre-parsed map/slice/primitive or raw string — the controller JSON-decodes
+// string bodies when it can), and Headers.
 type HTTPResponse struct {
-	Body       any
-	Headers    map[string][]string
-	StatusCode int
+	Branch string
+	Resp   webrequest.HTTPResponse
 }
 
 // Result mirrors what the controller produces for a single reconcile.

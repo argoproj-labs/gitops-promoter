@@ -23,14 +23,25 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/webrequest"
 )
 
-// mockHTTPEXecutor implements webrequest.HTTPEXecutor using a caller-supplied response.
+// mockHTTPEXecutor implements webrequest.HTTPEXecutor using an injected resolve(branch).
 type mockHTTPEXecutor struct {
-	response *webrequest.HTTPResponse
+	resolve func(branch string) (*webrequest.HTTPResponse, error)
 }
 
-func (e *mockHTTPEXecutor) Execute(_ context.Context, _ *promoterv1alpha1.WebRequestCommitStatus, _ webrequest.TemplateData) (webrequest.HTTPResponse, error) {
-	if e.response == nil {
+func newMockHTTPEXecutor(resolve func(branch string) (*webrequest.HTTPResponse, error)) *mockHTTPEXecutor {
+	if resolve == nil {
+		panic("newMockHTTPEXecutor: resolve is nil")
+	}
+	return &mockHTTPEXecutor{resolve: resolve}
+}
+
+func (e *mockHTTPEXecutor) Execute(_ context.Context, _ *promoterv1alpha1.WebRequestCommitStatus, td webrequest.TemplateData) (webrequest.HTTPResponse, error) {
+	resp, err := e.resolve(td.Branch)
+	if err != nil {
+		return webrequest.HTTPResponse{}, err
+	}
+	if resp == nil {
 		return webrequest.HTTPResponse{}, webrequest.ErrHTTPResponseRequiredWhenTriggerFires
 	}
-	return *e.response, nil
+	return *resp, nil
 }
