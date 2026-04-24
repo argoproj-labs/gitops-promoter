@@ -30,6 +30,7 @@ import (
 	sigyaml "sigs.k8s.io/yaml"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/webrequest"
 	"github.com/argoproj-labs/gitops-promoter/webrequestsimulator"
 )
 
@@ -173,20 +174,24 @@ func patchPromotionStrategyTriggerOutput(st *promoterv1alpha1.WebRequestCommitSt
 	Expect(st).ToNot(BeNil())
 	Expect(st.PromotionStrategyContext).ToNot(BeNil())
 	Expect(st.PromotionStrategyContext.TriggerOutput).ToNot(BeNil())
-	m := decodeJSONMap(st.PromotionStrategyContext.TriggerOutput.Raw)
-	mut(m)
-	raw, err := json.Marshal(m)
+	m, err := webrequest.UnmarshalJSONMap(st.PromotionStrategyContext.TriggerOutput)
 	Expect(err).ToNot(HaveOccurred())
-	st.PromotionStrategyContext.TriggerOutput = &apiextensionsv1.JSON{Raw: raw}
+	if m == nil {
+		m = make(map[string]any)
+	}
+	mut(m)
+	st.PromotionStrategyContext.TriggerOutput, err = webrequest.MarshalJSONMap(m)
+	Expect(err).ToNot(HaveOccurred())
 }
 
-func decodeJSONMap(raw []byte) map[string]any {
-	out := make(map[string]any)
-	if len(raw) == 0 {
-		return out
+// decodeJSONMap unmarshals persisted *apiextensionsv1.JSON status fields for assertions (via webrequest.UnmarshalJSONMap).
+func decodeJSONMap(j *apiextensionsv1.JSON) map[string]any {
+	m, err := webrequest.UnmarshalJSONMap(j)
+	Expect(err).ToNot(HaveOccurred())
+	if m == nil {
+		return make(map[string]any)
 	}
-	Expect(json.Unmarshal(raw, &out)).To(Succeed())
-	return out
+	return m
 }
 
 // Smoke tests for the public webrequestsimulator.Simulate API using minimal inline WRCS + PromotionStrategy
@@ -384,7 +389,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 
 		expectAllBranches(promoterv1alpha1.CommitPhaseSuccess, r1.Status.PromotionStrategyContext)
 
-		trig := decodeJSONMap(r1.Status.PromotionStrategyContext.TriggerOutput.Raw)
+		trig := decodeJSONMap(r1.Status.PromotionStrategyContext.TriggerOutput)
 		Expect(trig["shouldTrigger"]).To(BeTrue())
 		Expect(trig["hasOpenPR"]).To(BeTrue())
 		Expect(trig["allNoteDryShasMatch"]).To(BeTrue())
@@ -398,7 +403,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 		Expect(branches).To(HaveLen(4))
 		Expect(trig["lastStatusCode"]).To(BeNumerically("==", 0))
 
-		resp := decodeJSONMap(r1.Status.PromotionStrategyContext.ResponseOutput.Raw)
+		resp := decodeJSONMap(r1.Status.PromotionStrategyContext.ResponseOutput)
 		Expect(resp["statusCode"]).To(BeNumerically("==", 202))
 		Expect(resp["changeId"]).To(Equal("9f515fd4-0354-40d7-9c71-a83856372bc3"))
 		Expect(resp["message"]).To(Equal("accepted"))
@@ -420,7 +425,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(r2.RenderedRequests).To(BeEmpty())
-		trig2 := decodeJSONMap(r2.Status.PromotionStrategyContext.TriggerOutput.Raw)
+		trig2 := decodeJSONMap(r2.Status.PromotionStrategyContext.TriggerOutput)
 		Expect(trig2["shouldTrigger"]).To(BeFalse())
 		Expect(trig2["isNewFingerprint"]).To(BeFalse())
 		Expect(trig2["needsRetry"]).To(BeFalse())
@@ -443,7 +448,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(r.RenderedRequests).To(BeEmpty())
-			trig := decodeJSONMap(r.Status.PromotionStrategyContext.TriggerOutput.Raw)
+			trig := decodeJSONMap(r.Status.PromotionStrategyContext.TriggerOutput)
 			Expect(trig["shouldTrigger"]).To(BeFalse())
 			for k, v := range want {
 				Expect(trig[k]).To(Equal(v), "unexpected trigger output field %q", k)
@@ -483,7 +488,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(r.RenderedRequests).To(HaveLen(1))
-		trig := decodeJSONMap(r.Status.PromotionStrategyContext.TriggerOutput.Raw)
+		trig := decodeJSONMap(r.Status.PromotionStrategyContext.TriggerOutput)
 		Expect(trig["shouldTrigger"]).To(BeTrue())
 		Expect(trig["preGateNoOpenPR"]).To(BeTrue())
 		expectAllBranches(promoterv1alpha1.CommitPhaseSuccess, r.Status.PromotionStrategyContext)
@@ -507,7 +512,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 		Expect(err).ToNot(HaveOccurred())
 		Expect(r1.RenderedRequests).To(HaveLen(1))
 		expectAllBranches(promoterv1alpha1.CommitPhasePending, r1.Status.PromotionStrategyContext)
-		t1 := decodeJSONMap(r1.Status.PromotionStrategyContext.TriggerOutput.Raw)
+		t1 := decodeJSONMap(r1.Status.PromotionStrategyContext.TriggerOutput)
 		Expect(t1["shouldTrigger"]).To(BeTrue())
 		Expect(t1["isNewFingerprint"]).To(BeTrue())
 		Expect(t1["fingerprint"]).To(Equal(changeMgmtBaselineFingerprint))
@@ -524,7 +529,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(r2.RenderedRequests).To(HaveLen(1))
-		t2 := decodeJSONMap(r2.Status.PromotionStrategyContext.TriggerOutput.Raw)
+		t2 := decodeJSONMap(r2.Status.PromotionStrategyContext.TriggerOutput)
 		Expect(t2["shouldTrigger"]).To(BeTrue())
 		Expect(t2["isNewFingerprint"]).To(BeFalse())
 		// needsRetry is computed in when.variables using Phase + ResponseOutput from *before* this
@@ -545,7 +550,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 		Expect(err).ToNot(HaveOccurred())
 		Expect(r1.RenderedRequests).To(HaveLen(1))
 		expectAllBranches(promoterv1alpha1.CommitPhasePending, r1.Status.PromotionStrategyContext)
-		t1 := decodeJSONMap(r1.Status.PromotionStrategyContext.TriggerOutput.Raw)
+		t1 := decodeJSONMap(r1.Status.PromotionStrategyContext.TriggerOutput)
 		Expect(t1["shouldTrigger"]).To(BeTrue())
 		Expect(t1["needsRetry"]).To(BeFalse())
 
@@ -558,7 +563,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(r2.RenderedRequests).To(BeEmpty())
-		t2 := decodeJSONMap(r2.Status.PromotionStrategyContext.TriggerOutput.Raw)
+		t2 := decodeJSONMap(r2.Status.PromotionStrategyContext.TriggerOutput)
 		Expect(t2["shouldTrigger"]).To(BeFalse())
 		Expect(t2["needsRetry"]).To(BeFalse())
 	})
@@ -576,7 +581,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			},
 		})
 		Expect(err).ToNot(HaveOccurred())
-		t1 := decodeJSONMap(r1.Status.PromotionStrategyContext.TriggerOutput.Raw)
+		t1 := decodeJSONMap(r1.Status.PromotionStrategyContext.TriggerOutput)
 		Expect(t1["shouldTrigger"]).To(BeTrue())
 
 		w2 := w.DeepCopy()
@@ -634,7 +639,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(r.RenderedRequests).To(HaveLen(1))
-		out := decodeJSONMap(r.Status.PromotionStrategyContext.ResponseOutput.Raw)
+		out := decodeJSONMap(r.Status.PromotionStrategyContext.ResponseOutput)
 		Expect(out["changeId"]).To(Equal(""))
 		Expect(out["message"]).To(Equal(""))
 	})
@@ -674,7 +679,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 
 		expectAllBranches(promoterv1alpha1.CommitPhaseSuccess, r1.Status.PromotionStrategyContext)
 
-		trig := decodeJSONMap(r1.Status.PromotionStrategyContext.TriggerOutput.Raw)
+		trig := decodeJSONMap(r1.Status.PromotionStrategyContext.TriggerOutput)
 		Expect(trig["shouldTrigger"]).To(BeTrue())
 		Expect(trig["hasOpenPR"]).To(BeTrue())
 		Expect(trig["allNoteDryShasMatch"]).To(BeTrue())
@@ -683,7 +688,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 		Expect(trig["isNewFingerprint"]).To(BeTrue())
 		Expect(trig["fingerprint"]).To(Equal(changeMgmtBaselineFingerprint))
 
-		resp := decodeJSONMap(r1.Status.PromotionStrategyContext.ResponseOutput.Raw)
+		resp := decodeJSONMap(r1.Status.PromotionStrategyContext.ResponseOutput)
 		Expect(resp["statusCode"]).To(BeNumerically("==", 200))
 		Expect(resp["approvedCount"]).To(BeNumerically("==", 1))
 		Expect(resp["totalRecordCount"]).To(BeNumerically("==", 1))
@@ -703,7 +708,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(r2.RenderedRequests).To(BeEmpty())
-		trig2 := decodeJSONMap(r2.Status.PromotionStrategyContext.TriggerOutput.Raw)
+		trig2 := decodeJSONMap(r2.Status.PromotionStrategyContext.TriggerOutput)
 		Expect(trig2["shouldTrigger"]).To(BeFalse())
 		expectAllBranches(promoterv1alpha1.CommitPhaseSuccess, r2.Status.PromotionStrategyContext)
 	})
@@ -734,7 +739,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(r.RenderedRequests).To(BeEmpty())
-			trig := decodeJSONMap(r.Status.PromotionStrategyContext.TriggerOutput.Raw)
+			trig := decodeJSONMap(r.Status.PromotionStrategyContext.TriggerOutput)
 			Expect(trig["shouldTrigger"]).To(BeFalse())
 			for k, v := range want {
 				Expect(trig[k]).To(Equal(v), "field %q", k)
@@ -793,7 +798,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 		})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(r2.RenderedRequests).To(HaveLen(1))
-		t2 := decodeJSONMap(r2.Status.PromotionStrategyContext.TriggerOutput.Raw)
+		t2 := decodeJSONMap(r2.Status.PromotionStrategyContext.TriggerOutput)
 		Expect(t2["shouldTrigger"]).To(BeTrue())
 		Expect(t2["isNewFingerprint"]).To(BeFalse())
 	})
@@ -812,7 +817,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			Expect(err).ToNot(HaveOccurred())
 			Expect(r.RenderedRequests).To(HaveLen(1))
 			expectAllBranches(promoterv1alpha1.CommitPhasePending, r.Status.PromotionStrategyContext)
-			out := decodeJSONMap(r.Status.PromotionStrategyContext.ResponseOutput.Raw)
+			out := decodeJSONMap(r.Status.PromotionStrategyContext.ResponseOutput)
 			Expect(out["approvedCount"]).To(BeNumerically("==", 0))
 		},
 		Entry("HTTP branch: non-200 status", &webrequestsimulator.HTTPResponse{
@@ -855,7 +860,7 @@ var _ = Describe("change management WebRequestCommitStatus fixtures (full expr)"
 			},
 		})
 		Expect(err).ToNot(HaveOccurred())
-		out := decodeJSONMap(r.Status.PromotionStrategyContext.ResponseOutput.Raw)
+		out := decodeJSONMap(r.Status.PromotionStrategyContext.ResponseOutput)
 		Expect(out["totalRecordCount"]).To(BeNumerically("==", 2))
 		Expect(out["approvedCount"]).To(BeNumerically("==", 1))
 	})
