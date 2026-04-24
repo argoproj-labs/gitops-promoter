@@ -33,13 +33,14 @@ func (simCommitRenderer) EmitCommitStatus(ctx context.Context, wrcs *promoterv1a
 	return renderCommitStatus(ctx, wrcs, repositoryRefName, branch, sha, phase, td)
 }
 
-// simRenderedRequestsSink implements webrequest.RenderedHTTPSink into types.Result.RenderedRequests.
-type simRenderedRequestsSink struct {
-	dst *[]types.RenderedRequest
+// renderedRequestsCollector implements webrequest.RenderedHTTPSink by appending into the slice
+// that becomes types.Result.RenderedRequests.
+type renderedRequestsCollector struct {
+	out *[]types.RenderedRequest
 }
 
-func (s *simRenderedRequestsSink) Accept(r webrequest.RenderedHTTPRequest) {
-	*s.dst = append(*s.dst, types.RenderedRequest{
+func (c *renderedRequestsCollector) RecordRenderedHTTP(r webrequest.RenderedHTTPRequest) {
+	*c.out = append(*c.out, types.RenderedRequest{
 		Branch: r.Branch, Method: r.Method, URL: r.URL, Headers: r.Headers, Body: r.Body,
 	})
 }
@@ -76,7 +77,7 @@ func simulateEnvironments(
 	exec := &mockHTTPEXecutor{response: args.HTTPResponse}
 
 	var rendered []types.RenderedRequest
-	httpSink := &simRenderedRequestsSink{dst: &rendered}
+	renderedHTTP := &renderedRequestsCollector{out: &rendered}
 
 	out, err := webrequest.ProcessWebRequestCommitStatusEnvironments(ctx, webrequest.ProcessWebRequestCommitStatusEnvironmentsInput{
 		Evaluator:              evaluator,
@@ -85,7 +86,7 @@ func simulateEnvironments(
 		PromotionStrategy:      ps,
 		NamespaceMeta:          args.NamespaceMetadata,
 		CommitEmitter:          simCommitRenderer{},
-		RenderedHTTPSink:       httpSink,
+		RenderedHTTPSink:       renderedHTTP,
 	})
 	if err != nil {
 		return nil, err
@@ -110,7 +111,7 @@ func simulatePromotionStrategy(
 	exec := &mockHTTPEXecutor{response: args.HTTPResponse}
 
 	var rendered []types.RenderedRequest
-	httpSink := &simRenderedRequestsSink{dst: &rendered}
+	renderedHTTP := &renderedRequestsCollector{out: &rendered}
 
 	out, err := webrequest.ProcessWebRequestCommitStatusPromotionStrategyContext(ctx, webrequest.ProcessWebRequestCommitStatusPromotionStrategyInput{
 		Evaluator:              evaluator,
@@ -119,7 +120,7 @@ func simulatePromotionStrategy(
 		PromotionStrategy:      ps,
 		NamespaceMeta:          args.NamespaceMetadata,
 		CommitEmitter:          simCommitRenderer{},
-		RenderedHTTPSink:       httpSink,
+		RenderedHTTPSink:       renderedHTTP,
 	})
 	if err != nil {
 		return nil, err
