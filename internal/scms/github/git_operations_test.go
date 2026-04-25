@@ -101,14 +101,21 @@ var _ = Describe("GetClient", func() {
 			}
 
 			var wg sync.WaitGroup
+			errCh := make(chan error, numGoroutines)
 			for i := 0; i < numGoroutines; i++ {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
-					_, _, _ = GetClient(context.Background(), scmProvider, secret, installLogin)
+					_, _, err := GetClient(context.Background(), scmProvider, secret, installLogin)
+					errCh <- err
 				}()
 			}
 			wg.Wait()
+			close(errCh)
+
+			for err := range errCh {
+				Expect(err).NotTo(HaveOccurred())
+			}
 
 			// Without the fix, every goroutine that discovered the empty cache goes on
 			// to acquire the write lock and redundantly calls ListInstallations, so

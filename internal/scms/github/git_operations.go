@@ -116,10 +116,13 @@ func getUrls(domain string) (enterprise bool, baseUrl, uploadUrl string) {
 // orgAppId and the value type is int64.
 var installationIds sync.Map
 
-// orgAppId is a composite key of organization and app ID for caching installation IDs.
+// orgAppId is a composite key of organization, app ID, and domain for caching
+// installation IDs.  The domain is included so that identically-named orgs on
+// different GitHub Enterprise instances (or github.com) cannot collide.
 type orgAppId struct {
-	org string
-	id  int64
+	org    string
+	appID  int64
+	domain string
 }
 
 // appInstallationIdGroup deduplicates concurrent ListInstallations calls that
@@ -156,10 +159,13 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 		return getInstallationClient(scmProvider, secret, scmProvider.GetSpec().GitHub.InstallationID)
 	}
 
-	if val, found := installationIds.Load(orgAppId{org: org, id: scmProvider.GetSpec().GitHub.AppID}); found {
+	if val, found := installationIds.Load(orgAppId{org: org, appID: scmProvider.GetSpec().GitHub.AppID, domain: scmProvider.GetSpec().GitHub.Domain}); found {
 		id, ok := val.(int64)
 		if !ok {
-			return nil, nil, fmt.Errorf("unexpected type in installationIds cache for org %s", org)
+			return nil, nil, fmt.Errorf(
+				"unexpected type in installationIds cache for org %s, appID %d, domain %q: got %T (%v)",
+				org, scmProvider.GetSpec().GitHub.AppID, scmProvider.GetSpec().GitHub.Domain, val, val,
+			)
 		}
 		logger.V(4).Info("found cached installation ID", "org", org, "id", id, "scmProvider", scmProvider.GetName())
 		return getInstallationClient(scmProvider, secret, id)
@@ -194,7 +200,7 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 
 		for _, installation := range allInstallations {
 			if installation.Account != nil && installation.Account.Login != nil && installation.ID != nil {
-				installationIds.Store(orgAppId{org: *installation.Account.Login, id: scmProvider.GetSpec().GitHub.AppID}, *installation.ID)
+				installationIds.Store(orgAppId{org: *installation.Account.Login, appID: scmProvider.GetSpec().GitHub.AppID, domain: scmProvider.GetSpec().GitHub.Domain}, *installation.ID)
 				logger.V(4).Info("cached installation ID", "org", *installation.Account.Login, "id", *installation.ID, "scmProvider", scmProvider.GetName())
 			}
 		}
@@ -210,13 +216,16 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 		logger.V(4).Info("singleflight deduplicated concurrent installations lookup", "org", org, "scmProvider", scmProvider.GetName())
 	}
 
-	val, found := installationIds.Load(orgAppId{org: org, id: scmProvider.GetSpec().GitHub.AppID})
+	val, found := installationIds.Load(orgAppId{org: org, appID: scmProvider.GetSpec().GitHub.AppID, domain: scmProvider.GetSpec().GitHub.Domain})
 	if !found {
 		return nil, nil, fmt.Errorf("installation of app %d not found for org: %s", scmProvider.GetSpec().GitHub.AppID, org)
 	}
 	id, ok := val.(int64)
 	if !ok {
-		return nil, nil, fmt.Errorf("unexpected type in installationIds cache for org %s", org)
+		return nil, nil, fmt.Errorf(
+			"unexpected type in installationIds cache for org %s, appID %d, domain %q: got %T (%v)",
+			org, scmProvider.GetSpec().GitHub.AppID, scmProvider.GetSpec().GitHub.Domain, val, val,
+		)
 	}
 	logger.V(4).Info("found installation ID after listing installations", "org", org, "id", id, "scmProvider", scmProvider.GetName())
 	return getInstallationClient(scmProvider, secret, id)
