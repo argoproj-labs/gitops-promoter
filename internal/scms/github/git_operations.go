@@ -157,7 +157,10 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 	}
 
 	if val, found := installationIds.Load(orgAppId{org: org, id: scmProvider.GetSpec().GitHub.AppID}); found {
-		id := val.(int64)
+		id, ok := val.(int64)
+		if !ok {
+			return nil, nil, fmt.Errorf("unexpected type in installationIds cache for org %s", org)
+		}
 		logger.V(4).Info("found cached installation ID", "org", org, "id", id, "scmProvider", scmProvider.GetName())
 		return getInstallationClient(scmProvider, secret, id)
 	}
@@ -211,7 +214,10 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 	if !found {
 		return nil, nil, fmt.Errorf("installation of app %d not found for org: %s", scmProvider.GetSpec().GitHub.AppID, org)
 	}
-	id := val.(int64)
+	id, ok := val.(int64)
+	if !ok {
+		return nil, nil, fmt.Errorf("unexpected type in installationIds cache for org %s", org)
+	}
 	logger.V(4).Info("found installation ID after listing installations", "org", org, "id", id, "scmProvider", scmProvider.GetName())
 	return getInstallationClient(scmProvider, secret, id)
 }
