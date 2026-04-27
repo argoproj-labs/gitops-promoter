@@ -121,8 +121,8 @@ var installationIds sync.Map
 // different GitHub Enterprise instances (or github.com) cannot collide.
 type orgAppId struct {
 	org    string
-	appID  int64
 	domain string
+	appID  int64
 }
 
 // appInstallationIdGroup deduplicates concurrent ListInstallations calls that
