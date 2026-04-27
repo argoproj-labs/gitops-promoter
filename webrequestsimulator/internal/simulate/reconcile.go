@@ -55,70 +55,34 @@ func Simulate(ctx context.Context, args Args) (*simulatortypes.Result, error) {
 		return nil, errors.New("PromotionStrategy is required")
 	}
 
-	wrcs := args.WebRequestCommitStatus
+	wrcs := args.WebRequestCommitStatus.DeepCopy()
 	ps := args.PromotionStrategy
 
+	var (
+		exec           *mockHTTPEXecutor
+		commitStatuses []*promoterv1alpha1.CommitStatus
+		err            error
+	)
 	if wrcs.Spec.Mode.Context == promoterv1alpha1.ContextPromotionStrategy {
-		return processContextPromotionStrategy(ctx, args, wrcs, ps)
-	}
-	return processEnvironments(ctx, args, wrcs, ps)
-}
-
-// processEnvironments mirrors WebRequestCommitStatusReconciler.processEnvironments: calls
-// webrequest.ReconcileWebRequestCommitStatusEnvironments with a mock HTTP executor.
-func processEnvironments(
-	ctx context.Context,
-	args Args,
-	wrcs *promoterv1alpha1.WebRequestCommitStatus,
-	ps *promoterv1alpha1.PromotionStrategy,
-) (*simulatortypes.Result, error) {
-	var rendered []simulatortypes.RenderedRequest
-	exec := newMockHTTPEXecutor(newResolveFromSliceByBranch(args.HTTPResponses), &rendered)
-
-	out, err := webrequest.ReconcileWebRequestCommitStatusEnvironments(ctx, webrequest.ReconcileWebRequestCommitStatusInput{
-		HttpExec:               exec,
-		WebRequestCommitStatus: wrcs,
-		PromotionStrategy:      ps,
-		NamespaceMeta:          args.NamespaceMetadata,
-		CommitEmitter:          simulatedCommitEmitter{},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("simulate environments reconcile: %w", err)
+		exec = newMockHTTPEXecutor(newResolveFromSliceFirst(args.HTTPResponses))
+		wr := webrequest.NewReconciler(exec, simulatedCommitEmitter{})
+		commitStatuses, _, _, err = wr.ReconcileWebRequestCommitStatusPromotionStrategy(ctx, wrcs, ps, args.NamespaceMetadata)
+		if err != nil {
+			return nil, fmt.Errorf("simulate promotionstrategy reconcile: %w", err)
+		}
+	} else {
+		exec = newMockHTTPEXecutor(newResolveFromSliceByBranch(args.HTTPResponses))
+		wr := webrequest.NewReconciler(exec, simulatedCommitEmitter{})
+		commitStatuses, _, _, err = wr.ReconcileWebRequestCommitStatusEnvironments(ctx, wrcs, ps, args.NamespaceMetadata)
+		if err != nil {
+			return nil, fmt.Errorf("simulate environments reconcile: %w", err)
+		}
 	}
 
 	return &simulatortypes.Result{
-		Status:           out.WebRequestCommitStatusStatus,
-		RenderedRequests: rendered,
-		CommitStatuses:   out.CommitStatuses,
-	}, nil
-}
-
-// processContextPromotionStrategy mirrors WebRequestCommitStatusReconciler.processContextPromotionStrategy:
-// calls webrequest.ReconcileWebRequestCommitStatusPromotionStrategy with a mock HTTP executor.
-func processContextPromotionStrategy(
-	ctx context.Context,
-	args Args,
-	wrcs *promoterv1alpha1.WebRequestCommitStatus,
-	ps *promoterv1alpha1.PromotionStrategy,
-) (*simulatortypes.Result, error) {
-	var rendered []simulatortypes.RenderedRequest
-	exec := newMockHTTPEXecutor(newResolveFromSliceFirst(args.HTTPResponses), &rendered)
-
-	out, err := webrequest.ReconcileWebRequestCommitStatusPromotionStrategy(ctx, webrequest.ReconcileWebRequestCommitStatusInput{
-		HttpExec:               exec,
-		WebRequestCommitStatus: wrcs,
-		PromotionStrategy:      ps,
-		NamespaceMeta:          args.NamespaceMetadata,
-		CommitEmitter:          simulatedCommitEmitter{},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("simulate promotionstrategy reconcile: %w", err)
-	}
-
-	return &simulatortypes.Result{
-		Status:           out.WebRequestCommitStatusStatus,
-		RenderedRequests: rendered,
-		CommitStatuses:   out.CommitStatuses,
+		Status:           wrcs.Status,
+		RenderedRequests: exec.Rendered(),
+		CommitStatuses:   commitStatuses,
 	}, nil
 }
 
