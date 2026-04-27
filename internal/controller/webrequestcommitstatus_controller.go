@@ -194,7 +194,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 	// Clear the promotionstrategy-context status; this path uses per-environment status instead.
 	wrcs.Status.PromotionStrategyContext = nil
 
-	out, err := webrequest.ProcessWebRequestCommitStatusEnvironments(ctx, webrequest.ProcessWebRequestCommitStatusInput{
+	out, err := webrequest.ReconcileWebRequestCommitStatusEnvironments(ctx, webrequest.ReconcileWebRequestCommitStatusInput{
 		HttpExec:               r,
 		WebRequestCommitStatus: wrcs,
 		PromotionStrategy:      ps,
@@ -205,14 +205,14 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		return nil, nil, 0, fmt.Errorf("process WebRequestCommitStatus environments: %w", err)
 	}
 
-	wrcs.Status.Environments = out.Environments
-	return out.TransitionedBranches, out.CommitStatuses, requeueDuration(wrcs.Spec.Mode), nil
+	wrcs.Status.Environments = out.WebRequestCommitStatusStatus.Environments
+	return out.TransitionedBranches, out.CommitStatuses, out.RequeueAfter, nil
 }
 
 // processContextPromotionStrategy runs when mode.context is "promotionstrategy": at most one HTTP request
 // per WebRequestCommitStatus; phase(s) are applied to a CommitStatus per environment (each with that environment's reportOn SHA).
 func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, namespaceMeta webrequest.NamespaceMetadata) ([]string, []*promoterv1alpha1.CommitStatus, time.Duration, error) {
-	out, err := webrequest.ProcessWebRequestCommitStatusPromotionStrategyContext(ctx, webrequest.ProcessWebRequestCommitStatusInput{
+	out, err := webrequest.ReconcileWebRequestCommitStatusPromotionStrategy(ctx, webrequest.ReconcileWebRequestCommitStatusInput{
 		HttpExec:               r,
 		WebRequestCommitStatus: wrcs,
 		PromotionStrategy:      ps,
@@ -223,18 +223,9 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 		return nil, nil, 0, fmt.Errorf("process WebRequestCommitStatus promotionstrategy context: %w", err)
 	}
 
-	if out.ApplicableEnvsEmpty {
-		wrcs.Status.Environments = nil
-		wrcs.Status.PromotionStrategyContext = nil
-		return nil, nil, 0, nil
-	}
-	if out.PollingAllSuccessSkip {
-		return nil, out.CommitStatuses, wrcs.Spec.Mode.Polling.Interval.Duration, nil
-	}
-
-	wrcs.Status.Environments = nil
-	wrcs.Status.PromotionStrategyContext = out.PromotionStrategyContext
-	return out.TransitionedBranches, out.CommitStatuses, requeueDuration(wrcs.Spec.Mode), nil
+	wrcs.Status.Environments = out.WebRequestCommitStatusStatus.Environments
+	wrcs.Status.PromotionStrategyContext = out.WebRequestCommitStatusStatus.PromotionStrategyContext
+	return out.TransitionedBranches, out.CommitStatuses, out.RequeueAfter, nil
 }
 
 // wrcsCommitUpserter implements webrequest.CommitStatusEmitter using SSA upsert.
@@ -255,17 +246,6 @@ func (r *WebRequestCommitStatusReconciler) Execute(ctx context.Context, wrcs *pr
 	return resp, nil
 }
 
-// requeueDuration returns the requeue interval from the mode spec.
-func requeueDuration(mode promoterv1alpha1.ModeSpec) time.Duration {
-	if mode.Polling != nil {
-		return mode.Polling.Interval.Duration
-	}
-	if mode.Trigger != nil {
-		return mode.Trigger.RequeueDuration.Duration
-	}
-	return 0
-}
-
 // makeHTTPRequest builds and executes the HTTP request from the WebRequestCommitStatus spec. It renders
 // URL, body, and headers from TemplateData, applies authentication (basic, bearer, OAuth2, or TLS), uses the
 // configured timeout, and parses the response body as JSON or plain text. The returned HTTPResponse is used
@@ -275,7 +255,7 @@ func requeueDuration(mode promoterv1alpha1.ModeSpec) time.Duration {
 func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, templateData webrequest.TemplateData) (webrequest.HTTPResponse, error) {
 	logger := log.FromContext(ctx)
 
-	rendered, err := webrequest.RenderHTTPRequestTemplates(wrcs, templateData)
+	rendered, err := webrequest.BuildRenderedHTTPRequestFromTemplates(wrcs, templateData)
 	if err != nil {
 		return webrequest.HTTPResponse{}, fmt.Errorf("failed to render HTTP request templates: %w", err)
 	}
