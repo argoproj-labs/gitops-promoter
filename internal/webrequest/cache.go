@@ -64,12 +64,6 @@ func (c *compileCache) put(key expressionCacheKey, program *vm.Program) {
 	c.lru.Add(key, program)
 }
 
-func (c *compileCache) itemCount() int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.lru.Len()
-}
-
 // expressionCacheKey identifies a compiled expression in the cache. Prefix distinguishes entries so the same
 // source expression compiled with different options (e.g. trigger vs validation) stays separate.
 type expressionCacheKey struct {
