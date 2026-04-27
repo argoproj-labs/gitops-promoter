@@ -123,19 +123,9 @@ func processContextPromotionStrategy(
 	if out.PollingAllSuccessSkip {
 		// Core does not write WRCS status on this path; mirror the pre-refactor simulator snapshot for round-tripping.
 		st := wrcs.Status.DeepCopy()
-		if st == nil {
-			st = &promoterv1alpha1.WebRequestCommitStatusStatus{}
-		}
 		st.Environments = nil
-		if wrcs.Status.PromotionStrategyContext != nil {
-			st.PromotionStrategyContext = wrcs.Status.PromotionStrategyContext.DeepCopy()
-		}
-		statusCopy := st.DeepCopy()
-		if statusCopy == nil {
-			return nil, errors.New("internal error: DeepCopy returned nil for carried status snapshot")
-		}
 		return &simulatortypes.Result{
-			Status:           *statusCopy,
+			Status:           *st,
 			RenderedRequests: rendered,
 			CommitStatuses:   out.CommitStatuses,
 		}, nil
