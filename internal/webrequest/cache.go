@@ -31,16 +31,16 @@ const maxCompiledExpressionCacheEntries = 4096
 // compileCache is an LRU of compiled programs (github.com/golang/groupcache/lru) keyed by
 // (prefix, expression). The upstream lru.Cache is not safe for concurrent use; a mutex serializes get/put.
 type compileCache struct {
-	mu  sync.Mutex
 	lru *lru.Cache
+	mu  sync.Mutex
 }
 
-func newCompileCache(max int) *compileCache {
-	if max < 1 {
-		max = maxCompiledExpressionCacheEntries
+func newCompileCache(maxEntries int) *compileCache {
+	if maxEntries < 1 {
+		maxEntries = maxCompiledExpressionCacheEntries
 	}
 	return &compileCache{
-		lru: lru.New(max),
+		lru: lru.New(maxEntries),
 	}
 }
 
@@ -71,7 +71,7 @@ type expressionCacheKey struct {
 	Expression string
 }
 
-// newExpressionEvaluatorWithCompileCacheMax returns an evaluator whose compile LRU capacity is max (tests).
-func newExpressionEvaluatorWithCompileCacheMax(max int) *ExpressionEvaluator {
-	return &ExpressionEvaluator{cache: newCompileCache(max)}
+// newExpressionEvaluatorWithCompileCacheMax returns an evaluator whose compile LRU capacity is maxEntries (tests).
+func newExpressionEvaluatorWithCompileCacheMax(maxEntries int) *ExpressionEvaluator {
+	return &ExpressionEvaluator{cache: newCompileCache(maxEntries)}
 }
