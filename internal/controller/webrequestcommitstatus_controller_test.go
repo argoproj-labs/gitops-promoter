@@ -2786,7 +2786,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy 
 			var fetched promoterv1alpha1.WebRequestCommitStatus
 			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)).To(Succeed())
 			g.Expect(fetched.Status.PromotionStrategyContext).To(BeNil(),
-				"processContextPromotionStrategy clears promotionStrategyContext when applicableEnvs is empty")
+				"promotionstrategy-context reconcile clears promotionStrategyContext when applicableEnvs is empty")
 			g.Expect(fetched.Status.Environments).To(BeEmpty())
 		}, constants.EventuallyTimeout).Should(Succeed())
 
