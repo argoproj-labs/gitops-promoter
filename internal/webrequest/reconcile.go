@@ -42,17 +42,13 @@ type ReconcileWebRequestCommitStatusInput struct {
 	CommitEmitter CommitStatusEmitter
 }
 
-// ReconcileWebRequestCommitStatusEnvironmentsOutput is the computed status and CommitStatus list for one reconcile.
-type ReconcileWebRequestCommitStatusEnvironmentsOutput struct {
-	Environments         []promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
-	CommitStatuses       []*promoterv1alpha1.CommitStatus
-	TransitionedBranches []string
-}
-
-// ReconcileWebRequestCommitStatusPromotionStrategyOutput is the computed status for promotionstrategy context.
-// WebRequestCommitStatusStatus holds only Environments and PromotionStrategyContext; other WRCS status fields
+// ReconcileWebRequestCommitStatusOutput is the computed WRCS status and CommitStatus list for one reconcile.
+// Used for both mode.context values. WebRequestCommitStatusStatus: in environments context only Environments
+// is set (the controller clears PromotionStrategyContext first); in promotionstrategy context Environments
+// and/or PromotionStrategyContext are set per reconcile path. RequeueAfter is the WRCS requeue (0 when
+// appropriate, e.g. no applicable environments in promotionstrategy context). Other WRCS status fields
 // (conditions, observedGeneration) are managed by the controller after this returns.
-type ReconcileWebRequestCommitStatusPromotionStrategyOutput struct {
+type ReconcileWebRequestCommitStatusOutput struct {
 	WebRequestCommitStatusStatus promoterv1alpha1.WebRequestCommitStatusStatus
 	CommitStatuses               []*promoterv1alpha1.CommitStatus
 	TransitionedBranches         []string
@@ -311,8 +307,8 @@ func BuildRenderedHTTPRequestFromTemplates(wrcs *promoterv1alpha1.WebRequestComm
 }
 
 // ReconcileWebRequestCommitStatusEnvironments runs the per-environment WebRequestCommitStatus reconcile logic.
-// It does not mutate wrcs.Status; callers apply Environments and handle PromotionStrategyContext clearing.
-func ReconcileWebRequestCommitStatusEnvironments(ctx context.Context, in ReconcileWebRequestCommitStatusInput) (*ReconcileWebRequestCommitStatusEnvironmentsOutput, error) {
+// It does not mutate wrcs.Status; callers apply WebRequestCommitStatusStatus, RequeueAfter, and handle PromotionStrategyContext clearing.
+func ReconcileWebRequestCommitStatusEnvironments(ctx context.Context, in ReconcileWebRequestCommitStatusInput) (*ReconcileWebRequestCommitStatusOutput, error) {
 	logger := log.FromContext(ctx)
 	wrcs := in.WebRequestCommitStatus
 	ps := in.PromotionStrategy
@@ -338,8 +334,10 @@ func ReconcileWebRequestCommitStatusEnvironments(ctx context.Context, in Reconci
 		return nil, fmt.Errorf("failed to resolve current SHAs: %w", err)
 	}
 
-	out := &ReconcileWebRequestCommitStatusEnvironmentsOutput{
-		Environments:   make([]promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus, 0, len(applicableEnvs)),
+	out := &ReconcileWebRequestCommitStatusOutput{
+		WebRequestCommitStatusStatus: promoterv1alpha1.WebRequestCommitStatusStatus{
+			Environments: make([]promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus, 0, len(applicableEnvs)),
+		},
 		CommitStatuses: make([]*promoterv1alpha1.CommitStatus, 0, len(applicableEnvs)),
 	}
 
@@ -368,7 +366,7 @@ func ReconcileWebRequestCommitStatusEnvironments(ctx context.Context, in Reconci
 		if wrcs.Spec.Mode.Polling != nil && wrcs.Spec.ReportOn == constants.CommitRefProposed {
 			if lastReconciledEnvStatus != nil && lastState.Phase == string(promoterv1alpha1.CommitPhaseSuccess) && lastSuccessfulSha == reportedSha {
 				logger.V(4).Info("Skipping already successful SHA in polling mode", "branch", branch, "sha", reportedSha)
-				out.Environments = append(out.Environments, *lastReconciledEnvStatus)
+				out.WebRequestCommitStatusStatus.Environments = append(out.WebRequestCommitStatusStatus.Environments, *lastReconciledEnvStatus)
 				cs, err := in.CommitEmitter.EmitCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, reportedSha, promoterv1alpha1.CommitPhaseSuccess, td)
 				if err != nil {
 					return nil, fmt.Errorf("failed to upsert CommitStatus for skipped environment %q: %w", branch, err)
@@ -401,7 +399,7 @@ func ReconcileWebRequestCommitStatusEnvironments(ctx context.Context, in Reconci
 			return nil, fmt.Errorf("failed to marshal trigger data: %w", err)
 		}
 
-		out.Environments = append(out.Environments, promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus{
+		out.WebRequestCommitStatusStatus.Environments = append(out.WebRequestCommitStatusStatus.Environments, promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus{
 			Branch:                 branch,
 			ReportedSha:            reportedSha,
 			LastSuccessfulSha:      lastSuccessfulSha,
@@ -424,6 +422,7 @@ func ReconcileWebRequestCommitStatusEnvironments(ctx context.Context, in Reconci
 		logger.Info("Processed environment", "branch", branch, "reportedSha", reportedSha, "phase", result.Phase, "triggered", decision.ShouldFire)
 	}
 
+	out.RequeueAfter = requeueDurationForMode(wrcs.Spec.Mode)
 	return out, nil
 }
 
@@ -440,14 +439,16 @@ func requeueDurationForMode(mode promoterv1alpha1.ModeSpec) time.Duration {
 
 // ReconcileWebRequestCommitStatusPromotionStrategy runs context=promotionstrategy reconcile logic.
 // It does not mutate wrcs.Status; callers apply WebRequestCommitStatusStatus and RequeueAfter from the output.
-func ReconcileWebRequestCommitStatusPromotionStrategy(ctx context.Context, in ReconcileWebRequestCommitStatusInput) (*ReconcileWebRequestCommitStatusPromotionStrategyOutput, error) {
+func ReconcileWebRequestCommitStatusPromotionStrategy(ctx context.Context, in ReconcileWebRequestCommitStatusInput) (*ReconcileWebRequestCommitStatusOutput, error) {
 	logger := log.FromContext(ctx)
 	wrcs := in.WebRequestCommitStatus
 	ps := in.PromotionStrategy
 
 	applicableEnvs := getApplicableEnvironments(ps, wrcs.Spec.Key, wrcs.Spec.ReportOn)
 	if len(applicableEnvs) == 0 {
-		return &ReconcileWebRequestCommitStatusPromotionStrategyOutput{
+		// RequeueAfter 0: do not schedule a timed requeue; the reconciler runs again on watch events
+		// (e.g. PromotionStrategy or WRCS spec changes) or informer resync—not on a polling interval.
+		return &ReconcileWebRequestCommitStatusOutput{
 			WebRequestCommitStatusStatus: promoterv1alpha1.WebRequestCommitStatusStatus{},
 			RequeueAfter:                 0,
 		}, nil
@@ -489,7 +490,7 @@ func ReconcileWebRequestCommitStatusPromotionStrategy(ctx context.Context, in Re
 				}
 				commitStatuses = append(commitStatuses, cs)
 			}
-			return &ReconcileWebRequestCommitStatusPromotionStrategyOutput{
+			return &ReconcileWebRequestCommitStatusOutput{
 				WebRequestCommitStatusStatus: promoterv1alpha1.WebRequestCommitStatusStatus{
 					PromotionStrategyContext: wrcsSnapshot.Status.PromotionStrategyContext.DeepCopy(),
 				},
@@ -567,7 +568,7 @@ func ReconcileWebRequestCommitStatusPromotionStrategy(ctx context.Context, in Re
 		commitStatuses = append(commitStatuses, cs)
 	}
 
-	return &ReconcileWebRequestCommitStatusPromotionStrategyOutput{
+	return &ReconcileWebRequestCommitStatusOutput{
 		WebRequestCommitStatusStatus: promoterv1alpha1.WebRequestCommitStatusStatus{
 			PromotionStrategyContext: psc,
 		},

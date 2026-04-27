@@ -205,8 +205,8 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		return nil, nil, 0, fmt.Errorf("process WebRequestCommitStatus environments: %w", err)
 	}
 
-	wrcs.Status.Environments = out.Environments
-	return out.TransitionedBranches, out.CommitStatuses, requeueDuration(wrcs.Spec.Mode), nil
+	wrcs.Status.Environments = out.WebRequestCommitStatusStatus.Environments
+	return out.TransitionedBranches, out.CommitStatuses, out.RequeueAfter, nil
 }
 
 // processContextPromotionStrategy runs when mode.context is "promotionstrategy": at most one HTTP request
@@ -244,17 +244,6 @@ func (r *WebRequestCommitStatusReconciler) Execute(ctx context.Context, wrcs *pr
 		return webrequest.HTTPResponse{}, fmt.Errorf("failed to make HTTP request: %w", err)
 	}
 	return resp, nil
-}
-
-// requeueDuration returns the requeue interval from the mode spec.
-func requeueDuration(mode promoterv1alpha1.ModeSpec) time.Duration {
-	if mode.Polling != nil {
-		return mode.Polling.Interval.Duration
-	}
-	if mode.Trigger != nil {
-		return mode.Trigger.RequeueDuration.Duration
-	}
-	return 0
 }
 
 // makeHTTPRequest builds and executes the HTTP request from the WebRequestCommitStatus spec. It renders
