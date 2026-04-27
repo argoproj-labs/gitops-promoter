@@ -33,18 +33,6 @@ func (simCommitRenderer) EmitCommitStatus(ctx context.Context, wrcs *promoterv1a
 	return renderCommitStatus(ctx, wrcs, repositoryRefName, branch, sha, phase, td)
 }
 
-// renderedRequestsCollector implements webrequest.RenderedHTTPCollector by appending into the slice
-// that becomes simulatortypes.Result.RenderedRequests.
-type renderedRequestsCollector struct {
-	out *[]simulatortypes.RenderedRequest
-}
-
-func (c *renderedRequestsCollector) CollectRenderedHTTP(r webrequest.RenderedHTTPRequest) {
-	*c.out = append(*c.out, simulatortypes.RenderedRequest{
-		Branch: r.Branch, Method: r.Method, URL: r.URL, Headers: r.Headers, Body: r.Body,
-	})
-}
-
 // Simulate runs one WebRequestCommitStatus reconcile against args, using
 // args.HTTPResponses in place of any real HTTP call. The returned Result.Status
 // matches what the controller would write to WebRequestCommitStatus.Status.
@@ -74,10 +62,8 @@ func simulateEnvironments(
 	ps *promoterv1alpha1.PromotionStrategy,
 ) (*simulatortypes.Result, error) {
 	evaluator := webrequest.NewEvaluator()
-	exec := newMockHTTPEXecutor(newResolveFromSliceByBranch(args.HTTPResponses))
-
 	var rendered []simulatortypes.RenderedRequest
-	renderedHTTP := &renderedRequestsCollector{out: &rendered}
+	exec := newMockHTTPEXecutor(newResolveFromSliceByBranch(args.HTTPResponses), &rendered)
 
 	out, err := webrequest.ProcessWebRequestCommitStatusEnvironments(ctx, webrequest.ProcessWebRequestCommitStatusInput{
 		Evaluator:              evaluator,
@@ -86,7 +72,6 @@ func simulateEnvironments(
 		PromotionStrategy:      ps,
 		NamespaceMeta:          args.NamespaceMetadata,
 		CommitEmitter:          simCommitRenderer{},
-		RenderedHTTPCollector:  renderedHTTP,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("simulate environments reconcile: %w", err)
@@ -108,10 +93,8 @@ func simulatePromotionStrategy(
 	ps *promoterv1alpha1.PromotionStrategy,
 ) (*simulatortypes.Result, error) {
 	evaluator := webrequest.NewEvaluator()
-	exec := newMockHTTPEXecutor(newResolveFromSliceFirst(args.HTTPResponses))
-
 	var rendered []simulatortypes.RenderedRequest
-	renderedHTTP := &renderedRequestsCollector{out: &rendered}
+	exec := newMockHTTPEXecutor(newResolveFromSliceFirst(args.HTTPResponses), &rendered)
 
 	out, err := webrequest.ProcessWebRequestCommitStatusPromotionStrategyContext(ctx, webrequest.ProcessWebRequestCommitStatusInput{
 		Evaluator:              evaluator,
@@ -120,7 +103,6 @@ func simulatePromotionStrategy(
 		PromotionStrategy:      ps,
 		NamespaceMeta:          args.NamespaceMetadata,
 		CommitEmitter:          simCommitRenderer{},
-		RenderedHTTPCollector:  renderedHTTP,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("simulate promotionstrategy reconcile: %w", err)

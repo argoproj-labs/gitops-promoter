@@ -281,42 +281,30 @@ func requeueDuration(mode promoterv1alpha1.ModeSpec) time.Duration {
 func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, templateData webrequest.TemplateData) (webrequest.HTTPResponse, error) {
 	logger := log.FromContext(ctx)
 
-	// Render URL template
-	url, err := utils.RenderStringTemplate(wrcs.Spec.HTTPRequest.URLTemplate, templateData)
+	rendered, err := webrequest.RenderHTTPRequestTemplates(wrcs, templateData)
 	if err != nil {
-		return webrequest.HTTPResponse{}, fmt.Errorf("failed to render URL template: %w", err)
+		return webrequest.HTTPResponse{}, err
 	}
 
 	// When Scm is configured, credentials are sourced directly from the SCM provider, so the
 	// URL host must belong to that provider's allowed domains to prevent credential leakage.
 	if wrcs.Spec.HTTPRequest.Authentication != nil && wrcs.Spec.HTTPRequest.Authentication.Scm != nil {
-		if err := r.validateURLHostAgainstScmProvider(ctx, wrcs, url); err != nil {
+		if err := r.validateURLHostAgainstScmProvider(ctx, wrcs, rendered.URL); err != nil {
 			return webrequest.HTTPResponse{}, fmt.Errorf("SCM host validation failed: %w", err)
 		}
 	}
 
-	// Render body template if present
 	var body io.Reader
 	if wrcs.Spec.HTTPRequest.BodyTemplate != "" {
-		bodyStr, err := utils.RenderStringTemplate(wrcs.Spec.HTTPRequest.BodyTemplate, templateData)
-		if err != nil {
-			return webrequest.HTTPResponse{}, fmt.Errorf("failed to render body template: %w", err)
-		}
-		body = strings.NewReader(bodyStr)
+		body = strings.NewReader(rendered.Body)
 	}
 
-	// Create request
-	req, err := http.NewRequestWithContext(ctx, wrcs.Spec.HTTPRequest.Method, url, body)
+	req, err := http.NewRequestWithContext(ctx, rendered.Method, rendered.URL, body)
 	if err != nil {
 		return webrequest.HTTPResponse{}, fmt.Errorf("failed to create HTTP request: %w", err)
 	}
 
-	// Render and set headers
-	for headerName, headerTemplate := range wrcs.Spec.HTTPRequest.HeaderTemplates {
-		headerValue, err := utils.RenderStringTemplate(headerTemplate, templateData)
-		if err != nil {
-			return webrequest.HTTPResponse{}, fmt.Errorf("failed to render header template %q: %w", headerName, err)
-		}
+	for headerName, headerValue := range rendered.Headers {
 		req.Header.Set(headerName, headerValue)
 	}
 
@@ -345,7 +333,7 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	defer cancel()
 	req = req.WithContext(reqCtx)
 
-	logger.V(4).Info("Making HTTP request", "method", wrcs.Spec.HTTPRequest.Method, "url", url)
+	logger.V(4).Info("Making HTTP request", "method", rendered.Method, "url", rendered.URL)
 
 	// Execute request (metrics: counter and histogram only after Do; duration is Do through body read).
 	httpMetricsStart := time.Now()

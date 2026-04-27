@@ -22,22 +22,48 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/webrequest"
+	"github.com/argoproj-labs/gitops-promoter/webrequestsimulator/simulatortypes"
 )
 
 // mockHTTPEXecutor implements webrequest.HTTPEXecutor using an injected resolve(branch).
 type mockHTTPEXecutor struct {
-	resolve func(branch string) (*webrequest.HTTPResponse, error)
+	resolve  func(branch string) (*webrequest.HTTPResponse, error)
+	rendered *[]simulatortypes.RenderedRequest
 }
 
-func newMockHTTPEXecutor(resolve func(branch string) (*webrequest.HTTPResponse, error)) *mockHTTPEXecutor {
+func newMockHTTPEXecutor(resolve func(branch string) (*webrequest.HTTPResponse, error), rendered *[]simulatortypes.RenderedRequest) *mockHTTPEXecutor {
 	if resolve == nil {
 		panic("newMockHTTPEXecutor: resolve is nil")
 	}
-	return &mockHTTPEXecutor{resolve: resolve}
+	return &mockHTTPEXecutor{resolve: resolve, rendered: rendered}
 }
 
-func (e *mockHTTPEXecutor) Execute(_ context.Context, _ *promoterv1alpha1.WebRequestCommitStatus, td webrequest.TemplateData) (webrequest.HTTPResponse, error) {
-	resp, err := e.resolve(td.Branch)
+func (e *mockHTTPEXecutor) Execute(_ context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, td webrequest.TemplateData) (webrequest.HTTPResponse, error) {
+	return makeHTTPRequest(wrcs, td, e.resolve, e.rendered)
+}
+
+// makeHTTPRequest runs the simulator HTTP round-trip: optionally records a rendered-request snapshot,
+// then returns the injected mock response for td.Branch.
+//
+// Unlike internal/controller.WebRequestCommitStatusReconciler.makeHTTPRequest, this path does not
+// validate URLs against SCM providers, apply authentication, attach timeouts, perform metrics, or
+// issue real network requests.
+func makeHTTPRequest(
+	wrcs *promoterv1alpha1.WebRequestCommitStatus,
+	td webrequest.TemplateData,
+	resolve func(branch string) (*webrequest.HTTPResponse, error),
+	rendered *[]simulatortypes.RenderedRequest,
+) (webrequest.HTTPResponse, error) {
+	if rendered != nil {
+		req, err := webrequest.RenderHTTPRequestTemplates(wrcs, td)
+		if err != nil {
+			return webrequest.HTTPResponse{}, err
+		}
+		*rendered = append(*rendered, simulatortypes.RenderedRequest{
+			Branch: req.Branch, Method: req.Method, URL: req.URL, Headers: req.Headers, Body: req.Body,
+		})
+	}
+	resp, err := resolve(td.Branch)
 	if err != nil {
 		return webrequest.HTTPResponse{}, err
 	}

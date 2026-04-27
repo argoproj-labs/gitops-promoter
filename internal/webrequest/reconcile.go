@@ -39,9 +39,8 @@ type ProcessWebRequestCommitStatusInput struct {
 	WebRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
 	PromotionStrategy      *promoterv1alpha1.PromotionStrategy
 	// NamespaceMeta is passed into TemplateData for template rendering.
-	NamespaceMeta         NamespaceMetadata
-	CommitEmitter         CommitStatusEmitter
-	RenderedHTTPCollector RenderedHTTPCollector // optional; when non-nil, CollectRenderedHTTP is called after a successful template render when the trigger fires
+	NamespaceMeta NamespaceMetadata
+	CommitEmitter CommitStatusEmitter
 }
 
 // ProcessWebRequestCommitStatusEnvironmentsOutput is the computed status and CommitStatus list for one reconcile.
@@ -80,12 +79,6 @@ type CommitStatusEmitter interface {
 		phase promoterv1alpha1.CommitStatusPhase,
 		td TemplateData,
 	) (*promoterv1alpha1.CommitStatus, error)
-}
-
-// RenderedHTTPCollector receives fully rendered HTTP templates when the trigger fires (e.g. simulator output).
-// Leave nil in production: HTTPEXecutor already renders on the wire; collecting here would duplicate template work.
-type RenderedHTTPCollector interface {
-	CollectRenderedHTTP(r RenderedHTTPRequest)
 }
 
 // evaluateTriggerDecision determines whether the HTTP request should fire this reconcile.
@@ -281,8 +274,9 @@ func evaluateSuccessOutput(
 	return marshalJSONMap(extractedData)
 }
 
-// renderHTTPRequestTemplates renders URL, headers, and body from WebRequestCommitStatus HTTP templates.
-func renderHTTPRequestTemplates(wrcs *promoterv1alpha1.WebRequestCommitStatus, td TemplateData) (RenderedHTTPRequest, error) {
+// RenderHTTPRequestTemplates renders URL, headers, and body from WebRequestCommitStatus HTTP templates.
+// Used by HTTPEXecutor implementations (controller HTTP transport and simulator rendered-request snapshots).
+func RenderHTTPRequestTemplates(wrcs *promoterv1alpha1.WebRequestCommitStatus, td TemplateData) (RenderedHTTPRequest, error) {
 	req := RenderedHTTPRequest{
 		Branch: td.Branch,
 		Method: wrcs.Spec.HTTPRequest.Method,
@@ -415,14 +409,6 @@ func ProcessWebRequestCommitStatusEnvironments(ctx context.Context, in ProcessWe
 			return nil, fmt.Errorf("trigger decision for environment %q: %w", branch, err)
 		}
 
-		if decision.ShouldFire && in.RenderedHTTPCollector != nil {
-			req, err := renderHTTPRequestTemplates(wrcs, td)
-			if err != nil {
-				return nil, fmt.Errorf("failed to render HTTP request for environment %q: %w", branch, err)
-			}
-			in.RenderedHTTPCollector.CollectRenderedHTTP(req)
-		}
-
 		result, err := fireOrCarryForward(ctx, in.Evaluator, wrcs, td, decision, lastState, in.HttpExec)
 		if err != nil {
 			return nil, err
@@ -536,14 +522,6 @@ func ProcessWebRequestCommitStatusPromotionStrategyContext(ctx context.Context, 
 	decision, err := evaluateTriggerDecision(ctx, in.Evaluator, wrcs.Spec.Mode, td, lastState.LastRequestTime)
 	if err != nil {
 		return nil, fmt.Errorf("trigger decision (context=promotionstrategy): %w", err)
-	}
-
-	if decision.ShouldFire && in.RenderedHTTPCollector != nil {
-		req, err := renderHTTPRequestTemplates(wrcs, td)
-		if err != nil {
-			return nil, fmt.Errorf("failed to render shared HTTP request (context=promotionstrategy): %w", err)
-		}
-		in.RenderedHTTPCollector.CollectRenderedHTTP(req)
 	}
 
 	result, err := fireOrCarryForward(ctx, in.Evaluator, wrcs, td, decision, lastState, in.HttpExec)
