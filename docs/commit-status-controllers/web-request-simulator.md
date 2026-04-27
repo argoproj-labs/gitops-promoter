@@ -67,8 +67,8 @@ func TestSimulateGate(t *testing.T) {
         WebRequestCommitStatus: wrcs,
         PromotionStrategy:      ps,
         HTTPResponses: []simulatortypes.HTTPResponse{
-            {Branch: "dev",  Response: simulatortypes.Response{StatusCode: 200}},
-            {Branch: "prod", Response: simulatortypes.Response{StatusCode: 200}},
+            {Response: simulatortypes.Response{StatusCode: 200}, Branch: "dev"},
+            {Response: simulatortypes.Response{StatusCode: 200}, Branch: "prod"},
         },
     })
     if err != nil {
