@@ -466,7 +466,7 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 	})
 })
 
-var _ = Describe("Simulate engine", func() {
+var _ = Describe("webrequestsimulator.Simulate scenarios", func() {
 	var ctx context.Context
 
 	BeforeEach(func() {

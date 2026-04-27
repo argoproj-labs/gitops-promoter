@@ -14,9 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package engine implements the WebRequestCommitStatus reconcile simulator.
+// Package simulate implements the WebRequestCommitStatus reconcile simulator.
 // It is internal to webrequestsimulator (see Go internal directory rules).
-package engine
+package simulate
 
 import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -24,7 +24,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/webrequestsimulator/simulatortypes"
 )
 
-// Args carries everything the engine needs; the parent maps simulatortypes.Input here.
+// Args carries everything Simulate needs; the parent maps simulatortypes.Input here.
 type Args struct {
 	WebRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
 	PromotionStrategy      *promoterv1alpha1.PromotionStrategy

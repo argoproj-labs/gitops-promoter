@@ -21,7 +21,7 @@ import (
 	"fmt"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/webrequest"
-	"github.com/argoproj-labs/gitops-promoter/webrequestsimulator/internal/engine"
+	"github.com/argoproj-labs/gitops-promoter/webrequestsimulator/internal/simulate"
 	"github.com/argoproj-labs/gitops-promoter/webrequestsimulator/simulatortypes"
 )
 
@@ -35,7 +35,7 @@ import (
 //
 // Safe for concurrent use.
 func Simulate(ctx context.Context, in simulatortypes.Input) (*simulatortypes.Result, error) {
-	res, err := engine.Simulate(ctx, engine.Args{
+	res, err := simulate.Simulate(ctx, simulate.Args{
 		WebRequestCommitStatus: in.WebRequestCommitStatus,
 		PromotionStrategy:      in.PromotionStrategy,
 		NamespaceMetadata: webrequest.NamespaceMetadata{

@@ -26,6 +26,6 @@ limitations under the License.
 // be fed back into a subsequent Simulate() call via Input.WebRequestCommitStatus.Status
 // to simulate a follow-up reconcile with the accumulated trigger/response/success outputs.
 //
-// Implementation lives under internal/engine and is not importable outside the
+// Implementation lives under internal/simulate and is not importable outside the
 // webrequestsimulator directory tree.
 package webrequestsimulator
