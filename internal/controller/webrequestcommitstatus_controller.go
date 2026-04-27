@@ -122,14 +122,16 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 	}
 
 	// 4. Dispatch based on context mode
-	var transitionedEnvironments []string
-	var commitStatuses []*promoterv1alpha1.CommitStatus
-	var requeueAfter time.Duration
-
+	wr := webrequest.NewReconciler(r, wrcsCommitUpserter{r: r})
+	var (
+		commitStatuses           []*promoterv1alpha1.CommitStatus
+		transitionedEnvironments []string
+		requeueAfter             time.Duration
+	)
 	if wrcs.Spec.Mode.Context == promoterv1alpha1.ContextPromotionStrategy {
-		transitionedEnvironments, commitStatuses, requeueAfter, err = r.processContextPromotionStrategy(ctx, &wrcs, &ps, namespaceMeta)
+		commitStatuses, transitionedEnvironments, requeueAfter, err = wr.ReconcileWebRequestCommitStatusPromotionStrategy(ctx, &wrcs, &ps, namespaceMeta)
 	} else {
-		transitionedEnvironments, commitStatuses, requeueAfter, err = r.processEnvironments(ctx, &wrcs, &ps, namespaceMeta)
+		commitStatuses, transitionedEnvironments, requeueAfter, err = wr.ReconcileWebRequestCommitStatusEnvironments(ctx, &wrcs, &ps, namespaceMeta)
 	}
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to process WebRequestCommitStatus: %w", err)
@@ -183,49 +185,6 @@ func (r *WebRequestCommitStatusReconciler) SetupWithManager(ctx context.Context,
 		return fmt.Errorf("failed to create controller: %w", err)
 	}
 	return nil
-}
-
-// processEnvironments iterates over environments that reference this WebRequestCommitStatus's key. For each,
-// it evaluates the trigger expression; if it fires (or in polling mode), it makes the HTTP request and
-// runs the validation expression, then upserts the CommitStatus. It updates wrcs.Status.Environments and
-// returns the list of branches that transitioned to success, all created/updated CommitStatuses, and the
-// requeue duration (from spec or default).
-func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, namespaceMeta webrequest.NamespaceMetadata) ([]string, []*promoterv1alpha1.CommitStatus, time.Duration, error) {
-	// Clear the promotionstrategy-context status; this path uses per-environment status instead.
-	wrcs.Status.PromotionStrategyContext = nil
-
-	out, err := webrequest.ReconcileWebRequestCommitStatusEnvironments(ctx, webrequest.ReconcileWebRequestCommitStatusInput{
-		HttpExec:               r,
-		WebRequestCommitStatus: wrcs,
-		PromotionStrategy:      ps,
-		NamespaceMeta:          namespaceMeta,
-		CommitEmitter:          wrcsCommitUpserter{r: r},
-	})
-	if err != nil {
-		return nil, nil, 0, fmt.Errorf("process WebRequestCommitStatus environments: %w", err)
-	}
-
-	wrcs.Status.Environments = out.WebRequestCommitStatusStatus.Environments
-	return out.TransitionedBranches, out.CommitStatuses, out.RequeueAfter, nil
-}
-
-// processContextPromotionStrategy runs when mode.context is "promotionstrategy": at most one HTTP request
-// per WebRequestCommitStatus; phase(s) are applied to a CommitStatus per environment (each with that environment's reportOn SHA).
-func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, namespaceMeta webrequest.NamespaceMetadata) ([]string, []*promoterv1alpha1.CommitStatus, time.Duration, error) {
-	out, err := webrequest.ReconcileWebRequestCommitStatusPromotionStrategy(ctx, webrequest.ReconcileWebRequestCommitStatusInput{
-		HttpExec:               r,
-		WebRequestCommitStatus: wrcs,
-		PromotionStrategy:      ps,
-		NamespaceMeta:          namespaceMeta,
-		CommitEmitter:          wrcsCommitUpserter{r: r},
-	})
-	if err != nil {
-		return nil, nil, 0, fmt.Errorf("process WebRequestCommitStatus promotionstrategy context: %w", err)
-	}
-
-	wrcs.Status.Environments = out.WebRequestCommitStatusStatus.Environments
-	wrcs.Status.PromotionStrategyContext = out.WebRequestCommitStatusStatus.PromotionStrategyContext
-	return out.TransitionedBranches, out.CommitStatuses, out.RequeueAfter, nil
 }
 
 // wrcsCommitUpserter implements webrequest.CommitStatusEmitter using SSA upsert.
@@ -491,7 +450,7 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 
 // cleanupOrphanedCommitStatuses removes CommitStatus resources that are owned by this WebRequestCommitStatus
 // and labeled with its key but are not in validCommitStatuses (e.g. branches no longer in the strategy).
-// Called after processEnvironments so the cluster state matches the current set of applicable environments.
+// Called after the reconcile dispatch so the cluster state matches the current set of applicable environments.
 //
 //nolint:dupl // Similar to cleanupOrphanedChangeTransferPolicies but operates on different types
 func (r *WebRequestCommitStatusReconciler) cleanupOrphanedCommitStatuses(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, validCommitStatuses []*promoterv1alpha1.CommitStatus) error {
