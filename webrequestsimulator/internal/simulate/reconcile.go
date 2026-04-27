@@ -123,6 +123,9 @@ func processContextPromotionStrategy(
 	if out.PollingAllSuccessSkip {
 		// Core does not write WRCS status on this path; mirror the pre-refactor simulator snapshot for round-tripping.
 		st := wrcs.Status.DeepCopy()
+		// PS context reconciliation only persists PromotionStrategyContext (see non-skip return below and
+		// controller processContextPromotionStrategy, which nils Environments when applying PSC). Clear any
+		// stale per-env rows e.g. from a prior context=environments reconcile or test fixture.
 		st.Environments = nil
 		return &simulatortypes.Result{
 			Status:           *st,

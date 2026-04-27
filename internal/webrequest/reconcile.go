@@ -427,7 +427,7 @@ func ReconcileWebRequestCommitStatusEnvironments(ctx context.Context, in Reconci
 }
 
 // ReconcileWebRequestCommitStatusPromotionStrategy runs context=promotionstrategy reconcile logic.
-// It does not mutate wrcs.Status. Callers interpret ApplicableEnvsEmpty, PollingAllSuccessSkip, and PSC;
+// It does not mutate wrcs.Status. Callers interpret ApplicableEnvsEmpty, PollingAllSuccessSqkip, and PSC;
 // on PollingAllSuccessSkip, wrcs.Status is unchanged from the caller's input (same as production).
 func ReconcileWebRequestCommitStatusPromotionStrategy(ctx context.Context, in ReconcileWebRequestCommitStatusInput) (*ReconcileWebRequestCommitStatusPromotionStrategyOutput, error) {
 	logger := log.FromContext(ctx)

@@ -702,6 +702,51 @@ var _ = Describe("webrequestsimulator.Simulate scenarios", func() {
 			}
 		})
 
+		// Matches internal/webrequest.ReconcileWebRequestCommitStatusPromotionStrategy when polling +
+		// proposed fast-path skips HTTP (PollingAllSuccessSkip); simulator mirrors unchanged status with
+		// Environments cleared (same canonical shape as a normal PS reconcile apply).
+		It("polling skip: second reconcile with all branches success omits HTTP and drops stale Status.Environments", func() {
+			successExpr := `{ defaultPhase: "pending", environments: ` +
+				`[{ branch: "dev", phase: "success" }, { branch: "prod", phase: "success" }] }`
+			wrcs := basicWRCS(
+				promoterv1alpha1.ModeSpec{
+					Context: promoterv1alpha1.ContextPromotionStrategy,
+					Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}},
+				},
+				successExpr,
+			)
+			ps := twoEnvPromotionStrategy()
+
+			first, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+				WebRequestCommitStatus: wrcs,
+				PromotionStrategy:      ps,
+				HTTPResponses:          []simulatortypes.HTTPResponse{{Response: simulatortypes.Response{StatusCode: 200}}},
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(first.RenderedRequests).To(HaveLen(1))
+			Expect(first.Status.PromotionStrategyContext).ToNot(BeNil())
+			Expect(first.Status.PromotionStrategyContext.LastSuccessfulShas).ToNot(BeEmpty())
+
+			wrcs.Status = first.Status
+			wrcs.Status.Environments = []promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus{
+				{Branch: "dev", Phase: promoterv1alpha1.CommitPhaseSuccess},
+			}
+
+			second, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+				WebRequestCommitStatus: wrcs,
+				PromotionStrategy:      ps,
+				HTTPResponses:          nil,
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(second.RenderedRequests).To(BeEmpty())
+			Expect(second.Status.Environments).To(BeEmpty())
+			Expect(second.Status.PromotionStrategyContext).ToNot(BeNil())
+			Expect(second.CommitStatuses).To(HaveLen(2))
+			for _, p := range second.Status.PromotionStrategyContext.PhasePerBranch {
+				Expect(p.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			}
+		})
+
 		It("surfaces previous promotionstrategy-context outputs to expressions", func() {
 			wrcs := basicWRCS(
 				promoterv1alpha1.ModeSpec{
