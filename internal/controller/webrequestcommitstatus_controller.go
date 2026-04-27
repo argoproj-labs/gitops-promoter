@@ -223,18 +223,9 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 		return nil, nil, 0, fmt.Errorf("process WebRequestCommitStatus promotionstrategy context: %w", err)
 	}
 
-	if out.ApplicableEnvsEmpty {
-		wrcs.Status.Environments = nil
-		wrcs.Status.PromotionStrategyContext = nil
-		return nil, nil, 0, nil
-	}
-	if out.PollingAllSuccessSkip {
-		return nil, out.CommitStatuses, wrcs.Spec.Mode.Polling.Interval.Duration, nil
-	}
-
-	wrcs.Status.Environments = nil
-	wrcs.Status.PromotionStrategyContext = out.PromotionStrategyContext
-	return out.TransitionedBranches, out.CommitStatuses, requeueDuration(wrcs.Spec.Mode), nil
+	wrcs.Status.Environments = out.WebRequestCommitStatusStatus.Environments
+	wrcs.Status.PromotionStrategyContext = out.WebRequestCommitStatusStatus.PromotionStrategyContext
+	return out.TransitionedBranches, out.CommitStatuses, out.RequeueAfter, nil
 }
 
 // wrcsCommitUpserter implements webrequest.CommitStatusEmitter using SSA upsert.

@@ -702,9 +702,8 @@ var _ = Describe("webrequestsimulator.Simulate scenarios", func() {
 			}
 		})
 
-		// Matches internal/webrequest.ReconcileWebRequestCommitStatusPromotionStrategy when polling +
-		// proposed fast-path skips HTTP (PollingAllSuccessSkip); simulator mirrors unchanged status with
-		// Environments cleared (same canonical shape as a normal PS reconcile apply).
+		// Polling + proposed: when all branches already succeeded for current SHAs, core skips HTTP and
+		// returns Status with Environments cleared and PromotionStrategyContext preserved (same as controller).
 		It("polling skip: second reconcile with all branches success omits HTTP and drops stale Status.Environments", func() {
 			successExpr := `{ defaultPhase: "pending", environments: ` +
 				`[{ branch: "dev", phase: "success" }, { branch: "prod", phase: "success" }] }`

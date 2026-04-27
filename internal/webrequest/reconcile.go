@@ -50,12 +50,13 @@ type ReconcileWebRequestCommitStatusEnvironmentsOutput struct {
 }
 
 // ReconcileWebRequestCommitStatusPromotionStrategyOutput is the computed status for promotionstrategy context.
+// WebRequestCommitStatusStatus holds only Environments and PromotionStrategyContext; other WRCS status fields
+// (conditions, observedGeneration) are managed by the controller after this returns.
 type ReconcileWebRequestCommitStatusPromotionStrategyOutput struct {
-	PromotionStrategyContext *promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus
-	CommitStatuses           []*promoterv1alpha1.CommitStatus
-	TransitionedBranches     []string
-	ApplicableEnvsEmpty      bool
-	PollingAllSuccessSkip    bool
+	WebRequestCommitStatusStatus promoterv1alpha1.WebRequestCommitStatusStatus
+	CommitStatuses               []*promoterv1alpha1.CommitStatus
+	TransitionedBranches         []string
+	RequeueAfter                 time.Duration
 }
 
 // RenderedHTTPRequest is a fully rendered HTTP request template snapshot (diagnostics).
@@ -426,9 +427,19 @@ func ReconcileWebRequestCommitStatusEnvironments(ctx context.Context, in Reconci
 	return out, nil
 }
 
+// requeueDurationForMode matches controller WebRequestCommitStatus requeue behavior for WRCS mode spec.
+func requeueDurationForMode(mode promoterv1alpha1.ModeSpec) time.Duration {
+	if mode.Polling != nil {
+		return mode.Polling.Interval.Duration
+	}
+	if mode.Trigger != nil {
+		return mode.Trigger.RequeueDuration.Duration
+	}
+	return 0
+}
+
 // ReconcileWebRequestCommitStatusPromotionStrategy runs context=promotionstrategy reconcile logic.
-// It does not mutate wrcs.Status. Callers interpret ApplicableEnvsEmpty, PollingAllSuccessSqkip, and PSC;
-// on PollingAllSuccessSkip, wrcs.Status is unchanged from the caller's input (same as production).
+// It does not mutate wrcs.Status; callers apply WebRequestCommitStatusStatus and RequeueAfter from the output.
 func ReconcileWebRequestCommitStatusPromotionStrategy(ctx context.Context, in ReconcileWebRequestCommitStatusInput) (*ReconcileWebRequestCommitStatusPromotionStrategyOutput, error) {
 	logger := log.FromContext(ctx)
 	wrcs := in.WebRequestCommitStatus
@@ -436,7 +447,10 @@ func ReconcileWebRequestCommitStatusPromotionStrategy(ctx context.Context, in Re
 
 	applicableEnvs := getApplicableEnvironments(ps, wrcs.Spec.Key, wrcs.Spec.ReportOn)
 	if len(applicableEnvs) == 0 {
-		return &ReconcileWebRequestCommitStatusPromotionStrategyOutput{ApplicableEnvsEmpty: true}, nil
+		return &ReconcileWebRequestCommitStatusPromotionStrategyOutput{
+			WebRequestCommitStatusStatus: promoterv1alpha1.WebRequestCommitStatusStatus{},
+			RequeueAfter:                 0,
+		}, nil
 	}
 
 	wrcsSnapshot := wrcs.DeepCopy()
@@ -476,8 +490,11 @@ func ReconcileWebRequestCommitStatusPromotionStrategy(ctx context.Context, in Re
 				commitStatuses = append(commitStatuses, cs)
 			}
 			return &ReconcileWebRequestCommitStatusPromotionStrategyOutput{
-				PollingAllSuccessSkip: true,
-				CommitStatuses:        commitStatuses,
+				WebRequestCommitStatusStatus: promoterv1alpha1.WebRequestCommitStatusStatus{
+					PromotionStrategyContext: wrcsSnapshot.Status.PromotionStrategyContext.DeepCopy(),
+				},
+				CommitStatuses: commitStatuses,
+				RequeueAfter:   requeueDurationForMode(wrcs.Spec.Mode),
 			}, nil
 		}
 	}
@@ -551,8 +568,11 @@ func ReconcileWebRequestCommitStatusPromotionStrategy(ctx context.Context, in Re
 	}
 
 	return &ReconcileWebRequestCommitStatusPromotionStrategyOutput{
-		PromotionStrategyContext: psc,
-		CommitStatuses:           commitStatuses,
-		TransitionedBranches:     transitionedEnvironments,
+		WebRequestCommitStatusStatus: promoterv1alpha1.WebRequestCommitStatusStatus{
+			PromotionStrategyContext: psc,
+		},
+		CommitStatuses:       commitStatuses,
+		TransitionedBranches: transitionedEnvironments,
+		RequeueAfter:         requeueDurationForMode(wrcs.Spec.Mode),
 	}, nil
 }
