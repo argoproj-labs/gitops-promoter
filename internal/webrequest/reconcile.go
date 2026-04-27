@@ -85,7 +85,7 @@ type CommitStatusEmitter interface {
 // For trigger mode it evaluates the trigger expression and optionally the trigger output expression.
 func evaluateTriggerDecision(
 	ctx context.Context,
-	evaluator *Evaluator,
+	evaluator *ExpressionEvaluator,
 	mode promoterv1alpha1.ModeSpec,
 	td TemplateData,
 	lastRequestTime *metav1.Time,
@@ -118,7 +118,7 @@ func evaluateTriggerDecision(
 // an HTTP response is available. It updates td.ResponseOutput when response data JSON is present.
 func validationResultFromHTTPResponse(
 	ctx context.Context,
-	evaluator *Evaluator,
+	evaluator *ExpressionEvaluator,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
 	td TemplateData,
 	response HTTPResponse,
@@ -180,7 +180,7 @@ func validationResultFromHTTPResponse(
 // carrying forward last HTTP metadata from lastState.
 func validationResultCarryForward(
 	ctx context.Context,
-	evaluator *Evaluator,
+	evaluator *ExpressionEvaluator,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
 	td TemplateData,
 	lastState lastReconciledState,
@@ -215,7 +215,7 @@ func validationResultCarryForward(
 // without a new HTTP response.
 func fireOrCarryForward(
 	ctx context.Context,
-	evaluator *Evaluator,
+	evaluator *ExpressionEvaluator,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
 	td TemplateData,
 	decision triggerDecision,
@@ -234,7 +234,7 @@ func fireOrCarryForward(
 
 func evaluateSuccessPhase(
 	ctx context.Context,
-	evaluator *Evaluator,
+	evaluator *ExpressionEvaluator,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
 	exprData map[string]any,
 ) (promoterv1alpha1.CommitStatusPhase, map[string]promoterv1alpha1.CommitStatusPhase, error) {
@@ -257,7 +257,7 @@ func evaluateSuccessPhase(
 
 func evaluateSuccessOutput(
 	ctx context.Context,
-	evaluator *Evaluator,
+	evaluator *ExpressionEvaluator,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
 	exprData map[string]any,
 ) (*apiextensionsv1.JSON, error) {
@@ -403,12 +403,12 @@ func ProcessWebRequestCommitStatusEnvironments(ctx context.Context, in ProcessWe
 			}
 		}
 
-		decision, err := evaluateTriggerDecision(ctx, defaultEvaluator, wrcs.Spec.Mode, td, lastState.LastRequestTime)
+		decision, err := evaluateTriggerDecision(ctx, defaultExpressionEvaluator, wrcs.Spec.Mode, td, lastState.LastRequestTime)
 		if err != nil {
 			return nil, fmt.Errorf("trigger decision for environment %q: %w", branch, err)
 		}
 
-		result, err := fireOrCarryForward(ctx, defaultEvaluator, wrcs, td, decision, lastState, in.HttpExec)
+		result, err := fireOrCarryForward(ctx, defaultExpressionEvaluator, wrcs, td, decision, lastState, in.HttpExec)
 		if err != nil {
 			return nil, err
 		}
@@ -518,12 +518,12 @@ func ProcessWebRequestCommitStatusPromotionStrategyContext(ctx context.Context, 
 		SuccessOutput:          lastState.SuccessData,
 	}
 
-	decision, err := evaluateTriggerDecision(ctx, defaultEvaluator, wrcs.Spec.Mode, td, lastState.LastRequestTime)
+	decision, err := evaluateTriggerDecision(ctx, defaultExpressionEvaluator, wrcs.Spec.Mode, td, lastState.LastRequestTime)
 	if err != nil {
 		return nil, fmt.Errorf("trigger decision (context=promotionstrategy): %w", err)
 	}
 
-	result, err := fireOrCarryForward(ctx, defaultEvaluator, wrcs, td, decision, lastState, in.HttpExec)
+	result, err := fireOrCarryForward(ctx, defaultExpressionEvaluator, wrcs, td, decision, lastState, in.HttpExec)
 	if err != nil {
 		return nil, err
 	}

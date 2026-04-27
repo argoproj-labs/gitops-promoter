@@ -25,15 +25,15 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
-var _ = Describe("Evaluator", func() {
+var _ = Describe("ExpressionEvaluator", func() {
 	var (
 		ctx context.Context
-		e   *Evaluator
+		e   *ExpressionEvaluator
 	)
 
 	BeforeEach(func() {
 		ctx = context.Background()
-		e = NewEvaluator()
+		e = NewExpressionEvaluator()
 	})
 
 	Describe("evaluateTriggerExpression", func() {

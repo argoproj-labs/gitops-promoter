@@ -31,22 +31,22 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
-// Evaluator compiles and runs expr expressions used by WebRequestCommitStatus. It caches compiled
-// programs in a sync.Map so each (prefix, expression) pair is only compiled once per Evaluator
+// ExpressionEvaluator compiles and runs expr expressions used by WebRequestCommitStatus. It caches compiled
+// programs in a sync.Map so each (prefix, expression) pair is only compiled once per ExpressionEvaluator
 // lifetime. Safe for concurrent use.
 //
-// Reconcile paths use defaultEvaluator (package singleton). Tests may call NewEvaluator for isolation.
-type Evaluator struct {
+// Reconcile paths use defaultExpressionEvaluator (package singleton). Tests may call NewExpressionEvaluator for isolation.
+type ExpressionEvaluator struct {
 	cache sync.Map
 }
 
-// NewEvaluator returns a new Evaluator with an empty compile cache.
-func NewEvaluator() *Evaluator {
-	return &Evaluator{}
+// NewExpressionEvaluator returns a new ExpressionEvaluator with an empty compile cache.
+func NewExpressionEvaluator() *ExpressionEvaluator {
+	return &ExpressionEvaluator{}
 }
 
-// defaultEvaluator is the process-wide compile cache used by ProcessWebRequestCommitStatus*.
-var defaultEvaluator = NewEvaluator()
+// defaultExpressionEvaluator is the process-wide compile cache used by ProcessWebRequestCommitStatus*.
+var defaultExpressionEvaluator = NewExpressionEvaluator()
 
 // expressionCacheKey identifies a compiled expression in the cache. Prefix distinguishes entries so the same
 // source expression compiled with different options (e.g. trigger vs validation) stays separate. Used as the
@@ -58,7 +58,7 @@ type expressionCacheKey struct {
 
 // getCompiledExpression returns a compiled expr program from the evaluator's cache, or compiles the expression and caches it.
 // key.Prefix distinguishes cache entries (e.g. trigger vs validation); opts are passed through to expr.Compile.
-func (e *Evaluator) getCompiledExpression(key expressionCacheKey, opts ...expr.Option) (*vm.Program, error) {
+func (e *ExpressionEvaluator) getCompiledExpression(key expressionCacheKey, opts ...expr.Option) (*vm.Program, error) {
 	if cached, ok := e.cache.Load(key); ok {
 		program, ok := cached.(*vm.Program)
 		if !ok {
@@ -89,49 +89,49 @@ func responseExprData(resp HTTPResponse) map[string]any {
 
 // getCompiledTriggerExpression returns a cached or newly compiled trigger expression program.
 // Used by evaluateTriggerExpression. Compiled with expr.AsBool() so the expression must return a boolean.
-func (e *Evaluator) getCompiledTriggerExpression(expression string) (*vm.Program, error) {
+func (e *ExpressionEvaluator) getCompiledTriggerExpression(expression string) (*vm.Program, error) {
 	return e.getCompiledExpression(expressionCacheKey{Prefix: "trigger", Expression: expression}, expr.AsBool())
 }
 
 // getCompiledTriggerDataExpression returns a cached or newly compiled trigger data expression program.
 // Used by evaluateTriggerDataExpression. Compiled without a result type constraint; the expression is expected to return a map.
-func (e *Evaluator) getCompiledTriggerDataExpression(expression string) (*vm.Program, error) {
+func (e *ExpressionEvaluator) getCompiledTriggerDataExpression(expression string) (*vm.Program, error) {
 	return e.getCompiledExpression(expressionCacheKey{Prefix: "triggerdata", Expression: expression})
 }
 
 // getCompiledValidationExpression returns a cached or newly compiled validation expression program.
 // Used by evaluateValidationExpression. Compiled with expr.AsBool() so the expression must return a boolean.
-func (e *Evaluator) getCompiledValidationExpression(expression string) (*vm.Program, error) {
+func (e *ExpressionEvaluator) getCompiledValidationExpression(expression string) (*vm.Program, error) {
 	return e.getCompiledExpression(expressionCacheKey{Prefix: "validation", Expression: expression}, expr.AsBool())
 }
 
 // getCompiledValidationExpressionForPromotionStrategy returns a cached or newly compiled validation expression without AsBool.
 // Used by evaluateValidationExpressionForPromotionStrategy when context is promotionstrategy: expression may return bool or object { defaultPhase?, environments? }.
-func (e *Evaluator) getCompiledValidationExpressionForPromotionStrategy(expression string) (*vm.Program, error) {
+func (e *ExpressionEvaluator) getCompiledValidationExpressionForPromotionStrategy(expression string) (*vm.Program, error) {
 	return e.getCompiledExpression(expressionCacheKey{Prefix: "validation_promotionstrategy", Expression: expression})
 }
 
 // getCompiledResponseDataExpression returns a cached or newly compiled response output expression program.
 // Used by evaluateResponseDataExpression. Compiled without a result type constraint; the expression is expected to return a map for ResponseOutput.
-func (e *Evaluator) getCompiledResponseDataExpression(expression string) (*vm.Program, error) {
+func (e *ExpressionEvaluator) getCompiledResponseDataExpression(expression string) (*vm.Program, error) {
 	return e.getCompiledExpression(expressionCacheKey{Prefix: "responsedata", Expression: expression})
 }
 
 // getCompiledWhenVariablesExpression returns a cached or newly compiled when.variables expression program.
 // The expression must return a map/object; the result is exposed as Variables to when.expression and when.output.expression.
-func (e *Evaluator) getCompiledWhenVariablesExpression(expression string) (*vm.Program, error) {
+func (e *ExpressionEvaluator) getCompiledWhenVariablesExpression(expression string) (*vm.Program, error) {
 	return e.getCompiledExpression(expressionCacheKey{Prefix: "whenvariables", Expression: expression})
 }
 
 // getCompiledSuccessDataExpression returns a cached or newly compiled success output expression program.
 // Used by evaluateSuccessDataExpression. Compiled without a result type constraint; the expression is expected to return a map for SuccessOutput.
-func (e *Evaluator) getCompiledSuccessDataExpression(expression string) (*vm.Program, error) {
+func (e *ExpressionEvaluator) getCompiledSuccessDataExpression(expression string) (*vm.Program, error) {
 	return e.getCompiledExpression(expressionCacheKey{Prefix: "successdata", Expression: expression})
 }
 
 // evaluateWhenVariablesExpression runs spec.when.variables.expression against base env (no Variables binding yet).
 // The expression must return map[string]any.
-func (e *Evaluator) evaluateWhenVariablesExpression(ctx context.Context, expression string, base map[string]any) (map[string]any, error) {
+func (e *ExpressionEvaluator) evaluateWhenVariablesExpression(ctx context.Context, expression string, base map[string]any) (map[string]any, error) {
 	logger := log.FromContext(ctx)
 
 	program, err := e.getCompiledWhenVariablesExpression(expression)
@@ -155,7 +155,7 @@ func (e *Evaluator) evaluateWhenVariablesExpression(ctx context.Context, express
 
 // enrichWhenExprEnv returns a copy of base with Variables set when whenSpec.Variables is non-empty.
 // When Variables is unset or expression is empty, returns base unchanged.
-func (e *Evaluator) enrichWhenExprEnv(ctx context.Context, whenSpec promoterv1alpha1.WhenWithOutputSpec, base map[string]any) (map[string]any, error) {
+func (e *ExpressionEvaluator) enrichWhenExprEnv(ctx context.Context, whenSpec promoterv1alpha1.WhenWithOutputSpec, base map[string]any) (map[string]any, error) {
 	if whenSpec.Variables == nil || strings.TrimSpace(whenSpec.Variables.Expression) == "" {
 		return base, nil
 	}
@@ -173,7 +173,7 @@ func (e *Evaluator) enrichWhenExprEnv(ctx context.Context, whenSpec promoterv1al
 
 // evaluateTriggerExpression runs the trigger expression to decide whether to perform the HTTP request.
 // Returns true when the controller should issue the request; false keeps the phase from the last reconcile and skips.
-func (e *Evaluator) evaluateTriggerExpression(ctx context.Context, expression string, exprEnv map[string]any) (triggerResult, error) {
+func (e *ExpressionEvaluator) evaluateTriggerExpression(ctx context.Context, expression string, exprEnv map[string]any) (triggerResult, error) {
 	logger := log.FromContext(ctx)
 
 	program, err := e.getCompiledTriggerExpression(expression)
@@ -197,7 +197,7 @@ func (e *Evaluator) evaluateTriggerExpression(ctx context.Context, expression st
 
 // evaluateTriggerDataExpression runs the trigger when.output expression to produce state that is persisted
 // across reconcile cycles in status.triggerOutput. Must return a map[string]any.
-func (e *Evaluator) evaluateTriggerDataExpression(ctx context.Context, expression string, exprEnv map[string]any) (map[string]any, error) {
+func (e *ExpressionEvaluator) evaluateTriggerDataExpression(ctx context.Context, expression string, exprEnv map[string]any) (map[string]any, error) {
 	logger := log.FromContext(ctx)
 
 	program, err := e.getCompiledTriggerDataExpression(expression)
@@ -223,7 +223,7 @@ func (e *Evaluator) evaluateTriggerDataExpression(ctx context.Context, expressio
 // The exprData map is built by successWhenExprData and includes Response (nil when no request was made),
 // Branch, Phase, PromotionStrategy, WebRequestCommitStatus, and output variables.
 // Its boolean return is used directly: true → Success, false → Pending.
-func (e *Evaluator) evaluateValidationExpression(ctx context.Context, expression string, exprData map[string]any) (bool, error) {
+func (e *ExpressionEvaluator) evaluateValidationExpression(ctx context.Context, expression string, exprData map[string]any) (bool, error) {
 	logger := log.FromContext(ctx)
 
 	program, err := e.getCompiledValidationExpression(expression)
@@ -251,7 +251,7 @@ func (e *Evaluator) evaluateValidationExpression(ctx context.Context, expression
 // The expression may return: a boolean (one phase for all); or an object { defaultPhase?, environments? }.
 // defaultPhase defaults to "pending" when omitted; it is used for all when environments is empty, or for branches not in environments.
 // environments is an optional array of { branch, phase }. Returns (phase, phasePerBranch, err).
-func (e *Evaluator) evaluateValidationExpressionForPromotionStrategy(ctx context.Context, expression string, exprData map[string]any) (phase promoterv1alpha1.CommitStatusPhase, phasePerBranch map[string]promoterv1alpha1.CommitStatusPhase, err error) {
+func (e *ExpressionEvaluator) evaluateValidationExpressionForPromotionStrategy(ctx context.Context, expression string, exprData map[string]any) (phase promoterv1alpha1.CommitStatusPhase, phasePerBranch map[string]promoterv1alpha1.CommitStatusPhase, err error) {
 	logger := log.FromContext(ctx)
 
 	program, err := e.getCompiledValidationExpressionForPromotionStrategy(expression)
@@ -288,7 +288,7 @@ func (e *Evaluator) evaluateValidationExpressionForPromotionStrategy(ctx context
 // evaluateResponseDataExpression runs the response.output expression to extract or transform data from the HTTP response.
 // The expression receives Response.StatusCode, Response.Body, and Response.Headers and must return a map.
 // The returned map is stored in status.responseOutput and is available to the trigger expression and to description/URL templates as ResponseOutput.
-func (e *Evaluator) evaluateResponseDataExpression(ctx context.Context, expression string, resp HTTPResponse) (map[string]any, error) {
+func (e *ExpressionEvaluator) evaluateResponseDataExpression(ctx context.Context, expression string, resp HTTPResponse) (map[string]any, error) {
 	logger := log.FromContext(ctx)
 
 	program, err := e.getCompiledResponseDataExpression(expression)
@@ -313,7 +313,7 @@ func (e *Evaluator) evaluateResponseDataExpression(ctx context.Context, expressi
 // evaluateSuccessDataExpression runs the success.when.output expression to produce state that is persisted
 // across reconcile cycles in status.successOutput. Must return a map[string]any.
 // The exprData map is the same one used for success.when.expression (built by successWhenExprData).
-func (e *Evaluator) evaluateSuccessDataExpression(ctx context.Context, expression string, exprData map[string]any) (map[string]any, error) {
+func (e *ExpressionEvaluator) evaluateSuccessDataExpression(ctx context.Context, expression string, exprData map[string]any) (map[string]any, error) {
 	logger := log.FromContext(ctx)
 
 	program, err := e.getCompiledSuccessDataExpression(expression)
@@ -337,7 +337,7 @@ func (e *Evaluator) evaluateSuccessDataExpression(ctx context.Context, expressio
 
 // evaluateTriggerWhenBranch evaluates trigger.when (variables, bool expression, optional output map).
 // It returns whether the trigger should fire and the optional output map to persist in status.triggerOutput.
-func (e *Evaluator) evaluateTriggerWhenBranch(
+func (e *ExpressionEvaluator) evaluateTriggerWhenBranch(
 	ctx context.Context,
 	trigger *promoterv1alpha1.TriggerModeSpec,
 	td TemplateData,
