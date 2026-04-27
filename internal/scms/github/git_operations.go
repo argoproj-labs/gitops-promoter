@@ -10,6 +10,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/bradleyfalzon/ghinstallation/v2"
 	"github.com/google/go-github/v71/github"
+	"golang.org/x/sync/singleflight"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -109,17 +110,25 @@ func getUrls(domain string) (enterprise bool, baseUrl, uploadUrl string) {
 	return true, baseUrl, uploadUrl
 }
 
-// installationIds caches installation IDs for organizations to avoid redundant API calls.
-var installationIds = make(map[orgAppId]int64)
+// installationIds caches installation IDs for organizations to avoid redundant
+// API calls.  It is a grow-only cache (entries are written once and read many
+// times), which is exactly the use-case for sync.Map.  The map key is
+// orgAppId and the value type is int64.
+var installationIds sync.Map
 
-// orgAppId is a composite key of organization and app ID for caching installation IDs.
+// orgAppId is a composite key of organization, app ID, and domain for caching
+// installation IDs.  The domain is included so that identically-named orgs on
+// different GitHub Enterprise instances (or github.com) cannot collide.
 type orgAppId struct {
-	org string
-	id  int64
+	org    string
+	domain string
+	appID  int64
 }
 
-// appInstallationIdCacheMutex protects access to the installationIds map.
-var appInstallationIdCacheMutex sync.RWMutex
+// appInstallationIdGroup deduplicates concurrent ListInstallations calls that
+// share the same GitHub App and domain so only one network round-trip is made
+// when many goroutines discover a cold cache at the same time.
+var appInstallationIdGroup singleflight.Group
 
 // GetClient retrieves a GitHub client for the specified organization using the provided SCM provider and secret.
 // We return a client for API calls and a transport that gets used for git operations via GitAuthenticationProvider.
@@ -150,52 +159,74 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 		return getInstallationClient(scmProvider, secret, scmProvider.GetSpec().GitHub.InstallationID)
 	}
 
-	appInstallationIdCacheMutex.RLock()
-	if id, found := installationIds[orgAppId{org: org, id: scmProvider.GetSpec().GitHub.AppID}]; found {
-		appInstallationIdCacheMutex.RUnlock()
+	if val, found := installationIds.Load(orgAppId{org: org, appID: scmProvider.GetSpec().GitHub.AppID, domain: scmProvider.GetSpec().GitHub.Domain}); found {
+		id, ok := val.(int64)
+		if !ok {
+			return nil, nil, fmt.Errorf(
+				"unexpected type in installationIds cache for org %s, appID %d, domain %q: got %T (%v)",
+				org, scmProvider.GetSpec().GitHub.AppID, scmProvider.GetSpec().GitHub.Domain, val, val,
+			)
+		}
 		logger.V(4).Info("found cached installation ID", "org", org, "id", id, "scmProvider", scmProvider.GetName())
 		return getInstallationClient(scmProvider, secret, id)
 	}
-	appInstallationIdCacheMutex.RUnlock()
 
-	var allInstallations []*github.Installation
-	opts := &github.ListOptions{PerPage: 100}
+	// Slow path: the cache was cold. Use singleflight so that concurrent
+	// goroutines that all discovered the empty cache only make one network
+	// round-trip between them; the rest join the in-flight call and receive
+	// the same result once it completes.
+	sfKey := fmt.Sprintf("%d/%s", scmProvider.GetSpec().GitHub.AppID, scmProvider.GetSpec().GitHub.Domain)
+	_, sfErr, shared := appInstallationIdGroup.Do(sfKey, func() (any, error) {
+		var allInstallations []*github.Installation
+		opts := &github.ListOptions{PerPage: 100}
 
-	startTime := time.Now()
-	// Cache the installation IDs, we take out a lock for the entire loop to avoid locking/unlocking repeatedly. We also include the single
-	// read within the write lock.
-	// This lock should also help with the fact that on restart we won't slam the GitHub API with multiple requests to list installations.
-	appInstallationIdCacheMutex.Lock()
-	for {
-		installations, resp, err := client.Apps.ListInstallations(ctx, opts)
-		if err != nil {
-			appInstallationIdCacheMutex.Unlock()
-			return nil, nil, fmt.Errorf("failed to list installations: %w", err)
+		startTime := time.Now()
+		for {
+			installations, resp, err := client.Apps.ListInstallations(ctx, opts)
+			if err != nil {
+				return nil, fmt.Errorf("failed to list installations: %w", err)
+			}
+
+			allInstallations = append(allInstallations, installations...)
+
+			if resp.NextPage == 0 {
+				break
+			}
+			opts.Page = resp.NextPage
+		}
+		// We are logging this metric vs using prometheus because this is a provider specific metric that, and we want to try and keep prometheus metrics
+		// generic.
+		logger.Info("github list installations time", "duration", time.Since(startTime), "count", len(allInstallations))
+
+		for _, installation := range allInstallations {
+			if installation.Account != nil && installation.Account.Login != nil && installation.ID != nil {
+				installationIds.Store(orgAppId{org: *installation.Account.Login, appID: scmProvider.GetSpec().GitHub.AppID, domain: scmProvider.GetSpec().GitHub.Domain}, *installation.ID)
+				logger.V(4).Info("cached installation ID", "org", *installation.Account.Login, "id", *installation.ID, "scmProvider", scmProvider.GetName())
+			}
 		}
 
-		allInstallations = append(allInstallations, installations...)
-
-		if resp.NextPage == 0 {
-			break
-		}
-		opts.Page = resp.NextPage
+		// The installation IDs are stored in the shared cache above; the
+		// singleflight return value is not used directly.
+		return nil, nil
+	})
+	if sfErr != nil {
+		return nil, nil, fmt.Errorf("failed to list GitHub app installations: %w", sfErr)
 	}
-	// We are logging this metric vs using prometheus because this is a provider specific metric that, and we want to try and keep prometheus metrics
-	// generic.
-	logger.Info("github list installations time", "duration", time.Since(startTime), "count", len(allInstallations))
-
-	for _, installation := range allInstallations {
-		if installation.Account != nil && installation.Account.Login != nil && installation.ID != nil {
-			installationIds[orgAppId{org: *installation.Account.Login, id: scmProvider.GetSpec().GitHub.AppID}] = *installation.ID
-			logger.V(4).Info("cached installation ID", "org", *installation.Account.Login, "id", *installation.ID, "scmProvider", scmProvider.GetName())
-		}
+	if shared {
+		logger.V(4).Info("singleflight deduplicated concurrent installations lookup", "org", org, "scmProvider", scmProvider.GetName())
 	}
 
-	if id, found := installationIds[orgAppId{org: org, id: scmProvider.GetSpec().GitHub.AppID}]; found {
-		appInstallationIdCacheMutex.Unlock()
-		logger.V(4).Info("found cached installation ID after listing installations", "org", org, "id", id, "scmProvider", scmProvider.GetName())
-		return getInstallationClient(scmProvider, secret, id)
+	val, found := installationIds.Load(orgAppId{org: org, appID: scmProvider.GetSpec().GitHub.AppID, domain: scmProvider.GetSpec().GitHub.Domain})
+	if !found {
+		return nil, nil, fmt.Errorf("installation of app %d not found for org: %s", scmProvider.GetSpec().GitHub.AppID, org)
 	}
-	appInstallationIdCacheMutex.Unlock()
-	return nil, nil, fmt.Errorf("installation of app %d not found for org: %s", scmProvider.GetSpec().GitHub.AppID, org)
+	id, ok := val.(int64)
+	if !ok {
+		return nil, nil, fmt.Errorf(
+			"unexpected type in installationIds cache for org %s, appID %d, domain %q: got %T (%v)",
+			org, scmProvider.GetSpec().GitHub.AppID, scmProvider.GetSpec().GitHub.Domain, val, val,
+		)
+	}
+	logger.V(4).Info("found installation ID after listing installations", "org", org, "id", id, "scmProvider", scmProvider.GetName())
+	return getInstallationClient(scmProvider, secret, id)
 }
