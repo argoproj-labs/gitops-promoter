@@ -50,8 +50,8 @@ type Input struct {
 // WebRequestCommitStatus's namespace, passed to URL/header/body/description
 // templates as {{ .NamespaceMetadata.Labels }} and {{ .NamespaceMetadata.Annotations }}.
 type NamespaceMetadata struct {
-	Labels      map[string]string
-	Annotations map[string]string
+	Labels      map[string]string `yaml:"labels,omitempty"`
+	Annotations map[string]string `yaml:"annotations,omitempty"`
 }
 
 // Response is the stand-in HTTP payload (status, body, headers) the simulator
@@ -60,9 +60,9 @@ type NamespaceMetadata struct {
 // pre-parsed map/slice/primitive or raw string — the controller JSON-decodes
 // string bodies when it can).
 type Response struct {
-	Body       any
-	Headers    map[string][]string
-	StatusCode int
+	Body       any                 `yaml:"body,omitempty"`
+	Headers    map[string][]string `yaml:"headers,omitempty"`
+	StatusCode int                 `yaml:"statusCode"`
 }
 
 // HTTPResponse pairs routing metadata with a stand-in Response for one mock entry.
@@ -72,8 +72,8 @@ type Response struct {
 // environment branch strings). For Context=promotionstrategy only
 // HTTPResponses[0] is consulted; Branch on that entry is ignored.
 type HTTPResponse struct {
-	Response Response
-	Branch   string
+	Response Response `yaml:"response"`
+	Branch   string   `yaml:"branch,omitempty"`
 }
 
 // Result mirrors what the controller produces for a single reconcile.

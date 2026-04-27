@@ -1,0 +1,63 @@
+# Trigger mode (instead of polling): HTTP runs when trigger.when.expression is true.
+# Useful when modeling expression-gated checks; combine with SimulatorConfig mocks.
+#
+# Run: promoter template webrequest -f trigger-mode-env.yaml
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: gated-hook
+  namespace: default
+spec:
+  promotionStrategyRef:
+    name: hook-ps
+  key: gated-hook
+  reportOn: proposed
+  httpRequest:
+    method: GET
+    urlTemplate: "https://hooks.example.com/run/{{ .Branch }}"
+  success:
+    when:
+      expression: "Response.StatusCode == 204"
+  mode:
+    context: environments
+    trigger:
+      requeueDuration: 1m
+      when:
+        expression: "true"
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PromotionStrategy
+metadata:
+  name: hook-ps
+  namespace: default
+spec:
+  repositoryReference:
+    name: hooks-repo
+  environments:
+    - branch: dev
+      proposedCommitStatuses:
+        - key: gated-hook
+    - branch: prod
+      proposedCommitStatuses:
+        - key: gated-hook
+status:
+  environments:
+    - branch: dev
+      proposed:
+        hydrated:
+          sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    - branch: prod
+      proposed:
+        hydrated:
+          sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+---
+apiVersion: simulate.gitops-promoter.io/v1alpha1
+kind: SimulatorConfig
+httpResponses:
+  - branch: dev
+    response:
+      statusCode: 204
+  - branch: prod
+    response:
+      statusCode: 204

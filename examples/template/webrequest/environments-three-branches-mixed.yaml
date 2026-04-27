@@ -1,0 +1,83 @@
+# Three environments with per-branch mocks: demonstrates matching httpResponses
+# .branch to PromotionStrategy environment branches (first match wins).
+#
+# Run: promoter template webrequest -f environments-three-branches-mixed.yaml
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: semver-gate
+  namespace: gitops
+spec:
+  promotionStrategyRef:
+    name: three-env-ps
+  key: semver-gate
+  reportOn: proposed
+  httpRequest:
+    method: GET
+    urlTemplate: "https://registry.example.com/v1/check?branch={{ .Branch }}&team={{ index .NamespaceMetadata.Labels \"team\" }}"
+  success:
+    when:
+      expression: "Response.StatusCode >= 200 && Response.StatusCode < 300"
+  mode:
+    context: environments
+    polling:
+      interval: 0s
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PromotionStrategy
+metadata:
+  name: three-env-ps
+  namespace: gitops
+spec:
+  repositoryReference:
+    name: widget-app
+  environments:
+    - branch: development
+      proposedCommitStatuses:
+        - key: semver-gate
+    - branch: staging
+      proposedCommitStatuses:
+        - key: semver-gate
+    - branch: production
+      proposedCommitStatuses:
+        - key: semver-gate
+status:
+  environments:
+    - branch: development
+      proposed:
+        hydrated:
+          sha: "1111111111111111111111111111111111111111"
+    - branch: staging
+      proposed:
+        hydrated:
+          sha: "2222222222222222222222222222222222222222"
+    - branch: production
+      proposed:
+        hydrated:
+          sha: "3333333333333333333333333333333333333333"
+---
+apiVersion: simulate.gitops-promoter.io/v1alpha1
+kind: SimulatorConfig
+namespaceMetadata:
+  labels:
+    team: platform
+  annotations:
+    owner: sre@example.com
+httpResponses:
+  - branch: development
+    response:
+      statusCode: 200
+      headers:
+        X-Env:
+          - dev
+  - branch: staging
+    response:
+      statusCode: 201
+      body:
+        accepted: true
+  - branch: production
+    response:
+      statusCode: 409
+      body:
+        conflict: version already promoted

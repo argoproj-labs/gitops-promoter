@@ -1,0 +1,68 @@
+# Example bundle for: promoter template webrequest -f minimal-env.yaml
+# Documents may appear in any order. Kinds: WebRequestCommitStatus, PromotionStrategy,
+# optional SimulatorConfig (namespace metadata + HTTP mocks; not applied to a cluster).
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: wrcs
+  namespace: default
+spec:
+  promotionStrategyRef:
+    name: ps
+  key: k
+  reportOn: proposed
+  httpRequest:
+    urlTemplate: "https://example.com/{{ .Branch }}"
+    method: GET
+  success:
+    when:
+      expression: "Response.StatusCode == 200"
+  mode:
+    polling:
+      interval: 0s
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PromotionStrategy
+metadata:
+  name: ps
+  namespace: default
+spec:
+  repositoryReference:
+    name: repo
+  environments:
+    - branch: dev
+      proposedCommitStatuses:
+        - key: k
+    - branch: prod
+      proposedCommitStatuses:
+        - key: k
+status:
+  environments:
+    - branch: dev
+      proposed:
+        hydrated:
+          sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    - branch: prod
+      proposed:
+        hydrated:
+          sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+---
+apiVersion: simulate.gitops-promoter.io/v1alpha1
+kind: SimulatorConfig
+namespaceMetadata:
+  labels:
+    team: payments
+  annotations:
+    cost-center: cc-42
+httpResponses:
+  - branch: dev
+    response:
+      statusCode: 200
+  - branch: prod
+    response:
+      statusCode: 200
+      headers:
+        X-Test:
+          - a
+          - b

@@ -81,6 +81,19 @@ func TestSimulateGate(t *testing.T) {
 }
 ```
 
+## CLI (`promoter template webrequest`)
+
+The `promoter` binary can run the same simulator from a multi-document YAML file (no Kubernetes API server and no outbound HTTP):
+
+```bash
+promoter template webrequest -f examples/template/webrequest/minimal-env.yaml
+promoter template webrequest -f bundle.yaml --output yaml
+```
+
+The bundle uses `---` between documents. Include exactly one `WebRequestCommitStatus` and one `PromotionStrategy` (order does not matter). Optionally add a third document with `kind: SimulatorConfig` to supply `namespaceMetadata` (labels and annotations for templates) and `httpResponses` (per-branch mocks in `environments` context; see [Per-branch HTTP mocks](#per-branch-http-mocks)). `SimulatorConfig` is not a CRD—it is only read by the CLI.
+
+Sample bundles under [`examples/template/webrequest/`](../../examples/template/webrequest/) include a minimal [`minimal-env.yaml`](../../examples/template/webrequest/minimal-env.yaml), promotionstrategy-scope [`promotionstrategy-context.yaml`](../../examples/template/webrequest/promotionstrategy-context.yaml), mixed per-branch outcomes [`environments-partial-success.yaml`](../../examples/template/webrequest/environments-partial-success.yaml) and [`environments-three-branches-mixed.yaml`](../../examples/template/webrequest/environments-three-branches-mixed.yaml), trigger mode [`trigger-mode-env.yaml`](../../examples/template/webrequest/trigger-mode-env.yaml), and the large real-world-style change-management gate [`change-management-open-bundle.yaml`](../../examples/template/webrequest/change-management-open-bundle.yaml) (same resource shape as [`webrequestsimulator/testdata/change_management_webrequests.yaml`](../../webrequestsimulator/testdata/change_management_webrequests.yaml) plus matching `PromotionStrategy` and HTTP mock).
+
 ## The two contexts
 
 `WebRequestCommitStatus` has two modes controlled by `spec.mode.context`. The simulator mirrors each exactly.

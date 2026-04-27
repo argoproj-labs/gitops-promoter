@@ -1,0 +1,82 @@
+# promotionstrategy context: at most one HTTP call per reconcile; status goes to
+# PromotionStrategyContext; RenderedRequests[0].Branch is "". Only the first
+# SimulatorConfig.httpResponses entry is used (branch field is ignored).
+#
+# Run: promoter template webrequest -f promotionstrategy-context.yaml
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: shared-gate
+  namespace: default
+spec:
+  promotionStrategyRef:
+    name: rollout-ps
+  key: shared-gate
+  reportOn: proposed
+  descriptionTemplate: "aggregate phase {{ .Phase }}"
+  httpRequest:
+    method: POST
+    urlTemplate: "https://policy.example.com/v1/evaluate"
+    headerTemplates:
+      Content-Type: application/json
+      X-Cost-Center: '{{ index .NamespaceMetadata.Annotations "cost-center" }}'
+    bodyTemplate: |
+      {"repo":"{{ .PromotionStrategy.Spec.RepositoryReference.Name }}","sha":"{{ (index .PromotionStrategy.Status.Environments 0).Proposed.Hydrated.Sha }}"}
+  success:
+    when:
+      expression: "Response.StatusCode == 200 && Response.Body != nil && Response.Body.ok == true"
+  mode:
+    context: promotionstrategy
+    polling:
+      interval: 0s
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PromotionStrategy
+metadata:
+  name: rollout-ps
+  namespace: default
+spec:
+  repositoryReference:
+    name: payments-service
+  environments:
+    - branch: dev
+      proposedCommitStatuses:
+        - key: shared-gate
+    - branch: staging
+      proposedCommitStatuses:
+        - key: shared-gate
+    - branch: prod
+      proposedCommitStatuses:
+        - key: shared-gate
+status:
+  environments:
+    - branch: dev
+      proposed:
+        hydrated:
+          sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    - branch: staging
+      proposed:
+        hydrated:
+          sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    - branch: prod
+      proposed:
+        hydrated:
+          sha: "cccccccccccccccccccccccccccccccccccccccc"
+---
+apiVersion: simulate.gitops-promoter.io/v1alpha1
+kind: SimulatorConfig
+namespaceMetadata:
+  annotations:
+    cost-center: cc-99
+httpResponses:
+  # Second list entry would be ignored in promotionstrategy context.
+  - branch: ignored
+    response:
+      statusCode: 200
+      body:
+        ok: true
+        decision: allow
+      headers:
+        Content-Type:
+          - application/json

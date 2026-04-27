@@ -1,0 +1,68 @@
+# environments context: one HTTP request per applicable branch. This bundle uses
+# different mock status codes per branch so you can see mixed phases (e.g. dev
+# success, prod still pending after a 503).
+#
+# Run: promoter template webrequest -f environments-partial-success.yaml
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: health-gate
+  namespace: default
+spec:
+  promotionStrategyRef:
+    name: two-tier-ps
+  key: health-gate
+  reportOn: proposed
+  httpRequest:
+    method: GET
+    urlTemplate: "https://health.example.com/{{ .Branch }}/ready"
+  success:
+    when:
+      expression: "Response.StatusCode == 200"
+  mode:
+    polling:
+      interval: 0s
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PromotionStrategy
+metadata:
+  name: two-tier-ps
+  namespace: default
+spec:
+  repositoryReference:
+    name: checkout-api
+  environments:
+    - branch: dev
+      proposedCommitStatuses:
+        - key: health-gate
+    - branch: prod
+      proposedCommitStatuses:
+        - key: health-gate
+status:
+  environments:
+    - branch: dev
+      proposed:
+        hydrated:
+          sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    - branch: prod
+      proposed:
+        hydrated:
+          sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+---
+apiVersion: simulate.gitops-promoter.io/v1alpha1
+kind: SimulatorConfig
+namespaceMetadata:
+  labels:
+    region: us-east-1
+httpResponses:
+  - branch: dev
+    response:
+      statusCode: 200
+      body:
+        status: ok
+  - branch: prod
+    response:
+      statusCode: 503
+      body:
+        error: upstream unavailable
