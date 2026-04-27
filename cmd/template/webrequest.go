@@ -40,6 +40,10 @@ func newWebRequestCommand() *cobra.Command {
 		Long: `Reads a multi-document YAML bundle (WebRequestCommitStatus, PromotionStrategy,
 and optional SimulatorConfig), runs webrequestsimulator.Simulate, and prints the result.
 
+Output fields mirror a single controller reconcile: status (updated WebRequestCommitStatus.Status),
+renderedRequests (rendered HTTP snapshots when a request runs), and commitStatuses (CommitStatus
+CRs that would be upserted).
+
 The bundle uses "---" separators between documents. Kinds must be WebRequestCommitStatus,
 PromotionStrategy, and optionally SimulatorConfig (HTTP mocks and namespace metadata).`,
 		SilenceUsage: true,
