@@ -63,7 +63,7 @@ type WebRequestCommitStatusReconciler struct {
 	Scheme      *runtime.Scheme
 	SettingsMgr *settings.Manager
 	EnqueueCTP  CTPEnqueueFunc
-	httpClient *http.Client
+	httpClient  *http.Client
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=webrequestcommitstatuses,verbs=get;list;watch;create;update;patch;delete
@@ -277,7 +277,7 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 
 	rendered, err := webrequest.RenderHTTPRequestTemplates(wrcs, templateData)
 	if err != nil {
-		return webrequest.HTTPResponse{}, err
+		return webrequest.HTTPResponse{}, fmt.Errorf("failed to render HTTP request templates: %w", err)
 	}
 
 	// When Scm is configured, credentials are sourced directly from the SCM provider, so the
