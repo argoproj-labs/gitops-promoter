@@ -97,9 +97,9 @@ type HTTPResponse struct {
 // ObjectMeta (Name/Namespace/Labels) and Spec are fully populated; OwnerReferences
 // and Status are left empty (the simulator has no live cluster to reference or observe).
 type Result struct {
-	Status           promoterv1alpha1.WebRequestCommitStatusStatus
-	RenderedRequests []RenderedRequest
-	CommitStatuses   []*promoterv1alpha1.CommitStatus
+	Status           promoterv1alpha1.WebRequestCommitStatusStatus `json:"status"`
+	RenderedRequests []RenderedRequest                             `json:"renderedRequests,omitempty"`
+	CommitStatuses   []*promoterv1alpha1.CommitStatus              `json:"commitStatuses,omitempty"`
 }
 
 // RenderedRequest is an HTTP request the controller would have made this
@@ -110,9 +110,9 @@ type Result struct {
 // Branch is the environment branch in environments context; empty in
 // promotionstrategy context.
 type RenderedRequest struct {
-	Branch  string
-	Method  string
-	URL     string
-	Headers map[string]string
-	Body    string
+	Branch  string            `json:"branch,omitempty"`
+	Method  string            `json:"method,omitempty"`
+	URL     string            `json:"url,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
+	Body    string            `json:"body,omitempty"`
 }

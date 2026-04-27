@@ -19,6 +19,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -90,10 +91,10 @@ func LoadBundle(bundleYAML []byte) (*simulatortypes.Input, error) {
 	}
 
 	if wrcs == nil {
-		return nil, fmt.Errorf("bundle must contain exactly one WebRequestCommitStatus")
+		return nil, errors.New("bundle must contain exactly one WebRequestCommitStatus")
 	}
 	if ps == nil {
-		return nil, fmt.Errorf("bundle must contain exactly one PromotionStrategy")
+		return nil, errors.New("bundle must contain exactly one PromotionStrategy")
 	}
 
 	in := &simulatortypes.Input{
@@ -159,7 +160,7 @@ func decodePromotionStrategy(doc []byte) (*promoterv1alpha1.PromotionStrategy, e
 func decodeSimulatorConfig(doc []byte) (*SimulatorConfig, error) {
 	var o SimulatorConfig
 	if err := yaml.Unmarshal(doc, &o); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decode SimulatorConfig: %w", err)
 	}
 	return &o, nil
 }

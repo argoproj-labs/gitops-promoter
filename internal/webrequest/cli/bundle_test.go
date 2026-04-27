@@ -235,7 +235,7 @@ func TestEncodeResultJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(b), `"Status"`) {
+	if !strings.Contains(string(b), `"status"`) {
 		t.Fatalf("json: %s", string(b[:min(200, len(b))]))
 	}
 }
@@ -254,14 +254,7 @@ func TestEncodeResultYAML(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(b), "Status:") {
+	if !strings.Contains(string(b), "status:") {
 		t.Fatalf("yaml: %s", string(b[:min(200, len(b))]))
 	}
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

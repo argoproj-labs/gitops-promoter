@@ -60,11 +60,11 @@ PromotionStrategy, and optionally SimulatorConfig (HTTP mocks and namespace meta
 			}
 			in, err := cli.LoadBundle(raw)
 			if err != nil {
-				return err
+				return fmt.Errorf("load bundle: %w", err)
 			}
 			res, err := webrequestsimulator.Simulate(ctx, *in)
 			if err != nil {
-				return err
+				return fmt.Errorf("simulate: %w", err)
 			}
 			var out []byte
 			switch strings.ToLower(outputFormat) {
@@ -76,14 +76,14 @@ PromotionStrategy, and optionally SimulatorConfig (HTTP mocks and namespace meta
 				return fmt.Errorf("unsupported --output %q (use json or yaml)", outputFormat)
 			}
 			if err != nil {
-				return err
+				return fmt.Errorf("encode result: %w", err)
 			}
 			if _, err := cmd.OutOrStdout().Write(out); err != nil {
-				return err
+				return fmt.Errorf("write output: %w", err)
 			}
 			if len(out) > 0 && out[len(out)-1] != '\n' {
 				if _, err := fmt.Fprintln(cmd.OutOrStdout()); err != nil {
-					return err
+					return fmt.Errorf("write newline: %w", err)
 				}
 			}
 			return nil
