@@ -56,6 +56,9 @@ func Simulate(ctx context.Context, args Args) (*simulatortypes.Result, error) {
 	}
 
 	wrcs := args.WebRequestCommitStatus.DeepCopy()
+	if wrcs == nil {
+		return nil, errors.New("unexpected nil from WebRequestCommitStatus.DeepCopy()")
+	}
 	ps := args.PromotionStrategy
 
 	var (
