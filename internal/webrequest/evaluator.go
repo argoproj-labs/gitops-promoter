@@ -30,7 +30,8 @@ import (
 )
 
 // ExpressionEvaluator compiles and runs expr expressions used by WebRequestCommitStatus. It caches compiled
-// programs in an LRU so each (prefix, expression) pair is only compiled once while it remains in cache.
+// programs in an LRU (golang/groupcache/lru) so each (prefix, expression) pair is only compiled once while
+// that entry remains in the cache.
 // Safe for concurrent use.
 //
 // Reconcile paths use defaultExpressionEvaluator (package singleton). Tests may call NewExpressionEvaluator for isolation.

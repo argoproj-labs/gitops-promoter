@@ -17,10 +17,10 @@ limitations under the License.
 package webrequest
 
 import (
-	"container/list"
 	"sync"
 
 	"github.com/expr-lang/expr/vm"
+	"github.com/golang/groupcache/lru"
 )
 
 // maxCompiledExpressionCacheEntries bounds the compile cache so unique expressions from many resources
@@ -28,19 +28,11 @@ import (
 // are evicted when over this limit.
 const maxCompiledExpressionCacheEntries = 4096
 
-// compileCache is an LRU of compiled programs keyed by (prefix, expression). Evicts the least recently
-// used entry when the number of entries exceeds max.
+// compileCache is an LRU of compiled programs (github.com/golang/groupcache/lru) keyed by
+// (prefix, expression). The upstream lru.Cache is not safe for concurrent use; a mutex serializes get/put.
 type compileCache struct {
 	mu  sync.Mutex
-	max int
-	// lru is front = most recently used, back = least recently used. Each element's Value is *cacheEntry.
-	lru   *list.List
-	byKey map[expressionCacheKey]*list.Element
-}
-
-type cacheEntry struct {
-	key     expressionCacheKey
-	program *vm.Program
+	lru *lru.Cache
 }
 
 func newCompileCache(max int) *compileCache {
@@ -48,40 +40,34 @@ func newCompileCache(max int) *compileCache {
 		max = maxCompiledExpressionCacheEntries
 	}
 	return &compileCache{
-		max:   max,
-		lru:   list.New(),
-		byKey: make(map[expressionCacheKey]*list.Element),
+		lru: lru.New(max),
 	}
 }
 
 func (c *compileCache) get(key expressionCacheKey) (*vm.Program, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	el, ok := c.byKey[key]
+	v, ok := c.lru.Get(key)
 	if !ok {
 		return nil, false
 	}
-	c.lru.MoveToFront(el)
-	return el.Value.(*cacheEntry).program, true
+	program, ok := v.(*vm.Program)
+	if !ok {
+		return nil, false
+	}
+	return program, true
 }
 
 func (c *compileCache) put(key expressionCacheKey, program *vm.Program) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if el, ok := c.byKey[key]; ok {
-		el.Value.(*cacheEntry).program = program
-		c.lru.MoveToFront(el)
-		return
-	}
-	ent := &cacheEntry{key: key, program: program}
-	elem := c.lru.PushFront(ent)
-	c.byKey[key] = elem
-	for c.lru.Len() > c.max {
-		back := c.lru.Back()
-		old := back.Value.(*cacheEntry)
-		delete(c.byKey, old.key)
-		c.lru.Remove(back)
-	}
+	c.lru.Add(key, program)
+}
+
+func (c *compileCache) itemCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lru.Len()
 }
 
 // expressionCacheKey identifies a compiled expression in the cache. Prefix distinguishes entries so the same
