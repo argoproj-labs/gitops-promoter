@@ -20,14 +20,14 @@ import (
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func TestMyWRCS(t *testing.T) {
+func TestSimulateGate(t *testing.T) {
     ctx := context.Background()
 
     wrcs := &promoterv1alpha1.WebRequestCommitStatus{
-        ObjectMeta: metav1.ObjectMeta{Name: "my-gate", Namespace: "default"},
+        ObjectMeta: metav1.ObjectMeta{Name: "example-gate", Namespace: "default"},
         Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
-            PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "my-ps"},
-            Key:                  "my-gate",
+            PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "example-ps"},
+            Key:                  "example-gate",
             ReportOn:             "proposed",
             HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
                 URLTemplate: "https://api.example.com/validate/{{ .Branch }}",
@@ -47,12 +47,12 @@ func TestMyWRCS(t *testing.T) {
     }
 
     ps := &promoterv1alpha1.PromotionStrategy{
-        ObjectMeta: metav1.ObjectMeta{Name: "my-ps", Namespace: "default"},
+        ObjectMeta: metav1.ObjectMeta{Name: "example-ps", Namespace: "default"},
         Spec: promoterv1alpha1.PromotionStrategySpec{
             RepositoryReference: promoterv1alpha1.ObjectReference{Name: "repo"},
             Environments: []promoterv1alpha1.Environment{
-                {Branch: "dev",  ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{{Key: "my-gate"}}},
-                {Branch: "prod", ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{{Key: "my-gate"}}},
+                {Branch: "dev",  ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{{Key: "example-gate"}}},
+                {Branch: "prod", ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{{Key: "example-gate"}}},
             },
         },
         Status: promoterv1alpha1.PromotionStrategyStatus{
