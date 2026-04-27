@@ -34,7 +34,6 @@ import (
 // ProcessWebRequestCommitStatusInput carries shared dependencies for WRCS processing
 // (per-environment context and promotionstrategy context).
 type ProcessWebRequestCommitStatusInput struct {
-	Evaluator              *Evaluator
 	HttpExec               HTTPEXecutor
 	WebRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
 	PromotionStrategy      *promoterv1alpha1.PromotionStrategy
@@ -404,12 +403,12 @@ func ProcessWebRequestCommitStatusEnvironments(ctx context.Context, in ProcessWe
 			}
 		}
 
-		decision, err := evaluateTriggerDecision(ctx, in.Evaluator, wrcs.Spec.Mode, td, lastState.LastRequestTime)
+		decision, err := evaluateTriggerDecision(ctx, defaultEvaluator, wrcs.Spec.Mode, td, lastState.LastRequestTime)
 		if err != nil {
 			return nil, fmt.Errorf("trigger decision for environment %q: %w", branch, err)
 		}
 
-		result, err := fireOrCarryForward(ctx, in.Evaluator, wrcs, td, decision, lastState, in.HttpExec)
+		result, err := fireOrCarryForward(ctx, defaultEvaluator, wrcs, td, decision, lastState, in.HttpExec)
 		if err != nil {
 			return nil, err
 		}
@@ -519,12 +518,12 @@ func ProcessWebRequestCommitStatusPromotionStrategyContext(ctx context.Context, 
 		SuccessOutput:          lastState.SuccessData,
 	}
 
-	decision, err := evaluateTriggerDecision(ctx, in.Evaluator, wrcs.Spec.Mode, td, lastState.LastRequestTime)
+	decision, err := evaluateTriggerDecision(ctx, defaultEvaluator, wrcs.Spec.Mode, td, lastState.LastRequestTime)
 	if err != nil {
 		return nil, fmt.Errorf("trigger decision (context=promotionstrategy): %w", err)
 	}
 
-	result, err := fireOrCarryForward(ctx, in.Evaluator, wrcs, td, decision, lastState, in.HttpExec)
+	result, err := fireOrCarryForward(ctx, defaultEvaluator, wrcs, td, decision, lastState, in.HttpExec)
 	if err != nil {
 		return nil, err
 	}

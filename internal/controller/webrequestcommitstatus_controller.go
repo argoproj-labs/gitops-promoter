@@ -63,8 +63,7 @@ type WebRequestCommitStatusReconciler struct {
 	Scheme      *runtime.Scheme
 	SettingsMgr *settings.Manager
 	EnqueueCTP  CTPEnqueueFunc
-	httpClient  *http.Client
-	evaluator   *webrequest.Evaluator
+	httpClient *http.Client
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=webrequestcommitstatuses,verbs=get;list;watch;create;update;patch;delete
@@ -162,9 +161,6 @@ func (r *WebRequestCommitStatusReconciler) SetupWithManager(ctx context.Context,
 		Timeout: 60 * time.Second, // Default timeout, can be overridden per-request
 	}
 
-	// Initialize the per-reconciler expression evaluator (caches compiled expr programs).
-	r.evaluator = webrequest.NewEvaluator()
-
 	// Use Direct methods to read configuration from the API server without cache during setup.
 	// The cache is not started during SetupWithManager, so we must use the non-cached API reader.
 	rateLimiter, err := settings.GetRateLimiterDirect[promoterv1alpha1.WebRequestCommitStatusConfiguration, ctrl.Request](ctx, r.SettingsMgr)
@@ -199,7 +195,6 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 	wrcs.Status.PromotionStrategyContext = nil
 
 	out, err := webrequest.ProcessWebRequestCommitStatusEnvironments(ctx, webrequest.ProcessWebRequestCommitStatusInput{
-		Evaluator:              r.evaluator,
 		HttpExec:               r,
 		WebRequestCommitStatus: wrcs,
 		PromotionStrategy:      ps,
@@ -218,7 +213,6 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 // per WebRequestCommitStatus; phase(s) are applied to a CommitStatus per environment (each with that environment's reportOn SHA).
 func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, namespaceMeta webrequest.NamespaceMetadata) ([]string, []*promoterv1alpha1.CommitStatus, time.Duration, error) {
 	out, err := webrequest.ProcessWebRequestCommitStatusPromotionStrategyContext(ctx, webrequest.ProcessWebRequestCommitStatusInput{
-		Evaluator:              r.evaluator,
 		HttpExec:               r,
 		WebRequestCommitStatus: wrcs,
 		PromotionStrategy:      ps,

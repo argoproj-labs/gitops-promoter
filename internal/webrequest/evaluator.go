@@ -33,9 +33,9 @@ import (
 
 // Evaluator compiles and runs expr expressions used by WebRequestCommitStatus. It caches compiled
 // programs in a sync.Map so each (prefix, expression) pair is only compiled once per Evaluator
-// lifetime. Safe for concurrent use. Intended to be created once per reconciler (or simulator)
-// instance — do not use a package-level singleton, because dynamically generated expression
-// strings would leak memory over time.
+// lifetime. Safe for concurrent use.
+//
+// Reconcile paths use defaultEvaluator (package singleton). Tests may call NewEvaluator for isolation.
 type Evaluator struct {
 	cache sync.Map
 }
@@ -44,6 +44,9 @@ type Evaluator struct {
 func NewEvaluator() *Evaluator {
 	return &Evaluator{}
 }
+
+// defaultEvaluator is the process-wide compile cache used by ProcessWebRequestCommitStatus*.
+var defaultEvaluator = NewEvaluator()
 
 // expressionCacheKey identifies a compiled expression in the cache. Prefix distinguishes entries so the same
 // source expression compiled with different options (e.g. trigger vs validation) stays separate. Used as the

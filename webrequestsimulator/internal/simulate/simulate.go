@@ -37,7 +37,7 @@ func (simCommitRenderer) EmitCommitStatus(ctx context.Context, wrcs *promoterv1a
 // args.HTTPResponses in place of any real HTTP call. The returned Result.Status
 // matches what the controller would write to WebRequestCommitStatus.Status.
 //
-// Safe for concurrent use: a fresh Evaluator is created per call.
+// Safe for concurrent use (shared expr compile cache in internal/webrequest).
 func Simulate(ctx context.Context, args Args) (*simulatortypes.Result, error) {
 	if args.WebRequestCommitStatus == nil {
 		return nil, errors.New("WebRequestCommitStatus is required")
@@ -61,12 +61,10 @@ func simulateEnvironments(
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
 	ps *promoterv1alpha1.PromotionStrategy,
 ) (*simulatortypes.Result, error) {
-	evaluator := webrequest.NewEvaluator()
 	var rendered []simulatortypes.RenderedRequest
 	exec := newMockHTTPEXecutor(newResolveFromSliceByBranch(args.HTTPResponses), &rendered)
 
 	out, err := webrequest.ProcessWebRequestCommitStatusEnvironments(ctx, webrequest.ProcessWebRequestCommitStatusInput{
-		Evaluator:              evaluator,
 		HttpExec:               exec,
 		WebRequestCommitStatus: wrcs,
 		PromotionStrategy:      ps,
@@ -92,12 +90,10 @@ func simulatePromotionStrategy(
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
 	ps *promoterv1alpha1.PromotionStrategy,
 ) (*simulatortypes.Result, error) {
-	evaluator := webrequest.NewEvaluator()
 	var rendered []simulatortypes.RenderedRequest
 	exec := newMockHTTPEXecutor(newResolveFromSliceFirst(args.HTTPResponses), &rendered)
 
 	out, err := webrequest.ProcessWebRequestCommitStatusPromotionStrategyContext(ctx, webrequest.ProcessWebRequestCommitStatusInput{
-		Evaluator:              evaluator,
 		HttpExec:               exec,
 		WebRequestCommitStatus: wrcs,
 		PromotionStrategy:      ps,
