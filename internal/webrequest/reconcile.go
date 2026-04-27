@@ -19,6 +19,7 @@ package webrequest
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -303,7 +304,7 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusEnvironments(ctx context.Con
 	logger := log.FromContext(ctx)
 
 	if wrcs == nil {
-		return nil, nil, 0, fmt.Errorf("WebRequestCommitStatus is required")
+		return nil, nil, 0, errors.New("WebRequestCommitStatus is required")
 	}
 
 	wrcsSnapshot := wrcs.DeepCopy()
@@ -435,7 +436,7 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusPromotionStrategy(ctx contex
 	logger := log.FromContext(ctx)
 
 	if wrcs == nil {
-		return nil, nil, 0, fmt.Errorf("WebRequestCommitStatus is required")
+		return nil, nil, 0, errors.New("WebRequestCommitStatus is required")
 	}
 
 	applicableEnvs := getApplicableEnvironments(ps, wrcs.Spec.Key, wrcs.Spec.ReportOn)
