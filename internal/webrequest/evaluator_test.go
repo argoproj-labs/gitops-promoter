@@ -208,6 +208,21 @@ var _ = Describe("ExpressionEvaluator", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result).To(HaveKeyWithValue("ok", true))
 		})
+
+		It("evicts least-recently-used entries when over capacity", func() {
+			lim := newExpressionEvaluatorWithCompileCacheMax(2)
+			_, err := lim.evaluateTriggerExpression(ctx, "true", map[string]any{})
+			Expect(err).ToNot(HaveOccurred())
+			_, err = lim.evaluateTriggerExpression(ctx, "false", map[string]any{})
+			Expect(err).ToNot(HaveOccurred())
+			_, err = lim.evaluateTriggerExpression(ctx, "1==1", map[string]any{})
+			Expect(err).ToNot(HaveOccurred())
+			// "true" was never referenced after the first two; adding a third evicts the LRU ("true").
+			_, hit := lim.cache.get(expressionCacheKey{Prefix: "trigger", Expression: "true"})
+			Expect(hit).To(BeFalse())
+			_, hit = lim.cache.get(expressionCacheKey{Prefix: "trigger", Expression: "false"})
+			Expect(hit).To(BeTrue())
+		})
 	})
 })
 

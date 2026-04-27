@@ -17,8 +17,8 @@ limitations under the License.
 package webrequest
 
 import (
+	"container/list"
 	"context"
-	"errors"
 	"fmt"
 	"maps"
 	"strings"
@@ -31,18 +31,79 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
+// maxCompiledExpressionCacheEntries bounds the compile cache so unique expressions from many resources
+// (e.g. churned or auto-generated WRCS) cannot grow memory without bound. Least-recently-used programs
+// are evicted when over this limit.
+const maxCompiledExpressionCacheEntries = 4096
+
 // ExpressionEvaluator compiles and runs expr expressions used by WebRequestCommitStatus. It caches compiled
-// programs in a sync.Map so each (prefix, expression) pair is only compiled once per ExpressionEvaluator
-// lifetime. Safe for concurrent use.
+// programs in an LRU so each (prefix, expression) pair is only compiled once while it remains in cache.
+// Safe for concurrent use.
 //
 // Reconcile paths use defaultExpressionEvaluator (package singleton). Tests may call NewExpressionEvaluator for isolation.
 type ExpressionEvaluator struct {
-	cache sync.Map
+	cache *compileCache
 }
 
 // NewExpressionEvaluator returns a new ExpressionEvaluator with an empty compile cache.
 func NewExpressionEvaluator() *ExpressionEvaluator {
-	return &ExpressionEvaluator{}
+	return &ExpressionEvaluator{cache: newCompileCache(maxCompiledExpressionCacheEntries)}
+}
+
+// compileCache is an LRU of compiled programs keyed by (prefix, expression). Evicts the least recently
+// used entry when the number of entries exceeds max.
+type compileCache struct {
+	mu  sync.Mutex
+	max int
+	// lru is front = most recently used, back = least recently used. Each element's Value is *cacheEntry.
+	lru   *list.List
+	byKey map[expressionCacheKey]*list.Element
+}
+
+type cacheEntry struct {
+	key     expressionCacheKey
+	program *vm.Program
+}
+
+func newCompileCache(max int) *compileCache {
+	if max < 1 {
+		max = maxCompiledExpressionCacheEntries
+	}
+	return &compileCache{
+		max:   max,
+		lru:   list.New(),
+		byKey: make(map[expressionCacheKey]*list.Element),
+	}
+}
+
+func (c *compileCache) get(key expressionCacheKey) (*vm.Program, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	el, ok := c.byKey[key]
+	if !ok {
+		return nil, false
+	}
+	c.lru.MoveToFront(el)
+	return el.Value.(*cacheEntry).program, true
+}
+
+func (c *compileCache) put(key expressionCacheKey, program *vm.Program) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if el, ok := c.byKey[key]; ok {
+		el.Value.(*cacheEntry).program = program
+		c.lru.MoveToFront(el)
+		return
+	}
+	ent := &cacheEntry{key: key, program: program}
+	elem := c.lru.PushFront(ent)
+	c.byKey[key] = elem
+	for c.lru.Len() > c.max {
+		back := c.lru.Back()
+		old := back.Value.(*cacheEntry)
+		delete(c.byKey, old.key)
+		c.lru.Remove(back)
+	}
 }
 
 // defaultExpressionEvaluator is the process-wide compile cache used by ReconcileWebRequestCommitStatus*.
@@ -59,11 +120,7 @@ type expressionCacheKey struct {
 // getCompiledExpression returns a compiled expr program from the evaluator's cache, or compiles the expression and caches it.
 // key.Prefix distinguishes cache entries (e.g. trigger vs validation); opts are passed through to expr.Compile.
 func (e *ExpressionEvaluator) getCompiledExpression(key expressionCacheKey, opts ...expr.Option) (*vm.Program, error) {
-	if cached, ok := e.cache.Load(key); ok {
-		program, ok := cached.(*vm.Program)
-		if !ok {
-			return nil, errors.New("cached value is not a *vm.Program")
-		}
+	if program, ok := e.cache.get(key); ok {
 		return program, nil
 	}
 
@@ -72,7 +129,7 @@ func (e *ExpressionEvaluator) getCompiledExpression(key expressionCacheKey, opts
 		return nil, fmt.Errorf("failed to compile expression: %w", err)
 	}
 
-	e.cache.Store(key, program)
+	e.cache.put(key, program)
 	return program, nil
 }
 
@@ -362,4 +419,9 @@ func (e *ExpressionEvaluator) evaluateTriggerWhenBranch(
 		return false, nil, fmt.Errorf("failed to evaluate trigger data expression: %w", err)
 	}
 	return shouldFire, newTriggerData, nil
+}
+
+// newExpressionEvaluatorWithCompileCacheMax returns an evaluator whose compile LRU capacity is max (tests).
+func newExpressionEvaluatorWithCompileCacheMax(max int) *ExpressionEvaluator {
+	return &ExpressionEvaluator{cache: newCompileCache(max)}
 }
