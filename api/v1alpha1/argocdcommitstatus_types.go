@@ -88,6 +88,13 @@ type URLConfig struct {
 
 // ArgoCDCommitStatusStatus defines the observed state of ArgoCDCommitStatus.
 type ArgoCDCommitStatusStatus struct {
+	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
+	// Because status is written via Server-Side Apply with ForceOwnership (which has no
+	// optimistic-concurrency check), this field is the canonical way to detect stale
+	// status writes: compare status.observedGeneration with metadata.generation.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// ApplicationsSelected represents the Argo CD applications that are selected by the commit status.
 	// This field is sorted by environment (same order as the referenced PromotionStrategy), then namespace, then name.
 	ApplicationsSelected []ApplicationsSelected `json:"applicationsSelected,omitempty"`
@@ -103,6 +110,11 @@ type ArgoCDCommitStatusStatus struct {
 // GetConditions returns the conditions of the ArgoCDCommitStatus.
 func (cs *ArgoCDCommitStatus) GetConditions() *[]metav1.Condition {
 	return &cs.Status.Conditions
+}
+
+// SetObservedGeneration records the object generation that produced the current status.
+func (cs *ArgoCDCommitStatus) SetObservedGeneration(generation int64) {
+	cs.Status.ObservedGeneration = generation
 }
 
 // ApplicationsSelected represents the Argo CD applications that are selected by the commit status. The fields in this

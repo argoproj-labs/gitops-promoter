@@ -71,7 +71,7 @@ Connect with this password for the `admin` user.
 > See [Getting Started](./getting-started.md)
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.26.3/install.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.27.1/install.yaml
 ```
 
 > [!NOTE]
@@ -112,7 +112,7 @@ Once the app is created. Go to Install app and install it in your account.
 
 #### Using the webhook
 
-The webhook notifies the Promoter and Argo CD that a new commit was push/merged to the main branch. It greatly reduces the latency between deployments.
+The webhook notifies the Promoter and Argo CD that a new commit was pushed/merged to the main branch. It greatly reduces the latency between deployments.
 
 If you want your local demo to be very responsive, you can use [Smee.io](https://smee.io/) to forward the webhook events to your local machine.
 

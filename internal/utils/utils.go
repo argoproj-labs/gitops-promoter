@@ -18,7 +18,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -281,21 +280,46 @@ func AreCommitStatusesPassing(commitStatuses []promoterv1alpha1.ChangeRequestPol
 	return true
 }
 
-// StatusConditionUpdater defines the interface for objects that can have their status conditions updated
+// StatusConditionUpdater defines the interface for objects that can have their status conditions updated.
+// Implementers must also expose SetObservedGeneration so the generic reconciliation helper can stamp
+// status.observedGeneration before the SSA status patch. This is the primary mechanism for detecting
+// stale status writes: SSA with ForceOwnership performs no optimistic-concurrency check, so a stale
+// cached reconcile could otherwise silently overwrite a newer status. Consumers should compare
+// status.observedGeneration with metadata.generation.
 type StatusConditionUpdater interface {
 	client.Object
 	GetConditions() *[]metav1.Condition
+	SetObservedGeneration(generation int64)
 }
 
 // HandleReconciliationResult handles reconciliation results for any object with status conditions.
-// If result is non-nil and this function sets an error (e.g. status update failed), it clears any
-// Requeue/RequeueAfter in *result so the caller does not return both a requeue and an error.
+// It applies the object's status subresource via Server-Side Apply under the provided
+// fieldOwner with ForceOwnership. If the full-status apply is rejected (e.g. by an
+// OpenAPI schema or CEL validation rule on some status field), a second SSA patch that
+// populates only status.conditions is attempted under a DISTINCT fallback FieldOwner
+// (fieldOwner + "-fallback"). Using a separate owner is deliberate: SSA deletes fields
+// that a manager previously owned but dropped from a new apply body, so reusing the
+// main fieldOwner for a conditions-only patch would wipe every other status field
+// (status.proposed, status.active, status.history, ...). The fallback owner only ever
+// declares status.conditions, so the main owner's fields stay untouched. On the next
+// successful full reconcile the main owner reclaims conditions via ForceOwnership.
+//
+// The fallback patch also deliberately OMITS status.observedGeneration. The stored
+// top-level value stays pinned to the last successful full apply so consumers can
+// detect that the persisted status body is stale; the Ready condition's own
+// ObservedGeneration field records the generation the controller attempted to
+// reconcile, so users still see which generation produced the failure message.
+//
+// If result is non-nil and this function sets an error (e.g. status apply failed), it
+// clears any Requeue/RequeueAfter in *result so the caller does not return both a
+// requeue and an error.
 func HandleReconciliationResult(
 	ctx context.Context,
 	startTime time.Time,
 	obj StatusConditionUpdater,
-	client client.Client,
+	c client.Client,
 	recorder events.EventRecorder,
+	fieldOwner string,
 	result *reconcile.Result,
 	err *error,
 ) {
@@ -320,13 +344,12 @@ func HandleReconciliationResult(
 		return
 	}
 
-	// If the deletion timestamp is set on the object, bail out early.
-	if !obj.GetDeletionTimestamp().IsZero() {
-		logger.V(4).Info("resource deleted, skipping handling of the reconciliation result")
-		return
-	}
-
 	conditions := obj.GetConditions() // GetConditions() is guaranteed to be non-nil for our CRDs.
+	// Controllers are expected to call meta.RemoveStatusCondition(..., "Ready") at the
+	// top of Reconcile so stale conditions from a previous reconcile don't bleed into
+	// this one. If FindStatusCondition still returns non-nil here, the reconciler
+	// deliberately set a Ready state during this reconcile (e.g. via
+	// InheritNotReadyConditionFromObjects) and we preserve it.
 	readyCondition := meta.FindStatusCondition(*conditions, string(promoterConditions.Ready))
 	if readyCondition == nil {
 		// If the condition hasn't already been set by the caller, assume success.
@@ -350,7 +373,9 @@ func HandleReconciliationResult(
 		}
 		recorder.Eventf(obj, nil, eventType, readyCondition.Reason, "Reconciling", readyCondition.Message)
 	} else {
-		// Error case: set Ready condition to False
+		// Error case: set Ready condition to False. Conflict errors from Update calls
+		// elsewhere in the reconcile flow are expected and transient, so don't spam events
+		// for those; the retry will emit the event if the condition persists.
 		if !k8serrors.IsConflict(*err) {
 			recorder.Eventf(obj, nil, "Warning", string(promoterConditions.ReconciliationError), "Reconciling", "Reconciliation failed: %v", *err)
 		}
@@ -363,30 +388,21 @@ func HandleReconciliationResult(
 		})
 	}
 
-	// Single status update. This function should be the only place Status().Update() is called for reconciled resources.
-	updateErr := client.Status().Update(ctx, obj)
-	if updateErr == nil {
-		return
-	}
+	// Stamp status.observedGeneration before building the apply configuration so the SSA
+	// patch records which spec generation produced this status. SSA with ForceOwnership
+	// has no optimistic-concurrency guard, so observedGeneration is the only signal a
+	// consumer can use to tell whether a status reflects the current spec.
+	obj.SetObservedGeneration(obj.GetGeneration())
 
-	// Full status update failed. Try a fallback: update only the status condition.
-	// This can help when the failure is due to validation errors in other status fields.
-	logger.V(4).Info("Full status update failed, attempting fallback to update only status condition", "error", updateErr)
-
-	// Get a fresh copy of the object from the API server to avoid using data that caused the original update failure.
-	// (For example, a status field that didn't pass validation.)
-	//nolint:forcetypeassert // Type assertion is guaranteed to succeed for all CRDs in this codebase.
-	freshObj := obj.DeepCopyObject().(StatusConditionUpdater)
-	objectKey := types.NamespacedName{
-		Name:      obj.GetName(),
-		Namespace: obj.GetNamespace(),
-	}
-	if getErr := client.Get(ctx, objectKey, freshObj); getErr != nil {
+	// Build the full status apply configuration and SSA-patch the status subresource.
+	// This function should be the only place status is written for reconciled resources.
+	fullCfg, buildErr := statusApplyConfig(obj, false)
+	if buildErr != nil {
 		if *err == nil {
-			*err = fmt.Errorf("failed to update status: %w", updateErr)
+			*err = fmt.Errorf("failed to build status apply configuration: %w", buildErr)
 		} else {
 			//nolint:errorlint // The initial error is intentionally quoted instead of wrapped for clarity.
-			*err = fmt.Errorf("failed to update status with error condition with error %q: %w", *err, updateErr)
+			*err = fmt.Errorf("failed to build status apply configuration with error %q: %w", *err, buildErr)
 		}
 		if result != nil {
 			*result = reconcile.Result{}
@@ -394,44 +410,101 @@ func HandleReconciliationResult(
 		return
 	}
 
-	// Build the Ready condition to write. If there was an original reconciliation error,
-	// use that. Otherwise, create an error condition indicating the status update failed.
-	conditionToWrite := metav1.Condition{
+	patchErr := c.Status().Patch(ctx, obj, ApplyPatch{ApplyConfig: fullCfg},
+		client.FieldOwner(fieldOwner), client.ForceOwnership)
+	if patchErr == nil {
+		return
+	}
+
+	// Object was deleted concurrently; nothing to write.
+	if k8serrors.IsNotFound(patchErr) {
+		logger.V(4).Info("status apply skipped, object no longer exists", "error", patchErr)
+		return
+	}
+
+	// Full status apply failed. Try a fallback that applies only status.conditions so the
+	// Ready condition explaining the failure still lands on the object. SSA on /status is
+	// atomic, so a validation rejection (OpenAPI or CEL) on any other status field loses
+	// the Ready condition we just set in memory.
+	//
+	// The fallback uses a DISTINCT FieldOwner so it only claims ownership of
+	// status.conditions. Under SSA, when a manager re-applies and drops fields it
+	// previously owned, those fields are deleted from the live object unless another
+	// manager owns them. If we used the same FieldOwner here, this conditions-only patch
+	// would wipe status.proposed, status.active, status.history, etc. — a severe UX
+	// regression. Using a separate owner leaves those fields untouched under the main
+	// owner until the next successful full apply reclaims conditions via ForceOwnership.
+	//
+	// Also note: this patch deliberately does NOT include status.observedGeneration.
+	// Keeping the stored top-level observedGeneration pinned to the last successful
+	// reconcile is the canonical "status is stale" signal; the Ready condition's own
+	// ObservedGeneration field records the generation that was attempted.
+	fallbackFieldOwner := fieldOwner + "-fallback"
+	logger.V(4).Info("full status apply failed, attempting conditions-only apply",
+		"error", patchErr, "fallbackFieldOwner", fallbackFieldOwner)
+
+	// Rewrite the in-memory Ready condition to describe the apply failure. If the
+	// reconcile already produced an error, we keep that as the primary cause; otherwise
+	// the status apply failure is the cause.
+	fallbackCondition := metav1.Condition{
 		Type:               string(promoterConditions.Ready),
 		Status:             metav1.ConditionFalse,
 		Reason:             string(promoterConditions.ReconciliationError),
 		ObservedGeneration: obj.GetGeneration(),
 	}
 	if *err != nil {
-		conditionToWrite.Message = fmt.Sprintf("Reconciliation failed: %s", *err)
+		fallbackCondition.Message = fmt.Sprintf("Reconciliation failed: %s", *err)
 	} else {
-		conditionToWrite.Message = fmt.Sprintf("Reconciliation succeeded but failed to update status: %s", updateErr)
+		fallbackCondition.Message = fmt.Sprintf("Reconciliation succeeded but failed to apply status: %s", patchErr)
 	}
+	meta.SetStatusCondition(conditions, fallbackCondition)
 
-	// Copy only the Ready status condition to the fresh object
-	freshConditions := freshObj.GetConditions()
-	meta.SetStatusCondition(freshConditions, conditionToWrite)
-
-	// Try updating only the status condition
-	fallbackErr := client.Status().Update(ctx, freshObj)
-	if fallbackErr != nil {
-		// Fallback also failed, report both errors
+	condCfg, buildErr := statusApplyConfig(obj, true)
+	if buildErr != nil {
 		if *err == nil {
-			*err = fmt.Errorf("failed to update status (original error: %w), and updating only the Ready condition also failed: %w", updateErr, fallbackErr)
+			*err = fmt.Errorf("failed to apply status (%w), and building conditions-only apply configuration also failed: %w", patchErr, buildErr)
 		} else {
 			//nolint:errorlint // The initial error is intentionally quoted instead of wrapped for clarity.
-			*err = fmt.Errorf("failed to update status with error condition regarding error %q (original status update error: %w), and updating only the Ready condition also failed: %w", *err, updateErr, fallbackErr)
+			*err = fmt.Errorf("failed to apply status with error condition regarding error %q (%w), and building conditions-only apply configuration also failed: %w", *err, patchErr, buildErr)
+		}
+		if result != nil {
+			*result = reconcile.Result{}
 		}
 		return
 	}
 
-	// Fallback succeeded, but report the original status update failure
-	logger.Info("Successfully updated only the Ready condition after full status update failed")
+	//nolint:forcetypeassert // Type assertion is guaranteed to succeed for all CRDs in this codebase.
+	fallbackObj := obj.DeepCopyObject().(StatusConditionUpdater)
+	fallbackErr := c.Status().Patch(ctx, fallbackObj, ApplyPatch{ApplyConfig: condCfg},
+		client.FieldOwner(fallbackFieldOwner), client.ForceOwnership)
+	if fallbackErr != nil {
+		if k8serrors.IsNotFound(fallbackErr) {
+			logger.V(4).Info("conditions-only status apply skipped, object no longer exists", "error", fallbackErr)
+			return
+		}
+		// Fallback also failed, report both errors
+		if *err == nil {
+			*err = fmt.Errorf("failed to apply status (original error: %w), and applying only the Ready condition also failed: %w", patchErr, fallbackErr)
+		} else {
+			//nolint:errorlint // The initial error is intentionally quoted instead of wrapped for clarity.
+			*err = fmt.Errorf("failed to apply status with error condition regarding error %q (original status apply error: %w), and applying only the Ready condition also failed: %w", *err, patchErr, fallbackErr)
+		}
+		if result != nil {
+			*result = reconcile.Result{}
+		}
+		return
+	}
+
+	// Fallback succeeded, but report the original status apply failure
+	logger.Info("Successfully applied only the Ready condition after full status apply failed")
 	if *err == nil {
-		*err = fmt.Errorf("failed to update full status (but updating only the Ready condition succeeded): %w", updateErr)
+		*err = fmt.Errorf("failed to apply full status (but applying only the Ready condition succeeded): %w", patchErr)
 	} else {
 		//nolint:errorlint // The initial error is intentionally quoted instead of wrapped for clarity.
-		*err = fmt.Errorf("failed to update status with error condition regarding error %q (but updating only the Ready condition succeeded): %w", *err, updateErr)
+		*err = fmt.Errorf("failed to apply status with error condition regarding error %q (but applying only the Ready condition succeeded): %w", *err, patchErr)
+	}
+	if result != nil {
+		*result = reconcile.Result{}
 	}
 }
 

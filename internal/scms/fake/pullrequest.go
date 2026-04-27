@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -28,6 +29,9 @@ import (
 var (
 	pullRequests map[string]pullRequestProviderState
 	mutexPR      sync.RWMutex
+
+	// findOpenCallCount is incremented on every FindOpen call (for tests).
+	findOpenCallCount atomic.Uint64
 )
 
 type pullRequestProviderState struct {
@@ -210,8 +214,39 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 	return nil
 }
 
+// ResetFindOpenCallCount resets the test-only counter of FindOpen invocations.
+func ResetFindOpenCallCount() {
+	findOpenCallCount.Store(0)
+}
+
+// FindOpenCallCount returns how many times FindOpen has been invoked since the last reset.
+func FindOpenCallCount() uint64 {
+	return findOpenCallCount.Load()
+}
+
+// GetRecordedState returns the PR entry stored in the fake provider for the given resource, if any.
+func (pr *PullRequest) GetRecordedState(ctx context.Context, pullRequest v1alpha1.PullRequest) (exists bool, state v1alpha1.PullRequestState, id string, err error) {
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return false, "", "", fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	mutexPR.RLock()
+	defer mutexPR.RUnlock()
+	if pullRequests == nil {
+		return false, "", "", nil
+	}
+	st, ok := pullRequests[pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)]
+	if !ok {
+		return false, "", "", nil
+	}
+	return true, st.state, st.id, nil
+}
+
 // FindOpen checks if a pull request is open and returns its status.
 func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string, time.Time, error) {
+	findOpenCallCount.Add(1)
+
 	mutexPR.RLock()
 	found, id := pr.findOpen(ctx, pullRequest)
 	mutexPR.RUnlock()
@@ -240,7 +275,7 @@ func (pr *PullRequest) getMapKey(pullRequest v1alpha1.PullRequest, owner, name s
 }
 
 // DeletePullRequest deletes a pull request from the fake provider's internal map.
-// This is used for testing to simulate externally merged/closed PRs.
+// This is used for testing to simulate a PR no longer open on the SCM (externally merged/closed, or fully removed).
 func (pr *PullRequest) DeletePullRequest(ctx context.Context, pullRequest v1alpha1.PullRequest) error {
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {

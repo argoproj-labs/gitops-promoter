@@ -27,6 +27,11 @@ import (
 //
 // CommitStatusStatus defines the observed state of CommitStatus
 type CommitStatusStatusApplyConfiguration struct {
+	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
+	// Because status is written via Server-Side Apply with ForceOwnership (which has no
+	// optimistic-concurrency check), this field is the canonical way to detect stale
+	// status writes: compare status.observedGeneration with metadata.generation.
+	ObservedGeneration *int64 `json:"observedGeneration,omitempty"`
 	// Id is the unique identifier of the commit status, set by the SCM
 	Id *string `json:"id,omitempty"`
 	// Sha is the commit SHA that the status is set on.
@@ -42,6 +47,14 @@ type CommitStatusStatusApplyConfiguration struct {
 // apply.
 func CommitStatusStatus() *CommitStatusStatusApplyConfiguration {
 	return &CommitStatusStatusApplyConfiguration{}
+}
+
+// WithObservedGeneration sets the ObservedGeneration field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ObservedGeneration field is set to the value of the last call.
+func (b *CommitStatusStatusApplyConfiguration) WithObservedGeneration(value int64) *CommitStatusStatusApplyConfiguration {
+	b.ObservedGeneration = &value
+	return b
 }
 
 // WithId sets the Id field in the declarative configuration to the given value

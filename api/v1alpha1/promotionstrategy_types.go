@@ -111,6 +111,13 @@ type CommitStatusSelector struct {
 
 // PromotionStrategyStatus defines the observed state of PromotionStrategy
 type PromotionStrategyStatus struct {
+	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
+	// Because status is written via Server-Side Apply with ForceOwnership (which has no
+	// optimistic-concurrency check), this field is the canonical way to detect stale
+	// status writes: compare status.observedGeneration with metadata.generation.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// Environments holds the status of each environment in the promotion sequence.
 	// +listType:=map
 	// +listMapKey=branch
@@ -127,6 +134,11 @@ type PromotionStrategyStatus struct {
 // GetConditions returns the conditions of the PromotionStrategy.
 func (ps *PromotionStrategy) GetConditions() *[]metav1.Condition {
 	return &ps.Status.Conditions
+}
+
+// SetObservedGeneration records the object generation that produced the current status.
+func (ps *PromotionStrategy) SetObservedGeneration(generation int64) {
+	ps.Status.ObservedGeneration = generation
 }
 
 // EnvironmentStatus defines the observed state of an environment in a PromotionStrategy.

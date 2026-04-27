@@ -22,6 +22,11 @@ package v1alpha1
 //
 // WhenWithOutputSpec holds a when condition (boolean expression) and optional output (map expression).
 type WhenWithOutputSpecApplyConfiguration struct {
+	// Variables optionally holds an expression that runs before Expression and Output.Expression.
+	// It receives the same variables as Expression (see Expression documentation below) and must return a map/object.
+	// The result is injected as top-level binding Variables (map) for Expression and Output.Expression only — use Variables.<key> in those expressions.
+	// The Variables binding is not set when spec.variables is omitted. It is not available to response.output.expression or to Go templates.
+	Variables *OutputSpecApplyConfiguration `json:"variables,omitempty"`
 	// Expression is a boolean expr expression that decides whether the HTTP request should be made.
 	// It is evaluated BEFORE each potential HTTP request. When it returns true the request is made;
 	// when false the controller keeps the previous phase and skips the request.
@@ -34,6 +39,7 @@ type WhenWithOutputSpecApplyConfiguration struct {
 	// - TriggerOutput (map[string]any): custom data from the previous when.output.expression evaluation
 	// - ResponseOutput (map[string]any): response data from the previous HTTP request (if any)
 	// - SuccessOutput (map[string]any): custom data from the previous success.when.output.expression evaluation
+	// - Variables (map[string]any): when spec.variables is set, the map returned by variables.expression this reconcile; omitted otherwise
 	//
 	// Note: PromotionStrategy.Status.Environments is an ordered array representing the promotion sequence.
 	// Use Branch + filter/find to look up environment-specific data:
@@ -73,6 +79,14 @@ type WhenWithOutputSpecApplyConfiguration struct {
 // apply.
 func WhenWithOutputSpec() *WhenWithOutputSpecApplyConfiguration {
 	return &WhenWithOutputSpecApplyConfiguration{}
+}
+
+// WithVariables sets the Variables field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Variables field is set to the value of the last call.
+func (b *WhenWithOutputSpecApplyConfiguration) WithVariables(value *OutputSpecApplyConfiguration) *WhenWithOutputSpecApplyConfiguration {
+	b.Variables = value
+	return b
 }
 
 // WithExpression sets the Expression field in the declarative configuration to the given value

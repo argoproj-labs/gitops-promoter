@@ -292,6 +292,14 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the .metadata.generation that this status was reconciled from.
+                  Because status is written via Server-Side Apply with ForceOwnership (which has no
+                  optimistic-concurrency check), this field is the canonical way to detect stale
+                  status writes: compare status.observedGeneration with metadata.generation.
+                format: int64
+                type: integer
             type: object
         type: object
     served: true
@@ -1202,11 +1210,12 @@ spec:
                       properties:
                         externallyMergedOrClosed:
                           description: |-
-                            ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
-                            This is set to true when the pull request has an ID but is no longer found on the SCM provider.
-                            When true, the State field will be empty ("") since we cannot determine if it was merged or closed.
+                            ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the
+                            PullRequest still desired it open: merged or closed outside the controller, or closed on the SCM
+                            because the PullRequest resource was deleted (finalizer) before this status was reconciled.
+                            When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider.
                             This status is preserved even after the PullRequest resource is deleted, maintaining a historical
-                            record of the external action until a new pull request is created for this environment.
+                            record until a new pull request is created for this environment.
                           type: boolean
                         id:
                           description: ID is the unique identifier of the pull request,
@@ -1242,6 +1251,14 @@ spec:
                       type: object
                   type: object
                 type: array
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the .metadata.generation that this status was reconciled from.
+                  Because status is written via Server-Side Apply with ForceOwnership (which has no
+                  optimistic-concurrency check), this field is the canonical way to detect stale
+                  status writes: compare status.observedGeneration with metadata.generation.
+                format: int64
+                type: integer
               proposed:
                 description: Proposed is the state of the proposed branch.
                 properties:
@@ -1530,11 +1547,12 @@ spec:
                 properties:
                   externallyMergedOrClosed:
                     description: |-
-                      ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
-                      This is set to true when the pull request has an ID but is no longer found on the SCM provider.
-                      When true, the State field will be empty ("") since we cannot determine if it was merged or closed.
+                      ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the
+                      PullRequest still desired it open: merged or closed outside the controller, or closed on the SCM
+                      because the PullRequest resource was deleted (finalizer) before this status was reconciled.
+                      When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider.
                       This status is preserved even after the PullRequest resource is deleted, maintaining a historical
-                      record of the external action until a new pull request is created for this environment.
+                      record until a new pull request is created for this environment.
                     type: boolean
                   id:
                     description: ID is the unique identifier of the pull request,
@@ -1807,6 +1825,14 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the .metadata.generation that this status was reconciled from.
+                  Because status is written via Server-Side Apply with ForceOwnership (which has no
+                  optimistic-concurrency check), this field is the canonical way to detect stale
+                  status writes: compare status.observedGeneration with metadata.generation.
+                format: int64
+                type: integer
             type: object
         type: object
     served: true
@@ -1996,6 +2022,14 @@ spec:
                 description: Id is the unique identifier of the commit status, set
                   by the SCM
                 type: string
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the .metadata.generation that this status was reconciled from.
+                  Because status is written via Server-Side Apply with ForceOwnership (which has no
+                  optimistic-concurrency check), this field is the canonical way to detect stale
+                  status writes: compare status.observedGeneration with metadata.generation.
+                format: int64
+                type: integer
               phase:
                 default: pending
                 description: Phase is the state of the commit status. This will be
@@ -4093,6 +4127,14 @@ spec:
                 x-kubernetes-list-map-keys:
                 - branch
                 x-kubernetes-list-type: map
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the .metadata.generation that this status was reconciled from.
+                  Because status is written via Server-Side Apply with ForceOwnership (which has no
+                  optimistic-concurrency check), this field is the canonical way to detect stale
+                  status writes: compare status.observedGeneration with metadata.generation.
+                format: int64
+                type: integer
             type: object
         required:
         - spec
@@ -4372,6 +4414,14 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the .metadata.generation that this status was reconciled from.
+                  Because status is written via Server-Side Apply with ForceOwnership (which has no
+                  optimistic-concurrency check), this field is the canonical way to detect stale
+                  status writes: compare status.observedGeneration with metadata.generation.
+                format: int64
+                type: integer
             type: object
         type: object
     served: true
@@ -5384,11 +5434,12 @@ spec:
                             properties:
                               externallyMergedOrClosed:
                                 description: |-
-                                  ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
-                                  This is set to true when the pull request has an ID but is no longer found on the SCM provider.
-                                  When true, the State field will be empty ("") since we cannot determine if it was merged or closed.
+                                  ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the
+                                  PullRequest still desired it open: merged or closed outside the controller, or closed on the SCM
+                                  because the PullRequest resource was deleted (finalizer) before this status was reconciled.
+                                  When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider.
                                   This status is preserved even after the PullRequest resource is deleted, maintaining a historical
-                                  record of the external action until a new pull request is created for this environment.
+                                  record until a new pull request is created for this environment.
                                 type: boolean
                               id:
                                 description: ID is the unique identifier of the pull
@@ -5745,11 +5796,12 @@ spec:
                       properties:
                         externallyMergedOrClosed:
                           description: |-
-                            ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
-                            This is set to true when the pull request has an ID but is no longer found on the SCM provider.
-                            When true, the State field will be empty ("") since we cannot determine if it was merged or closed.
+                            ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the
+                            PullRequest still desired it open: merged or closed outside the controller, or closed on the SCM
+                            because the PullRequest resource was deleted (finalizer) before this status was reconciled.
+                            When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider.
                             This status is preserved even after the PullRequest resource is deleted, maintaining a historical
-                            record of the external action until a new pull request is created for this environment.
+                            record until a new pull request is created for this environment.
                           type: boolean
                         id:
                           description: ID is the unique identifier of the pull request,
@@ -5792,6 +5844,14 @@ spec:
                 x-kubernetes-list-map-keys:
                 - branch
                 x-kubernetes-list-type: map
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the .metadata.generation that this status was reconciled from.
+                  Because status is written via Server-Side Apply with ForceOwnership (which has no
+                  optimistic-concurrency check), this field is the canonical way to detect stale
+                  status writes: compare status.observedGeneration with metadata.generation.
+                format: int64
+                type: integer
             required:
             - environments
             type: object
@@ -6002,15 +6062,25 @@ spec:
                 x-kubernetes-list-type: map
               externallyMergedOrClosed:
                 description: |-
-                  ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
-                  This is set to true when the pull request has an ID but is no longer found on the SCM provider.
-                  When true, the State field will be empty ("") since we cannot determine if it was merged or closed.
-                  The PullRequest resource will be deleted after this flag is set, but the status is preserved in
-                  the owning ChangeTransferPolicy to maintain a record of the external action.
+                  ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the
+                  resource still desired it open (spec.state is "open"): either it was merged or closed outside the
+                  controller, or it was closed on the SCM because the PullRequest resource was deleted (finalizer)
+                  and a subsequent sync observed it missing. The controller does not distinguish those cases here.
+                  When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider.
+                  The PullRequest resource will be deleted after this flag is set when possible, but the status is
+                  preserved in the owning ChangeTransferPolicy to maintain a record.
                 type: boolean
               id:
                 description: ID the id of the pull request
                 type: string
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the .metadata.generation that this status was reconciled from.
+                  Because status is written via Server-Side Apply with ForceOwnership (which has no
+                  optimistic-concurrency check), this field is the canonical way to detect stale
+                  status writes: compare status.observedGeneration with metadata.generation.
+                format: int64
+                type: integer
               prCreationTime:
                 description: PRCreationTime the time the PR was created
                 format: date-time
@@ -6327,6 +6397,14 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the .metadata.generation that this status was reconciled from.
+                  Because status is written via Server-Side Apply with ForceOwnership (which has no
+                  optimistic-concurrency check), this field is the canonical way to detect stale
+                  status writes: compare status.observedGeneration with metadata.generation.
+                format: int64
+                type: integer
             type: object
         type: object
     served: true
@@ -6535,6 +6613,14 @@ spec:
                 x-kubernetes-list-map-keys:
                 - branch
                 x-kubernetes-list-type: map
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the .metadata.generation that this status was reconciled from.
+                  Because status is written via Server-Side Apply with ForceOwnership (which has no
+                  optimistic-concurrency check), this field is the canonical way to detect stale
+                  status writes: compare status.observedGeneration with metadata.generation.
+                format: int64
+                type: integer
             type: object
         required:
         - spec
@@ -6901,6 +6987,7 @@ spec:
                                 - TriggerOutput (map[string]any): custom data from the previous when.output.expression evaluation
                                 - ResponseOutput (map[string]any): response data from the previous HTTP request (if any)
                                 - SuccessOutput (map[string]any): custom data from the previous success.when.output.expression evaluation
+                                - Variables (map[string]any): when spec.variables is set, the map returned by variables.expression this reconcile; omitted otherwise
 
                               Note: PromotionStrategy.Status.Environments is an ordered array representing the promotion sequence.
                               Use Branch + filter/find to look up environment-specific data:
@@ -6935,6 +7022,20 @@ spec:
 
                                 # Increment attempt counter
                                 - "{ attemptCount: (TriggerOutput[\"attemptCount\"] ?? 0) + 1 }"
+                            properties:
+                              expression:
+                                description: Expression is an expr expression that
+                                  must return a map/object.
+                                type: string
+                            required:
+                            - expression
+                            type: object
+                          variables:
+                            description: |-
+                              Variables optionally holds an expression that runs before Expression and Output.Expression.
+                              It receives the same variables as Expression (see Expression documentation below) and must return a map/object.
+                              The result is injected as top-level binding Variables (map) for Expression and Output.Expression only — use Variables.<key> in those expressions.
+                              The Variables binding is not set when spec.variables is omitted. It is not available to response.output.expression or to Go templates.
                             properties:
                               expression:
                                 description: Expression is an expr expression that
@@ -7011,6 +7112,7 @@ spec:
                             - TriggerOutput (map[string]any): custom data from the previous when.output.expression evaluation
                             - ResponseOutput (map[string]any): response data from the previous HTTP request (if any)
                             - SuccessOutput (map[string]any): custom data from the previous success.when.output.expression evaluation
+                            - Variables (map[string]any): when spec.variables is set, the map returned by variables.expression this reconcile; omitted otherwise
 
                           Note: PromotionStrategy.Status.Environments is an ordered array representing the promotion sequence.
                           Use Branch + filter/find to look up environment-specific data:
@@ -7045,6 +7147,20 @@ spec:
 
                             # Increment attempt counter
                             - "{ attemptCount: (TriggerOutput[\"attemptCount\"] ?? 0) + 1 }"
+                        properties:
+                          expression:
+                            description: Expression is an expr expression that must
+                              return a map/object.
+                            type: string
+                        required:
+                        - expression
+                        type: object
+                      variables:
+                        description: |-
+                          Variables optionally holds an expression that runs before Expression and Output.Expression.
+                          It receives the same variables as Expression (see Expression documentation below) and must return a map/object.
+                          The result is injected as top-level binding Variables (map) for Expression and Output.Expression only — use Variables.<key> in those expressions.
+                          The Variables binding is not set when spec.variables is omitted. It is not available to response.output.expression or to Go templates.
                         properties:
                           expression:
                             description: Expression is an expr expression that must
@@ -7213,6 +7329,14 @@ spec:
                 x-kubernetes-list-map-keys:
                 - branch
                 x-kubernetes-list-type: map
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the .metadata.generation that this status was reconciled from.
+                  Because status is written via Server-Side Apply with ForceOwnership (which has no
+                  optimistic-concurrency check), this field is the canonical way to detect stale
+                  status writes: compare status.observedGeneration with metadata.generation.
+                format: int64
+                type: integer
               promotionStrategyContext:
                 description: |-
                   PromotionStrategyContext holds the result of the one HTTP run when context is "promotionstrategy".

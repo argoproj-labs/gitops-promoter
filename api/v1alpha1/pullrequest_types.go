@@ -74,6 +74,13 @@ type PullRequestStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
+	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
+	// Because status is written via Server-Side Apply with ForceOwnership (which has no
+	// optimistic-concurrency check), this field is the canonical way to detect stale
+	// status writes: compare status.observedGeneration with metadata.generation.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// ID the id of the pull request
 	ID string `json:"id,omitempty"`
 	// State of the merge request closed/merged/open
@@ -85,11 +92,13 @@ type PullRequestStatus struct {
 	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"
 	// +kubebuilder:validation:Pattern="^(https?://.*)?$"
 	Url string `json:"url,omitempty"`
-	// ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
-	// This is set to true when the pull request has an ID but is no longer found on the SCM provider.
-	// When true, the State field will be empty ("") since we cannot determine if it was merged or closed.
-	// The PullRequest resource will be deleted after this flag is set, but the status is preserved in
-	// the owning ChangeTransferPolicy to maintain a record of the external action.
+	// ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the
+	// resource still desired it open (spec.state is "open"): either it was merged or closed outside the
+	// controller, or it was closed on the SCM because the PullRequest resource was deleted (finalizer)
+	// and a subsequent sync observed it missing. The controller does not distinguish those cases here.
+	// When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider.
+	// The PullRequest resource will be deleted after this flag is set when possible, but the status is
+	// preserved in the owning ChangeTransferPolicy to maintain a record.
 	ExternallyMergedOrClosed *bool `json:"externallyMergedOrClosed,omitempty"`
 
 	// Conditions Represents the observations of the current state.
@@ -103,6 +112,11 @@ type PullRequestStatus struct {
 // GetConditions returns the conditions of the PullRequest.
 func (ps *PullRequest) GetConditions() *[]metav1.Condition {
 	return &ps.Status.Conditions
+}
+
+// SetObservedGeneration records the object generation that produced the current status.
+func (ps *PullRequest) SetObservedGeneration(generation int64) {
+	ps.Status.ObservedGeneration = generation
 }
 
 // +kubebuilder:ac:generate=true
