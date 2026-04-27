@@ -42,20 +42,6 @@ func (simulatedCommitEmitter) EmitCommitStatus(ctx context.Context, wrcs *promot
 	return renderCommitStatus(ctx, wrcs, repositoryRefName, branch, sha, phase, td)
 }
 
-// reconcileResult builds the simulator result from WRCS status (as internal/webrequest returns it) plus
-// diagnostics fields—same shape for environments and promotionstrategy context.
-func reconcileResult(
-	status promoterv1alpha1.WebRequestCommitStatusStatus,
-	rendered []simulatortypes.RenderedRequest,
-	commitStatuses []*promoterv1alpha1.CommitStatus,
-) *simulatortypes.Result {
-	return &simulatortypes.Result{
-		Status:           status,
-		RenderedRequests: rendered,
-		CommitStatuses:   commitStatuses,
-	}
-}
-
 // Simulate runs one WebRequestCommitStatus reconcile against args, using
 // args.HTTPResponses in place of any real HTTP call. The returned Result.Status
 // matches what the controller would write to WebRequestCommitStatus.Status.
@@ -100,7 +86,11 @@ func processEnvironments(
 		return nil, fmt.Errorf("simulate environments reconcile: %w", err)
 	}
 
-	return reconcileResult(out.WebRequestCommitStatusStatus, rendered, out.CommitStatuses), nil
+	return &simulatortypes.Result{
+		Status:           out.WebRequestCommitStatusStatus,
+		RenderedRequests: rendered,
+		CommitStatuses:   out.CommitStatuses,
+	}, nil
 }
 
 // processContextPromotionStrategy mirrors WebRequestCommitStatusReconciler.processContextPromotionStrategy:
@@ -125,7 +115,11 @@ func processContextPromotionStrategy(
 		return nil, fmt.Errorf("simulate promotionstrategy reconcile: %w", err)
 	}
 
-	return reconcileResult(out.WebRequestCommitStatusStatus, rendered, out.CommitStatuses), nil
+	return &simulatortypes.Result{
+		Status:           out.WebRequestCommitStatusStatus,
+		RenderedRequests: rendered,
+		CommitStatuses:   out.CommitStatuses,
+	}, nil
 }
 
 func simulatorHTTPResponseToWeb(m simulatortypes.HTTPResponse) webrequest.HTTPResponse {
