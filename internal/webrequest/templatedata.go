@@ -80,14 +80,14 @@ type triggerResult struct {
 	Trigger bool
 }
 
-// triggerDecision is the result of evaluateTriggerDecision: whether to perform the HTTP round-trip
+// httpExecutionDecision is the result of resolveHTTPExecutionDecision: whether to perform the HTTP round-trip
 // and any trigger output data for the next reconcile.
-type triggerDecision struct {
+type httpExecutionDecision struct {
 	NewTriggerData map[string]any
 	ShouldFire     bool
 }
 
-// validationResult holds the outcome of processing a fire or carry-forward path. Phase is derived
+// reconcileOutcome holds the outcome of processing a fire or carry-forward path. Phase is derived
 // from the success.when expression and is written to CommitStatus / simulated status.
 //
 // When context is promotionstrategy and the success expression returns an object { defaultPhase?, environments? },
@@ -100,7 +100,7 @@ type triggerDecision struct {
 // expression can read it (e.g. ResponseOutput.buildUrl). When upserting the CommitStatus it is also
 // passed into the description and URL templates as ResponseOutput, so the SCM status can show links
 // or text derived from the response (e.g. a link to the CI run).
-type validationResult struct {
+type reconcileOutcome struct {
 	LastRequestTime        *metav1.Time
 	LastResponseStatusCode *int
 	ResponseDataJSON       *apiextensionsv1.JSON

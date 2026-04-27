@@ -55,7 +55,7 @@ func makeHTTPRequest(
 	rendered *[]simulatortypes.RenderedRequest,
 ) (webrequest.HTTPResponse, error) {
 	if rendered != nil {
-		req, err := webrequest.RenderHTTPRequestTemplates(wrcs, td)
+		req, err := webrequest.BuildRenderedHTTPRequestFromTemplates(wrcs, td)
 		if err != nil {
 			return webrequest.HTTPResponse{}, fmt.Errorf("failed to render HTTP request templates: %w", err)
 		}

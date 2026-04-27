@@ -31,9 +31,9 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
-// ProcessWebRequestCommitStatusInput carries shared dependencies for WRCS processing
+// ReconcileWebRequestCommitStatusInput carries shared dependencies for WRCS processing
 // (per-environment context and promotionstrategy context).
-type ProcessWebRequestCommitStatusInput struct {
+type ReconcileWebRequestCommitStatusInput struct {
 	HttpExec               HTTPEXecutor
 	WebRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
 	PromotionStrategy      *promoterv1alpha1.PromotionStrategy
@@ -42,15 +42,15 @@ type ProcessWebRequestCommitStatusInput struct {
 	CommitEmitter CommitStatusEmitter
 }
 
-// ProcessWebRequestCommitStatusEnvironmentsOutput is the computed status and CommitStatus list for one reconcile.
-type ProcessWebRequestCommitStatusEnvironmentsOutput struct {
+// ReconcileWebRequestCommitStatusEnvironmentsOutput is the computed status and CommitStatus list for one reconcile.
+type ReconcileWebRequestCommitStatusEnvironmentsOutput struct {
 	Environments         []promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
 	CommitStatuses       []*promoterv1alpha1.CommitStatus
 	TransitionedBranches []string
 }
 
-// ProcessWebRequestCommitStatusPromotionStrategyOutput is the computed status for promotionstrategy context.
-type ProcessWebRequestCommitStatusPromotionStrategyOutput struct {
+// ReconcileWebRequestCommitStatusPromotionStrategyOutput is the computed status for promotionstrategy context.
+type ReconcileWebRequestCommitStatusPromotionStrategyOutput struct {
 	PromotionStrategyContext *promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus
 	CommitStatuses           []*promoterv1alpha1.CommitStatus
 	TransitionedBranches     []string
@@ -80,16 +80,16 @@ type CommitStatusEmitter interface {
 	) (*promoterv1alpha1.CommitStatus, error)
 }
 
-// evaluateTriggerDecision determines whether the HTTP request should fire this reconcile.
+// resolveHTTPExecutionDecision determines whether the HTTP request should fire this reconcile.
 // For polling mode it checks whether the polling interval has elapsed since lastRequestTime.
 // For trigger mode it evaluates the trigger expression and optionally the trigger output expression.
-func evaluateTriggerDecision(
+func resolveHTTPExecutionDecision(
 	ctx context.Context,
 	evaluator *ExpressionEvaluator,
 	mode promoterv1alpha1.ModeSpec,
 	td TemplateData,
 	lastRequestTime *metav1.Time,
-) (triggerDecision, error) {
+) (httpExecutionDecision, error) {
 	logger := log.FromContext(ctx)
 	shouldFire := true
 	var newTriggerData map[string]any
@@ -105,24 +105,24 @@ func evaluateTriggerDecision(
 	if mode.Trigger != nil {
 		sf, ntd, err := evaluator.evaluateTriggerWhenBranch(ctx, mode.Trigger, td)
 		if err != nil {
-			return triggerDecision{}, fmt.Errorf("failed to evaluate trigger.when: %w", err)
+			return httpExecutionDecision{}, fmt.Errorf("failed to evaluate trigger.when: %w", err)
 		}
 		shouldFire = sf
 		newTriggerData = ntd
 	}
 
-	return triggerDecision{ShouldFire: shouldFire, NewTriggerData: newTriggerData}, nil
+	return httpExecutionDecision{ShouldFire: shouldFire, NewTriggerData: newTriggerData}, nil
 }
 
-// validationResultFromHTTPResponse runs response extraction and success.when evaluation after
+// reconcileOutcomeFromHTTPResponse runs response extraction and success.when evaluation after
 // an HTTP response is available. It updates td.ResponseOutput when response data JSON is present.
-func validationResultFromHTTPResponse(
+func reconcileOutcomeFromHTTPResponse(
 	ctx context.Context,
 	evaluator *ExpressionEvaluator,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
 	td TemplateData,
 	response HTTPResponse,
-) (validationResult, error) {
+) (reconcileOutcome, error) {
 	logger := log.FromContext(ctx)
 
 	now := metav1.Now()
@@ -135,12 +135,12 @@ func validationResultFromHTTPResponse(
 	if wrcs.Spec.Mode.Trigger != nil && wrcs.Spec.Mode.Trigger.Response != nil {
 		extractedData, err := evaluator.evaluateResponseDataExpression(ctx, wrcs.Spec.Mode.Trigger.Response.Output.Expression, response)
 		if err != nil {
-			return validationResult{}, fmt.Errorf("failed to evaluate response data expression: %w", err)
+			return reconcileOutcome{}, fmt.Errorf("failed to evaluate response data expression: %w", err)
 		}
 
 		responseDataBytes, err := json.Marshal(extractedData)
 		if err != nil {
-			return validationResult{}, fmt.Errorf("failed to marshal response data: %w", err)
+			return reconcileOutcome{}, fmt.Errorf("failed to marshal response data: %w", err)
 		}
 		responseDataJSON = &apiextensionsv1.JSON{Raw: responseDataBytes}
 	}
@@ -154,19 +154,19 @@ func validationResultFromHTTPResponse(
 	exprData := successWhenExprData(td, &response)
 	exprData, err := evaluator.enrichWhenExprEnv(ctx, wrcs.Spec.Success.When, exprData)
 	if err != nil {
-		return validationResult{}, fmt.Errorf("failed to evaluate success.when.variables: %w", err)
+		return reconcileOutcome{}, fmt.Errorf("failed to evaluate success.when.variables: %w", err)
 	}
-	phase, phasePerBranch, err := evaluateSuccessPhase(ctx, evaluator, wrcs, exprData)
+	phase, phasePerBranch, err := resolvePhaseFromSuccessWhen(ctx, evaluator, wrcs, exprData)
 	if err != nil {
-		return validationResult{}, fmt.Errorf("failed to evaluate validation expression: %w", err)
+		return reconcileOutcome{}, fmt.Errorf("failed to evaluate validation expression: %w", err)
 	}
 
-	successDataJSON, err := evaluateSuccessOutput(ctx, evaluator, wrcs, exprData)
+	successDataJSON, err := marshalSuccessWhenOutput(ctx, evaluator, wrcs, exprData)
 	if err != nil {
-		return validationResult{}, fmt.Errorf("failed to evaluate success.when.output expression: %w", err)
+		return reconcileOutcome{}, fmt.Errorf("failed to evaluate success.when.output expression: %w", err)
 	}
 
-	return validationResult{
+	return reconcileOutcome{
 		Phase:                  phase,
 		PhasePerBranch:         phasePerBranch,
 		LastRequestTime:        lastRequestTime,
@@ -176,32 +176,32 @@ func validationResultFromHTTPResponse(
 	}, nil
 }
 
-// validationResultCarryForward evaluates success.when with Response=nil when the trigger does not fire,
+// reconcileOutcomeWithoutNewResponse evaluates success.when with Response=nil when the trigger does not fire,
 // carrying forward last HTTP metadata from lastState.
-func validationResultCarryForward(
+func reconcileOutcomeWithoutNewResponse(
 	ctx context.Context,
 	evaluator *ExpressionEvaluator,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
 	td TemplateData,
 	lastState lastReconciledState,
-) (validationResult, error) {
+) (reconcileOutcome, error) {
 	exprData := successWhenExprData(td, nil)
 	var err error
 	exprData, err = evaluator.enrichWhenExprEnv(ctx, wrcs.Spec.Success.When, exprData)
 	if err != nil {
-		return validationResult{}, fmt.Errorf("failed to evaluate success.when.variables: %w", err)
+		return reconcileOutcome{}, fmt.Errorf("failed to evaluate success.when.variables: %w", err)
 	}
-	phase, phasePerBranch, err := evaluateSuccessPhase(ctx, evaluator, wrcs, exprData)
+	phase, phasePerBranch, err := resolvePhaseFromSuccessWhen(ctx, evaluator, wrcs, exprData)
 	if err != nil {
-		return validationResult{}, fmt.Errorf("failed to evaluate success.when expression: %w", err)
+		return reconcileOutcome{}, fmt.Errorf("failed to evaluate success.when expression: %w", err)
 	}
 
-	successDataJSON, err := evaluateSuccessOutput(ctx, evaluator, wrcs, exprData)
+	successDataJSON, err := marshalSuccessWhenOutput(ctx, evaluator, wrcs, exprData)
 	if err != nil {
-		return validationResult{}, fmt.Errorf("failed to evaluate success.when.output expression: %w", err)
+		return reconcileOutcome{}, fmt.Errorf("failed to evaluate success.when.output expression: %w", err)
 	}
 
-	return validationResult{
+	return reconcileOutcome{
 		Phase:                  phase,
 		PhasePerBranch:         phasePerBranch,
 		LastRequestTime:        lastState.LastRequestTime,
@@ -211,28 +211,28 @@ func validationResultCarryForward(
 	}, nil
 }
 
-// fireOrCarryForward runs the HTTP executor when decision.ShouldFire, otherwise carries forward
-// without a new HTTP response.
-func fireOrCarryForward(
+// applyHTTPExecutionDecision runs the HTTP executor when decision.ShouldFire; otherwise reconciles
+// without a new HTTP response (carries forward last HTTP metadata).
+func applyHTTPExecutionDecision(
 	ctx context.Context,
 	evaluator *ExpressionEvaluator,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
 	td TemplateData,
-	decision triggerDecision,
+	decision httpExecutionDecision,
 	lastState lastReconciledState,
 	exec HTTPEXecutor,
-) (validationResult, error) {
+) (reconcileOutcome, error) {
 	if !decision.ShouldFire {
-		return validationResultCarryForward(ctx, evaluator, wrcs, td, lastState)
+		return reconcileOutcomeWithoutNewResponse(ctx, evaluator, wrcs, td, lastState)
 	}
 	resp, err := exec.Execute(ctx, wrcs, td)
 	if err != nil {
-		return validationResult{}, fmt.Errorf("HTTP request execution: %w", err)
+		return reconcileOutcome{}, fmt.Errorf("HTTP request execution: %w", err)
 	}
-	return validationResultFromHTTPResponse(ctx, evaluator, wrcs, td, resp)
+	return reconcileOutcomeFromHTTPResponse(ctx, evaluator, wrcs, td, resp)
 }
 
-func evaluateSuccessPhase(
+func resolvePhaseFromSuccessWhen(
 	ctx context.Context,
 	evaluator *ExpressionEvaluator,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
@@ -255,7 +255,7 @@ func evaluateSuccessPhase(
 	return promoterv1alpha1.CommitPhasePending, nil, nil
 }
 
-func evaluateSuccessOutput(
+func marshalSuccessWhenOutput(
 	ctx context.Context,
 	evaluator *ExpressionEvaluator,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
@@ -273,9 +273,9 @@ func evaluateSuccessOutput(
 	return marshalJSONMap(extractedData)
 }
 
-// RenderHTTPRequestTemplates renders URL, headers, and body from WebRequestCommitStatus HTTP templates.
+// BuildRenderedHTTPRequestFromTemplates renders URL, headers, and body from WebRequestCommitStatus HTTP templates.
 // Used by HTTPEXecutor implementations (controller HTTP transport and simulator rendered-request snapshots).
-func RenderHTTPRequestTemplates(wrcs *promoterv1alpha1.WebRequestCommitStatus, td TemplateData) (RenderedHTTPRequest, error) {
+func BuildRenderedHTTPRequestFromTemplates(wrcs *promoterv1alpha1.WebRequestCommitStatus, td TemplateData) (RenderedHTTPRequest, error) {
 	req := RenderedHTTPRequest{
 		Branch: td.Branch,
 		Method: wrcs.Spec.HTTPRequest.Method,
@@ -309,35 +309,9 @@ func RenderHTTPRequestTemplates(wrcs *promoterv1alpha1.WebRequestCommitStatus, t
 	return req, nil
 }
 
-// detectPromotionStrategyTransitionsAndLastSuccessfulShas builds lastSuccessfulShas and the list of
-// branches that transitioned to success this reconcile (promotionstrategy context).
-func detectPromotionStrategyTransitionsAndLastSuccessfulShas(
-	applicableEnvs []promoterv1alpha1.Environment,
-	lastReconciledCtxStatus *promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus,
-	phase promoterv1alpha1.CommitStatusPhase,
-	phasePerBranch map[string]promoterv1alpha1.CommitStatusPhase,
-	lastReconciledPhase string,
-	lastReconciledPhasePerBranch map[string]promoterv1alpha1.CommitStatusPhase,
-	currentShaPerBranch map[string]string,
-) ([]string, map[string]string) {
-	lastSuccessfulShas := lastSuccessfulShasForPromotionStrategyContext(
-		applicableEnvs, lastReconciledCtxStatus, phase, phasePerBranch, currentShaPerBranch,
-	)
-	var transitioned []string
-	for _, env := range applicableEnvs {
-		branch := env.Branch
-		envPhase := resolvePhaseForBranch(branch, phase, phasePerBranch)
-		lastReconciledEnvPhase := resolvePhaseForBranch(branch, promoterv1alpha1.CommitStatusPhase(lastReconciledPhase), lastReconciledPhasePerBranch)
-		if lastReconciledEnvPhase != promoterv1alpha1.CommitPhaseSuccess && envPhase == promoterv1alpha1.CommitPhaseSuccess {
-			transitioned = append(transitioned, branch)
-		}
-	}
-	return transitioned, lastSuccessfulShas
-}
-
-// ProcessWebRequestCommitStatusEnvironments runs the per-environment WebRequestCommitStatus reconcile logic.
+// ReconcileWebRequestCommitStatusEnvironments runs the per-environment WebRequestCommitStatus reconcile logic.
 // It does not mutate wrcs.Status; callers apply Environments and handle PromotionStrategyContext clearing.
-func ProcessWebRequestCommitStatusEnvironments(ctx context.Context, in ProcessWebRequestCommitStatusInput) (*ProcessWebRequestCommitStatusEnvironmentsOutput, error) {
+func ReconcileWebRequestCommitStatusEnvironments(ctx context.Context, in ReconcileWebRequestCommitStatusInput) (*ReconcileWebRequestCommitStatusEnvironmentsOutput, error) {
 	logger := log.FromContext(ctx)
 	wrcs := in.WebRequestCommitStatus
 	ps := in.PromotionStrategy
@@ -363,7 +337,7 @@ func ProcessWebRequestCommitStatusEnvironments(ctx context.Context, in ProcessWe
 		return nil, fmt.Errorf("failed to resolve current SHAs: %w", err)
 	}
 
-	out := &ProcessWebRequestCommitStatusEnvironmentsOutput{
+	out := &ReconcileWebRequestCommitStatusEnvironmentsOutput{
 		Environments:   make([]promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus, 0, len(applicableEnvs)),
 		CommitStatuses: make([]*promoterv1alpha1.CommitStatus, 0, len(applicableEnvs)),
 	}
@@ -403,12 +377,12 @@ func ProcessWebRequestCommitStatusEnvironments(ctx context.Context, in ProcessWe
 			}
 		}
 
-		decision, err := evaluateTriggerDecision(ctx, defaultExpressionEvaluator, wrcs.Spec.Mode, td, lastState.LastRequestTime)
+		decision, err := resolveHTTPExecutionDecision(ctx, defaultExpressionEvaluator, wrcs.Spec.Mode, td, lastState.LastRequestTime)
 		if err != nil {
 			return nil, fmt.Errorf("trigger decision for environment %q: %w", branch, err)
 		}
 
-		result, err := fireOrCarryForward(ctx, defaultExpressionEvaluator, wrcs, td, decision, lastState, in.HttpExec)
+		result, err := applyHTTPExecutionDecision(ctx, defaultExpressionEvaluator, wrcs, td, decision, lastState, in.HttpExec)
 		if err != nil {
 			return nil, err
 		}
@@ -452,17 +426,17 @@ func ProcessWebRequestCommitStatusEnvironments(ctx context.Context, in ProcessWe
 	return out, nil
 }
 
-// ProcessWebRequestCommitStatusPromotionStrategyContext runs context=promotionstrategy reconcile logic.
+// ReconcileWebRequestCommitStatusPromotionStrategy runs context=promotionstrategy reconcile logic.
 // It does not mutate wrcs.Status. Callers interpret ApplicableEnvsEmpty, PollingAllSuccessSkip, and PSC;
 // on PollingAllSuccessSkip, wrcs.Status is unchanged from the caller's input (same as production).
-func ProcessWebRequestCommitStatusPromotionStrategyContext(ctx context.Context, in ProcessWebRequestCommitStatusInput) (*ProcessWebRequestCommitStatusPromotionStrategyOutput, error) {
+func ReconcileWebRequestCommitStatusPromotionStrategy(ctx context.Context, in ReconcileWebRequestCommitStatusInput) (*ReconcileWebRequestCommitStatusPromotionStrategyOutput, error) {
 	logger := log.FromContext(ctx)
 	wrcs := in.WebRequestCommitStatus
 	ps := in.PromotionStrategy
 
 	applicableEnvs := getApplicableEnvironments(ps, wrcs.Spec.Key, wrcs.Spec.ReportOn)
 	if len(applicableEnvs) == 0 {
-		return &ProcessWebRequestCommitStatusPromotionStrategyOutput{ApplicableEnvsEmpty: true}, nil
+		return &ReconcileWebRequestCommitStatusPromotionStrategyOutput{ApplicableEnvsEmpty: true}, nil
 	}
 
 	wrcsSnapshot := wrcs.DeepCopy()
@@ -501,7 +475,7 @@ func ProcessWebRequestCommitStatusPromotionStrategyContext(ctx context.Context, 
 				}
 				commitStatuses = append(commitStatuses, cs)
 			}
-			return &ProcessWebRequestCommitStatusPromotionStrategyOutput{
+			return &ReconcileWebRequestCommitStatusPromotionStrategyOutput{
 				PollingAllSuccessSkip: true,
 				CommitStatuses:        commitStatuses,
 			}, nil
@@ -518,12 +492,12 @@ func ProcessWebRequestCommitStatusPromotionStrategyContext(ctx context.Context, 
 		SuccessOutput:          lastState.SuccessData,
 	}
 
-	decision, err := evaluateTriggerDecision(ctx, defaultExpressionEvaluator, wrcs.Spec.Mode, td, lastState.LastRequestTime)
+	decision, err := resolveHTTPExecutionDecision(ctx, defaultExpressionEvaluator, wrcs.Spec.Mode, td, lastState.LastRequestTime)
 	if err != nil {
 		return nil, fmt.Errorf("trigger decision (context=promotionstrategy): %w", err)
 	}
 
-	result, err := fireOrCarryForward(ctx, defaultExpressionEvaluator, wrcs, td, decision, lastState, in.HttpExec)
+	result, err := applyHTTPExecutionDecision(ctx, defaultExpressionEvaluator, wrcs, td, decision, lastState, in.HttpExec)
 	if err != nil {
 		return nil, err
 	}
@@ -533,9 +507,18 @@ func ProcessWebRequestCommitStatusPromotionStrategyContext(ctx context.Context, 
 		return nil, fmt.Errorf("failed to marshal trigger data: %w", err)
 	}
 
-	transitionedEnvironments, lastSuccessfulShas := detectPromotionStrategyTransitionsAndLastSuccessfulShas(
-		applicableEnvs, lastReconciledCtxStatus, result.Phase, result.PhasePerBranch, lastState.Phase, lastState.PhasePerBranch, currentShaPerBranch,
+	lastSuccessfulShas := lastSuccessfulShasForPromotionStrategyContext(
+		applicableEnvs, lastReconciledCtxStatus, result.Phase, result.PhasePerBranch, currentShaPerBranch,
 	)
+	var transitionedEnvironments []string
+	for _, env := range applicableEnvs {
+		branch := env.Branch
+		envPhase := resolvePhaseForBranch(branch, result.Phase, result.PhasePerBranch)
+		lastReconciledEnvPhase := resolvePhaseForBranch(branch, promoterv1alpha1.CommitStatusPhase(lastState.Phase), lastState.PhasePerBranch)
+		if lastReconciledEnvPhase != promoterv1alpha1.CommitPhaseSuccess && envPhase == promoterv1alpha1.CommitPhaseSuccess {
+			transitionedEnvironments = append(transitionedEnvironments, branch)
+		}
+	}
 	if len(transitionedEnvironments) > 0 {
 		logger.Info("Validation transitioned to success (context=promotionstrategy)", "branches", transitionedEnvironments)
 	}
@@ -567,7 +550,7 @@ func ProcessWebRequestCommitStatusPromotionStrategyContext(ctx context.Context, 
 		commitStatuses = append(commitStatuses, cs)
 	}
 
-	return &ProcessWebRequestCommitStatusPromotionStrategyOutput{
+	return &ReconcileWebRequestCommitStatusPromotionStrategyOutput{
 		PromotionStrategyContext: psc,
 		CommitStatuses:           commitStatuses,
 		TransitionedBranches:     transitionedEnvironments,

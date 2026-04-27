@@ -65,7 +65,7 @@ func Simulate(ctx context.Context, args Args) (*simulatortypes.Result, error) {
 }
 
 // processEnvironments mirrors WebRequestCommitStatusReconciler.processEnvironments: calls
-// webrequest.ProcessWebRequestCommitStatusEnvironments with a mock HTTP executor.
+// webrequest.ReconcileWebRequestCommitStatusEnvironments with a mock HTTP executor.
 func processEnvironments(
 	ctx context.Context,
 	args Args,
@@ -75,7 +75,7 @@ func processEnvironments(
 	var rendered []simulatortypes.RenderedRequest
 	exec := newMockHTTPEXecutor(newResolveFromSliceByBranch(args.HTTPResponses), &rendered)
 
-	out, err := webrequest.ProcessWebRequestCommitStatusEnvironments(ctx, webrequest.ProcessWebRequestCommitStatusInput{
+	out, err := webrequest.ReconcileWebRequestCommitStatusEnvironments(ctx, webrequest.ReconcileWebRequestCommitStatusInput{
 		HttpExec:               exec,
 		WebRequestCommitStatus: wrcs,
 		PromotionStrategy:      ps,
@@ -96,7 +96,7 @@ func processEnvironments(
 }
 
 // processContextPromotionStrategy mirrors WebRequestCommitStatusReconciler.processContextPromotionStrategy:
-// calls webrequest.ProcessWebRequestCommitStatusPromotionStrategyContext with a mock HTTP executor.
+// calls webrequest.ReconcileWebRequestCommitStatusPromotionStrategy with a mock HTTP executor.
 func processContextPromotionStrategy(
 	ctx context.Context,
 	args Args,
@@ -106,7 +106,7 @@ func processContextPromotionStrategy(
 	var rendered []simulatortypes.RenderedRequest
 	exec := newMockHTTPEXecutor(newResolveFromSliceFirst(args.HTTPResponses), &rendered)
 
-	out, err := webrequest.ProcessWebRequestCommitStatusPromotionStrategyContext(ctx, webrequest.ProcessWebRequestCommitStatusInput{
+	out, err := webrequest.ReconcileWebRequestCommitStatusPromotionStrategy(ctx, webrequest.ReconcileWebRequestCommitStatusInput{
 		HttpExec:               exec,
 		WebRequestCommitStatus: wrcs,
 		PromotionStrategy:      ps,

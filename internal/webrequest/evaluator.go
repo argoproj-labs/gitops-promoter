@@ -45,7 +45,7 @@ func NewExpressionEvaluator() *ExpressionEvaluator {
 	return &ExpressionEvaluator{}
 }
 
-// defaultExpressionEvaluator is the process-wide compile cache used by ProcessWebRequestCommitStatus*.
+// defaultExpressionEvaluator is the process-wide compile cache used by ReconcileWebRequestCommitStatus*.
 var defaultExpressionEvaluator = NewExpressionEvaluator()
 
 // expressionCacheKey identifies a compiled expression in the cache. Prefix distinguishes entries so the same
