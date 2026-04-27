@@ -26,10 +26,19 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/webrequestsimulator/simulatortypes"
 )
 
-// simCommitRenderer implements webrequest.CommitStatusEmitter via local CommitStatus rendering.
-type simCommitRenderer struct{}
+// Args carries everything Simulate needs; the parent maps simulatortypes.Input here.
+type Args struct {
+	WebRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
+	PromotionStrategy      *promoterv1alpha1.PromotionStrategy
+	NamespaceMetadata      webrequest.NamespaceMetadata
+	HTTPResponses          []simulatortypes.HTTPResponse
+}
 
-func (simCommitRenderer) EmitCommitStatus(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, repositoryRefName, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, td webrequest.TemplateData) (*promoterv1alpha1.CommitStatus, error) {
+// simulatedCommitEmitter implements webrequest.CommitStatusEmitter via local CommitStatus rendering
+// (controller: wrcsCommitUpserter → upsertCommitStatus).
+type simulatedCommitEmitter struct{}
+
+func (simulatedCommitEmitter) EmitCommitStatus(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, repositoryRefName, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, td webrequest.TemplateData) (*promoterv1alpha1.CommitStatus, error) {
 	return renderCommitStatus(ctx, wrcs, repositoryRefName, branch, sha, phase, td)
 }
 
@@ -50,12 +59,14 @@ func Simulate(ctx context.Context, args Args) (*simulatortypes.Result, error) {
 	ps := args.PromotionStrategy
 
 	if wrcs.Spec.Mode.Context == promoterv1alpha1.ContextPromotionStrategy {
-		return simulatePromotionStrategy(ctx, args, wrcs, ps)
+		return processContextPromotionStrategy(ctx, args, wrcs, ps)
 	}
-	return simulateEnvironments(ctx, args, wrcs, ps)
+	return processEnvironments(ctx, args, wrcs, ps)
 }
 
-func simulateEnvironments(
+// processEnvironments mirrors WebRequestCommitStatusReconciler.processEnvironments: calls
+// webrequest.ProcessWebRequestCommitStatusEnvironments with a mock HTTP executor.
+func processEnvironments(
 	ctx context.Context,
 	args Args,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
@@ -69,7 +80,7 @@ func simulateEnvironments(
 		WebRequestCommitStatus: wrcs,
 		PromotionStrategy:      ps,
 		NamespaceMeta:          args.NamespaceMetadata,
-		CommitEmitter:          simCommitRenderer{},
+		CommitEmitter:          simulatedCommitEmitter{},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("simulate environments reconcile: %w", err)
@@ -84,7 +95,9 @@ func simulateEnvironments(
 	}, nil
 }
 
-func simulatePromotionStrategy(
+// processContextPromotionStrategy mirrors WebRequestCommitStatusReconciler.processContextPromotionStrategy:
+// calls webrequest.ProcessWebRequestCommitStatusPromotionStrategyContext with a mock HTTP executor.
+func processContextPromotionStrategy(
 	ctx context.Context,
 	args Args,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
@@ -98,7 +111,7 @@ func simulatePromotionStrategy(
 		WebRequestCommitStatus: wrcs,
 		PromotionStrategy:      ps,
 		NamespaceMeta:          args.NamespaceMetadata,
-		CommitEmitter:          simCommitRenderer{},
+		CommitEmitter:          simulatedCommitEmitter{},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("simulate promotionstrategy reconcile: %w", err)

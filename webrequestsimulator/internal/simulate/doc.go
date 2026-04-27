@@ -16,18 +16,9 @@ limitations under the License.
 
 // Package simulate implements the WebRequestCommitStatus reconcile simulator.
 // It is internal to webrequestsimulator (see Go internal directory rules).
+//
+// Layout mirrors the controller and internal/webrequest split:
+//   - reconcile.go — Simulate, processEnvironments, processContextPromotionStrategy (vs controller process* + webrequest Process*)
+//   - http.go — mock HTTPEXecutor and makeHTTPRequest (vs reconciler Execute → makeHTTPRequest)
+//   - commitstatus.go — renderCommitStatus (vs reconciler upsertCommitStatus)
 package simulate
-
-import (
-	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	"github.com/argoproj-labs/gitops-promoter/internal/webrequest"
-	"github.com/argoproj-labs/gitops-promoter/webrequestsimulator/simulatortypes"
-)
-
-// Args carries everything Simulate needs; the parent maps simulatortypes.Input here.
-type Args struct {
-	WebRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
-	PromotionStrategy      *promoterv1alpha1.PromotionStrategy
-	NamespaceMetadata      webrequest.NamespaceMetadata
-	HTTPResponses          []simulatortypes.HTTPResponse
-}
