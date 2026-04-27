@@ -14,21 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package webrequest
-
-import (
-	"testing"
-
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-)
-
-func TestWebRequest(t *testing.T) {
-	t.Parallel()
-
-	RegisterFailHandler(Fail)
-
-	c, _ := GinkgoConfiguration()
-
-	RunSpecs(t, "WebRequest Suite", c)
-}
+// Package simulate implements the WebRequestCommitStatus reconcile simulator.
+// It is internal to webrequestsimulator (see Go internal directory rules).
+//
+// Layout mirrors the controller and internal/webrequest split:
+//   - reconcile.go — Simulate (vs controller Reconcile + webrequest Reconciler.ReconcileWebRequestCommitStatus*)
+//   - http.go — mock HTTPEXecutor (vs reconciler Execute → makeHTTPRequest)
+//   - commitstatus.go — renderCommitStatus (vs reconciler upsertCommitStatus)
+package simulate
