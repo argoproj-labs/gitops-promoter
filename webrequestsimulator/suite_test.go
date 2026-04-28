@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package webrequest
+package webrequestsimulator_test
 
 import (
 	"testing"
@@ -23,12 +23,12 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func TestWebRequest(t *testing.T) {
+func TestWebRequestSimulator(t *testing.T) {
 	t.Parallel()
 
 	RegisterFailHandler(Fail)
 
 	c, _ := GinkgoConfiguration()
 
-	RunSpecs(t, "WebRequest Suite", c)
+	RunSpecs(t, "WebRequestSimulator Suite", c)
 }
