@@ -1,0 +1,563 @@
+/*
+Copyright 2024.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package webrequest
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"time"
+
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+)
+
+// Reconciler runs WebRequestCommitStatus reconcile logic with injectable HTTP execution
+// and CommitStatus emission (controller: real HTTP + SSA upsert; simulator: mock HTTP + local render).
+type Reconciler struct {
+	httpExec      HTTPEXecutor
+	commitEmitter CommitStatusEmitter
+}
+
+// NewReconciler returns a Reconciler that uses httpExec for outbound requests and commitEmitter
+// for CommitStatus creation per reconcile step.
+func NewReconciler(httpExec HTTPEXecutor, commitEmitter CommitStatusEmitter) *Reconciler {
+	return &Reconciler{httpExec: httpExec, commitEmitter: commitEmitter}
+}
+
+// RenderedHTTPRequest is a fully rendered HTTP request template snapshot (diagnostics).
+// Branch is set per environment in environments context; empty for promotionstrategy shared request.
+type RenderedHTTPRequest struct {
+	Branch  string
+	Method  string
+	URL     string
+	Headers map[string]string
+	Body    string
+}
+
+// CommitStatusEmitter creates or updates one CommitStatus per reconcile step (SSA upsert in the controller,
+// local render in the simulator).
+type CommitStatusEmitter interface {
+	EmitCommitStatus(
+		ctx context.Context,
+		wrcs *promoterv1alpha1.WebRequestCommitStatus,
+		repositoryRefName, branch, sha string,
+		phase promoterv1alpha1.CommitStatusPhase,
+		td TemplateData,
+	) (*promoterv1alpha1.CommitStatus, error)
+}
+
+// resolveHTTPExecutionDecision determines whether the HTTP request should fire this reconcile.
+// For polling mode it checks whether the polling interval has elapsed since lastRequestTime.
+// For trigger mode it evaluates the trigger expression and optionally the trigger output expression.
+func resolveHTTPExecutionDecision(
+	ctx context.Context,
+	evaluator *ExpressionEvaluator,
+	mode promoterv1alpha1.ModeSpec,
+	td TemplateData,
+	lastRequestTime *metav1.Time,
+) (httpExecutionDecision, error) {
+	logger := log.FromContext(ctx)
+	shouldFire := true
+	var newTriggerData map[string]any
+
+	if mode.Polling != nil && lastRequestTime != nil {
+		if elapsed := time.Since(lastRequestTime.Time); elapsed < mode.Polling.Interval.Duration {
+			logger.V(4).Info("Within polling interval, skipping HTTP request",
+				"elapsed", elapsed, "interval", mode.Polling.Interval.Duration)
+			shouldFire = false
+		}
+	}
+
+	if mode.Trigger != nil {
+		sf, ntd, err := evaluator.evaluateTriggerWhenBranch(ctx, mode.Trigger, td)
+		if err != nil {
+			return httpExecutionDecision{}, fmt.Errorf("failed to evaluate trigger.when: %w", err)
+		}
+		shouldFire = sf
+		newTriggerData = ntd
+	}
+
+	return httpExecutionDecision{ShouldFire: shouldFire, NewTriggerData: newTriggerData}, nil
+}
+
+// reconcileOutcomeFromHTTPResponse runs response extraction and success.when evaluation after
+// an HTTP response is available. It updates td.ResponseOutput when response data JSON is present.
+func reconcileOutcomeFromHTTPResponse(
+	ctx context.Context,
+	evaluator *ExpressionEvaluator,
+	wrcs *promoterv1alpha1.WebRequestCommitStatus,
+	td TemplateData,
+	response HTTPResponse,
+) (reconcileOutcome, error) {
+	logger := log.FromContext(ctx)
+
+	now := metav1.Now()
+	lastRequestTime := &now
+	lastResponseStatusCode := &response.StatusCode
+
+	logger.V(4).Info("HTTP response received", "statusCode", response.StatusCode)
+
+	var responseDataJSON *apiextensionsv1.JSON
+	if wrcs.Spec.Mode.Trigger != nil && wrcs.Spec.Mode.Trigger.Response != nil {
+		extractedData, err := evaluator.evaluateResponseDataExpression(ctx, wrcs.Spec.Mode.Trigger.Response.Output.Expression, response)
+		if err != nil {
+			return reconcileOutcome{}, fmt.Errorf("failed to evaluate response data expression: %w", err)
+		}
+
+		responseDataBytes, err := json.Marshal(extractedData)
+		if err != nil {
+			return reconcileOutcome{}, fmt.Errorf("failed to marshal response data: %w", err)
+		}
+		responseDataJSON = &apiextensionsv1.JSON{Raw: responseDataBytes}
+	}
+
+	if responseDataJSON != nil {
+		if data, err := unmarshalJSONMap(responseDataJSON); err == nil && data != nil {
+			td.ResponseOutput = data
+		}
+	}
+
+	exprData := successWhenExprData(td, &response)
+	exprData, err := evaluator.enrichWhenExprEnv(ctx, wrcs.Spec.Success.When, exprData)
+	if err != nil {
+		return reconcileOutcome{}, fmt.Errorf("failed to evaluate success.when.variables: %w", err)
+	}
+	phase, phasePerBranch, err := resolvePhaseFromSuccessWhen(ctx, evaluator, wrcs, exprData)
+	if err != nil {
+		return reconcileOutcome{}, fmt.Errorf("failed to evaluate validation expression: %w", err)
+	}
+
+	successDataJSON, err := marshalSuccessWhenOutput(ctx, evaluator, wrcs, exprData)
+	if err != nil {
+		return reconcileOutcome{}, fmt.Errorf("failed to evaluate success.when.output expression: %w", err)
+	}
+
+	return reconcileOutcome{
+		Phase:                  phase,
+		PhasePerBranch:         phasePerBranch,
+		LastRequestTime:        lastRequestTime,
+		LastResponseStatusCode: lastResponseStatusCode,
+		ResponseDataJSON:       responseDataJSON,
+		SuccessDataJSON:        successDataJSON,
+	}, nil
+}
+
+// reconcileOutcomeWithoutNewResponse evaluates success.when with Response=nil when the trigger does not fire,
+// carrying forward last HTTP metadata from lastState.
+func reconcileOutcomeWithoutNewResponse(
+	ctx context.Context,
+	evaluator *ExpressionEvaluator,
+	wrcs *promoterv1alpha1.WebRequestCommitStatus,
+	td TemplateData,
+	lastState lastReconciledState,
+) (reconcileOutcome, error) {
+	exprData := successWhenExprData(td, nil)
+	var err error
+	exprData, err = evaluator.enrichWhenExprEnv(ctx, wrcs.Spec.Success.When, exprData)
+	if err != nil {
+		return reconcileOutcome{}, fmt.Errorf("failed to evaluate success.when.variables: %w", err)
+	}
+	phase, phasePerBranch, err := resolvePhaseFromSuccessWhen(ctx, evaluator, wrcs, exprData)
+	if err != nil {
+		return reconcileOutcome{}, fmt.Errorf("failed to evaluate success.when expression: %w", err)
+	}
+
+	successDataJSON, err := marshalSuccessWhenOutput(ctx, evaluator, wrcs, exprData)
+	if err != nil {
+		return reconcileOutcome{}, fmt.Errorf("failed to evaluate success.when.output expression: %w", err)
+	}
+
+	return reconcileOutcome{
+		Phase:                  phase,
+		PhasePerBranch:         phasePerBranch,
+		LastRequestTime:        lastState.LastRequestTime,
+		LastResponseStatusCode: lastState.LastResponseStatusCode,
+		ResponseDataJSON:       lastState.ResponseOutput,
+		SuccessDataJSON:        successDataJSON,
+	}, nil
+}
+
+// applyHTTPExecutionDecision runs the HTTP executor when decision.ShouldFire; otherwise reconciles
+// without a new HTTP response (carries forward last HTTP metadata).
+func applyHTTPExecutionDecision(
+	ctx context.Context,
+	evaluator *ExpressionEvaluator,
+	wrcs *promoterv1alpha1.WebRequestCommitStatus,
+	td TemplateData,
+	decision httpExecutionDecision,
+	lastState lastReconciledState,
+	exec HTTPEXecutor,
+) (reconcileOutcome, error) {
+	if !decision.ShouldFire {
+		return reconcileOutcomeWithoutNewResponse(ctx, evaluator, wrcs, td, lastState)
+	}
+	resp, err := exec.Execute(ctx, wrcs, td)
+	if err != nil {
+		return reconcileOutcome{}, fmt.Errorf("HTTP request execution: %w", err)
+	}
+	return reconcileOutcomeFromHTTPResponse(ctx, evaluator, wrcs, td, resp)
+}
+
+func resolvePhaseFromSuccessWhen(
+	ctx context.Context,
+	evaluator *ExpressionEvaluator,
+	wrcs *promoterv1alpha1.WebRequestCommitStatus,
+	exprData map[string]any,
+) (promoterv1alpha1.CommitStatusPhase, map[string]promoterv1alpha1.CommitStatusPhase, error) {
+	if wrcs.Spec.Mode.Context == promoterv1alpha1.ContextPromotionStrategy {
+		phase, phasePerBranch, err := evaluator.evaluateValidationExpressionForPromotionStrategy(ctx, wrcs.Spec.Success.When.Expression, exprData)
+		if err != nil {
+			return phase, phasePerBranch, fmt.Errorf("failed to evaluate validation expression (promotionstrategy context): %w", err)
+		}
+		return phase, phasePerBranch, nil
+	}
+	passed, err := evaluator.evaluateValidationExpression(ctx, wrcs.Spec.Success.When.Expression, exprData)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to evaluate validation expression: %w", err)
+	}
+	if passed {
+		return promoterv1alpha1.CommitPhaseSuccess, nil, nil
+	}
+	return promoterv1alpha1.CommitPhasePending, nil, nil
+}
+
+func marshalSuccessWhenOutput(
+	ctx context.Context,
+	evaluator *ExpressionEvaluator,
+	wrcs *promoterv1alpha1.WebRequestCommitStatus,
+	exprData map[string]any,
+) (*apiextensionsv1.JSON, error) {
+	if wrcs.Spec.Success.When.Output == nil || wrcs.Spec.Success.When.Output.Expression == "" {
+		return nil, nil
+	}
+
+	extractedData, err := evaluator.evaluateSuccessDataExpression(ctx, wrcs.Spec.Success.When.Output.Expression, exprData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to evaluate success data expression: %w", err)
+	}
+
+	return marshalJSONMap(extractedData)
+}
+
+// BuildRenderedHTTPRequestFromTemplates renders URL, headers, and body from WebRequestCommitStatus HTTP templates.
+// Used by HTTPEXecutor implementations (controller HTTP transport and simulator rendered-request snapshots).
+func BuildRenderedHTTPRequestFromTemplates(wrcs *promoterv1alpha1.WebRequestCommitStatus, td TemplateData) (RenderedHTTPRequest, error) {
+	req := RenderedHTTPRequest{
+		Branch: td.Branch,
+		Method: wrcs.Spec.HTTPRequest.Method,
+	}
+
+	url, err := utils.RenderStringTemplate(wrcs.Spec.HTTPRequest.URLTemplate, td)
+	if err != nil {
+		return RenderedHTTPRequest{}, fmt.Errorf("failed to render URL template: %w", err)
+	}
+	req.URL = url
+
+	if wrcs.Spec.HTTPRequest.BodyTemplate != "" {
+		body, err := utils.RenderStringTemplate(wrcs.Spec.HTTPRequest.BodyTemplate, td)
+		if err != nil {
+			return RenderedHTTPRequest{}, fmt.Errorf("failed to render body template: %w", err)
+		}
+		req.Body = body
+	}
+
+	if len(wrcs.Spec.HTTPRequest.HeaderTemplates) > 0 {
+		req.Headers = make(map[string]string, len(wrcs.Spec.HTTPRequest.HeaderTemplates))
+		for name, headerTemplate := range wrcs.Spec.HTTPRequest.HeaderTemplates {
+			value, err := utils.RenderStringTemplate(headerTemplate, td)
+			if err != nil {
+				return RenderedHTTPRequest{}, fmt.Errorf("failed to render header template %q: %w", name, err)
+			}
+			req.Headers[name] = value
+		}
+	}
+
+	return req, nil
+}
+
+// ReconcileWebRequestCommitStatusEnvironments runs the per-environment WebRequestCommitStatus reconcile logic
+// and writes the result into wrcs.Status.Environments and wrcs.Status.PromotionStrategyContext (cleared).
+// Conditions and observedGeneration on wrcs are managed by the caller. Returns the upserted CommitStatuses,
+// the branches that transitioned to success this reconcile, and the requeue duration for ctrl.Result.
+func (r *Reconciler) ReconcileWebRequestCommitStatusEnvironments(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, namespaceMeta NamespaceMetadata) (commitStatuses []*promoterv1alpha1.CommitStatus, transitionedBranches []string, requeueAfter time.Duration, err error) {
+	logger := log.FromContext(ctx)
+
+	if wrcs == nil {
+		return nil, nil, 0, errors.New("WebRequestCommitStatus is required")
+	}
+
+	wrcsSnapshot := wrcs.DeepCopy()
+	if wrcsSnapshot == nil {
+		return nil, nil, 0, fmt.Errorf("unexpected nil from DeepCopy for WebRequestCommitStatus %s/%s", wrcs.Namespace, wrcs.Name)
+	}
+
+	lastReconciledStatus := wrcsSnapshot.Status.DeepCopy()
+	if lastReconciledStatus == nil {
+		lastReconciledStatus = &promoterv1alpha1.WebRequestCommitStatusStatus{}
+	}
+	statusByEnv := make(map[string]*promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus, len(lastReconciledStatus.Environments))
+	for i := range lastReconciledStatus.Environments {
+		statusByEnv[lastReconciledStatus.Environments[i].Branch] = &lastReconciledStatus.Environments[i]
+	}
+
+	psEnvStatusMap := getEnvsByBranch(ps)
+	applicableEnvs := getApplicableEnvironments(ps, wrcs.Spec.Key, wrcs.Spec.ReportOn)
+	currentShas, err := getCurrentShasByBranch(applicableEnvs, psEnvStatusMap, wrcs.Spec.ReportOn)
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("failed to resolve current SHAs: %w", err)
+	}
+
+	wrcs.Status.PromotionStrategyContext = nil
+	wrcs.Status.Environments = make([]promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus, 0, len(applicableEnvs))
+	commitStatuses = make([]*promoterv1alpha1.CommitStatus, 0, len(applicableEnvs))
+
+	for _, env := range applicableEnvs {
+		branch := env.Branch
+		reportedSha := currentShas[branch]
+
+		lastReconciledEnvStatus := statusByEnv[branch]
+		lastState := lastReconciledStateFromEnvironment(ctx, lastReconciledEnvStatus)
+		lastSuccessfulSha := ""
+		if lastReconciledEnvStatus != nil {
+			lastSuccessfulSha = lastReconciledEnvStatus.LastSuccessfulSha
+		}
+
+		td := TemplateData{
+			Branch:                 branch,
+			Phase:                  lastState.Phase,
+			PromotionStrategy:      ps,
+			WebRequestCommitStatus: wrcsSnapshot,
+			NamespaceMetadata:      namespaceMeta,
+			TriggerOutput:          lastState.TriggerData,
+			ResponseOutput:         lastState.ResponseData,
+			SuccessOutput:          lastState.SuccessData,
+		}
+
+		if wrcs.Spec.Mode.Polling != nil && wrcs.Spec.ReportOn == constants.CommitRefProposed {
+			if lastReconciledEnvStatus != nil && lastState.Phase == string(promoterv1alpha1.CommitPhaseSuccess) && lastSuccessfulSha == reportedSha {
+				logger.V(4).Info("Skipping already successful SHA in polling mode", "branch", branch, "sha", reportedSha)
+				wrcs.Status.Environments = append(wrcs.Status.Environments, *lastReconciledEnvStatus)
+				cs, err := r.commitEmitter.EmitCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, reportedSha, promoterv1alpha1.CommitPhaseSuccess, td)
+				if err != nil {
+					return nil, nil, 0, fmt.Errorf("failed to upsert CommitStatus for skipped environment %q: %w", branch, err)
+				}
+				commitStatuses = append(commitStatuses, cs)
+				continue
+			}
+		}
+
+		decision, err := resolveHTTPExecutionDecision(ctx, defaultExpressionEvaluator, wrcs.Spec.Mode, td, lastState.LastRequestTime)
+		if err != nil {
+			return nil, nil, 0, fmt.Errorf("trigger decision for environment %q: %w", branch, err)
+		}
+
+		result, err := applyHTTPExecutionDecision(ctx, defaultExpressionEvaluator, wrcs, td, decision, lastState, r.httpExec)
+		if err != nil {
+			return nil, nil, 0, err
+		}
+		if result.Phase == promoterv1alpha1.CommitPhaseSuccess {
+			lastSuccessfulSha = reportedSha
+		}
+
+		if lastState.Phase != string(promoterv1alpha1.CommitPhaseSuccess) && result.Phase == promoterv1alpha1.CommitPhaseSuccess {
+			transitionedBranches = append(transitionedBranches, branch)
+			logger.Info("Validation transitioned to success", "branch", branch, "sha", reportedSha)
+		}
+
+		triggerDataJSON, err := marshalJSONMap(decision.NewTriggerData)
+		if err != nil {
+			return nil, nil, 0, fmt.Errorf("failed to marshal trigger data: %w", err)
+		}
+
+		wrcs.Status.Environments = append(wrcs.Status.Environments, promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus{
+			Branch:                 branch,
+			ReportedSha:            reportedSha,
+			LastSuccessfulSha:      lastSuccessfulSha,
+			Phase:                  result.Phase,
+			LastRequestTime:        result.LastRequestTime,
+			LastResponseStatusCode: result.LastResponseStatusCode,
+			TriggerOutput:          triggerDataJSON,
+			ResponseOutput:         result.ResponseDataJSON,
+			SuccessOutput:          result.SuccessDataJSON,
+		})
+
+		commitTd := td.withLatestOutputs(result.ResponseDataJSON, decision.NewTriggerData, result.SuccessDataJSON)
+		commitTd.Phase = string(result.Phase)
+		cs, err := r.commitEmitter.EmitCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, reportedSha, result.Phase, commitTd)
+		if err != nil {
+			return nil, nil, 0, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", branch, err)
+		}
+		commitStatuses = append(commitStatuses, cs)
+
+		logger.Info("Processed environment", "branch", branch, "reportedSha", reportedSha, "phase", result.Phase, "triggered", decision.ShouldFire)
+	}
+
+	requeueAfter = requeueDurationForMode(wrcs.Spec.Mode)
+	return commitStatuses, transitionedBranches, requeueAfter, nil
+}
+
+// requeueDurationForMode matches controller WebRequestCommitStatus requeue behavior for WRCS mode spec.
+func requeueDurationForMode(mode promoterv1alpha1.ModeSpec) time.Duration {
+	if mode.Polling != nil {
+		return mode.Polling.Interval.Duration
+	}
+	if mode.Trigger != nil {
+		return mode.Trigger.RequeueDuration.Duration
+	}
+	return 0
+}
+
+// ReconcileWebRequestCommitStatusPromotionStrategy runs context=promotionstrategy reconcile logic
+// and writes the result into wrcs.Status.PromotionStrategyContext (and clears wrcs.Status.Environments).
+// Conditions and observedGeneration on wrcs are managed by the caller. Returns the upserted CommitStatuses,
+// the branches that transitioned to success this reconcile, and the requeue duration for ctrl.Result.
+func (r *Reconciler) ReconcileWebRequestCommitStatusPromotionStrategy(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, namespaceMeta NamespaceMetadata) (commitStatuses []*promoterv1alpha1.CommitStatus, transitionedBranches []string, requeueAfter time.Duration, err error) {
+	logger := log.FromContext(ctx)
+
+	if wrcs == nil {
+		return nil, nil, 0, errors.New("WebRequestCommitStatus is required")
+	}
+
+	applicableEnvs := getApplicableEnvironments(ps, wrcs.Spec.Key, wrcs.Spec.ReportOn)
+	if len(applicableEnvs) == 0 {
+		// RequeueAfter 0: do not schedule a timed requeue; the reconciler runs again on watch events
+		// (e.g. PromotionStrategy or WRCS spec changes) or informer resync—not on a polling interval.
+		wrcs.Status.Environments = nil
+		wrcs.Status.PromotionStrategyContext = nil
+		return nil, nil, 0, nil
+	}
+
+	wrcsSnapshot := wrcs.DeepCopy()
+	if wrcsSnapshot == nil {
+		return nil, nil, 0, fmt.Errorf("unexpected nil from DeepCopy for WebRequestCommitStatus %s/%s", wrcs.Namespace, wrcs.Name)
+	}
+
+	psEnvStatusMap := getEnvsByBranch(ps)
+	currentShaPerBranch, err := getCurrentShasByBranch(applicableEnvs, psEnvStatusMap, wrcs.Spec.ReportOn)
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("failed to resolve current SHAs (context=promotionstrategy): %w", err)
+	}
+
+	lastReconciledCtxStatus := wrcsSnapshot.Status.PromotionStrategyContext.DeepCopy()
+	lastState := lastReconciledStateFromContext(ctx, lastReconciledCtxStatus)
+
+	if wrcs.Spec.Mode.Polling != nil && wrcs.Spec.ReportOn == constants.CommitRefProposed && lastReconciledCtxStatus != nil {
+		if allBranchesSucceededForCurrentShas(applicableEnvs, lastReconciledCtxStatus, currentShaPerBranch) {
+			logger.V(4).Info("All environments already successful for current SHAs (context=promotionstrategy), skipping HTTP request")
+			baseTd := TemplateData{
+				Phase:                  string(promoterv1alpha1.CommitPhaseSuccess),
+				PromotionStrategy:      ps,
+				WebRequestCommitStatus: wrcsSnapshot,
+				NamespaceMetadata:      namespaceMeta,
+				TriggerOutput:          lastState.TriggerData,
+				ResponseOutput:         lastState.ResponseData,
+				SuccessOutput:          lastState.SuccessData,
+			}
+			commitStatuses = make([]*promoterv1alpha1.CommitStatus, 0, len(applicableEnvs))
+			for _, env := range applicableEnvs {
+				perEnvTd := baseTd
+				perEnvTd.Branch = env.Branch
+				cs, err := r.commitEmitter.EmitCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, env.Branch, currentShaPerBranch[env.Branch], promoterv1alpha1.CommitPhaseSuccess, perEnvTd)
+				if err != nil {
+					return nil, nil, 0, fmt.Errorf("failed to upsert CommitStatus for skipped environment %q (context=promotionstrategy): %w", env.Branch, err)
+				}
+				commitStatuses = append(commitStatuses, cs)
+			}
+			wrcs.Status.Environments = nil
+			wrcs.Status.PromotionStrategyContext = wrcsSnapshot.Status.PromotionStrategyContext.DeepCopy()
+			return commitStatuses, nil, requeueDurationForMode(wrcs.Spec.Mode), nil
+		}
+	}
+
+	td := TemplateData{
+		Phase:                  lastState.Phase,
+		PromotionStrategy:      ps,
+		WebRequestCommitStatus: wrcsSnapshot,
+		NamespaceMetadata:      namespaceMeta,
+		TriggerOutput:          lastState.TriggerData,
+		ResponseOutput:         lastState.ResponseData,
+		SuccessOutput:          lastState.SuccessData,
+	}
+
+	decision, err := resolveHTTPExecutionDecision(ctx, defaultExpressionEvaluator, wrcs.Spec.Mode, td, lastState.LastRequestTime)
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("trigger decision (context=promotionstrategy): %w", err)
+	}
+
+	result, err := applyHTTPExecutionDecision(ctx, defaultExpressionEvaluator, wrcs, td, decision, lastState, r.httpExec)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+
+	triggerDataJSON, err := marshalJSONMap(decision.NewTriggerData)
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("failed to marshal trigger data: %w", err)
+	}
+
+	lastSuccessfulShas := lastSuccessfulShasForPromotionStrategyContext(
+		applicableEnvs, lastReconciledCtxStatus, result.Phase, result.PhasePerBranch, currentShaPerBranch,
+	)
+	for _, env := range applicableEnvs {
+		branch := env.Branch
+		envPhase := resolvePhaseForBranch(branch, result.Phase, result.PhasePerBranch)
+		lastReconciledEnvPhase := resolvePhaseForBranch(branch, promoterv1alpha1.CommitStatusPhase(lastState.Phase), lastState.PhasePerBranch)
+		if lastReconciledEnvPhase != promoterv1alpha1.CommitPhaseSuccess && envPhase == promoterv1alpha1.CommitPhaseSuccess {
+			transitionedBranches = append(transitionedBranches, branch)
+		}
+	}
+	if len(transitionedBranches) > 0 {
+		logger.Info("Validation transitioned to success (context=promotionstrategy)", "branches", transitionedBranches)
+	}
+
+	resolvedPhases := getPhasesByBranch(applicableEnvs, result.Phase, result.PhasePerBranch)
+
+	psc := &promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus{
+		PhasePerBranch:         phasePerBranchSliceFromMap(resolvedPhases),
+		LastRequestTime:        result.LastRequestTime,
+		LastResponseStatusCode: result.LastResponseStatusCode,
+		TriggerOutput:          triggerDataJSON,
+		ResponseOutput:         result.ResponseDataJSON,
+		SuccessOutput:          result.SuccessDataJSON,
+		LastSuccessfulShas:     lastSuccessfulShasSliceFromMap(lastSuccessfulShas),
+	}
+
+	commitTd := td.withLatestOutputs(result.ResponseDataJSON, decision.NewTriggerData, result.SuccessDataJSON)
+	commitStatuses = make([]*promoterv1alpha1.CommitStatus, 0, len(applicableEnvs))
+	for _, env := range applicableEnvs {
+		branch := env.Branch
+		envPhase := resolvedPhases[branch]
+		perEnvTd := commitTd
+		perEnvTd.Branch = branch
+		perEnvTd.Phase = string(envPhase)
+		cs, err := r.commitEmitter.EmitCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, currentShaPerBranch[branch], envPhase, perEnvTd)
+		if err != nil {
+			return nil, nil, 0, fmt.Errorf("failed to upsert CommitStatus for environment %q (context=promotionstrategy): %w", branch, err)
+		}
+		commitStatuses = append(commitStatuses, cs)
+	}
+
+	wrcs.Status.Environments = nil
+	wrcs.Status.PromotionStrategyContext = psc
+	return commitStatuses, transitionedBranches, requeueDurationForMode(wrcs.Spec.Mode), nil
+}

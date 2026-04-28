@@ -2786,7 +2786,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy 
 			var fetched promoterv1alpha1.WebRequestCommitStatus
 			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)).To(Succeed())
 			g.Expect(fetched.Status.PromotionStrategyContext).To(BeNil(),
-				"processContextPromotionStrategy clears promotionStrategyContext when applicableEnvs is empty")
+				"promotionstrategy-context reconcile clears promotionStrategyContext when applicableEnvs is empty")
 			g.Expect(fetched.Status.Environments).To(BeEmpty())
 		}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -3382,21 +3382,23 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 		})
 
 		It("should succeed via Response on first reconcile, then stay success via Phase fallback without extra HTTP", func() {
-			By("Waiting for first wave of HTTP requests and success (one request per applicable environment)")
+			By("Waiting for ALL environments to complete their first HTTP wave before snapshotting request count")
 			Eventually(func(g Gomega) {
-				requestCountMu.Lock()
-				c := requestCount
-				requestCountMu.Unlock()
-				g.Expect(c).To(BeNumerically(">=", 1))
 				var fetched promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(fetched.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(len(fetched.Status.Environments)).To(Equal(3),
+					"all three environments must be processed before snapshotting the HTTP request count")
 				for _, env := range fetched.Status.Environments {
-					if env.Branch == testBranchDevelopment {
-						g.Expect(env.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
-					}
+					g.Expect(env.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess),
+						"environment %s should be success before snapshotting", env.Branch)
 				}
+
+				requestCountMu.Lock()
+				c := requestCount
+				requestCountMu.Unlock()
+				g.Expect(c).To(BeNumerically(">=", 3),
+					"each environment fires once on first SHA track")
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			requestCountMu.Lock()
