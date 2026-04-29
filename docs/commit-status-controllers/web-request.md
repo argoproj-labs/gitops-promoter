@@ -151,6 +151,31 @@ In trigger mode, **`triggerOutput`**, **`responseOutput`**, and **`successOutput
 
 When **`mode.polling`** is set, **`reportOn` is `proposed`**, and context is **`promotionstrategy`**, the controller can **skip** issuing a new HTTP request if **every** applicable environment is already **success** and each branch’s current proposed SHA matches the **`lastSuccessfulSha`** value in **`lastSuccessfulShas`** for that branch. It still refreshes `CommitStatus` resources and requeues on the polling interval. This avoids hammering the API when nothing has changed.
 
+### Delivery semantics: at-least-once, not exactly-once
+
+The controller dedupes HTTP requests by comparing fresh state (e.g. each branch's current `Proposed.Hydrated.Sha`) against state it persisted in the `WebRequestCommitStatus.status` on the **previous** reconcile (e.g. `environments[].triggerOutput.trackedSha`, `environments[].lastRequestTime`, `promotionStrategyContext.lastSuccessfulShas`). The persisted state is written via a Server-Side Apply at the **end** of a reconcile and read from the controller's informer cache at the **start** of the next reconcile. There is a small but unavoidable window between those two events:
+
+1. Reconcile A writes status to the API server.
+2. The API server publishes the change to watchers; the controller's informer cache observes it.
+3. Reconcile B starts and reads from the cache.
+
+If reconcile B starts before its cache has observed A's status update — which can happen under cache-propagation lag, controller restarts, status-write retries (transient API errors, conflict retries, OpenAPI/CEL validation rejections that the controller retries with conditions-only fallback), or a brief WRCS object recreate — B will evaluate `trigger.when.expression` as if A's `triggerOutput`, `responseOutput`, and `lastRequestTime` had never been written, and may re-fire the HTTP request.
+
+The same caveat applies to:
+
+- **Polling mode's `lastRequestTime` short-circuit.** If a reconcile starts before the previous reconcile's `lastRequestTime` is visible in cache, the within-interval skip cannot fire and the HTTP request is repeated.
+- **`promotionstrategy`-context polling fast-path** (skip when every branch already succeeded for its current SHA). Same cache-propagation window — the fast path may not fire on a reconcile that hasn't yet seen the prior `lastSuccessfulShas` write.
+- **`success.when` carry-forward.** The success expression sees `Response == nil` plus the prior `Phase` / `ResponseOutput` / `SuccessOutput`. Stale cache means stale carry-forward inputs.
+
+**Implications for integrators:**
+
+- **Treat WebRequestCommitStatus as at-least-once HTTP delivery, not exactly-once.** A given `(branch, sha)` may be re-checked more than once even though the persisted `triggerOutput` records that the SHA has already been tracked.
+- **Make external endpoints idempotent** for the same input. A retry must produce the same answer (or at least an answer the success expression treats the same way) so duplicate calls don't change the promotion outcome.
+- **Don't rely on trigger output to count attempts authoritatively.** Counters built with `{ attemptCount: (TriggerOutput["attemptCount"] ?? 0) + 1 }` are eventually-consistent: under cache lag, the controller may briefly read a stale older value and increment the same attempt twice, so use them only for backoff hints, not for hard "fail after N tries" gates.
+- This applies to both `environments` and `promotionstrategy` contexts; both rely on persisted status for dedup.
+
+**Testing tolerance.** Tests in this repository that assert "the controller stops calling the endpoint" check that the HTTP-request count **eventually stabilizes** after each environment has tracked its SHA, not that it stops growing immediately. New tests for trigger-based dedup should use the same pattern (a few stragglers from cache lag are acceptable; sustained growth under steady inputs is a regression).
+
 ### Examples
 
 #### Trigger mode with `when.variables` (shared expr)

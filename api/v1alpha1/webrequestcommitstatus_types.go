@@ -162,6 +162,20 @@ type OutputSpec struct {
 }
 
 // TriggerModeSpec defines expression-based trigger configuration.
+//
+// Delivery semantics: the controller dedupes HTTP requests by comparing fresh state
+// against state it persisted in WebRequestCommitStatus.status on the PREVIOUS reconcile
+// (TriggerOutput, ResponseOutput, SuccessOutput, LastRequestTime, LastSuccessfulShas).
+// That state is written via Server-Side Apply at the END of a reconcile and read from
+// the controller's informer cache at the START of the next reconcile. Under cache-
+// propagation lag, controller restarts, or status-write retries, a reconcile may not
+// see the most recently persisted state and may re-fire the HTTP request even though
+// the trigger would otherwise have been false.
+//
+// Treat WebRequestCommitStatus as AT-LEAST-ONCE HTTP delivery, not exactly-once. Make
+// external endpoints idempotent for the same (branch, sha) input. Don't use trigger
+// output to count attempts authoritatively (counters built on TriggerOutput are
+// eventually-consistent and may briefly observe a stale older value under cache lag).
 type TriggerModeSpec struct {
 	// RequeueDuration specifies how long to wait before requeuing to re-evaluate the trigger expression.
 	// +optional
@@ -227,13 +241,19 @@ type WhenWithOutputSpec struct {
 	// and is available in the next reconcile as TriggerOutput in when.expression, when.output.expression, and in templates.
 	// Use it to track state such as attempt counts, last-seen SHAs, or timestamps.
 	//
+	// Delivery semantics caveat: persisted output is read from the controller's informer cache at the start of the next
+	// reconcile. Under cache-propagation lag, controller restarts, or status-write retries, the next reconcile may not
+	// see the most recently persisted output and may re-fire the HTTP request. Treat this as AT-LEAST-ONCE delivery —
+	// counters built on TriggerOutput are eventually-consistent (a stale read can cause a duplicate increment), so use
+	// them for backoff hints, not for hard "fail after N attempts" gates.
+	//
 	// Variables are the same as for Expression (see above). The expression must return a map/object; every key is stored in TriggerOutput.
 	//
 	// Examples:
-	//   # Track SHA to detect changes
+	//   # Track SHA to detect changes (idempotent: replays produce the same trackedSha for the same input)
 	//   - "{ trackedSha: find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha }"
 	//
-	//   # Increment attempt counter
+	//   # Increment attempt counter (eventually-consistent; may briefly under-count under cache lag)
 	//   - "{ attemptCount: (TriggerOutput[\"attemptCount\"] ?? 0) + 1 }"
 	//
 	// +optional
