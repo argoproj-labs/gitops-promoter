@@ -9,9 +9,9 @@ updates:
     groups:
       k8s-deps:
         patterns:
-          - "k8s.io/api" # a single dependency name
-          - "k8s.io/apimachinery"
-          - "k8s.io/client-go"
+          - "k8s.io/*"
+          - "sigs.k8s.io/controller-runtime"
+          - "sigs.k8s.io/multicluster-runtime"
 
   - package-ecosystem: "github-actions"
     directory: "/"
