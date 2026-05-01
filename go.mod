@@ -18,7 +18,7 @@ require (
 	github.com/goccy/go-yaml v1.19.2
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8
 	github.com/google/go-github/v71 v71.0.0
-	github.com/ktrysmt/go-bitbucket v0.9.98
+	github.com/ktrysmt/go-bitbucket v0.9.100
 	github.com/microsoft/azure-devops-go-api/azuredevops/v7 v7.1.0
 	github.com/onsi/ginkgo/v2 v2.28.3
 	github.com/onsi/gomega v1.40.0
