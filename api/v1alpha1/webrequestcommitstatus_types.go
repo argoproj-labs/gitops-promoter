@@ -62,13 +62,17 @@ type WebRequestCommitStatusSpec struct {
 	// data after the most recent HTTP request and trigger evaluation (unlike spec.httpRequest URL/body/headers, which use pre-request data — see HTTPRequestSpec).
 	// How spec.mode.context restricts template data: see ModeSpec.
 	//
+	// Additional template variables (not in HTTPRequestSpec):
+	//   - {{ index .TriggerVariables "key" }}: result of trigger.when.variables.expression this reconcile (nil if not configured)
+	//   - {{ index .SuccessVariables "key" }}: result of success.when.variables.expression this reconcile (nil if not configured)
+	//
 	// Examples: "External approval for {{ .Branch }}", "{{ .Phase }} - waiting for external approval".
 	//
 	// If not specified, defaults to empty string.
 	// +optional
 	DescriptionTemplate string `json:"descriptionTemplate,omitempty"`
 
-	// UrlTemplate is the commit status target URL in the SCM provider. Same Go templates, variables, timing, and context rules as DescriptionTemplate.
+	// UrlTemplate is the commit status target URL in the SCM provider. Same Go templates, variables (including .TriggerVariables and .SuccessVariables), timing, and context rules as DescriptionTemplate.
 	// Typical uses: approval UI, dashboard, API, or runbook links.
 	// To include the reported SHA, walk PromotionStrategy.Status.Environments by Branch:
 	//   "https://approvals.example.com/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
@@ -182,7 +186,10 @@ type WhenWithOutputSpec struct {
 	// Variables optionally holds an expression that runs before Expression and Output.Expression.
 	// It receives the same variables as Expression (see Expression documentation below) and must return a map/object.
 	// The result is injected as top-level binding Variables (map) for Expression and Output.Expression only — use Variables.<key> in those expressions.
-	// The Variables binding is not set when spec.variables is omitted. It is not available to response.output.expression or to Go templates.
+	// The Variables binding is not set when spec.variables is omitted. It is not available to response.output.expression.
+	// The result is also available in Go templates for DescriptionTemplate and UrlTemplate:
+	//   - trigger.when.variables result → {{ index .TriggerVariables "key" }}
+	//   - success.when.variables result → {{ index .SuccessVariables "key" }}
 	//
 	// +optional
 	Variables *OutputSpec `json:"variables,omitempty"`

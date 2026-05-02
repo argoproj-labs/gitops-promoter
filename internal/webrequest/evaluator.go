@@ -323,30 +323,36 @@ func (e *ExpressionEvaluator) evaluateSuccessDataExpression(ctx context.Context,
 }
 
 // evaluateTriggerWhenBranch evaluates trigger.when (variables, bool expression, optional output map).
-// It returns whether the trigger should fire and the optional output map to persist in status.triggerOutput.
+// It returns whether the trigger should fire, the optional output map to persist in status.triggerOutput,
+// and the result of trigger.when.variables.expression (nil if not configured) for Go template rendering.
 func (e *ExpressionEvaluator) evaluateTriggerWhenBranch(
 	ctx context.Context,
 	trigger *promoterv1alpha1.TriggerModeSpec,
 	td TemplateData,
-) (shouldFire bool, newTriggerData map[string]any, err error) {
+) (shouldFire bool, newTriggerData map[string]any, triggerVariables map[string]any, err error) {
 	base := td.triggerExprData()
 	exprEnv, err := e.enrichWhenExprEnv(ctx, trigger.When, base)
 	if err != nil {
-		return false, nil, fmt.Errorf("failed to evaluate trigger.when.variables: %w", err)
+		return false, nil, nil, fmt.Errorf("failed to evaluate trigger.when.variables: %w", err)
+	}
+	if v, ok := exprEnv["Variables"]; ok {
+		if vm, ok := v.(map[string]any); ok {
+			triggerVariables = vm
+		}
 	}
 	tr, err := e.evaluateTriggerExpression(ctx, trigger.When.Expression, exprEnv)
 	if err != nil {
-		return false, nil, fmt.Errorf("failed to evaluate trigger expression: %w", err)
+		return false, nil, nil, fmt.Errorf("failed to evaluate trigger expression: %w", err)
 	}
 	shouldFire = tr.Trigger
 
 	out := trigger.When.Output
 	if out == nil || strings.TrimSpace(out.Expression) == "" {
-		return shouldFire, nil, nil
+		return shouldFire, nil, triggerVariables, nil
 	}
 	newTriggerData, err = e.evaluateTriggerDataExpression(ctx, out.Expression, exprEnv)
 	if err != nil {
-		return false, nil, fmt.Errorf("failed to evaluate trigger data expression: %w", err)
+		return false, nil, nil, fmt.Errorf("failed to evaluate trigger data expression: %w", err)
 	}
-	return shouldFire, newTriggerData, nil
+	return shouldFire, newTriggerData, triggerVariables, nil
 }

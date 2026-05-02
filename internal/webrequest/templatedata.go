@@ -52,8 +52,14 @@ type TemplateData struct {
 	TriggerOutput          map[string]any
 	ResponseOutput         map[string]any
 	SuccessOutput          map[string]any
-	Branch                 string
-	Phase                  string
+	// TriggerVariables is the result of trigger.when.variables.expression evaluated this reconcile.
+	// Nil when trigger mode is not configured, when.variables is not set, or in the skipped-SHA fast-path.
+	TriggerVariables map[string]any
+	// SuccessVariables is the result of success.when.variables.expression evaluated this reconcile.
+	// Nil when success.when.variables is not set or in the skipped-SHA fast-path.
+	SuccessVariables map[string]any
+	Branch           string
+	Phase            string
 }
 
 // NamespaceMetadata holds the labels and annotations of the WebRequestCommitStatus's namespace.
@@ -83,8 +89,9 @@ type triggerResult struct {
 // httpExecutionDecision is the result of resolveHTTPExecutionDecision: whether to perform the HTTP round-trip
 // and any trigger output data for the next reconcile.
 type httpExecutionDecision struct {
-	NewTriggerData map[string]any
-	ShouldFire     bool
+	NewTriggerData   map[string]any
+	ShouldFire       bool
+	TriggerVariables map[string]any // result of trigger.when.variables.expression; nil in polling mode or when not configured
 }
 
 // reconcileOutcome holds the outcome of processing a fire or carry-forward path. Phase is derived
@@ -107,6 +114,7 @@ type reconcileOutcome struct {
 	SuccessDataJSON        *apiextensionsv1.JSON
 	PhasePerBranch         map[string]promoterv1alpha1.CommitStatusPhase
 	Phase                  promoterv1alpha1.CommitStatusPhase
+	SuccessVariables       map[string]any // result of success.when.variables.expression; nil when not configured
 }
 
 // HTTPEXecutor performs the WebRequestCommitStatus HTTP round-trip for the given template data

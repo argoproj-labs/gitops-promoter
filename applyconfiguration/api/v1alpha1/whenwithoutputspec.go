@@ -25,7 +25,10 @@ type WhenWithOutputSpecApplyConfiguration struct {
 	// Variables optionally holds an expression that runs before Expression and Output.Expression.
 	// It receives the same variables as Expression (see Expression documentation below) and must return a map/object.
 	// The result is injected as top-level binding Variables (map) for Expression and Output.Expression only — use Variables.<key> in those expressions.
-	// The Variables binding is not set when spec.variables is omitted. It is not available to response.output.expression or to Go templates.
+	// The Variables binding is not set when spec.variables is omitted. It is not available to response.output.expression.
+	// The result is also available in Go templates for DescriptionTemplate and UrlTemplate:
+	// - trigger.when.variables result → {{ index .TriggerVariables "key" }}
+	// - success.when.variables result → {{ index .SuccessVariables "key" }}
 	Variables *OutputSpecApplyConfiguration `json:"variables,omitempty"`
 	// Expression is a boolean expr expression that decides whether the HTTP request should be made.
 	// It is evaluated BEFORE each potential HTTP request. When it returns true the request is made;
