@@ -951,6 +951,95 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				g.Expect(cs.Spec.Url).To(ContainSubstring("https://example.com/status/"))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
+
+		It("should expose success.when.variables result as .SuccessVariables in description template", func() {
+			By("Creating a WRCS with success.when.variables and a description template referencing .SuccessVariables")
+			wrcsVars := &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-success-vars-test",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  "external-approval",
+					ReportOn:             constants.CommitRefProposed,
+					DescriptionTemplate:  `Build: {{ index .SuccessVariables "tag" }}`,
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: testServer.URL + "/validate",
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+					},
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
+							Variables:  &promoterv1alpha1.OutputSpec{Expression: `{"tag": "v1.2.3"}`},
+							Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
+						},
+					},
+					Mode: promoterv1alpha1.ModeSpec{
+						Polling: &promoterv1alpha1.PollingModeSpec{
+							Interval: metav1.Duration{Duration: 30 * time.Second},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, wrcsVars)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, wrcsVars) })
+
+			By("Waiting for CommitStatus description to contain the variable value")
+			Eventually(func(g Gomega) {
+				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-success-vars-test-"+testBranchDevelopment+"-webrequest")
+				var cs promoterv1alpha1.CommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: commitStatusName, Namespace: "default"}, &cs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(cs.Spec.Description).To(Equal("Build: v1.2.3"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should expose trigger.when.variables result as .TriggerVariables in description template", func() {
+			By("Creating a WRCS in trigger mode with trigger.when.variables and a description template referencing .TriggerVariables")
+			wrcsTriggerVars := &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-trigger-vars-test",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  "external-approval",
+					ReportOn:             constants.CommitRefProposed,
+					DescriptionTemplate:  `Run: {{ index .TriggerVariables "runId" }}`,
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: testServer.URL + "/validate",
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+					},
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
+							Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
+						},
+					},
+					Mode: promoterv1alpha1.ModeSpec{
+						Trigger: &promoterv1alpha1.TriggerModeSpec{
+							RequeueDuration: metav1.Duration{Duration: 30 * time.Second},
+							When: promoterv1alpha1.WhenWithOutputSpec{
+								Variables:  &promoterv1alpha1.OutputSpec{Expression: `{"runId": "42"}`},
+								Expression: `true`,
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, wrcsTriggerVars)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, wrcsTriggerVars) })
+
+			By("Waiting for CommitStatus description to contain the trigger variable value")
+			Eventually(func(g Gomega) {
+				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-trigger-vars-test-"+testBranchDevelopment+"-webrequest")
+				var cs promoterv1alpha1.CommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: commitStatusName, Namespace: "default"}, &cs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(cs.Spec.Description).To(Equal("Run: 42"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
 	})
 
 	Describe("Orphaned CommitStatus Cleanup", func() {

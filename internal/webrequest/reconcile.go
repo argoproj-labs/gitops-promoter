@@ -90,12 +90,13 @@ func resolveHTTPExecutionDecision(
 	}
 
 	if mode.Trigger != nil {
-		sf, ntd, err := evaluator.evaluateTriggerWhenBranch(ctx, mode.Trigger, td)
+		sf, ntd, triggerVars, err := evaluator.evaluateTriggerWhenBranch(ctx, mode.Trigger, td)
 		if err != nil {
 			return httpExecutionDecision{}, fmt.Errorf("failed to evaluate trigger.when: %w", err)
 		}
 		shouldFire = sf
 		newTriggerData = ntd
+		return httpExecutionDecision{ShouldFire: shouldFire, NewTriggerData: newTriggerData, TriggerVariables: triggerVars}, nil
 	}
 
 	return httpExecutionDecision{ShouldFire: shouldFire, NewTriggerData: newTriggerData}, nil
@@ -143,6 +144,12 @@ func reconcileOutcomeFromHTTPResponse(
 	if err != nil {
 		return reconcileOutcome{}, fmt.Errorf("failed to evaluate success.when.variables: %w", err)
 	}
+	var successVars map[string]any
+	if v, ok := exprData["Variables"]; ok {
+		if vm, ok := v.(map[string]any); ok {
+			successVars = vm
+		}
+	}
 	phase, phasePerBranch, err := resolvePhaseFromSuccessWhen(ctx, evaluator, wrcs, exprData)
 	if err != nil {
 		return reconcileOutcome{}, fmt.Errorf("failed to evaluate validation expression: %w", err)
@@ -160,6 +167,7 @@ func reconcileOutcomeFromHTTPResponse(
 		LastResponseStatusCode: lastResponseStatusCode,
 		ResponseDataJSON:       responseDataJSON,
 		SuccessDataJSON:        successDataJSON,
+		SuccessVariables:       successVars,
 	}, nil
 }
 
@@ -178,6 +186,12 @@ func reconcileOutcomeWithoutNewResponse(
 	if err != nil {
 		return reconcileOutcome{}, fmt.Errorf("failed to evaluate success.when.variables: %w", err)
 	}
+	var successVars map[string]any
+	if v, ok := exprData["Variables"]; ok {
+		if vm, ok := v.(map[string]any); ok {
+			successVars = vm
+		}
+	}
 	phase, phasePerBranch, err := resolvePhaseFromSuccessWhen(ctx, evaluator, wrcs, exprData)
 	if err != nil {
 		return reconcileOutcome{}, fmt.Errorf("failed to evaluate success.when expression: %w", err)
@@ -195,6 +209,7 @@ func reconcileOutcomeWithoutNewResponse(
 		LastResponseStatusCode: lastState.LastResponseStatusCode,
 		ResponseDataJSON:       lastState.ResponseOutput,
 		SuccessDataJSON:        successDataJSON,
+		SuccessVariables:       successVars,
 	}, nil
 }
 
@@ -404,6 +419,8 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusEnvironments(ctx context.Con
 
 		commitTd := td.withLatestOutputs(result.ResponseDataJSON, decision.NewTriggerData, result.SuccessDataJSON)
 		commitTd.Phase = string(result.Phase)
+		commitTd.TriggerVariables = decision.TriggerVariables
+		commitTd.SuccessVariables = result.SuccessVariables
 		cs, err := r.commitEmitter.EmitCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, reportedSha, result.Phase, commitTd)
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", branch, err)
@@ -543,6 +560,8 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusPromotionStrategy(ctx contex
 	}
 
 	commitTd := td.withLatestOutputs(result.ResponseDataJSON, decision.NewTriggerData, result.SuccessDataJSON)
+	commitTd.TriggerVariables = decision.TriggerVariables
+	commitTd.SuccessVariables = result.SuccessVariables
 	commitStatuses = make([]*promoterv1alpha1.CommitStatus, 0, len(applicableEnvs))
 	for _, env := range applicableEnvs {
 		branch := env.Branch
