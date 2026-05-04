@@ -189,7 +189,7 @@ describe('AppViewExtension', () => {
         .dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
       await wait();
 
-      const options = Array.from(container.querySelectorAll('.strategy-dropdown__option'));
+      const options = Array.from(document.querySelectorAll('.strategy-dropdown__option'));
       const optionTexts = options.map((o) => o.textContent);
       expect(optionTexts).toContain('strategy-1');
       expect(optionTexts).toContain('strategy-2');
@@ -204,7 +204,7 @@ describe('AppViewExtension', () => {
         .dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
       await wait();
 
-      const options = Array.from(container.querySelectorAll('.strategy-dropdown__option'));
+      const options = Array.from(document.querySelectorAll('.strategy-dropdown__option'));
       options
         .find((o) => o.textContent === 'strategy-2')!
         .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
@@ -242,7 +242,7 @@ describe('AppViewExtension', () => {
         .dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
       await wait();
 
-      const options = Array.from(container.querySelectorAll('.strategy-dropdown__option'));
+      const options = Array.from(document.querySelectorAll('.strategy-dropdown__option'));
       const optionTexts = options.map((o) => o.textContent);
       expect(optionTexts).toContain('my-strategy (ns-a)');
       expect(optionTexts).toContain('my-strategy (ns-b)');
@@ -271,7 +271,7 @@ describe('AppViewExtension', () => {
         .dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
       await wait();
 
-      const options = Array.from(container.querySelectorAll('.strategy-dropdown__option'));
+      const options = Array.from(document.querySelectorAll('.strategy-dropdown__option'));
       options
         .find((o) => o.textContent === 'my-strategy (ns-b)')!
         .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
