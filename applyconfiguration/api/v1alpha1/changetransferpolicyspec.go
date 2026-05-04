@@ -30,7 +30,10 @@ type ChangeTransferPolicySpecApplyConfiguration struct {
 	ProposedBranch *string `json:"proposedBranch,omitempty"`
 	// ActiveBranch staging hydrated branch
 	ActiveBranch *string `json:"activeBranch,omitempty"`
-	AutoMerge    *bool   `json:"autoMerge,omitempty"`
+	// ActivePath is an optional repository subpath for this policy's active state.
+	// When set, hydrator metadata is read from <activePath>/hydrator.metadata.
+	ActivePath *string `json:"activePath,omitempty"`
+	AutoMerge  *bool   `json:"autoMerge,omitempty"`
 	// ActiveCommitStatuses lists the statuses to be monitored on the active branch
 	ActiveCommitStatuses []CommitStatusSelectorApplyConfiguration `json:"activeCommitStatuses,omitempty"`
 	// ProposedCommitStatuses lists the statuses to be monitored on the proposed branch
@@ -64,6 +67,14 @@ func (b *ChangeTransferPolicySpecApplyConfiguration) WithProposedBranch(value st
 // If called multiple times, the ActiveBranch field is set to the value of the last call.
 func (b *ChangeTransferPolicySpecApplyConfiguration) WithActiveBranch(value string) *ChangeTransferPolicySpecApplyConfiguration {
 	b.ActiveBranch = &value
+	return b
+}
+
+// WithActivePath sets the ActivePath field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ActivePath field is set to the value of the last call.
+func (b *ChangeTransferPolicySpecApplyConfiguration) WithActivePath(value string) *ChangeTransferPolicySpecApplyConfiguration {
+	b.ActivePath = &value
 	return b
 }
 

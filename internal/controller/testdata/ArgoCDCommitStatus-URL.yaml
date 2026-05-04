@@ -1,8 +1,8 @@
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: ArgoCDCommitStatus
 metadata:
-  # An ArgoCDCommitStatus produces CommitStatuses with the key `argocd-health`. That key is hardcoded, and the name of
-  # the ArgoCDCommitStatus does not affect the key name.
+  # An ArgoCDCommitStatus produces CommitStatuses with the key `argocd-health` by default.
+  # You can override it with spec.commitStatusKey.
   name: argocdcommitstatus-sample
 spec:
   applicationSelector:

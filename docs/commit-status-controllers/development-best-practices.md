@@ -50,12 +50,18 @@ commitStatus.Labels[promoterv1alpha1.EnvironmentLabel] = utils.KubeSafeLabel(bra
 - Efficient lookups in controllers
 - Clear organizational structure
 
+### 3. Use a Unique Commit Status Key in Shared Active Branch Mode
+
+If multiple PromotionStrategies share the same active branch (via `PromotionStrategy.spec.activePath`), commit statuses
+for different apps can target the same active commit SHA. In this setup, controllers should use distinct
+`CommitStatusLabel` keys per app/controller domain (for example `argocd-health-payments`), so gating remains isolated.
+
 ## Existing Controllers
 
 ### ArgoCDCommitStatus Controller
 
 The ArgoCDCommitStatus controller sets:
-- `promoter.argoproj.io/commit-status: "argocd-health"`
+- `promoter.argoproj.io/commit-status: <spec.commitStatusKey>` (defaults to `argocd-health`)
 - `promoter.argoproj.io/environment: <branch>`
 
 See: `internal/controller/argocdcommitstatus_controller.go` lines 557-560
@@ -267,4 +273,3 @@ metadata:
     promoter.argoproj.io/commit-status: "your-key"
     promoter.argoproj.io/environment: "environment-development"
 ```
-

@@ -33,10 +33,21 @@ the environment's active branch name with a `-next` suffix.
 
 > **Important**: The `-next` suffix convention is hard-coded in GitOps Promoter and cannot be changed.
 
+When using the monorepo shared-active-branch pattern (`PromotionStrategy.spec.activePath`), proposed branches are built
+as `<active-branch>/<activePath>-next`.
+
+| Active Branch | Active Path | Proposed Branch |
+|---------------|-------------|-----------------|
+| `environment/development` | `app-a` | `environment/development/app-a-next` |
+| `environment/staging` | `app-a` | `environment/staging/app-a-next` |
+
 ### 3. Include `hydrator.metadata` File
 
-Each hydrated commit **must** include a `hydrator.metadata` file at the root of the repository. This JSON file tells
-GitOps Promoter which DRY commit was used to produce the hydrated content.
+Each hydrated commit **must** include a `hydrator.metadata` file. This JSON file tells GitOps Promoter which DRY
+commit was used to produce the hydrated content.
+
+- Default mode (no `activePath`): put `hydrator.metadata` at repository root.
+- Shared-active-branch mode (`activePath` set): put `hydrator.metadata` at `<activePath>/hydrator.metadata`.
 
 #### Required Fields
 
@@ -91,6 +102,15 @@ To avoid unnecessary commits when manifests haven't changed, your hydrator shoul
 is identical to what's already on the proposed branch. If nothing has changed, don't push a new commit.
 
 This prevents GitOps Promoter from creating Pull Requests for changes that have no effect.
+
+### 5. Preserve Other Application Directories (Shared Active Branch Mode)
+
+If you use `activePath` to share one active branch across multiple applications, hydration must be path-scoped:
+
+1. Update only files for the current app path.
+2. Do not delete or rewrite other applications' directories on the same branch.
+
+This ensures independent PromotionStrategies can safely share the same active branch.
 
 ## Example Implementations
 
@@ -314,4 +334,3 @@ Promoter.
 2. **Atomic Commits**: Each hydrated commit should represent a complete, valid state. Don't push partial changes.
 
 3. **Meaningful Commit Messages**: Include the DRY SHA in your hydrated commit messages for traceability.
-
