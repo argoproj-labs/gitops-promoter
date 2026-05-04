@@ -158,6 +158,8 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
             options={options}
             placeholder="Select a PromotionStrategy"
             value={options.find((opt) => opt.value === selectedKey) || null}
+            menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+            styles={{ menuPortal: (base) => ({ ...base, zIndex: 2000 }) }}
             onChange={(option: SingleValue<SelectOption>) => {
               const key = option ? option.value : '';
               setSelectedKey(key);
