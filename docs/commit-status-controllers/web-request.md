@@ -251,16 +251,15 @@ spec:
     when:
       variables:
         expression: |
+          let prev = SuccessOutput ?? { tag: "pending", runId: "", ok: false };
           Response != nil ? {
-            tag:   Response.Body.buildTag   ?? "unknown",
-            runId: Response.Body.buildRunId ?? ""
-          } : {
-            tag:   (SuccessOutput ?? {})["tag"]   ?? "pending",
-            runId: (SuccessOutput ?? {})["runId"] ?? ""
-          }
-      expression: 'Response != nil ? Response.StatusCode == 200 : Phase == "success"'
+            tag:   Response.Body.buildTag   ?? prev.tag,
+            runId: Response.Body.buildRunId ?? prev.runId,
+            ok:    Response.StatusCode == 200,
+          } : prev
+      expression: 'Variables.ok'
       output:
-        expression: '{ tag: Variables.tag, runId: Variables.runId }'
+        expression: 'Variables'
   mode:
     polling:
       interval: 2m
@@ -268,9 +267,11 @@ spec:
 
 How it works:
 
-- On **fire** reconciles (HTTP response present), `success.when.variables` reads the build tag and run ID from `Response.Body`. `Variables.<key>` is used by `success.when.expression` and `success.when.output.expression`; `.SuccessVariables.<key>` is used by `descriptionTemplate` and `urlTemplate`.
-- On **carry-forward** reconciles (no HTTP this cycle), `Response` is `nil`, so `variables` falls back to last reconcile's `SuccessOutput`. The displayed description/URL stays stable instead of going blank.
-- The `success.when.output` expression mirrors `Variables` into `SuccessOutput` so the values persist across reconciles.
+- `success.when.variables` is the single source of truth: it computes `tag`, `runId`, and `ok` once per reconcile.
+- On **fire** reconciles (HTTP response present), it reads from `Response.Body`. On **carry-forward** reconciles (`Response == nil`), it returns last reconcile's `SuccessOutput` verbatim — so the description/URL stay stable and `ok` is preserved without a separate `Phase == "success"` check.
+- The boolean `expression: 'Variables.ok'` reuses the same value — no duplicate `Response != nil ? ... : ...` ladder.
+- `output: 'Variables'` persists the whole map to `SuccessOutput`, which is what the next carry-forward reconcile reads back as `prev`.
+- `descriptionTemplate` / `urlTemplate` reference the same map via `.SuccessVariables.tag` and `.SuccessVariables.runId`.
 
 > [!NOTE]
 > `.TriggerVariables` and `.SuccessVariables` are **only** available in `descriptionTemplate` and `urlTemplate`. They are **not** in scope for `httpRequest.urlTemplate`, `httpRequest.headerTemplates`, or `httpRequest.bodyTemplate` (those render *before* the request fires, before `when.variables` runs). Use `index` for safe access — it returns the zero value if the map is `nil` or the key is missing.
