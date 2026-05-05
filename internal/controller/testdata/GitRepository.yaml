@@ -21,6 +21,10 @@ spec:
     owner:
     name:
 
+  bitbucketDataCenter:
+    project:
+    name:
+
   azureDevOps:
     name:
     project:
