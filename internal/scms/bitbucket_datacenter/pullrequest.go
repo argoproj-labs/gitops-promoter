@@ -348,9 +348,12 @@ func (pr *PullRequest) GetUrl(ctx context.Context, prObj v1alpha1.PullRequest) (
 // getPR fetches the current state of a pull request including its version.
 func (pr *PullRequest) getPR(ctx context.Context, projectKey, repoSlug string, prID int) (*prResponse, error) {
 	path := fmt.Sprintf("%s/%d", prPath(projectKey, repoSlug), prID)
-	_, body, err := pr.client.do(ctx, http.MethodGet, path, nil)
+	statusCode, body, err := pr.client.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pull request: %w", err)
+	}
+	if statusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code %d when getting pull request: %s", statusCode, string(body))
 	}
 	var result prResponse
 	if err := json.Unmarshal(body, &result); err != nil {
