@@ -459,6 +459,12 @@ spec:
 > For an example of how to configure the Argo CD Source Hydrator, see the [Argo CD tutorial](tutorial-argocd-apps.md#deploy-an-application-for-3-environments).
 > (Note the difference between the `syncSource` and the `hydrateTo` fields.)
 
+> [!TIP]
+> For monorepos, you can share a single active branch across multiple PromotionStrategies by setting
+> `spec.activePath` (for example `apps/payments`). In that mode, proposed branches are created as
+> `<environment-branch>/<activePath>-next`, and the hydrator metadata is read from `<activePath>/hydrator.metadata`.
+> This lets each app promote independently while keeping one active branch per environment.
+
 > [!NOTE]
 > Notice that the branches are prefixed with `environment/`. This is a convention that we recommend you follow.
 

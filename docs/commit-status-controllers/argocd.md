@@ -38,8 +38,8 @@ spec:
 ```
 
 To configure the PromotionStrategy, we need to specify the active commit statuses that are required for the promotion to proceed.
-You can see this in the example below with the `activeCommitStatuses` field. The CommitStatuses managed by an ArgoCDCommitStatus
-always have a key of `argocd-health`, so that exact key must be used in the PromotionStrategy.
+You can see this in the example below with the `activeCommitStatuses` field. By default, CommitStatuses managed by an
+ArgoCDCommitStatus use the key `argocd-health`. You can override it using `spec.commitStatusKey`.
 
 
 ```yaml
@@ -49,7 +49,6 @@ metadata:
   name: argocon-demo
 spec:
   activeCommitStatuses:
-    # This is the hard-coded key that is always used by the ArgoCDCommitStatus controller.
     - key: argocd-health
   environments:
     - branch: environments/development
@@ -161,6 +160,8 @@ spec:
   applicationSelector:
     matchLabels:
       app: my-app
+  # Optional. Defaults to argocd-health.
+  commitStatusKey: argocd-health-my-app
 ```
 
 ## Multi-Cluster Support

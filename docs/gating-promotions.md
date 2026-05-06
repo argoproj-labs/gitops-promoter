@@ -154,7 +154,7 @@ The [ArgoCDCommitStatus](commit-status-controllers/argocd.md) controller monitor
 Key features:
 
 - Monitors Argo CD Applications with specific labels
-- Creates CommitStatus resources with key `argocd-health`
+- Creates CommitStatus resources with key `argocd-health` by default (configurable with `spec.commitStatusKey`)
 - Reports application health status (Healthy, Progressing, Degraded, etc.)
 
 ### Time-Based Gating
@@ -187,4 +187,3 @@ Key features:
 ### Custom Controllers
 
 You can also create your own controllers that manage CommitStatus resources. Any system that can create Kubernetes resources can participate in the gating logic by creating CommitStatus resources with the appropriate SHAs and phases.
-

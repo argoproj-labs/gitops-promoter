@@ -24,8 +24,6 @@ import (
 // ArgoCDCommitStatusSpecApplyConfiguration represents a declarative configuration of the ArgoCDCommitStatusSpec type for use
 // with apply.
 //
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 // ArgoCDCommitStatusSpec defines the desired state of ArgoCDCommitStatus.
 type ArgoCDCommitStatusSpecApplyConfiguration struct {
 	// PromotionStrategyRef is a reference to the promotion strategy that this commit status applies to.
@@ -34,6 +32,8 @@ type ArgoCDCommitStatusSpecApplyConfiguration struct {
 	ApplicationSelector *v1.LabelSelectorApplyConfiguration `json:"applicationSelector,omitempty"`
 	// URL generates the URL to use in the CommitStatus, for example a link to the Argo CD UI.
 	URL *URLConfigApplyConfiguration `json:"url,omitempty"`
+	// CommitStatusKey is the key used for created CommitStatus resources.
+	CommitStatusKey *string `json:"commitStatusKey,omitempty"`
 }
 
 // ArgoCDCommitStatusSpecApplyConfiguration constructs a declarative configuration of the ArgoCDCommitStatusSpec type for use with
@@ -63,5 +63,13 @@ func (b *ArgoCDCommitStatusSpecApplyConfiguration) WithApplicationSelector(value
 // If called multiple times, the URL field is set to the value of the last call.
 func (b *ArgoCDCommitStatusSpecApplyConfiguration) WithURL(value *URLConfigApplyConfiguration) *ArgoCDCommitStatusSpecApplyConfiguration {
 	b.URL = value
+	return b
+}
+
+// WithCommitStatusKey sets the CommitStatusKey field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the CommitStatusKey field is set to the value of the last call.
+func (b *ArgoCDCommitStatusSpecApplyConfiguration) WithCommitStatusKey(value string) *ArgoCDCommitStatusSpecApplyConfiguration {
+	b.CommitStatusKey = &value
 	return b
 }

@@ -41,6 +41,9 @@ type PromotionStrategySpecApplyConfiguration struct {
 	ProposedCommitStatuses []CommitStatusSelectorApplyConfiguration `json:"proposedCommitStatuses,omitempty"`
 	// Environments is the sequence of environments that a dry commit will be promoted through.
 	Environments []EnvironmentApplyConfiguration `json:"environments,omitempty"`
+	// ActivePath is an optional repository subpath for this strategy's active state.
+	// When set, proposed branches are created as <environment-branch>/<activePath>-next.
+	ActivePath *string `json:"activePath,omitempty"`
 }
 
 // PromotionStrategySpecApplyConfiguration constructs a declarative configuration of the PromotionStrategySpec type for use with
@@ -93,5 +96,13 @@ func (b *PromotionStrategySpecApplyConfiguration) WithEnvironments(values ...*En
 		}
 		b.Environments = append(b.Environments, *values[i])
 	}
+	return b
+}
+
+// WithActivePath sets the ActivePath field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ActivePath field is set to the value of the last call.
+func (b *PromotionStrategySpecApplyConfiguration) WithActivePath(value string) *PromotionStrategySpecApplyConfiguration {
+	b.ActivePath = &value
 	return b
 }

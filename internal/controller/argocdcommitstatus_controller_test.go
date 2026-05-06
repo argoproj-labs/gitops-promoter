@@ -27,13 +27,16 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
@@ -138,6 +141,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 
 		It("should work with applications that use spec.source instead of spec.sourceHydrator", func() {
 			ctx := context.TODO()
+			const customCommitStatusKey = "argocd-health-non-hydrator"
 
 			// Create required dependencies
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "non-hydrator-test", "default")
@@ -214,6 +218,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 					ApplicationSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{"test": "non-hydrator"},
 					},
+					CommitStatusKey: customCommitStatusKey,
 				},
 			}
 			Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
@@ -230,6 +235,20 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				g.Expect(updated.Status.ApplicationsSelected[0].Environment).To(Equal(testBranchStaging))
 				g.Expect(updated.Status.ApplicationsSelected[0].Sha).To(Equal(sha))
 				g.Expect(updated.Status.ApplicationsSelected[0].Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				var commitStatusList promoterv1alpha1.CommitStatusList
+				err := k8sClient.List(ctx, &commitStatusList, &ctrlclient.ListOptions{
+					Namespace: "default",
+					LabelSelector: labels.SelectorFromSet(map[string]string{
+						promoterv1alpha1.CommitStatusLabel: customCommitStatusKey,
+						promoterv1alpha1.EnvironmentLabel:  utils.KubeSafeLabel(testBranchStaging),
+					}),
+				})
+				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(commitStatusList.Items).To(HaveLen(1))
+				g.Expect(commitStatusList.Items[0].Spec.Name).To(Equal(testBranchStaging + "/health"))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			// Clean up
