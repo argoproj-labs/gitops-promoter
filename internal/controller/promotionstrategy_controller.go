@@ -88,7 +88,10 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	var ps promoterv1alpha1.PromotionStrategy
 	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &ps, r.Client, r.Recorder, constants.PromotionStrategyControllerFieldOwner, &result, &err)
+	var priorReadyCond *metav1.Condition
+	defer func() {
+		utils.HandleReconciliationResult(ctx, startTime, &ps, r.Client, r.Recorder, constants.PromotionStrategyControllerFieldOwner, priorReadyCond, &result, &err)
+	}()
 
 	err = r.Get(ctx, req.NamespacedName, &ps, &client.GetOptions{})
 	if err != nil {
@@ -107,6 +110,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	// Remove any existing Ready condition. We want to start fresh.
+	priorReadyCond = utils.SnapshotReadyCondition(&ps)
 	meta.RemoveStatusCondition(ps.GetConditions(), string(promoterConditions.Ready))
 
 	// If a ChangeTransferPolicy does not exist, create it otherwise get it and store the ChangeTransferPolicy in a slice with the same order as ps.Spec.Environments.

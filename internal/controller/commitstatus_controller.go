@@ -40,6 +40,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/events"
@@ -79,7 +80,10 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	var cs promoterv1alpha1.CommitStatus
 	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &cs, r.Client, r.Recorder, constants.CommitStatusControllerFieldOwner, &result, &err)
+	var priorReadyCond *metav1.Condition
+	defer func() {
+		utils.HandleReconciliationResult(ctx, startTime, &cs, r.Client, r.Recorder, constants.CommitStatusControllerFieldOwner, priorReadyCond, &result, &err)
+	}()
 
 	err = r.Get(ctx, req.NamespacedName, &cs, &client.GetOptions{})
 	if err != nil {
@@ -93,6 +97,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	// Remove any existing Ready condition. We want to start fresh.
+	priorReadyCond = utils.SnapshotReadyCondition(&cs)
 	meta.RemoveStatusCondition(cs.GetConditions(), string(promoterConditions.Ready))
 
 	// empty phase should be impossible due to schema validation

@@ -23,6 +23,7 @@ import (
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -59,7 +60,10 @@ func (r *ScmProviderReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	var scmProvider promoterv1alpha1.ScmProvider
 	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &scmProvider, r.Client, r.Recorder, constants.ScmProviderControllerFieldOwner, &result, &err)
+	var priorReadyCond *metav1.Condition
+	defer func() {
+		utils.HandleReconciliationResult(ctx, startTime, &scmProvider, r.Client, r.Recorder, constants.ScmProviderControllerFieldOwner, priorReadyCond, &result, &err)
+	}()
 
 	if err := r.Get(ctx, req.NamespacedName, &scmProvider); err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -70,6 +74,7 @@ func (r *ScmProviderReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Remove any existing Ready condition. We want to start fresh.
+	priorReadyCond = utils.SnapshotReadyCondition(&scmProvider)
 	meta.RemoveStatusCondition(scmProvider.GetConditions(), string(promoterConditions.Ready))
 
 	if deleted, err := r.handleFinalizer(ctx, &scmProvider); err != nil || deleted {

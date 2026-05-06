@@ -82,7 +82,10 @@ func (r *GitCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	var gcs promoterv1alpha1.GitCommitStatus
 	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &gcs, r.Client, r.Recorder, constants.GitCommitStatusControllerFieldOwner, &result, &err)
+	var priorReadyCond *metav1.Condition
+	defer func() {
+		utils.HandleReconciliationResult(ctx, startTime, &gcs, r.Client, r.Recorder, constants.GitCommitStatusControllerFieldOwner, priorReadyCond, &result, &err)
+	}()
 
 	err = r.Get(ctx, req.NamespacedName, &gcs, &client.GetOptions{})
 	if err != nil {
@@ -96,6 +99,7 @@ func (r *GitCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	// Remove any existing Ready condition. We want to start fresh.
+	priorReadyCond = utils.SnapshotReadyCondition(&gcs)
 	meta.RemoveStatusCondition(gcs.GetConditions(), string(promoterConditions.Ready))
 
 	// Fetch the referenced PromotionStrategy

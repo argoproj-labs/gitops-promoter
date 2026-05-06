@@ -117,7 +117,10 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 
 	var argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
 	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &argoCDCommitStatus, r.localClient, r.Recorder, constants.ArgoCDCommitStatusControllerFieldOwner, &result, &err)
+	var priorReadyCond *metav1.Condition
+	defer func() {
+		utils.HandleReconciliationResult(ctx, startTime, &argoCDCommitStatus, r.localClient, r.Recorder, constants.ArgoCDCommitStatusControllerFieldOwner, priorReadyCond, &result, &err)
+	}()
 
 	err = r.localClient.Get(ctx, req.NamespacedName, &argoCDCommitStatus, &client.GetOptions{})
 	if err != nil {
@@ -131,6 +134,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	}
 
 	// Remove any existing Ready condition. We want to start fresh.
+	priorReadyCond = utils.SnapshotReadyCondition(&argoCDCommitStatus)
 	meta.RemoveStatusCondition(argoCDCommitStatus.GetConditions(), string(promoterConditions.Ready))
 
 	ls, err := metav1.LabelSelectorAsSelector(argoCDCommitStatus.Spec.ApplicationSelector)

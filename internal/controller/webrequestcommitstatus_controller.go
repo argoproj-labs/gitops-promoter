@@ -83,7 +83,10 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 
 	var wrcs promoterv1alpha1.WebRequestCommitStatus
 	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &wrcs, r.Client, r.Recorder, constants.WebRequestCommitStatusControllerFieldOwner, &result, &err)
+	var priorReadyCond *metav1.Condition
+	defer func() {
+		utils.HandleReconciliationResult(ctx, startTime, &wrcs, r.Client, r.Recorder, constants.WebRequestCommitStatusControllerFieldOwner, priorReadyCond, &result, &err)
+	}()
 
 	// 1. Fetch the WebRequestCommitStatus instance
 	err = r.Get(ctx, req.NamespacedName, &wrcs)
@@ -97,6 +100,7 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 	}
 
 	// Remove any existing Ready condition. We want to start fresh.
+	priorReadyCond = utils.SnapshotReadyCondition(&wrcs)
 	meta.RemoveStatusCondition(wrcs.GetConditions(), string(promoterConditions.Ready))
 
 	// 2. Fetch the referenced PromotionStrategy

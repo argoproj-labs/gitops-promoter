@@ -79,7 +79,10 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	var pr promoterv1alpha1.PullRequest
 	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &pr, r.Client, r.Recorder, constants.PullRequestControllerFieldOwner, &result, &err)
+	var priorReadyCond *metav1.Condition
+	defer func() {
+		utils.HandleReconciliationResult(ctx, startTime, &pr, r.Client, r.Recorder, constants.PullRequestControllerFieldOwner, priorReadyCond, &result, &err)
+	}()
 
 	if err := r.Get(ctx, req.NamespacedName, &pr); err != nil {
 		if errors.IsNotFound(err) {
@@ -90,6 +93,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Remove any existing Ready condition. We want to start fresh.
+	priorReadyCond = utils.SnapshotReadyCondition(&pr)
 	meta.RemoveStatusCondition(pr.GetConditions(), string(promoterConditions.Ready))
 
 	// Handle deletion early - if being deleted and status.ID is empty, we can skip provider setup
