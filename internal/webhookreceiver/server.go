@@ -240,16 +240,7 @@ func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provide
 		}
 	case ProviderBitbucketDataCenter:
 		// Bitbucket DataCenter/Server webhook format (repo:refs_changed event)
-		if gjson.GetBytes(jsonBytes, "changes").Exists() && gjson.GetBytes(jsonBytes, "eventKey").Exists() {
-			changes := gjson.GetBytes(jsonBytes, "changes")
-			if changes.IsArray() && len(changes.Array()) > 0 {
-				firstChange := changes.Array()[0]
-				beforeSha = firstChange.Get("fromHash").String()
-				if refID := firstChange.Get("ref.id"); refID.Exists() {
-					ref = refID.String()
-				}
-			}
-		}
+		beforeSha, ref = extractBitbucketDCPayload(jsonBytes)
 	case ProviderAzureDevops:
 		// Azure DevOps webhook format
 		if gjson.GetBytes(jsonBytes, "resource.refUpdates").Exists() {
@@ -341,4 +332,24 @@ func (wr *WebhookReceiver) extractDeliveryID(r *http.Request) string {
 		return id
 	}
 	return ""
+}
+
+// extractBitbucketDCPayload parses a Bitbucket DataCenter/Server repo:refs_changed webhook
+// payload and returns the fromHash (before-SHA) and ref from the first entry in the
+// "changes" array. Both values are empty strings when the payload does not match the
+// expected shape.
+func extractBitbucketDCPayload(jsonBytes []byte) (sha, ref string) {
+	if !gjson.GetBytes(jsonBytes, "eventKey").Exists() || !gjson.GetBytes(jsonBytes, "changes").Exists() {
+		return "", ""
+	}
+	changes := gjson.GetBytes(jsonBytes, "changes")
+	if !changes.IsArray() || len(changes.Array()) == 0 {
+		return "", ""
+	}
+	firstChange := changes.Array()[0]
+	sha = firstChange.Get("fromHash").String()
+	if refID := firstChange.Get("ref.id"); refID.Exists() {
+		ref = refID.String()
+	}
+	return sha, ref
 }

@@ -45,20 +45,28 @@ func (g GitAuthenticationProvider) GetGitHttpsRepoUrl(repo v1alpha1.GitRepositor
 
 // GetToken retrieves the authentication token from the secret.
 // If the secret has a "token" key it is returned; otherwise the password is returned for
-// use as the HTTP Basic auth password.
+// use as the HTTP Basic auth password. Returns an error when neither credential is present.
 func (g GitAuthenticationProvider) GetToken(ctx context.Context) (string, error) {
 	if token := string(g.secret.Data["token"]); token != "" {
 		return token, nil
 	}
-	return string(g.secret.Data["password"]), nil
+	password := string(g.secret.Data["password"])
+	if password == "" {
+		return "", fmt.Errorf("secret %q must contain either 'token' or both 'username' and 'password'", g.secret.Name)
+	}
+	return password, nil
 }
 
 // GetUser returns the username for Bitbucket DataCenter/Server authentication.
 // When a token is present the Bitbucket convention "x-token-auth" is used; otherwise the
-// username from the secret is returned.
+// username from the secret is returned. Returns an error when neither credential is present.
 func (g GitAuthenticationProvider) GetUser(ctx context.Context) (string, error) {
 	if string(g.secret.Data["token"]) != "" {
 		return "x-token-auth", nil
 	}
-	return string(g.secret.Data["username"]), nil
+	username := string(g.secret.Data["username"])
+	if username == "" {
+		return "", fmt.Errorf("secret %q must contain either 'token' or both 'username' and 'password'", g.secret.Name)
+	}
+	return username, nil
 }
