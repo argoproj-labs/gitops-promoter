@@ -594,3 +594,127 @@ var _ = Describe("HandleReconciliationResult fallback status apply", func() {
 		Expect(readyCondition.Message).To(ContainSubstring("reconciliation failed for test"))
 	})
 })
+
+var _ = Describe("HandleReconciliationResult lastTransitionTime preservation", func() {
+	var (
+		ctx      context.Context
+		obj      *promoterv1alpha1.PromotionStrategy
+		recorder events.EventRecorder
+		scheme   *runtime.Scheme
+	)
+
+	BeforeEach(func() {
+		ctx = context.Background()
+		obj = &promoterv1alpha1.PromotionStrategy{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "PromotionStrategy",
+				APIVersion: "promoter.argoproj.io/v1alpha1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "test-strategy",
+				Namespace:  "default",
+				Generation: 1,
+			},
+		}
+		scheme = runtime.NewScheme()
+		_ = promoterv1alpha1.AddToScheme(scheme)
+		recorder = events.NewFakeRecorder(10)
+	})
+
+	It("should not update lastTransitionTime when reconciliation error is unchanged", func() {
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(obj).Build()
+		Expect(fakeClient.Create(ctx, obj)).To(Succeed())
+
+		// First reconcile with an error to establish the Ready=False condition.
+		var err error
+		func() {
+			defer utils.HandleReconciliationResult(ctx, time.Now(), obj, fakeClient, recorder, testFieldOwner, nil, &err)
+			err = errors.New("test reconciliation error")
+		}()
+		Expect(err).To(HaveOccurred())
+
+		// Read back the object and replace the lastTransitionTime with a well-known value
+		// so that any update would be detectable regardless of sub-second timing.
+		stored := &promoterv1alpha1.PromotionStrategy{}
+		Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(obj), stored)).To(Succeed())
+		readyCond := meta.FindStatusCondition(*stored.GetConditions(), string(conditions.Ready))
+		Expect(readyCond).ToNot(BeNil())
+		Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
+
+		knownTime := metav1.NewTime(time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC))
+		readyCond.LastTransitionTime = knownTime
+		Expect(fakeClient.Status().Update(ctx, stored)).To(Succeed())
+
+		// Simulate re-queue: controllers remove the Ready condition at the top of Reconcile,
+		// then reconcile fails with the same error.
+		baseline := &promoterv1alpha1.PromotionStrategy{}
+		Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(obj), baseline)).To(Succeed())
+		meta.RemoveStatusCondition(baseline.GetConditions(), string(conditions.Ready))
+		var err2 error
+		func() {
+			defer utils.HandleReconciliationResult(ctx, time.Now(), baseline, fakeClient, recorder, testFieldOwner, nil, &err2)
+			err2 = errors.New("test reconciliation error") // same error as before
+		}()
+		Expect(err2).To(HaveOccurred())
+
+		// lastTransitionTime must be preserved — the condition's Status (False) did not change.
+		// Use BeTemporally for comparison because metav1.Time may differ in internal
+		// representation after a JSON round-trip even when representing the same instant.
+		final := &promoterv1alpha1.PromotionStrategy{}
+		Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(obj), final)).To(Succeed())
+		finalReadyCond := meta.FindStatusCondition(*final.GetConditions(), string(conditions.Ready))
+		Expect(finalReadyCond).ToNot(BeNil())
+		Expect(finalReadyCond.LastTransitionTime.Time).To(BeTemporally("==", knownTime.Time),
+			"lastTransitionTime must not be updated when condition status has not changed")
+
+		// Note: with the real API server, preserving lastTransitionTime means the SSA
+		// patch body is identical to the stored object, so resourceVersion would not be
+		// bumped. The fake client always increments resourceVersion on any write, so we
+		// cannot assert that here.
+	})
+
+	It("should update lastTransitionTime when condition transitions from False to True", func() {
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(obj).Build()
+		Expect(fakeClient.Create(ctx, obj)).To(Succeed())
+
+		// First reconcile: error → Ready=False.
+		var err error
+		func() {
+			defer utils.HandleReconciliationResult(ctx, time.Now(), obj, fakeClient, recorder, testFieldOwner, nil, &err)
+			err = errors.New("transient error")
+		}()
+		Expect(err).To(HaveOccurred())
+
+		// Replace the lastTransitionTime with a well-known value in the past so that any
+		// update to it (on the True transition) is detectable regardless of timing.
+		stored := &promoterv1alpha1.PromotionStrategy{}
+		Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(obj), stored)).To(Succeed())
+		falseCond := meta.FindStatusCondition(*stored.GetConditions(), string(conditions.Ready))
+		Expect(falseCond).ToNot(BeNil())
+		Expect(falseCond.Status).To(Equal(metav1.ConditionFalse))
+
+		knownFalseTime := metav1.NewTime(time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC))
+		falseCond.LastTransitionTime = knownFalseTime
+		Expect(fakeClient.Status().Update(ctx, stored)).To(Succeed())
+
+		// Second reconcile: success → Ready=True. The transition from False→True must
+		// produce a new lastTransitionTime (not preserve the old False time).
+		baseline := &promoterv1alpha1.PromotionStrategy{}
+		Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(obj), baseline)).To(Succeed())
+		meta.RemoveStatusCondition(baseline.GetConditions(), string(conditions.Ready))
+		var err2 error
+		func() {
+			defer utils.HandleReconciliationResult(ctx, time.Now(), baseline, fakeClient, recorder, testFieldOwner, nil, &err2)
+			// no error → success
+		}()
+		Expect(err2).ToNot(HaveOccurred())
+
+		final := &promoterv1alpha1.PromotionStrategy{}
+		Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(obj), final)).To(Succeed())
+		trueCond := meta.FindStatusCondition(*final.GetConditions(), string(conditions.Ready))
+		Expect(trueCond).ToNot(BeNil())
+		Expect(trueCond.Status).To(Equal(metav1.ConditionTrue))
+		Expect(trueCond.LastTransitionTime.Time).NotTo(BeTemporally("==", knownFalseTime.Time),
+			"lastTransitionTime must be updated when condition transitions from False to True")
+	})
+})

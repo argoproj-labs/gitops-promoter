@@ -344,6 +344,11 @@ func HandleReconciliationResult(
 		return
 	}
 
+	// Fetch the current Ready condition from the server before we overwrite it. We use this
+	// to preserve lastTransitionTime when the condition's Status hasn't actually changed,
+	// avoiding unnecessary resourceVersion bumps when a resource stays in the same state.
+	serverReadyCond := getServerReadyCondition(ctx, c, obj)
+
 	conditions := obj.GetConditions() // GetConditions() is guaranteed to be non-nil for our CRDs.
 	// Controllers are expected to call meta.RemoveStatusCondition(..., "Ready") at the
 	// top of Reconcile so stale conditions from a previous reconcile don't bleed into
@@ -387,6 +392,12 @@ func HandleReconciliationResult(
 			ObservedGeneration: obj.GetGeneration(),
 		})
 	}
+
+	// Preserve lastTransitionTime: only update it when the condition's Status actually
+	// changes. When a resource remains in the same state across reconciles, bumping
+	// lastTransitionTime causes an unnecessary resourceVersion update with no meaningful
+	// semantic change.
+	preserveReadyTransitionTime(conditions, serverReadyCond)
 
 	// Stamp status.observedGeneration before building the apply configuration so the SSA
 	// patch records which spec generation produced this status. SSA with ForceOwnership
@@ -458,6 +469,9 @@ func HandleReconciliationResult(
 		fallbackCondition.Message = fmt.Sprintf("Reconciliation succeeded but failed to apply status: %s", patchErr)
 	}
 	meta.SetStatusCondition(conditions, fallbackCondition)
+	// Preserve lastTransitionTime in the fallback condition too, using the same server state
+	// snapshot taken earlier.
+	preserveReadyTransitionTime(conditions, serverReadyCond)
 
 	condCfg, buildErr := statusApplyConfig(obj, true)
 	if buildErr != nil {
@@ -505,6 +519,33 @@ func HandleReconciliationResult(
 	}
 	if result != nil {
 		*result = reconcile.Result{}
+	}
+}
+
+// getServerReadyCondition fetches the current Ready condition from the live server object.
+// It uses a deep copy of obj to avoid overwriting the in-memory reconcile state.
+// Returns nil if the object is not found, if the Get returns any other error, or if the
+// object has no Ready condition.
+func getServerReadyCondition(ctx context.Context, c client.Client, obj StatusConditionUpdater) *metav1.Condition {
+	serverObj := obj.DeepCopyObject().(client.Object)
+	if err := c.Get(ctx, client.ObjectKeyFromObject(serverObj), serverObj); err != nil {
+		return nil
+	}
+	//nolint:forcetypeassert // All CRDs passed to HandleReconciliationResult implement StatusConditionUpdater.
+	return meta.FindStatusCondition(*serverObj.(StatusConditionUpdater).GetConditions(), string(promoterConditions.Ready))
+}
+
+// preserveReadyTransitionTime restores the lastTransitionTime on the in-memory Ready condition
+// from the server's copy when the condition's Status has not changed. This prevents
+// unnecessary resourceVersion bumps when a resource is re-evaluated but stays in the same
+// state (e.g. a persistent error).
+func preserveReadyTransitionTime(conditions *[]metav1.Condition, serverReadyCond *metav1.Condition) {
+	if serverReadyCond == nil {
+		return
+	}
+	newReady := meta.FindStatusCondition(*conditions, string(promoterConditions.Ready))
+	if newReady != nil && newReady.Status == serverReadyCond.Status {
+		newReady.LastTransitionTime = serverReadyCond.LastTransitionTime
 	}
 }
 
