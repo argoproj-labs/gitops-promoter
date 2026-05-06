@@ -8,10 +8,10 @@ func TestExtractBitbucketDCPayload(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name      string
-		payload   string
-		wantSHA   string
-		wantRef   string
+		name    string
+		payload string
+		wantSHA string
+		wantRef string
 	}{
 		{
 			name: "valid repo:refs_changed payload with single change",
