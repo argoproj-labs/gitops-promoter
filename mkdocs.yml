@@ -28,6 +28,14 @@ markdown_extensions:
       css_class: highlight
   - admonition
   - pymdownx.superfences
+  # Fenced tab blocks (/// tab | … ///) avoid indented-tab syntax that GitHub renders as code blocks.
+  - pymdownx.blocks.tab:
+      alternate_style: true
+      # Tab label slugs for anchors (e.g. #github); tab bodies intentionally omit headings (see getting-started.md).
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        args: []
+        kwds:
+          case: lower
 nav:
   - Overview: index.md
   - Getting Started: getting-started.md
@@ -72,4 +80,3 @@ plugins:
   - redirects:
       redirect_maps:
         'metrics.md': 'monitoring/metrics.md' # Page was moved to a subdirectory.
-        'contributing.md': 'contributing/index.md' # Page was moved to a subdirectory.
