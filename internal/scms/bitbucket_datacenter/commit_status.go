@@ -78,7 +78,7 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 	if err != nil {
 		statusCode = http.StatusInternalServerError
 	}
-	metrics.RecordSCMCall(repo, metrics.SCMAPICommitStatus, metrics.SCMOperationCreate, statusCode, time.Since(start), nil)
+	metrics.RecordSCMCall(ctx, repo, metrics.SCMAPICommitStatus, metrics.SCMOperationCreate, statusCode, time.Since(start), nil)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to set build status: %w", err)

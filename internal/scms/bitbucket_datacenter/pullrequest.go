@@ -104,7 +104,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 	if err != nil {
 		statusCode = http.StatusInternalServerError
 	}
-	metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, statusCode, time.Since(start), nil)
+	metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, statusCode, time.Since(start), nil)
 
 	if err != nil {
 		return "", fmt.Errorf("failed to create pull request: %w", err)
@@ -165,7 +165,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 	if err != nil {
 		statusCode = http.StatusInternalServerError
 	}
-	metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationUpdate, statusCode, time.Since(start), nil)
+	metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationUpdate, statusCode, time.Since(start), nil)
 
 	if err != nil {
 		return fmt.Errorf("failed to update pull request: %w", err)
@@ -212,7 +212,7 @@ func (pr *PullRequest) Close(ctx context.Context, prObj v1alpha1.PullRequest) er
 	if err != nil {
 		statusCode = http.StatusInternalServerError
 	}
-	metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationClose, statusCode, time.Since(start), nil)
+	metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationClose, statusCode, time.Since(start), nil)
 
 	if err != nil {
 		return fmt.Errorf("failed to decline pull request: %w", err)
@@ -259,7 +259,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) er
 	if err != nil {
 		statusCode = http.StatusInternalServerError
 	}
-	metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, statusCode, time.Since(start), nil)
+	metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, statusCode, time.Since(start), nil)
 
 	if err != nil {
 		return fmt.Errorf("failed to merge pull request: %w", err)
@@ -299,7 +299,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	if err != nil {
 		statusCode = http.StatusInternalServerError
 	}
-	metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
+	metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
 
 	if err != nil {
 		return false, "", time.Time{}, fmt.Errorf("failed to list pull requests: %w", err)
