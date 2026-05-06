@@ -69,7 +69,7 @@ Optional **`when.variables`** (same shape as `when.output`: an `expression` stri
 
 **Downstream:** use `Variables.<key>` in `when.expression` and `when.output.expression`, for example `Variables.fingerprint == (TriggerOutput.lastFingerprint ?? "")`.
 
-**Available in CommitStatus templates:** the result of `when.variables.expression` is also exposed to **`spec.descriptionTemplate`** and **`spec.urlTemplate`** as the top-level fields below. These are the **only** Go templates that see them — `httpRequest.urlTemplate`, `httpRequest.headerTemplates`, and `httpRequest.bodyTemplate` render *before* the HTTP request and do **not** receive these bindings.
+**Available in templates:** the result of `when.variables.expression` is exposed as top-level fields in all Go templates — `httpRequest.urlTemplate`, `httpRequest.headerTemplates`, `httpRequest.bodyTemplate`, `spec.descriptionTemplate`, and `spec.urlTemplate`.
 
 | Source | Template binding |
 |--------|------------------|
@@ -78,7 +78,7 @@ Optional **`when.variables`** (same shape as `when.output`: an `expression` stri
 
 Both are `map[string]any`. They are `nil` when the corresponding `when.variables` is not configured (so `index` returns the zero value, which is safe for templates). `.TriggerVariables` is also `nil` outside trigger mode.
 
-**Not in scope:** `Variables` is **not** passed to `response.output.expression` (that program only receives `Response`) or to the **HTTP request** Go templates (`httpRequest.urlTemplate`, `headerTemplates`, `bodyTemplate`).
+**Not in scope:** `Variables` is **not** passed to `response.output.expression` (that program only receives `Response`).
 
 The same field exists on **`spec.success.when`**: variables run before the success boolean (and optional `success.when.output`), with `Response` included when an HTTP response exists for that reconcile.
 
@@ -274,7 +274,7 @@ How it works:
 - `descriptionTemplate` / `urlTemplate` reference the same map via `.SuccessVariables.tag` and `.SuccessVariables.runId`.
 
 > [!NOTE]
-> `.TriggerVariables` and `.SuccessVariables` are **only** available in `descriptionTemplate` and `urlTemplate`. They are **not** in scope for `httpRequest.urlTemplate`, `httpRequest.headerTemplates`, or `httpRequest.bodyTemplate` (those render *before* the request fires, before `when.variables` runs). Use `index` for safe access — it returns the zero value if the map is `nil` or the key is missing.
+> `.TriggerVariables` and `.SuccessVariables` are available in all Go templates: `httpRequest.urlTemplate`, `httpRequest.headerTemplates`, `httpRequest.bodyTemplate`, `descriptionTemplate`, and `urlTemplate`. Use `index` for safe access — it returns the zero value if the map is `nil` or the key is missing.
 
 #### Single boolean — one API for the whole strategy
 

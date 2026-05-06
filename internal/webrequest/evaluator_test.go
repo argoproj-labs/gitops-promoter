@@ -314,4 +314,59 @@ var _ = Describe("Pure helpers", func() {
 			Expect(got).To(HaveKeyWithValue("c", promoterv1alpha1.CommitPhaseSuccess))
 		})
 	})
+
+	Describe("BuildRenderedHTTPRequestFromTemplates", func() {
+		It("renders TriggerVariables into the URL template", func() {
+			wrcs := &promoterv1alpha1.WebRequestCommitStatus{
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						Method:      "GET",
+						URLTemplate: "https://example.com/{{ .TriggerVariables.env }}",
+					},
+				},
+			}
+			td := TemplateData{
+				TriggerVariables: map[string]any{"env": "prod"},
+			}
+			req, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(req.URL).To(Equal("https://example.com/prod"))
+		})
+
+		It("renders TriggerVariables into the body template", func() {
+			wrcs := &promoterv1alpha1.WebRequestCommitStatus{
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						Method:       "POST",
+						URLTemplate:  "https://example.com",
+						BodyTemplate: `{"env":"{{ .TriggerVariables.env }}"}`,
+					},
+				},
+			}
+			td := TemplateData{
+				TriggerVariables: map[string]any{"env": "staging"},
+			}
+			req, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(req.Body).To(Equal(`{"env":"staging"}`))
+		})
+
+		It("renders TriggerVariables into header templates", func() {
+			wrcs := &promoterv1alpha1.WebRequestCommitStatus{
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						Method:          "GET",
+						URLTemplate:     "https://example.com",
+						HeaderTemplates: map[string]string{"X-Env": "{{ .TriggerVariables.env }}"},
+					},
+				},
+			}
+			td := TemplateData{
+				TriggerVariables: map[string]any{"env": "dev"},
+			}
+			req, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(req.Headers).To(HaveKeyWithValue("X-Env", "dev"))
+		})
+	})
 })
