@@ -22,34 +22,41 @@ package v1alpha1
 //
 // WhenWithOutputSpec holds a when condition (boolean expression) and optional output (map expression).
 type WhenWithOutputSpecApplyConfiguration struct {
+	// Variables optionally holds an expression that runs before Expression and Output.Expression.
+	// It receives the same variables as Expression (see Expression documentation below) and must return a map/object.
+	// The result is injected as top-level binding Variables (map) for Expression and Output.Expression only — use Variables.<key> in those expressions.
+	// The Variables binding is not set when spec.variables is omitted. It is not available to response.output.expression.
+	// The result is also available in Go templates for DescriptionTemplate and UrlTemplate:
+	// - trigger.when.variables result → {{ index .TriggerVariables "key" }}
+	// - success.when.variables result → {{ index .SuccessVariables "key" }}
+	Variables *OutputSpecApplyConfiguration `json:"variables,omitempty"`
 	// Expression is a boolean expr expression that decides whether the HTTP request should be made.
 	// It is evaluated BEFORE each potential HTTP request. When it returns true the request is made;
 	// when false the controller keeps the previous phase and skips the request.
 	//
 	// Available variables:
+	// - Branch (string): the environment branch currently being processed (empty for the shared HTTP request in promotionstrategy context)
+	// - Phase (string): previous reconcile's phase — per-environment in environments context; aggregate of all branches in promotionstrategy context (success only if all succeeded, failure if any failed, pending otherwise)
 	// - PromotionStrategy (PromotionStrategy): the full PromotionStrategy spec and status
-	// - Environment (EnvironmentStatus): current environment's status from PromotionStrategy (environments context only; nil in promotionstrategy context)
-	// - Phase (string): current phase — per-environment in environments context; aggregate of all branches in promotionstrategy context (success only if all succeeded, failure if any failed, pending otherwise)
-	// - ReportedSha (string): the SHA being validated (environments context only; empty in promotionstrategy context)
-	// - LastSuccessfulSha (string): last SHA that achieved success for this environment (environments context only; empty in promotionstrategy context)
+	// - WebRequestCommitStatus (WebRequestCommitStatus): the full WebRequestCommitStatus spec and status (snapshot from the previous reconcile)
 	// - TriggerOutput (map[string]any): custom data from the previous when.output.expression evaluation
 	// - ResponseOutput (map[string]any): response data from the previous HTTP request (if any)
+	// - SuccessOutput (map[string]any): custom data from the previous success.when.output.expression evaluation
+	// - Variables (map[string]any): when spec.variables is set, the map returned by variables.expression this reconcile; omitted otherwise
 	//
 	// Note: PromotionStrategy.Status.Environments is an ordered array representing the promotion sequence.
-	// Environments[0] is the first environment (e.g., dev), Environments[1] is second (e.g., staging), etc.
-	// Changes flow through the array in order. To access the previous environment, use array indexing:
-	// currentIdx = findIndex(PromotionStrategy.Status.Environments, {.Branch == Environment.Branch})
-	// previousEnv = currentIdx > 0 ? PromotionStrategy.Status.Environments[currentIdx-1] : nil
+	// Use Branch + filter/find to look up environment-specific data:
+	// find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha
 	//
 	// Examples:
 	// # Always trigger (equivalent to polling mode)
 	// - "true"
 	//
 	// # Only trigger when SHA changes from what we last tracked
-	// - "ReportedSha != TriggerOutput['lastCheckedSha']"
+	// - "find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha != (TriggerOutput['lastCheckedSha'] ?? ”)"
 	//
 	// # Only trigger when a particular commit status is success (e.g. argocd-health)
-	// - "size(filter(Environment.Proposed.CommitStatuses, {.Key == 'argocd-health'})) > 0 && filter(Environment.Proposed.CommitStatuses, {.Key == 'argocd-health'})[0].Phase == 'success'"
+	// - "let env = find(PromotionStrategy.Status.Environments, {.Branch == Branch}); any(env.Proposed.CommitStatuses, {.Key == 'argocd-health' && .Phase == 'success'})"
 	//
 	// # Only retry if the previous response indicated we should
 	// - "ResponseOutput == nil || ResponseOutput.status == 'retry'"
@@ -60,13 +67,19 @@ type WhenWithOutputSpecApplyConfiguration struct {
 	// and is available in the next reconcile as TriggerOutput in when.expression, when.output.expression, and in templates.
 	// Use it to track state such as attempt counts, last-seen SHAs, or timestamps.
 	//
+	// Delivery semantics caveat: persisted output is read from the controller's informer cache at the start of the next
+	// reconcile. Under cache-propagation lag, controller restarts, or status-write retries, the next reconcile may not
+	// see the most recently persisted output and may re-fire the HTTP request. Treat this as AT-LEAST-ONCE delivery —
+	// counters built on TriggerOutput are eventually-consistent (a stale read can cause a duplicate increment), so use
+	// them for backoff hints, not for hard "fail after N attempts" gates.
+	//
 	// Variables are the same as for Expression (see above). The expression must return a map/object; every key is stored in TriggerOutput.
 	//
 	// Examples:
-	// # Track SHA to detect changes
-	// - "{ trackedSha: ReportedSha }"
+	// # Track SHA to detect changes (idempotent: replays produce the same trackedSha for the same input)
+	// - "{ trackedSha: find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha }"
 	//
-	// # Increment attempt counter
+	// # Increment attempt counter (eventually-consistent; may briefly under-count under cache lag)
 	// - "{ attemptCount: (TriggerOutput[\"attemptCount\"] ?? 0) + 1 }"
 	Output *OutputSpecApplyConfiguration `json:"output,omitempty"`
 }
@@ -75,6 +88,14 @@ type WhenWithOutputSpecApplyConfiguration struct {
 // apply.
 func WhenWithOutputSpec() *WhenWithOutputSpecApplyConfiguration {
 	return &WhenWithOutputSpecApplyConfiguration{}
+}
+
+// WithVariables sets the Variables field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Variables field is set to the value of the last call.
+func (b *WhenWithOutputSpecApplyConfiguration) WithVariables(value *OutputSpecApplyConfiguration) *WhenWithOutputSpecApplyConfiguration {
+	b.Variables = value
+	return b
 }
 
 // WithExpression sets the Expression field in the declarative configuration to the given value

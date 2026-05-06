@@ -112,11 +112,11 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSta
 	statusCode := 201 // Created status as per Azure DevOps API
 	if err != nil {
 		statusCode = 500 // Server error
-		metrics.RecordSCMCall(gitRepo, metrics.SCMAPICommitStatus, metrics.SCMOperationCreate, statusCode, time.Since(start), nil)
+		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPICommitStatus, metrics.SCMOperationCreate, statusCode, time.Since(start), nil)
 		return nil, fmt.Errorf("failed to create commit status: %w", err)
 	}
 
-	metrics.RecordSCMCall(gitRepo, metrics.SCMAPICommitStatus, metrics.SCMOperationCreate, statusCode, time.Since(start), nil)
+	metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPICommitStatus, metrics.SCMOperationCreate, statusCode, time.Since(start), nil)
 
 	logger.V(4).Info("Azure DevOps commit status created successfully",
 		"statusId", *createdStatus.Id,

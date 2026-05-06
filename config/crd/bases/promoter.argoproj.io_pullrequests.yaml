@@ -200,15 +200,25 @@ spec:
                 x-kubernetes-list-type: map
               externallyMergedOrClosed:
                 description: |-
-                  ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
-                  This is set to true when the pull request has an ID but is no longer found on the SCM provider.
-                  When true, the State field will be empty ("") since we cannot determine if it was merged or closed.
-                  The PullRequest resource will be deleted after this flag is set, but the status is preserved in
-                  the owning ChangeTransferPolicy to maintain a record of the external action.
+                  ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the
+                  resource still desired it open (spec.state is "open"): either it was merged or closed outside the
+                  controller, or it was closed on the SCM because the PullRequest resource was deleted (finalizer)
+                  and a subsequent sync observed it missing. The controller does not distinguish those cases here.
+                  When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider.
+                  The PullRequest resource will be deleted after this flag is set when possible, but the status is
+                  preserved in the owning ChangeTransferPolicy to maintain a record.
                 type: boolean
               id:
                 description: ID the id of the pull request
                 type: string
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the .metadata.generation that this status was reconciled from.
+                  Because status is written via Server-Side Apply with ForceOwnership (which has no
+                  optimistic-concurrency check), this field is the canonical way to detect stale
+                  status writes: compare status.observedGeneration with metadata.generation.
+                format: int64
+                type: integer
               prCreationTime:
                 description: PRCreationTime the time the PR was created
                 format: date-time

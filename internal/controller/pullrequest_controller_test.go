@@ -890,6 +890,120 @@ var _ = Describe("PullRequest Controller", func() {
 			}
 		})
 	})
+
+	Context("When deleting a PullRequest that already has an SCM PR but is blocked by another finalizer", func() {
+		const blockingFinalizer = "promoter.argoproj.io/test-will-not-remove"
+
+		var name string
+		var scmSecret *v1.Secret
+		var scmProvider *promoterv1alpha1.ScmProvider
+		var gitRepo *promoterv1alpha1.GitRepository
+		var pullRequest *promoterv1alpha1.PullRequest
+		var typeNamespacedName types.NamespacedName
+
+		BeforeEach(func() {
+			name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "delete-blocked-finalizer")
+
+			typeNamespacedName = types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				g.Expect(pullRequest.Status.ID).ToNot(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.Finalizers).To(ContainElement(promoterv1alpha1.PullRequestFinalizer))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Adding a finalizer that will not be removed, simulating another controller retaining the object")
+			Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+			base := pullRequest.DeepCopy()
+			pullRequest.Finalizers = append(pullRequest.Finalizers, blockingFinalizer)
+			Expect(k8sClient.Patch(ctx, pullRequest, client.MergeFrom(base))).To(Succeed())
+		})
+
+		AfterEach(func() {
+			var pr promoterv1alpha1.PullRequest
+			if err := k8sClient.Get(ctx, typeNamespacedName, &pr); err != nil {
+				return
+			}
+			if pr.DeletionTimestamp == nil {
+				return
+			}
+			var kept []string
+			for _, f := range pr.Finalizers {
+				if f != blockingFinalizer {
+					kept = append(kept, f)
+				}
+			}
+			if len(kept) == len(pr.Finalizers) {
+				return
+			}
+			base := pr.DeepCopy()
+			pr.Finalizers = kept
+			_ = k8sClient.Patch(ctx, &pr, client.MergeFrom(base))
+		})
+
+		It("should close the SCM PR, set externallyMergedOrClosed when status syncs, and not spam FindOpen while terminating", func() {
+			fake.ResetFindOpenCallCount()
+
+			By("Deleting the PullRequest (object remains until the blocking finalizer is cleared)")
+			Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, pullRequest)).To(Succeed())
+
+			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
+
+			By("Waiting for the promoter's finalizer to run (SCM close + remove promoter finalizer)")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.DeletionTimestamp).ToNot(BeNil())
+				g.Expect(pullRequest.Finalizers).NotTo(ContainElement(promoterv1alpha1.PullRequestFinalizer))
+				g.Expect(pullRequest.Finalizers).To(ContainElement(blockingFinalizer))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying the SCM-side PR was closed by deletion finalization logic")
+			Eventually(func(g Gomega) {
+				exists, state, _, err := fakeProvider.GetRecordedState(ctx, *pullRequest)
+				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(exists).To(BeTrue())
+				g.Expect(state).To(Equal(promoterv1alpha1.PullRequestClosed))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Checking the number of FindOpen calls")
+
+			findOpenBeforeBump := fake.FindOpenCallCount()
+			time.Sleep(150 * time.Millisecond)
+
+			By("Verifying FindOpen is not invoked in a tight loop while the object is stuck terminating")
+			findOpenAfterWindow := fake.FindOpenCallCount()
+			Expect(findOpenAfterWindow-findOpenBeforeBump).To(BeNumerically("<", 25),
+				"FindOpen should not be polled repeatedly after the SCM PR is closed during deletion")
+
+			snapshot := fake.FindOpenCallCount()
+			Consistently(func(g Gomega) {
+				// Allow a small bump from a stray requeue; a regression still produces thousands of FindOpen calls.
+				g.Expect(fake.FindOpenCallCount()).To(BeNumerically("<=", snapshot+5))
+			}, 2*time.Second, 50*time.Millisecond).Should(Succeed())
+
+			By("Verifying status reflects no longer open (same path as SCM-external close: flag set, state empty)")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.Status.ExternallyMergedOrClosed).ToNot(BeNil())
+				g.Expect(*pullRequest.Status.ExternallyMergedOrClosed).To(BeTrue())
+				g.Expect(pullRequest.Status.State).To(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
 })
 
 func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.PullRequest) {

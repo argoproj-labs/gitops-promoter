@@ -33,8 +33,15 @@ nav:
   - Getting Started: getting-started.md
   - Contributing:
       - Overview: contributing/index.md
+      - Adding an SCM Provider: contributing/adding-an-scm-provider.md
+      - Continuous Integration: contributing/ci.md
       - Cutting a Release: contributing/cutting-a-release.md
+      - Using Finalizers: contributing/using-finalizers.md
+      - Maintaining Resource Status: contributing/updating-status.md
   - Security: security.md
+  - Debugging:
+      - Overview: debugging/index.md
+      - Finalizers: debugging/finalizers.md
   - Architecture: architecture.md
   - Custom Hydrator: custom-hydrator.md
   - CRD Specs: crd-specs.md
@@ -43,7 +50,9 @@ nav:
       - Argo CD: commit-status-controllers/argocd.md
       - Git Commit: commit-status-controllers/git-commit.md
       - Timed: commit-status-controllers/timed.md
-      - Web Request: commit-status-controllers/web-request.md
+      - Web Request:
+          - Overview: commit-status-controllers/web-request.md
+          - Simulator: commit-status-controllers/web-request-simulator.md
       - Development Best Practices: commit-status-controllers/development-best-practices.md
   - Multi-Tenancy: multi-tenancy.md
   - Monitoring:

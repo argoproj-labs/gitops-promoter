@@ -65,7 +65,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, desc strin
 	start := time.Now()
 	resp, err := pr.client.Repositories.PullRequests.Create(options)
 	statusCode := parseErrorStatusCode(err, http.StatusCreated)
-	metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, statusCode, time.Since(start), nil)
+	metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, statusCode, time.Since(start), nil)
 
 	if err != nil {
 		var unexpectedErr *bitbucket.UnexpectedResponseStatusError
@@ -120,7 +120,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 	start := time.Now()
 	_, err = pr.client.Repositories.PullRequests.Update(options)
 	statusCode := parseErrorStatusCode(err, http.StatusOK)
-	metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationUpdate, statusCode, time.Since(start), nil)
+	metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationUpdate, statusCode, time.Since(start), nil)
 
 	if err != nil {
 		var unexpectedErr *bitbucket.UnexpectedResponseStatusError
@@ -157,7 +157,7 @@ func (pr *PullRequest) Close(ctx context.Context, prObj v1alpha1.PullRequest) er
 	start := time.Now()
 	_, err = pr.client.Repositories.PullRequests.Decline(options)
 	statusCode := parseErrorStatusCode(err, http.StatusOK)
-	metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationClose, statusCode, time.Since(start), nil)
+	metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationClose, statusCode, time.Since(start), nil)
 
 	if err != nil {
 		var unexpectedErr *bitbucket.UnexpectedResponseStatusError
@@ -195,7 +195,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) er
 	start := time.Now()
 	_, err = pr.client.Repositories.PullRequests.Merge(options)
 	statusCode := parseErrorStatusCode(err, http.StatusOK)
-	metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, statusCode, time.Since(start), nil)
+	metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, statusCode, time.Since(start), nil)
 
 	if err != nil {
 		var unexpectedErr *bitbucket.UnexpectedResponseStatusError
@@ -240,7 +240,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	start := time.Now()
 	result, err := pr.client.Repositories.PullRequests.Gets(options)
 	statusCode := parseErrorStatusCode(err, http.StatusOK)
-	metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
+	metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
 
 	if err != nil {
 		var unexpectedErr *bitbucket.UnexpectedResponseStatusError

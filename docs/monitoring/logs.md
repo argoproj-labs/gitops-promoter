@@ -2,7 +2,26 @@ GitOps Promoter produces structured logs. All log messages emitted by controller
 fields. Non-controller components (such as the webhook handler) use the same log format, but will not include 
 controller-specific fields.
 
-Additional standard fields for things like rate limiting logs will be added in the future and documented here.
+## SCM API call logs
+
+For each SCM REST API request that GitOps Promoter records for metrics (the same calls that increment `scm_calls_total` in the [metrics reference](metrics.md)), the controller emits a structured log line with the message **`SCM API call`**. These lines are emitted at **verbosity level 1** (`V(1)` in code), not at the default `info` level.
+
+**How to enable:** set `--zap-log-level` to **`1`** or **`debug`** (equivalent to level `1`). Higher values such as `5` also include these lines. See [Log verbosity](#log-verbosity) for deployment examples; use `--zap-log-level=1` instead of `5` if you only want SCM call lines without the rest of the controller’s most verbose output.
+
+**Fields** (all keys are stable for filtering and parsing):
+
+| Field | Description |
+|-------|-------------|
+| `git_repository` | Name of the `GitRepository` resource associated with the call. |
+| `git_repository_namespace` | Namespace of that `GitRepository`. |
+| `scm_provider` | Name from `GitRepository.spec.scmProviderRef.name` (same as metric labels). |
+| `scm_provider_kind` | Kind from `GitRepository.spec.scmProviderRef.kind`: `ScmProvider` or `ClusterScmProvider` (defaults to `ScmProvider` when unset). |
+| `api` | `CommitStatus` or `PullRequest`, matching the SCM integration surface. |
+| `operation` | Operation type, for example `create`, `update`, `merge`, `close`, `list`, or `get`, depending on the call. |
+| `response_code` | HTTP status code returned for that request (or a sentinel such as `500` when the client maps errors to a synthetic code). |
+| `duration_seconds` | Time spent on the request, in seconds. |
+
+**Scope:** only requests that go through the shared metrics hook are logged here. Other SCM traffic (for example GitHub App **installation listing** during client setup) is not included. Provider-specific messages such as `github rate limit` may still appear at `info` when enabled by that provider.
 
 ## Log Verbosity
 

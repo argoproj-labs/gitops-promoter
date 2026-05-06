@@ -87,8 +87,8 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	startTime := time.Now()
 
 	var ps promoterv1alpha1.PromotionStrategy
-	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &ps, r.Client, r.Recorder, &result, &err)
+	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
+	defer utils.HandleReconciliationResult(ctx, startTime, &ps, r.Client, r.Recorder, constants.PromotionStrategyControllerFieldOwner, &result, &err)
 
 	err = r.Get(ctx, req.NamespacedName, &ps, &client.GetOptions{})
 	if err != nil {
@@ -724,7 +724,7 @@ func getEffectiveHydratedDrySha(envStatus promoterv1alpha1.EnvironmentStatus) st
 // isPreviousEnvironmentPending recursively checks preceding environments (from last to first) to verify:
 // 1. The environment has been hydrated for the target dry SHA
 // 2. If the environment has real changes (not a no-op), it has been promoted and is healthy
-// 3. If the environment is a no-op, recurse to check earlier environments
+// 3. If the environment is a no-op, verify it is healthy, then recurse to check earlier environments
 func isPreviousEnvironmentPending(precedingEnvStatuses []promoterv1alpha1.EnvironmentStatus, targetDrySha string, currentActiveCommitTime metav1.Time) (isPending bool, reason string) {
 	// Base case: no more environments to check - all were no-ops
 	// This is valid - e.g., a change that only affects production. Allow promotion.
@@ -776,7 +776,16 @@ func isPreviousEnvironmentPending(precedingEnvStatuses []promoterv1alpha1.Enviro
 		return true, "Waiting for previous environment to be promoted"
 	}
 
-	// This environment is a no-op with no pending changes - recurse to check earlier environments
+	// Even for no-op environments with no pending changes, verify that the active
+	// deployment is healthy. This catches the case where a newer no-op dry SHA arrives
+	// while a real promotion is still deploying — without this check, every environment
+	// looks like a "no-op with no pending changes" and the recursion skips all health
+	// checks, allowing downstream environments to promote prematurely.
+	if isPend, reason := checkCommitStatusesPassing(envStatus.Active.CommitStatuses, envStatus.Branch); isPend {
+		return isPend, reason
+	}
+
+	// This environment is a no-op with no pending changes and is healthy - recurse to check earlier environments
 	return isPreviousEnvironmentPending(precedingEnvStatuses[:len(precedingEnvStatuses)-1], targetDrySha, currentActiveCommitTime)
 }
 

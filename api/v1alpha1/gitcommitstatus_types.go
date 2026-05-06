@@ -100,6 +100,13 @@ type GitCommitStatusSpec struct {
 
 // GitCommitStatusStatus defines the observed state of GitCommitStatus.
 type GitCommitStatusStatus struct {
+	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
+	// Because status is written via Server-Side Apply with ForceOwnership (which has no
+	// optimistic-concurrency check), this field is the canonical way to detect stale
+	// status writes: compare status.observedGeneration with metadata.generation.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// Environments holds the validation results for each environment where this validation applies.
 	// Each entry corresponds to an environment from the PromotionStrategy where the Key matches
 	// either global or environment-specific proposedCommitStatuses.
@@ -233,6 +240,11 @@ type GitCommitStatusList struct {
 // GetConditions returns the conditions of the GitCommitStatus.
 func (g *GitCommitStatus) GetConditions() *[]metav1.Condition {
 	return &g.Status.Conditions
+}
+
+// SetObservedGeneration records the object generation that produced the current status.
+func (g *GitCommitStatus) SetObservedGeneration(generation int64) {
+	g.Status.ObservedGeneration = generation
 }
 
 func init() {

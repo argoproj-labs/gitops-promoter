@@ -75,7 +75,7 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 		commitStatusOptions,
 	)
 	statusCode := parseErrorStatusCode(err, http.StatusCreated)
-	metrics.RecordSCMCall(repo, metrics.SCMAPICommitStatus, metrics.SCMOperationCreate, statusCode, time.Since(start), nil)
+	metrics.RecordSCMCall(ctx, repo, metrics.SCMAPICommitStatus, metrics.SCMOperationCreate, statusCode, time.Since(start), nil)
 
 	if err != nil {
 		var unexpectedErr *bitbucket.UnexpectedResponseStatusError

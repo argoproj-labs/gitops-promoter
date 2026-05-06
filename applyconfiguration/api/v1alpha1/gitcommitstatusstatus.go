@@ -26,6 +26,11 @@ import (
 //
 // GitCommitStatusStatus defines the observed state of GitCommitStatus.
 type GitCommitStatusStatusApplyConfiguration struct {
+	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
+	// Because status is written via Server-Side Apply with ForceOwnership (which has no
+	// optimistic-concurrency check), this field is the canonical way to detect stale
+	// status writes: compare status.observedGeneration with metadata.generation.
+	ObservedGeneration *int64 `json:"observedGeneration,omitempty"`
 	// Environments holds the validation results for each environment where this validation applies.
 	// Each entry corresponds to an environment from the PromotionStrategy where the Key matches
 	// either global or environment-specific proposedCommitStatuses.
@@ -44,6 +49,14 @@ type GitCommitStatusStatusApplyConfiguration struct {
 // apply.
 func GitCommitStatusStatus() *GitCommitStatusStatusApplyConfiguration {
 	return &GitCommitStatusStatusApplyConfiguration{}
+}
+
+// WithObservedGeneration sets the ObservedGeneration field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ObservedGeneration field is set to the value of the last call.
+func (b *GitCommitStatusStatusApplyConfiguration) WithObservedGeneration(value int64) *GitCommitStatusStatusApplyConfiguration {
+	b.ObservedGeneration = &value
+	return b
 }
 
 // WithEnvironments adds the given value to the Environments field in the declarative configuration

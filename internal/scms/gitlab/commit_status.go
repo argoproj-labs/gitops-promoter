@@ -99,7 +99,7 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 		gitlab.WithContext(ctx),
 	)
 	if resp != nil {
-		metrics.RecordSCMCall(repo, metrics.SCMAPICommitStatus, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
+		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPICommitStatus, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
 		// Status.Id is intentionally left unchanged: a prior successful Set call already populated

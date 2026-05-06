@@ -81,6 +81,14 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
   const entryPr = selectedHistoryEntry?.pullRequest;
   const historyWithPr = entryPr?.id ? entryPr : null;
 
+  // For the live active badge, fall back to environment.pullRequest when state is merged
+  // and history[0] has no PR data (e.g. externally merged PRs)
+  const mergedEnvPr =
+    pullRequest?.id && (pullRequest?.state === 'merged' || pullRequest?.externallyMergedOrClosed)
+      ? pullRequest
+      : null;
+  const activePr = historyWithPr ?? mergedEnvPr;
+
   // Resolve merge time: prefer prMergeTime, fall back to hydrated commitTime
   let historyMergeTimeAgo: string | null = null;
   if (index > 0) {
@@ -89,6 +97,10 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
       entry?.pullRequest?.prMergeTime || entry?.active?.hydrated?.commitTime || null;
     historyMergeTimeAgo = mergeTimeStr ? timeAgo(mergeTimeStr) : null;
   }
+
+  // Merge time for the live (index 0) active PR
+  const liveMergeTimeStr = activePr?.prMergeTime || history[0]?.pullRequest?.prMergeTime || null;
+  const activeMergeTimeAgo = liveMergeTimeStr ? timeAgo(liveMergeTimeStr) : null;
 
   // In historical view, proposed cards should only show status info, not commit details
   const isHistoric = index > 0;
@@ -100,8 +112,8 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
 
     // ACTIVE
     activeStatus: getHealthStatus(activeChecks),
-    activePrUrl: historyWithPr?.url || null,
-    activePrNumber: historyWithPr?.id ? parseInt(historyWithPr.id, 10) : null,
+    activePrUrl: activePr?.url || null,
+    activePrNumber: activePr?.id ? parseInt(activePr.id, 10) : null,
     activeCommitSubject: activeCommitInfo.subject || '-',
     activeCommitMessage: extractBodyPreTrailer(activeCommitInfo.body || '-'),
     activeCommitAuthor: extractNameOnly(activeCommitInfo.author || '-'),
@@ -134,6 +146,7 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
 
     // History
     historyMergeTimeAgo,
+    activeMergeTimeAgo,
   };
 }
 

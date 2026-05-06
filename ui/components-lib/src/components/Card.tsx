@@ -79,6 +79,10 @@ const Card: React.FC<CardProps> = ({ environments }) => {
             date: env.proposedDryCommitDate,
           };
 
+          const mergeTimeAgo = inHistoryMode
+            ? (env.historyMergeTimeAgo ?? undefined)
+            : (env.activeMergeTimeAgo ?? undefined);
+
           const hasPendingProposal =
             !inHistoryMode &&
             proposedStatus !== undefined &&
@@ -156,9 +160,7 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                         ? 'State of active checks when this promotion was superseded'
                         : undefined
                     }
-                    mergeTimeAgo={
-                      inHistoryMode ? (env.historyMergeTimeAgo ?? undefined) : undefined
-                    }
+                    mergeTimeAgo={mergeTimeAgo}
                   />
 
                   {/* Proposed Commits Section (normal mode only) */}
