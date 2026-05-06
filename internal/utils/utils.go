@@ -527,8 +527,17 @@ func HandleReconciliationResult(
 // Returns nil if the object is not found, if the Get returns any other error, or if the
 // object has no Ready condition.
 func getServerReadyCondition(ctx context.Context, c client.Client, obj StatusConditionUpdater) *metav1.Condition {
+	logger := log.FromContext(ctx)
 	serverObj := obj.DeepCopyObject().(client.Object)
 	if err := c.Get(ctx, client.ObjectKeyFromObject(serverObj), serverObj); err != nil {
+		if !k8serrors.IsNotFound(err) {
+			// Log unexpected errors so they are visible during debugging. We still return nil
+			// and let the caller proceed without lastTransitionTime preservation; the reconcile
+			// will succeed and a subsequent reconcile will have the opportunity to preserve it.
+			logger.V(1).Info("Failed to fetch server object for lastTransitionTime preservation; condition time will be reset",
+				"error", err,
+				"object", client.ObjectKeyFromObject(serverObj))
+		}
 		return nil
 	}
 	//nolint:forcetypeassert // All CRDs passed to HandleReconciliationResult implement StatusConditionUpdater.

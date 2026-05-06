@@ -673,6 +673,52 @@ var _ = Describe("HandleReconciliationResult lastTransitionTime preservation", f
 		// cannot assert that here.
 	})
 
+	It("should not update lastTransitionTime when error message changes but status remains False", func() {
+		// lastTransitionTime tracks status transitions only (True/False/Unknown), not
+		// changes to the human-readable message or reason.
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(obj).Build()
+		Expect(fakeClient.Create(ctx, obj)).To(Succeed())
+
+		// First reconcile with an error.
+		var err error
+		func() {
+			defer utils.HandleReconciliationResult(ctx, time.Now(), obj, fakeClient, recorder, testFieldOwner, nil, &err)
+			err = errors.New("first error message")
+		}()
+		Expect(err).To(HaveOccurred())
+
+		stored := &promoterv1alpha1.PromotionStrategy{}
+		Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(obj), stored)).To(Succeed())
+		readyCond := meta.FindStatusCondition(*stored.GetConditions(), string(conditions.Ready))
+		Expect(readyCond).ToNot(BeNil())
+
+		knownTime := metav1.NewTime(time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC))
+		readyCond.LastTransitionTime = knownTime
+		Expect(fakeClient.Status().Update(ctx, stored)).To(Succeed())
+
+		// Second reconcile with a different error message but the same False status.
+		baseline := &promoterv1alpha1.PromotionStrategy{}
+		Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(obj), baseline)).To(Succeed())
+		meta.RemoveStatusCondition(baseline.GetConditions(), string(conditions.Ready))
+		var err2 error
+		func() {
+			defer utils.HandleReconciliationResult(ctx, time.Now(), baseline, fakeClient, recorder, testFieldOwner, nil, &err2)
+			err2 = errors.New("second error message — different text, same False status")
+		}()
+		Expect(err2).To(HaveOccurred())
+
+		final := &promoterv1alpha1.PromotionStrategy{}
+		Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(obj), final)).To(Succeed())
+		finalCond := meta.FindStatusCondition(*final.GetConditions(), string(conditions.Ready))
+		Expect(finalCond).ToNot(BeNil())
+		Expect(finalCond.Status).To(Equal(metav1.ConditionFalse))
+		// The message changed, but the Status (False) did not — lastTransitionTime must stay.
+		Expect(finalCond.LastTransitionTime.Time).To(BeTemporally("==", knownTime.Time),
+			"lastTransitionTime must not change when only the error message changes, not the status")
+		Expect(finalCond.Message).To(ContainSubstring("second error message"),
+			"the new error message must be reflected in the condition")
+	})
+
 	It("should update lastTransitionTime when condition transitions from False to True", func() {
 		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(obj).Build()
 		Expect(fakeClient.Create(ctx, obj)).To(Succeed())
