@@ -314,5 +314,4 @@ var _ = Describe("Pure helpers", func() {
 			Expect(got).To(HaveKeyWithValue("c", promoterv1alpha1.CommitPhaseSuccess))
 		})
 	})
-
 })
