@@ -85,6 +85,7 @@ linters:
         - name: package-naming
           exclude:
             - "**/bitbucket_cloud/**"
+            - "**/bitbucket_datacenter/**"
             - "**/internal/utils/**"
             - "**/test/utils/**"
         - name: exported

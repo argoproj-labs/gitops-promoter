@@ -596,6 +596,8 @@ func allowedHostsForScmProvider(spec *promoterv1alpha1.ScmProviderSpec) string {
 		return spec.Gitea.Domain
 	case spec.BitbucketCloud != nil:
 		return "api.bitbucket.org"
+	case spec.BitbucketDataCenter != nil:
+		return spec.BitbucketDataCenter.Domain
 	case spec.AzureDevOps != nil:
 		if spec.AzureDevOps.Domain != "" {
 			return spec.AzureDevOps.Domain

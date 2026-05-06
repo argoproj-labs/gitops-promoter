@@ -51,6 +51,10 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.BearerAuthApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("BitbucketCloudRepo"):
 		return &apiv1alpha1.BitbucketCloudRepoApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("BitbucketDataCenter"):
+		return &apiv1alpha1.BitbucketDataCenterApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("BitbucketDataCenterRepo"):
+		return &apiv1alpha1.BitbucketDataCenterRepoApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("Bucket"):
 		return &apiv1alpha1.BucketApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ChangeRequestPolicyCommitStatusPhase"):

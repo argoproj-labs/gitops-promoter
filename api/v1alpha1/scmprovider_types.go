@@ -31,7 +31,7 @@ import (
 var ScmProviderKind = reflect.TypeOf(ScmProvider{}).Name()
 
 // ScmProviderSpec defines the desired state of ScmProvider
-// +kubebuilder:validation:ExactlyOneOf=github;gitlab;forgejo;gitea;bitbucketCloud;azureDevOps;fake
+// +kubebuilder:validation:ExactlyOneOf=github;gitlab;forgejo;gitea;bitbucketCloud;bitbucketDataCenter;azureDevOps;fake
 type ScmProviderSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
@@ -53,6 +53,9 @@ type ScmProviderSpec struct {
 
 	// BitbucketCloud required configuration for Bitbucket Cloud as the SCM provider
 	BitbucketCloud *BitbucketCloud `json:"bitbucketCloud,omitempty"`
+
+	// BitbucketDataCenter required configuration for Bitbucket DataCenter/Server as the SCM provider
+	BitbucketDataCenter *BitbucketDataCenter `json:"bitbucketDataCenter,omitempty"`
 
 	// AzureDevOps required configuration for Azure DevOps as the SCM provider
 	AzureDevOps *AzureDevOps `json:"azureDevOps,omitempty"`
