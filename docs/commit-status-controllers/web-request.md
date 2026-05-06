@@ -69,7 +69,7 @@ Optional **`when.variables`** (same shape as `when.output`: an `expression` stri
 
 **Downstream:** use `Variables.<key>` in `when.expression` and `when.output.expression`, for example `Variables.fingerprint == (TriggerOutput.lastFingerprint ?? "")`.
 
-**Available in templates:** the result of `when.variables.expression` is exposed as top-level fields in all Go templates — `httpRequest.urlTemplate`, `httpRequest.headerTemplates`, `httpRequest.bodyTemplate`, `spec.descriptionTemplate`, and `spec.urlTemplate`.
+**Available in Go templates:** keys from `when.variables.expression` are **not** promoted to the template root. They appear only as map entries on **`.TriggerVariables`** or **`.SuccessVariables`** (see table below). **`httpRequest.urlTemplate`**, **`httpRequest.headerTemplates`**, and **`httpRequest.bodyTemplate`** are rendered **before** `success.when` runs, so only **`.TriggerVariables`** (trigger mode) is set there — use **`.SuccessVariables`** in **`spec.descriptionTemplate`** and **`spec.urlTemplate`**, which are rendered after the reconcile has evaluated success (and may carry both maps).
 
 | Source | Template binding |
 |--------|------------------|
@@ -274,7 +274,7 @@ How it works:
 - `descriptionTemplate` / `urlTemplate` reference the same map via `.SuccessVariables.tag` and `.SuccessVariables.runId`.
 
 > [!NOTE]
-> `.TriggerVariables` and `.SuccessVariables` are available in all Go templates: `httpRequest.urlTemplate`, `httpRequest.headerTemplates`, `httpRequest.bodyTemplate`, `descriptionTemplate`, and `urlTemplate`. Use `index` for safe access — it returns the zero value if the map is `nil` or the key is missing.
+> **`descriptionTemplate`** and **`urlTemplate`** receive both `.TriggerVariables` and `.SuccessVariables` for that reconcile. **`httpRequest.urlTemplate`**, **`headerTemplates`**, and **`bodyTemplate`** are rendered earlier (when building the outbound request): only **`.TriggerVariables`** is set in trigger mode; **`.SuccessVariables`** is still unset there. Use `index` for safe access — it returns the zero value if the map is `nil` or the key is missing.
 
 #### Single boolean — one API for the whole strategy
 
