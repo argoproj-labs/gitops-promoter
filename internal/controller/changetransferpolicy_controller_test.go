@@ -758,7 +758,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				_ = os.RemoveAll(gitPath)
 			})
 
-			FIt("should not surface a status.proposed.note SSA validation error", func() {
+			It("should not surface a status.proposed.note SSA validation error", func() {
 				By("Hydrating the proposed branch with a git note so proposed.note.drySha is populated")
 				firstDrySha, err := makeDryCommit(ctx, gitPath, "first dry commit")
 				Expect(err).NotTo(HaveOccurred())
