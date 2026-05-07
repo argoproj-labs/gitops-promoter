@@ -550,7 +550,7 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 		return fmt.Errorf("failed to set commit metadata: %w", err)
 	}
 
-	err = r.setCommitStatusState(ctx, &ctp.Status.Active, ctp.Spec.ActiveCommitStatuses)
+	err = r.setCommitStatusState(ctx, &ctp.Status.Active, ctp.Spec.ActiveCommitStatuses, ctp.Spec.ActivePath)
 	if err != nil {
 		var tooManyMatchingShaError *TooManyMatchingShaError
 		if errors.As(err, &tooManyMatchingShaError) {
@@ -559,7 +559,7 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 		return fmt.Errorf("failed to set active commit status state: %w", err)
 	}
 
-	err = r.setCommitStatusState(ctx, &ctp.Status.Proposed, ctp.Spec.ProposedCommitStatuses)
+	err = r.setCommitStatusState(ctx, &ctp.Status.Proposed, ctp.Spec.ProposedCommitStatuses, ctp.Spec.ActivePath)
 	if err != nil {
 		var tooManyMatchingShaError *TooManyMatchingShaError
 		if errors.As(err, &tooManyMatchingShaError) {
@@ -656,18 +656,21 @@ func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, 
 
 // setCommitStatusState sets the hydrated and dry SHAs and commit times for the target commit branch state and sets the
 // commit statuses.
-func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Context, targetCommitBranchState *promoterv1alpha1.CommitBranchState, commitStatuses []promoterv1alpha1.CommitStatusSelector) error {
+func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Context, targetCommitBranchState *promoterv1alpha1.CommitBranchState, commitStatuses []promoterv1alpha1.CommitStatusSelector, activePath string) error {
 	logger := log.FromContext(ctx)
 
 	commitStatusesState := []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{}
 	var tooManyMatchingShaError error
 	for _, status := range commitStatuses {
 		var csList promoterv1alpha1.CommitStatusList
-		// Find all the replicasets that match the commit status configured name and the sha of the hydrated commit
+		commitStatusLabels := map[string]string{
+			promoterv1alpha1.CommitStatusLabel: utils.KubeSafeLabel(status.Key),
+		}
+		if activePath != "" {
+			commitStatusLabels[promoterv1alpha1.ActivePathLabel] = utils.KubeSafeLabel(activePath)
+		}
 		err := r.List(ctx, &csList, &client.ListOptions{
-			LabelSelector: labels.SelectorFromSet(map[string]string{
-				promoterv1alpha1.CommitStatusLabel: utils.KubeSafeLabel(status.Key),
-			}),
+			LabelSelector: labels.SelectorFromSet(commitStatusLabels),
 			FieldSelector: fields.SelectorFromSet(map[string]string{
 				".spec.sha": targetCommitBranchState.Hydrated.Sha,
 			}),

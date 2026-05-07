@@ -319,7 +319,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 			if lastReconciledEnvStatus != nil && lastState.Phase == string(promoterv1alpha1.CommitPhaseSuccess) && lastSuccessfulSha == reportedSha {
 				logger.V(4).Info("Skipping already successful SHA in polling mode", "branch", branch, "sha", reportedSha)
 				wrcs.Status.Environments = append(wrcs.Status.Environments, *lastReconciledEnvStatus)
-				cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, reportedSha, promoterv1alpha1.CommitPhaseSuccess, td)
+				cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, reportedSha, promoterv1alpha1.CommitPhaseSuccess, td, ps.Spec.ActivePath)
 				if err != nil {
 					return nil, nil, 0, fmt.Errorf("failed to upsert CommitStatus for skipped environment %q: %w", branch, err)
 				}
@@ -365,7 +365,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 
 		commitTd := td.withLatestOutputs(result.ResponseDataJSON, decision.NewTriggerData, result.SuccessDataJSON)
 		commitTd.Phase = string(result.Phase)
-		cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, reportedSha, result.Phase, commitTd)
+		cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, reportedSha, result.Phase, commitTd, ps.Spec.ActivePath)
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", branch, err)
 		}
@@ -414,7 +414,7 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 			for _, env := range applicableEnvs {
 				perEnvTd := baseTd
 				perEnvTd.Branch = env.Branch
-				cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, env.Branch, currentShaPerBranch[env.Branch], promoterv1alpha1.CommitPhaseSuccess, perEnvTd)
+				cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, env.Branch, currentShaPerBranch[env.Branch], promoterv1alpha1.CommitPhaseSuccess, perEnvTd, ps.Spec.ActivePath)
 				if err != nil {
 					return nil, nil, 0, fmt.Errorf("failed to upsert CommitStatus for skipped environment %q (context=promotionstrategy): %w", env.Branch, err)
 				}
@@ -480,7 +480,7 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 		perEnvTd := commitTd
 		perEnvTd.Branch = branch
 		perEnvTd.Phase = string(envPhase)
-		cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, currentShaPerBranch[branch], envPhase, perEnvTd)
+		cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, currentShaPerBranch[branch], envPhase, perEnvTd, ps.Spec.ActivePath)
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("failed to upsert CommitStatus for environment %q (context=promotionstrategy): %w", branch, err)
 		}
@@ -1184,7 +1184,7 @@ func (r *WebRequestCommitStatusReconciler) applySCMAuthentication(ctx context.Co
 // upsertCommitStatus creates or updates the CommitStatus resource that reports this WebRequestCommitStatus's result to the SCM.
 // The phase (Success or Pending) and sha are set from the validation outcome; description and URL are rendered from templateData.
 // The created resource is owned by the WebRequestCommitStatus so it is cleaned up when the WebRequestCommitStatus is deleted.
-func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, repositoryRefName string, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, templateData templateData) (*promoterv1alpha1.CommitStatus, error) {
+func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, repositoryRefName string, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, templateData templateData, activePath string) (*promoterv1alpha1.CommitStatus, error) {
 	// Generate a consistent name for the CommitStatus
 	commitStatusName := utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-webrequest", wrcs.Name, branch))
 
@@ -1220,12 +1220,16 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 	}
 
 	// Build the apply configuration
+	commitStatusLabels := map[string]string{
+		promoterv1alpha1.WebRequestCommitStatusLabel: utils.KubeSafeLabel(wrcs.Name),
+		promoterv1alpha1.EnvironmentLabel:            utils.KubeSafeLabel(branch),
+		promoterv1alpha1.CommitStatusLabel:           wrcs.Spec.Key,
+	}
+	if activePath != "" {
+		commitStatusLabels[promoterv1alpha1.ActivePathLabel] = utils.KubeSafeLabel(activePath)
+	}
 	commitStatusApply := acv1alpha1.CommitStatus(commitStatusName, wrcs.Namespace).
-		WithLabels(map[string]string{
-			promoterv1alpha1.WebRequestCommitStatusLabel: utils.KubeSafeLabel(wrcs.Name),
-			promoterv1alpha1.EnvironmentLabel:            utils.KubeSafeLabel(branch),
-			promoterv1alpha1.CommitStatusLabel:           wrcs.Spec.Key,
-		}).
+		WithLabels(commitStatusLabels).
 		WithOwnerReferences(acmetav1.OwnerReference().
 			WithAPIVersion(gvk.GroupVersion().String()).
 			WithKind(gvk.Kind).
