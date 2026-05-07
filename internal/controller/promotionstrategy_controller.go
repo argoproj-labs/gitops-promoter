@@ -234,7 +234,7 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 
 	proposedBranch := fmt.Sprintf("%s-%s", environment.Branch, "next")
 	if ps.Spec.ActivePath != "" {
-		proposedBranch = path.Join(environment.Branch, ps.Spec.ActivePath+"-next")
+		proposedBranch = path.Join(proposedBranch, ps.Spec.ActivePath)
 	}
 
 	// Build the spec
@@ -591,10 +591,14 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 	}
 
 	// Build the apply configuration
+	csLabels := map[string]string{
+		promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+	}
+	if ctp.Spec.ActivePath != "" {
+		csLabels[promoterv1alpha1.ActivePathLabel] = utils.KubeSafeLabel(ctp.Spec.ActivePath)
+	}
 	commitStatusApply := acv1alpha1.CommitStatus(csName, ctp.Namespace).
-		WithLabels(map[string]string{
-			promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
-		}).
+		WithLabels(csLabels).
 		WithAnnotations(map[string]string{
 			promoterv1alpha1.CommitStatusPreviousEnvironmentStatusesAnnotation: string(yamlStatusMap),
 		}).

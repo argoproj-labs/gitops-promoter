@@ -348,12 +348,16 @@ func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tc
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
 	// Build the apply configuration
+	commitStatusLabels := map[string]string{
+		promoterv1alpha1.TimedCommitStatusLabel: utils.KubeSafeLabel(tcs.Name),
+		promoterv1alpha1.EnvironmentLabel:       utils.KubeSafeLabel(branch),
+		promoterv1alpha1.CommitStatusLabel:      "timer",
+	}
+	if ps.Spec.ActivePath != "" {
+		commitStatusLabels[promoterv1alpha1.ActivePathLabel] = utils.KubeSafeLabel(ps.Spec.ActivePath)
+	}
 	commitStatusApply := acv1alpha1.CommitStatus(commitStatusName, tcs.Namespace).
-		WithLabels(map[string]string{
-			promoterv1alpha1.TimedCommitStatusLabel: utils.KubeSafeLabel(tcs.Name),
-			promoterv1alpha1.EnvironmentLabel:       utils.KubeSafeLabel(branch),
-			promoterv1alpha1.CommitStatusLabel:      "timer",
-		}).
+		WithLabels(commitStatusLabels).
 		WithOwnerReferences(acmetav1.OwnerReference().
 			WithAPIVersion(gvk.GroupVersion().String()).
 			WithKind(gvk.Kind).
