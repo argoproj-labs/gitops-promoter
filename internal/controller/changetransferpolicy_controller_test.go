@@ -24,12 +24,14 @@ import (
 	"strings"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
@@ -701,6 +703,106 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					}, &createdPR)
 					// PR should be deleted (not found)
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+		})
+
+		// Regression guard for kubernetes/kubernetes#135841: when SSA re-applies a
+		// previously-populated nested object as the empty object {}, structured-merge
+		// converts the empty object to JSON null during typed merge, and OpenAPI
+		// rejects null against a non-nullable type=object field. The promoter
+		// triggered this whenever setCommitMetadata wrote
+		//
+		//	ctp.Status.Proposed.Note = &HydratorMetadata{DrySha: ""}
+		//
+		// after a previous reconcile populated the same field. Every HydratorMetadata
+		// field is JSON omitempty, so the SSA body serialized proposed.note as {}.
+		// https://github.com/kubernetes/kubernetes/issues/134902
+		Context("When proposed.note transitions populated → empty across reconciles", func() {
+			var (
+				name                 string
+				scmSecret            *v1.Secret
+				scmProvider          *promoterv1alpha1.ScmProvider
+				gitRepo              *promoterv1alpha1.GitRepository
+				changeTransferPolicy *promoterv1alpha1.ChangeTransferPolicy
+				ctpKey               types.NamespacedName
+				gitPath              string
+				err                  error
+			)
+
+			BeforeEach(func() {
+				name, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-note-empty-regression", "default")
+
+				ctpKey = types.NamespacedName{Name: name, Namespace: "default"}
+				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
+				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
+				// Avoid auto-merging so the proposed branch keeps advancing across the two
+				// hydrations the test drives.
+				changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
+
+				gitPath, err = cloneTestRepo(ctx, gitRepo)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			AfterEach(func() {
+				By("Cleaning up resources")
+				Expect(k8sClient.Delete(ctx, changeTransferPolicy)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+				_ = os.RemoveAll(gitPath)
+			})
+
+			FIt("should not surface a status.proposed.note SSA validation error", func() {
+				By("Hydrating the proposed branch with a git note so proposed.note.drySha is populated")
+				firstDrySha, err := makeDryCommit(ctx, gitPath, "first dry commit")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(hydrateEnvironment(ctx, gitPath, testBranchDevelopmentNext, firstDrySha, "hydrate dev for first dry sha")).To(Succeed())
+
+				By("Waiting for the controller to record the populated proposed.note.drySha")
+				Eventually(func(g Gomega) {
+					var ctp promoterv1alpha1.ChangeTransferPolicy
+					g.Expect(k8sClient.Get(ctx, ctpKey, &ctp)).To(Succeed())
+					g.Expect(ctp.Status.Proposed.Note).NotTo(BeNil())
+					g.Expect(ctp.Status.Proposed.Note.DrySha).To(Equal(firstDrySha))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Hydrating again, advancing the proposed branch to a new hydrated commit with NO git note")
+				// makeChangeAndHydrateRepo creates a new dry commit and hydrates each
+				// environment branch with a fresh hydrated commit, but does not add a
+				// git note to those commits. GetHydratorNote therefore returns
+				// HydratorMetadata{} on the next reconcile, and setCommitMetadata
+				// serializes the SSA body with "note":{} — the populated → empty
+				// transition that triggers #135841 without the schema fix.
+				secondDrySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "second dry commit", "")
+				Expect(secondDrySha).NotTo(Equal(firstDrySha))
+
+				By("Waiting for the controller to advance the CTP and report Ready=True without an SSA validation error")
+				// Without the fix the full status SSA is rejected with 422 and the
+				// fallback writes only Ready=False with reason=ReconciliationError and
+				// the apiserver error in the message. With the fix the controller
+				// successfully applies status and Ready=True. We assert both the
+				// positive end state and the absence of the bug-specific error text in
+				// the Ready condition message.
+				Eventually(func(g Gomega) {
+					var ctp promoterv1alpha1.ChangeTransferPolicy
+					g.Expect(k8sClient.Get(ctx, ctpKey, &ctp)).To(Succeed())
+
+					ready := meta.FindStatusCondition(ctp.Status.Conditions, string(promoterConditions.Ready))
+					g.Expect(ready).NotTo(BeNil(), "Ready condition should be present")
+					g.Expect(ready.Message).NotTo(ContainSubstring("status.proposed.note"),
+						"Ready message should not surface the kubernetes/kubernetes#135841 SSA validation error: %s", ready.Message)
+					g.Expect(ready.Message).NotTo(ContainSubstring("must be of type object"),
+						"Ready message should not surface the kubernetes/kubernetes#135841 SSA validation error: %s", ready.Message)
+					g.Expect(ready.Status).To(Equal(metav1.ConditionTrue),
+						"Ready should be True after the populated → empty proposed.note transition, got reason=%q message=%q", ready.Reason, ready.Message)
+					g.Expect(ready.Reason).To(Equal(string(promoterConditions.ReconciliationSuccess)))
+					g.Expect(ctp.Status.Proposed.Dry.Sha).To(Equal(secondDrySha))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
