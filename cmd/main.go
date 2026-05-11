@@ -166,9 +166,10 @@ func runController(
 	mcMgr, err := mcmanager.New(ctrl.GetConfigOrDie(), provider, ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
-			BindAddress:   metricsAddr,
-			SecureServing: secureMetrics,
-			TLSOpts:       tlsOpts,
+			BindAddress:    metricsAddr,
+			SecureServing:  secureMetrics,
+			TLSOpts:        tlsOpts,
+			FilterProvider: metrics.ScrapeLogFilterProvider(),
 		},
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
@@ -390,7 +391,8 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 			mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
 				Scheme: scheme,
 				Metrics: metricsserver.Options{
-					BindAddress: ":9082",
+					BindAddress:    ":9082",
+					FilterProvider: metrics.ScrapeLogFilterProvider(),
 				},
 			})
 			if err != nil {

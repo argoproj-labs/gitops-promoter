@@ -76,6 +76,7 @@ linters:
         - name: max-public-structs
           exclude:
             - "**/*_types.go" # For CRD types.
+            - "**/webrequestsimulator/simulatortypes/*.go" # Simulate Input/Result and related value types.
         - name: redundant-import-alias
           disabled: true
         - name: struct-tag

@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	toolscache "k8s.io/client-go/tools/cache"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -15,6 +16,7 @@ import (
 	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 )
 
 const resourceCountInterval = 30 * time.Second
@@ -23,12 +25,39 @@ const resourceCountInterval = 30 * time.Second
 var kubernetesResources = prometheus.NewGaugeVec(
 	prometheus.GaugeOpts{
 		Name: "promoter_kubernetes_resources",
-		Help: "Current count of promoter.argoproj.io custom resources in the local Kubernetes cluster, by API kind. " +
+		Help: "Current count of promoter.argoproj.io custom resources in the local Kubernetes cluster, by API kind and readiness. " +
 			"Updated on an interval from the controller informer stores (no per-tick list/deep-copy); does not include resources on remote clusters " +
 			"reconciled via multicluster setup.",
 	},
-	[]string{"kind"},
+	[]string{"kind", "readiness"},
 )
+
+// readinessBuckets enumerates all possible values for the readiness label.
+var readinessBuckets = []string{"True", "False", "Unknown", ""}
+
+// conditionsGetter is implemented by all promoter CRDs that expose status conditions.
+type conditionsGetter interface {
+	GetConditions() *[]metav1.Condition
+}
+
+// readinessFromObject returns the status of the Ready condition for an informer store item,
+// or "" if the object does not expose conditions or the Ready condition is absent.
+func readinessFromObject(obj any) string {
+	cg, ok := obj.(conditionsGetter)
+	if !ok {
+		return ""
+	}
+	conditions := cg.GetConditions()
+	if conditions == nil {
+		return ""
+	}
+	for _, c := range *conditions {
+		if c.Type == string(promoterConditions.Ready) {
+			return string(c.Status)
+		}
+	}
+	return ""
+}
 
 func init() {
 	crmetrics.Registry.MustRegister(kubernetesResources)
@@ -61,27 +90,36 @@ var promoterResources = []promoterResource{
 	{kind: "WebRequestCommitStatus", obj: &promoterv1alpha1.WebRequestCommitStatus{}},
 }
 
-func countFromInformer(ctx context.Context, c resourceCountInformerSource, obj client.Object) (int, error) {
+func countsByReadinessFromInformer(ctx context.Context, c resourceCountInformerSource, obj client.Object) (map[string]int, error) {
 	informer, err := c.GetInformer(ctx, obj)
 	if err != nil {
-		return 0, fmt.Errorf("getting informer: %w", err)
+		return nil, fmt.Errorf("getting informer: %w", err)
 	}
 	si, ok := informer.(toolscache.SharedIndexInformer)
 	if !ok {
-		return 0, fmt.Errorf("informer does not implement SharedIndexInformer (got %T)", informer)
+		return nil, fmt.Errorf("informer does not implement SharedIndexInformer (got %T)", informer)
 	}
-	return len(si.GetStore().List()), nil
+	counts := make(map[string]int)
+	for _, item := range si.GetStore().List() {
+		readiness := readinessFromObject(item)
+		counts[readiness]++
+	}
+	return counts, nil
 }
 
 func refreshKubernetesResourceCounts(ctx context.Context, c resourceCountInformerSource, log logr.Logger) {
 	for _, r := range promoterResources {
-		n, err := countFromInformer(ctx, c, r.obj)
+		counts, err := countsByReadinessFromInformer(ctx, c, r.obj)
 		if err != nil {
 			log.Error(err, "counting resources for promoter_kubernetes_resources metric", "kind", r.kind)
-			kubernetesResources.WithLabelValues(r.kind).Set(0)
+			for _, readiness := range readinessBuckets {
+				kubernetesResources.WithLabelValues(r.kind, readiness).Set(0)
+			}
 			continue
 		}
-		kubernetesResources.WithLabelValues(r.kind).Set(float64(n))
+		for _, readiness := range readinessBuckets {
+			kubernetesResources.WithLabelValues(r.kind, readiness).Set(float64(counts[readiness]))
+		}
 	}
 }
 

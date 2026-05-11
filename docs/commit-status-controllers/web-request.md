@@ -69,7 +69,16 @@ Optional **`when.variables`** (same shape as `when.output`: an `expression` stri
 
 **Downstream:** use `Variables.<key>` in `when.expression` and `when.output.expression`, for example `Variables.fingerprint == (TriggerOutput.lastFingerprint ?? "")`.
 
-**Not in scope:** `Variables` is **not** passed to `response.output.expression` (that program only receives `Response`) or to Go templates for URL/body/description.
+**Available in CommitStatus templates:** the result of `when.variables.expression` is also exposed to **`spec.descriptionTemplate`** and **`spec.urlTemplate`** as the top-level fields below. These are the **only** Go templates that see them — `httpRequest.urlTemplate`, `httpRequest.headerTemplates`, and `httpRequest.bodyTemplate` render *before* the HTTP request and do **not** receive these bindings.
+
+| Source | Template binding |
+|--------|------------------|
+| `spec.mode.trigger.when.variables.expression` | `{{ index .TriggerVariables "key" }}` |
+| `spec.success.when.variables.expression` | `{{ index .SuccessVariables "key" }}` |
+
+Both are `map[string]any`. They are `nil` when the corresponding `when.variables` is not configured (so `index` returns the zero value, which is safe for templates). `.TriggerVariables` is also `nil` outside trigger mode.
+
+**Not in scope:** `Variables` is **not** passed to `response.output.expression` (that program only receives `Response`) or to the **HTTP request** Go templates (`httpRequest.urlTemplate`, `headerTemplates`, `bodyTemplate`).
 
 The same field exists on **`spec.success.when`**: variables run before the success boolean (and optional `success.when.output`), with `Response` included when an HTTP response exists for that reconcile.
 
@@ -113,7 +122,7 @@ The `success.when.expression` is evaluated **every reconcile**, regardless of wh
 | `TriggerOutput` | map[string]any | Custom data from the previous `when.output.expression` evaluation (trigger mode only). |
 | `ResponseOutput` | map[string]any | Response data from the previous HTTP request's `response.output.expression` (trigger mode only). |
 | `SuccessOutput` | map[string]any | Custom data from the previous `success.when.output.expression` evaluation. |
-| `Variables` | map[string]any | Present when `success.when.variables` is set: object returned by `variables.expression` this reconcile. |
+| `Variables` | map[string]any | Present when `success.when.variables` is set: object returned by `variables.expression` this reconcile. Also available to `descriptionTemplate` / `urlTemplate` as `.SuccessVariables` (and as `.TriggerVariables` for the trigger-side `when.variables`). |
 
 > [!IMPORTANT]
 > Since the expression runs every reconcile, it must handle `Response` being `nil` (no HTTP request this reconcile). Expressions that only reference `Response.*` will error when `Response` is `nil`, causing the reconcile to return an error and requeue. Guard `Response` access:
@@ -151,11 +160,36 @@ In trigger mode, **`triggerOutput`**, **`responseOutput`**, and **`successOutput
 
 When **`mode.polling`** is set, **`reportOn` is `proposed`**, and context is **`promotionstrategy`**, the controller can **skip** issuing a new HTTP request if **every** applicable environment is already **success** and each branch’s current proposed SHA matches the **`lastSuccessfulSha`** value in **`lastSuccessfulShas`** for that branch. It still refreshes `CommitStatus` resources and requeues on the polling interval. This avoids hammering the API when nothing has changed.
 
+### Delivery semantics: at-least-once, not exactly-once
+
+The controller dedupes HTTP requests by comparing fresh state (e.g. each branch's current `Proposed.Hydrated.Sha`) against state it persisted in the `WebRequestCommitStatus.status` on the **previous** reconcile (e.g. `environments[].triggerOutput.trackedSha`, `environments[].lastRequestTime`, `promotionStrategyContext.lastSuccessfulShas`). The persisted state is written via a Server-Side Apply at the **end** of a reconcile and read from the controller's informer cache at the **start** of the next reconcile. There is a small but unavoidable window between those two events:
+
+1. Reconcile A writes status to the API server.
+2. The API server publishes the change to watchers; the controller's informer cache observes it.
+3. Reconcile B starts and reads from the cache.
+
+If reconcile B starts before its cache has observed A's status update — which can happen under cache-propagation lag, controller restarts, status-write retries (transient API errors, conflict retries, OpenAPI/CEL validation rejections that the controller retries with conditions-only fallback), or a brief WRCS object recreate — B will evaluate `trigger.when.expression` as if A's `triggerOutput`, `responseOutput`, and `lastRequestTime` had never been written, and may re-fire the HTTP request.
+
+The same caveat applies to:
+
+- **Polling mode's `lastRequestTime` short-circuit.** If a reconcile starts before the previous reconcile's `lastRequestTime` is visible in cache, the within-interval skip cannot fire and the HTTP request is repeated.
+- **`promotionstrategy`-context polling fast-path** (skip when every branch already succeeded for its current SHA). Same cache-propagation window — the fast path may not fire on a reconcile that hasn't yet seen the prior `lastSuccessfulShas` write.
+- **`success.when` carry-forward.** The success expression sees `Response == nil` plus the prior `Phase` / `ResponseOutput` / `SuccessOutput`. Stale cache means stale carry-forward inputs.
+
+**Implications for integrators:**
+
+- **Treat WebRequestCommitStatus as at-least-once HTTP delivery, not exactly-once.** A given `(branch, sha)` may be re-checked more than once even though the persisted `triggerOutput` records that the SHA has already been tracked.
+- **Make external endpoints idempotent** for the same input. A retry must produce the same answer (or at least an answer the success expression treats the same way) so duplicate calls don't change the promotion outcome.
+- **Don't rely on trigger output to count attempts authoritatively.** Counters built with `{ attemptCount: (TriggerOutput["attemptCount"] ?? 0) + 1 }` are eventually-consistent: under cache lag, the controller may briefly read a stale older value and increment the same attempt twice, so use them only for backoff hints, not for hard "fail after N tries" gates.
+- This applies to both `environments` and `promotionstrategy` contexts; both rely on persisted status for dedup.
+
+**Testing tolerance.** Tests in this repository that assert "the controller stops calling the endpoint" check that the HTTP-request count **eventually stabilizes** after each environment has tracked its SHA, not that it stops growing immediately. New tests for trigger-based dedup should use the same pattern (a few stragglers from cache lag are acceptable; sustained growth under steady inputs is a regression).
+
 ### Examples
 
 #### Trigger mode with `when.variables` (shared expr)
 
-`when.variables` computes a map once; `when.expression` and `when.output.expression` read it as **`Variables`**. This avoids duplicating the same `let` / lookup logic in both expressions. The example uses **`environments`** context (per-environment HTTP); `Branch` is set for each reconcile.
+`when.variables` computes a map once; `when.expression` and `when.output.expression` read it as **`Variables`**, and `descriptionTemplate` / `urlTemplate` read it as **`.TriggerVariables`** / **`.SuccessVariables`**. This avoids duplicating the same `let` / lookup logic across expressions and templates. The example uses **`environments`** context (per-environment HTTP); `Branch` is set for each reconcile.
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
@@ -167,6 +201,7 @@ spec:
     name: my-app
   key: sha-change-gate
   reportOn: proposed
+  descriptionTemplate: 'Gate ({{ .Phase }}) for {{ index .TriggerVariables "currentSha" }}'
   httpRequest:
     urlTemplate: "https://hooks.example.com/promo/{{ .Branch }}"
     method: GET
@@ -191,7 +226,55 @@ spec:
           expression: "{ trackedSha: Variables.currentSha }"
 ```
 
-The **`success.when`** block shows the same pattern: optional `variables` (map) then a boolean `expression` that can reference **`Variables`** when `Response` is present.
+The **`success.when`** block shows the same pattern: optional `variables` (map) then a boolean `expression` that can reference **`Variables`** when `Response` is present. The `descriptionTemplate` reuses the SHA computed once in `trigger.when.variables` via `.TriggerVariables` — no duplicate `find(...)` in template syntax.
+
+#### Surfacing `Variables` in the CommitStatus description / URL
+
+A common use case is computing a value once in expr and showing it on the SCM CommitStatus (description text, target URL). The keys returned by `success.when.variables.expression` are exposed to templates as `.SuccessVariables`; keys returned by `trigger.when.variables.expression` are exposed as `.TriggerVariables`.
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: build-tag-display
+spec:
+  promotionStrategyRef:
+    name: my-app
+  key: build-validation
+  reportOn: proposed
+  descriptionTemplate: 'Build {{ index .SuccessVariables "tag" }} ({{ .Phase }})'
+  urlTemplate: 'https://ci.example.com/runs/{{ index .SuccessVariables "runId" }}'
+  httpRequest:
+    urlTemplate: "https://ci.example.com/api/v1/builds/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
+    method: GET
+  success:
+    when:
+      variables:
+        expression: |
+          let prev = SuccessOutput ?? { tag: "pending", runId: "", ok: false };
+          Response != nil ? {
+            tag:   Response.Body.buildTag   ?? prev.tag,
+            runId: Response.Body.buildRunId ?? prev.runId,
+            ok:    Response.StatusCode == 200,
+          } : prev
+      expression: 'Variables.ok'
+      output:
+        expression: 'Variables'
+  mode:
+    polling:
+      interval: 2m
+```
+
+How it works:
+
+- `success.when.variables` is the single source of truth: it computes `tag`, `runId`, and `ok` once per reconcile.
+- On **fire** reconciles (HTTP response present), it reads from `Response.Body`. On **carry-forward** reconciles (`Response == nil`), it returns last reconcile's `SuccessOutput` verbatim — so the description/URL stay stable and `ok` is preserved without a separate `Phase == "success"` check.
+- The boolean `expression: 'Variables.ok'` reuses the same value — no duplicate `Response != nil ? ... : ...` ladder.
+- `output: 'Variables'` persists the whole map to `SuccessOutput`, which is what the next carry-forward reconcile reads back as `prev`.
+- `descriptionTemplate` / `urlTemplate` reference the same map via `.SuccessVariables.tag` and `.SuccessVariables.runId`.
+
+> [!NOTE]
+> `.TriggerVariables` and `.SuccessVariables` are **only** available in `descriptionTemplate` and `urlTemplate`. They are **not** in scope for `httpRequest.urlTemplate`, `httpRequest.headerTemplates`, or `httpRequest.bodyTemplate` (those render *before* the request fires, before `when.variables` runs). Use `index` for safe access — it returns the zero value if the map is `nil` or the key is missing.
 
 #### Single boolean — one API for the whole strategy
 

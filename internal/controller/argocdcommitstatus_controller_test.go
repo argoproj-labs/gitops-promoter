@@ -23,6 +23,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
@@ -233,6 +234,119 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			// Clean up
+			Expect(k8sClient.Delete(ctx, app)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, commitStatus)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+		})
+
+		// Regression: ArgoCDCommitStatus reconciles on generation changes, Application events, and (after the fix)
+		// PromotionStrategy create events only. The suite's ArgoCDCommitStatus rate limiter matches
+		// config/config/controllerconfiguration.yaml (bucket + fastSlow). After MaxFastAttempts failures the
+		// slow delay is 5m, so if the PromotionStrategy appears only after that window, recovery depends on the
+		// PromotionStrategy create watch—not the next error requeue—within a 90s Eventually.
+		//
+		// We sleep after the first visible failure so the missing-PS reconcile path exhausts fast retries before
+		// creating the strategy; without the watch the next requeue would be ~5m away and this spec would fail.
+		It("should reconcile successfully after PromotionStrategy is created following an initial missing-reference failure", func() {
+			ctx := context.TODO()
+
+			psName, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "acdcs-ps-after", "default")
+			promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
+				{Branch: testBranchStaging},
+			}
+
+			setupInitialTestGitRepoOnServer(ctx, gitRepo)
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+
+			workTreePath, err := os.MkdirTemp("", "*")
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = os.RemoveAll(workTreePath) }()
+
+			_, err = runGitCmd(ctx, workTreePath, "clone", testGitRepoCloneURL(gitRepo), ".")
+			Expect(err).ToNot(HaveOccurred())
+			_, err = runGitCmd(ctx, workTreePath, "checkout", testBranchStaging)
+			Expect(err).ToNot(HaveOccurred())
+			sha, err := runGitCmd(ctx, workTreePath, "rev-parse", "HEAD")
+			Expect(err).ToNot(HaveOccurred())
+			sha = strings.TrimSpace(sha)
+
+			appLabelKey := "acdcs-ps-after-test"
+			appLabelVal := psName
+			app := &argocd.Application{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "Application",
+					APIVersion: "argoproj.io/v1alpha1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "test-app-acdcs-ps-after",
+					Labels: map[string]string{
+						appLabelKey: appLabelVal,
+					},
+				},
+				Spec: argocd.ApplicationSpec{
+					Source: &argocd.Source{
+						RepoURL:        testGitRepoCloneURL(gitRepo),
+						TargetRevision: testBranchStaging,
+					},
+				},
+				Status: argocd.ApplicationStatus{
+					Health: argocd.HealthStatus{
+						Status:             argocd.HealthStatusHealthy,
+						LastTransitionTime: nil,
+					},
+					Sync: argocd.SyncStatus{
+						Status:   argocd.SyncStatusCodeSynced,
+						Revision: sha,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, app)).To(Succeed())
+
+			commitStatus := &promoterv1alpha1.ArgoCDCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      psName,
+				},
+				Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName},
+					ApplicationSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{appLabelKey: appLabelVal},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				updated := &promoterv1alpha1.ArgoCDCommitStatus{}
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: psName, Namespace: "default"}, updated)).To(Succeed())
+				c := meta.FindStatusCondition(updated.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(c).ToNot(BeNil())
+				g.Expect(c.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(c.Message).To(ContainSubstring("failed to get PromotionStrategy object"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			// Past fastSlow fast retries (1s x 3) so the work queue is on the 5m slow path; see comment on this spec.
+			time.Sleep(6 * time.Second)
+
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				updated := &promoterv1alpha1.ArgoCDCommitStatus{}
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: psName, Namespace: "default"}, updated)).To(Succeed())
+				g.Expect(updated.Status.ApplicationsSelected).To(HaveLen(1))
+				g.Expect(updated.Status.ApplicationsSelected[0].Name).To(Equal("test-app-acdcs-ps-after"))
+				g.Expect(updated.Status.ApplicationsSelected[0].Environment).To(Equal(testBranchStaging))
+				g.Expect(updated.Status.ApplicationsSelected[0].Sha).To(Equal(sha))
+				g.Expect(updated.Status.ApplicationsSelected[0].Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
 			Expect(k8sClient.Delete(ctx, app)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, commitStatus)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
