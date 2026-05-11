@@ -78,6 +78,9 @@ checksum:
   extra_files:
     - glob: ./install.yaml
 
+sboms:
+  - artifacts: archive
+
 signs:
   - cmd: cosign
     signature: "${artifact}.sigstore.json"

@@ -61,6 +61,9 @@ jobs:
         with:
           cosign-release: v3.0.5 # cosign CLI; latest sigstore/cosign, explicit pin for reproducibility
 
+      - name: Install syft
+        uses: anchore/sbom-action/download-syft@v0.24.0
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@e24998b8b67b290c2fa8b7c14fcfa7de2c5c9b8c # v7.1.0
         with:
