@@ -148,12 +148,13 @@ No labels.
 
 ## promoter_kubernetes_resources
 
-A gauge of how many `promoter.argoproj.io` custom resources currently exist in the **local** Kubernetes cluster, broken out by API kind (for example `PromotionStrategy`, `GitRepository`).
+A gauge of how many `promoter.argoproj.io` custom resources currently exist in the **local** Kubernetes cluster, broken out by API kind and readiness (for example `PromotionStrategy`, `GitRepository`).
 
-The controller refreshes this metric on a fixed interval (30 seconds) by listing each kind via the manager client (same view as the controller cache). It does **not** count resources on remote clusters that are reconciled only through multicluster configuration.
+The controller refreshes this metric on a fixed interval (30 seconds) by reading from the controller informer stores (no per-tick API list calls). It does **not** count resources on remote clusters that are reconciled only through multicluster configuration.
 
-If a list request fails for a kind, that kind's gauge is set to `0` and an error is logged.
+If reading from the informer store fails for a kind, that kind's gauge is set to `0` for all readiness values and an error is logged.
 
 Labels:
 
 * `kind`: Kubernetes API kind of the custom resource (matches the thirteen root CRDs reconciled by GitOps Promoter, such as `ArgoCDCommitStatus`, `ChangeTransferPolicy`, `ClusterScmProvider`, `CommitStatus`, `ControllerConfiguration`, `GitCommitStatus`, `GitRepository`, `PromotionStrategy`, `PullRequest`, `RevertCommit`, `ScmProvider`, `TimedCommitStatus`, `WebRequestCommitStatus`).
+* `readiness`: Status of the `Ready` condition on the resource. One of `True`, `False`, `Unknown`, or `""` (empty string, when the `Ready` condition is not present on the resource).

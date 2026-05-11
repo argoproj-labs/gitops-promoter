@@ -98,6 +98,7 @@ type ApplicationsInEnvironment struct {
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=argocdcommitstatuses,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=argocdcommitstatuses/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=argocdcommitstatuses/finalizers,verbs=update
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
 // +kubebuilder:rbac:groups=argoproj.io,resources=applications,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
@@ -421,6 +422,37 @@ func getMostRecentLastTransitionTime(apps []*argocd.Application) *metav1.Time {
 	return mostRecentLastTransitionTime
 }
 
+// enqueueArgoCDCommitStatusForPromotionStrategy maps PromotionStrategy events to every ArgoCDCommitStatus in
+// the same namespace that references that strategy. It is combined with promotionStrategyCreatePredicate so
+// only creates are observed: ArgoCDCommitStatus does not consume PromotionStrategy data on reconcile (it only
+// needs the object to exist for ordering of status fields and repository reference for git operations).
+// Without this watch, installing an ArgoCDCommitStatus before its PromotionStrategy exists leaves the controller
+// stuck after the first failed reconcile until something else (e.g. an Application event) triggers a new reconcile.
+func enqueueArgoCDCommitStatusForPromotionStrategy(mcMgr mcmanager.Manager) mchandler.TypedEventHandlerFunc[client.Object, mcreconcile.Request] {
+	return mchandler.TypedEnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []mcreconcile.Request {
+		ps, ok := obj.(*promoterv1alpha1.PromotionStrategy)
+		if !ok {
+			return nil
+		}
+		logger := log.FromContext(ctx)
+		var list promoterv1alpha1.ArgoCDCommitStatusList
+		if err := mcMgr.GetLocalManager().GetClient().List(ctx, &list, client.InNamespace(ps.Namespace)); err != nil {
+			logger.Error(err, "failed to list ArgoCDCommitStatus resources for PromotionStrategy watch")
+			return nil
+		}
+		var reqs []mcreconcile.Request
+		for i := range list.Items {
+			acs := &list.Items[i]
+			if acs.Spec.PromotionStrategyRef.Name == ps.Name {
+				reqs = append(reqs, mcreconcile.Request{
+					Request: reconcile.Request{NamespacedName: client.ObjectKeyFromObject(acs)},
+				})
+			}
+		}
+		return reqs
+	})
+}
+
 func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchandler.TypedEventHandlerFunc[client.Object, mcreconcile.Request] {
 	return func(clusterName multicluster.ClusterName, cl cluster.Cluster) handler.TypedEventHandler[client.Object, mcreconcile.Request] {
 		return handler.TypedEnqueueRequestsFromMapFunc(func(ctx context.Context, argoCDApplication client.Object) []mcreconcile.Request {
@@ -514,12 +546,34 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 			mcbuilder.WithEngageWithLocalCluster(watchLocalApplications),
 			mcbuilder.WithEngageWithProviderClusters(true),
 			mcbuilder.WithPredicates(applicationPredicate)).
+		Watches(&promoterv1alpha1.PromotionStrategy{}, enqueueArgoCDCommitStatusForPromotionStrategy(mcMgr),
+			mcbuilder.WithEngageWithLocalCluster(true),
+			mcbuilder.WithEngageWithProviderClusters(false),
+			mcbuilder.WithPredicates(promotionStrategyCreatePredicate)).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
 	}
 
 	return nil
+}
+
+// promotionStrategyCreatePredicate limits the PromotionStrategy watch to Create events only. Updates to the
+// strategy (status, environment SHAs, etc.) do not affect ArgoCDCommitStatus reconciliation logic beyond the
+// object needing to exist so Get succeeds and sortApplicationsSelected can run.
+var promotionStrategyCreatePredicate = predicate.Funcs{
+	CreateFunc: func(e event.CreateEvent) bool {
+		return true
+	},
+	UpdateFunc: func(e event.UpdateEvent) bool {
+		return false
+	},
+	DeleteFunc: func(e event.DeleteEvent) bool {
+		return false
+	},
+	GenericFunc: func(e event.GenericEvent) bool {
+		return false
+	},
 }
 
 // applicationPredicate returns a predicate that filters Argo CD Application events.

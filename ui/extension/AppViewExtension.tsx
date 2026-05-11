@@ -8,6 +8,7 @@ import './StrategyDropdown.scss';
 const GROUP = 'promoter.argoproj.io';
 const KIND = 'PromotionStrategy';
 const PARAM = 'promotionstrategy';
+const STORAGE_PREFIX = 'gitops-promoter:lastStrategy:';
 
 interface SelectOption {
   value: string;
@@ -29,11 +30,37 @@ const setParam = (name: string) => {
   window.history.replaceState(null, '', url.toString());
 };
 
+const storageKey = (appNamespace: string, appName: string) =>
+  `${STORAGE_PREFIX}${appNamespace}/${appName}`;
+
+const getStored = (appNamespace: string, appName: string): string => {
+  try {
+    return window.localStorage.getItem(storageKey(appNamespace, appName)) || '';
+  } catch {
+    return '';
+  }
+};
+
+const setStored = (appNamespace: string, appName: string, name: string) => {
+  try {
+    const key = storageKey(appNamespace, appName);
+    if (name) {
+      window.localStorage.setItem(key, name);
+    } else {
+      window.localStorage.removeItem(key);
+    }
+  } catch {
+    // localStorage may be unavailable (privacy mode); fall through silently.
+  }
+};
+
 const strategyKey = (s: PromotionStrategy) => `${s.metadata.namespace}/${s.metadata.name}`;
 
 const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
   const [strategies, setStrategies] = useState<PromotionStrategy[]>([]);
-  const [selectedKey, setSelectedKey] = useState<string>(getParam);
+  const [selectedKey, setSelectedKey] = useState<string>(
+    () => getParam() || getStored(application.metadata.namespace, application.metadata.name),
+  );
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -49,6 +76,7 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
       setStrategies([]);
       setSelectedKey('');
       setParam('');
+      setStored(appNamespace, appName, '');
       return;
     }
 
@@ -83,11 +111,16 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
     )
       .then((parsed) => {
         setStrategies(parsed);
+        const keys = parsed.map(strategyKey);
         const fromUrl = getParam();
-        const match = parsed.find((s) => strategyKey(s) === fromUrl);
-        const initial = match ? fromUrl : strategyKey(parsed[0]);
+        const fromStored = getStored(appNamespace, appName);
+        const initial =
+          (keys.includes(fromUrl) && fromUrl) ||
+          (keys.includes(fromStored) && fromStored) ||
+          keys[0];
         setSelectedKey(initial);
         setParam(initial);
+        setStored(appNamespace, appName, initial);
       })
       .catch((err) => {
         const errorMessage = err instanceof Error ? err.message : String(err);
@@ -95,6 +128,7 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
         setStrategies([]);
         setSelectedKey('');
         setParam('');
+        setStored(appNamespace, appName, '');
       });
   }, [application.metadata.name, application.metadata.namespace, tree]);
 
@@ -124,10 +158,13 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
             options={options}
             placeholder="Select a PromotionStrategy"
             value={options.find((opt) => opt.value === selectedKey) || null}
+            menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+            styles={{ menuPortal: (base) => ({ ...base, zIndex: 2000 }) }}
             onChange={(option: SingleValue<SelectOption>) => {
               const key = option ? option.value : '';
               setSelectedKey(key);
               setParam(key);
+              setStored(application.metadata.namespace, application.metadata.name, key);
             }}
           />
         </div>

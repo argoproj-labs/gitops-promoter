@@ -95,9 +95,21 @@ func buildStubInformerSourceWithCounts() *stubResourceCountInformerSource {
 		var items []runtime.Object
 		switch r.kind {
 		case "PromotionStrategy":
+			readyTrue := metav1.ConditionTrue
+			readyFalse := metav1.ConditionFalse
 			items = []runtime.Object{
-				&promoterv1alpha1.PromotionStrategy{ObjectMeta: metav1.ObjectMeta{Name: "one", Namespace: "ns"}},
-				&promoterv1alpha1.PromotionStrategy{ObjectMeta: metav1.ObjectMeta{Name: "two", Namespace: "ns"}},
+				&promoterv1alpha1.PromotionStrategy{
+					ObjectMeta: metav1.ObjectMeta{Name: "one", Namespace: "ns"},
+					Status: promoterv1alpha1.PromotionStrategyStatus{
+						Conditions: []metav1.Condition{{Type: "Ready", Status: readyTrue}},
+					},
+				},
+				&promoterv1alpha1.PromotionStrategy{
+					ObjectMeta: metav1.ObjectMeta{Name: "two", Namespace: "ns"},
+					Status: promoterv1alpha1.PromotionStrategyStatus{
+						Conditions: []metav1.Condition{{Type: "Ready", Status: readyFalse}},
+					},
+				},
 			}
 		case "GitRepository":
 			items = []runtime.Object{
@@ -113,13 +125,53 @@ func buildStubInformerSourceWithCounts() *stubResourceCountInformerSource {
 
 func resetPromoterKubernetesResourceGauges() {
 	for _, r := range promoterResources {
-		kubernetesResources.DeleteLabelValues(r.kind)
+		for _, readiness := range readinessBuckets {
+			kubernetesResources.DeleteLabelValues(r.kind, readiness)
+		}
 	}
 }
 
 var _ = Describe("Resource count metrics", func() {
 	BeforeEach(func() {
 		resetPromoterKubernetesResourceGauges()
+	})
+
+	Describe("readinessFromObject", func() {
+		It("returns the Ready condition status when present", func() {
+			obj := &promoterv1alpha1.PromotionStrategy{
+				Status: promoterv1alpha1.PromotionStrategyStatus{
+					Conditions: []metav1.Condition{{Type: "Ready", Status: metav1.ConditionTrue}},
+				},
+			}
+			Expect(readinessFromObject(obj)).To(Equal("True"))
+		})
+
+		It("returns False when the Ready condition status is False", func() {
+			obj := &promoterv1alpha1.PromotionStrategy{
+				Status: promoterv1alpha1.PromotionStrategyStatus{
+					Conditions: []metav1.Condition{{Type: "Ready", Status: metav1.ConditionFalse}},
+				},
+			}
+			Expect(readinessFromObject(obj)).To(Equal("False"))
+		})
+
+		It("returns Unknown when the Ready condition status is Unknown", func() {
+			obj := &promoterv1alpha1.PromotionStrategy{
+				Status: promoterv1alpha1.PromotionStrategyStatus{
+					Conditions: []metav1.Condition{{Type: "Ready", Status: metav1.ConditionUnknown}},
+				},
+			}
+			Expect(readinessFromObject(obj)).To(Equal("Unknown"))
+		})
+
+		It("returns empty string when the Ready condition is absent", func() {
+			obj := &promoterv1alpha1.PromotionStrategy{}
+			Expect(readinessFromObject(obj)).To(Equal(""))
+		})
+
+		It("returns empty string for objects that do not expose conditions", func() {
+			Expect(readinessFromObject(struct{}{})).To(Equal(""))
+		})
 	})
 
 	Describe("refreshKubernetesResourceCounts", func() {
@@ -139,8 +191,11 @@ var _ = Describe("Resource count metrics", func() {
 
 			refreshKubernetesResourceCounts(context.Background(), stub, log)
 
-			Expect(testutil.ToFloat64(kubernetesResources.WithLabelValues("PromotionStrategy"))).To(Equal(0.0))
-			Expect(testutil.ToFloat64(kubernetesResources.WithLabelValues("GitRepository"))).To(Equal(1.0))
+			Expect(testutil.ToFloat64(kubernetesResources.WithLabelValues("PromotionStrategy", "True"))).To(Equal(0.0))
+			Expect(testutil.ToFloat64(kubernetesResources.WithLabelValues("PromotionStrategy", "False"))).To(Equal(0.0))
+			Expect(testutil.ToFloat64(kubernetesResources.WithLabelValues("PromotionStrategy", "Unknown"))).To(Equal(0.0))
+			Expect(testutil.ToFloat64(kubernetesResources.WithLabelValues("PromotionStrategy", ""))).To(Equal(0.0))
+			Expect(testutil.ToFloat64(kubernetesResources.WithLabelValues("GitRepository", ""))).To(Equal(1.0))
 
 			combined := strings.Join(logLines, "\n")
 			Expect(combined).To(And(
@@ -181,9 +236,12 @@ var _ = Describe("Resource count metrics", func() {
 			Eventually(func() int32 { return stub.getCount.Load() }).WithTimeout(3 * time.Second).WithPolling(5 * time.Millisecond).
 				Should(BeNumerically(">=", minGets))
 
-			Expect(testutil.ToFloat64(kubernetesResources.WithLabelValues("PromotionStrategy"))).To(Equal(2.0))
-			Expect(testutil.ToFloat64(kubernetesResources.WithLabelValues("GitRepository"))).To(Equal(1.0))
-			Expect(testutil.ToFloat64(kubernetesResources.WithLabelValues("PullRequest"))).To(Equal(0.0))
+			Expect(testutil.ToFloat64(kubernetesResources.WithLabelValues("PromotionStrategy", "True"))).To(Equal(1.0))
+			Expect(testutil.ToFloat64(kubernetesResources.WithLabelValues("PromotionStrategy", "False"))).To(Equal(1.0))
+			Expect(testutil.ToFloat64(kubernetesResources.WithLabelValues("PromotionStrategy", "Unknown"))).To(Equal(0.0))
+			Expect(testutil.ToFloat64(kubernetesResources.WithLabelValues("PromotionStrategy", ""))).To(Equal(0.0))
+			Expect(testutil.ToFloat64(kubernetesResources.WithLabelValues("GitRepository", ""))).To(Equal(1.0))
+			Expect(testutil.ToFloat64(kubernetesResources.WithLabelValues("PullRequest", ""))).To(Equal(0.0))
 
 			cancel()
 			Eventually(done).WithTimeout(2 * time.Second).Should(BeClosed())
