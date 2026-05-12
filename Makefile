@@ -17,10 +17,6 @@ endif
 
 GIT_TAG:=$(if $(GIT_TAG),$(GIT_TAG),$(shell if [ -z "`git status --porcelain`" ]; then git describe --exact-match --tags HEAD 2>/dev/null; fi))
 
-# VERSION is the version used for the binary. It is set to the git tag if on a tagged commit,
-# or a descriptive string including the commit hash otherwise.
-VERSION:=$(if $(VERSION),$(VERSION),$(shell git describe --tags --always --dirty 2>/dev/null || echo "v0.0.0+unknown"))
-
 
 # docker image publishing options
 IMAGE_NAMESPACE?=quay.io/argoprojlabs
@@ -169,7 +165,7 @@ nilaway-no-test: nilaway ## Run nilaway to remove nil checks from the code
 
 .PHONY: build
 build: manifests generate fmt vet ## Build manager binary.
-	go build -ldflags "-X github.com/argoproj-labs/gitops-promoter/internal/version.Version=${VERSION}" -o bin/manager cmd/main.go
+	go build -o bin/manager cmd/main.go
 
 .PHONY: build-dashboard
 build-dashboard: ## Build dashboard UI and embed it.
