@@ -41,10 +41,6 @@ func GetVersion() string {
 	if !ok {
 		return "v0.0.0+unknown"
 	}
-	// Main.Version is set when installed via `go install module@version`.
-	if info.Main.Version != "" && info.Main.Version != "(devel)" {
-		return info.Main.Version
-	}
 	// Fall back to VCS settings embedded by the Go toolchain (Go 1.18+).
 	var revision string
 	var modified bool
