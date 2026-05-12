@@ -203,7 +203,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	pullRequests, response, err := pr.client.PullRequests.List(
 		ctx, gitRepo.Spec.GitHub.Owner,
 		gitRepo.Spec.GitHub.Name,
-		&github.PullRequestListOptions{Base: pullRequest.Spec.TargetBranch, Head: pullRequest.Spec.SourceBranch, State: "open"})
+		&github.PullRequestListOptions{Base: pullRequest.Spec.TargetBranch, Head: fmt.Sprintf("%s:%s", gitRepo.Spec.GitHub.Owner, pullRequest.Spec.SourceBranch), State: "open"})
 	if response != nil {
 		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
 	}
