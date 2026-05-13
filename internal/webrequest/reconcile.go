@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -33,15 +34,11 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
-// allowedHTTPMethods is the canonical set of HTTP methods accepted by HTTPRequestSpec.
-// It mirrors the +kubebuilder:validation:Enum on the static Method field and is enforced
-// at render time for MethodTemplate as well.
-var allowedHTTPMethods = map[string]struct{}{
-	"GET":   {},
-	"POST":  {},
-	"PUT":   {},
-	"PATCH": {},
-}
+// allowedHTTPMethods is the canonical, ordered set of HTTP methods accepted by HTTPRequestSpec.
+// It mirrors the +kubebuilder:validation:Enum on the static Method field and is enforced at render
+// time for MethodTemplate as well. Both the membership check and the user-facing error message
+// derive from this single source of truth.
+var allowedHTTPMethods = []string{"GET", "POST", "PUT", "PATCH"}
 
 // Reconciler runs WebRequestCommitStatus reconcile logic with injectable HTTP execution
 // and CommitStatus emission (controller: real HTTP + SSA upsert; simulator: mock HTTP + local render).
@@ -305,8 +302,8 @@ func BuildRenderedHTTPRequestFromTemplates(wrcs *promoterv1alpha1.WebRequestComm
 		}
 		method = strings.ToUpper(strings.TrimSpace(renderedMethod))
 	}
-	if _, ok := allowedHTTPMethods[method]; !ok {
-		return RenderedHTTPRequest{}, fmt.Errorf("invalid HTTP method %q (must be one of GET, POST, PUT, PATCH)", method)
+	if !slices.Contains(allowedHTTPMethods, method) {
+		return RenderedHTTPRequest{}, fmt.Errorf("invalid HTTP method %q (must be one of %s)", method, strings.Join(allowedHTTPMethods, ", "))
 	}
 
 	req := RenderedHTTPRequest{
