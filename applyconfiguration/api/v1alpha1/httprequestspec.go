@@ -57,7 +57,7 @@ type HTTPRequestSpecApplyConfiguration struct {
 	Method *string `json:"method,omitempty"`
 	// MethodTemplate is the HTTP method, rendered as a Go template with the same variables and
 	// Sprig functions as URLTemplate/BodyTemplate/HeaderTemplates. The rendered string is trimmed
-	// of surrounding whitespace and uppercased; the final value must be one of GET/POST/PUT/PATCH
+	// of surrounding whitespace and uppercased; the final value must be one of GET/POST/PUT/PATCH/DELETE
 	// or the reconcile returns an error. A literal value such as `methodTemplate: GET` works
 	// identically to a static method; use templating when the method must vary by reconcile
 	// state (e.g. issuing a search GET on one reconcile and a close POST on the next).

@@ -960,7 +960,7 @@ let priorChangeId = ResponseOutput != nil ? (ResponseOutput.changeId ?? "") : ""
 				promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
 				"true",
 			)
-			wrcs.Spec.HTTPRequest.MethodTemplate = "DELETE"
+			wrcs.Spec.HTTPRequest.MethodTemplate = "HEAD"
 
 			_, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
 				WebRequestCommitStatus: wrcs,
@@ -970,7 +970,7 @@ let priorChangeId = ResponseOutput != nil ? (ResponseOutput.changeId ?? "") : ""
 
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("invalid HTTP method"))
-			Expect(err.Error()).To(ContainSubstring("DELETE"))
+			Expect(err.Error()).To(ContainSubstring("HEAD"))
 		})
 
 		It("surfaces a wrapped error when MethodTemplate fails to parse", func() {

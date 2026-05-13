@@ -38,7 +38,7 @@ import (
 // It mirrors the +kubebuilder:validation:Enum on the static Method field and is enforced at render
 // time for MethodTemplate as well. Both the membership check and the user-facing error message
 // derive from this single source of truth.
-var allowedHTTPMethods = []string{"GET", "POST", "PUT", "PATCH"}
+var allowedHTTPMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE"}
 
 // Reconciler runs WebRequestCommitStatus reconcile logic with injectable HTTP execution
 // and CommitStatus emission (controller: real HTTP + SSA upsert; simulator: mock HTTP + local render).

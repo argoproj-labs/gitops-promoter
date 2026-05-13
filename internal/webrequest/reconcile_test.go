@@ -185,6 +185,7 @@ var _ = Describe("BuildRenderedHTTPRequestFromTemplates", func() {
 			Entry(methodPOST, methodPOST),
 			Entry("PUT", "PUT"),
 			Entry("PATCH", "PATCH"),
+			Entry("DELETE", "DELETE"),
 		)
 
 		It("trims surrounding whitespace and uppercases the result", func() {
@@ -253,13 +254,13 @@ var _ = Describe("BuildRenderedHTTPRequestFromTemplates", func() {
 		})
 
 		It("errors when the template renders to an unsupported method", func() {
-			wrcs.Spec.HTTPRequest.MethodTemplate = "DELETE"
+			wrcs.Spec.HTTPRequest.MethodTemplate = "HEAD"
 
 			_, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
 
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("invalid HTTP method"))
-			Expect(err.Error()).To(ContainSubstring("DELETE"))
+			Expect(err.Error()).To(ContainSubstring("HEAD"))
 		})
 
 		It("errors when the template renders to an empty string", func() {
