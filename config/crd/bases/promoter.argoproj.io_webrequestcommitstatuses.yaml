@@ -291,8 +291,8 @@ spec:
                 type: object
                 x-kubernetes-validations:
                 - message: exactly one of method or methodTemplate must be set
-                  rule: (has(self.method) && self.method != '') != (has(self.methodTemplate)
-                    && self.methodTemplate != '')
+                  rule: (has(self.method) && self.method != ”) != (has(self.methodTemplate)
+                    && self.methodTemplate != ”)
               key:
                 description: |-
                   Key is the unique identifier for this validation rule.
