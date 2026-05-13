@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/fields"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	controllerruntime "sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
@@ -154,10 +155,10 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 
 	// Extract and log a single delivery ID from common webhook headers (GitHub, GitLab, Forgejo/Gitea).
 	deliveryID := wr.extractDeliveryID(r)
-	logger := logger.WithValues("provider", provider, "deliveryID", deliveryID)
+	reqLogger := logger.WithValues("provider", provider, "deliveryID", deliveryID)
 
 	if provider == ProviderUnknown {
-		logger.V(4).Info("unable to detect provider from headers")
+		reqLogger.V(4).Info("unable to detect provider from headers")
 		responseCode = http.StatusBadRequest
 		http.Error(w, "unable to detect SCM provider from headers", responseCode)
 		return
@@ -171,15 +172,16 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctp, err := wr.findChangeTransferPolicy(r.Context(), provider, jsonBytes)
+	ctx := log.IntoContext(r.Context(), reqLogger)
+	ctp, err := wr.findChangeTransferPolicy(ctx, provider, jsonBytes)
 	if err != nil {
-		logger.V(4).Info("could not find any matching ChangeTransferPolicies", "error", err)
+		reqLogger.V(4).Info("could not find any matching ChangeTransferPolicies", "error", err)
 		responseCode = http.StatusNoContent
 		w.WriteHeader(responseCode)
 		return
 	}
 	if ctp == nil {
-		logger.Info("no ChangeTransferPolicy found for webhook delivery")
+		reqLogger.Info("no ChangeTransferPolicy found for webhook delivery")
 		responseCode = http.StatusNoContent
 		w.WriteHeader(responseCode)
 		return
@@ -193,13 +195,14 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		wr.enqueueCTP(ctp.Namespace, ctp.Name)
 	}
 	updateDuration = time.Since(startUpdate)
-	logger.Info("Triggered reconcile of ChangeTransferPolicy via webhook", "namespace", ctp.Namespace, "name", ctp.Name)
+	reqLogger.Info("Triggered reconcile of ChangeTransferPolicy via webhook", "namespace", ctp.Namespace, "name", ctp.Name)
 
 	responseCode = http.StatusNoContent
 	w.WriteHeader(responseCode)
 }
 
 func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provider string, jsonBytes []byte) (*promoterv1alpha1.ChangeTransferPolicy, error) {
+	logger := log.FromContext(ctx)
 	var beforeSha string
 	var ref string
 	ctpLists := promoterv1alpha1.ChangeTransferPolicyList{}
