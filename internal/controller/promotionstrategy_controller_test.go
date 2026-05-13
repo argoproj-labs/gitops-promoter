@@ -3860,6 +3860,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 					Namespace: ctpDev.Namespace,
 				}, &ctpDev)
 				g.Expect(err).To(Succeed())
+				g.Expect(ctpDev.Status.Proposed.Note).NotTo(BeNil())
 				// Dev's Note.DrySha should be the second dry SHA (from git note)
 				g.Expect(ctpDev.Status.Proposed.Note.DrySha).To(Equal(secondDrySha))
 				// Dev's Proposed.Dry.Sha should still be the first dry SHA (no new commit was made)
@@ -4007,6 +4008,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 					Namespace: ctpDev.Namespace,
 				}, &ctpDev)
 				g.Expect(err).To(Succeed())
+				g.Expect(ctpDev.Status.Proposed.Note).NotTo(BeNil())
 				// Dev's Note.DrySha should be the second dry SHA (from git note)
 				g.Expect(ctpDev.Status.Proposed.Note.DrySha).To(Equal(secondDrySha))
 				// Dev's Proposed.Dry.Sha should still be the first dry SHA (no new commit was made)
@@ -4048,6 +4050,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 					Namespace: ctpProd.Namespace,
 				}, &ctpProd)
 				g.Expect(err).To(Succeed())
+				g.Expect(ctpProd.Status.Proposed.Note).NotTo(BeNil())
 				// Production's Note.DrySha should be the second dry SHA (from git note)
 				g.Expect(ctpProd.Status.Proposed.Note.DrySha).To(Equal(secondDrySha))
 				// Production's Proposed.Dry.Sha should still be the first dry SHA (no new commit was made)
