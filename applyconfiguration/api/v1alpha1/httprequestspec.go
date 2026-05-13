@@ -26,8 +26,6 @@ import (
 //
 // HTTPRequestSpec defines the HTTP request configuration.
 //
-// The HTTP method is configured via MethodTemplate (recommended) or the deprecated static Method
-// field. URLTemplate, HeaderTemplates, BodyTemplate, and MethodTemplate all support Go templates.
 // Sprig functions are available except env, expandenv, and getHostByName; urlQueryEscape is also available.
 // These fields are rendered with previous-attempt data: they are evaluated before the current HTTP request is made,
 // so they never contain the response from the request being built. Use TriggerOutput/ResponseOutput for state from
