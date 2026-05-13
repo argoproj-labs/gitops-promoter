@@ -283,16 +283,8 @@ func marshalSuccessWhenOutput(
 	return marshalJSONMap(extractedData)
 }
 
-// BuildRenderedHTTPRequestFromTemplates renders the HTTP method, URL, headers, and body from
-// WebRequestCommitStatus HTTP templates. Used by HTTPEXecutor implementations (controller HTTP
-// transport and simulator rendered-request snapshots).
-//
-// Method resolution: if MethodTemplate is set, it is rendered as a Go template, trimmed of
-// surrounding whitespace, and uppercased; otherwise the static Method field is used as-is.
-// The resulting method must be one of GET/POST/PUT/PATCH (matches the static Method enum).
-// CRD-level XValidation enforces that exactly one of Method / MethodTemplate is set on the spec,
-// but this function also rejects an empty resolved method as a defense-in-depth measure for
-// in-flight resources during upgrade.
+// BuildRenderedHTTPRequestFromTemplates renders method, URL, headers, and body from
+// WebRequestCommitStatus spec.httpRequest templates.
 func BuildRenderedHTTPRequestFromTemplates(wrcs *promoterv1alpha1.WebRequestCommitStatus, td TemplateData) (RenderedHTTPRequest, error) {
 	method := wrcs.Spec.HTTPRequest.Method //nolint:staticcheck // SA1019: backward-compat fallback for the deprecated Method field; CRD CEL rejects setting both Method and MethodTemplate.
 	if wrcs.Spec.HTTPRequest.MethodTemplate != "" {
