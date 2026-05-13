@@ -299,8 +299,8 @@ func basicWRCS(mode promoterv1alpha1.ModeSpec, successExpr string) *promoterv1al
 			Key:                  testWRCSKey,
 			ReportOn:             "proposed",
 			HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-				URLTemplate: "https://example.com/{{ .Branch }}",
-				Method:      "GET",
+				URLTemplate:    "https://example.com/{{ .Branch }}",
+				MethodTemplate: "GET",
 			},
 			Success: promoterv1alpha1.SuccessSpec{When: promoterv1alpha1.WhenWithOutputSpec{Expression: successExpr}},
 			Mode:    mode,
@@ -358,8 +358,8 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 				Key:                  "k",
 				ReportOn:             "proposed",
 				HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-					URLTemplate: "https://example.com/{{ .Branch }}",
-					Method:      "GET",
+					URLTemplate:    "https://example.com/{{ .Branch }}",
+					MethodTemplate: "GET",
 				},
 				Success: promoterv1alpha1.SuccessSpec{When: promoterv1alpha1.WhenWithOutputSpec{Expression: successExpr}},
 				Mode:    mode,
@@ -828,18 +828,18 @@ var _ = Describe("webrequestsimulator.Simulate scenarios", func() {
 		})
 	})
 
-	// MethodTemplate is the Go-templated alternative to the static Method field. The simulator
-	// shares BuildRenderedHTTPRequestFromTemplates with the controller, so these end-to-end tests
-	// verify the rendered Method propagates through Simulate -> mockHTTPEXecutor -> RenderedRequests.
+	// MethodTemplate is the Go-templated HTTP method (a literal value works identically to the
+	// deprecated static `method` field; templating lets the method vary across reconciles).
+	// The simulator shares BuildRenderedHTTPRequestFromTemplates with the controller, so these
+	// end-to-end tests verify the rendered Method propagates through Simulate ->
+	// mockHTTPEXecutor -> RenderedRequests.
 	Describe("MethodTemplate", func() {
 		It("renders a static MethodTemplate and surfaces it as RenderedRequest.Method", func() {
 			wrcs := basicWRCS(
 				promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
 				"true",
 			)
-			// Use MethodTemplate exclusively; clear Method so the XOR is satisfied at the type level
-			// (the simulator does not enforce the CRD CEL, but we mirror the production-valid shape).
-			wrcs.Spec.HTTPRequest.Method = ""
+			// basicWRCS already sets MethodTemplate to "GET"; override to "POST" here.
 			wrcs.Spec.HTTPRequest.MethodTemplate = "POST"
 
 			result, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
@@ -960,7 +960,6 @@ let priorChangeId = ResponseOutput != nil ? (ResponseOutput.changeId ?? "") : ""
 				promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
 				"true",
 			)
-			wrcs.Spec.HTTPRequest.Method = ""
 			wrcs.Spec.HTTPRequest.MethodTemplate = "DELETE"
 
 			_, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
@@ -979,7 +978,6 @@ let priorChangeId = ResponseOutput != nil ? (ResponseOutput.changeId ?? "") : ""
 				promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
 				"true",
 			)
-			wrcs.Spec.HTTPRequest.Method = ""
 			wrcs.Spec.HTTPRequest.MethodTemplate = "{{ invalid"
 
 			_, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
