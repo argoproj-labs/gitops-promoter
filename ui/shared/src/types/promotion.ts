@@ -2,6 +2,7 @@ export interface CommitStatus {
   key: string;
   phase: string;
   url?: string;
+  detailUrl?: string;
   description?: string;
 }
 
@@ -99,6 +100,7 @@ export interface Check {
   status: string;
   description?: string;
   url?: string;
+  detailUrl?: string;
 }
 
 export interface EnrichedEnvDetails {

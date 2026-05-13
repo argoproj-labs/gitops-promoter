@@ -17,6 +17,7 @@ function getChecks(commitStatuses: CommitStatus[]): Check[] {
     status: cs.phase || 'unknown',
     description: cs.description,
     url: cs.url,
+    detailUrl: cs.detailUrl,
   }));
 }
 

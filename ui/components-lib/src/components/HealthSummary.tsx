@@ -106,9 +106,9 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({
                     </span>
                   )}
                 </span>
-                {check.url && (
+                {(check.detailUrl ?? check.url) && (
                   <a
-                    href={check.url}
+                    href={check.detailUrl ?? check.url}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="health-check-link"
@@ -148,9 +148,9 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({
                         </span>
                       )}
                     </span>
-                    {check.url && (
+                    {(check.detailUrl ?? check.url) && (
                       <a
-                        href={check.url}
+                        href={check.detailUrl ?? check.url}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="health-check-link"
