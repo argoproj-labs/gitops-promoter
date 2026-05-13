@@ -1,5 +1,5 @@
-code.gitea.io/sdk/gitea v0.25.0 h1:wSJlL0Qv+ODY2OdF0L7fwt86wgf1C/0g3xIXZ6eC5zI=
-code.gitea.io/sdk/gitea v0.25.0/go.mod h1:uDFWYBU8dgZsgOHwe6C/6olxvf8FHguNB3wW1i83fgg=
+code.gitea.io/sdk/gitea v0.25.1 h1:yywxWwoV+SdjHtbC6unBiXojWdZOtoHuGhEazEXeWuE=
+code.gitea.io/sdk/gitea v0.25.1/go.mod h1:uDFWYBU8dgZsgOHwe6C/6olxvf8FHguNB3wW1i83fgg=
 codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v2 v2.2.0 h1:HTCWpzyWQOHDWt3LzI6/d2jvUDsw/vgGRWm/8BTvcqI=
 codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v2 v2.2.0/go.mod h1:ZglEEDj+qkxYUb+SQIeqGtFxQrbaMYqIOgahNKb7uxs=
 github.com/42wim/httpsig v1.2.4 h1:mI5bH0nm4xn7K18fo1K3okNDRq8CCJ0KbBYWyA6r8lU=
