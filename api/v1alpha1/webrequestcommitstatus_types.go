@@ -118,9 +118,9 @@ type WebRequestCommitStatusSpec struct {
 //
 //   - "environments" (default): one HTTP request per environment; each environment has its own phase and status; success.when.expression is evaluated per response and must return a boolean (true → success, false → pending; failure is not expressible).
 //
-//   - "promotionstrategy": at most one HTTP request per WebRequestCommitStatus resource; CommitStatuses remain one per environment on each environment’s reportOn SHA. success.when.expression runs once on that shared response — see WhenWithOutputSpec.Expression for boolean vs per-branch object return shapes.
+//   - "promotionstrategy": at most one HTTP request per WebRequestCommitStatus resource; CommitStatuses remain one per environment on each environment's reportOn SHA. success.when.expression runs once on that shared response — see WhenWithOutputSpec.Expression for boolean vs per-branch object return shapes.
 //
-// When context is "promotionstrategy", Branch is empty for the shared HTTP request and trigger expressions. Use PromotionStrategy (e.g. status environments) for branch-specific values. For description and url templates, {{ .Branch }} and {{ .Phase }} are set per environment when rendering that environment’s CommitStatus.
+// When context is "promotionstrategy", Branch is empty for the shared HTTP request and trigger expressions. Use PromotionStrategy (e.g. status environments) for branch-specific values. For description and url templates, {{ .Branch }} and {{ .Phase }} are set per environment when rendering that environment's CommitStatus.
 //
 // +kubebuilder:validation:ExactlyOneOf=polling;trigger
 type ModeSpec struct {
@@ -298,7 +298,7 @@ type ResponseOutputSpec struct {
 // Example: "https://api.example.com/validate/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
 //
 // Exactly one of Method or MethodTemplate must be set.
-// +kubebuilder:validation:XValidation:rule="(has(self.method) && self.method != ”) != (has(self.methodTemplate) && self.methodTemplate != ”)",message="exactly one of method or methodTemplate must be set"
+// +kubebuilder:validation:XValidation:rule="(has(self.method) && self.method != '') != (has(self.methodTemplate) && self.methodTemplate != '')",message="exactly one of method or methodTemplate must be set"
 type HTTPRequestSpec struct {
 	// URLTemplate is the HTTP endpoint to request.
 	// Supports Go templates (see HTTPRequestSpec for available variables).
