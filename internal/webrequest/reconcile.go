@@ -297,7 +297,7 @@ func marshalSuccessWhenOutput(
 // but this function also rejects an empty resolved method as a defense-in-depth measure for
 // in-flight resources during upgrade.
 func BuildRenderedHTTPRequestFromTemplates(wrcs *promoterv1alpha1.WebRequestCommitStatus, td TemplateData) (RenderedHTTPRequest, error) {
-	method := wrcs.Spec.HTTPRequest.Method
+	method := wrcs.Spec.HTTPRequest.Method //nolint:staticcheck // SA1019: deprecated fallback; MethodTemplate is preferred but Method is still read for backward compat.
 	if wrcs.Spec.HTTPRequest.MethodTemplate != "" {
 		renderedMethod, err := utils.RenderStringTemplate(wrcs.Spec.HTTPRequest.MethodTemplate, td)
 		if err != nil {

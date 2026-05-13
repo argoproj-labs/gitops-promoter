@@ -23,6 +23,12 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
+const (
+	methodGET         = "GET"
+	methodPOST        = "POST"
+	invalidGoTemplate = "{{ invalid"
+)
+
 var _ = Describe("BuildRenderedHTTPRequestFromTemplates", func() {
 	var (
 		wrcs *promoterv1alpha1.WebRequestCommitStatus
@@ -34,6 +40,10 @@ var _ = Describe("BuildRenderedHTTPRequestFromTemplates", func() {
 			Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 				HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
 					URLTemplate: "https://example.com",
+					// Default to a valid method so tests focused on URL/body/header rendering
+					// don't need to set one themselves. Tests that exercise method resolution
+					// override this explicitly.
+					MethodTemplate: methodGET,
 				},
 			},
 		}
@@ -42,7 +52,6 @@ var _ = Describe("BuildRenderedHTTPRequestFromTemplates", func() {
 
 	Describe("URL rendering", func() {
 		It("renders a URL template with TemplateData", func() {
-			wrcs.Spec.HTTPRequest.Method = "GET"
 			wrcs.Spec.HTTPRequest.URLTemplate = "https://example.com/{{ .Branch }}/end"
 
 			req, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
@@ -52,8 +61,7 @@ var _ = Describe("BuildRenderedHTTPRequestFromTemplates", func() {
 		})
 
 		It("wraps URL template parse errors", func() {
-			wrcs.Spec.HTTPRequest.Method = "GET"
-			wrcs.Spec.HTTPRequest.URLTemplate = "{{ invalid"
+			wrcs.Spec.HTTPRequest.URLTemplate = invalidGoTemplate
 
 			_, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
 
@@ -62,7 +70,6 @@ var _ = Describe("BuildRenderedHTTPRequestFromTemplates", func() {
 		})
 
 		It("propagates Branch onto the rendered request", func() {
-			wrcs.Spec.HTTPRequest.Method = "GET"
 			td.Branch = "prod"
 
 			req, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
@@ -74,8 +81,6 @@ var _ = Describe("BuildRenderedHTTPRequestFromTemplates", func() {
 
 	Describe("Body rendering", func() {
 		It("renders an empty body when BodyTemplate is unset", func() {
-			wrcs.Spec.HTTPRequest.Method = "POST"
-
 			req, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
 
 			Expect(err).ToNot(HaveOccurred())
@@ -83,7 +88,6 @@ var _ = Describe("BuildRenderedHTTPRequestFromTemplates", func() {
 		})
 
 		It("renders a body template with TemplateData", func() {
-			wrcs.Spec.HTTPRequest.Method = "POST"
 			wrcs.Spec.HTTPRequest.BodyTemplate = `{"branch": "{{ .Branch }}"}`
 
 			req, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
@@ -93,8 +97,7 @@ var _ = Describe("BuildRenderedHTTPRequestFromTemplates", func() {
 		})
 
 		It("wraps body template parse errors", func() {
-			wrcs.Spec.HTTPRequest.Method = "POST"
-			wrcs.Spec.HTTPRequest.BodyTemplate = "{{ invalid"
+			wrcs.Spec.HTTPRequest.BodyTemplate = invalidGoTemplate
 
 			_, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
 
@@ -105,8 +108,6 @@ var _ = Describe("BuildRenderedHTTPRequestFromTemplates", func() {
 
 	Describe("Headers rendering", func() {
 		It("renders nil Headers when no header templates are set", func() {
-			wrcs.Spec.HTTPRequest.Method = "GET"
-
 			req, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
 
 			Expect(err).ToNot(HaveOccurred())
@@ -114,7 +115,6 @@ var _ = Describe("BuildRenderedHTTPRequestFromTemplates", func() {
 		})
 
 		It("renders header templates with TemplateData", func() {
-			wrcs.Spec.HTTPRequest.Method = "GET"
 			wrcs.Spec.HTTPRequest.HeaderTemplates = map[string]string{
 				"X-Branch":     "{{ .Branch }}",
 				"Content-Type": "application/json",
@@ -128,9 +128,8 @@ var _ = Describe("BuildRenderedHTTPRequestFromTemplates", func() {
 		})
 
 		It("wraps header template parse errors and includes the header name", func() {
-			wrcs.Spec.HTTPRequest.Method = "GET"
 			wrcs.Spec.HTTPRequest.HeaderTemplates = map[string]string{
-				"X-Bad": "{{ invalid",
+				"X-Bad": invalidGoTemplate,
 			}
 
 			_, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
@@ -141,51 +140,36 @@ var _ = Describe("BuildRenderedHTTPRequestFromTemplates", func() {
 		})
 	})
 
-	Describe("static Method field", func() {
-		It("passes the static method through unchanged", func() {
-			wrcs.Spec.HTTPRequest.Method = "GET"
-
-			req, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
-
-			Expect(err).ToNot(HaveOccurred())
-			Expect(req.Method).To(Equal("GET"))
-			Expect(req.URL).To(Equal("https://example.com"))
-		})
-
-		It("accepts POST", func() {
-			wrcs.Spec.HTTPRequest.Method = "POST"
-
-			req, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
-
-			Expect(err).ToNot(HaveOccurred())
-			Expect(req.Method).To(Equal("POST"))
-		})
-
+	Describe("Method resolution", func() {
 		It("errors when neither Method nor MethodTemplate is set", func() {
+			wrcs.Spec.HTTPRequest.MethodTemplate = ""
+
 			_, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
 
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("invalid HTTP method"))
 		})
 
-		It("errors when Method is an unsupported value", func() {
-			wrcs.Spec.HTTPRequest.Method = "DELETE"
+		// Backward-compatibility coverage for the deprecated `Method` field.
+		It("renders the deprecated static Method field when MethodTemplate is unset", func() {
+			wrcs.Spec.HTTPRequest.MethodTemplate = ""
+			wrcs.Spec.HTTPRequest.Method = methodGET //nolint:staticcheck // SA1019: intentional deprecated-field regression coverage.
 
-			_, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
+			req, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
 
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("invalid HTTP method"))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(req.Method).To(Equal(methodGET))
 		})
 	})
 
 	Describe("MethodTemplate", func() {
+		// The BeforeEach already sets MethodTemplate to a constant "GET" so this trivially
+		// confirms rendering a constant template works.
 		It("renders a constant template", func() {
-			wrcs.Spec.HTTPRequest.MethodTemplate = "GET"
-
 			req, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
 
 			Expect(err).ToNot(HaveOccurred())
-			Expect(req.Method).To(Equal("GET"))
+			Expect(req.Method).To(Equal(methodGET))
 		})
 
 		DescribeTable("accepts every method allowed by the static enum",
@@ -197,8 +181,8 @@ var _ = Describe("BuildRenderedHTTPRequestFromTemplates", func() {
 				Expect(err).ToNot(HaveOccurred())
 				Expect(req.Method).To(Equal(method))
 			},
-			Entry("GET", "GET"),
-			Entry("POST", "POST"),
+			Entry(methodGET, methodGET),
+			Entry(methodPOST, methodPOST),
 			Entry("PUT", "PUT"),
 			Entry("PATCH", "PATCH"),
 		)
@@ -209,7 +193,7 @@ var _ = Describe("BuildRenderedHTTPRequestFromTemplates", func() {
 			req, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
 
 			Expect(err).ToNot(HaveOccurred())
-			Expect(req.Method).To(Equal("GET"))
+			Expect(req.Method).To(Equal(methodGET))
 		})
 
 		It("trims leading and trailing newlines produced by multi-line templates", func() {
@@ -220,7 +204,7 @@ var _ = Describe("BuildRenderedHTTPRequestFromTemplates", func() {
 			req, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
 
 			Expect(err).ToNot(HaveOccurred())
-			Expect(req.Method).To(Equal("POST"))
+			Expect(req.Method).To(Equal(methodPOST))
 		})
 
 		It("reads TemplateData fields beyond Branch (e.g. TriggerOutput) when rendering", func() {
@@ -246,13 +230,13 @@ var _ = Describe("BuildRenderedHTTPRequestFromTemplates", func() {
 			td.ResponseOutput = nil
 			req, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(req.Method).To(Equal("GET"))
+			Expect(req.Method).To(Equal(methodGET))
 
 			By("empty changeId → GET")
 			td.ResponseOutput = map[string]any{"changeId": ""}
 			req, err = BuildRenderedHTTPRequestFromTemplates(wrcs, td)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(req.Method).To(Equal("GET"))
+			Expect(req.Method).To(Equal(methodGET))
 		})
 
 		It("renders close POST when ResponseOutput.changeId is set", func() {
@@ -265,7 +249,7 @@ var _ = Describe("BuildRenderedHTTPRequestFromTemplates", func() {
 			req, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
 
 			Expect(err).ToNot(HaveOccurred())
-			Expect(req.Method).To(Equal("POST"))
+			Expect(req.Method).To(Equal(methodPOST))
 		})
 
 		It("errors when the template renders to an unsupported method", func() {
@@ -288,7 +272,7 @@ var _ = Describe("BuildRenderedHTTPRequestFromTemplates", func() {
 		})
 
 		It("errors when the template fails to parse", func() {
-			wrcs.Spec.HTTPRequest.MethodTemplate = "{{ invalid"
+			wrcs.Spec.HTTPRequest.MethodTemplate = invalidGoTemplate
 
 			_, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
 
@@ -299,13 +283,13 @@ var _ = Describe("BuildRenderedHTTPRequestFromTemplates", func() {
 		It("takes precedence over the static Method field when both are set", func() {
 			// The CRD CEL XValidation rule rejects this combination at admission time, but the
 			// renderer is defensive: if both are set, MethodTemplate wins.
-			wrcs.Spec.HTTPRequest.Method = "GET"
-			wrcs.Spec.HTTPRequest.MethodTemplate = "POST"
+			wrcs.Spec.HTTPRequest.Method = methodGET //nolint:staticcheck // SA1019: intentional both-fields-set precedence test.
+			wrcs.Spec.HTTPRequest.MethodTemplate = methodPOST
 
 			req, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
 
 			Expect(err).ToNot(HaveOccurred())
-			Expect(req.Method).To(Equal("POST"))
+			Expect(req.Method).To(Equal(methodPOST))
 		})
 	})
 })
