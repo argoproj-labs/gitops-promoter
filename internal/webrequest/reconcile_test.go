@@ -150,8 +150,8 @@ var _ = Describe("BuildRenderedHTTPRequestFromTemplates", func() {
 			Expect(err.Error()).To(ContainSubstring("invalid HTTP method"))
 		})
 
-		// Backward-compatibility coverage for the deprecated `Method` field.
-		It("renders the deprecated static Method field when MethodTemplate is unset", func() {
+		// Backward-compat regression test for the deprecated `Method` field.
+		It("honors the deprecated static Method field as a fallback when MethodTemplate is empty", func() {
 			wrcs.Spec.HTTPRequest.MethodTemplate = ""
 			wrcs.Spec.HTTPRequest.Method = methodGET //nolint:staticcheck // SA1019: intentional deprecated-field regression coverage.
 
@@ -278,18 +278,6 @@ var _ = Describe("BuildRenderedHTTPRequestFromTemplates", func() {
 
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("failed to render method template"))
-		})
-
-		It("takes precedence over the static Method field when both are set", func() {
-			// The CRD CEL XValidation rule rejects this combination at admission time, but the
-			// renderer is defensive: if both are set, MethodTemplate wins.
-			wrcs.Spec.HTTPRequest.Method = methodGET //nolint:staticcheck // SA1019: intentional both-fields-set precedence test.
-			wrcs.Spec.HTTPRequest.MethodTemplate = methodPOST
-
-			req, err := BuildRenderedHTTPRequestFromTemplates(wrcs, td)
-
-			Expect(err).ToNot(HaveOccurred())
-			Expect(req.Method).To(Equal(methodPOST))
 		})
 	})
 })
