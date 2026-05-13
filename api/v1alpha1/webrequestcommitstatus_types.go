@@ -298,7 +298,7 @@ type ResponseOutputSpec struct {
 // Example: "https://api.example.com/validate/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
 //
 // Exactly one of Method or MethodTemplate must be set.
-// +kubebuilder:validation:XValidation:rule="(has(self.method) && self.method != ”) != (has(self.methodTemplate) && self.methodTemplate != ”)",message="exactly one of method or methodTemplate must be set"
+// +kubebuilder:validation:XValidation:rule="(has(self.method) && self.method != '') != (has(self.methodTemplate) && self.methodTemplate != '')",message="exactly one of method or methodTemplate must be set"
 type HTTPRequestSpec struct {
 	// URLTemplate is the HTTP endpoint to request.
 	// Supports Go templates (see HTTPRequestSpec for available variables).
