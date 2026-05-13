@@ -10,7 +10,7 @@ spec:
   reportOn: proposed
   httpRequest:
     urlTemplate: "https://example.com/gate"
-    method: GET
+    methodTemplate: GET
     timeout: 30s
   success:
     when:

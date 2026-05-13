@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -31,6 +32,16 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
+
+// allowedHTTPMethods is the canonical set of HTTP methods accepted by HTTPRequestSpec.
+// It mirrors the +kubebuilder:validation:Enum on the static Method field and is enforced
+// at render time for MethodTemplate as well.
+var allowedHTTPMethods = map[string]struct{}{
+	"GET":   {},
+	"POST":  {},
+	"PUT":   {},
+	"PATCH": {},
+}
 
 // Reconciler runs WebRequestCommitStatus reconcile logic with injectable HTTP execution
 // and CommitStatus emission (controller: real HTTP + SSA upsert; simulator: mock HTTP + local render).
@@ -275,12 +286,32 @@ func marshalSuccessWhenOutput(
 	return marshalJSONMap(extractedData)
 }
 
-// BuildRenderedHTTPRequestFromTemplates renders URL, headers, and body from WebRequestCommitStatus HTTP templates.
-// Used by HTTPEXecutor implementations (controller HTTP transport and simulator rendered-request snapshots).
+// BuildRenderedHTTPRequestFromTemplates renders the HTTP method, URL, headers, and body from
+// WebRequestCommitStatus HTTP templates. Used by HTTPEXecutor implementations (controller HTTP
+// transport and simulator rendered-request snapshots).
+//
+// Method resolution: if MethodTemplate is set, it is rendered as a Go template, trimmed of
+// surrounding whitespace, and uppercased; otherwise the static Method field is used as-is.
+// The resulting method must be one of GET/POST/PUT/PATCH (matches the static Method enum).
+// CRD-level XValidation enforces that exactly one of Method / MethodTemplate is set on the spec,
+// but this function also rejects an empty resolved method as a defense-in-depth measure for
+// in-flight resources during upgrade.
 func BuildRenderedHTTPRequestFromTemplates(wrcs *promoterv1alpha1.WebRequestCommitStatus, td TemplateData) (RenderedHTTPRequest, error) {
+	method := wrcs.Spec.HTTPRequest.Method
+	if wrcs.Spec.HTTPRequest.MethodTemplate != "" {
+		renderedMethod, err := utils.RenderStringTemplate(wrcs.Spec.HTTPRequest.MethodTemplate, td)
+		if err != nil {
+			return RenderedHTTPRequest{}, fmt.Errorf("failed to render method template: %w", err)
+		}
+		method = strings.ToUpper(strings.TrimSpace(renderedMethod))
+	}
+	if _, ok := allowedHTTPMethods[method]; !ok {
+		return RenderedHTTPRequest{}, fmt.Errorf("invalid HTTP method %q (must be one of GET, POST, PUT, PATCH)", method)
+	}
+
 	req := RenderedHTTPRequest{
 		Branch: td.Branch,
-		Method: wrcs.Spec.HTTPRequest.Method,
+		Method: method,
 	}
 
 	url, err := utils.RenderStringTemplate(wrcs.Spec.HTTPRequest.URLTemplate, td)

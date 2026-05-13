@@ -59,6 +59,41 @@ Uses expressions to dynamically control when HTTP requests are made. Powerful fo
 - Can store and access custom state from success evaluation via `SuccessOutput` (via `success.when.output.expression`)
 - Always reconciles at `requeueDuration` interval (default: 1 minute)
 
+### HTTP method (`methodTemplate`)
+
+Set the HTTP method via **`spec.httpRequest.methodTemplate`**. A literal value such as `methodTemplate: GET` works identically to a fixed method; Go-template syntax lets the method vary by reconcile state when needed (for example, alternating endpoints in a search-then-act flow).
+
+`methodTemplate` accepts the same template variables and Sprig function set as `urlTemplate`, `bodyTemplate`, and `headerTemplates` (`TriggerOutput`, `ResponseOutput`, `SuccessOutput`, `TriggerVariables`, `SuccessVariables`, `NamespaceMetadata.Labels`, etc.). It is rendered **before** the HTTP request, so it never sees the response from the request being built.
+
+After rendering, the controller:
+
+1. Trims surrounding whitespace,
+2. Uppercases the result, and
+3. Validates the final value is one of `GET`, `POST`, `PUT`, `PATCH`.
+
+If the rendered method is empty or not in that set, the reconcile errors and the request is not made.
+
+**Example — alternate between GET (search) and POST (close) within a single WRCS:**
+
+```yaml
+spec:
+  httpRequest:
+    methodTemplate: |
+      {{- if .ResponseOutput -}}
+        {{- $cid := index .ResponseOutput "changeId" -}}
+        {{- if and $cid (ne $cid "") -}}POST{{- else -}}GET{{- end -}}
+      {{- else -}}
+        GET
+      {{- end -}}
+    urlTemplate: ...
+    bodyTemplate: ...
+```
+
+Pair this with `urlTemplate` and `bodyTemplate` that branch on the same condition (e.g. `ResponseOutput.changeId`) so the entire request — method, URL, and body — flips together between the two endpoints.
+
+> [!NOTE]
+> A separate **`method`** field exists for backward compatibility but is **deprecated**. The CRD enforces "exactly one of `method` or `methodTemplate`" via an `x-kubernetes-validations` rule. New resources should use `methodTemplate` (it accepts plain literals like `methodTemplate: GET`). `method` may be removed in a future release.
+
 ### Shared trigger and success expr (`when.variables`)
 
 Optional **`when.variables`** (same shape as `when.output`: an `expression` string) runs **once per evaluation** of that `when` block, **before** `when.expression` and optional `when.output.expression`. It must return a **JSON object** (expr map). The result is injected as top-level binding **`Variables`** for those two expressions only.
@@ -204,7 +239,7 @@ spec:
   descriptionTemplate: 'Gate ({{ .Phase }}) for {{ index .TriggerVariables "currentSha" }}'
   httpRequest:
     urlTemplate: "https://hooks.example.com/promo/{{ .Branch }}"
-    method: GET
+    methodTemplate: GET
     timeout: 30s
   success:
     when:
@@ -246,7 +281,7 @@ spec:
   urlTemplate: 'https://ci.example.com/runs/{{ index .SuccessVariables "runId" }}'
   httpRequest:
     urlTemplate: "https://ci.example.com/api/v1/builds/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
-    method: GET
+    methodTemplate: GET
   success:
     when:
       variables:
@@ -291,7 +326,7 @@ spec:
   reportOn: proposed
   httpRequest:
     urlTemplate: "https://deployments.example.com/api/v1/apps/{{ .PromotionStrategy.Spec.RepositoryReference.Name }}/pipeline-status"
-    method: GET
+    methodTemplate: GET
     authentication:
       bearer:
         secretRef:
@@ -322,7 +357,7 @@ spec:
   reportOn: proposed
   httpRequest:
     urlTemplate: "https://orchestrator.example.com/status?app={{ .PromotionStrategy.Spec.RepositoryReference.Name }}"
-    method: GET
+    methodTemplate: GET
   success:
     when:
       expression: |
@@ -379,7 +414,7 @@ spec:
   reportOn: proposed
   httpRequest:
     urlTemplate: "https://approvals.example.com/api/check/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
-    method: GET
+    methodTemplate: GET
     timeout: 30s
   success:
     when:
@@ -406,7 +441,7 @@ spec:
   urlTemplate: "https://dashboard.example.com/changes/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
   httpRequest:
     urlTemplate: "https://api.example.com/v1/changes/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}/status"
-    method: GET
+    methodTemplate: GET
     headerTemplates:
       Content-Type: "application/json"
     authentication:
@@ -445,7 +480,7 @@ spec:
   descriptionTemplate: "Checking deployment {{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha | trunc 7 }}{{ end }}{{ end }} ({{ .Phase }})"
   httpRequest:
     urlTemplate: "https://monitoring.example.com/api/deployment/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
-    method: GET
+    methodTemplate: GET
   success:
     when:
       expression: "Response.StatusCode == 200 && Response.Body.ready == true"
@@ -475,7 +510,7 @@ spec:
   reportOn: proposed
   httpRequest:
     urlTemplate: "https://api.example.com/validate/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
-    method: GET
+    methodTemplate: GET
   success:
     when:
       expression: "Response.StatusCode == 200"
@@ -506,7 +541,7 @@ spec:
   descriptionTemplate: "Progressive validation (attempt {{ index .TriggerOutput \"attemptCount\" | default 0 }})"
   httpRequest:
     urlTemplate: "https://validation.example.com/api/check/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
-    method: GET
+    methodTemplate: GET
   success:
     when:
       expression: "Response.StatusCode == 200 && Response.Body.validated == true"
@@ -547,7 +582,7 @@ spec:
   descriptionTemplate: "Approved by {{ index .SuccessOutput \"approver\" | default \"pending\" }}"
   httpRequest:
     urlTemplate: "https://approvals.example.com/api/check/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
-    method: GET
+    methodTemplate: GET
   mode:
     trigger:
       requeueDuration: 1m
@@ -586,7 +621,7 @@ spec:
   descriptionTemplate: "Checking compliance for {{ .Branch }}"
   httpRequest:
     urlTemplate: "https://compliance.example.com/api/v1/validate"
-    method: POST
+    methodTemplate: POST
     headerTemplates:
       Content-Type: "application/json"
       X-Environment: "{{ .Branch }}"
@@ -637,7 +672,7 @@ spec:
   descriptionTemplate: "Enterprise approval check"
   httpRequest:
     urlTemplate: "https://api.enterprise.com/v2/deployments/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}/approval"
-    method: GET
+    methodTemplate: GET
     authentication:
       oauth2:
         tokenURL: "https://auth.enterprise.com/oauth/token"
@@ -677,7 +712,7 @@ spec:
   descriptionTemplate: "Secure validation check"
   httpRequest:
     urlTemplate: "https://secure.internal.company.com/api/validate/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
-    method: GET
+    methodTemplate: GET
     authentication:
       tls:
         secretRef:
@@ -728,7 +763,7 @@ spec:
   descriptionTemplate: "GitHub required statuses: {{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha | trunc 7 }}{{ end }}{{ end }}"
   httpRequest:
     urlTemplate: "https://api.github.com/repos/my-org/my-repo/commits/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}/check-runs?filter=latest"
-    method: GET
+    methodTemplate: GET
     headerTemplates:
       Accept: "application/vnd.github+json"
       X-GitHub-Api-Version: "2022-11-28"
@@ -764,7 +799,7 @@ spec:
   reportOn: active  # Monitor what's currently deployed
   httpRequest:
     urlTemplate: "https://monitoring.example.com/health/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Active.Hydrated.Sha }}{{ end }}{{ end }}"
-    method: GET
+    methodTemplate: GET
   success:
     when:
       expression: "Response.StatusCode == 200 && Response.Body.errorRate < 0.01"
@@ -790,7 +825,7 @@ spec:
   reportOn: proposed
   httpRequest:
     urlTemplate: "https://api.example.com/comprehensive-check/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
-    method: GET
+    methodTemplate: GET
   success:
     when:
       expression: |
@@ -821,7 +856,7 @@ spec:
   descriptionTemplate: "Waiting for {{ index .NamespaceMetadata.Labels \"team\" }} approval"
   httpRequest:
     urlTemplate: "https://approvals.example.com/api/check"
-    method: POST
+    methodTemplate: POST
     headerTemplates:
       X-Team-ID: "{{ index .NamespaceMetadata.Labels \"team-id\" }}"
       X-Cost-Center: "{{ index .NamespaceMetadata.Annotations \"cost-center\" }}"
@@ -888,7 +923,7 @@ spec:
   reportOn: proposed
   httpRequest:
     urlTemplate: "https://approvals.example.com/api/check/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
-    method: GET
+    methodTemplate: GET
     authentication:
       bearer:
         secretRef:
@@ -942,7 +977,7 @@ spec:
   reportOn: proposed
   httpRequest:
     urlTemplate: "https://approvals.example.com/api/status?app={{ .PromotionStrategy.Spec.RepositoryReference.Name }}"
-    method: GET
+    methodTemplate: GET
   success:
     when:
       expression: |

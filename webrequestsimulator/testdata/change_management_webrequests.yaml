@@ -12,7 +12,7 @@ spec:
     {{ .Phase }}: {{ if .ResponseOutput }}{{- $o := .ResponseOutput -}}{{- $cr := index $o "changeRequest" -}}{{ index $o "changeId" | default "—" }}
     (HTTP {{ index $o "statusCode" }}) · {{ if $cr }}{{ index $cr "start_time" | default "—" }}{{ else }}—{{ end }} → {{ if $cr }}{{ index $cr "end_time" | default "—" }}{{ else }}—{{ end }} · {{ if $cr }}{{ index $cr "short_description" | default "—" }}{{ else }}—{{ end }}{{ else }}open change request for note dry SHA{{ end }}
   httpRequest:
-    method: POST
+    methodTemplate: POST
     timeout: 30s
     headerTemplates:
       Accept: application/json
@@ -179,7 +179,7 @@ spec:
     .ResponseOutput.lastCheckedAt | default "—" }}){{ else }}checking for approved change
     records in current time window{{ end }}
   httpRequest:
-    method: GET
+    methodTemplate: GET
     timeout: 30s
     headerTemplates:
       Accept: application/json
