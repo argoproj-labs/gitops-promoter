@@ -95,6 +95,53 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
+              detailUrl:
+                description: |-
+                  DetailURL renders the UI-facing deep link stored on CommitStatus.spec.detailUrl.
+                  Same template variables and helpers as URL. The template may render to either
+                  an absolute http(s) URL or a root-relative URL beginning with "/" (the latter
+                  is convenient when the link is always followed from the Argo CD UI of the
+                  correct instance, avoiding per-instance base-URL plumbing).
+                properties:
+                  options:
+                    description: "Options sets options for the template. Options are
+                      described by\nstrings, either a simple string or \"key=value\".
+                      There can be at\nmost one equals sign in an option string. If
+                      the option string\nis unrecognized or otherwise invalid, Option
+                      panics.\n\nKnown options:\n\nmissingkey: Control the behavior
+                      during execution if a map is\nindexed with a key that is not
+                      present in the map.\n\n\t\"missingkey=default\" or \"missingkey=invalid\"\n\t\tThe
+                      default behavior: Do nothing and continue execution.\n\t\tIf
+                      printed, the result of the index operation is the string\n\t\t\"<no
+                      value>\".\n\t\"missingkey=zero\"\n\t\tThe operation returns
+                      the zero value for the map type's element.\n\t\"missingkey=error\"\n\t\tExecution
+                      stops immediately with an error."
+                    items:
+                      type: string
+                    type: array
+                  template:
+                    description: |-
+                      Template is a go text template and receives .Environment and .ArgoCDCommitStatus variables. A function called urlQueryEscape
+                      is available to escape url query parameters. The template can be configured with options to control the behavior
+                      during execution if a variable is not present.
+
+                      Example:
+
+                        {{- $baseURL := "https://dev.argocd.local" -}}
+                        {{- if eq .Environment "environment/development" -}}
+                        {{- $baseURL = "https://dev.argocd.local" -}}
+                        {{- else if eq .Environment "environment/staging" -}}
+                        {{- $baseURL = "https://staging.argocd.local" -}}
+                        {{- else if eq .Environment "environment/production" -}}
+                        {{- $baseURL = "https://prod.argocd.local" -}}
+                        {{- end -}}
+                        {{- $labels := "" -}}
+                        {{- range $key, $value := .ArgoCDCommitStatus.Spec.ApplicationSelector.MatchLabels -}}
+                        {{- $labels = printf "%s%s=%s," $labels $key $value -}}
+                        {{- end -}}
+                        {{ printf "%s/applications?labels=%s" $baseURL (urlQueryEscape $labels) }}
+                    type: string
+                type: object
               promotionStrategyRef:
                 description: PromotionStrategyRef is a reference to the promotion
                   strategy that this commit status applies to.
@@ -109,8 +156,10 @@ spec:
                 - name
                 type: object
               url:
-                description: URL generates the URL to use in the CommitStatus, for
-                  example a link to the Argo CD UI.
+                description: |-
+                  URL renders the SCM-facing URL stored on CommitStatus.spec.url. It is
+                  forwarded to the SCM provider's commit-status details_url / target_url
+                  field, so the template must render to an absolute http(s) URL.
                 properties:
                   options:
                     description: "Options sets options for the template. Options are

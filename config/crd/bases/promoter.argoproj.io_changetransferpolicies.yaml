@@ -140,6 +140,15 @@ spec:
                           description: Description is the description of the commit
                             status
                           type: string
+                        detailUrl:
+                          description: |-
+                            DetailUrl is the UI-facing deep link of the commit status (mirrors
+                            CommitStatus.spec.detailUrl). May be empty, an absolute http(s) URL, or a
+                            root-relative URL beginning with "/" (but not protocol-relative).
+                            Only the regex pattern is enforced here (see Url for the rationale).
+                          maxLength: 512
+                          pattern: ^(|/[^/].*|/|https?://.*)$
+                          type: string
                         key:
                           description: Key staging hydrated branch
                           maxLength: 63
@@ -154,12 +163,15 @@ spec:
                           - failure
                           type: string
                         url:
-                          description: Url is the URL of the commit status
+                          description: |-
+                            Url is the SCM-facing URL of the commit status (mirrors CommitStatus.spec.url).
+                            Only the regex pattern is enforced here; the CEL rule that backs
+                            CommitStatus.spec.url is omitted to keep the CRD's total CEL cost within
+                            the per-schema budget (this field is embedded multiple times in the
+                            PromotionStrategy status, multiplying the cost).
+                          maxLength: 512
                           pattern: ^(https?://.*)?$
                           type: string
-                          x-kubernetes-validations:
-                          - message: must be a valid URL
-                            rule: self == '' || isURL(self)
                       required:
                       - key
                       - phase
@@ -495,6 +507,15 @@ spec:
                                 description: Description is the description of the
                                   commit status
                                 type: string
+                              detailUrl:
+                                description: |-
+                                  DetailUrl is the UI-facing deep link of the commit status (mirrors
+                                  CommitStatus.spec.detailUrl). May be empty, an absolute http(s) URL, or a
+                                  root-relative URL beginning with "/" (but not protocol-relative).
+                                  Only the regex pattern is enforced here (see Url for the rationale).
+                                maxLength: 512
+                                pattern: ^(|/[^/].*|/|https?://.*)$
+                                type: string
                               key:
                                 description: Key staging hydrated branch
                                 maxLength: 63
@@ -509,12 +530,15 @@ spec:
                                 - failure
                                 type: string
                               url:
-                                description: Url is the URL of the commit status
+                                description: |-
+                                  Url is the SCM-facing URL of the commit status (mirrors CommitStatus.spec.url).
+                                  Only the regex pattern is enforced here; the CEL rule that backs
+                                  CommitStatus.spec.url is omitted to keep the CRD's total CEL cost within
+                                  the per-schema budget (this field is embedded multiple times in the
+                                  PromotionStrategy status, multiplying the cost).
+                                maxLength: 512
                                 pattern: ^(https?://.*)?$
                                 type: string
-                                x-kubernetes-validations:
-                                - message: must be a valid URL
-                                  rule: self == '' || isURL(self)
                             required:
                             - key
                             - phase
@@ -787,6 +811,15 @@ spec:
                                 description: Description is the description of the
                                   commit status
                                 type: string
+                              detailUrl:
+                                description: |-
+                                  DetailUrl is the UI-facing deep link of the commit status (mirrors
+                                  CommitStatus.spec.detailUrl). May be empty, an absolute http(s) URL, or a
+                                  root-relative URL beginning with "/" (but not protocol-relative).
+                                  Only the regex pattern is enforced here (see Url for the rationale).
+                                maxLength: 512
+                                pattern: ^(|/[^/].*|/|https?://.*)$
+                                type: string
                               key:
                                 description: Key staging hydrated branch
                                 maxLength: 63
@@ -801,12 +834,15 @@ spec:
                                 - failure
                                 type: string
                               url:
-                                description: Url is the URL of the commit status
+                                description: |-
+                                  Url is the SCM-facing URL of the commit status (mirrors CommitStatus.spec.url).
+                                  Only the regex pattern is enforced here; the CEL rule that backs
+                                  CommitStatus.spec.url is omitted to keep the CRD's total CEL cost within
+                                  the per-schema budget (this field is embedded multiple times in the
+                                  PromotionStrategy status, multiplying the cost).
+                                maxLength: 512
                                 pattern: ^(https?://.*)?$
                                 type: string
-                                x-kubernetes-validations:
-                                - message: must be a valid URL
-                                  rule: self == '' || isURL(self)
                             required:
                             - key
                             - phase
@@ -965,6 +1001,15 @@ spec:
                           description: Description is the description of the commit
                             status
                           type: string
+                        detailUrl:
+                          description: |-
+                            DetailUrl is the UI-facing deep link of the commit status (mirrors
+                            CommitStatus.spec.detailUrl). May be empty, an absolute http(s) URL, or a
+                            root-relative URL beginning with "/" (but not protocol-relative).
+                            Only the regex pattern is enforced here (see Url for the rationale).
+                          maxLength: 512
+                          pattern: ^(|/[^/].*|/|https?://.*)$
+                          type: string
                         key:
                           description: Key staging hydrated branch
                           maxLength: 63
@@ -979,12 +1024,15 @@ spec:
                           - failure
                           type: string
                         url:
-                          description: Url is the URL of the commit status
+                          description: |-
+                            Url is the SCM-facing URL of the commit status (mirrors CommitStatus.spec.url).
+                            Only the regex pattern is enforced here; the CEL rule that backs
+                            CommitStatus.spec.url is omitted to keep the CRD's total CEL cost within
+                            the per-schema budget (this field is embedded multiple times in the
+                            PromotionStrategy status, multiplying the cost).
+                          maxLength: 512
                           pattern: ^(https?://.*)?$
                           type: string
-                          x-kubernetes-validations:
-                          - message: must be a valid URL
-                            rule: self == '' || isURL(self)
                       required:
                       - key
                       - phase

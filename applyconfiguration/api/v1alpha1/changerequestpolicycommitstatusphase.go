@@ -26,8 +26,17 @@ type ChangeRequestPolicyCommitStatusPhaseApplyConfiguration struct {
 	Key *string `json:"key,omitempty"`
 	// Phase what phase is the status in
 	Phase *string `json:"phase,omitempty"`
-	// Url is the URL of the commit status
+	// Url is the SCM-facing URL of the commit status (mirrors CommitStatus.spec.url).
+	// Only the regex pattern is enforced here; the CEL rule that backs
+	// CommitStatus.spec.url is omitted to keep the CRD's total CEL cost within
+	// the per-schema budget (this field is embedded multiple times in the
+	// PromotionStrategy status, multiplying the cost).
 	Url *string `json:"url,omitempty"`
+	// DetailUrl is the UI-facing deep link of the commit status (mirrors
+	// CommitStatus.spec.detailUrl). May be empty, an absolute http(s) URL, or a
+	// root-relative URL beginning with "/" (but not protocol-relative).
+	// Only the regex pattern is enforced here (see Url for the rationale).
+	DetailUrl *string `json:"detailUrl,omitempty"`
 	// Description is the description of the commit status
 	Description *string `json:"description,omitempty"`
 }
@@ -59,6 +68,14 @@ func (b *ChangeRequestPolicyCommitStatusPhaseApplyConfiguration) WithPhase(value
 // If called multiple times, the Url field is set to the value of the last call.
 func (b *ChangeRequestPolicyCommitStatusPhaseApplyConfiguration) WithUrl(value string) *ChangeRequestPolicyCommitStatusPhaseApplyConfiguration {
 	b.Url = &value
+	return b
+}
+
+// WithDetailUrl sets the DetailUrl field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the DetailUrl field is set to the value of the last call.
+func (b *ChangeRequestPolicyCommitStatusPhaseApplyConfiguration) WithDetailUrl(value string) *ChangeRequestPolicyCommitStatusPhaseApplyConfiguration {
+	b.DetailUrl = &value
 	return b
 }
 

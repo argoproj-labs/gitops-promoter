@@ -64,6 +64,19 @@ spec:
                   Use an action-oriented message to convey that the system is actively working. For example,
                   "Waiting for approval" instead of "Approval pending."
                 type: string
+              detailUrl:
+                description: |-
+                  DetailUrl is the UI-facing deep link surfaced by the GitOps Promoter UI
+                  extension's "View Details" anchor. It may be empty, an absolute http(s) URL,
+                  or a root-relative URL beginning with "/" (but not protocol-relative
+                  "//host/..."). When empty, the UI falls back to Url.
+                maxLength: 512
+                pattern: ^(|/[^/].*|/|https?://.*)$
+                type: string
+                x-kubernetes-validations:
+                - message: must be a valid http(s) URL or a root-relative URL beginning
+                    with /
+                  rule: self == '' || isURL(self) || (self.startsWith('/') && !self.startsWith('//'))
               gitRepositoryRef:
                 description: ObjectReference is a reference to an object by name.
                   It is used to refer to objects in the same namespace.
@@ -99,8 +112,10 @@ spec:
                 pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
                 type: string
               url:
-                description: Url is a URL that the user can follow to see more details
-                  about the status
+                description: |-
+                  Url is the SCM-facing URL forwarded to the SCM provider's commit-status
+                  details_url / target_url field. Must be empty or an absolute http(s) URL.
+                maxLength: 512
                 pattern: ^(https?://.*)?$
                 type: string
                 x-kubernetes-validations:

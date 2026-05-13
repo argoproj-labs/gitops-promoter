@@ -59,11 +59,23 @@ type CommitStatusSpec struct {
 	// (Gitlab: pending, running, success, failed, canceled)
 	// (Bitbucket Cloud: INPROGRESS, STOPPED, SUCCESSFUL, FAILED)
 
-	// Url is a URL that the user can follow to see more details about the status
+	// Url is the SCM-facing URL forwarded to the SCM provider's commit-status
+	// details_url / target_url field. Must be empty or an absolute http(s) URL.
 	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxLength=512
 	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"
 	// +kubebuilder:validation:Pattern="^(https?://.*)?$"
 	Url string `json:"url,omitempty"`
+
+	// DetailUrl is the UI-facing deep link surfaced by the GitOps Promoter UI
+	// extension's "View Details" anchor. It may be empty, an absolute http(s) URL,
+	// or a root-relative URL beginning with "/" (but not protocol-relative
+	// "//host/..."). When empty, the UI falls back to Url.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxLength=512
+	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self) || (self.startsWith('/') && !self.startsWith('//'))",message="must be a valid http(s) URL or a root-relative URL beginning with /"
+	// +kubebuilder:validation:Pattern="^(|/[^/].*|/|https?://.*)$"
+	DetailUrl string `json:"detailUrl,omitempty"`
 }
 
 // CommitStatusStatus defines the observed state of CommitStatus

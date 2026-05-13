@@ -41,8 +41,14 @@ type CommitStatusSpecApplyConfiguration struct {
 	Description *string `json:"description,omitempty"`
 	// Phase is the state of the commit status. This will be mapped to the appropriate equivalent in the SCM.
 	Phase *apiv1alpha1.CommitStatusPhase `json:"phase,omitempty"`
-	// Url is a URL that the user can follow to see more details about the status
+	// Url is the SCM-facing URL forwarded to the SCM provider's commit-status
+	// details_url / target_url field. Must be empty or an absolute http(s) URL.
 	Url *string `json:"url,omitempty"`
+	// DetailUrl is the UI-facing deep link surfaced by the GitOps Promoter UI
+	// extension's "View Details" anchor. It may be empty, an absolute http(s) URL,
+	// or a root-relative URL beginning with "/" (but not protocol-relative
+	// "//host/..."). When empty, the UI falls back to Url.
+	DetailUrl *string `json:"detailUrl,omitempty"`
 }
 
 // CommitStatusSpecApplyConfiguration constructs a declarative configuration of the CommitStatusSpec type for use with
@@ -96,5 +102,13 @@ func (b *CommitStatusSpecApplyConfiguration) WithPhase(value apiv1alpha1.CommitS
 // If called multiple times, the Url field is set to the value of the last call.
 func (b *CommitStatusSpecApplyConfiguration) WithUrl(value string) *CommitStatusSpecApplyConfiguration {
 	b.Url = &value
+	return b
+}
+
+// WithDetailUrl sets the DetailUrl field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the DetailUrl field is set to the value of the last call.
+func (b *CommitStatusSpecApplyConfiguration) WithDetailUrl(value string) *CommitStatusSpecApplyConfiguration {
+	b.DetailUrl = &value
 	return b
 }

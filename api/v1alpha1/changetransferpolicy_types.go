@@ -73,10 +73,22 @@ type ChangeRequestPolicyCommitStatusPhase struct {
 	// +kubebuilder:validation:Enum:=pending;success;failure
 	Phase string `json:"phase"`
 
-	// Url is the URL of the commit status
-	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"
+	// Url is the SCM-facing URL of the commit status (mirrors CommitStatus.spec.url).
+	// Only the regex pattern is enforced here; the CEL rule that backs
+	// CommitStatus.spec.url is omitted to keep the CRD's total CEL cost within
+	// the per-schema budget (this field is embedded multiple times in the
+	// PromotionStrategy status, multiplying the cost).
+	// +kubebuilder:validation:MaxLength=512
 	// +kubebuilder:validation:Pattern="^(https?://.*)?$"
 	Url string `json:"url,omitempty"`
+
+	// DetailUrl is the UI-facing deep link of the commit status (mirrors
+	// CommitStatus.spec.detailUrl). May be empty, an absolute http(s) URL, or a
+	// root-relative URL beginning with "/" (but not protocol-relative).
+	// Only the regex pattern is enforced here (see Url for the rationale).
+	// +kubebuilder:validation:MaxLength=512
+	// +kubebuilder:validation:Pattern="^(|/[^/].*|/|https?://.*)$"
+	DetailUrl string `json:"detailUrl,omitempty"`
 
 	// Description is the description of the commit status
 	Description string `json:"description,omitempty"`

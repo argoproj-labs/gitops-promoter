@@ -33,9 +33,19 @@ type ArgoCDCommitStatusSpec struct {
 	// +kubebuilder:validation:Required
 	ApplicationSelector *metav1.LabelSelector `json:"applicationSelector,omitempty"`
 
-	// URL generates the URL to use in the CommitStatus, for example a link to the Argo CD UI.
+	// URL renders the SCM-facing URL stored on CommitStatus.spec.url. It is
+	// forwarded to the SCM provider's commit-status details_url / target_url
+	// field, so the template must render to an absolute http(s) URL.
 	// +kubebuilder:validation:Optional
 	URL URLConfig `json:"url,omitempty"`
+
+	// DetailURL renders the UI-facing deep link stored on CommitStatus.spec.detailUrl.
+	// Same template variables and helpers as URL. The template may render to either
+	// an absolute http(s) URL or a root-relative URL beginning with "/" (the latter
+	// is convenient when the link is always followed from the Argo CD UI of the
+	// correct instance, avoiding per-instance base-URL plumbing).
+	// +kubebuilder:validation:Optional
+	DetailURL URLConfig `json:"detailUrl,omitempty"`
 }
 
 // URLConfig is a template that can be rendered using the Go template engine.

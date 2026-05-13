@@ -32,8 +32,16 @@ type ArgoCDCommitStatusSpecApplyConfiguration struct {
 	PromotionStrategyRef *ObjectReferenceApplyConfiguration `json:"promotionStrategyRef,omitempty"`
 	// ApplicationSelector is a label selector that selects the Argo CD applications to which this commit status applies.
 	ApplicationSelector *v1.LabelSelectorApplyConfiguration `json:"applicationSelector,omitempty"`
-	// URL generates the URL to use in the CommitStatus, for example a link to the Argo CD UI.
+	// URL renders the SCM-facing URL stored on CommitStatus.spec.url. It is
+	// forwarded to the SCM provider's commit-status details_url / target_url
+	// field, so the template must render to an absolute http(s) URL.
 	URL *URLConfigApplyConfiguration `json:"url,omitempty"`
+	// DetailURL renders the UI-facing deep link stored on CommitStatus.spec.detailUrl.
+	// Same template variables and helpers as URL. The template may render to either
+	// an absolute http(s) URL or a root-relative URL beginning with "/" (the latter
+	// is convenient when the link is always followed from the Argo CD UI of the
+	// correct instance, avoiding per-instance base-URL plumbing).
+	DetailURL *URLConfigApplyConfiguration `json:"detailUrl,omitempty"`
 }
 
 // ArgoCDCommitStatusSpecApplyConfiguration constructs a declarative configuration of the ArgoCDCommitStatusSpec type for use with
@@ -63,5 +71,13 @@ func (b *ArgoCDCommitStatusSpecApplyConfiguration) WithApplicationSelector(value
 // If called multiple times, the URL field is set to the value of the last call.
 func (b *ArgoCDCommitStatusSpecApplyConfiguration) WithURL(value *URLConfigApplyConfiguration) *ArgoCDCommitStatusSpecApplyConfiguration {
 	b.URL = value
+	return b
+}
+
+// WithDetailURL sets the DetailURL field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the DetailURL field is set to the value of the last call.
+func (b *ArgoCDCommitStatusSpecApplyConfiguration) WithDetailURL(value *URLConfigApplyConfiguration) *ArgoCDCommitStatusSpecApplyConfiguration {
+	b.DetailURL = value
 	return b
 }
