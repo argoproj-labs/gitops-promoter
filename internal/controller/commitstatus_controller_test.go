@@ -365,6 +365,100 @@ var _ = Describe("CommitStatus Controller", func() {
 				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
 			})
+
+			It("should reject a Url with a root-relative path (strict http(s) only)", func() {
+				By("Attempting to create a CommitStatus with a root-relative spec.url")
+
+				scmSecret, scmProvider, gitRepo, commitStatus := commitStatusResources(ctx, "test-url-root-relative")
+				commitStatus.Spec.Url = "/applications?labels=foo"
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+
+				err := k8sClient.Create(ctx, commitStatus)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(Or(
+					ContainSubstring("must be a valid URL"),
+					ContainSubstring("in body should match"),
+				))
+
+				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+			})
+		})
+
+		Context("When validating detailUrl", func() {
+			It("should accept an absolute https detailUrl", func() {
+				scmSecret, scmProvider, gitRepo, commitStatus := commitStatusResources(ctx, "test-detailurl-https")
+				commitStatus.Spec.DetailUrl = "https://argocd.example.com/applications/foo"
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
+
+				Expect(k8sClient.Delete(ctx, commitStatus)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+			})
+
+			It("should accept a root-relative detailUrl", func() {
+				scmSecret, scmProvider, gitRepo, commitStatus := commitStatusResources(ctx, "test-detailurl-relative")
+				commitStatus.Spec.DetailUrl = "/applications?labels=foo%3Dbar"
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
+
+				Expect(k8sClient.Delete(ctx, commitStatus)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+			})
+
+			It("should reject a detailUrl with ftp:// scheme", func() {
+				scmSecret, scmProvider, gitRepo, commitStatus := commitStatusResources(ctx, "test-detailurl-ftp")
+				commitStatus.Spec.DetailUrl = "ftp://example.com/x"
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+
+				err := k8sClient.Create(ctx, commitStatus)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(Or(
+					ContainSubstring("must be a valid"),
+					ContainSubstring("in body should match"),
+				))
+
+				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+			})
+
+			It("should reject a protocol-relative detailUrl", func() {
+				scmSecret, scmProvider, gitRepo, commitStatus := commitStatusResources(ctx, "test-detailurl-protorel")
+				commitStatus.Spec.DetailUrl = "//evil.example.com/x"
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+
+				err := k8sClient.Create(ctx, commitStatus)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(Or(
+					ContainSubstring("must be a valid"),
+					ContainSubstring("in body should match"),
+				))
+
+				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+			})
 		})
 	})
 })
