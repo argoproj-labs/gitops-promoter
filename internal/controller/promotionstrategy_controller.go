@@ -560,10 +560,12 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 	kind := reflect.TypeOf(promoterv1alpha1.ChangeTransferPolicy{}).Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
-	// If there is only one commit status, use the URL from that commit status.
+	// If there is only one commit status, use the URL and detailUrl from that commit status.
 	var url string
+	var detailUrl string
 	if len(previousCRPCSPhases) == 1 {
 		url = previousCRPCSPhases[0].Url
+		detailUrl = previousCRPCSPhases[0].DetailUrl
 	}
 
 	statusMap := make(map[string]string)
@@ -602,7 +604,8 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 			WithName(previousEnvironmentBranch + " - synced and healthy").
 			WithDescription(description).
 			WithPhase(phase).
-			WithUrl(url))
+			WithUrl(url).
+			WithDetailUrl(detailUrl))
 
 	// Apply using Server-Side Apply with Patch to get the result directly
 	commitStatus := &promoterv1alpha1.CommitStatus{}

@@ -344,10 +344,16 @@ func (r *ChangeTransferPolicyReconciler) populateCommitStatuses(ctx context.Cont
 			log.FromContext(ctx).Error(errors.New("invalid URL"), "active commit status URL does not start with http:// or https://", "url", url, "key", key)
 			url = ""
 		}
+		detailUrl := getFirstTrailerValue(activeTrailers, constants.TrailerCommitStatusActivePrefix+key+"-detailurl")
+		if detailUrl != "" && !isAcceptableDetailURL(detailUrl) {
+			log.FromContext(ctx).Error(errors.New("invalid URL"), "active commit status detailUrl is not an absolute http(s) URL or root-relative path", "detailUrl", detailUrl, "key", key)
+			detailUrl = ""
+		}
 		h.Active.CommitStatuses = append(h.Active.CommitStatuses, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
-			Key:   key,
-			Phase: getFirstTrailerValue(activeTrailers, constants.TrailerCommitStatusActivePrefix+key+"-phase"),
-			Url:   url,
+			Key:       key,
+			Phase:     getFirstTrailerValue(activeTrailers, constants.TrailerCommitStatusActivePrefix+key+"-phase"),
+			Url:       url,
+			DetailUrl: detailUrl,
 		})
 	}
 
@@ -358,12 +364,31 @@ func (r *ChangeTransferPolicyReconciler) populateCommitStatuses(ctx context.Cont
 			log.FromContext(ctx).Error(errors.New("invalid URL"), "proposed commit status URL does not start with http:// or https://", "url", url, "key", key)
 			url = ""
 		}
+		detailUrl := getFirstTrailerValue(activeTrailers, constants.TrailerCommitStatusProposedPrefix+key+"-detailurl")
+		if detailUrl != "" && !isAcceptableDetailURL(detailUrl) {
+			log.FromContext(ctx).Error(errors.New("invalid URL"), "proposed commit status detailUrl is not an absolute http(s) URL or root-relative path", "detailUrl", detailUrl, "key", key)
+			detailUrl = ""
+		}
 		h.Proposed.CommitStatuses = append(h.Proposed.CommitStatuses, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
-			Key:   key,
-			Phase: getFirstTrailerValue(activeTrailers, constants.TrailerCommitStatusProposedPrefix+key+"-phase"),
-			Url:   url,
+			Key:       key,
+			Phase:     getFirstTrailerValue(activeTrailers, constants.TrailerCommitStatusProposedPrefix+key+"-phase"),
+			Url:       url,
+			DetailUrl: detailUrl,
 		})
 	}
+}
+
+// isAcceptableDetailURL is the trailer-side equivalent of the CommitStatus.detailUrl
+// validation rule: empty | absolute http(s) | root-relative starting with "/" (but
+// not protocol-relative "//host/...").
+func isAcceptableDetailURL(s string) bool {
+	if strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://") {
+		return true
+	}
+	if strings.HasPrefix(s, "/") && !strings.HasPrefix(s, "//") {
+		return true
+	}
+	return false
 }
 
 // getCommitStatusKeysFromTrailers extracts the commit status keys from the trailers in the given context.
@@ -372,7 +397,7 @@ func getCommitStatusKeysFromTrailers(ctx context.Context, trailers map[string][]
 
 	// This function extracts commit status keys from trailers with the given prefix.
 	// It looks for keys that start with the prefix, trims the prefix, splits by "-", and joins all but the last part to form the commit status key.
-	// This is under the assumption that the last part is always "-phase" or "-url" today and that it does not go over multiple "-" aka the ending can not be
+	// This is under the assumption that the last part is always "-phase", "-url", or "-detailurl" today and that it does not go over multiple "-" aka the ending can not be
 	// -what-am-i-doing. This would return a bad key because it would contain -what-am-i.
 	extractKeys := func(prefix string) []string {
 		keys := []string{}
@@ -692,6 +717,7 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 				Key:         status.Key,
 				Phase:       string(csPhase),
 				Url:         cs.Spec.Url,
+				DetailUrl:   cs.Spec.DetailUrl,
 				Description: cs.Spec.Description,
 			})
 			found = true
@@ -1098,10 +1124,16 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		for _, status := range ctp.Status.Active.CommitStatuses {
 			commitTrailers[constants.TrailerCommitStatusActivePrefix+status.Key+"-phase"] = status.Phase
 			commitTrailers[constants.TrailerCommitStatusActivePrefix+status.Key+"-url"] = status.Url
+			if status.DetailUrl != "" {
+				commitTrailers[constants.TrailerCommitStatusActivePrefix+status.Key+"-detailurl"] = status.DetailUrl
+			}
 		}
 		for _, status := range ctp.Status.Proposed.CommitStatuses {
 			commitTrailers[constants.TrailerCommitStatusProposedPrefix+status.Key+"-phase"] = status.Phase
 			commitTrailers[constants.TrailerCommitStatusProposedPrefix+status.Key+"-url"] = status.Url
+			if status.DetailUrl != "" {
+				commitTrailers[constants.TrailerCommitStatusProposedPrefix+status.Key+"-detailurl"] = status.DetailUrl
+			}
 		}
 		commitTrailers[constants.TrailerShaHydratedActive] = ctp.Status.Active.Hydrated.Sha
 		commitTrailers[constants.TrailerShaHydratedProposed] = ctp.Status.Proposed.Hydrated.Sha

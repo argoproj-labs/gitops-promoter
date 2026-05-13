@@ -610,6 +610,39 @@ var applicationPredicate predicate.Predicate = predicate.Funcs{
 	},
 }
 
+// validateRenderedSCMURL accepts an absolute http(s) URL. It is used for the
+// CommitStatus.url field, which is forwarded to the SCM provider (GitHub
+// Check Runs require details_url, GitLab requires target_url, etc. to be
+// absolute http(s) URLs).
+func validateRenderedSCMURL(renderedURL string) error {
+	parsedURL, err := url.Parse(renderedURL)
+	if err != nil {
+		return fmt.Errorf("failed to parse URL: %w", err)
+	}
+	if parsedURL.Scheme == "http" || parsedURL.Scheme == "https" {
+		return nil
+	}
+	return fmt.Errorf("URL must be an absolute http(s) URL: %s", renderedURL)
+}
+
+// validateRenderedDetailURL accepts an absolute http(s) URL or a root-relative
+// URL beginning with "/". It is used for the CommitStatus.detailUrl field,
+// which is consumed by the GitOps Promoter UI extension; root-relative URLs
+// resolve against the current Argo CD origin in the browser.
+func validateRenderedDetailURL(renderedURL string) error {
+	parsedURL, err := url.Parse(renderedURL)
+	if err != nil {
+		return fmt.Errorf("failed to parse URL: %w", err)
+	}
+	if parsedURL.Scheme == "http" || parsedURL.Scheme == "https" {
+		return nil
+	}
+	if parsedURL.Scheme == "" && parsedURL.Host == "" && strings.HasPrefix(renderedURL, "/") && !strings.HasPrefix(renderedURL, "//") {
+		return nil
+	}
+	return fmt.Errorf("URL must be an absolute http(s) URL or a root-relative URL beginning with /: %s", renderedURL)
+}
+
 // updateAggregatedCommitStatus creates or updates a CommitStatus object for the given target branch and sha.
 // If err is nil, the returned CommitStatus is guaranteed to be non-nil.
 func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.Context, promotionStrategy *promoterv1alpha1.PromotionStrategy, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, targetBranch string, sha string, phase promoterv1alpha1.CommitStatusPhase, desc string) (*promoterv1alpha1.CommitStatus, error) {
@@ -629,32 +662,38 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 		WithDescription(desc).
 		WithPhase(phase)
 
-	// Render URL from template if it exists
-	if argoCDCommitStatus.Spec.URL.Template != "" {
-		data := URLTemplateData{
-			Environment:        targetBranch,
-			ArgoCDCommitStatus: argoCDCommitStatus,
-		}
+	// Render URL templates if they exist. Both share the same template data and
+	// helpers; they differ only in where they're stored and which downstream
+	// validator they must satisfy.
+	data := URLTemplateData{
+		Environment:        targetBranch,
+		ArgoCDCommitStatus: argoCDCommitStatus,
+	}
 
+	if argoCDCommitStatus.Spec.URL.Template != "" {
 		renderedURL, err := utils.RenderStringTemplate(argoCDCommitStatus.Spec.URL.Template, data, argoCDCommitStatus.Spec.URL.Options...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to render URL template: %w", err)
 		}
-
-		// Parse the URL to check that it's valid
-		parsedURL, err := url.Parse(renderedURL)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse URL: %w", err)
+		renderedURL = strings.TrimSpace(renderedURL)
+		if err := validateRenderedSCMURL(renderedURL); err != nil {
+			return nil, err
 		}
-
-		// Check that the URL scheme is http or https
-		if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-			return nil, fmt.Errorf("URL scheme is not http or https: %s", parsedURL.Scheme)
-		}
-
-		// Set the URL in the CommitStatus
 		logger.V(4).Info("Rendered URL template", "url", renderedURL, "environment", targetBranch, "commitStatus", resourceName, "namespace", argoCDCommitStatus.Namespace)
 		commitStatusSpec = commitStatusSpec.WithUrl(renderedURL)
+	}
+
+	if argoCDCommitStatus.Spec.DetailURL.Template != "" {
+		renderedDetailURL, err := utils.RenderStringTemplate(argoCDCommitStatus.Spec.DetailURL.Template, data, argoCDCommitStatus.Spec.DetailURL.Options...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to render detailUrl template: %w", err)
+		}
+		renderedDetailURL = strings.TrimSpace(renderedDetailURL)
+		if err := validateRenderedDetailURL(renderedDetailURL); err != nil {
+			return nil, err
+		}
+		logger.V(4).Info("Rendered detailUrl template", "detailUrl", renderedDetailURL, "environment", targetBranch, "commitStatus", resourceName, "namespace", argoCDCommitStatus.Namespace)
+		commitStatusSpec = commitStatusSpec.WithDetailUrl(renderedDetailURL)
 	}
 
 	// Build the apply configuration
