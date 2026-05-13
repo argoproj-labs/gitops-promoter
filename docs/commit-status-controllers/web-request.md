@@ -59,41 +59,6 @@ Uses expressions to dynamically control when HTTP requests are made. Powerful fo
 - Can store and access custom state from success evaluation via `SuccessOutput` (via `success.when.output.expression`)
 - Always reconciles at `requeueDuration` interval (default: 1 minute)
 
-### HTTP method (`methodTemplate`)
-
-Set the HTTP method via **`spec.httpRequest.methodTemplate`**. A literal value such as `methodTemplate: GET` works identically to a fixed method; Go-template syntax lets the method vary by reconcile state when needed (for example, alternating endpoints in a search-then-act flow).
-
-`methodTemplate` accepts the same template variables and Sprig function set as `urlTemplate`, `bodyTemplate`, and `headerTemplates` (`TriggerOutput`, `ResponseOutput`, `SuccessOutput`, `TriggerVariables`, `SuccessVariables`, `NamespaceMetadata.Labels`, etc.). It is rendered **before** the HTTP request, so it never sees the response from the request being built.
-
-After rendering, the controller:
-
-1. Trims surrounding whitespace,
-2. Uppercases the result, and
-3. Validates the final value is one of `GET`, `POST`, `PUT`, `PATCH`.
-
-If the rendered method is empty or not in that set, the reconcile errors and the request is not made.
-
-**Example — alternate between GET (search) and POST (close) within a single WRCS:**
-
-```yaml
-spec:
-  httpRequest:
-    methodTemplate: |
-      {{- if .ResponseOutput -}}
-        {{- $cid := index .ResponseOutput "changeId" -}}
-        {{- if and $cid (ne $cid "") -}}POST{{- else -}}GET{{- end -}}
-      {{- else -}}
-        GET
-      {{- end -}}
-    urlTemplate: ...
-    bodyTemplate: ...
-```
-
-Pair this with `urlTemplate` and `bodyTemplate` that branch on the same condition (e.g. `ResponseOutput.changeId`) so the entire request — method, URL, and body — flips together between the two endpoints.
-
-> [!NOTE]
-> A separate **`method`** field exists for backward compatibility but is **deprecated**. The CRD enforces "exactly one of `method` or `methodTemplate`" via an `x-kubernetes-validations` rule. New resources should use `methodTemplate` (it accepts plain literals like `methodTemplate: GET`). `method` may be removed in a future release.
-
 ### Shared trigger and success expr (`when.variables`)
 
 Optional **`when.variables`** (same shape as `when.output`: an `expression` string) runs **once per evaluation** of that `when` block, **before** `when.expression` and optional `when.output.expression`. It must return a **JSON object** (expr map). The result is injected as top-level binding **`Variables`** for those two expressions only.
@@ -873,6 +838,56 @@ spec:
     polling:
       interval: 2m
 ```
+
+### Method varies by reconcile state
+
+`methodTemplate` is a Go template, so the HTTP method can switch across reconciles based on previous responses. This example issues a `GET` to find a record, then a `POST` to act on it once the ID is known — alternating method, URL, and body together off a single `ResponseOutput.changeId` flag.
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: change-management-close
+spec:
+  promotionStrategyRef:
+    name: my-app
+  key: change-management-close
+  reportOn: active
+  httpRequest:
+    methodTemplate: |
+      {{- if .ResponseOutput -}}
+        {{- $cid := index .ResponseOutput "changeId" -}}
+        {{- if and $cid (ne $cid "") -}}POST{{- else -}}GET{{- end -}}
+      {{- else -}}GET{{- end -}}
+    urlTemplate: |
+      {{- if .ResponseOutput -}}
+        {{- $cid := index .ResponseOutput "changeId" -}}
+        {{- if and $cid (ne $cid "") -}}https://change-management.example.com/close/{{ $cid }}{{- else -}}https://change-management.example.com/search?commit={{ index .TriggerVariables "sha" }}{{- end -}}
+      {{- else -}}https://change-management.example.com/search?commit={{ index .TriggerVariables "sha" }}{{- end -}}
+    bodyTemplate: |
+      {{- if .ResponseOutput }}{{- $cid := index .ResponseOutput "changeId" }}{{- if and $cid (ne $cid "") -}}
+      {"status": "SUCCEEDED"}
+      {{- end -}}{{- end -}}
+  success:
+    when:
+      expression: "true"
+  mode:
+    context: promotionstrategy
+    trigger:
+      requeueDuration: 1m
+      when:
+        expression: "true"
+      response:
+        output:
+          expression: |
+            let isSearch = Response.Body != nil && (Response.Body.records ?? nil) != nil;
+            let priorChangeId = ResponseOutput != nil ? (ResponseOutput.changeId ?? "") : "";
+            {
+              changeId: isSearch ? string((Response.Body.records ?? [])[0].id ?? "") : priorChangeId,
+            }
+```
+
+After each `response.output` evaluation, `ResponseOutput.changeId` is either populated from a search hit (next reconcile sends `POST`) or carried forward (continued action), so the next reconcile naturally renders the matching method, URL, and body.
 
 ### Integrating with PromotionStrategy
 
