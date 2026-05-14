@@ -27,8 +27,9 @@ import (
 // HTTPRequestSpec defines the HTTP request configuration.
 //
 // URLTemplate, HeaderTemplates, and BodyTemplate support Go templates. Sprig functions are available except env, expandenv, and getHostByName; urlQueryEscape is also available.
-// These fields are rendered before the HTTP request is made, so they never contain the response from the request being built.
-// Use TriggerOutput/ResponseOutput for state from the previous run (trigger mode only).
+// These fields are rendered with previous-attempt data: they are evaluated before the current HTTP request is made,
+// so they never contain the response from the request being built. Use TriggerOutput/ResponseOutput for state from
+// the previous run (trigger mode only).
 //
 // Template variables:
 // - {{ .Branch }}: the environment branch currently being processed (empty for shared HTTP request in promotionstrategy context)
@@ -42,12 +43,27 @@ import (
 // - {{ index .TriggerVariables "key" }}: (trigger mode only) result of trigger.when.variables.expression for this reconcile
 //
 // Example: "https://api.example.com/validate/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
+//
+// Exactly one of Method or MethodTemplate must be set.
 type HTTPRequestSpecApplyConfiguration struct {
 	// URLTemplate is the HTTP endpoint to request.
 	// Supports Go templates (see HTTPRequestSpec for available variables).
 	URLTemplate *string `json:"urlTemplate,omitempty"`
-	// Method is the HTTP method to use.
+	// Method is the static HTTP method to use. Mutually exclusive with MethodTemplate.
+	//
+	// Deprecated: Use MethodTemplate instead. A literal value such as `methodTemplate: GET` behaves
+	// identically to `method: GET` and avoids needing two separate fields. Existing resources that
+	// set Method continue to work, but new resources should set MethodTemplate. Method may be
+	// removed in a future release.
 	Method *string `json:"method,omitempty"`
+	// MethodTemplate is the HTTP method, rendered as a Go template with the same variables and
+	// Sprig functions as URLTemplate/BodyTemplate/HeaderTemplates. The rendered string is trimmed
+	// of surrounding whitespace and uppercased; the final value must be one of GET/POST/PUT/PATCH/DELETE
+	// or the reconcile returns an error. A literal value such as `methodTemplate: GET` works
+	// identically to a static method; use templating when the method must vary by reconcile
+	// state (e.g. issuing a search GET on one reconcile and a close POST on the next).
+	// Mutually exclusive with Method (deprecated).
+	MethodTemplate *string `json:"methodTemplate,omitempty"`
 	// HeaderTemplates are additional HTTP headers to include in the request.
 	// The map key is the header name and the value is the header value (supports Go templates).
 	// See HTTPRequestSpec for available template variables.
@@ -120,6 +136,14 @@ func (b *HTTPRequestSpecApplyConfiguration) WithURLTemplate(value string) *HTTPR
 // If called multiple times, the Method field is set to the value of the last call.
 func (b *HTTPRequestSpecApplyConfiguration) WithMethod(value string) *HTTPRequestSpecApplyConfiguration {
 	b.Method = &value
+	return b
+}
+
+// WithMethodTemplate sets the MethodTemplate field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the MethodTemplate field is set to the value of the last call.
+func (b *HTTPRequestSpecApplyConfiguration) WithMethodTemplate(value string) *HTTPRequestSpecApplyConfiguration {
+	b.MethodTemplate = &value
 	return b
 }
 

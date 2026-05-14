@@ -562,11 +562,11 @@ func (g *EnvironmentOperations) FetchNotes(ctx context.Context) error {
 
 // GetHydratorNote reads the hydrator git note for a given commit SHA.
 // Returns an empty HydratorMetadata if no note exists for the commit.
-func (g *EnvironmentOperations) GetHydratorNote(ctx context.Context, sha string) (HydratorMetadata, error) {
+func (g *EnvironmentOperations) GetHydratorNote(ctx context.Context, sha string) (*HydratorMetadata, error) {
 	logger := log.FromContext(ctx)
 	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
 	if gitPath == "" {
-		return HydratorMetadata{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
 	stdout, stderr, err := g.runCmd(ctx, gitPath, "notes", "--ref="+HydratorNotesRef, "show", sha)
@@ -574,20 +574,20 @@ func (g *EnvironmentOperations) GetHydratorNote(ctx context.Context, sha string)
 		// No note for this commit is not an error - git outputs "error: no note found for object <sha>"
 		if strings.Contains(strings.ToLower(stderr), "no note found") {
 			logger.V(4).Info("No git note found for commit", "sha", sha)
-			return HydratorMetadata{}, nil
+			return nil, nil
 		}
 		logger.Error(err, "Failed to read git note", "sha", sha, "stderr", stderr)
-		return HydratorMetadata{}, fmt.Errorf("failed to read git note for sha %q: %w", sha, err)
+		return nil, fmt.Errorf("failed to read git note for sha %q: %w", sha, err)
 	}
 
 	var note HydratorMetadata
 	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &note); err != nil {
 		logger.V(4).Info("Failed to parse git note as JSON, ignoring", "sha", sha, "content", stdout, "error", err)
-		return HydratorMetadata{}, nil
+		return nil, nil
 	}
 
 	logger.V(4).Info("Got hydrator note", "sha", sha, "note", note)
-	return note, nil
+	return &note, nil
 }
 
 // ParseTrailersFromMessage parses git trailers from a commit message using git interpret-trailers.

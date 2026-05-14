@@ -3,7 +3,7 @@ module github.com/argoproj-labs/gitops-promoter
 go 1.26.1
 
 require (
-	code.gitea.io/sdk/gitea v0.25.0
+	code.gitea.io/sdk/gitea v0.25.1
 	codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v2 v2.2.0
 	github.com/AlecAivazis/survey/v2 v2.3.7
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.21.1
@@ -28,7 +28,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
-	github.com/tidwall/gjson v1.18.0
+	github.com/tidwall/gjson v1.19.0
 	gitlab.com/gitlab-org/api/client-go v1.46.0
 	go.uber.org/zap v1.28.0
 	golang.org/x/oauth2 v0.36.0

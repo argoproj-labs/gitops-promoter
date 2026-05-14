@@ -644,12 +644,16 @@ func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, 
 	if err != nil {
 		return fmt.Errorf("failed to get hydrator note for proposed hydrated SHA %q: %w", proposedHydratedSha, err)
 	}
-	ctp.Status.Proposed.Note = &promoterv1alpha1.HydratorMetadata{
-		DrySha: proposedNote.DrySha,
+	var drySha string
+	if proposedNote != nil {
+		drySha = proposedNote.DrySha
+		ctp.Status.Proposed.Note = &promoterv1alpha1.HydratorMetadata{
+			DrySha: drySha,
+		}
 	}
 	logger.V(4).Info("Set proposed Note.DrySha from git note",
 		"proposedHydratedSha", proposedHydratedSha,
-		"noteDrySha", proposedNote.DrySha)
+		"noteDrySha", drySha)
 
 	return nil
 }

@@ -53,7 +53,7 @@ jobs:
       # sigstore/cosign-installer v4.1.1 (latest release). Action pinned to commit SHA — update tag + SHA from
       # https://github.com/sigstore/cosign-installer/releases when upgrading (do not use a floating @v4 ref).
       - name: Install cosign
-        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # cosign-installer v4.1.1
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # cosign-installer v4.1.2
         with:
           cosign-release: v3.0.5 # cosign CLI; latest sigstore/cosign, explicit pin for reproducibility
 
