@@ -547,20 +547,8 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(commitStatus.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess), "spec should be success")
 				Expect(commitStatus.Status.Phase).To(Equal(promoterv1alpha1.CommitPhasePending), "status should be pending")
 
-				By("Bumping a CTP annotation to trigger reconcile")
-				// The CommitStatus controller errors on the bogus GitRepository ref (see BeforeEach)
-				// and never reaches triggerReconcileChangeTransferPolicy, so CTP would otherwise
-				// only re-reconcile via its requeueDuration (minutes). The CTP controller's
-				// predicate.AnnotationChangedPredicate fires on this annotation change.
-				Eventually(func(g Gomega) {
-					err := k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
-					g.Expect(err).To(Succeed())
-					if changeTransferPolicy.Annotations == nil {
-						changeTransferPolicy.Annotations = map[string]string{}
-					}
-					changeTransferPolicy.Annotations["promoter.argoproj.io/test-trigger"] = "1"
-					g.Expect(k8sClient.Update(ctx, changeTransferPolicy)).To(Succeed())
-				}, constants.EventuallyTimeout).Should(Succeed())
+				By("Enqueuing ChangeTransferPolicy reconcile (CommitStatus controller does not enqueue CTP when provider lookup fails)")
+				enqueueCTP(typeNamespacedName.Namespace, typeNamespacedName.Name)
 
 				By("Verifying CTP reads 'success' from spec, NOT 'pending' from status")
 				// CRITICAL TEST: CTP MUST read "success" from spec.phase
