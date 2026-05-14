@@ -176,7 +176,7 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 	// round-trip between them; the rest join the in-flight call and receive
 	// the same result once it completes.
 	sfKey := fmt.Sprintf("%d/%s", scmProvider.GetSpec().GitHub.AppID, scmProvider.GetSpec().GitHub.Domain)
-	_, sfErr, shared := appInstallationIdGroup.Do(sfKey, func() (any, error) {
+	_, err, shared := appInstallationIdGroup.Do(sfKey, func() (any, error) {
 		var allInstallations []*github.Installation
 		opts := &github.ListOptions{PerPage: 100}
 
@@ -209,8 +209,8 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 		// singleflight return value is not used directly.
 		return nil, nil
 	})
-	if sfErr != nil {
-		return nil, nil, fmt.Errorf("failed to list GitHub app installations: %w", sfErr)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to list GitHub app installations: %w", err)
 	}
 	if shared {
 		logger.V(4).Info("singleflight deduplicated concurrent installations lookup", "org", org, "scmProvider", scmProvider.GetName())
