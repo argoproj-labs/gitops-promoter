@@ -967,6 +967,7 @@ func hydrateEnvironment(ctx context.Context, gitPath, branch, drySha, commitMess
 
 // pushGitNote adds a git note to a commit and pushes it to origin.
 func pushGitNote(ctx context.Context, gitPath, commitSha, drySha string) error {
+	time.Sleep(1 * time.Second)
 	noteContent := fmt.Sprintf(`{"drySha": "%s"}`, drySha)
 	_, err := runGitCmd(ctx, gitPath, "notes", "--ref="+git.HydratorNotesRef, "add", "-f", "-m", noteContent, commitSha)
 	if err != nil {
