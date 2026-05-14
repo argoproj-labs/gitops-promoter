@@ -37,11 +37,9 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitea"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
-	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/util/retry"
@@ -88,9 +86,6 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 		return ctrl.Result{}, fmt.Errorf("failed to get PullRequest: %w", err)
 	}
-
-	// Remove any existing Ready condition. We want to start fresh.
-	meta.RemoveStatusCondition(pr.GetConditions(), string(promoterConditions.Ready))
 
 	// Handle deletion early - if being deleted and status.ID is empty, we can skip provider setup
 	if handled, err := r.handleEmptyIDDeletion(ctx, &pr); handled || err != nil {

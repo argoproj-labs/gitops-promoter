@@ -30,7 +30,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
@@ -95,9 +94,6 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 		logger.Error(err, "failed to get WebRequestCommitStatus")
 		return ctrl.Result{}, fmt.Errorf("failed to get WebRequestCommitStatus %q: %w", req.Name, err)
 	}
-
-	// Remove any existing Ready condition. We want to start fresh.
-	meta.RemoveStatusCondition(wrcs.GetConditions(), string(promoterConditions.Ready))
 
 	// 2. Fetch the referenced PromotionStrategy
 	var ps promoterv1alpha1.PromotionStrategy
