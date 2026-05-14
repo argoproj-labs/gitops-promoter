@@ -407,6 +407,7 @@ spec:
                           that was used to hydrate the branch.
                         type: string
                     type: object
+                    x-kubernetes-map-type: atomic
                 type: object
               conditions:
                 description: Conditions Represents the observations of the current
@@ -770,6 +771,7 @@ spec:
                                 commit that was used to hydrate the branch.
                               type: string
                           type: object
+                          x-kubernetes-map-type: atomic
                       type: object
                     proposed:
                       description: Proposed is the state of the proposed branch at
@@ -1232,6 +1234,7 @@ spec:
                           that was used to hydrate the branch.
                         type: string
                     type: object
+                    x-kubernetes-map-type: atomic
                 type: object
               pullRequest:
                 description: PullRequest is the state of the pull request that was

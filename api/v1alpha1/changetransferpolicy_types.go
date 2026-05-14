@@ -89,6 +89,8 @@ type CommitBranchState struct {
 	// Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on.
 	Hydrated CommitShaState `json:"hydrated,omitempty"`
 	// Note is the hydrator metadata from the git note attached to the hydrated commit.
+	// +structType=atomic
+	// +optional
 	Note *HydratorMetadata `json:"note,omitempty"`
 	// CommitStatuses is a list of commit statuses that are being monitored for this branch.
 	// +kubebuilder:validation:Optional
