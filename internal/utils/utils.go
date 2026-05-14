@@ -320,7 +320,6 @@ func HandleReconciliationResult(
 	c client.Client,
 	recorder events.EventRecorder,
 	fieldOwner string,
-	priorReadyCond *metav1.Condition,
 	result *reconcile.Result,
 	err *error,
 ) {
@@ -346,14 +345,20 @@ func HandleReconciliationResult(
 	}
 
 	conditions := obj.GetConditions() // GetConditions() is guaranteed to be non-nil for our CRDs.
-	// Controllers are expected to call meta.RemoveStatusCondition(..., "Ready") at the
-	// top of Reconcile so stale conditions from a previous reconcile don't bleed into
-	// this one. If FindStatusCondition still returns non-nil here, the reconciler
-	// deliberately set a Ready state during this reconcile (e.g. via
-	// InheritNotReadyConditionFromObjects) and we preserve it.
+	// Controllers do not remove the Ready condition at the start of reconcile; instead they
+	// leave it in place so meta.SetStatusCondition can preserve lastTransitionTime naturally
+	// when the status hasn't changed. InheritNotReadyConditionFromObjects sets an "inherit-reason"
+	// condition (any reason other than ReconciliationSuccess/ReconciliationError) when children are
+	// not ready, and removes it when all children are ready — giving us the same nil-means-success
+	// convention without an explicit removal step in each controller.
 	readyCondition := meta.FindStatusCondition(*conditions, string(promoterConditions.Ready))
-	if readyCondition == nil {
-		// If the condition hasn't already been set by the caller, assume success.
+	isInheritCond := readyCondition != nil &&
+		readyCondition.Reason != string(promoterConditions.ReconciliationSuccess) &&
+		readyCondition.Reason != string(promoterConditions.ReconciliationError)
+	if !isInheritCond {
+		// Either nil (new object or all children ready) or an old Reconciliation-reason condition
+		// from a previous reconcile. Default to success; meta.SetStatusCondition will preserve
+		// lastTransitionTime if the existing status is already True.
 		readyCondition = &metav1.Condition{
 			Type:               string(promoterConditions.Ready),
 			Status:             metav1.ConditionTrue,
@@ -368,6 +373,8 @@ func HandleReconciliationResult(
 	if *err == nil {
 		// Success case: set Ready condition if not already set
 		meta.SetStatusCondition(conditions, *readyCondition)
+		// meta.SetStatusCondition preserves lastTransitionTime when the existing condition
+		// has the same Status, so no separate preservation step is needed.
 		eventType := "Normal"
 		if readyCondition.Status == metav1.ConditionFalse {
 			eventType = "Warning"
@@ -388,13 +395,6 @@ func HandleReconciliationResult(
 			ObservedGeneration: obj.GetGeneration(),
 		})
 	}
-
-	// Preserve lastTransitionTime: only update it when the condition's Status actually
-	// changes. When a resource remains in the same state across reconciles, bumping
-	// lastTransitionTime causes an unnecessary resourceVersion update with no meaningful
-	// semantic change. priorReadyCond holds the Ready condition that was on the object when
-	// the controller called r.Get at the start of the reconcile, before it was removed.
-	preserveReadyTransitionTime(conditions, priorReadyCond)
 
 	// Stamp status.observedGeneration before building the apply configuration so the SSA
 	// patch records which spec generation produced this status. SSA with ForceOwnership
@@ -466,9 +466,8 @@ func HandleReconciliationResult(
 		fallbackCondition.Message = fmt.Sprintf("Reconciliation succeeded but failed to apply status: %s", patchErr)
 	}
 	meta.SetStatusCondition(conditions, fallbackCondition)
-	// Preserve lastTransitionTime in the fallback condition too, using the prior condition
-	// captured at the start of the reconcile.
-	preserveReadyTransitionTime(conditions, priorReadyCond)
+	// meta.SetStatusCondition preserves lastTransitionTime when the existing condition
+	// has the same Status, so no separate preservation step is needed here either.
 
 	condCfg, buildErr := statusApplyConfig(obj, true)
 	if buildErr != nil {
@@ -519,33 +518,6 @@ func HandleReconciliationResult(
 	}
 }
 
-// preserveReadyTransitionTime restores the lastTransitionTime on the in-memory Ready condition
-// from the prior condition when the Status has not changed. This prevents
-// unnecessary resourceVersion bumps when a resource is re-evaluated but stays in the same
-// state (e.g. a persistent error).
-func preserveReadyTransitionTime(conditions *[]metav1.Condition, priorReadyCond *metav1.Condition) {
-	if priorReadyCond == nil {
-		return
-	}
-	newReady := meta.FindStatusCondition(*conditions, string(promoterConditions.Ready))
-	if newReady != nil && newReady.Status == priorReadyCond.Status {
-		newReady.LastTransitionTime = priorReadyCond.LastTransitionTime
-	}
-}
-
-// SnapshotReadyCondition returns a copy of the Ready condition from obj, or nil if none exists.
-// Controllers should call this after their initial Get and before removing the Ready condition
-// with meta.RemoveStatusCondition, then pass the result to HandleReconciliationResult so it
-// can preserve lastTransitionTime when the condition status hasn't changed.
-func SnapshotReadyCondition(obj StatusConditionUpdater) *metav1.Condition {
-	c := meta.FindStatusCondition(*obj.GetConditions(), string(promoterConditions.Ready))
-	if c == nil {
-		return nil
-	}
-	cp := *c
-	return &cp
-}
-
 // InheritNotReadyConditionFromObjects sets the Ready condition of the parent to False if any of the child objects are not ready.
 // This will override any existing Ready condition on the parent.
 //
@@ -591,5 +563,15 @@ func InheritNotReadyConditionFromObjects[T StatusConditionUpdater](parent Status
 			meta.SetStatusCondition(parent.GetConditions(), condition)
 			return
 		}
+	}
+
+	// All children are ready (or the list is empty). Remove any inherit-reason Ready condition
+	// so HandleReconciliationResult sees nil and applies the default success condition.
+	// Reconciliation-reason conditions (set by HandleReconciliationResult itself) are left in
+	// place so meta.SetStatusCondition can update them with the correct status naturally.
+	if c := meta.FindStatusCondition(*parent.GetConditions(), string(promoterConditions.Ready)); c != nil &&
+		c.Reason != string(promoterConditions.ReconciliationSuccess) &&
+		c.Reason != string(promoterConditions.ReconciliationError) {
+		meta.RemoveStatusCondition(parent.GetConditions(), string(promoterConditions.Ready))
 	}
 }

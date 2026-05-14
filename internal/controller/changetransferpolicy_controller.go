@@ -103,10 +103,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 
 	var ctp promoterv1alpha1.ChangeTransferPolicy
 	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
-	var priorReadyCond *metav1.Condition
-	defer func() {
-		utils.HandleReconciliationResult(ctx, startTime, &ctp, r.Client, r.Recorder, constants.ChangeTransferPolicyControllerFieldOwner, priorReadyCond, &result, &err)
-	}()
+	defer utils.HandleReconciliationResult(ctx, startTime, &ctp, r.Client, r.Recorder, constants.ChangeTransferPolicyControllerFieldOwner, &result, &err)
 
 	err = r.Get(ctx, req.NamespacedName, &ctp, &client.GetOptions{})
 	if err != nil {
@@ -128,10 +125,6 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to handle PR finalizer removal: %w", err)
 	}
-
-	// Remove any existing Ready condition. We want to start fresh.
-	priorReadyCond = utils.SnapshotReadyCondition(&ctp)
-	meta.RemoveStatusCondition(ctp.GetConditions(), string(promoterConditions.Ready))
 
 	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), ctp.Spec.RepositoryReference, &ctp)
 	if err != nil {

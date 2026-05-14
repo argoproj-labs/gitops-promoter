@@ -30,7 +30,6 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 
@@ -82,10 +81,7 @@ func (r *GitCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	var gcs promoterv1alpha1.GitCommitStatus
 	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
-	var priorReadyCond *metav1.Condition
-	defer func() {
-		utils.HandleReconciliationResult(ctx, startTime, &gcs, r.Client, r.Recorder, constants.GitCommitStatusControllerFieldOwner, priorReadyCond, &result, &err)
-	}()
+	defer utils.HandleReconciliationResult(ctx, startTime, &gcs, r.Client, r.Recorder, constants.GitCommitStatusControllerFieldOwner, &result, &err)
 
 	err = r.Get(ctx, req.NamespacedName, &gcs, &client.GetOptions{})
 	if err != nil {
@@ -97,10 +93,6 @@ func (r *GitCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		logger.Error(err, "failed to get GitCommitStatus")
 		return ctrl.Result{}, fmt.Errorf("failed to get GitCommitStatus %q: %w", req.Name, err)
 	}
-
-	// Remove any existing Ready condition. We want to start fresh.
-	priorReadyCond = utils.SnapshotReadyCondition(&gcs)
-	meta.RemoveStatusCondition(gcs.GetConditions(), string(promoterConditions.Ready))
 
 	// Fetch the referenced PromotionStrategy
 	var ps promoterv1alpha1.PromotionStrategy

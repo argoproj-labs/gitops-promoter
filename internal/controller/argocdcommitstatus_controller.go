@@ -57,7 +57,6 @@ import (
 	"sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
 
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
@@ -117,10 +116,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 
 	var argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
 	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
-	var priorReadyCond *metav1.Condition
-	defer func() {
-		utils.HandleReconciliationResult(ctx, startTime, &argoCDCommitStatus, r.localClient, r.Recorder, constants.ArgoCDCommitStatusControllerFieldOwner, priorReadyCond, &result, &err)
-	}()
+	defer utils.HandleReconciliationResult(ctx, startTime, &argoCDCommitStatus, r.localClient, r.Recorder, constants.ArgoCDCommitStatusControllerFieldOwner, &result, &err)
 
 	err = r.localClient.Get(ctx, req.NamespacedName, &argoCDCommitStatus, &client.GetOptions{})
 	if err != nil {
@@ -132,10 +128,6 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		logger.Error(err, "failed to get ArgoCDCommitStatus")
 		return ctrl.Result{}, fmt.Errorf("failed to get ArgoCDCommitStatus: %w", err)
 	}
-
-	// Remove any existing Ready condition. We want to start fresh.
-	priorReadyCond = utils.SnapshotReadyCondition(&argoCDCommitStatus)
-	meta.RemoveStatusCondition(argoCDCommitStatus.GetConditions(), string(promoterConditions.Ready))
 
 	ls, err := metav1.LabelSelectorAsSelector(argoCDCommitStatus.Spec.ApplicationSelector)
 	if err != nil {
