@@ -892,16 +892,16 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(ctp.Status.Proposed.Dry.Sha).To(Equal(secondDrySha),
 						"controller should have advanced Proposed.Dry.Sha to the new dry commit")
 
-					// The new proposed hydrated commit has no git note. The
-					// controller must clear Status.Proposed.Note so downstream
-					// gates (getEffectiveHydratedDrySha) do not trust the
-					// firstDrySha as the current env's "effective" hydrated dry.
-					if ctp.Status.Proposed.Note != nil {
-						g.Expect(ctp.Status.Proposed.Note.DrySha).NotTo(Equal(firstDrySha),
-							"Status.Proposed.Note.DrySha must not retain the previous reconcile's drySha; this is the stale-note race that lets production merge ahead of dev/staging")
-						g.Expect(ctp.Status.Proposed.Note.DrySha).To(BeEmpty(),
-							"if Status.Proposed.Note is set, its DrySha must reflect the current proposed hydrated commit (no note → empty)")
-					}
+					// The new proposed hydrated commit has no git note, and
+					// makeChangeAndHydrateRepo never writes one. setCommitMetadata
+					// must therefore clear Status.Proposed.Note to nil so
+					// downstream gates (getEffectiveHydratedDrySha) do not trust
+					// the firstDrySha as the current env's "effective" hydrated
+					// dry. Asserting nil directly (rather than guarding with an
+					// if) also pins the contract that "no note" is
+					// represented as nil, not &HydratorMetadata{}.
+					g.Expect(ctp.Status.Proposed.Note).To(BeNil(),
+						"Status.Proposed.Note must be cleared when the new proposed hydrated commit has no git note; leaving the previous reconcile's drySha (%q) lets PromotionStrategy compute targetDrySha from a stale note and merge production ahead of dev/staging", firstDrySha)
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
