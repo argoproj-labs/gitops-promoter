@@ -650,6 +650,16 @@ func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, 
 		ctp.Status.Proposed.Note = &promoterv1alpha1.HydratorMetadata{
 			DrySha: drySha,
 		}
+	} else {
+		// No git note for this proposed hydrated commit. Clear any stale Note
+		// from a previous reconcile (which referenced a different hydrated
+		// commit), so downstream gates like getEffectiveHydratedDrySha don't
+		// trust an old drySha as the current env's "effective" hydrated dry.
+		// Leaving the old value in place causes
+		// PromotionStrategy.updatePreviousEnvironmentCommitStatus to compute
+		// targetDrySha from a stale note and incorrectly mark the previous-env
+		// CommitStatus success against the wrong dry SHA.
+		ctp.Status.Proposed.Note = nil
 	}
 	logger.V(4).Info("Set proposed Note.DrySha from git note",
 		"proposedHydratedSha", proposedHydratedSha,

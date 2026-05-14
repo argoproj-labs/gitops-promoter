@@ -806,6 +806,105 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
+
+		// Regression guard: when the proposed branch advances to a new hydrated
+		// commit that has no git note yet, setCommitMetadata must clear
+		// Status.Proposed.Note so it does not retain the previous reconcile's
+		// drySha. PromotionStrategy.updatePreviousEnvironmentCommitStatus uses
+		// getEffectiveHydratedDrySha (note-first) to compute targetDrySha for
+		// the previous-environment gate; a stale Proposed.Note pointing at the
+		// previous dry SHA causes the gate to compare against the wrong target
+		// and mark success against an older dry, allowing e.g. production to
+		// merge ahead of dev/staging before their hydrators have caught up.
+		Context("When a new proposed hydrated commit arrives with no git note", func() {
+			var (
+				name                 string
+				scmSecret            *v1.Secret
+				scmProvider          *promoterv1alpha1.ScmProvider
+				gitRepo              *promoterv1alpha1.GitRepository
+				changeTransferPolicy *promoterv1alpha1.ChangeTransferPolicy
+				ctpKey               types.NamespacedName
+				gitPath              string
+				err                  error
+			)
+
+			BeforeEach(func() {
+				name, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-note-stale-clear", "default")
+
+				ctpKey = types.NamespacedName{Name: name, Namespace: "default"}
+				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
+				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
+				// Avoid auto-merging so the proposed branch keeps advancing across the two
+				// hydrations the test drives.
+				changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
+
+				gitPath, err = cloneTestRepo(ctx, gitRepo)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			AfterEach(func() {
+				By("Cleaning up resources")
+				Expect(k8sClient.Delete(ctx, changeTransferPolicy)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+				_ = os.RemoveAll(gitPath)
+			})
+
+			It("should clear Status.Proposed.Note when the new proposed hydrated commit has no git note", func() {
+				By("Hydrating the proposed branch with a git note so proposed.note.drySha is populated")
+				firstDrySha, err := makeDryCommit(ctx, gitPath, "first dry commit")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(hydrateEnvironment(ctx, gitPath, testBranchDevelopmentNext, firstDrySha, "hydrate dev for first dry sha")).To(Succeed())
+
+				By("Waiting for the controller to record the populated proposed.note.drySha")
+				Eventually(func(g Gomega) {
+					var ctp promoterv1alpha1.ChangeTransferPolicy
+					g.Expect(k8sClient.Get(ctx, ctpKey, &ctp)).To(Succeed())
+					g.Expect(ctp.Status.Proposed.Note).NotTo(BeNil())
+					g.Expect(ctp.Status.Proposed.Note.DrySha).To(Equal(firstDrySha))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Advancing the proposed branch to a new hydrated commit with NO git note")
+				// makeChangeAndHydrateRepo creates a new dry commit and rehydrates
+				// each environment's proposed branch with a fresh hydrated commit
+				// but does NOT write a git note for the new hydrated commit. The
+				// next CTP reconcile must therefore see no note for the new
+				// proposed hydrated SHA and clear Status.Proposed.Note rather
+				// than leaving the stale firstDrySha in place.
+				secondDrySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "second dry commit", "")
+				Expect(secondDrySha).NotTo(Equal(firstDrySha))
+
+				By("Waiting for the controller to advance Proposed.Dry to the second dry SHA and clear the stale Proposed.Note")
+				Eventually(func(g Gomega) {
+					var ctp promoterv1alpha1.ChangeTransferPolicy
+					g.Expect(k8sClient.Get(ctx, ctpKey, &ctp)).To(Succeed())
+
+					// Confirm the reconcile actually advanced past the first dry.
+					// Without this guard, a stale (still-pending) reconcile could
+					// trivially satisfy the note assertion below by virtue of
+					// never having moved.
+					g.Expect(ctp.Status.Proposed.Dry.Sha).To(Equal(secondDrySha),
+						"controller should have advanced Proposed.Dry.Sha to the new dry commit")
+
+					// The new proposed hydrated commit has no git note. The
+					// controller must clear Status.Proposed.Note so downstream
+					// gates (getEffectiveHydratedDrySha) do not trust the
+					// firstDrySha as the current env's "effective" hydrated dry.
+					if ctp.Status.Proposed.Note != nil {
+						g.Expect(ctp.Status.Proposed.Note.DrySha).NotTo(Equal(firstDrySha),
+							"Status.Proposed.Note.DrySha must not retain the previous reconcile's drySha; this is the stale-note race that lets production merge ahead of dev/staging")
+						g.Expect(ctp.Status.Proposed.Note.DrySha).To(BeEmpty(),
+							"if Status.Proposed.Note is set, its DrySha must reflect the current proposed hydrated commit (no note → empty)")
+					}
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+		})
 	})
 })
 
