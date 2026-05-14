@@ -212,9 +212,9 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					Key:      "external-approval",
 					ReportOn: constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + `/validate/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}`,
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + `/validate/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}`,
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -310,9 +310,9 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					Key:      "external-approval",
 					ReportOn: constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -406,9 +406,9 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					},
 					Key: "external-approval",
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL,
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL,
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -507,9 +507,9 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					Key:      "external-approval",
 					ReportOn: constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + `/validate/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}`,
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + `/validate/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}`,
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -614,9 +614,9 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					Key:      "external-approval",
 					ReportOn: constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -713,9 +713,9 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					Key:                  "external-approval",
 					ReportOn:             constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -882,8 +882,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					DescriptionTemplate: "Checking {{ .Branch }} ({{ .Phase }})",
 					UrlTemplate:         `https://example.com/status/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}`,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + `/validate/{{ .Branch }}?sha={{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}`,
-						Method:      "POST",
+						URLTemplate:    testServer.URL + `/validate/{{ .Branch }}?sha={{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}`,
+						MethodTemplate: "POST",
 						HeaderTemplates: map[string]string{
 							"X-Branch": "{{ .Branch }}",
 							"X-Sha":    `{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}`,
@@ -965,9 +965,9 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					ReportOn:             constants.CommitRefProposed,
 					DescriptionTemplate:  `Build: {{ index .SuccessVariables "tag" }}`,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -1008,9 +1008,9 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					ReportOn:             constants.CommitRefProposed,
 					DescriptionTemplate:  `Run: {{ index .TriggerVariables "runId" }}`,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -1082,9 +1082,9 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					Key:      "cleanup-test",
 					ReportOn: constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -1198,9 +1198,9 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					Key:      "external-approval",
 					ReportOn: constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -1350,9 +1350,9 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					Key:      "responsedata-test",
 					ReportOn: constants.CommitRefActive,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -1425,9 +1425,9 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					Key:      "responsedata-test",
 					ReportOn: constants.CommitRefActive,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -1526,9 +1526,9 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					Key:      "responsedata-test",
 					ReportOn: constants.CommitRefActive,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -1617,9 +1617,9 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					Key:      "responsedata-test",
 					ReportOn: constants.CommitRefActive,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -1716,9 +1716,9 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					Key:      "responsedata-test",
 					ReportOn: constants.CommitRefActive,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -1819,9 +1819,9 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					Key:      "responsedata-test",
 					ReportOn: constants.CommitRefActive,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: scmAuthTestServer.URL + `/check/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Active.Hydrated.Sha }}{{ end }}{{ end }}`,
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    scmAuthTestServer.URL + `/check/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Active.Hydrated.Sha }}{{ end }}{{ end }}`,
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 						Authentication: &promoterv1alpha1.HTTPAuthentication{
 							Scm: &promoterv1alpha1.Scm{},
 						},
@@ -1925,9 +1925,9 @@ var _ = Describe("WebRequestCommitStatus Controller - Missing PromotionStrategy"
 					Key:      "external-approval",
 					ReportOn: constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: "http://example.com/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    "http://example.com/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -2049,9 +2049,9 @@ var _ = Describe("WebRequestCommitStatus Controller - SCM Host Validation", func
 					Key:                  "scm-host-check",
 					ReportOn:             constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 						Authentication: &promoterv1alpha1.HTTPAuthentication{
 							Scm: &promoterv1alpha1.Scm{},
 						},
@@ -2155,9 +2155,9 @@ var _ = Describe("WebRequestCommitStatus Controller - SCM Host Validation", func
 					ReportOn:             constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
 						// URL points at the test server (127.0.0.1:PORT), not allowed.example.com
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 						Authentication: &promoterv1alpha1.HTTPAuthentication{
 							Scm: &promoterv1alpha1.Scm{},
 						},
@@ -2267,9 +2267,9 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 					Key:                  "ps-context-check",
 					ReportOn:             constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -2351,9 +2351,9 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 					Key:                  "ps-context-check",
 					ReportOn:             constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -2433,9 +2433,9 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 					Key:                  "ps-context-check",
 					ReportOn:             constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -2527,9 +2527,9 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 					Key:                  "ps-context-check",
 					ReportOn:             constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -2617,9 +2617,9 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 					Key:                  "ps-context-check",
 					ReportOn:             constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -2709,9 +2709,9 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 					Key:                  "ps-context-check",
 					ReportOn:             constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -2791,9 +2791,9 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 					Key:                  "ps-context-check",
 					ReportOn:             constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -2919,9 +2919,9 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy 
 				Key:                  "webrequest-key-not-on-promotionstrategy",
 				ReportOn:             constants.CommitRefProposed,
 				HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-					URLTemplate: testServer.URL + "/check",
-					Method:      "GET",
-					Timeout:     metav1.Duration{Duration: 10 * time.Second},
+					URLTemplate:    testServer.URL + "/check",
+					MethodTemplate: "GET",
+					Timeout:        metav1.Duration{Duration: 10 * time.Second},
 				},
 				Success: promoterv1alpha1.SuccessSpec{
 					When: promoterv1alpha1.WhenWithOutputSpec{
@@ -3043,9 +3043,9 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy 
 				Key:                  "ps-active-ctx-check",
 				ReportOn:             constants.CommitRefActive,
 				HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-					URLTemplate: testServer.URL + "/validate",
-					Method:      "GET",
-					Timeout:     metav1.Duration{Duration: 10 * time.Second},
+					URLTemplate:    testServer.URL + "/validate",
+					MethodTemplate: "GET",
+					Timeout:        metav1.Duration{Duration: 10 * time.Second},
 				},
 				Success: promoterv1alpha1.SuccessSpec{
 					When: promoterv1alpha1.WhenWithOutputSpec{
@@ -3150,9 +3150,9 @@ var _ = Describe("WebRequestCommitStatus Controller - Context Switching", Ordere
 				Key:                  "ctx-switch-check",
 				ReportOn:             constants.CommitRefProposed,
 				HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-					URLTemplate: testServer.URL + "/validate",
-					Method:      "GET",
-					Timeout:     metav1.Duration{Duration: 10 * time.Second},
+					URLTemplate:    testServer.URL + "/validate",
+					MethodTemplate: "GET",
+					Timeout:        metav1.Duration{Duration: 10 * time.Second},
 				},
 				Success: promoterv1alpha1.SuccessSpec{
 					When: promoterv1alpha1.WhenWithOutputSpec{
@@ -3321,9 +3321,9 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 					Key:                  "external-approval",
 					ReportOn:             constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -3413,9 +3413,9 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 					Key:                  "external-approval",
 					ReportOn:             constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -3496,9 +3496,9 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 					Key:                  "external-approval",
 					ReportOn:             constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -3598,9 +3598,9 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 					Key:                  "external-approval",
 					ReportOn:             constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -3769,9 +3769,9 @@ var _ = Describe("WebRequestCommitStatus Controller - SuccessOutput", Ordered, f
 					Key:                  "success-output-test",
 					ReportOn:             constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -3844,9 +3844,9 @@ var _ = Describe("WebRequestCommitStatus Controller - SuccessOutput", Ordered, f
 					Key:                  "success-output-test",
 					ReportOn:             constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -3913,9 +3913,9 @@ var _ = Describe("WebRequestCommitStatus Controller - SuccessOutput", Ordered, f
 					Key:                  "success-output-test",
 					ReportOn:             constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -3990,9 +3990,9 @@ var _ = Describe("WebRequestCommitStatus Controller - SuccessOutput", Ordered, f
 					Key:                  "success-output-test",
 					ReportOn:             constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -4130,9 +4130,9 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard", Ordered, f
 					Key:                  "dry-sha-guard",
 					ReportOn:             constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{
@@ -4329,9 +4329,9 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard (PromotionSt
 					Key:                  "dry-sha-ps-guard",
 					ReportOn:             constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: testServer.URL + "/validate",
-						Method:      "GET",
-						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
 						When: promoterv1alpha1.WhenWithOutputSpec{

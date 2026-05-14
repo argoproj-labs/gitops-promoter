@@ -204,7 +204,7 @@ spec:
   descriptionTemplate: 'Gate ({{ .Phase }}) for {{ index .TriggerVariables "currentSha" }}'
   httpRequest:
     urlTemplate: "https://hooks.example.com/promo/{{ .Branch }}"
-    method: GET
+    methodTemplate: GET
     timeout: 30s
   success:
     when:
@@ -246,7 +246,7 @@ spec:
   urlTemplate: 'https://ci.example.com/runs/{{ index .SuccessVariables "runId" }}'
   httpRequest:
     urlTemplate: "https://ci.example.com/api/v1/builds/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
-    method: GET
+    methodTemplate: GET
   success:
     when:
       variables:
@@ -291,7 +291,7 @@ spec:
   reportOn: proposed
   httpRequest:
     urlTemplate: "https://deployments.example.com/api/v1/apps/{{ .PromotionStrategy.Spec.RepositoryReference.Name }}/pipeline-status"
-    method: GET
+    methodTemplate: GET
     authentication:
       bearer:
         secretRef:
@@ -322,7 +322,7 @@ spec:
   reportOn: proposed
   httpRequest:
     urlTemplate: "https://orchestrator.example.com/status?app={{ .PromotionStrategy.Spec.RepositoryReference.Name }}"
-    method: GET
+    methodTemplate: GET
   success:
     when:
       expression: |
@@ -379,7 +379,7 @@ spec:
   reportOn: proposed
   httpRequest:
     urlTemplate: "https://approvals.example.com/api/check/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
-    method: GET
+    methodTemplate: GET
     timeout: 30s
   success:
     when:
@@ -406,7 +406,7 @@ spec:
   urlTemplate: "https://dashboard.example.com/changes/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
   httpRequest:
     urlTemplate: "https://api.example.com/v1/changes/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}/status"
-    method: GET
+    methodTemplate: GET
     headerTemplates:
       Content-Type: "application/json"
     authentication:
@@ -445,7 +445,7 @@ spec:
   descriptionTemplate: "Checking deployment {{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha | trunc 7 }}{{ end }}{{ end }} ({{ .Phase }})"
   httpRequest:
     urlTemplate: "https://monitoring.example.com/api/deployment/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
-    method: GET
+    methodTemplate: GET
   success:
     when:
       expression: "Response.StatusCode == 200 && Response.Body.ready == true"
@@ -475,7 +475,7 @@ spec:
   reportOn: proposed
   httpRequest:
     urlTemplate: "https://api.example.com/validate/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
-    method: GET
+    methodTemplate: GET
   success:
     when:
       expression: "Response.StatusCode == 200"
@@ -506,7 +506,7 @@ spec:
   descriptionTemplate: "Progressive validation (attempt {{ index .TriggerOutput \"attemptCount\" | default 0 }})"
   httpRequest:
     urlTemplate: "https://validation.example.com/api/check/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
-    method: GET
+    methodTemplate: GET
   success:
     when:
       expression: "Response.StatusCode == 200 && Response.Body.validated == true"
@@ -547,7 +547,7 @@ spec:
   descriptionTemplate: "Approved by {{ index .SuccessOutput \"approver\" | default \"pending\" }}"
   httpRequest:
     urlTemplate: "https://approvals.example.com/api/check/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
-    method: GET
+    methodTemplate: GET
   mode:
     trigger:
       requeueDuration: 1m
@@ -586,7 +586,7 @@ spec:
   descriptionTemplate: "Checking compliance for {{ .Branch }}"
   httpRequest:
     urlTemplate: "https://compliance.example.com/api/v1/validate"
-    method: POST
+    methodTemplate: POST
     headerTemplates:
       Content-Type: "application/json"
       X-Environment: "{{ .Branch }}"
@@ -637,7 +637,7 @@ spec:
   descriptionTemplate: "Enterprise approval check"
   httpRequest:
     urlTemplate: "https://api.enterprise.com/v2/deployments/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}/approval"
-    method: GET
+    methodTemplate: GET
     authentication:
       oauth2:
         tokenURL: "https://auth.enterprise.com/oauth/token"
@@ -677,7 +677,7 @@ spec:
   descriptionTemplate: "Secure validation check"
   httpRequest:
     urlTemplate: "https://secure.internal.company.com/api/validate/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
-    method: GET
+    methodTemplate: GET
     authentication:
       tls:
         secretRef:
@@ -728,7 +728,7 @@ spec:
   descriptionTemplate: "GitHub required statuses: {{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha | trunc 7 }}{{ end }}{{ end }}"
   httpRequest:
     urlTemplate: "https://api.github.com/repos/my-org/my-repo/commits/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}/check-runs?filter=latest"
-    method: GET
+    methodTemplate: GET
     headerTemplates:
       Accept: "application/vnd.github+json"
       X-GitHub-Api-Version: "2022-11-28"
@@ -764,7 +764,7 @@ spec:
   reportOn: active  # Monitor what's currently deployed
   httpRequest:
     urlTemplate: "https://monitoring.example.com/health/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Active.Hydrated.Sha }}{{ end }}{{ end }}"
-    method: GET
+    methodTemplate: GET
   success:
     when:
       expression: "Response.StatusCode == 200 && Response.Body.errorRate < 0.01"
@@ -790,7 +790,7 @@ spec:
   reportOn: proposed
   httpRequest:
     urlTemplate: "https://api.example.com/comprehensive-check/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
-    method: GET
+    methodTemplate: GET
   success:
     when:
       expression: |
@@ -821,7 +821,7 @@ spec:
   descriptionTemplate: "Waiting for {{ index .NamespaceMetadata.Labels \"team\" }} approval"
   httpRequest:
     urlTemplate: "https://approvals.example.com/api/check"
-    method: POST
+    methodTemplate: POST
     headerTemplates:
       X-Team-ID: "{{ index .NamespaceMetadata.Labels \"team-id\" }}"
       X-Cost-Center: "{{ index .NamespaceMetadata.Annotations \"cost-center\" }}"
@@ -838,6 +838,56 @@ spec:
     polling:
       interval: 2m
 ```
+
+### Method varies by reconcile state
+
+`methodTemplate` is a Go template, so the HTTP method can switch across reconciles based on previous responses. This example issues a `GET` to find a record, then a `POST` to act on it once the ID is known — alternating method, URL, and body together off a single `ResponseOutput.changeId` flag.
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: change-management-close
+spec:
+  promotionStrategyRef:
+    name: my-app
+  key: change-management-close
+  reportOn: active
+  httpRequest:
+    methodTemplate: |
+      {{- if .ResponseOutput -}}
+        {{- $cid := index .ResponseOutput "changeId" -}}
+        {{- if and $cid (ne $cid "") -}}POST{{- else -}}GET{{- end -}}
+      {{- else -}}GET{{- end -}}
+    urlTemplate: |
+      {{- if .ResponseOutput -}}
+        {{- $cid := index .ResponseOutput "changeId" -}}
+        {{- if and $cid (ne $cid "") -}}https://change-management.example.com/close/{{ $cid }}{{- else -}}https://change-management.example.com/search?commit={{ index .TriggerVariables "sha" }}{{- end -}}
+      {{- else -}}https://change-management.example.com/search?commit={{ index .TriggerVariables "sha" }}{{- end -}}
+    bodyTemplate: |
+      {{- if .ResponseOutput }}{{- $cid := index .ResponseOutput "changeId" }}{{- if and $cid (ne $cid "") -}}
+      {"status": "SUCCEEDED"}
+      {{- end -}}{{- end -}}
+  success:
+    when:
+      expression: "true"
+  mode:
+    context: promotionstrategy
+    trigger:
+      requeueDuration: 1m
+      when:
+        expression: "true"
+      response:
+        output:
+          expression: |
+            let isSearch = Response.Body != nil && (Response.Body.records ?? nil) != nil;
+            let priorChangeId = ResponseOutput != nil ? (ResponseOutput.changeId ?? "") : "";
+            {
+              changeId: isSearch ? string((Response.Body.records ?? [])[0].id ?? "") : priorChangeId,
+            }
+```
+
+After each `response.output` evaluation, `ResponseOutput.changeId` is either populated from a search hit (next reconcile sends `POST`) or carried forward (continued action), so the next reconcile naturally renders the matching method, URL, and body.
 
 ### Integrating with PromotionStrategy
 
@@ -888,7 +938,7 @@ spec:
   reportOn: proposed
   httpRequest:
     urlTemplate: "https://approvals.example.com/api/check/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
-    method: GET
+    methodTemplate: GET
     authentication:
       bearer:
         secretRef:
@@ -942,7 +992,7 @@ spec:
   reportOn: proposed
   httpRequest:
     urlTemplate: "https://approvals.example.com/api/status?app={{ .PromotionStrategy.Spec.RepositoryReference.Name }}"
-    method: GET
+    methodTemplate: GET
   success:
     when:
       expression: |

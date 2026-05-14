@@ -6884,12 +6884,29 @@ spec:
                       See HTTPRequestSpec for available template variables.
                     type: object
                   method:
-                    description: Method is the HTTP method to use.
+                    description: |-
+                      Method is the static HTTP method to use. Mutually exclusive with MethodTemplate.
+
+                      Deprecated: Use MethodTemplate instead. A literal value such as `methodTemplate: GET` behaves
+                      identically to `method: GET` and avoids needing two separate fields. Existing resources that
+                      set Method continue to work, but new resources should set MethodTemplate. Method may be
+                      removed in a future release.
                     enum:
                     - GET
                     - POST
                     - PUT
                     - PATCH
+                    - DELETE
+                    type: string
+                  methodTemplate:
+                    description: |-
+                      MethodTemplate is the HTTP method, rendered as a Go template with the same variables and
+                      Sprig functions as URLTemplate/BodyTemplate/HeaderTemplates. The rendered string is trimmed
+                      of surrounding whitespace and uppercased; the final value must be one of GET/POST/PUT/PATCH/DELETE
+                      or the reconcile returns an error. A literal value such as `methodTemplate: GET` works
+                      identically to a static method; use templating when the method must vary by reconcile
+                      state (e.g. issuing a search GET on one reconcile and a close POST on the next).
+                      Mutually exclusive with Method (deprecated).
                     type: string
                   timeout:
                     default: 30s
@@ -6902,9 +6919,12 @@ spec:
                       Supports Go templates (see HTTPRequestSpec for available variables).
                     type: string
                 required:
-                - method
                 - urlTemplate
                 type: object
+                x-kubernetes-validations:
+                - message: exactly one of method or methodTemplate must be set
+                  rule: (has(self.method) && self.method.size() > 0) != (has(self.methodTemplate)
+                    && self.methodTemplate.size() > 0)
               key:
                 description: |-
                   Key is the unique identifier for this validation rule.

@@ -30,8 +30,8 @@ func TestSimulateGate(t *testing.T) {
             Key:                  "example-gate",
             ReportOn:             "proposed",
             HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-                URLTemplate: "https://api.example.com/validate/{{ .Branch }}",
-                Method:      "GET",
+                URLTemplate:    "https://api.example.com/validate/{{ .Branch }}",
+                MethodTemplate: "GET",
             },
             Success: promoterv1alpha1.SuccessSpec{
                 When: promoterv1alpha1.WhenWithOutputSpec{
