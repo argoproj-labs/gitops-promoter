@@ -552,8 +552,7 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 
 	err = r.setCommitStatusState(ctx, &ctp.Status.Active, ctp.Spec.ActiveCommitStatuses)
 	if err != nil {
-		var tooManyMatchingShaError *TooManyMatchingShaError
-		if errors.As(err, &tooManyMatchingShaError) {
+		if _, ok := errors.AsType[*TooManyMatchingShaError](err); ok {
 			r.Recorder.Eventf(ctp, nil, "Warning", constants.TooManyMatchingShaReason, "EvaluatingPromotion", constants.TooManyMatchingShaActiveMessage)
 		}
 		return fmt.Errorf("failed to set active commit status state: %w", err)
@@ -561,8 +560,7 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 
 	err = r.setCommitStatusState(ctx, &ctp.Status.Proposed, ctp.Spec.ProposedCommitStatuses)
 	if err != nil {
-		var tooManyMatchingShaError *TooManyMatchingShaError
-		if errors.As(err, &tooManyMatchingShaError) {
+		if _, ok := errors.AsType[*TooManyMatchingShaError](err); ok {
 			r.Recorder.Eventf(ctp, nil, "Warning", constants.TooManyMatchingShaReason, "EvaluatingPromotion", constants.TooManyMatchingShaProposedMessage)
 		}
 		return fmt.Errorf("failed to set proposed commit status state: %w", err)
