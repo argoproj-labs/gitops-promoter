@@ -406,6 +406,7 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusEnvironments(ctx context.Con
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("trigger decision for environment %q: %w", branch, err)
 		}
+		td.TriggerVariables = decision.TriggerVariables
 
 		result, err := applyHTTPExecutionDecision(ctx, defaultExpressionEvaluator, wrcs, td, decision, lastState, r.httpExec)
 		if err != nil {
@@ -541,6 +542,7 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusPromotionStrategy(ctx contex
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("trigger decision (context=promotionstrategy): %w", err)
 	}
+	td.TriggerVariables = decision.TriggerVariables
 
 	result, err := applyHTTPExecutionDecision(ctx, defaultExpressionEvaluator, wrcs, td, decision, lastState, r.httpExec)
 	if err != nil {

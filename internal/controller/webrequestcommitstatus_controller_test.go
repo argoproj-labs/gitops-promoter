@@ -952,6 +952,85 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
+		It("should render trigger.when.variables result into httpRequest URL, headers, and body templates", func() {
+			By("Creating a WRCS in trigger mode with trigger.when.variables referenced in httpRequest templates")
+			var triggerVarRequestMu sync.Mutex
+			var triggerVarRequests []struct {
+				url     string
+				headers http.Header
+				body    string
+			}
+			triggerVarServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				bodyBytes := make([]byte, 1024)
+				n, _ := r.Body.Read(bodyBytes)
+				triggerVarRequestMu.Lock()
+				triggerVarRequests = append(triggerVarRequests, struct {
+					url     string
+					headers http.Header
+					body    string
+				}{url: r.URL.String(), headers: r.Header.Clone(), body: string(bodyBytes[:n])})
+				triggerVarRequestMu.Unlock()
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+			}))
+			DeferCleanup(triggerVarServer.Close)
+
+			wrcs := &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-trigger-vars-http-test",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  "external-approval",
+					ReportOn:             constants.CommitRefProposed,
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: triggerVarServer.URL + `/validate/{{ index .TriggerVariables "env" }}`,
+						Method:      "POST",
+						HeaderTemplates: map[string]string{
+							"X-Env": `{{ index .TriggerVariables "env" }}`,
+						},
+						BodyTemplate: `{"env":"{{ index .TriggerVariables "env" }}"}`,
+						Timeout:      metav1.Duration{Duration: 10 * time.Second},
+					},
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
+							Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
+						},
+					},
+					Mode: promoterv1alpha1.ModeSpec{
+						Trigger: &promoterv1alpha1.TriggerModeSpec{
+							RequeueDuration: metav1.Duration{Duration: 30 * time.Second},
+							When: promoterv1alpha1.WhenWithOutputSpec{
+								Variables:  &promoterv1alpha1.OutputSpec{Expression: `{"env": "prod"}`},
+								Expression: `true`,
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, wrcs)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, wrcs) })
+
+			By("Waiting for the HTTP request with TriggerVariables rendered in URL, header, and body")
+			Eventually(func(g Gomega) {
+				triggerVarRequestMu.Lock()
+				reqs := append([]struct {
+					url     string
+					headers http.Header
+					body    string
+				}(nil), triggerVarRequests...)
+				triggerVarRequestMu.Unlock()
+
+				g.Expect(reqs).ToNot(BeEmpty())
+				req := reqs[0]
+				g.Expect(req.url).To(ContainSubstring("/validate/prod"))
+				g.Expect(req.headers.Get("X-Env")).To(Equal("prod"))
+				g.Expect(req.body).To(ContainSubstring(`"env":"prod"`))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
 		It("should expose success.when.variables result as .SuccessVariables in description template", func() {
 			By("Creating a WRCS with success.when.variables and a description template referencing .SuccessVariables")
 			wrcsVars := &promoterv1alpha1.WebRequestCommitStatus{

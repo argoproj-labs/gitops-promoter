@@ -26,7 +26,7 @@ import (
 //
 // HTTPRequestSpec defines the HTTP request configuration.
 //
-// Sprig functions are available except env, expandenv, and getHostByName; urlQueryEscape is also available.
+// URLTemplate, HeaderTemplates, and BodyTemplate support Go templates. Sprig functions are available except env, expandenv, and getHostByName; urlQueryEscape is also available.
 // These fields are rendered with previous-attempt data: they are evaluated before the current HTTP request is made,
 // so they never contain the response from the request being built. Use TriggerOutput/ResponseOutput for state from
 // the previous run (trigger mode only).
@@ -40,6 +40,7 @@ import (
 // - {{ .NamespaceMetadata.Annotations }}: map of annotations from the namespace
 // - {{ index .TriggerOutput "key" }}, {{ index .ResponseOutput "key" }}: (trigger mode only) from previous reconcile
 // - {{ index .SuccessOutput "key" }}: custom data from the previous success.when.output.expression evaluation
+// - {{ index .TriggerVariables "key" }}: (trigger mode only) result of trigger.when.variables.expression for this reconcile
 //
 // Example: "https://api.example.com/validate/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
 //
