@@ -483,6 +483,11 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				commitStatus.Labels = map[string]string{
 					promoterv1alpha1.CommitStatusLabel: healthCheckCSKey,
 				}
+				// Point at a non-existent GitRepository so the CommitStatus controller errors at
+				// getCommitStatusProvider before reaching the fake provider's Set(), which would
+				// otherwise overwrite status.phase from spec.phase on every reconcile and race
+				// the Status().Update below that deliberately sets a spec/status mismatch.
+				commitStatus.Spec.RepositoryReference = promoterv1alpha1.ObjectReference{Name: "nonexistent-gitrepo-flake-guard"}
 
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -543,6 +548,9 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(err).To(Succeed())
 				Expect(commitStatus.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess), "spec should be success")
 				Expect(commitStatus.Status.Phase).To(Equal(promoterv1alpha1.CommitPhasePending), "status should be pending")
+
+				By("Enqueuing ChangeTransferPolicy reconcile (CommitStatus controller does not enqueue CTP when provider lookup fails)")
+				enqueueCTP(typeNamespacedName.Namespace, typeNamespacedName.Name)
 
 				By("Verifying CTP reads 'success' from spec, NOT 'pending' from status")
 				// CRITICAL TEST: CTP MUST read "success" from spec.phase
