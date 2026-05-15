@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"net/http"
 	"sync"
@@ -72,32 +73,65 @@ func (gh GitAuthenticationProvider) GetUser(ctx context.Context) (string, error)
 	return "git", nil
 }
 
-// getInstallationClient creates a new GitHub client with the specified installation ID.
+type clientCacheKey struct {
+	domain           string
+	privKeyHash      [32]byte
+	appID, installID int64
+}
+type clientCacheClients struct {
+	itr *ghinstallation.Transport
+	gh  *github.Client
+}
+
+var (
+	clientCacheMu sync.Mutex
+	clientCache   = make(map[clientCacheKey]clientCacheClients)
+)
+
+func newTransport(domain string, appID, installationID int64, privateKey []byte) (*ghinstallation.Transport, *github.Client, error) {
+	key := clientCacheKey{domain, sha256.Sum256(privateKey), appID, installationID}
+
+	clientCacheMu.Lock()
+	defer clientCacheMu.Unlock()
+
+	if val, ok := clientCache[key]; ok {
+		return val.itr, val.gh, nil
+	}
+
+	tr := http.DefaultTransport
+	itr, err := ghinstallation.New(tr, appID, installationID, privateKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("create github app %d installation %d transport: %w", appID, installationID, err)
+	}
+
+	enterprise, baseURL, uploadURL := getUrls(domain)
+	var client *github.Client
+	if !enterprise {
+		client = github.NewClient(&http.Client{Transport: itr})
+	} else {
+		itr.BaseURL = baseURL
+		client, err = github.NewClient(&http.Client{Transport: itr}).WithEnterpriseURLs(baseURL, uploadURL)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create GitHub enterprise client: %w", err)
+		}
+	}
+
+	clientCache[key] = clientCacheClients{
+		itr: itr,
+		gh:  client,
+	}
+	return itr, client, nil
+}
+
+// getInstallationClient a possibly cached GitHub client with the specified installation ID.
 // It also returns a ghinstallation.Transport, which can be used for git requests.
 func getInstallationClient(scmProvider v1alpha1.GenericScmProvider, secret v1.Secret, id int64) (*github.Client, *ghinstallation.Transport, error) {
 	if id <= 0 {
 		return nil, nil, fmt.Errorf("installation ID is required for scmProvider %q", scmProvider.GetName())
 	}
 
-	itr, err := ghinstallation.New(http.DefaultTransport, scmProvider.GetSpec().GitHub.AppID, id, secret.Data[githubAppPrivateKeySecretKey])
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create GitHub installation transport: %w", err)
-	}
-
-	enterprise, baseUrl, uploadUrl := getUrls(scmProvider.GetSpec().GitHub.Domain)
-
-	var client *github.Client
-	if !enterprise {
-		client = github.NewClient(&http.Client{Transport: itr})
-		return client, itr, nil
-	}
-
-	itr.BaseURL = baseUrl
-	client, err = github.NewClient(&http.Client{Transport: itr}).WithEnterpriseURLs(baseUrl, uploadUrl)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create GitHub enterprise client: %w", err)
-	}
-	return client, itr, nil
+	itr, client, err := newTransport(scmProvider.GetSpec().GitHub.Domain, scmProvider.GetSpec().GitHub.AppID, id, secret.Data[githubAppPrivateKeySecretKey])
+	return client, itr, err
 }
 
 func getUrls(domain string) (enterprise bool, baseUrl, uploadUrl string) {
