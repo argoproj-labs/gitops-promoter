@@ -88,14 +88,14 @@ var (
 	clientCache   = make(map[clientCacheKey]clientCacheClients)
 )
 
-func newTransport(domain string, appID, installationID int64, privateKey []byte) (*ghinstallation.Transport, *github.Client, error) {
+func newTransport(domain string, appID, installationID int64, privateKey []byte) (*github.Client, *ghinstallation.Transport, error) {
 	key := clientCacheKey{domain, sha256.Sum256(privateKey), appID, installationID}
 
 	clientCacheMu.Lock()
 	defer clientCacheMu.Unlock()
 
 	if val, ok := clientCache[key]; ok {
-		return val.itr, val.gh, nil
+		return val.gh, val.itr, nil
 	}
 
 	tr := http.DefaultTransport
@@ -120,18 +120,17 @@ func newTransport(domain string, appID, installationID int64, privateKey []byte)
 		itr: itr,
 		gh:  client,
 	}
-	return itr, client, nil
+	return client, itr, nil
 }
 
-// getInstallationClient a possibly cached GitHub client with the specified installation ID.
+// getInstallationClient returns a possibly cached GitHub client with the specified installation ID.
 // It also returns a ghinstallation.Transport, which can be used for git requests.
 func getInstallationClient(scmProvider v1alpha1.GenericScmProvider, secret v1.Secret, id int64) (*github.Client, *ghinstallation.Transport, error) {
 	if id <= 0 {
 		return nil, nil, fmt.Errorf("installation ID is required for scmProvider %q", scmProvider.GetName())
 	}
 
-	itr, client, err := newTransport(scmProvider.GetSpec().GitHub.Domain, scmProvider.GetSpec().GitHub.AppID, id, secret.Data[githubAppPrivateKeySecretKey])
-	return client, itr, err
+	return newTransport(scmProvider.GetSpec().GitHub.Domain, scmProvider.GetSpec().GitHub.AppID, id, secret.Data[githubAppPrivateKeySecretKey])
 }
 
 func getUrls(domain string) (enterprise bool, baseUrl, uploadUrl string) {
