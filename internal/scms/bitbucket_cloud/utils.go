@@ -24,8 +24,8 @@ func parseErrorStatusCode(err error, defaultStatusCode int) int {
 		return defaultStatusCode
 	}
 
-	var bbErr *bitbucket.UnexpectedResponseStatusError
-	if !errors.As(err, &bbErr) {
+	bbErr, ok := errors.AsType[*bitbucket.UnexpectedResponseStatusError](err)
+	if !ok {
 		return http.StatusInternalServerError
 	}
 
