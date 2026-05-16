@@ -299,8 +299,8 @@ func basicWRCS(mode promoterv1alpha1.ModeSpec, successExpr string) *promoterv1al
 			Key:                  testWRCSKey,
 			ReportOn:             "proposed",
 			HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-				URLTemplate: "https://example.com/{{ .Branch }}",
-				Method:      "GET",
+				URLTemplate:    "https://example.com/{{ .Branch }}",
+				MethodTemplate: "GET",
 			},
 			Success: promoterv1alpha1.SuccessSpec{When: promoterv1alpha1.WhenWithOutputSpec{Expression: successExpr}},
 			Mode:    mode,
@@ -358,8 +358,8 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 				Key:                  "k",
 				ReportOn:             "proposed",
 				HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-					URLTemplate: "https://example.com/{{ .Branch }}",
-					Method:      "GET",
+					URLTemplate:    "https://example.com/{{ .Branch }}",
+					MethodTemplate: "GET",
 				},
 				Success: promoterv1alpha1.SuccessSpec{When: promoterv1alpha1.WhenWithOutputSpec{Expression: successExpr}},
 				Mode:    mode,
@@ -825,6 +825,169 @@ var _ = Describe("webrequestsimulator.Simulate scenarios", func() {
 				),
 			})
 			Expect(err).To(MatchError(ContainSubstring("PromotionStrategy is required")))
+		})
+	})
+
+	// MethodTemplate is the Go-templated HTTP method (a literal value works identically to the
+	// deprecated static `method` field; templating lets the method vary across reconciles).
+	// The simulator shares BuildRenderedHTTPRequestFromTemplates with the controller, so these
+	// end-to-end tests verify the rendered Method propagates through Simulate ->
+	// mockHTTPEXecutor -> RenderedRequests.
+	Describe("MethodTemplate", func() {
+		It("renders a static MethodTemplate and surfaces it as RenderedRequest.Method", func() {
+			wrcs := basicWRCS(
+				promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
+				"true",
+			)
+			// basicWRCS already sets MethodTemplate to "GET"; override to "POST" here.
+			wrcs.Spec.HTTPRequest.MethodTemplate = "POST"
+
+			result, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+				WebRequestCommitStatus: wrcs,
+				PromotionStrategy:      twoEnvPromotionStrategy(),
+				HTTPResponses:          envHTTPMocksSame([]string{"dev", "prod"}, nil),
+			})
+
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result.RenderedRequests).To(HaveLen(2))
+			for _, req := range result.RenderedRequests {
+				Expect(req.Method).To(Equal("POST"))
+			}
+		})
+
+		It("alternates Method across reconciles based on prior ResponseOutput (search GET -> close POST)", func() {
+			// Trigger-mode WRCS with promotionstrategy context (single shared HTTP per reconcile)
+			// and reportOn=active so applicableEnvs is filtered by ActiveCommitStatuses.
+			// Reconcile 1: no ResponseOutput yet -> methodTemplate renders GET (search).
+			// Reconcile 2: ResponseOutput.changeId set by prior response.output -> renders POST (close).
+			wrcs := &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{Name: "wrcs", Namespace: "default"},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "ps"},
+					Key:                  testWRCSKey,
+					ReportOn:             "active",
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: "https://example.com/{{ .Branch }}",
+						MethodTemplate: `{{- if .ResponseOutput -}}` +
+							`{{- $cid := index .ResponseOutput "changeId" -}}` +
+							`{{- if and $cid (ne $cid "") -}}POST{{- else -}}GET{{- end -}}` +
+							`{{- else -}}GET{{- end -}}`,
+					},
+					Success: promoterv1alpha1.SuccessSpec{When: promoterv1alpha1.WhenWithOutputSpec{Expression: "true"}},
+					Mode: promoterv1alpha1.ModeSpec{
+						Context: promoterv1alpha1.ContextPromotionStrategy,
+						Trigger: &promoterv1alpha1.TriggerModeSpec{
+							RequeueDuration: metav1.Duration{Duration: time.Minute},
+							When: promoterv1alpha1.WhenWithOutputSpec{
+								Expression: "true",
+							},
+							Response: &promoterv1alpha1.ResponseOutputSpec{
+								Output: promoterv1alpha1.OutputSpec{
+									// Carry changeId from search response forward; pass through on close.
+									// ResponseOutput is nil on the first reconcile, so guard explicitly.
+									Expression: `
+let isSearch = Response.Body != nil && (Response.Body.searchHit ?? false);
+let priorChangeId = ResponseOutput != nil ? (ResponseOutput.changeId ?? "") : "";
+{
+  changeId: isSearch ? "uuid-found" : priorChangeId,
+}
+`,
+								},
+							},
+						},
+					},
+				},
+			}
+
+			// PS gates dev+prod on testWRCSKey via ActiveCommitStatuses so reportOn=active picks them up.
+			ps := &promoterv1alpha1.PromotionStrategy{
+				ObjectMeta: metav1.ObjectMeta{Name: "ps", Namespace: "default"},
+				Spec: promoterv1alpha1.PromotionStrategySpec{
+					RepositoryReference: promoterv1alpha1.ObjectReference{Name: "repo"},
+					Environments: []promoterv1alpha1.Environment{
+						{Branch: "dev", ActiveCommitStatuses: []promoterv1alpha1.CommitStatusSelector{{Key: testWRCSKey}}},
+						{Branch: "prod", ActiveCommitStatuses: []promoterv1alpha1.CommitStatusSelector{{Key: testWRCSKey}}},
+					},
+				},
+				Status: promoterv1alpha1.PromotionStrategyStatus{
+					Environments: []promoterv1alpha1.EnvironmentStatus{
+						{
+							Branch: "dev",
+							Active: promoterv1alpha1.CommitBranchState{
+								Hydrated: promoterv1alpha1.CommitShaState{Sha: "1111111111111111111111111111111111111111"},
+							},
+						},
+						{
+							Branch: "prod",
+							Active: promoterv1alpha1.CommitBranchState{
+								Hydrated: promoterv1alpha1.CommitShaState{Sha: "2222222222222222222222222222222222222222"},
+							},
+						},
+					},
+				},
+			}
+
+			// Reconcile 1: search response (sets ResponseOutput.changeId).
+			r1, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+				WebRequestCommitStatus: wrcs,
+				PromotionStrategy:      ps,
+				HTTPResponses: []simulatortypes.HTTPResponse{
+					{Response: simulatortypes.Response{StatusCode: 200, Body: map[string]any{"searchHit": true}}},
+				},
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(r1.RenderedRequests).To(HaveLen(1))
+			Expect(r1.RenderedRequests[0].Method).To(Equal("GET"), "first reconcile renders GET (no prior changeId)")
+
+			// Hand the prior status back to the simulator for reconcile 2.
+			Expect(r1.Status.PromotionStrategyContext).ToNot(BeNil())
+			wrcs.Status = r1.Status
+
+			r2, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+				WebRequestCommitStatus: wrcs,
+				PromotionStrategy:      ps,
+				HTTPResponses: []simulatortypes.HTTPResponse{
+					{Response: simulatortypes.Response{StatusCode: 202, Body: map[string]any{"id": "close-req"}}},
+				},
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(r2.RenderedRequests).To(HaveLen(1))
+			Expect(r2.RenderedRequests[0].Method).To(Equal("POST"), "second reconcile renders POST (prior changeId present)")
+		})
+
+		It("surfaces a wrapped error when MethodTemplate renders to an unsupported method", func() {
+			wrcs := basicWRCS(
+				promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
+				"true",
+			)
+			wrcs.Spec.HTTPRequest.MethodTemplate = "HEAD"
+
+			_, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+				WebRequestCommitStatus: wrcs,
+				PromotionStrategy:      twoEnvPromotionStrategy(),
+				HTTPResponses:          envHTTPMocksSame([]string{"dev", "prod"}, nil),
+			})
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("invalid HTTP method"))
+			Expect(err.Error()).To(ContainSubstring("HEAD"))
+		})
+
+		It("surfaces a wrapped error when MethodTemplate fails to parse", func() {
+			wrcs := basicWRCS(
+				promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
+				"true",
+			)
+			wrcs.Spec.HTTPRequest.MethodTemplate = "{{ invalid"
+
+			_, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+				WebRequestCommitStatus: wrcs,
+				PromotionStrategy:      twoEnvPromotionStrategy(),
+				HTTPResponses:          envHTTPMocksSame([]string{"dev", "prod"}, nil),
+			})
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to render method template"))
 		})
 	})
 })

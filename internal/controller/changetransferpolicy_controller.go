@@ -552,8 +552,7 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 
 	err = r.setCommitStatusState(ctx, &ctp.Status.Active, ctp.Spec.ActiveCommitStatuses)
 	if err != nil {
-		var tooManyMatchingShaError *TooManyMatchingShaError
-		if errors.As(err, &tooManyMatchingShaError) {
+		if _, ok := errors.AsType[*TooManyMatchingShaError](err); ok {
 			r.Recorder.Eventf(ctp, nil, "Warning", constants.TooManyMatchingShaReason, "EvaluatingPromotion", constants.TooManyMatchingShaActiveMessage)
 		}
 		return fmt.Errorf("failed to set active commit status state: %w", err)
@@ -561,8 +560,7 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 
 	err = r.setCommitStatusState(ctx, &ctp.Status.Proposed, ctp.Spec.ProposedCommitStatuses)
 	if err != nil {
-		var tooManyMatchingShaError *TooManyMatchingShaError
-		if errors.As(err, &tooManyMatchingShaError) {
+		if _, ok := errors.AsType[*TooManyMatchingShaError](err); ok {
 			r.Recorder.Eventf(ctp, nil, "Warning", constants.TooManyMatchingShaReason, "EvaluatingPromotion", constants.TooManyMatchingShaProposedMessage)
 		}
 		return fmt.Errorf("failed to set proposed commit status state: %w", err)
@@ -644,12 +642,26 @@ func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, 
 	if err != nil {
 		return fmt.Errorf("failed to get hydrator note for proposed hydrated SHA %q: %w", proposedHydratedSha, err)
 	}
-	ctp.Status.Proposed.Note = &promoterv1alpha1.HydratorMetadata{
-		DrySha: proposedNote.DrySha,
+	var drySha string
+	if proposedNote != nil {
+		drySha = proposedNote.DrySha
+		ctp.Status.Proposed.Note = &promoterv1alpha1.HydratorMetadata{
+			DrySha: drySha,
+		}
+	} else {
+		// No git note for this proposed hydrated commit. Clear any stale Note
+		// from a previous reconcile (which referenced a different hydrated
+		// commit), so downstream gates like getEffectiveHydratedDrySha don't
+		// trust an old drySha as the current env's "effective" hydrated dry.
+		// Leaving the old value in place causes
+		// PromotionStrategy.updatePreviousEnvironmentCommitStatus to compute
+		// targetDrySha from a stale note and incorrectly mark the previous-env
+		// CommitStatus success against the wrong dry SHA.
+		ctp.Status.Proposed.Note = nil
 	}
 	logger.V(4).Info("Set proposed Note.DrySha from git note",
 		"proposedHydratedSha", proposedHydratedSha,
-		"noteDrySha", proposedNote.DrySha)
+		"noteDrySha", drySha)
 
 	return nil
 }
