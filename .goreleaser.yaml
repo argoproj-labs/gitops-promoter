@@ -98,6 +98,9 @@ docker_signs:
     artifacts: all
     output: true
 
+sboms:
+  - artifacts: archive
+
 archives:
   - id: binary
     formats: [tar.gz]
