@@ -1306,6 +1306,247 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
+
+			FIt("should successfully reconcile the resource through two promotion sequences (notes hydrator)", func() {
+				// This is the notes-based equivalent of the legacy happy-path spec above. It runs
+				// the same dev → staging → prod promotion sequence (twice) but drives hydration via
+				// makeDryCommit + hydrateEnvironmentsBatched, which pushes hydrated commits AND
+				// git notes for every environment in two phases with a configurable note-propagation
+				// delay between them. Use this spec to exercise the git-notes code path end-to-end —
+				// in particular, any timing window between the hydrated commit push and the note push
+				// will surface here as an out-of-order promotion via the look-ahead Consistently
+				// blocks below.
+				By("Checking that all the ChangeTransferPolicies and PRs are created and in their proper state")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+						Namespace: typeNamespacedName.Namespace,
+					}, &ctpDev)
+					g.Expect(err).To(Succeed())
+
+					err = k8sClient.Get(ctx, types.NamespacedName{
+						Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+						Namespace: typeNamespacedName.Namespace,
+					}, &ctpStaging)
+					g.Expect(err).To(Succeed())
+
+					err = k8sClient.Get(ctx, types.NamespacedName{
+						Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch)),
+						Namespace: typeNamespacedName.Namespace,
+					}, &ctpProd)
+					g.Expect(err).To(Succeed())
+				}).Should(Succeed())
+
+				const promotionIterations = 2
+				for iter := 1; iter <= promotionIterations; iter++ {
+					iterLabel := fmt.Sprintf("(iteration %d/%d)", iter, promotionIterations)
+
+					By("Adding a pending commit and hydrating each environment via git notes " + iterLabel)
+					gitPath, err := cloneTestRepo(ctx, gitRepo)
+					Expect(err).NotTo(HaveOccurred())
+					drySha, err := makeDryCommit(ctx, gitPath, fmt.Sprintf("dry commit %d", iter))
+					Expect(err).NotTo(HaveOccurred())
+					// Iter 1 has no prior Note state to be stale against, so we use a 0
+					// note delay (just batches webhooks before notes; same effective
+					// behaviour as per-env hydration). Iter 2 sets up the bug-window the
+					// PR #1428 fix targets: every CTP gets a webhook for the new
+					// hydrated branch while its Status.Proposed.Note is still pointing
+					// at iter 1's drySha, and the controller has 5s to evaluate the
+					// previous-environment gate against that stale Note.DrySha before
+					// the new notes land.
+					noteDelay := time.Duration(0)
+					if iter == 2 {
+						noteDelay = 5 * time.Second
+					}
+					Expect(hydrateEnvironmentsBatched(
+						ctx,
+						gitRepo,
+						[]string{testBranchDevelopmentNext, testBranchStagingNext, testBranchProductionNext},
+						drySha,
+						"hydrate for dry sha "+drySha,
+						noteDelay,
+					)).To(Succeed())
+
+					Eventually(func(g Gomega) {
+						prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+						err = k8sClient.Get(ctx, types.NamespacedName{
+							Name:      prName,
+							Namespace: typeNamespacedName.Namespace,
+						}, &pullRequestDev)
+						g.Expect(err).To(HaveOccurred())
+						g.Expect(errors.IsNotFound(err)).To(BeTrue())
+
+						prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+						err = k8sClient.Get(ctx, types.NamespacedName{
+							Name:      prName,
+							Namespace: typeNamespacedName.Namespace,
+						}, &pullRequestStaging)
+						g.Expect(err).To(Succeed())
+
+						prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+						err = k8sClient.Get(ctx, types.NamespacedName{
+							Name:      prName,
+							Namespace: typeNamespacedName.Namespace,
+						}, &pullRequestProd)
+						g.Expect(err).To(Succeed())
+					}, constants.EventuallyTimeout).Should(Succeed())
+
+					Eventually(func(g Gomega) {
+						err := k8sClient.Get(ctx, types.NamespacedName{
+							Name:      ctpDev.Name,
+							Namespace: ctpDev.Namespace,
+						}, &ctpDev)
+						g.Expect(err).To(Succeed())
+						g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(drySha))
+					}, constants.EventuallyTimeout).Should(Succeed())
+
+					By("Enqueuing staging and production CTPs to give them a chance to reconcile while dev is unhealthy " + iterLabel)
+					enqueueCTP(ctpStaging.Namespace, ctpStaging.Name)
+					enqueueCTP(ctpProd.Namespace, ctpProd.Name)
+
+					By("Verifying staging and production stay open and unpromoted while dev's commit status is not yet success " + iterLabel)
+					Consistently(func(g Gomega) {
+						stagingPRName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+						err = k8sClient.Get(ctx, types.NamespacedName{
+							Name:      stagingPRName,
+							Namespace: typeNamespacedName.Namespace,
+						}, &pullRequestStaging)
+						g.Expect(err).To(Succeed(), "staging PR should still exist while dev is not yet healthy")
+
+						prodPRName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+						err = k8sClient.Get(ctx, types.NamespacedName{
+							Name:      prodPRName,
+							Namespace: typeNamespacedName.Namespace,
+						}, &pullRequestProd)
+						g.Expect(err).To(Succeed(), "production PR should still exist while dev is not yet healthy")
+
+						err = k8sClient.Get(ctx, types.NamespacedName{
+							Name:      ctpStaging.Name,
+							Namespace: ctpStaging.Namespace,
+						}, &ctpStaging)
+						g.Expect(err).To(Succeed())
+						g.Expect(ctpStaging.Status.Active.Dry.Sha).NotTo(Equal(drySha),
+							"staging promoted to %s before dev was observed healthy", drySha)
+
+						err = k8sClient.Get(ctx, types.NamespacedName{
+							Name:      ctpProd.Name,
+							Namespace: ctpProd.Namespace,
+						}, &ctpProd)
+						g.Expect(err).To(Succeed())
+						g.Expect(ctpProd.Status.Active.Dry.Sha).NotTo(Equal(drySha),
+							"production promoted to %s before dev was observed healthy", drySha)
+					}, time.Second*3, time.Millisecond*500).Should(Succeed())
+
+					By("Updating the commit status for the development environment to success " + iterLabel)
+					Eventually(func(g Gomega) {
+						_, err = runGitCmd(ctx, gitPath, "fetch")
+						Expect(err).NotTo(HaveOccurred())
+						sha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+ctpDev.Spec.ActiveBranch)
+						Expect(err).NotTo(HaveOccurred())
+						sha = strings.TrimSpace(sha)
+
+						g.Expect(sha).To(Not(BeEmpty()))
+						_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, activeCommitStatusDevelopment, func() error {
+							activeCommitStatusDevelopment.Spec.Sha = sha
+							activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+							return nil
+						})
+						GinkgoLogr.Info("Updated commit status for development to sha: " + sha + " for branch " + ctpDev.Spec.ActiveBranch)
+						g.Expect(err).To(Succeed())
+
+						err = k8sClient.Get(ctx, types.NamespacedName{
+							Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+							Namespace: typeNamespacedName.Namespace,
+						}, &ctpDev)
+						g.Expect(err).To(Succeed())
+						g.Expect(ctpDev.Status.Active.Hydrated.Sha).To(Equal(sha))
+					}, constants.EventuallyTimeout).Should(Succeed())
+
+					By("By checking that the staging pull request has been merged and the production pull request is still open " + iterLabel)
+					Eventually(func(g Gomega) {
+						prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+						err = k8sClient.Get(ctx, types.NamespacedName{
+							Name:      prName,
+							Namespace: typeNamespacedName.Namespace,
+						}, &pullRequestStaging)
+						g.Expect(err).To(HaveOccurred())
+						g.Expect(errors.IsNotFound(err)).To(BeTrue())
+
+						prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+						err = k8sClient.Get(ctx, types.NamespacedName{
+							Name:      prName,
+							Namespace: typeNamespacedName.Namespace,
+						}, &pullRequestProd)
+						g.Expect(err).To(Succeed())
+					}, constants.EventuallyTimeout).Should(Succeed())
+
+					By("Enqueuing production CTP to give it a chance to reconcile while staging is unhealthy " + iterLabel)
+					enqueueCTP(ctpProd.Namespace, ctpProd.Name)
+
+					By("Verifying production stays open and unpromoted while staging's commit status is not yet success " + iterLabel)
+					Consistently(func(g Gomega) {
+						prodPRName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+						err = k8sClient.Get(ctx, types.NamespacedName{
+							Name:      prodPRName,
+							Namespace: typeNamespacedName.Namespace,
+						}, &pullRequestProd)
+						g.Expect(err).To(Succeed(), "production PR should still exist while staging is not yet healthy")
+
+						err = k8sClient.Get(ctx, types.NamespacedName{
+							Name:      ctpProd.Name,
+							Namespace: ctpProd.Namespace,
+						}, &ctpProd)
+						g.Expect(err).To(Succeed())
+						g.Expect(ctpProd.Status.Active.Dry.Sha).NotTo(Equal(drySha),
+							"production promoted to %s before staging was observed healthy", drySha)
+					}, time.Second*3, time.Millisecond*500).Should(Succeed())
+
+					By("Updating the commit status for the staging environment to success " + iterLabel)
+					Eventually(func(g Gomega) {
+						_, err = runGitCmd(ctx, gitPath, "fetch")
+						Expect(err).NotTo(HaveOccurred())
+						sha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+ctpStaging.Spec.ActiveBranch)
+						Expect(err).NotTo(HaveOccurred())
+						sha = strings.TrimSpace(sha)
+
+						err = k8sClient.Get(ctx, types.NamespacedName{
+							Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+							Namespace: typeNamespacedName.Namespace,
+						}, &ctpStaging)
+						g.Expect(err).To(Succeed())
+						g.Expect(ctpStaging.Status.Active.Hydrated.Sha).To(Equal(sha))
+
+						_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, activeCommitStatusDevelopment, func() error {
+							activeCommitStatusDevelopment.Spec.Sha = sha
+							activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+							return nil
+						})
+						GinkgoLogr.Info("Updated commit status for staging to sha: " + sha)
+						g.Expect(err).To(Succeed())
+					}, constants.EventuallyTimeout).Should(Succeed())
+
+					By("By checking that the production pull request has been merged " + iterLabel)
+					Eventually(func(g Gomega) {
+						prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+						err = k8sClient.Get(ctx, types.NamespacedName{
+							Name:      prName,
+							Namespace: typeNamespacedName.Namespace,
+						}, &pullRequestProd)
+						g.Expect(err).To(HaveOccurred())
+						g.Expect(errors.IsNotFound(err)).To(BeTrue())
+					}, constants.EventuallyTimeout).Should(Succeed())
+
+					By("Verifying production reached the new dry SHA " + iterLabel)
+					Eventually(func(g Gomega) {
+						err := k8sClient.Get(ctx, types.NamespacedName{
+							Name:      ctpProd.Name,
+							Namespace: ctpProd.Namespace,
+						}, &ctpProd)
+						g.Expect(err).To(Succeed())
+						g.Expect(ctpProd.Status.Active.Dry.Sha).To(Equal(drySha))
+					}, constants.EventuallyTimeout).Should(Succeed())
+				}
+			})
 		})
 
 		Context("When active branch has no hydrator metadata with active commit statuses", func() {
