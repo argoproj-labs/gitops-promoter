@@ -39,6 +39,17 @@ jobs:
         with:
           app-id: ${{ secrets.RENOVATE_APP_ID }}
           private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
+          # https://docs.renovatebot.com/modules/platform/github/#running-as-a-github-app
+          permission-checks: write
+          permission-statuses: write
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
+          permission-workflows: write
+          permission-administration: read
+          permission-dependabot-alerts: read
+          permission-members: read
+          permission-metadata: read
 
       - name: Self-hosted Renovate
         uses: renovatebot/github-action@693b9ef15eec82123529a37c782242f091365961 # v46.1.14
