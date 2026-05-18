@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"go.uber.org/zap/zapcore"
+	"k8s.io/client-go/rest"
 
 	"github.com/argoproj-labs/gitops-promoter/cmd/demo"
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
@@ -105,6 +106,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	return cmd
 }
 
+//nolint:gocyclo // A long function in this case is clearer than a bunch of small functions.
 func runController(
 	metricsAddr string,
 	probeAddr string,
@@ -120,7 +122,7 @@ func runController(
 		os.Exit(1)
 	}
 	if controllerNamespace == "" {
-		setupLog.Error(err, "kubeconfig must set a default namespace (install namespace) to load ControllerConfiguration before the manager starts")
+		setupLog.Error(err, "kubeconfig must set a default (install) namespace")
 	}
 
 	restCfg, err := clientConfig.ClientConfig()
@@ -129,19 +131,10 @@ func runController(
 		os.Exit(1)
 	}
 
-	bootstrapClient, err := client.New(restCfg, client.Options{Scheme: scheme})
+	namespaced, err := getNamespaced(restCfg, controllerNamespace)
 	if err != nil {
-		return fmt.Errorf("create kubernetes client for bootstrap: %w", err)
-	}
-	bootstrapSettings := settings.NewManager(bootstrapClient, bootstrapClient, settings.ManagerConfig{
-		ControllerNamespace: controllerNamespace,
-	})
-
-	readCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	useRestrictedCache, err := bootstrapSettings.GetNamespacedDirect(readCtx)
-	if err != nil {
-		return fmt.Errorf("bootstrap read of ControllerConfiguration: %w", err)
+		setupLog.Error(err, "failed to get namespaced mode config")
+		os.Exit(1)
 	}
 
 	// Recover any panic and log using the configured logger. This ensures that panics get logged in JSON format if
@@ -173,7 +166,7 @@ func runController(
 		TLSOpts: tlsOpts,
 	})
 
-	if useRestrictedCache {
+	if namespaced {
 		setupLog.Info("restricting controller-runtime cache to controller install namespace; "+
 			"list/watch requests will be namespace-scoped (compatible with a namespaced Role)",
 			"namespace", controllerNamespace)
@@ -219,7 +212,8 @@ func runController(
 		// after the manager stops then its usage might be unsafe.
 		// LeaderElectionReleaseOnCancel: true,
 	}
-	if useRestrictedCache {
+
+	if namespaced {
 		managerOpts.Cache.DefaultNamespaces = map[string]cache.Config{
 			controllerNamespace: {},
 		}
@@ -411,6 +405,24 @@ func runController(
 		setupLog.Info("cleaning directory", "directory", path)
 	}
 	return nil
+}
+
+func getNamespaced(restCfg *rest.Config, controllerNamespace string) (bool, error) {
+	bootstrapClient, err := client.New(restCfg, client.Options{Scheme: scheme})
+	if err != nil {
+		return false, fmt.Errorf("create kubernetes client for bootstrap: %w", err)
+	}
+	bootstrapSettings := settings.NewManager(bootstrapClient, bootstrapClient, settings.ManagerConfig{
+		ControllerNamespace: controllerNamespace,
+	})
+
+	readCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	useRestrictedCache, err := bootstrapSettings.GetNamespacedDirect(readCtx)
+	if err != nil {
+		return false, fmt.Errorf("bootstrap read of ControllerConfiguration: %w", err)
+	}
+	return useRestrictedCache, nil
 }
 
 func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
