@@ -32,6 +32,17 @@ that one tenant's resources do not reference another tenant's resources within t
 If there are no trust boundaries to be enforced among PromotionStrategy users, a GitOps Promoter admin may choose to 
 host all resources in a single namespace, keeping in mind the need to avoid resource name collisions.
 
+## Namespace-scoped RBAC (Role instead of ClusterRole)
+
+By default the controller-runtime cache lists **all namespaces** for namespaced custom resources (for example `ScmProvider`, `CommitStatus`, `PromotionStrategy`). That list operation is evaluated at **cluster** scope, so it requires a `ClusterRole` with `list`/`watch` on those resources.
+
+If you bind only a namespace-scoped `Role`, enable a **namespace-scoped cache** so list/watch calls are limited to the **controller install namespace** (the same namespace as `ControllerConfiguration` and `ManagerConfig.controllerNamespace` from the kubeconfig default context—typically the pod namespace when in-cluster). Set **`ControllerConfiguration.spec.namespaced`** to `true`. The controller reads that resource once at startup (before the cache starts), so the `ControllerConfiguration` object **must already exist** in that namespace. **Restart the controller** after changing this field.
+
+When namespaced cache is active:
+
+* **`ClusterScmProvider`** is cluster-scoped: with only a namespace-scoped `Role`, the informer may repeatedly log **forbidden** list/watch errors for `clusterscmproviders`. That is noisy but does not crash the pod. Either extend RBAC so the service account can list/watch `clusterscmproviders` at cluster scope, or ignore those logs if you only use namespaced **`ScmProvider`**.
+* The controller only sees **CommitStatus** objects in the controller install namespace. PromotionStrategy behavior that depends on CommitStatuses in *other* namespaces (see [CommitStatus Tenancy](#commitstatus-tenancy)) will not see those remote CommitStatuses unless they are moved into that namespace.
+
 ## CommitStatus Tenancy
 
 As with PromotionStrategies, all references from CommitStatuses (to GitRepositories, then ScmProviders, and finally to

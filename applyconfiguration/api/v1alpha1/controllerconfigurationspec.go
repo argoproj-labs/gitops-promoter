@@ -53,6 +53,11 @@ type ControllerConfigurationSpecApplyConfiguration struct {
 	// WebRequestCommitStatus contains the configuration for the WebRequestCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	WebRequestCommitStatus *WebRequestCommitStatusConfigurationApplyConfiguration `json:"webRequestCommitStatus,omitempty"`
+	// Namespaced, when true, configures the controller-runtime cache to list/watch only in the
+	// controller install namespace (the kubeconfig default namespace / ManagerConfig.controllerNamespace).
+	// This matches namespace-scoped Role RBAC. When false or unset, the controller uses the default
+	// cluster-wide list/watch (ClusterRole). Changing this value requires a controller restart to take effect.
+	Namespaced *bool `json:"namespaced,omitempty"`
 }
 
 // ControllerConfigurationSpecApplyConfiguration constructs a declarative configuration of the ControllerConfigurationSpec type for use with
@@ -122,5 +127,13 @@ func (b *ControllerConfigurationSpecApplyConfiguration) WithGitCommitStatus(valu
 // If called multiple times, the WebRequestCommitStatus field is set to the value of the last call.
 func (b *ControllerConfigurationSpecApplyConfiguration) WithWebRequestCommitStatus(value *WebRequestCommitStatusConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
 	b.WebRequestCommitStatus = value
+	return b
+}
+
+// WithNamespaced sets the Namespaced field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Namespaced field is set to the value of the last call.
+func (b *ControllerConfigurationSpecApplyConfiguration) WithNamespaced(value bool) *ControllerConfigurationSpecApplyConfiguration {
+	b.Namespaced = &value
 	return b
 }
