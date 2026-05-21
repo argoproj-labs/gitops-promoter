@@ -39,7 +39,7 @@ Today, **ArgoCDCommitStatus** and **TimedCommitStatus** expose an optional `spec
 
 For v1.0, we may make `spec.key` **required** on ArgoCDCommitStatus and TimedCommitStatus so all built-in gate CRs share the same API shape. The deprecated `CommitStatusKey()` helpers on those spec types (empty-key fallback for pre-upgrade CRDs) will be removed; controllers will use `spec.Key` directly.
 
-The default values (`argocd-health`, `timer`) are sufficient for most setups today. If you want to avoid manifest churn at v1.0, you can set `spec.key` explicitly now so it is already present when the field becomes required:
+We recommend setting `spec.key` explicitly on ArgoCDCommitStatus and TimedCommitStatus now (use `argocd-health` or `timer` when those are your gate names). That keeps manifests aligned with PromotionStrategy keys and avoids churn if the field becomes required in v1.0:
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1

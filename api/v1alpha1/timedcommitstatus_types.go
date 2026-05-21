@@ -35,7 +35,7 @@ type TimedCommitStatusSpec struct {
 	PromotionStrategyRef ObjectReference `json:"promotionStrategyRef"`
 
 	// Key is the gate name referenced in the PromotionStrategy's activeCommitStatuses or
-	// proposedCommitStatuses. The default timer is sufficient for most setups.
+	// proposedCommitStatuses. When omitted, the CRD default is timer. Set Key explicitly, even if you use the CRD default.
 	// Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
 	// +optional
 	// +kubebuilder:default=timer

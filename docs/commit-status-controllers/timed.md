@@ -31,6 +31,7 @@ kind: TimedCommitStatus
 metadata:
   name: webservice-tier-1
 spec:
+  key: timer
   promotionStrategyRef:
     name: webservice-tier-1
   environments:
@@ -46,13 +47,11 @@ This configuration:
 
 ### `spec.key`
 
-`spec.key` is the gate name your PromotionStrategy checks in `activeCommitStatuses` or `proposedCommitStatuses`. The default `timer` is sufficient for most setups; set `spec.key` only if you use a non-default key in the PromotionStrategy.
-
-We recommend setting `spec.key` explicitly even when using the default, to prepare for a possible v1.0 requirement; see [Roadmap](../roadmap.md).
+`spec.key` is the gate name your PromotionStrategy checks in `activeCommitStatuses` or `proposedCommitStatuses`. When omitted, the CRD default is `timer`. We recommend setting `spec.key` explicitly (including `timer` when that is your gate name) so it matches your PromotionStrategy and your manifests are ready if the field becomes required in v1.0; see [Roadmap](../roadmap.md).
 
 ### Integrating with PromotionStrategy
 
-Reference the same key in `activeCommitStatuses` (default `timer` if you omit `spec.key` on the TimedCommitStatus):
+Reference the same key in `activeCommitStatuses` (must match `TimedCommitStatus.spec.key`):
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
@@ -102,6 +101,7 @@ kind: TimedCommitStatus
 metadata:
   name: webservice-tier-1
 spec:
+  key: timer
   promotionStrategyRef:
     name: webservice-tier-1
   environments:
