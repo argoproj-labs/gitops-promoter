@@ -341,7 +341,7 @@ func (r *TimedCommitStatusReconciler) calculateCommitStatusPhase(requiredDuratio
 
 func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, message string, envBranch string) (*promoterv1alpha1.CommitStatus, error) {
 	// Generate a consistent name for the CommitStatus
-	commitStatusName := utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-timed", tcs.Name, branch))
+	commitStatusName := utils.KubeSafeUniqueName(fmt.Sprintf("%s-%s-timed", tcs.Name, branch))
 
 	// Build owner reference
 	kind := reflect.TypeOf(promoterv1alpha1.TimedCommitStatus{}).Name()
@@ -388,7 +388,7 @@ func (r *TimedCommitStatusReconciler) touchChangeTransferPolicies(ctx context.Co
 	// For each transitioned environment, trigger reconciliation of the corresponding ChangeTransferPolicy
 	for _, envBranch := range transitionedEnvironments {
 		// Generate the ChangeTransferPolicy name using the same logic as the PromotionStrategy controller
-		ctpName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(ps.Name, envBranch))
+		ctpName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(ps.Name, envBranch))
 
 		logger.Info("Triggering ChangeTransferPolicy reconciliation due to time gate transition",
 			"changeTransferPolicy", ctpName,

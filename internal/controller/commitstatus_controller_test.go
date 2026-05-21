@@ -373,7 +373,7 @@ var _ = Describe("CommitStatus Controller", func() {
 // Returns: name (with random suffix), scmSecret, scmProvider, gitRepo, commitStatus
 // Note: URL is set to empty by default and can be customized in tests
 func commitStatusResources(ctx context.Context, name string) (*v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus) {
-	name = name + "-" + utils.KubeSafeUniqueName(ctx, randomString(15))
+	name = name + "-" + utils.KubeSafeUniqueName(randomString(15))
 
 	scmSecret := &v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{

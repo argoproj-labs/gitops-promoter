@@ -388,7 +388,7 @@ func (r *WebRequestCommitStatusReconciler) applySCMAuthentication(ctx context.Co
 // The created resource is owned by the WebRequestCommitStatus so it is cleaned up when the WebRequestCommitStatus is deleted.
 func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, repositoryRefName string, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, templateData webrequest.TemplateData) (*promoterv1alpha1.CommitStatus, error) {
 	// Generate a consistent name for the CommitStatus
-	commitStatusName := utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-webrequest", wrcs.Name, branch))
+	commitStatusName := utils.KubeSafeUniqueName(fmt.Sprintf("%s-%s-webrequest", wrcs.Name, branch))
 
 	// Render description template
 	var description string
@@ -516,7 +516,7 @@ func (r *WebRequestCommitStatusReconciler) touchChangeTransferPolicies(ctx conte
 	// For each transitioned environment, trigger reconciliation of the corresponding ChangeTransferPolicy
 	for _, envBranch := range transitionedEnvironments {
 		// Generate the ChangeTransferPolicy name using the same logic as the PromotionStrategy controller
-		ctpName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(ps.Name, envBranch))
+		ctpName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(ps.Name, envBranch))
 
 		logger.Info("Triggering ChangeTransferPolicy reconciliation due to validation transition",
 			"changeTransferPolicy", ctpName,
