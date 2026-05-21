@@ -15,6 +15,7 @@ import (
 	"github.com/tidwall/gjson"
 
 	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -260,10 +261,16 @@ func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provide
 		return nil, nil
 	}
 
+	var labelSelector labels.Selector
+	if wr.InstanceID != "" {
+		labelSelector = labels.SelectorFromSet(labels.Set{promoterv1alpha1.InstanceIDLabel: wr.InstanceID})
+	}
+
 	err := wr.k8sClient.List(ctx, &ctpLists, &client.ListOptions{
 		FieldSelector: fields.SelectorFromSet(map[string]string{
 			".status.proposed.hydrated.sha": beforeSha,
 		}),
+		LabelSelector: labelSelector,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list changetransferpolicies for webhook receiver: %w", err)
@@ -275,6 +282,7 @@ func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provide
 			FieldSelector: fields.SelectorFromSet(map[string]string{
 				".status.active.hydrated.sha": beforeSha,
 			}),
+			LabelSelector: labelSelector,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to list changetransferpolicies for webhook receiver: %w", err)
