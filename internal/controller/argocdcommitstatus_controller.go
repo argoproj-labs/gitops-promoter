@@ -56,6 +56,7 @@ import (
 	mcreconcile "sigs.k8s.io/multicluster-runtime/pkg/reconcile"
 	"sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
 
+	corev1 "k8s.io/api/core/v1"
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -72,6 +73,16 @@ import (
 // lastTransitionTimeThreshold is the threshold for the last transition time to consider an application healthy.
 // This helps avoid premature acceptance of a transitive healthy state.
 const lastTransitionTimeThreshold = 5 * time.Second
+
+// argoCDConfigMapName is the conventional name of the Argo CD config map.
+const argoCDConfigMapName = "argocd-cm"
+
+// argoCDConfigMapNamespace is the conventional namespace of the Argo CD config map.
+const argoCDConfigMapNamespace = "argocd"
+
+// argoCDConfigMapURLKey is the key in argocd-cm whose value is the externally
+// reachable base URL of the Argo CD instance.
+const argoCDConfigMapURLKey = "url"
 
 // ArgoCDCommitStatusReconciler reconciles a ArgoCDCommitStatus object
 type ArgoCDCommitStatusReconciler struct {
@@ -100,6 +111,7 @@ type ApplicationsInEnvironment struct {
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=argocdcommitstatuses/finalizers,verbs=update
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
 // +kubebuilder:rbac:groups=argoproj.io,resources=applications,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get,resourceNames=argocd-cm
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -198,6 +210,11 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		return ctrl.Result{}, fmt.Errorf("failed to get head shas for target branches: %w", err)
 	}
 
+	argoCDBaseURL, err := r.resolveArgoCDBaseURL(ctx, &argoCDCommitStatus)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
 	maxTimeUntilThreshold := time.Duration(0)
 	commitStatuses := make([]*promoterv1alpha1.CommitStatus, len(groupedArgoCDApps))
 	var i int
@@ -209,7 +226,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		resolvedPhase, desc := r.calculateAggregatedPhaseAndDescription(appsInEnvironment, resolvedSha)
 		resolvedPhase, maxTimeUntilThreshold = getRequeueTimeAndPhase(appsInEnvironment, resolvedPhase, maxTimeUntilThreshold)
 
-		cs, err := r.updateAggregatedCommitStatus(ctx, &promotionStrategy, argoCDCommitStatus, targetBranch, resolvedSha, resolvedPhase, desc)
+		cs, err := r.updateAggregatedCommitStatus(ctx, &promotionStrategy, &argoCDCommitStatus, argoCDBaseURL, targetBranch, resolvedSha, resolvedPhase, desc)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -610,9 +627,64 @@ var applicationPredicate predicate.Predicate = predicate.Funcs{
 	},
 }
 
+// resolveArgoCDBaseURL returns the external base URL of Argo CD to use when
+// resolving root-relative URLs produced by an ArgoCDCommitStatus URL template.
+//
+// Precedence:
+//  1. argoCDCommitStatus.Spec.ArgoCDBaseURL (per-resource override) wins if set.
+//  2. Otherwise, read argocd-cm.url from the argocd namespace on the local cluster.
+//  3. If neither is available, return "" with no error. The caller decides what
+//     to do (skip writing CommitStatus.spec.url and surface a Ready condition).
+//
+// A genuine API error (other than "ConfigMap not found") is propagated.
+func (r *ArgoCDCommitStatusReconciler) resolveArgoCDBaseURL(ctx context.Context, argoCDCommitStatus *promoterv1alpha1.ArgoCDCommitStatus) (string, error) {
+	if argoCDCommitStatus.Spec.ArgoCDBaseURL != "" {
+		return strings.TrimRight(argoCDCommitStatus.Spec.ArgoCDBaseURL, "/"), nil
+	}
+
+	var cm corev1.ConfigMap
+	err := r.localClient.Get(ctx, client.ObjectKey{Namespace: argoCDConfigMapNamespace, Name: argoCDConfigMapName}, &cm)
+	if err != nil {
+		if k8s_errors.IsNotFound(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("failed to get %s/%s ConfigMap: %w", argoCDConfigMapNamespace, argoCDConfigMapName, err)
+	}
+	return strings.TrimRight(cm.Data[argoCDConfigMapURLKey], "/"), nil
+}
+
+// renderAndResolveCommitStatusURL renders the URL template and, if the rendered
+// value is root-relative ("/..." but not "//..."), prepends argoCDBaseURL to
+// produce an absolute http(s) URL. Returns (absoluteURL, ok, err): ok is false
+// when the URL field should be omitted from the CommitStatus (root-relative
+// template + no base URL available).
+func renderAndResolveCommitStatusURL(template string, options []string, data URLTemplateData, argoCDBaseURL string) (string, bool, error) {
+	rendered, err := utils.RenderStringTemplate(template, data, options...)
+	if err != nil {
+		return "", false, fmt.Errorf("failed to render URL template: %w", err)
+	}
+	rendered = strings.TrimSpace(rendered)
+
+	if strings.HasPrefix(rendered, "/") && !strings.HasPrefix(rendered, "//") {
+		if argoCDBaseURL == "" {
+			return "", false, nil
+		}
+		return argoCDBaseURL + rendered, true, nil
+	}
+
+	parsedURL, err := url.Parse(rendered)
+	if err != nil {
+		return "", false, fmt.Errorf("failed to parse URL: %w", err)
+	}
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return "", false, fmt.Errorf("URL scheme is not http or https: %s", parsedURL.Scheme)
+	}
+	return rendered, true, nil
+}
+
 // updateAggregatedCommitStatus creates or updates a CommitStatus object for the given target branch and sha.
 // If err is nil, the returned CommitStatus is guaranteed to be non-nil.
-func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.Context, promotionStrategy *promoterv1alpha1.PromotionStrategy, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, targetBranch string, sha string, phase promoterv1alpha1.CommitStatusPhase, desc string) (*promoterv1alpha1.CommitStatus, error) {
+func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.Context, promotionStrategy *promoterv1alpha1.PromotionStrategy, argoCDCommitStatus *promoterv1alpha1.ArgoCDCommitStatus, argoCDBaseURL string, targetBranch string, sha string, phase promoterv1alpha1.CommitStatusPhase, desc string) (*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
 
 	commitStatusName := targetBranch + "/health"
@@ -629,32 +701,31 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 		WithDescription(desc).
 		WithPhase(phase)
 
-	// Render URL from template if it exists
+	// Render URL from template if it exists. Root-relative templates are resolved
+	// against argoCDBaseURL; absolute http(s) templates pass through.
 	if argoCDCommitStatus.Spec.URL.Template != "" {
 		data := URLTemplateData{
 			Environment:        targetBranch,
-			ArgoCDCommitStatus: argoCDCommitStatus,
+			ArgoCDCommitStatus: *argoCDCommitStatus,
 		}
 
-		renderedURL, err := utils.RenderStringTemplate(argoCDCommitStatus.Spec.URL.Template, data, argoCDCommitStatus.Spec.URL.Options...)
+		resolvedURL, ok, err := renderAndResolveCommitStatusURL(argoCDCommitStatus.Spec.URL.Template, argoCDCommitStatus.Spec.URL.Options, data, argoCDBaseURL)
 		if err != nil {
-			return nil, fmt.Errorf("failed to render URL template: %w", err)
+			return nil, err
 		}
-
-		// Parse the URL to check that it's valid
-		parsedURL, err := url.Parse(renderedURL)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse URL: %w", err)
+		if ok {
+			logger.V(4).Info("Rendered URL template", "url", resolvedURL, "environment", targetBranch, "commitStatus", resourceName, "namespace", argoCDCommitStatus.Namespace)
+			commitStatusSpec = commitStatusSpec.WithUrl(resolvedURL)
+		} else {
+			logger.Info("Omitting CommitStatus.spec.url: URL template rendered root-relative but no Argo CD base URL is configured", "environment", targetBranch, "commitStatus", resourceName, "namespace", argoCDCommitStatus.Namespace)
+			meta.SetStatusCondition(argoCDCommitStatus.GetConditions(), metav1.Condition{
+				Type:               string(promoterConditions.Ready),
+				Status:             metav1.ConditionTrue,
+				Reason:             string(promoterConditions.ArgoCDBaseURLUnset),
+				Message:            fmt.Sprintf("URL template rendered a root-relative path for environment %q but no Argo CD base URL is available; set spec.argocdBaseURL or configure %s/%s with a %q key", targetBranch, argoCDConfigMapNamespace, argoCDConfigMapName, argoCDConfigMapURLKey),
+				ObservedGeneration: argoCDCommitStatus.GetGeneration(),
+			})
 		}
-
-		// Check that the URL scheme is http or https
-		if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-			return nil, fmt.Errorf("URL scheme is not http or https: %s", parsedURL.Scheme)
-		}
-
-		// Set the URL in the CommitStatus
-		logger.V(4).Info("Rendered URL template", "url", renderedURL, "environment", targetBranch, "commitStatus", resourceName, "namespace", argoCDCommitStatus.Namespace)
-		commitStatusSpec = commitStatusSpec.WithUrl(renderedURL)
 	}
 
 	// Build the apply configuration

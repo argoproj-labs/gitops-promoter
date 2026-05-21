@@ -6,6 +6,14 @@ metadata:
 rules:
 - apiGroups:
   - ""
+  resourceNames:
+  - argocd-cm
+  resources:
+  - configmaps
+  verbs:
+  - get
+- apiGroups:
+  - ""
   resources:
   - namespaces
   verbs:

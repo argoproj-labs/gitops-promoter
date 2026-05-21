@@ -27,6 +27,12 @@ const (
 const (
 	// CommitStatusesNotReady is the condition type for commit statuses not being ready.
 	CommitStatusesNotReady CommonReason = "CommitStatusesNotReady"
+	// ArgoCDBaseURLUnset indicates that the rendered URL template produced a
+	// root-relative value, but no Argo CD base URL is available to resolve it
+	// (neither spec.argocdBaseURL nor argocd-cm.url is set). The CommitStatus is
+	// written without spec.url, so the SCM check posts no details link and the
+	// UI extension renders no "View Details" anchor.
+	ArgoCDBaseURLUnset CommonReason = "ArgoCDBaseURLUnset"
 )
 
 // Reasons that apply to ChangeTransferPolicy.

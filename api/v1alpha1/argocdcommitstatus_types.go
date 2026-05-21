@@ -34,8 +34,25 @@ type ArgoCDCommitStatusSpec struct {
 	ApplicationSelector *metav1.LabelSelector `json:"applicationSelector,omitempty"`
 
 	// URL generates the URL to use in the CommitStatus, for example a link to the Argo CD UI.
+	// The template may render either an absolute http(s) URL or a root-relative path
+	// beginning with "/" (but not "//"). Root-relative output is resolved against
+	// ArgoCDBaseURL (if set) or argocd-cm.url on the local cluster, producing the
+	// absolute URL stored on CommitStatus.spec.url.
 	// +kubebuilder:validation:Optional
 	URL URLConfig `json:"url,omitempty"`
+
+	// ArgoCDBaseURL is the external base URL of the Argo CD instance whose Applications
+	// this commit status aggregates. It is used to resolve root-relative URLs produced
+	// by URL.Template into absolute URLs (required, since SCM providers forward
+	// CommitStatus.spec.url as details_url / target_url and reject non-http(s) values).
+	//
+	// Precedence: this field takes priority over the argocd-cm.url ConfigMap on the
+	// local cluster. Setting it is only necessary when URL.Template renders root-relative
+	// AND the local argocd-cm is unavailable, has no `url` key, or reports an URL that
+	// differs from the externally-reachable Argo CD origin (e.g. behind a proxy).
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Pattern=`^(|https?://[^\s]+)$`
+	ArgoCDBaseURL string `json:"argocdBaseURL,omitempty"`
 }
 
 // URLConfig is a template that can be rendered using the Go template engine.

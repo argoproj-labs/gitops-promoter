@@ -33,7 +33,21 @@ type ArgoCDCommitStatusSpecApplyConfiguration struct {
 	// ApplicationSelector is a label selector that selects the Argo CD applications to which this commit status applies.
 	ApplicationSelector *v1.LabelSelectorApplyConfiguration `json:"applicationSelector,omitempty"`
 	// URL generates the URL to use in the CommitStatus, for example a link to the Argo CD UI.
+	// The template may render either an absolute http(s) URL or a root-relative path
+	// beginning with "/" (but not "//"). Root-relative output is resolved against
+	// ArgoCDBaseURL (if set) or argocd-cm.url on the local cluster, producing the
+	// absolute URL stored on CommitStatus.spec.url.
 	URL *URLConfigApplyConfiguration `json:"url,omitempty"`
+	// ArgoCDBaseURL is the external base URL of the Argo CD instance whose Applications
+	// this commit status aggregates. It is used to resolve root-relative URLs produced
+	// by URL.Template into absolute URLs (required, since SCM providers forward
+	// CommitStatus.spec.url as details_url / target_url and reject non-http(s) values).
+	//
+	// Precedence: this field takes priority over the argocd-cm.url ConfigMap on the
+	// local cluster. Setting it is only necessary when URL.Template renders root-relative
+	// AND the local argocd-cm is unavailable, has no `url` key, or reports an URL that
+	// differs from the externally-reachable Argo CD origin (e.g. behind a proxy).
+	ArgoCDBaseURL *string `json:"argocdBaseURL,omitempty"`
 }
 
 // ArgoCDCommitStatusSpecApplyConfiguration constructs a declarative configuration of the ArgoCDCommitStatusSpec type for use with
@@ -63,5 +77,13 @@ func (b *ArgoCDCommitStatusSpecApplyConfiguration) WithApplicationSelector(value
 // If called multiple times, the URL field is set to the value of the last call.
 func (b *ArgoCDCommitStatusSpecApplyConfiguration) WithURL(value *URLConfigApplyConfiguration) *ArgoCDCommitStatusSpecApplyConfiguration {
 	b.URL = value
+	return b
+}
+
+// WithArgoCDBaseURL sets the ArgoCDBaseURL field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ArgoCDBaseURL field is set to the value of the last call.
+func (b *ArgoCDCommitStatusSpecApplyConfiguration) WithArgoCDBaseURL(value string) *ArgoCDCommitStatusSpecApplyConfiguration {
+	b.ArgoCDBaseURL = &value
 	return b
 }
