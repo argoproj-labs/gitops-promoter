@@ -549,6 +549,9 @@ type WebRequestCommitStatusEnvironmentStatus struct {
 	SuccessOutput *apiextensionsv1.JSON `json:"successOutput,omitempty"`
 }
 
+// WebRequestCommitStatusKind is the API Kind for WebRequestCommitStatus.
+const WebRequestCommitStatusKind = "WebRequestCommitStatus"
+
 // +kubebuilder:ac:generate=true
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status

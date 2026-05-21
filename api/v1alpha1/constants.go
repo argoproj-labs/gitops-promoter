@@ -16,12 +16,6 @@ const EnvironmentLabel = "promoter.argoproj.io/environment"
 // ChangeTransferPolicyLabel the change transfer policy which the proposed commit is associated with.
 const ChangeTransferPolicyLabel = "promoter.argoproj.io/change-transfer-policy"
 
-// TimedCommitStatusLabel the timed commit status which the commit status is associated with.
-const TimedCommitStatusLabel = "promoter.argoproj.io/timed-commit-status"
-
-// WebRequestCommitStatusLabel the web request commit status which the commit status is associated with.
-const WebRequestCommitStatusLabel = "promoter.argoproj.io/web-request-commit-status"
-
 // ArgoCDCommitStatusDefaultKey is the default commit status key for ArgoCDCommitStatus when spec.key is omitted.
 const ArgoCDCommitStatusDefaultKey = "argocd-health"
 

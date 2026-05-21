@@ -8,7 +8,7 @@ This document outlines best practices for implementing custom commit status cont
 
 ## Required Labels
 
-All commit status controllers should set the following standard labels on the `CommitStatus` resources they create:
+All commit status controllers should set the following standard labels on the `CommitStatus` resources they create. Use `utils.CommitStatusStandardLabels(parent, branch, key)` to set all three at once.
 
 ### 1. Commit Status Label
 
@@ -82,18 +82,27 @@ commitStatus.Labels[promoterv1alpha1.CommitStatusLabel] = key
 
 #### Kubernetes resource name
 
-Use a consistent pattern for the CommitStatus **resource** name (distinct from `spec.name`):
+Use `utils.CommitStatusResourceName` for the CommitStatus **resource** name (distinct from `spec.name`):
 
 ```go
-commitStatusName := utils.KubeSafeUniqueName(ctx, 
-    fmt.Sprintf("%s-%s-%s", parentResourceName, branch, controllerType))
+resourceName := utils.CommitStatusResourceName(ctx, parent, branch)
 ```
 
-Example: `my-app-environment-development-timer`
+`parent` must have `TypeMeta.Kind` set (objects from the API server already do). For tests and the web request simulator, use `promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.TimedCommitStatusKind)` (or the appropriate `*CommitStatusKind` constant).
+
+The partial kind is derived from the parent's Kind (for example `TimedCommitStatus` → `timed`). The helper applies `KubeSafeUniqueName` to `parent.metadata.name-branch-partialKind`.
+
+Example: `my-app-environment-development-timed-<hash>`
+
+Set the standard CommitStatus labels with `utils.CommitStatusStandardLabels(parent, branch, key)` (parent gate, environment, and commit-status key).
+
+#### Orphan cleanup
+
+At the end of each reconcile, call `utils.CleanupOrphanedCommitStatuses` with the current valid `[]*CommitStatus` slice. The helper derives the parent gate label from the owner's Kind and removes owned CommitStatuses that are no longer in the valid set.
 
 ### Custom Labels
 
-You can add additional labels specific to your controller, but the two standard labels above are recommended:
+You can add additional labels specific to your controller, but the standard labels above are recommended:
 
 ```go
 commitStatus.Labels["my-controller.example.com/custom-info"] = "value"

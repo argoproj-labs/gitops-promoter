@@ -36,6 +36,18 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
+// gitCommitStatusResourceName returns the CommitStatus resource name for a gate and branch.
+// Tests pass gateName instead of the object from client.Create/Get because the envtest client
+// often leaves TypeMeta.Kind empty on typed API objects; CommitStatusResourceName requires Kind.
+// https://github.com/kubernetes-sigs/controller-runtime/issues/1870
+// https://github.com/kubernetes-sigs/controller-runtime/issues/3302
+func gitCommitStatusResourceName(ctx context.Context, gateName, branch string) string {
+	return utils.CommitStatusResourceName(ctx, &promoterv1alpha1.GitCommitStatus{
+		TypeMeta:   promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.GitCommitStatusKind),
+		ObjectMeta: metav1.ObjectMeta{Name: gateName},
+	}, branch)
+}
+
 var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 	var (
 		ctx               context.Context
@@ -86,6 +98,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 		BeforeEach(func() {
 			By("Creating a GitCommitStatus with a simple passing expression")
 			gitCommitStatus = &promoterv1alpha1.GitCommitStatus{
+				TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.GitCommitStatusKind),
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name + "-simple",
 					Namespace: "default",
@@ -133,7 +146,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Verifying CommitStatus was created with custom description")
 			Eventually(func(g Gomega) {
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-simple-"+testBranchDevelopment+"-test-validation")
+				commitStatusName := gitCommitStatusResourceName(ctx, gitCommitStatus.Name, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -151,6 +164,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 		BeforeEach(func() {
 			By("Creating a GitCommitStatus that checks commit subject")
 			gitCommitStatus = &promoterv1alpha1.GitCommitStatus{
+				TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.GitCommitStatusKind),
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name + "-subject",
 					Namespace: "default",
@@ -197,6 +211,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 		BeforeEach(func() {
 			By("Creating a GitCommitStatus with an expression that always fails")
 			gitCommitStatus = &promoterv1alpha1.GitCommitStatus{
+				TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.GitCommitStatusKind),
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name + "-fail",
 					Namespace: "default",
@@ -238,7 +253,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Verifying CommitStatus was created with failure phase")
 			Eventually(func(g Gomega) {
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-fail-"+testBranchDevelopment+"-test-validation")
+				commitStatusName := gitCommitStatusResourceName(ctx, gitCommitStatus.Name, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -254,6 +269,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 		BeforeEach(func() {
 			By("Creating a GitCommitStatus with invalid expression syntax")
 			gitCommitStatus = &promoterv1alpha1.GitCommitStatus{
+				TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.GitCommitStatusKind),
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name + "-invalid",
 					Namespace: "default",
@@ -299,6 +315,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 		It("should handle missing PromotionStrategy gracefully", func() {
 			By("Creating a GitCommitStatus referencing non-existent PromotionStrategy")
 			gcs := &promoterv1alpha1.GitCommitStatus{
+				TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.GitCommitStatusKind),
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name + "-missing-ps",
 					Namespace: "default",
@@ -334,6 +351,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 		BeforeEach(func() {
 			By("Creating a GitCommitStatus")
 			gitCommitStatus = &promoterv1alpha1.GitCommitStatus{
+				TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.GitCommitStatusKind),
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name + "-cleanup",
 					Namespace: "default",
@@ -350,7 +368,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Waiting for CommitStatus to be created")
 			Eventually(func(g Gomega) {
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-cleanup-"+testBranchDevelopment+"-test-validation")
+				commitStatusName := gitCommitStatusResourceName(ctx, gitCommitStatus.Name, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -362,11 +380,48 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
+		It("should cleanup orphaned CommitStatus when environments no longer apply", func() {
+			stagingCommitStatusName := gitCommitStatusResourceName(ctx, gitCommitStatus.Name, testBranchStaging)
+			prodCommitStatusName := gitCommitStatusResourceName(ctx, gitCommitStatus.Name, testBranchProduction)
+
+			Eventually(func(g Gomega) {
+				var cs promoterv1alpha1.CommitStatus
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: stagingCommitStatusName, Namespace: "default"}, &cs)).To(Succeed())
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: prodCommitStatusName, Namespace: "default"}, &cs)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Scoping test-validation to development only on the PromotionStrategy")
+			Eventually(func(g Gomega) {
+				var ps promoterv1alpha1.PromotionStrategy
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, &ps)).To(Succeed())
+				ps.Spec.ProposedCommitStatuses = nil
+				for i := range ps.Spec.Environments {
+					if ps.Spec.Environments[i].Branch == testBranchDevelopment {
+						ps.Spec.Environments[i].ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+							{Key: "test-validation"},
+						}
+					} else {
+						ps.Spec.Environments[i].ProposedCommitStatuses = nil
+					}
+				}
+				g.Expect(k8sClient.Update(ctx, &ps)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying staging and production CommitStatus resources are deleted")
+			Eventually(func(g Gomega) {
+				var cs promoterv1alpha1.CommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: stagingCommitStatusName, Namespace: "default"}, &cs)
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+				err = k8sClient.Get(ctx, types.NamespacedName{Name: prodCommitStatusName, Namespace: "default"}, &cs)
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
 		// Test marked as pending due to garbage collection timing in test environment
 		// The ownership relationship is correctly established (tested above),
 		// but K8s GC in test env may not cleanup within reasonable timeout
 		PIt("should cleanup CommitStatus resources when GitCommitStatus is deleted", func() {
-			commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-cleanup-"+testBranchDevelopment+"-test-validation")
+			commitStatusName := gitCommitStatusResourceName(ctx, gitCommitStatus.Name, testBranchDevelopment)
 
 			By("Deleting the GitCommitStatus")
 			Expect(k8sClient.Delete(ctx, gitCommitStatus)).To(Succeed())
@@ -387,6 +442,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 		It("should evaluate independently for each environment", func() {
 			By("Creating a GitCommitStatus that applies to all environments")
 			gcs := &promoterv1alpha1.GitCommitStatus{
+				TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.GitCommitStatusKind),
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name + "-multi-env",
 					Namespace: "default",
@@ -423,7 +479,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			By("Verifying CommitStatus created for each environment")
 			for _, envBranch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
 				Eventually(func(g Gomega) {
-					commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-multi-env-"+envBranch+"-test-validation")
+					commitStatusName := gitCommitStatusResourceName(ctx, gcs.Name, envBranch)
 					var cs promoterv1alpha1.CommitStatus
 					err := k8sClient.Get(ctx, types.NamespacedName{
 						Name:      commitStatusName,
@@ -440,6 +496,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 		It("should use empty description when not specified", func() {
 			By("Creating a GitCommitStatus without description")
 			gcs := &promoterv1alpha1.GitCommitStatus{
+				TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.GitCommitStatusKind),
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name + "-no-desc",
 					Namespace: "default",
@@ -460,7 +517,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Verifying CommitStatus has empty description")
 			Eventually(func(g Gomega) {
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-no-desc-"+testBranchDevelopment+"-test-validation")
+				commitStatusName := gitCommitStatusResourceName(ctx, gitCommitStatus.Name, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -511,6 +568,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Creating GitCommitStatus that checks for 'feat:' prefix with active mode")
 			gcsActive := &promoterv1alpha1.GitCommitStatus{
+				TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.GitCommitStatusKind),
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name + "-active-feat-check",
 					Namespace: "default",
@@ -570,6 +628,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Creating GitCommitStatus that checks for 'feat:' prefix with proposed mode")
 			gcsProposed := &promoterv1alpha1.GitCommitStatus{
+				TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.GitCommitStatusKind),
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name + "-proposed-feat-check",
 					Namespace: "default",
@@ -629,6 +688,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			By("Creating a GitCommitStatus that detects 'Revert' prefix on active commits")
 			// Use the existing "test-validation" key from BeforeAll setup
 			gcsRevertCheck := &promoterv1alpha1.GitCommitStatus{
+				TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.GitCommitStatusKind),
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name + "-revert-check",
 					Namespace: "default",
@@ -767,7 +827,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Verifying the CommitStatus for staging shows failure")
 			Eventually(func(g Gomega) {
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-revert-check-"+testBranchStaging+"-test-validation")
+				commitStatusName := gitCommitStatusResourceName(ctx, gitCommitStatus.Name, testBranchStaging)
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -906,6 +966,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Creating GitCommitStatus for development - PASSING (author exists)")
 			devGCS = &promoterv1alpha1.GitCommitStatus{
+				TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.GitCommitStatusKind),
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      gatingName + "-" + devGateKey,
 					Namespace: "default",
@@ -923,6 +984,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Creating GitCommitStatus for staging - PASSING (subject exists)")
 			stagingGCS = &promoterv1alpha1.GitCommitStatus{
+				TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.GitCommitStatusKind),
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      gatingName + "-" + stagingGateKey,
 					Namespace: "default",
@@ -940,6 +1002,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Creating GitCommitStatus for production - FAILING (requires non-existent author)")
 			prodGCS = &promoterv1alpha1.GitCommitStatus{
+				TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.GitCommitStatusKind),
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      gatingName + "-" + prodGateKey,
 					Namespace: "default",
@@ -1007,8 +1070,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying CommitStatus for development is success with correct SHA")
-			devCommitStatusName := utils.KubeSafeUniqueName(ctx,
-				gatingName+"-"+devGateKey+"-"+testBranchDevelopment+"-"+devGateKey)
+			devCommitStatusName := gitCommitStatusResourceName(ctx, devGCS.Name, testBranchDevelopment)
 			Eventually(func(g Gomega) {
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -1023,8 +1085,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying CommitStatus for staging is success with correct SHA")
-			stagingCommitStatusName := utils.KubeSafeUniqueName(ctx,
-				gatingName+"-"+stagingGateKey+"-"+testBranchStaging+"-"+stagingGateKey)
+			stagingCommitStatusName := gitCommitStatusResourceName(ctx, stagingGCS.Name, testBranchStaging)
 			Eventually(func(g Gomega) {
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -1039,8 +1100,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying CommitStatus for production is FAILURE with correct SHA - this gates the promotion")
-			prodCommitStatusName := utils.KubeSafeUniqueName(ctx,
-				gatingName+"-"+prodGateKey+"-"+testBranchProduction+"-"+prodGateKey)
+			prodCommitStatusName := gitCommitStatusResourceName(ctx, prodGCS.Name, testBranchProduction)
 			Eventually(func(g Gomega) {
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{

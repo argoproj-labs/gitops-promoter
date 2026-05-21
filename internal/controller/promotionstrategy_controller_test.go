@@ -1969,6 +1969,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}
 
 				argocdCommitStatus = promoterv1alpha1.ArgoCDCommitStatus{
+					TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.ArgoCDCommitStatusKind),
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      name,
 						Namespace: namespace,
@@ -2027,7 +2028,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				for _, environment := range promotionStrategy.Spec.Environments {
 					commitStatus := promoterv1alpha1.CommitStatus{}
 					commitStatusName := promoterv1alpha1.ArgoCDCommitStatusDefaultKey + "/" + environment.Branch
-					resourceName := strings.ReplaceAll(commitStatusName, "/", "-") + "-" + hash([]byte(argocdCommitStatus.Name))
+					resourceName := argocdCommitStatusResourceName(ctx, argocdCommitStatus.Name, environment.Branch)
 					Eventually(func(g Gomega) {
 						err := k8sClient.Get(ctx, types.NamespacedName{
 							Name:      resourceName,
@@ -2228,6 +2229,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(err).To(Succeed())
 
 				argocdCommitStatus = promoterv1alpha1.ArgoCDCommitStatus{
+					TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.ArgoCDCommitStatusKind),
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      name,
 						Namespace: namespace,
@@ -2273,7 +2275,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				for _, environment := range promotionStrategy.Spec.Environments {
 					commitStatus := promoterv1alpha1.CommitStatus{}
 					commitStatusName := promoterv1alpha1.ArgoCDCommitStatusDefaultKey + "/" + environment.Branch
-					resourceName := strings.ReplaceAll(commitStatusName, "/", "-") + "-" + hash([]byte(argocdCommitStatus.Name))
+					resourceName := argocdCommitStatusResourceName(ctx, argocdCommitStatus.Name, environment.Branch)
 					Eventually(func(g Gomega) {
 						err := k8sClient.Get(ctx, types.NamespacedName{
 							Name:      resourceName,

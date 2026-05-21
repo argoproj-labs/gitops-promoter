@@ -118,6 +118,11 @@ func (r *GitCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, fmt.Errorf("failed to process environments: %w", err)
 	}
 
+	err = utils.CleanupOrphanedCommitStatuses(ctx, r.Client, r.Recorder, &gcs, commitStatuses)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to cleanup orphaned CommitStatus resources: %w", err)
+	}
+
 	// Inherit conditions from CommitStatus objects
 	utils.InheritNotReadyConditionFromObjects(&gcs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
 
@@ -422,8 +427,7 @@ func (r *GitCommitStatusReconciler) evaluateExpression(expression string, commit
 
 // upsertCommitStatus creates or updates a CommitStatus resource for the validation result.
 func (r *GitCommitStatusReconciler) upsertCommitStatus(ctx context.Context, gcs *promoterv1alpha1.GitCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha, phase, validationName string) (*promoterv1alpha1.CommitStatus, error) {
-	// Generate a consistent name for the CommitStatus
-	commitStatusName := utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-%s", gcs.Name, branch, validationName))
+	commitStatusName := utils.CommitStatusResourceName(ctx, gcs, branch)
 
 	commitStatus := promoterv1alpha1.CommitStatus{
 		ObjectMeta: metav1.ObjectMeta{
@@ -439,13 +443,7 @@ func (r *GitCommitStatusReconciler) upsertCommitStatus(ctx context.Context, gcs 
 			return fmt.Errorf("failed to set controller reference: %w", err)
 		}
 
-		// Set labels for easy identification
-		if commitStatus.Labels == nil {
-			commitStatus.Labels = make(map[string]string)
-		}
-		commitStatus.Labels["promoter.argoproj.io/git-commit-status"] = utils.KubeSafeLabel(gcs.Name)
-		commitStatus.Labels[promoterv1alpha1.EnvironmentLabel] = utils.KubeSafeLabel(branch)
-		commitStatus.Labels[promoterv1alpha1.CommitStatusLabel] = validationName
+		commitStatus.Labels = utils.CommitStatusStandardLabels(gcs, branch, validationName)
 
 		// Convert phase string to CommitStatusPhase
 		var commitPhase promoterv1alpha1.CommitStatusPhase

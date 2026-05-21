@@ -133,6 +133,9 @@ type TimedCommitStatusEnvironmentsStatus struct {
 	AtMostDurationRemaining metav1.Duration `json:"atMostDurationRemaining"`
 }
 
+// TimedCommitStatusKind is the API Kind for TimedCommitStatus.
+const TimedCommitStatusKind = "TimedCommitStatus"
+
 // +kubebuilder:ac:generate=true
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status

@@ -180,6 +180,9 @@ type ApplicationsSelected struct {
 	ClusterName string `json:"clusterName"`
 }
 
+// ArgoCDCommitStatusKind is the API Kind for ArgoCDCommitStatus.
+const ArgoCDCommitStatusKind = "ArgoCDCommitStatus"
+
 // +kubebuilder:ac:generate=true
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
