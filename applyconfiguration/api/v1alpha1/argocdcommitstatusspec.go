@@ -30,9 +30,8 @@ import (
 type ArgoCDCommitStatusSpecApplyConfiguration struct {
 	// PromotionStrategyRef is a reference to the promotion strategy that this commit status applies to.
 	PromotionStrategyRef *ObjectReferenceApplyConfiguration `json:"promotionStrategyRef,omitempty"`
-	// Key is the unique identifier for this gate.
-	// It is used as the commit status key (promoter.argoproj.io/commit-status label) and in CommitStatus.spec.name as key/branch.
-	// This key is matched against PromotionStrategy's proposedCommitStatuses or activeCommitStatuses.
+	// Key is the gate name referenced in the PromotionStrategy's activeCommitStatuses or
+	// proposedCommitStatuses. The default argocd-health is sufficient for most setups.
 	// Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
 	Key *string `json:"key,omitempty"`
 	// ApplicationSelector is a label selector that selects the Argo CD applications to which this commit status applies.
