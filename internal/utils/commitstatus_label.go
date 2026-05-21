@@ -50,7 +50,9 @@ func pascalCaseNeedsDashBefore(s string, i int) bool {
 	return rune(s[i+1]) >= 'a' && rune(s[i+1]) <= 'z'
 }
 
-// pascalCaseToKebab converts a PascalCase string to kebab-case (for example ArgoCD → argo-cd).
+// pascalCaseToKebab converts a PascalCase string to kebab-case for gate label keys (for example ArgoCD → argo-cd).
+// That is intentional and separate from CommitStatus resource name partial kinds (ArgoCDCommitStatus → argocd)
+// and from CommitStatusLabel values such as argocd-health.
 func pascalCaseToKebab(s string) string {
 	if s == "" {
 		return ""

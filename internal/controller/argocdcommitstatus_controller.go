@@ -213,14 +213,14 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		i++
 	}
 
-	// TODO(v1.0): remove this method and rely on CleanupOrphanedCommitStatuses instead.
+	// TODO(v1.0, #1460): remove this method and rely on CleanupOrphanedCommitStatuses instead.
 	err = r.cleanupLegacyOrphanedCommitStatusesWithoutParentLabel(ctx, &argoCDCommitStatus, commitStatuses)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to cleanup legacy orphaned CommitStatus resources: %w", err)
 	}
 
 	// This should be a no-op while the cleanupLegacyOrphanedCommitStatusesWithoutParentLabel method is present.
-	// Keeping is so that we're certain removing cleanupLegacyOrphanedCommitStatusesWithoutParentLabel is very safe.
+	// Keeping it so that we're certain removing cleanupLegacyOrphanedCommitStatusesWithoutParentLabel is very safe.
 	err = utils.CleanupOrphanedCommitStatuses(ctx, r.localClient, r.Recorder, &argoCDCommitStatus, commitStatuses)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to cleanup orphaned CommitStatus resources: %w", err)
@@ -613,10 +613,11 @@ var applicationPredicate predicate.Predicate = predicate.Funcs{
 
 // Deprecated: cleanupLegacyOrphanedCommitStatusesWithoutParentLabel deletes CommitStatus resources owned by
 // this ArgoCDCommitStatus that are not in validCommitStatuses, without requiring the
-// promoter.argoproj.io/argocd-commit-status label. Pre-upgrade ArgoCD gates did not set that label or use
-// the current CommitStatus resource naming convention.
+// promoter.argoproj.io/argocd-commit-status parent-gate label. Lists only resources with the legacy
+// promoter.argoproj.io/commit-status=argocd-health label (set before parent-gate labels were enforced).
+// Pre-upgrade ArgoCD gates did not set the parent-gate label or use the current resource naming convention.
 //
-// TODO(v1.0): Remove once clusters are upgraded past the ArgoCD CommitStatus naming and label migration.
+// TODO(v1.0, #1460): Remove once clusters are upgraded past the ArgoCD CommitStatus naming and label migration.
 //
 //nolint:dupl // Intentionally mirrors utils.CleanupOrphanedCommitStatuses but lists by owner reference only.
 func (r *ArgoCDCommitStatusReconciler) cleanupLegacyOrphanedCommitStatusesWithoutParentLabel(
@@ -634,7 +635,11 @@ func (r *ArgoCDCommitStatusReconciler) cleanupLegacyOrphanedCommitStatusesWithou
 	}
 
 	var commitStatusList promoterv1alpha1.CommitStatusList
-	err := r.localClient.List(ctx, &commitStatusList, client.InNamespace(argoCDCommitStatus.Namespace))
+	err := r.localClient.List(ctx, &commitStatusList,
+		client.InNamespace(argoCDCommitStatus.Namespace),
+		// This label was present before we applied the other standard labels. It helps us avoid listing irrelevant CommitStatuses.
+		client.MatchingLabels{promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.ArgoCDCommitStatusDefaultKey},
+	)
 	if err != nil {
 		return fmt.Errorf("failed to list CommitStatus resources: %w", err)
 	}

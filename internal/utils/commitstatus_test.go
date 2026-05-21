@@ -80,7 +80,8 @@ var _ = Describe("CleanupOrphanedCommitStatuses", func() {
 				UID:       "owner-uid",
 			},
 		}
-		recorder = events.NewFakeRecorder(10)
+		// Buffer must fit Eventf calls in this test; the fake recorder drops events when full.
+		recorder = events.NewFakeRecorder(100)
 	})
 
 	It("deletes owned CommitStatuses not in the valid set", func() {
@@ -97,7 +98,7 @@ var _ = Describe("CleanupOrphanedCommitStatuses", func() {
 					Kind:       promoterv1alpha1.TimedCommitStatusKind,
 					Name:       owner.Name,
 					UID:        owner.UID,
-					Controller: ptr(true),
+					Controller: new(true),
 				}},
 			},
 		}
@@ -121,7 +122,7 @@ var _ = Describe("CleanupOrphanedCommitStatuses", func() {
 					Kind:       promoterv1alpha1.TimedCommitStatusKind,
 					Name:       "other",
 					UID:        "other-uid",
-					Controller: ptr(true),
+					Controller: new(true),
 				}},
 			},
 		}
@@ -139,5 +140,3 @@ var _ = Describe("CleanupOrphanedCommitStatuses", func() {
 		Expect(names).To(ConsistOf("valid-cs", "other-owner-cs"))
 	})
 })
-
-func ptr(b bool) *bool { return &b }

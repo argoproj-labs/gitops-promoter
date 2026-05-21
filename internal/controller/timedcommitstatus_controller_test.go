@@ -34,6 +34,18 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
+// timedCommitStatusResourceName returns the CommitStatus resource name for a gate and branch.
+// Tests pass gateName instead of the object from client.Create/Get because the envtest client
+// often leaves TypeMeta.Kind empty on typed API objects; CommitStatusResourceName requires Kind.
+// https://github.com/kubernetes-sigs/controller-runtime/issues/1870
+// https://github.com/kubernetes-sigs/controller-runtime/issues/3302
+func timedCommitStatusResourceName(ctx context.Context, gateName, branch string) string {
+	return utils.CommitStatusResourceName(ctx, &promoterv1alpha1.TimedCommitStatus{
+		TypeMeta:   promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.TimedCommitStatusKind),
+		ObjectMeta: metav1.ObjectMeta{Name: gateName},
+	}, branch)
+}
+
 var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 	var (
 		ctx               context.Context
@@ -608,6 +620,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 			Expect(k8sClient.Create(keyCtx, keyPS)).To(Succeed())
 
 			tcs := &promoterv1alpha1.TimedCommitStatus{
+				TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.TimedCommitStatusKind),
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      keyName + "-custom-key",
 					Namespace: "default",
@@ -628,7 +641,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 			Expect(k8sClient.Create(keyCtx, tcs)).To(Succeed())
 			defer func() { _ = k8sClient.Delete(keyCtx, tcs) }()
 
-			commitStatusName := utils.KubeSafeUniqueName(keyCtx, keyName+"-custom-key-"+testBranchDevelopment+"-timed")
+			commitStatusName := timedCommitStatusResourceName(keyCtx, tcs.Name, testBranchDevelopment)
 
 			Eventually(func(g Gomega) {
 				var cs promoterv1alpha1.CommitStatus

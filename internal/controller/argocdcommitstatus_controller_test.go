@@ -1116,7 +1116,7 @@ var _ = Describe("cleanupLegacyOrphanedCommitStatusesWithoutParentLabel", func()
 			Kind:       promoterv1alpha1.ArgoCDCommitStatusKind,
 			Name:       owner.Name,
 			UID:        owner.UID,
-			Controller: boolPtr(true),
+			Controller: new(true),
 		}}
 
 		valid := &promoterv1alpha1.CommitStatus{
@@ -1148,7 +1148,7 @@ var _ = Describe("cleanupLegacyOrphanedCommitStatusesWithoutParentLabel", func()
 					Kind:       promoterv1alpha1.ArgoCDCommitStatusKind,
 					Name:       "other-gate",
 					UID:        "other-uid",
-					Controller: boolPtr(true),
+					Controller: new(true),
 				}},
 			},
 		}
@@ -1156,7 +1156,8 @@ var _ = Describe("cleanupLegacyOrphanedCommitStatusesWithoutParentLabel", func()
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(valid, legacyOrphan, otherOwner).Build()
 		r := &ArgoCDCommitStatusReconciler{
 			localClient: cl,
-			Recorder:    events.NewFakeRecorder(10),
+			// Buffer must fit Eventf calls in this test; the fake recorder drops events when full.
+			Recorder: events.NewFakeRecorder(100),
 		}
 
 		err := r.cleanupLegacyOrphanedCommitStatusesWithoutParentLabel(ctx, owner, []*promoterv1alpha1.CommitStatus{valid})
@@ -1171,5 +1172,3 @@ var _ = Describe("cleanupLegacyOrphanedCommitStatusesWithoutParentLabel", func()
 		Expect(names).To(ConsistOf("valid-cs", "other-owner-cs"))
 	})
 })
-
-func boolPtr(b bool) *bool { return &b }

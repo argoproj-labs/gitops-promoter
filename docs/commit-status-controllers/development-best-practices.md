@@ -90,7 +90,9 @@ resourceName := utils.CommitStatusResourceName(ctx, parent, branch)
 
 `parent` must have `TypeMeta.Kind` set (objects from the API server already do). For tests and the web request simulator, use `promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.TimedCommitStatusKind)` (or the appropriate `*CommitStatusKind` constant).
 
-The partial kind is derived from the parent's Kind (for example `TimedCommitStatus` → `timed`). The helper applies `KubeSafeUniqueName` to `parent.metadata.name-branch-partialKind`.
+The partial kind is the lowercase API kind stem before `CommitStatus` (for example `TimedCommitStatus` → `timed`, `WebRequestCommitStatus` → `webrequest`, `ArgoCDCommitStatus` → `argocd`). This uses simple lowercasing, not `pascalCaseToKebab` (so `webrequest`, not `web-request`). Gate **label** keys use `pascalCaseToKebab` instead (for example `ArgoCDCommitStatus` → `promoter.argoproj.io/argo-cd-commit-status`), which is unrelated to the resource-name suffix.
+
+The helper applies `KubeSafeUniqueName` to `parent.metadata.name-branch-partialKind`.
 
 Example: `my-app-environment-development-timed-<hash>`
 
