@@ -148,7 +148,7 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 
 	// 7. If any validations transitioned to success, touch the corresponding ChangeTransferPolicies to trigger reconciliation
 	if len(transitionedEnvironments) > 0 {
-		r.touchChangeTransferPolicies(ctx, &ps, transitionedEnvironments)
+		utils.TouchChangeTransferPolicies(ctx, r.EnqueueCTP, &ps, transitionedEnvironments, "validation transition")
 	}
 
 	return ctrl.Result{RequeueAfter: requeueAfter}, nil
@@ -505,13 +505,6 @@ func (r *WebRequestCommitStatusReconciler) cleanupOrphanedCommitStatuses(ctx con
 	}
 
 	return nil
-}
-
-// touchChangeTransferPolicies enqueues the ChangeTransferPolicy for each environment in transitionedEnvironments,
-// so the CTP controller re-runs and can merge the PR now that this WebRequestCommitStatus has reported success.
-// Called from Reconcile when at least one environment's validation has just transitioned to success.
-func (r *WebRequestCommitStatusReconciler) touchChangeTransferPolicies(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, transitionedEnvironments []string) {
-	utils.TouchChangeTransferPolicies(ctx, r.EnqueueCTP, ps, transitionedEnvironments, "validation transition")
 }
 
 // enqueueWebRequestCommitStatusForPromotionStrategy returns the watch handler for PromotionStrategy. When a

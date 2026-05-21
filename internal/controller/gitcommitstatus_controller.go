@@ -123,7 +123,7 @@ func (r *GitCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	// If any validations transitioned to success, touch the corresponding ChangeTransferPolicies
 	if len(transitionedEnvironments) > 0 {
-		r.touchChangeTransferPolicies(ctx, &ps, transitionedEnvironments)
+		utils.TouchChangeTransferPolicies(ctx, r.EnqueueCTP, &ps, transitionedEnvironments, "validation transition")
 	}
 
 	return ctrl.Result{}, nil
@@ -472,13 +472,6 @@ func (r *GitCommitStatusReconciler) upsertCommitStatus(ctx context.Context, gcs 
 	}
 
 	return &commitStatus, nil
-}
-
-// touchChangeTransferPolicies triggers reconciliation of the ChangeTransferPolicies
-// for the environments that had validations transition to success.
-// This triggers the ChangeTransferPolicy controller to reconcile and potentially merge PRs.
-func (r *GitCommitStatusReconciler) touchChangeTransferPolicies(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, transitionedEnvironments []string) {
-	utils.TouchChangeTransferPolicies(ctx, r.EnqueueCTP, ps, transitionedEnvironments, "validation transition")
 }
 
 // enqueueGitCommitStatusForPromotionStrategy returns a handler that enqueues all GitCommitStatus resources

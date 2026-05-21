@@ -123,7 +123,7 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	// 6. If any time gates transitioned to success, touch the corresponding ChangeTransferPolicies to trigger reconciliation
 	if len(transitionedEnvironments) > 0 {
-		r.touchChangeTransferPolicies(ctx, &ps, transitionedEnvironments)
+		utils.TouchChangeTransferPolicies(ctx, r.EnqueueCTP, &ps, transitionedEnvironments, "time gate transition")
 	}
 
 	// Requeue based on the shortest duration or default requeue duration
@@ -377,13 +377,6 @@ func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tc
 	}
 
 	return commitStatus, nil
-}
-
-// touchChangeTransferPolicies triggers reconciliation of the ChangeTransferPolicies
-// for the environments that had time gates transition to success.
-// This triggers the ChangeTransferPolicy controller to reconcile and potentially merge PRs.
-func (r *TimedCommitStatusReconciler) touchChangeTransferPolicies(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, transitionedEnvironments []string) {
-	utils.TouchChangeTransferPolicies(ctx, r.EnqueueCTP, ps, transitionedEnvironments, "time gate transition")
 }
 
 // calculateRequeueDuration determines when to requeue based on whether there are pending time gates.
