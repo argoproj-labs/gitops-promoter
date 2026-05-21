@@ -21,7 +21,6 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
-	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
 // getEnvsByBranch builds a map from branch name to EnvironmentStatus for fast lookups.
@@ -63,13 +62,6 @@ func resolveReportedSha(envStatus *promoterv1alpha1.EnvironmentStatus, reportOn 
 	return envStatus.Proposed.Hydrated.Sha
 }
 
-// getApplicableEnvironments returns the PromotionStrategy environments that match a given
-// WebRequestCommitStatus key / reportOn combination. An environment is included if its key is
-// referenced in global or environment-specific ProposedCommitStatuses (when reportOn is "proposed"
-// or default) or ActiveCommitStatuses (when reportOn is "active").
-func getApplicableEnvironments(ps *promoterv1alpha1.PromotionStrategy, key string, reportOn string) []promoterv1alpha1.Environment {
-	return utils.GetApplicableEnvironments(ps, key, reportOn)
-}
 
 // parsePerBranchPhases extracts defaultPhase and optional per-branch overrides from an expression
 // result object of the form { defaultPhase?, environments?: [{ branch, phase }] }.
