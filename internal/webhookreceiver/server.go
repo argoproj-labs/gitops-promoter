@@ -43,14 +43,19 @@ type WebhookReceiver struct {
 	mgr        controllerruntime.Manager
 	k8sClient  client.Client
 	enqueueCTP EnqueueFunc
+	// InstanceID, when non-empty, scopes ChangeTransferPolicy lookups to those
+	// carrying the matching promoter.argoproj.io/instance-id label. Empty
+	// means consider every CTP (backwards-compat).
+	InstanceID string
 }
 
 // NewWebhookReceiver creates a new instance of WebhookReceiver.
-func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP EnqueueFunc) WebhookReceiver {
+func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP EnqueueFunc, instanceID string) WebhookReceiver {
 	return WebhookReceiver{
 		mgr:        mgr,
 		k8sClient:  mgr.GetClient(),
 		enqueueCTP: enqueueCTP,
+		InstanceID: instanceID,
 	}
 }
 

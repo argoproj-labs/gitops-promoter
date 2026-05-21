@@ -75,10 +75,15 @@ const lastTransitionTimeThreshold = 5 * time.Second
 
 // ArgoCDCommitStatusReconciler reconciles a ArgoCDCommitStatus object
 type ArgoCDCommitStatusReconciler struct {
-	Manager                mcmanager.Manager
-	Recorder               events.EventRecorder
-	SettingsMgr            *settings.Manager
-	KubeConfigProvider     *kubeconfig.Provider
+	Manager            mcmanager.Manager
+	Recorder           events.EventRecorder
+	SettingsMgr        *settings.Manager
+	KubeConfigProvider *kubeconfig.Provider
+	// InstanceID, when non-empty, scopes this reconciler to local
+	// ArgoCDCommitStatus resources carrying the matching
+	// promoter.argoproj.io/instance-id label. Remote-cluster Application
+	// watches remain unfiltered (option-b in the ARGO-3085 design).
+	InstanceID             string
 	localClient            client.Client
 	watchLocalApplications bool
 }

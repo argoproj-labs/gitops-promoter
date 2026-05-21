@@ -42,6 +42,9 @@ type ScmProviderReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Recorder events.EventRecorder
+	// InstanceID, when non-empty, scopes this reconciler to resources carrying
+	// the matching promoter.argoproj.io/instance-id label. Empty reconciles all.
+	InstanceID string
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=scmproviders,verbs=get;list;watch;create;update;patch;delete

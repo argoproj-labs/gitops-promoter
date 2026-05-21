@@ -57,6 +57,10 @@ type CommitStatusReconciler struct {
 
 	// EnqueueCTP is a function to enqueue CTP reconcile requests without modifying the CTP object.
 	EnqueueCTP CTPEnqueueFunc
+
+	// InstanceID, when non-empty, scopes this reconciler to resources carrying
+	// the matching promoter.argoproj.io/instance-id label. Empty reconciles all.
+	InstanceID string
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch;create;update;patch;delete

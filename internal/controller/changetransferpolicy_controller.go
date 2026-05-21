@@ -69,6 +69,9 @@ type ChangeTransferPolicyReconciler struct {
 	Scheme      *runtime.Scheme
 	Recorder    events.EventRecorder
 	SettingsMgr *settings.Manager
+	// InstanceID, when non-empty, scopes this reconciler to resources carrying
+	// the matching promoter.argoproj.io/instance-id label. Empty reconciles all.
+	InstanceID string
 
 	// enqueueFunc is set during SetupWithManager and can be retrieved via GetEnqueueFunc.
 	// It allows other controllers to enqueue CTP reconcile requests.

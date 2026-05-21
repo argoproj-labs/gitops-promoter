@@ -61,6 +61,9 @@ type PullRequestReconciler struct {
 	Scheme      *runtime.Scheme
 	Recorder    events.EventRecorder
 	SettingsMgr *settings.Manager
+	// InstanceID, when non-empty, scopes this reconciler to resources carrying
+	// the matching promoter.argoproj.io/instance-id label. Empty reconciles all.
+	InstanceID string
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests,verbs=get;list;watch;create;update;patch;delete

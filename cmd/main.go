@@ -73,6 +73,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var pprofAddr string
+	var instanceID string
 
 	cmd := &cobra.Command{
 		Use:   "controller",
@@ -85,6 +86,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 				enableLeaderElection,
 				secureMetrics,
 				enableHTTP2,
+				instanceID,
 				clientConfig,
 			)
 		},
@@ -100,6 +102,9 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	cmd.Flags().BoolVar(&secureMetrics, "metrics-secure", false, "If set the metrics endpoint is served securely")
 	cmd.Flags().BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	cmd.Flags().StringVar(&instanceID, "instance-id", os.Getenv("GITOPS_PROMOTER_INSTANCE_ID"),
+		"If set, the controller only reconciles resources labelled promoter.argoproj.io/instance-id=<value>. "+
+			"Empty means reconcile everything (backwards-compat).")
 
 	return cmd
 }
@@ -111,6 +116,7 @@ func runController(
 	enableLeaderElection bool,
 	secureMetrics bool,
 	enableHTTP2 bool,
+	instanceID string,
 	clientConfig clientcmd.ClientConfig,
 ) error {
 	controllerNamespace, _, err := clientConfig.Namespace()
@@ -212,13 +218,15 @@ func runController(
 		Scheme:      localManager.GetScheme(),
 		Recorder:    localManager.GetEventRecorder("PullRequest"),
 		SettingsMgr: settingsMgr,
+		InstanceID:  instanceID,
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create PullRequest controller: %w", err))
 	}
 	if err = (&controller.RevertCommitReconciler{
-		Client:   localManager.GetClient(),
-		Scheme:   localManager.GetScheme(),
-		Recorder: localManager.GetEventRecorder("RevertCommit"),
+		Client:     localManager.GetClient(),
+		Scheme:     localManager.GetScheme(),
+		Recorder:   localManager.GetEventRecorder("RevertCommit"),
+		InstanceID: instanceID,
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create RevertCommit controller: %w", err))
 	}
@@ -230,6 +238,7 @@ func runController(
 		Scheme:      localManager.GetScheme(),
 		Recorder:    localManager.GetEventRecorder("ChangeTransferPolicy"),
 		SettingsMgr: settingsMgr,
+		InstanceID:  instanceID,
 	}
 	if err = ctpReconciler.SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ChangeTransferPolicy controller: %w", err))
@@ -241,6 +250,7 @@ func runController(
 		Recorder:    localManager.GetEventRecorder("CommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+		InstanceID:  instanceID,
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create CommitStatus controller: %w", err))
 	}
@@ -251,20 +261,23 @@ func runController(
 		Recorder:    localManager.GetEventRecorder("PromotionStrategy"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+		InstanceID:  instanceID,
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create PromotionStrategy controller: %w", err))
 	}
 	if err = (&controller.ScmProviderReconciler{
-		Client:   localManager.GetClient(),
-		Scheme:   localManager.GetScheme(),
-		Recorder: localManager.GetEventRecorder("ScmProvider"),
+		Client:     localManager.GetClient(),
+		Scheme:     localManager.GetScheme(),
+		Recorder:   localManager.GetEventRecorder("ScmProvider"),
+		InstanceID: instanceID,
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ScmProvider controller: %w", err))
 	}
 	if err = (&controller.GitRepositoryReconciler{
-		Client:   localManager.GetClient(),
-		Scheme:   localManager.GetScheme(),
-		Recorder: localManager.GetEventRecorder("GitRepository"),
+		Client:     localManager.GetClient(),
+		Scheme:     localManager.GetScheme(),
+		Recorder:   localManager.GetEventRecorder("GitRepository"),
+		InstanceID: instanceID,
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create GitRepository controller: %w", err))
 	}
@@ -274,12 +287,14 @@ func runController(
 		SettingsMgr:        settingsMgr,
 		KubeConfigProvider: provider,
 		Recorder:           localManager.GetEventRecorder("ArgoCDCommitStatus"),
+		InstanceID:         instanceID,
 	}).SetupWithManager(processSignalsCtx, mcMgr); err != nil {
 		panic(fmt.Errorf("unable to create ArgoCDCommitStatus controller: %w", err))
 	}
 	if err = (&controller.ControllerConfigurationReconciler{
-		Client: localManager.GetClient(),
-		Scheme: localManager.GetScheme(),
+		Client:     localManager.GetClient(),
+		Scheme:     localManager.GetScheme(),
+		InstanceID: instanceID,
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ControllerConfiguration controller: %w", err))
 	}
@@ -288,6 +303,7 @@ func runController(
 		Scheme:      localManager.GetScheme(),
 		Recorder:    localManager.GetEventRecorder("ClusterScmProvider"),
 		SettingsMgr: settingsMgr,
+		InstanceID:  instanceID,
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ClusterScmProvider controller: %w", err))
 	}
@@ -297,6 +313,7 @@ func runController(
 		Recorder:    localManager.GetEventRecorder("TimedCommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+		InstanceID:  instanceID,
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic("unable to create TimedCommitStatus controller")
 	}
@@ -306,6 +323,7 @@ func runController(
 		Recorder:    localManager.GetEventRecorder("GitCommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+		InstanceID:  instanceID,
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GitCommitStatus")
 		panic(fmt.Errorf("unable to create GitCommitStatus controller: %w", err))
@@ -316,6 +334,7 @@ func runController(
 		Recorder:    localManager.GetEventRecorder("WebRequestCommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+		InstanceID:  instanceID,
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "WebRequestCommitStatus")
 		panic(fmt.Errorf("unable to create WebRequestCommitStatus controller: %w", err))
@@ -329,7 +348,7 @@ func runController(
 		panic(fmt.Errorf("unable to set up ready check: %w", err))
 	}
 
-	whr := webhookreceiver.NewWebhookReceiver(localManager, webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()))
+	whr := webhookreceiver.NewWebhookReceiver(localManager, webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()), instanceID)
 
 	g, ctx := errgroup.WithContext(processSignalsCtx)
 
