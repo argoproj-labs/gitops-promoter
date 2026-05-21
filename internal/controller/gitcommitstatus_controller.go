@@ -121,9 +121,9 @@ func (r *GitCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	// Inherit conditions from CommitStatus objects
 	utils.InheritNotReadyConditionFromObjects(&gcs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
 
-	// If any validations transitioned to success, touch the corresponding ChangeTransferPolicies
+	// If any validations transitioned to success, enqueue the corresponding ChangeTransferPolicies
 	if len(transitionedEnvironments) > 0 {
-		utils.TouchChangeTransferPolicies(ctx, r.EnqueueCTP, &ps, transitionedEnvironments, "validation transition")
+		utils.EnqueueChangeTransferPolicies(ctx, r.EnqueueCTP, &ps, transitionedEnvironments, "validation transition")
 	}
 
 	return ctrl.Result{}, nil

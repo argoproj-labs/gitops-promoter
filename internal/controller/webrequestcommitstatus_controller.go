@@ -74,7 +74,7 @@ type WebRequestCommitStatusReconciler struct {
 
 // Reconcile fetches the WebRequestCommitStatus and its PromotionStrategy, processes each applicable
 // environment (evaluating trigger and optionally making the HTTP request and validation), upserts
-// CommitStatus resources, cleans up orphaned CommitStatuses, and touches ChangeTransferPolicies when
+// CommitStatus resources, cleans up orphaned CommitStatuses, and enqueues ChangeTransferPolicies when
 // an environment transitions to success. Result status and requeue time are updated via the deferred handler.
 func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
@@ -146,9 +146,9 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 	// 6. Inherit conditions from CommitStatus objects
 	utils.InheritNotReadyConditionFromObjects(&wrcs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
 
-	// 7. If any validations transitioned to success, touch the corresponding ChangeTransferPolicies to trigger reconciliation
+	// 7. If any validations transitioned to success, enqueue the corresponding ChangeTransferPolicies to trigger reconciliation
 	if len(transitionedEnvironments) > 0 {
-		utils.TouchChangeTransferPolicies(ctx, r.EnqueueCTP, &ps, transitionedEnvironments, "validation transition")
+		utils.EnqueueChangeTransferPolicies(ctx, r.EnqueueCTP, &ps, transitionedEnvironments, "validation transition")
 	}
 
 	return ctrl.Result{RequeueAfter: requeueAfter}, nil

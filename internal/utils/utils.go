@@ -191,11 +191,11 @@ func GetChangeTransferPolicyName(promotionStrategyName, environmentBranch string
 	return fmt.Sprintf("%s-%s", promotionStrategyName, environmentBranch)
 }
 
-// TouchChangeTransferPolicies triggers reconciliation of the ChangeTransferPolicies for each
+// EnqueueChangeTransferPolicies triggers reconciliation of the ChangeTransferPolicies for each
 // environment branch in transitionedBranches. enqueueCTP may be nil (it is nil-checked before
 // calling). logReason describes why the transition occurred and is included in the log message
 // (e.g. "validation transition", "time gate transition").
-func TouchChangeTransferPolicies(
+func EnqueueChangeTransferPolicies(
 	ctx context.Context,
 	enqueueCTP func(namespace, name string),
 	ps *promoterv1alpha1.PromotionStrategy,

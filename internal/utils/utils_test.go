@@ -595,7 +595,7 @@ var _ = Describe("HandleReconciliationResult fallback status apply", func() {
 	})
 })
 
-var _ = Describe("TouchChangeTransferPolicies", func() {
+var _ = Describe("EnqueueChangeTransferPolicies", func() {
 	var (
 		ctx      context.Context
 		ps       *promoterv1alpha1.PromotionStrategy
@@ -615,7 +615,7 @@ var _ = Describe("TouchChangeTransferPolicies", func() {
 
 	It("enqueues the expected CTP names for each transitioned branch", func() {
 		branches := []string{"main", "staging"}
-		utils.TouchChangeTransferPolicies(ctx, func(namespace, name string) {
+		utils.EnqueueChangeTransferPolicies(ctx, func(namespace, name string) {
 			enqueued = append(enqueued, namespace+"/"+name)
 		}, ps, branches, "validation transition")
 
@@ -626,7 +626,7 @@ var _ = Describe("TouchChangeTransferPolicies", func() {
 	})
 
 	It("does nothing when transitionedBranches is empty", func() {
-		utils.TouchChangeTransferPolicies(ctx, func(namespace, name string) {
+		utils.EnqueueChangeTransferPolicies(ctx, func(namespace, name string) {
 			enqueued = append(enqueued, namespace+"/"+name)
 		}, ps, nil, "validation transition")
 
@@ -635,13 +635,13 @@ var _ = Describe("TouchChangeTransferPolicies", func() {
 
 	It("does not panic when enqueueCTP is nil", func() {
 		Expect(func() {
-			utils.TouchChangeTransferPolicies(ctx, nil, ps, []string{"main"}, "validation transition")
+			utils.EnqueueChangeTransferPolicies(ctx, nil, ps, []string{"main"}, "validation transition")
 		}).NotTo(Panic())
 	})
 
 	It("uses the CTP name derived from the promotion strategy name and branch", func() {
 		var capturedName string
-		utils.TouchChangeTransferPolicies(ctx, func(namespace, name string) {
+		utils.EnqueueChangeTransferPolicies(ctx, func(namespace, name string) {
 			capturedName = name
 		}, ps, []string{"main"}, "validation transition")
 
