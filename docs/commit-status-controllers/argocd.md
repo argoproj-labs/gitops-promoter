@@ -37,10 +37,11 @@ spec:
       app: webservice-tier-1
 ```
 
-To configure the PromotionStrategy, we need to specify the active commit statuses that are required for the promotion to proceed.
-You can see this in the example below with the `activeCommitStatuses` field. The CommitStatuses managed by an ArgoCDCommitStatus
-always have a key of `argocd-health`, so that exact key must be used in the PromotionStrategy.
+### `spec.key`
 
+`spec.key` is the gate name your PromotionStrategy checks in `activeCommitStatuses` or `proposedCommitStatuses`. The default `argocd-health` is sufficient for most setups; set `spec.key` only if you use a non-default key in the PromotionStrategy.
+
+Reference the same key in the PromotionStrategy:
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
@@ -49,8 +50,7 @@ metadata:
   name: argocon-demo
 spec:
   activeCommitStatuses:
-    # This is the hard-coded key that is always used by the ArgoCDCommitStatus controller.
-    - key: argocd-health
+    - key: argocd-health  # same as ArgoCDCommitStatus.spec.key
   environments:
     - branch: environments/development
     - branch: environments/staging

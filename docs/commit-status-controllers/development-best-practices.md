@@ -16,12 +16,7 @@ All commit status controllers should set the following standard labels on the `C
 commitStatus.Labels[promoterv1alpha1.CommitStatusLabel] = "your-controller-key"
 ```
 
-**Purpose:** This label identifies which controller created the commit status. The value should match the `key` used in the PromotionStrategy's `proposedCommitStatuses` configuration.
-
-**Examples:**
-- `"argocd-health"` - Used by ArgoCDCommitStatus controller
-- `"timer"` - Used by TimedCommitStatus controller
-- `"manual-approval"` - Could be used by a manual approval controller
+**Purpose:** The value must equal the gate `key` from the parent CR's `spec.key` (and the same `key` in the PromotionStrategy's `activeCommitStatuses` or `proposedCommitStatuses`). Controllers set this automatically; end users configure `spec.key` on the gate CR, not this label.
 
 **Usage in PromotionStrategy:**
 ```yaml
@@ -31,8 +26,8 @@ metadata:
   name: my-app
 spec:
   activeCommitStatuses:
-    - key: argocd-health  # Matches the label value
-    - key: timer          # Matches the label value
+    - key: argocd-health  # same as ArgoCDCommitStatus.spec.key
+    - key: timer          # same as TimedCommitStatus.spec.key
 ```
 
 ### 2. Environment Label
@@ -54,19 +49,11 @@ commitStatus.Labels[promoterv1alpha1.EnvironmentLabel] = utils.KubeSafeLabel(bra
 
 ### ArgoCDCommitStatus Controller
 
-The ArgoCDCommitStatus controller sets:
-- `promoter.argoproj.io/commit-status: "argocd-health"`
-- `promoter.argoproj.io/environment: <branch>`
-
-See: `internal/controller/argocdcommitstatus_controller.go` lines 557-560
+Uses `ArgoCDCommitStatus.spec.key` (default `argocd-health`).
 
 ### TimedCommitStatus Controller
 
-The TimedCommitStatus controller sets:
-- `promoter.argoproj.io/commit-status: "timer"`
-- `promoter.argoproj.io/environment: <branch>`
-
-See: `internal/controller/timedcommitstatus_controller.go` lines 295-296
+Uses `TimedCommitStatus.spec.key` (default `timer`).
 
 ## Additional Best Practices
 
@@ -84,7 +71,18 @@ This ensures that when the parent resource (e.g., ArgoCDCommitStatus, TimedCommi
 
 ### Naming Convention
 
-Use a consistent naming pattern for CommitStatus resources:
+#### SCM status name (`CommitStatus.spec.name`)
+
+Built-in controllers use `{spec.key}/{environment-branch}` for the name shown in the SCM (for example `argocd-health/environment/staging`). The `key` is the same value the PromotionStrategy references in `activeCommitStatuses` or `proposedCommitStatuses`.
+
+```go
+commitStatus.Spec.Name = key + "/" + branch
+commitStatus.Labels[promoterv1alpha1.CommitStatusLabel] = key
+```
+
+#### Kubernetes resource name
+
+Use a consistent pattern for the CommitStatus **resource** name (distinct from `spec.name`):
 
 ```go
 commitStatusName := utils.KubeSafeUniqueName(ctx, 

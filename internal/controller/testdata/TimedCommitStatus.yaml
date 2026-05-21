@@ -4,6 +4,8 @@ metadata:
   name: webservice-tier-1
   namespace: default
 spec:
+  # Gate key for PromotionStrategy; default timer
+  key: timer
   # Reference to the PromotionStrategy this TimedCommitStatus monitors
   promotionStrategyRef:
     name: webservice-tier-1

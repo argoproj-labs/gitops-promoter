@@ -44,9 +44,15 @@ This configuration:
 - Requires changes to run in `development` for 1 hour before they can be promoted out
 - Requires changes to run in `staging` for 4 hours before they can be promoted out
 
+### `spec.key`
+
+`spec.key` is the gate name your PromotionStrategy checks in `activeCommitStatuses` or `proposedCommitStatuses`. The default `timer` is sufficient for most setups; set `spec.key` only if you use a non-default key in the PromotionStrategy.
+
+We recommend setting `spec.key` explicitly even when using the default, to prepare for a possible v1.0 requirement; see [Roadmap](../roadmap.md).
+
 ### Integrating with PromotionStrategy
 
-To use time-based gating, configure your PromotionStrategy to check for the `timer` commit status key as an active commit status:
+Reference the same key in `activeCommitStatuses` (default `timer` if you omit `spec.key` on the TimedCommitStatus):
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1

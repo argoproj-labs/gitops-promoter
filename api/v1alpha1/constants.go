@@ -22,6 +22,12 @@ const TimedCommitStatusLabel = "promoter.argoproj.io/timed-commit-status"
 // WebRequestCommitStatusLabel the web request commit status which the commit status is associated with.
 const WebRequestCommitStatusLabel = "promoter.argoproj.io/web-request-commit-status"
 
+// ArgoCDCommitStatusDefaultKey is the default commit status key for ArgoCDCommitStatus when spec.key is omitted.
+const ArgoCDCommitStatusDefaultKey = "argocd-health"
+
+// TimedCommitStatusDefaultKey is the default commit status key for TimedCommitStatus when spec.key is omitted.
+const TimedCommitStatusDefaultKey = "timer"
+
 // PreviousEnvironmentCommitStatusKey the commit status key name used to indicate the previous environment health
 const PreviousEnvironmentCommitStatusKey = "promoter-previous-environment"
 

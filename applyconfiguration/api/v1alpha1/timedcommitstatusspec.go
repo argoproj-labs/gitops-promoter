@@ -25,8 +25,13 @@ package v1alpha1
 // TimedCommitStatusSpec defines the desired state of TimedCommitStatus
 type TimedCommitStatusSpecApplyConfiguration struct {
 	// PromotionStrategyRef is a reference to the promotion strategy that this timed commit status applies to.
-	PromotionStrategyRef *ObjectReferenceApplyConfiguration                `json:"promotionStrategyRef,omitempty"`
-	Environments         []TimedCommitStatusEnvironmentsApplyConfiguration `json:"environments,omitempty"`
+	PromotionStrategyRef *ObjectReferenceApplyConfiguration `json:"promotionStrategyRef,omitempty"`
+	// Key is the unique identifier for this gate.
+	// It is used as the commit status key (promoter.argoproj.io/commit-status label) and in CommitStatus.spec.name as key/branch.
+	// This key is matched against PromotionStrategy's proposedCommitStatuses or activeCommitStatuses.
+	// Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
+	Key          *string                                           `json:"key,omitempty"`
+	Environments []TimedCommitStatusEnvironmentsApplyConfiguration `json:"environments,omitempty"`
 }
 
 // TimedCommitStatusSpecApplyConfiguration constructs a declarative configuration of the TimedCommitStatusSpec type for use with
@@ -40,6 +45,14 @@ func TimedCommitStatusSpec() *TimedCommitStatusSpecApplyConfiguration {
 // If called multiple times, the PromotionStrategyRef field is set to the value of the last call.
 func (b *TimedCommitStatusSpecApplyConfiguration) WithPromotionStrategyRef(value *ObjectReferenceApplyConfiguration) *TimedCommitStatusSpecApplyConfiguration {
 	b.PromotionStrategyRef = value
+	return b
+}
+
+// WithKey sets the Key field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Key field is set to the value of the last call.
+func (b *TimedCommitStatusSpecApplyConfiguration) WithKey(value string) *TimedCommitStatusSpecApplyConfiguration {
+	b.Key = &value
 	return b
 }
 

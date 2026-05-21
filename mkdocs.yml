@@ -38,6 +38,7 @@ markdown_extensions:
           case: lower
 nav:
   - Overview: index.md
+  - Roadmap: roadmap.md
   - Getting Started: getting-started.md
   - Contributing:
       - Overview: contributing/index.md

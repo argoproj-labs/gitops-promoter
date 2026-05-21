@@ -34,8 +34,31 @@ type TimedCommitStatusSpec struct {
 	// +required
 	PromotionStrategyRef ObjectReference `json:"promotionStrategyRef"`
 
+	// Key is the gate name referenced in the PromotionStrategy's activeCommitStatuses or
+	// proposedCommitStatuses. The default timer is sufficient for most setups.
+	// Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
+	// +optional
+	// +kubebuilder:default=timer
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+	Key string `json:"key,omitempty"`
+
 	// +required
 	Environments []TimedCommitStatusEnvironments `json:"environments"`
+}
+
+// CommitStatusKey returns spec.key, or the default when Key is empty.
+//
+// Deprecated: CommitStatusKey exists only for clusters running a CRD without spec.key defaulting
+// (for example resources created before the key field existed). The API server applies the CRD
+// default when key is omitted on create/update, so controllers should use spec.Key directly.
+// This helper will be removed in v1.0 when spec.key becomes required.
+func (s *TimedCommitStatusSpec) CommitStatusKey() string {
+	if s.Key != "" {
+		return s.Key
+	}
+	return TimedCommitStatusDefaultKey
 }
 
 // TimedCommitStatusEnvironments defines the branch/environment and duration to wait before reporting the gate as success.

@@ -6,6 +6,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: argocdcommitstatus-sample
 spec:
+  # key: argocd-health  # optional; must match PromotionStrategy active/proposedCommitStatuses
   promotionStrategyRef:
     name: ps-name
   applicationSelector:

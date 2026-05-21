@@ -347,12 +347,14 @@ func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tc
 	kind := reflect.TypeOf(promoterv1alpha1.TimedCommitStatus{}).Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
+	key := tcs.Spec.CommitStatusKey() //nolint:staticcheck // SA1019: empty-key fallback until v1.0; use spec.Key directly then.
+
 	// Build the apply configuration
 	commitStatusApply := acv1alpha1.CommitStatus(commitStatusName, tcs.Namespace).
 		WithLabels(map[string]string{
 			promoterv1alpha1.TimedCommitStatusLabel: utils.KubeSafeLabel(tcs.Name),
 			promoterv1alpha1.EnvironmentLabel:       utils.KubeSafeLabel(branch),
-			promoterv1alpha1.CommitStatusLabel:      "timer",
+			promoterv1alpha1.CommitStatusLabel:      key,
 		}).
 		WithOwnerReferences(acmetav1.OwnerReference().
 			WithAPIVersion(gvk.GroupVersion().String()).
@@ -363,7 +365,7 @@ func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tc
 			WithBlockOwnerDeletion(true)).
 		WithSpec(acv1alpha1.CommitStatusSpec().
 			WithRepositoryReference(acv1alpha1.ObjectReference().WithName(ps.Spec.RepositoryReference.Name)).
-			WithName("timer/" + envBranch).
+			WithName(key + "/" + envBranch).
 			WithDescription(message).
 			WithPhase(phase).
 			WithSha(sha))

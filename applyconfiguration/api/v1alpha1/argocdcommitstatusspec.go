@@ -30,6 +30,11 @@ import (
 type ArgoCDCommitStatusSpecApplyConfiguration struct {
 	// PromotionStrategyRef is a reference to the promotion strategy that this commit status applies to.
 	PromotionStrategyRef *ObjectReferenceApplyConfiguration `json:"promotionStrategyRef,omitempty"`
+	// Key is the unique identifier for this gate.
+	// It is used as the commit status key (promoter.argoproj.io/commit-status label) and in CommitStatus.spec.name as key/branch.
+	// This key is matched against PromotionStrategy's proposedCommitStatuses or activeCommitStatuses.
+	// Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
+	Key *string `json:"key,omitempty"`
 	// ApplicationSelector is a label selector that selects the Argo CD applications to which this commit status applies.
 	ApplicationSelector *v1.LabelSelectorApplyConfiguration `json:"applicationSelector,omitempty"`
 	// URL generates the URL to use in the CommitStatus, for example a link to the Argo CD UI.
@@ -47,6 +52,14 @@ func ArgoCDCommitStatusSpec() *ArgoCDCommitStatusSpecApplyConfiguration {
 // If called multiple times, the PromotionStrategyRef field is set to the value of the last call.
 func (b *ArgoCDCommitStatusSpecApplyConfiguration) WithPromotionStrategyRef(value *ObjectReferenceApplyConfiguration) *ArgoCDCommitStatusSpecApplyConfiguration {
 	b.PromotionStrategyRef = value
+	return b
+}
+
+// WithKey sets the Key field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Key field is set to the value of the last call.
+func (b *ArgoCDCommitStatusSpecApplyConfiguration) WithKey(value string) *ArgoCDCommitStatusSpecApplyConfiguration {
+	b.Key = &value
 	return b
 }
 
