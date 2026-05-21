@@ -191,6 +191,32 @@ func GetChangeTransferPolicyName(promotionStrategyName, environmentBranch string
 	return fmt.Sprintf("%s-%s", promotionStrategyName, environmentBranch)
 }
 
+// TouchChangeTransferPolicies triggers reconciliation of the ChangeTransferPolicies for each
+// environment branch in transitionedBranches. enqueueCTP may be nil (it is nil-checked before
+// calling). logReason describes why the transition occurred and is included in the log message
+// (e.g. "validation transition", "time gate transition").
+func TouchChangeTransferPolicies(
+	ctx context.Context,
+	enqueueCTP func(namespace, name string),
+	ps *promoterv1alpha1.PromotionStrategy,
+	transitionedBranches []string,
+	logReason string,
+) {
+	logger := log.FromContext(ctx)
+
+	for _, envBranch := range transitionedBranches {
+		ctpName := KubeSafeUniqueName(ctx, GetChangeTransferPolicyName(ps.Name, envBranch))
+
+		logger.Info("Triggering ChangeTransferPolicy reconciliation due to "+logReason,
+			"changeTransferPolicy", ctpName,
+			"branch", envBranch)
+
+		if enqueueCTP != nil {
+			enqueueCTP(ps.Namespace, ctpName)
+		}
+	}
+}
+
 // KubeSafeUniqueName returns a DNS-1123 subdomain-safe unique name: lowercase, non-alphanumerics become '-',
 // then a rune budget is reserved for "-"+FNV hash (hash of the full sanitized string) under DNS1123 max length.
 //

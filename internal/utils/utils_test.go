@@ -594,3 +594,58 @@ var _ = Describe("HandleReconciliationResult fallback status apply", func() {
 		Expect(readyCondition.Message).To(ContainSubstring("reconciliation failed for test"))
 	})
 })
+
+var _ = Describe("TouchChangeTransferPolicies", func() {
+	var (
+		ctx      context.Context
+		ps       *promoterv1alpha1.PromotionStrategy
+		enqueued []string // collects "namespace/name" pairs passed to enqueueCTP
+	)
+
+	BeforeEach(func() {
+		ctx = context.Background()
+		ps = &promoterv1alpha1.PromotionStrategy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-strategy",
+				Namespace: "my-namespace",
+			},
+		}
+		enqueued = nil
+	})
+
+	It("enqueues the expected CTP names for each transitioned branch", func() {
+		branches := []string{"main", "staging"}
+		utils.TouchChangeTransferPolicies(ctx, func(namespace, name string) {
+			enqueued = append(enqueued, namespace+"/"+name)
+		}, ps, branches, "validation transition")
+
+		Expect(enqueued).To(HaveLen(2))
+		for _, entry := range enqueued {
+			Expect(entry).To(HavePrefix("my-namespace/"))
+		}
+	})
+
+	It("does nothing when transitionedBranches is empty", func() {
+		utils.TouchChangeTransferPolicies(ctx, func(namespace, name string) {
+			enqueued = append(enqueued, namespace+"/"+name)
+		}, ps, nil, "validation transition")
+
+		Expect(enqueued).To(BeEmpty())
+	})
+
+	It("does not panic when enqueueCTP is nil", func() {
+		Expect(func() {
+			utils.TouchChangeTransferPolicies(ctx, nil, ps, []string{"main"}, "validation transition")
+		}).NotTo(Panic())
+	})
+
+	It("uses the CTP name derived from the promotion strategy name and branch", func() {
+		var capturedName string
+		utils.TouchChangeTransferPolicies(ctx, func(namespace, name string) {
+			capturedName = name
+		}, ps, []string{"main"}, "validation transition")
+
+		expected := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName("my-strategy", "main"))
+		Expect(capturedName).To(Equal(expected))
+	})
+})
