@@ -21,6 +21,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
 // getEnvsByBranch builds a map from branch name to EnvironmentStatus for fast lookups.
@@ -67,34 +68,7 @@ func resolveReportedSha(envStatus *promoterv1alpha1.EnvironmentStatus, reportOn 
 // referenced in global or environment-specific ProposedCommitStatuses (when reportOn is "proposed"
 // or default) or ActiveCommitStatuses (when reportOn is "active").
 func getApplicableEnvironments(ps *promoterv1alpha1.PromotionStrategy, key string, reportOn string) []promoterv1alpha1.Environment {
-	globalSelectors := ps.Spec.ProposedCommitStatuses
-	getEnvSelectors := func(e promoterv1alpha1.Environment) []promoterv1alpha1.CommitStatusSelector {
-		return e.ProposedCommitStatuses
-	}
-	if reportOn == constants.CommitRefActive {
-		globalSelectors = ps.Spec.ActiveCommitStatuses
-		getEnvSelectors = func(e promoterv1alpha1.Environment) []promoterv1alpha1.CommitStatusSelector {
-			return e.ActiveCommitStatuses
-		}
-	}
-
-	keyInSelectors := func(selectors []promoterv1alpha1.CommitStatusSelector) bool {
-		for _, sel := range selectors {
-			if sel.Key == key {
-				return true
-			}
-		}
-		return false
-	}
-	keyInGlobal := keyInSelectors(globalSelectors)
-
-	applicable := make([]promoterv1alpha1.Environment, 0, len(ps.Spec.Environments))
-	for _, env := range ps.Spec.Environments {
-		if keyInGlobal || keyInSelectors(getEnvSelectors(env)) {
-			applicable = append(applicable, env)
-		}
-	}
-	return applicable
+	return utils.GetApplicableEnvironments(ps, key, reportOn)
 }
 
 // parsePerBranchPhases extracts defaultPhase and optional per-branch overrides from an expression
