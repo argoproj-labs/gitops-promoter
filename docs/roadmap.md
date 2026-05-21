@@ -1,7 +1,5 @@
 # Roadmap
 
-This page summarizes planned work for GitOps Promoter. It combines the high-level direction from the [project README](https://github.com/argoproj-labs/gitops-promoter/blob/main/README.md#roadmap) with [open GitHub issues](https://github.com/argoproj-labs/gitops-promoter/issues?q=is%3Aissue+is%3Aopen). Priorities and timelines are not fixed; comment on an issue if you want to help or influence ordering.
-
 ## Planned features
 
 ### Promotion strategy and pipelines
