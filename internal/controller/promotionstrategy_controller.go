@@ -555,7 +555,7 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 	logger := log.FromContext(ctx)
 
 	// TODO: do we like this name proposed-<name>?
-	csName := utils.KubeSafeUniqueName(promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel+ctp.Name)
+	csName := utils.KubeSafeUniqueName(promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel + ctp.Name)
 
 	kind := reflect.TypeOf(promoterv1alpha1.ChangeTransferPolicy{}).Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
