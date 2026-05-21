@@ -370,7 +370,7 @@ var _ = Describe("CommitStatus Controller", func() {
 })
 
 // commitStatusResources creates all the resources needed for a CommitStatus test
-// Returns: name (with random suffix), scmSecret, scmProvider, gitRepo, commitStatus
+// Returns: scmSecret, scmProvider, gitRepo, commitStatus
 // Note: URL is set to empty by default and can be customized in tests
 func commitStatusResources(name string) (*v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus) {
 	name = name + "-" + utils.KubeSafeUniqueName(randomString(15))
