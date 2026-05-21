@@ -6,7 +6,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: timedcommitstatus-sample
 spec:
-  # key: timer  # optional; must match PromotionStrategy activeCommitStatuses
+  key: timer  # must match PromotionStrategy activeCommitStatuses
   promotionStrategyRef:
     name: promotionstrategy-sample
   environments:
