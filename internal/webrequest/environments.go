@@ -62,7 +62,6 @@ func resolveReportedSha(envStatus *promoterv1alpha1.EnvironmentStatus, reportOn 
 	return envStatus.Proposed.Hydrated.Sha
 }
 
-
 // parsePerBranchPhases extracts defaultPhase and optional per-branch overrides from an expression
 // result object of the form { defaultPhase?, environments?: [{ branch, phase }] }.
 func parsePerBranchPhases(obj map[string]any) (promoterv1alpha1.CommitStatusPhase, map[string]promoterv1alpha1.CommitStatusPhase, error) {
