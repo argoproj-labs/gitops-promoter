@@ -619,10 +619,11 @@ var _ = Describe("EnqueueChangeTransferPolicies", func() {
 			enqueued = append(enqueued, namespace+"/"+name)
 		}, ps, branches, "validation transition")
 
-		Expect(enqueued).To(HaveLen(2))
-		for _, entry := range enqueued {
-			Expect(entry).To(HavePrefix("my-namespace/"))
+		expected := []string{
+			"my-namespace/" + utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName("my-strategy", "main")),
+			"my-namespace/" + utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName("my-strategy", "staging")),
 		}
+		Expect(enqueued).To(Equal(expected))
 	})
 
 	It("does nothing when transitionedBranches is empty", func() {

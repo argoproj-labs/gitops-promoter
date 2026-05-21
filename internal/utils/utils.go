@@ -207,13 +207,20 @@ func EnqueueChangeTransferPolicies(
 	for _, envBranch := range transitionedBranches {
 		ctpName := KubeSafeUniqueName(ctx, GetChangeTransferPolicyName(ps.Name, envBranch))
 
-		logger.Info("Triggering ChangeTransferPolicy reconciliation due to "+logReason,
-			"changeTransferPolicy", ctpName,
-			"branch", envBranch)
-
-		if enqueueCTP != nil {
-			enqueueCTP(ps.Namespace, ctpName)
+		if enqueueCTP == nil {
+			logger.Info("Skipping ChangeTransferPolicy reconciliation enqueue because enqueue function is nil",
+				"changeTransferPolicy", ctpName,
+				"branch", envBranch,
+				"reason", logReason)
+			continue
 		}
+
+		logger.Info("Triggering ChangeTransferPolicy reconciliation",
+			"changeTransferPolicy", ctpName,
+			"branch", envBranch,
+			"reason", logReason)
+
+		enqueueCTP(ps.Namespace, ctpName)
 	}
 }
 
