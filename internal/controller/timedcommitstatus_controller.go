@@ -445,24 +445,12 @@ func (r *TimedCommitStatusReconciler) enqueueTimedCommitStatusForPromotionStrate
 		if !ok {
 			return nil
 		}
-
-		// List all TimedCommitStatus resources in the same namespace
-		var tcsList promoterv1alpha1.TimedCommitStatusList
-		if err := r.List(ctx, &tcsList, client.InNamespace(ps.Namespace)); err != nil {
-			log.FromContext(ctx).Error(err, "failed to list TimedCommitStatus resources")
-			return nil
-		}
-
-		// Enqueue all TimedCommitStatus resources that reference this PromotionStrategy
-		var requests []ctrl.Request
-		for _, tcs := range tcsList.Items {
-			if tcs.Spec.PromotionStrategyRef.Name == ps.Name {
-				requests = append(requests, ctrl.Request{
-					NamespacedName: client.ObjectKeyFromObject(&tcs),
-				})
-			}
-		}
-
-		return requests
+		return utils.EnqueueCommitStatusGatesForPromotionStrategy(
+			ctx, r.Client, ps,
+			&promoterv1alpha1.TimedCommitStatusList{},
+			func(tcs *promoterv1alpha1.TimedCommitStatus) string {
+				return tcs.Spec.PromotionStrategyRef.Name
+			},
+		)
 	})
 }
