@@ -6,7 +6,13 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: timedcommitstatus-sample
 spec:
-  # key: timer  # optional; must match PromotionStrategy active/proposedCommitStatuses
+  # key: timer  # optional; must match PromotionStrategy activeCommitStatuses
   promotionStrategyRef:
-    name: ps-name
-  environments: []
+    name: promotionstrategy-sample
+  environments:
+    - branch: environment/development
+      duration: 30m
+    - branch: environment/staging
+      duration: 1h
+    - branch: environment/production
+      duration: 2h
