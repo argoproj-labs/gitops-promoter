@@ -457,6 +457,7 @@ func (r *GitCommitStatusReconciler) upsertCommitStatus(ctx context.Context, gcs 
 		commitStatus.Labels["promoter.argoproj.io/git-commit-status"] = utils.KubeSafeLabel(gcs.Name)
 		commitStatus.Labels[promoterv1alpha1.EnvironmentLabel] = utils.KubeSafeLabel(branch)
 		commitStatus.Labels[promoterv1alpha1.CommitStatusLabel] = validationName
+		utils.CopyInstanceIDLabel(gcs, &commitStatus)
 
 		// Convert phase string to CommitStatusPhase
 		var commitPhase promoterv1alpha1.CommitStatusPhase

@@ -666,11 +666,13 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 	}
 
 	// Build the apply configuration
+	commitStatusLabels := map[string]string{
+		promoterv1alpha1.CommitStatusLabel: "argocd-health",
+		promoterv1alpha1.EnvironmentLabel:  utils.KubeSafeLabel(targetBranch),
+	}
+	commitStatusLabels = utils.CopyInstanceIDLabelToMap(&argoCDCommitStatus, commitStatusLabels)
 	commitStatusApply := acv1alpha1.CommitStatus(resourceName, argoCDCommitStatus.Namespace).
-		WithLabels(map[string]string{
-			promoterv1alpha1.CommitStatusLabel: "argocd-health",
-			promoterv1alpha1.EnvironmentLabel:  utils.KubeSafeLabel(targetBranch),
-		}).
+		WithLabels(commitStatusLabels).
 		WithOwnerReferences(acmetav1.OwnerReference().
 			WithAPIVersion(gvk.GroupVersion().String()).
 			WithKind(gvk.Kind).

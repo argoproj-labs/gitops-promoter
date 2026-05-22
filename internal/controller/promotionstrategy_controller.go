@@ -252,11 +252,13 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 	}
 
 	// Build the apply configuration
+	ctpLabels := map[string]string{
+		promoterv1alpha1.PromotionStrategyLabel: utils.KubeSafeLabel(ps.Name),
+		promoterv1alpha1.EnvironmentLabel:       utils.KubeSafeLabel(environment.Branch),
+	}
+	ctpLabels = utils.CopyInstanceIDLabelToMap(ps, ctpLabels)
 	ctpApply := acv1alpha1.ChangeTransferPolicy(ctpName, ps.Namespace).
-		WithLabels(map[string]string{
-			promoterv1alpha1.PromotionStrategyLabel: utils.KubeSafeLabel(ps.Name),
-			promoterv1alpha1.EnvironmentLabel:       utils.KubeSafeLabel(environment.Branch),
-		}).
+		WithLabels(ctpLabels).
 		WithOwnerReferences(acmetav1.OwnerReference().
 			WithAPIVersion(gvk.GroupVersion().String()).
 			WithKind(gvk.Kind).
@@ -589,10 +591,12 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 	}
 
 	// Build the apply configuration
+	commitStatusLabels := map[string]string{
+		promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+	}
+	commitStatusLabels = utils.CopyInstanceIDLabelToMap(ctp, commitStatusLabels)
 	commitStatusApply := acv1alpha1.CommitStatus(csName, ctp.Namespace).
-		WithLabels(map[string]string{
-			promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
-		}).
+		WithLabels(commitStatusLabels).
 		WithAnnotations(map[string]string{
 			promoterv1alpha1.CommitStatusPreviousEnvironmentStatusesAnnotation: string(yamlStatusMap),
 		}).

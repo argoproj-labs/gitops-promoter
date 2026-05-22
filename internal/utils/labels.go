@@ -24,3 +24,20 @@ func CopyInstanceIDLabel(parent, child client.Object) {
 	labels[promoterv1alpha1.InstanceIDLabel] = v
 	child.SetLabels(labels)
 }
+
+// CopyInstanceIDLabelToMap mirrors CopyInstanceIDLabel for child-creation
+// sites that build the labels map in-place before passing it to an
+// apply-configuration builder (e.g. acv1alpha1.X(...).WithLabels(...)).
+// Returns the (possibly newly allocated) map so callers can fluently chain
+// it through their builders. No-op semantics match CopyInstanceIDLabel.
+func CopyInstanceIDLabelToMap(parent client.Object, labels map[string]string) map[string]string {
+	v, ok := parent.GetLabels()[promoterv1alpha1.InstanceIDLabel]
+	if !ok || v == "" {
+		return labels
+	}
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	labels[promoterv1alpha1.InstanceIDLabel] = v
+	return labels
+}
