@@ -4,15 +4,6 @@ The PromotionStrategy is the user's interface to controlling how changes are pro
 this CR, the user configures the list of live hydrated environment branches in their order of promotion. They'll also
 configure the checks which must pass between promotion steps.
 
-#### Commit timestamps in status
-
-Dry and hydrated commits expose `commitTime` as [RFC 3339](https://datatracker.ietf.org/doc/html/rfc3339) (Kubernetes
-`metav1.Time` JSON). Reference commits under `references[].commit` expose `date` in the same profile (git
-`%aI`). Pull request merge times use `prMergeTime` the same way.
-
-The dashboard and extension UI keep these values as RFC 3339 strings through `enrichFromEnvironments` and only format
-them at render time (`TimeAgo` / `formatDate`). Pre-formatting during enrichment breaks relative time display.
-
 ```yaml
 {!internal/controller/testdata/PromotionStrategy.yaml!}
 ```
