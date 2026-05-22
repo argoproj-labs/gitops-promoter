@@ -1,17 +1,33 @@
 package utils
 
 import (
+	"fmt"
 	"strings"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 )
 
 const (
-	commitStatusGateLabelPrefix = "promoter.argoproj.io/"
 	commitStatusGateLabelSuffix = "-commit-status"
 	commitStatusGateKindSuffix  = "CommitStatus"
 )
+
+// commitStatusGateKind returns the API Kind of a *CommitStatus gate parent.
+// Uses TypeMeta.Kind when set; otherwise resolves from GetScheme via apiutil.GVKForObject.
+// Panics when Kind cannot be resolved (unregistered type, ambiguous GVK, etc.).
+func commitStatusGateKind(parent client.Object) string {
+	kind := parent.GetObjectKind().GroupVersionKind().Kind
+	if kind != "" {
+		return kind
+	}
+	gvk, err := apiutil.GVKForObject(parent, GetScheme())
+	if err != nil {
+		panic(fmt.Sprintf("commitStatusGateKind: resolve kind for %T: %v", parent, err))
+	}
+	return gvk.Kind
+}
 
 // commitStatusGateKebabStem returns the kebab-case gate-type stem from a parent Kind
 // (for example TimedCommitStatus → timed, ArgoCDCommitStatus → argo-cd, WebRequestCommitStatus → web-request).
@@ -24,7 +40,7 @@ func commitStatusGateKebabStem(parent client.Object) string {
 // (for example TimedCommitStatus → promoter.argoproj.io/timed-commit-status).
 // Kind is taken from TypeMeta when set; otherwise resolved from GetScheme via apiutil.GVKForObject.
 func CommitStatusGateLabelKeyForParent(parent client.Object) string {
-	return commitStatusGateLabelPrefix + commitStatusGateKebabStem(parent) + commitStatusGateLabelSuffix
+	return promoterv1alpha1.CommitStatusGateLabelPrefix + commitStatusGateKebabStem(parent) + commitStatusGateLabelSuffix
 }
 
 // CommitStatusStandardLabels returns the three labels gate controllers set on each CommitStatus:

@@ -13,6 +13,10 @@ const PromotionStrategyLabel = "promoter.argoproj.io/promotion-strategy"
 // EnvironmentLabel the environment branch for the proposed commit
 const EnvironmentLabel = "promoter.argoproj.io/environment"
 
+// CommitStatusGateLabelPrefix is the prefix for parent-gate label keys on CommitStatus resources
+// (for example promoter.argoproj.io/timed-commit-status for TimedCommitStatus).
+const CommitStatusGateLabelPrefix = "promoter.argoproj.io/"
+
 // ChangeTransferPolicyLabel the change transfer policy which the proposed commit is associated with.
 const ChangeTransferPolicyLabel = "promoter.argoproj.io/change-transfer-policy"
 
