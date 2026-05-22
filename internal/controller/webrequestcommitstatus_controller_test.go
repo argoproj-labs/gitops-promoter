@@ -4640,4 +4640,31 @@ var _ = Describe("WebRequestCommitStatus Controller - Stale Cache Guard", Ordere
 				"so that a follow-up reconcile starting from an older cache snapshot is correctly "+
 				"flagged as stale; an unrecorded tracker would still return false here")
 	})
+
+	It("forgets the tracker entry on the NotFound branch so deleted objects don't leak memory", func() {
+		// Use a key that doesn't exist in envtest so Get returns NotFound. Seed
+		// the tracker with an entry for this key first, then invoke Reconcile,
+		// and verify the entry was dropped. This proves the cleanup wiring in
+		// the IsNotFound branch is actually called.
+		r := &WebRequestCommitStatusReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			Recorder:  events.NewFakeRecorder(10),
+			rvTracker: utils.NewResourceVersionTracker(),
+		}
+		missingKey := types.NamespacedName{Name: "wrcs-stale-cache-guard-deleted", Namespace: "default"}
+		r.rvTracker.Record(missingKey, "500")
+		Expect(r.rvTracker.IsCacheStale(missingKey, "499")).To(BeTrue(),
+			"sanity: tracker has an entry for the (about-to-be-NotFound) key")
+
+		result, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: missingKey})
+		Expect(err).NotTo(HaveOccurred(), "NotFound is a benign terminal state, not an error")
+		Expect(result).To(Equal(ctrl.Result{}), "NotFound must not request a requeue")
+
+		Expect(r.rvTracker.IsCacheStale(missingKey, "499")).To(BeFalse(),
+			"after Reconcile returns on NotFound, the tracker entry must be gone "+
+				"(IsCacheStale on a forgotten key is treated as never-recorded → not stale); "+
+				"a true return here means deleted-object entries are leaking and the tracker "+
+				"will grow unbounded over the controller's lifetime")
+	})
 })

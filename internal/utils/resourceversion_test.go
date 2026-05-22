@@ -85,6 +85,34 @@ var _ = Describe("ResourceVersionTracker", func() {
 		})
 	})
 
+	Describe("Forget", func() {
+		It("drops the recorded RV so future checks behave as if the key was never recorded", func() {
+			tracker.Record(keyA, "500")
+			Expect(tracker.IsCacheStale(keyA, "499")).To(BeTrue(),
+				"sanity: before Forget, an older cached RV is stale")
+			tracker.Forget(keyA)
+			Expect(tracker.IsCacheStale(keyA, "499")).To(BeFalse(),
+				"after Forget, IsCacheStale must return false (treat as never-recorded) "+
+					"so a recreated object with the same key isn't wrongly flagged against "+
+					"the deleted object's last RV")
+		})
+
+		It("is a safe no-op when the key was never recorded", func() {
+			Expect(func() { tracker.Forget(keyA) }).NotTo(Panic(),
+				"Forget on an unknown key must be a no-op so callers can invoke it unconditionally "+
+					"on a NotFound branch without needing to first check membership")
+		})
+
+		It("only affects the targeted key", func() {
+			tracker.Record(keyA, "500")
+			tracker.Record(keyB, "700")
+			tracker.Forget(keyA)
+			Expect(tracker.IsCacheStale(keyA, "499")).To(BeFalse(), "keyA was forgotten")
+			Expect(tracker.IsCacheStale(keyB, "699")).To(BeTrue(),
+				"keyB must still report stale relative to its own recorded RV")
+		})
+	})
+
 	It("is safe under concurrent Record + IsCacheStale across keys (-race must pass)", func() {
 		var wg sync.WaitGroup
 		for i := 0; i < 100; i++ {

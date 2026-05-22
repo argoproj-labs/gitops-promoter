@@ -66,6 +66,20 @@ func (t *ResourceVersionTracker) Record(key client.ObjectKey, rv string) {
 	t.lastWritten[key] = rv
 }
 
+// Forget drops any record for key. Reconcilers should call this when an object has
+// been deleted (e.g. on the IsNotFound path after Get) so the tracker doesn't
+// accumulate entries for objects that no longer exist. Forgetting a key that was
+// never recorded is a no-op. Forgetting is safe even if a new object is later
+// created with the same key: ResourceVersions are globally monotonic per resource
+// type, so the new object's RV will be greater than anything the old object ever
+// had, meaning a stale leftover record would not cause incorrect staleness — but
+// it would needlessly hold memory, which Forget reclaims.
+func (t *ResourceVersionTracker) Forget(key client.ObjectKey) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	delete(t.lastWritten, key)
+}
+
 // IsCacheStale reports whether cachedRV (the ResourceVersion the reconciler just read
 // from the informer cache for key) is strictly older than the last ResourceVersion we
 // wrote for that key.

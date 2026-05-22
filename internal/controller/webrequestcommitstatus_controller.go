@@ -116,6 +116,13 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 	err = r.Get(ctx, req.NamespacedName, &wrcs)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
+			// Object is gone. Drop any rvTracker entry so we don't accumulate
+			// records for deleted objects over the controller's lifetime. Safe
+			// against name reuse: a future object reusing this key will get a
+			// fresh, larger RV from the apiserver, so a leftover record would
+			// not have caused incorrect staleness anyway — Forget just keeps
+			// memory tidy.
+			r.rvTracker.Forget(req.NamespacedName)
 			logger.Info("WebRequestCommitStatus not found")
 			return ctrl.Result{}, nil
 		}
