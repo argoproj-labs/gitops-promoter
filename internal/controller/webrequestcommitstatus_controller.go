@@ -46,6 +46,7 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
+	promoterpredicate "github.com/argoproj-labs/gitops-promoter/internal/predicate"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -179,8 +180,14 @@ func (r *WebRequestCommitStatusReconciler) SetupWithManager(ctx context.Context,
 	}
 
 	err = ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.WebRequestCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueWebRequestCommitStatusForPromotionStrategy()).
+		For(&promoterv1alpha1.WebRequestCommitStatus{}, builder.WithPredicates(predicate.And(
+			predicate.GenerationChangedPredicate{},
+			promoterpredicate.InstanceID(r.InstanceID),
+		))).
+		Watches(&promoterv1alpha1.PromotionStrategy{},
+			r.enqueueWebRequestCommitStatusForPromotionStrategy(),
+			builder.WithPredicates(promoterpredicate.InstanceID(r.InstanceID)),
+		).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Named("webrequestcommitstatus").
 		Complete(r)

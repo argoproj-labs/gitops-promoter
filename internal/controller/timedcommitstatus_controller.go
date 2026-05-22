@@ -42,6 +42,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
+	promoterpredicate "github.com/argoproj-labs/gitops-promoter/internal/predicate"
 )
 
 // TimedCommitStatusReconciler reconciles a TimedCommitStatus object
@@ -152,8 +153,14 @@ func (r *TimedCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr 
 	}
 
 	err = ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.TimedCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueTimedCommitStatusForPromotionStrategy()).
+		For(&promoterv1alpha1.TimedCommitStatus{}, builder.WithPredicates(predicate.And(
+			predicate.GenerationChangedPredicate{},
+			promoterpredicate.InstanceID(r.InstanceID),
+		))).
+		Watches(&promoterv1alpha1.PromotionStrategy{},
+			r.enqueueTimedCommitStatusForPromotionStrategy(),
+			builder.WithPredicates(promoterpredicate.InstanceID(r.InstanceID)),
+		).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Complete(r)
 	if err != nil {

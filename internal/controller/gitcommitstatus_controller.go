@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
+	promoterpredicate "github.com/argoproj-labs/gitops-promoter/internal/predicate"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -148,8 +149,14 @@ func (r *GitCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ct
 	}
 
 	err = ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.GitCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueGitCommitStatusForPromotionStrategy()).
+		For(&promoterv1alpha1.GitCommitStatus{}, builder.WithPredicates(predicate.And(
+			predicate.GenerationChangedPredicate{},
+			promoterpredicate.InstanceID(r.InstanceID),
+		))).
+		Watches(&promoterv1alpha1.PromotionStrategy{},
+			r.enqueueGitCommitStatusForPromotionStrategy(),
+			builder.WithPredicates(promoterpredicate.InstanceID(r.InstanceID)),
+		).
 		Named("gitcommitstatus").
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: maxConcurrentReconciles,

@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	promoterpredicate "github.com/argoproj-labs/gitops-promoter/internal/predicate"
 )
 
 // RevertCommitReconciler reconciles a RevertCommit object
@@ -66,7 +67,10 @@ func (r *RevertCommitReconciler) Reconcile(ctx context.Context, req ctrl.Request
 // SetupWithManager sets up the controller with the Manager.
 func (r *RevertCommitReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.RevertCommit{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		For(&promoterv1alpha1.RevertCommit{}, builder.WithPredicates(predicate.And(
+			predicate.GenerationChangedPredicate{},
+			promoterpredicate.InstanceID(r.InstanceID),
+		))).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
