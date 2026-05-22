@@ -28,6 +28,7 @@ spec:
     options:
       - missingkey=zero
 status:
+  observedGeneration: 123 # compare with metadata.generation to detect stale status
   conditions:
     # The Ready condition indicates that the resource has been successfully reconciled, when there is an error during
     # reconciliation, the condition will be False with a reason of ReconciliationError. When we successfully reconcile the resource,
@@ -38,8 +39,6 @@ status:
       message: Reconciliation succeeded
       reason: ReconciliationSuccess # ReconciliationSuccess, ReconciliationError, or CommitStatusesNotReady
       status: "True" # "True," "False," or "Unknown"
-      # observedGeneration is the generation of the resource that was last reconciled. This is used to track if the
-      # resource has changed since the last reconciliation.
       observedGeneration: 123
   # applicationsSelected is a list of applications that match the applicationSelector.
   applicationsSelected:
@@ -48,10 +47,12 @@ status:
       namespace: example-app-namespace
       phase: success # pending, success, or failure
       sha: abcdef1234567890abcdef1234567890abcdef12
+      lastTransitionTime: 2023-10-01T00:00:00Z
       clusterName: "" # an empty cluster name means "local cluster"
     - environment: environments/prod
       name: example-app-name
       namespace: example-app-namespace
       phase: success # pending, success, or failure
       sha: abcdef1234567890abcdef1234567890abcdef12
+      lastTransitionTime: 2023-10-01T00:00:00Z
       clusterName: "prod"
