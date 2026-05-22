@@ -56,20 +56,21 @@ type ctpEnqueueState struct {
 // PromotionStrategyReconciler reconciles a PromotionStrategy object
 type PromotionStrategyReconciler struct {
 	client.Client
-	Scheme      *runtime.Scheme
 	Recorder    events.EventRecorder
+	Scheme      *runtime.Scheme
 	SettingsMgr *settings.Manager
 
 	// EnqueueCTP is a function to enqueue CTP reconcile requests without modifying the CTP object.
 	EnqueueCTP CTPEnqueueFunc
 
+	// enqueueStates tracks rate limiting state for out-of-sync CTP enqueues.
+	// Key is client.ObjectKey of the CTP. Protected by enqueueStateMutex.
+	enqueueStates map[client.ObjectKey]*ctpEnqueueState
+
 	// InstanceID, when non-empty, scopes this reconciler to resources carrying
 	// the matching promoter.argoproj.io/instance-id label. Empty reconciles all.
 	InstanceID string
 
-	// enqueueStates tracks rate limiting state for out-of-sync CTP enqueues.
-	// Key is client.ObjectKey of the CTP. Protected by enqueueStateMutex.
-	enqueueStates     map[client.ObjectKey]*ctpEnqueueState
 	enqueueStateMutex sync.Mutex
 }
 

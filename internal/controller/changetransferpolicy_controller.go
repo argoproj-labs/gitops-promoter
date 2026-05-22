@@ -67,16 +67,17 @@ type CTPEnqueueFunc func(namespace, name string)
 // ChangeTransferPolicyReconciler reconciles a ChangeTransferPolicy object
 type ChangeTransferPolicyReconciler struct {
 	client.Client
-	Scheme      *runtime.Scheme
 	Recorder    events.EventRecorder
+	Scheme      *runtime.Scheme
 	SettingsMgr *settings.Manager
-	// InstanceID, when non-empty, scopes this reconciler to resources carrying
-	// the matching promoter.argoproj.io/instance-id label. Empty reconciles all.
-	InstanceID string
 
 	// enqueueFunc is set during SetupWithManager and can be retrieved via GetEnqueueFunc.
 	// It allows other controllers to enqueue CTP reconcile requests.
 	enqueueFunc CTPEnqueueFunc
+
+	// InstanceID, when non-empty, scopes this reconciler to resources carrying
+	// the matching promoter.argoproj.io/instance-id label. Empty reconciles all.
+	InstanceID string
 }
 
 // GetEnqueueFunc returns a function that can be used to enqueue CTP reconcile requests.

@@ -64,10 +64,10 @@ type WebRequestCommitStatusReconciler struct {
 	Scheme      *runtime.Scheme
 	SettingsMgr *settings.Manager
 	EnqueueCTP  CTPEnqueueFunc
+	httpClient  *http.Client
 	// InstanceID, when non-empty, scopes this reconciler to resources carrying
 	// the matching promoter.argoproj.io/instance-id label. Empty reconciles all.
 	InstanceID string
-	httpClient *http.Client
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=webrequestcommitstatuses,verbs=get;list;watch;create;update;patch;delete

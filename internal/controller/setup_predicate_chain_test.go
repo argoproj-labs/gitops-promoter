@@ -82,7 +82,6 @@ var simpleReconcilers = []expectedWiring{
 func TestSimpleReconcilersChainInstanceIDPredicate(t *testing.T) {
 	t.Parallel()
 	for _, wiring := range simpleReconcilers {
-		wiring := wiring
 		t.Run(wiring.file, func(t *testing.T) {
 			t.Parallel()
 			assertReconcilerWiring(t, wiring)
