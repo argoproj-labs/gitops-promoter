@@ -1089,7 +1089,7 @@ var notePushBackoff = wait.Backoff{
 // re-adding the note locally, so the local ref converges with whatever the
 // previous winner pushed.
 func pushGitNoteWithRetry(ctx context.Context, gitPath, commitSha, drySha string) error {
-	return retry.OnError(notePushBackoff, isRetryableNotePushError, func() error {
+	return retry.OnError(notePushBackoff, isRetryableNotePushError, func() error { //nolint:wrapcheck // OnError returns the last pushGitNote error which is already wrapped
 		return pushGitNote(ctx, gitPath, commitSha, drySha)
 	})
 }
