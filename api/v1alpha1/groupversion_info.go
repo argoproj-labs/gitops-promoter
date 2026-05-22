@@ -35,30 +35,16 @@ var (
 	SchemeGroupVersion = GroupVersion
 
 	// SchemeBuilder is used to add go types to the GroupVersionKind scheme
-	SchemeBuilder = newSchemeBuilder(GroupVersion)
+	SchemeBuilder = runtime.NewSchemeBuilder(addKnownTypes)
 
 	// AddToScheme adds the types in this group-version to the given scheme.
 	AddToScheme = SchemeBuilder.AddToScheme
+
+	objectTypes = []runtime.Object{}
 )
 
-type schemeBuilder struct {
-	groupVersion schema.GroupVersion
-	runtime.SchemeBuilder
-}
-
-func newSchemeBuilder(gv schema.GroupVersion) *schemeBuilder {
-	return &schemeBuilder{
-		groupVersion:  gv,
-		SchemeBuilder: runtime.NewSchemeBuilder(),
-	}
-}
-
-// Register adds one or more objects to the SchemeBuilder so they can be added to a Scheme.
-func (b *schemeBuilder) Register(object ...runtime.Object) *schemeBuilder {
-	b.SchemeBuilder.Register(func(scheme *runtime.Scheme) error {
-		scheme.AddKnownTypes(b.groupVersion, object...)
-		metav1.AddToGroupVersion(scheme, b.groupVersion)
-		return nil
-	})
-	return b
+func addKnownTypes(scheme *runtime.Scheme) error {
+	scheme.AddKnownTypes(GroupVersion, objectTypes...)
+	metav1.AddToGroupVersion(scheme, GroupVersion)
+	return nil
 }

@@ -594,5 +594,5 @@ func (wrcs *WebRequestCommitStatus) SetObservedGeneration(generation int64) {
 }
 
 func init() {
-	SchemeBuilder.Register(&WebRequestCommitStatus{}, &WebRequestCommitStatusList{})
+	objectTypes = append(objectTypes, &WebRequestCommitStatus{}, &WebRequestCommitStatusList{})
 }

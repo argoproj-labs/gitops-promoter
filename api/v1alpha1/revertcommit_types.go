@@ -61,5 +61,5 @@ type RevertCommitList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&RevertCommit{}, &RevertCommitList{})
+	objectTypes = append(objectTypes, &RevertCommit{}, &RevertCommitList{})
 }

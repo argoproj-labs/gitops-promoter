@@ -182,5 +182,5 @@ type ArgoCDCommitStatusList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&ArgoCDCommitStatus{}, &ArgoCDCommitStatusList{})
+	objectTypes = append(objectTypes, &ArgoCDCommitStatus{}, &ArgoCDCommitStatusList{})
 }

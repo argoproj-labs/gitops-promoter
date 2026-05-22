@@ -107,5 +107,5 @@ type GitRepositoryList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&GitRepository{}, &GitRepositoryList{})
+	objectTypes = append(objectTypes, &GitRepository{}, &GitRepositoryList{})
 }

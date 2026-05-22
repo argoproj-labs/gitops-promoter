@@ -370,5 +370,5 @@ type ControllerConfigurationList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&ControllerConfiguration{}, &ControllerConfigurationList{})
+	objectTypes = append(objectTypes, &ControllerConfiguration{}, &ControllerConfigurationList{})
 }

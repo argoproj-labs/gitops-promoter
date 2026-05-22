@@ -149,7 +149,7 @@ type PullRequestList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&PullRequest{}, &PullRequestList{})
+	objectTypes = append(objectTypes, &PullRequest{}, &PullRequestList{})
 }
 
 // PullRequestState represents the state of a pull request.

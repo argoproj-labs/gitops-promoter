@@ -115,7 +115,7 @@ type ScmProviderList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&ScmProvider{}, &ScmProviderList{})
+	objectTypes = append(objectTypes, &ScmProvider{}, &ScmProviderList{})
 }
 
 // +kubebuilder:object:root=false

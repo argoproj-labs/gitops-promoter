@@ -201,5 +201,5 @@ type PromotionStrategyList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&PromotionStrategy{}, &PromotionStrategyList{})
+	objectTypes = append(objectTypes, &PromotionStrategy{}, &PromotionStrategyList{})
 }

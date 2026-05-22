@@ -62,7 +62,7 @@ type ClusterScmProviderList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&ClusterScmProvider{}, &ClusterScmProviderList{})
+	objectTypes = append(objectTypes, &ClusterScmProvider{}, &ClusterScmProviderList{})
 }
 
 // +kubebuilder:object:root:false

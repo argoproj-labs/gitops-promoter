@@ -248,5 +248,5 @@ func (g *GitCommitStatus) SetObservedGeneration(generation int64) {
 }
 
 func init() {
-	SchemeBuilder.Register(&GitCommitStatus{}, &GitCommitStatusList{})
+	objectTypes = append(objectTypes, &GitCommitStatus{}, &GitCommitStatusList{})
 }

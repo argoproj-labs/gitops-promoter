@@ -137,7 +137,7 @@ type CommitStatusList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&CommitStatus{}, &CommitStatusList{})
+	objectTypes = append(objectTypes, &CommitStatus{}, &CommitStatusList{})
 }
 
 // CommitStatusPhase represents the phase of a commit status.

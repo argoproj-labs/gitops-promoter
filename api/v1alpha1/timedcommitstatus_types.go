@@ -153,5 +153,5 @@ func (tcs *TimedCommitStatus) SetObservedGeneration(generation int64) {
 }
 
 func init() {
-	SchemeBuilder.Register(&TimedCommitStatus{}, &TimedCommitStatusList{})
+	objectTypes = append(objectTypes, &TimedCommitStatus{}, &TimedCommitStatusList{})
 }

@@ -271,5 +271,5 @@ type ChangeTransferPolicyList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&ChangeTransferPolicy{}, &ChangeTransferPolicyList{})
+	objectTypes = append(objectTypes, &ChangeTransferPolicy{}, &ChangeTransferPolicyList{})
 }

@@ -107,5 +107,5 @@ func (a *Application) GetEnvironment() string {
 }
 
 func init() {
-	SchemeBuilder.Register(&Application{}, &ApplicationList{})
+	objectTypes = append(objectTypes, &Application{}, &ApplicationList{})
 }
