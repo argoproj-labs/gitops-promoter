@@ -19,17 +19,16 @@ var _ = Describe("CommitStatusGateLabelKeyForParent", func() {
 		func(parent client.Object, want string) {
 			Expect(utils.CommitStatusGateLabelKeyForParent(parent)).To(Equal(want))
 		},
-		Entry("TimedCommitStatus", &promoterv1alpha1.TimedCommitStatus{TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.TimedCommitStatusKind)}, "promoter.argoproj.io/timed-commit-status"),
-		Entry("WebRequestCommitStatus", &promoterv1alpha1.WebRequestCommitStatus{TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.WebRequestCommitStatusKind)}, "promoter.argoproj.io/web-request-commit-status"),
-		Entry("ArgoCDCommitStatus", &promoterv1alpha1.ArgoCDCommitStatus{TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.ArgoCDCommitStatusKind)}, "promoter.argoproj.io/argo-cd-commit-status"),
-		Entry("GitCommitStatus", &promoterv1alpha1.GitCommitStatus{TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.GitCommitStatusKind)}, "promoter.argoproj.io/git-commit-status"),
+		Entry("TimedCommitStatus", &promoterv1alpha1.TimedCommitStatus{}, "promoter.argoproj.io/timed-commit-status"),
+		Entry("WebRequestCommitStatus", &promoterv1alpha1.WebRequestCommitStatus{}, "promoter.argoproj.io/web-request-commit-status"),
+		Entry("ArgoCDCommitStatus", &promoterv1alpha1.ArgoCDCommitStatus{}, "promoter.argoproj.io/argo-cd-commit-status"),
+		Entry("GitCommitStatus", &promoterv1alpha1.GitCommitStatus{}, "promoter.argoproj.io/git-commit-status"),
 	)
 })
 
 var _ = Describe("CommitStatusStandardLabels", func() {
 	It("returns parent gate, environment, and commit-status key labels", func() {
 		parent := &promoterv1alpha1.TimedCommitStatus{
-			TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.TimedCommitStatusKind),
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "my-timed",
 			},
@@ -52,10 +51,10 @@ var _ = Describe("CommitStatusResourceName", func() {
 			want := utils.KubeSafeUniqueName(ctx, "my-gate-"+branch+"-"+partialKind)
 			Expect(got).To(Equal(want))
 		},
-		Entry("TimedCommitStatus", &promoterv1alpha1.TimedCommitStatus{TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.TimedCommitStatusKind)}, "environment/development", "timed"),
-		Entry("WebRequestCommitStatus", &promoterv1alpha1.WebRequestCommitStatus{TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.WebRequestCommitStatusKind)}, "environment/staging", "webrequest"),
-		Entry("ArgoCDCommitStatus", &promoterv1alpha1.ArgoCDCommitStatus{TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.ArgoCDCommitStatusKind)}, "environment/production", "argocd"),
-		Entry("GitCommitStatus", &promoterv1alpha1.GitCommitStatus{TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.GitCommitStatusKind)}, "environment/development", "git"),
+		Entry("TimedCommitStatus", &promoterv1alpha1.TimedCommitStatus{}, "environment/development", "timed"),
+		Entry("WebRequestCommitStatus", &promoterv1alpha1.WebRequestCommitStatus{}, "environment/staging", "web-request"),
+		Entry("ArgoCDCommitStatus", &promoterv1alpha1.ArgoCDCommitStatus{}, "environment/production", "argo-cd"),
+		Entry("GitCommitStatus", &promoterv1alpha1.GitCommitStatus{}, "environment/development", "git"),
 	)
 })
 
@@ -73,7 +72,6 @@ var _ = Describe("CleanupOrphanedCommitStatuses", func() {
 		Expect(promoterv1alpha1.AddToScheme(scheme)).To(Succeed())
 
 		owner = &promoterv1alpha1.TimedCommitStatus{
-			TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.TimedCommitStatusKind),
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-timed",
 				Namespace: "default",

@@ -13,21 +13,22 @@ const (
 	commitStatusGateKindSuffix  = "CommitStatus"
 )
 
+// commitStatusGateKebabStem returns the kebab-case gate-type stem from a parent Kind
+// (for example TimedCommitStatus → timed, ArgoCDCommitStatus → argo-cd, WebRequestCommitStatus → web-request).
+func commitStatusGateKebabStem(parent client.Object) string {
+	stem := strings.TrimSuffix(commitStatusGateKind(parent), commitStatusGateKindSuffix)
+	return pascalCaseToKebab(stem)
+}
+
 // CommitStatusGateLabelKeyForParent returns the parent-gate label key for a CommitStatus gate
 // (for example TimedCommitStatus → promoter.argoproj.io/timed-commit-status).
-// parent must have TypeMeta.Kind set (as objects returned from the API server do).
+// Kind is taken from TypeMeta when set; otherwise resolved from GetScheme via apiutil.GVKForObject.
 func CommitStatusGateLabelKeyForParent(parent client.Object) string {
-	kind := parent.GetObjectKind().GroupVersionKind().Kind
-	if kind == "" {
-		panic("CommitStatusGateLabelKeyForParent: parent has empty TypeMeta.Kind - make sure the TypeMeta field is set")
-	}
-	stem := strings.TrimSuffix(kind, commitStatusGateKindSuffix)
-	return commitStatusGateLabelPrefix + pascalCaseToKebab(stem) + commitStatusGateLabelSuffix
+	return commitStatusGateLabelPrefix + commitStatusGateKebabStem(parent) + commitStatusGateLabelSuffix
 }
 
 // CommitStatusStandardLabels returns the three labels gate controllers set on each CommitStatus:
 // parent gate, environment branch, and commit-status key (spec.key).
-// parent must have TypeMeta.Kind set (as objects returned from the API server do).
 func CommitStatusStandardLabels(parent client.Object, branch, commitStatusKey string) map[string]string {
 	return map[string]string{
 		CommitStatusGateLabelKeyForParent(parent): KubeSafeLabel(parent.GetName()),
@@ -50,9 +51,9 @@ func pascalCaseNeedsDashBefore(s string, i int) bool {
 	return rune(s[i+1]) >= 'a' && rune(s[i+1]) <= 'z'
 }
 
-// pascalCaseToKebab converts a PascalCase string to kebab-case for gate label keys (for example ArgoCD → argo-cd).
-// That is intentional and separate from CommitStatus resource name partial kinds (ArgoCDCommitStatus → argocd)
-// and from CommitStatusLabel values such as argocd-health.
+// pascalCaseToKebab converts a PascalCase string to kebab-case (for example ArgoCD → argo-cd).
+// Used for both CommitStatus resource name suffixes and parent-gate label keys via commitStatusGateKebabStem.
+// Unrelated to CommitStatusLabel values such as argocd-health.
 func pascalCaseToKebab(s string) string {
 	if s == "" {
 		return ""

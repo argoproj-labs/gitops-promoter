@@ -45,18 +45,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
-// argocdCommitStatusResourceName returns the CommitStatus resource name for a gate and branch.
-// Tests pass gateName instead of the object from client.Create/Get because the envtest client
-// often leaves TypeMeta.Kind empty on typed API objects; CommitStatusResourceName requires Kind.
-// https://github.com/kubernetes-sigs/controller-runtime/issues/1870
-// https://github.com/kubernetes-sigs/controller-runtime/issues/3302
-func argocdCommitStatusResourceName(ctx context.Context, gateName, branch string) string {
-	return utils.CommitStatusResourceName(ctx, &promoterv1alpha1.ArgoCDCommitStatus{
-		TypeMeta:   promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.ArgoCDCommitStatusKind),
-		ObjectMeta: metav1.ObjectMeta{Name: gateName},
-	}, branch)
-}
-
 //go:embed testdata/ArgoCDCommitStatus.yaml
 var testArgoCDCommitStatusYAML string
 
@@ -451,7 +439,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 					},
 				}
 				commitStatusName := promoterv1alpha1.ArgoCDCommitStatusDefaultKey + "/" + testBranchStaging
-				resourceName := argocdCommitStatusResourceName(ctx, acs.Name, testBranchStaging)
+				resourceName := utils.CommitStatusResourceName(ctx, acs, testBranchStaging)
 				Expect(k8sClient.Create(ctx, acs)).To(Succeed())
 
 				Eventually(func(g Gomega) {
@@ -552,7 +540,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 					},
 				}
 				commitStatusName := customKey + "/" + testBranchStaging
-				resourceName := argocdCommitStatusResourceName(ctx, acs.Name, testBranchStaging)
+				resourceName := utils.CommitStatusResourceName(ctx, acs, testBranchStaging)
 				Expect(k8sClient.Create(ctx, acs)).To(Succeed())
 
 				Eventually(func(g Gomega) {
@@ -645,7 +633,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 					},
 				},
 			}
-			stagingResourceName := argocdCommitStatusResourceName(ctx, acs.Name, testBranchStaging)
+			stagingResourceName := utils.CommitStatusResourceName(ctx, acs, testBranchStaging)
 			Expect(k8sClient.Create(ctx, acs)).To(Succeed())
 
 			Eventually(func(g Gomega) {
@@ -1104,7 +1092,6 @@ var _ = Describe("cleanupLegacyOrphanedCommitStatusesWithoutParentLabel", func()
 		Expect(promoterv1alpha1.AddToScheme(scheme)).To(Succeed())
 
 		owner := &promoterv1alpha1.ArgoCDCommitStatus{
-			TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.ArgoCDCommitStatusKind),
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-argocd-gate",
 				Namespace: "default",

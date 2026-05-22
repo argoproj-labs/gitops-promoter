@@ -3,7 +3,6 @@ package utils
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -15,16 +14,11 @@ import (
 )
 
 // CommitStatusResourceName returns a DNS-safe unique Kubernetes name for a CommitStatus
-// owned by a gate controller: KubeSafeUniqueName(parent.Name-branch-partialKind), where
-// partialKind is the lowercase API kind prefix before "CommitStatus" (for example timed, argocd).
-// parent must have TypeMeta.Kind set (as objects returned from the API server do).
+// owned by a gate controller: KubeSafeUniqueName(parent.Name-branch-kebabStem), where kebabStem
+// matches commitStatusGateKebabStem (for example timed, argo-cd, web-request).
+// Kind is taken from TypeMeta when set; otherwise resolved from GetScheme via apiutil.GVKForObject.
 func CommitStatusResourceName(ctx context.Context, parent client.Object, branch string) string {
-	kind := parent.GetObjectKind().GroupVersionKind().Kind
-	if kind == "" {
-		panic("CommitStatusResourceName: parent " + fmt.Sprintf("%T", parent) + " has empty TypeMeta.Kind - make sure the TypeMeta field is set")
-	}
-	partialKind := strings.ToLower(strings.TrimSuffix(kind, "CommitStatus"))
-	return KubeSafeUniqueName(ctx, parent.GetName()+"-"+branch+"-"+partialKind)
+	return KubeSafeUniqueName(ctx, parent.GetName()+"-"+branch+"-"+commitStatusGateKebabStem(parent))
 }
 
 // CleanupOrphanedCommitStatuses deletes CommitStatus resources labeled for the parent gate

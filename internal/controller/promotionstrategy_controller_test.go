@@ -2028,7 +2028,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				for _, environment := range promotionStrategy.Spec.Environments {
 					commitStatus := promoterv1alpha1.CommitStatus{}
 					commitStatusName := promoterv1alpha1.ArgoCDCommitStatusDefaultKey + "/" + environment.Branch
-					resourceName := argocdCommitStatusResourceName(ctx, argocdCommitStatus.Name, environment.Branch)
+					resourceName := utils.CommitStatusResourceName(ctx, &argocdCommitStatus, environment.Branch)
 					Eventually(func(g Gomega) {
 						err := k8sClient.Get(ctx, types.NamespacedName{
 							Name:      resourceName,
@@ -2275,7 +2275,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				for _, environment := range promotionStrategy.Spec.Environments {
 					commitStatus := promoterv1alpha1.CommitStatus{}
 					commitStatusName := promoterv1alpha1.ArgoCDCommitStatusDefaultKey + "/" + environment.Branch
-					resourceName := argocdCommitStatusResourceName(ctx, argocdCommitStatus.Name, environment.Branch)
+					resourceName := utils.CommitStatusResourceName(ctx, &argocdCommitStatus, environment.Branch)
 					Eventually(func(g Gomega) {
 						err := k8sClient.Get(ctx, types.NamespacedName{
 							Name:      resourceName,

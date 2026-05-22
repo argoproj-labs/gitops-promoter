@@ -88,13 +88,13 @@ Use `utils.CommitStatusResourceName` for the CommitStatus **resource** name (dis
 resourceName := utils.CommitStatusResourceName(ctx, parent, branch)
 ```
 
-`parent` must have `TypeMeta.Kind` set (objects from the API server already do). For tests and the web request simulator, use `promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.TimedCommitStatusKind)` (or the appropriate `*CommitStatusKind` constant).
+`parent` may omit `TypeMeta.Kind` (common on typed objects from client `Get` in tests); the helper resolves Kind from the runtime scheme via `apiutil.GVKForObject` and panics only if resolution fails.
 
-The partial kind is the lowercase API kind stem before `CommitStatus` (for example `TimedCommitStatus` → `timed`, `WebRequestCommitStatus` → `webrequest`, `ArgoCDCommitStatus` → `argocd`). This uses simple lowercasing, not `pascalCaseToKebab` (so `webrequest`, not `web-request`). Gate **label** keys use `pascalCaseToKebab` instead (for example `ArgoCDCommitStatus` → `promoter.argoproj.io/argo-cd-commit-status`), which is unrelated to the resource-name suffix.
+The kebab-case gate stem is derived from the parent Kind (for example `TimedCommitStatus` → `timed`, `WebRequestCommitStatus` → `web-request`, `ArgoCDCommitStatus` → `argo-cd`). The same stem is used for the resource-name suffix and for the parent-gate label key (`promoter.argoproj.io/<stem>-commit-status`).
 
-The helper applies `KubeSafeUniqueName` to `parent.metadata.name-branch-partialKind`.
+The helper applies `KubeSafeUniqueName` to `parent.metadata.name-branch-<stem>`.
 
-Example: `my-app-environment-development-timed-<hash>`
+Example: `my-app-environment-development-timed-<hash>` (or `...-argo-cd-<hash>` for Argo CD gates)
 
 Set the standard CommitStatus labels with `utils.CommitStatusStandardLabels(parent, branch, key)` (parent gate, environment, and commit-status key).
 

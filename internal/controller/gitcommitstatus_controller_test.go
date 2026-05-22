@@ -36,18 +36,6 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
-// gitCommitStatusResourceName returns the CommitStatus resource name for a gate and branch.
-// Tests pass gateName instead of the object from client.Create/Get because the envtest client
-// often leaves TypeMeta.Kind empty on typed API objects; CommitStatusResourceName requires Kind.
-// https://github.com/kubernetes-sigs/controller-runtime/issues/1870
-// https://github.com/kubernetes-sigs/controller-runtime/issues/3302
-func gitCommitStatusResourceName(ctx context.Context, gateName, branch string) string {
-	return utils.CommitStatusResourceName(ctx, &promoterv1alpha1.GitCommitStatus{
-		TypeMeta:   promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.GitCommitStatusKind),
-		ObjectMeta: metav1.ObjectMeta{Name: gateName},
-	}, branch)
-}
-
 var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 	var (
 		ctx               context.Context
@@ -146,7 +134,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Verifying CommitStatus was created with custom description")
 			Eventually(func(g Gomega) {
-				commitStatusName := gitCommitStatusResourceName(ctx, gitCommitStatus.Name, testBranchDevelopment)
+				commitStatusName := utils.CommitStatusResourceName(ctx, gitCommitStatus, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -253,7 +241,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Verifying CommitStatus was created with failure phase")
 			Eventually(func(g Gomega) {
-				commitStatusName := gitCommitStatusResourceName(ctx, gitCommitStatus.Name, testBranchDevelopment)
+				commitStatusName := utils.CommitStatusResourceName(ctx, gitCommitStatus, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -368,7 +356,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Waiting for CommitStatus to be created")
 			Eventually(func(g Gomega) {
-				commitStatusName := gitCommitStatusResourceName(ctx, gitCommitStatus.Name, testBranchDevelopment)
+				commitStatusName := utils.CommitStatusResourceName(ctx, gitCommitStatus, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -381,8 +369,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 		})
 
 		It("should cleanup orphaned CommitStatus when environments no longer apply", func() {
-			stagingCommitStatusName := gitCommitStatusResourceName(ctx, gitCommitStatus.Name, testBranchStaging)
-			prodCommitStatusName := gitCommitStatusResourceName(ctx, gitCommitStatus.Name, testBranchProduction)
+			stagingCommitStatusName := utils.CommitStatusResourceName(ctx, gitCommitStatus, testBranchStaging)
+			prodCommitStatusName := utils.CommitStatusResourceName(ctx, gitCommitStatus, testBranchProduction)
 
 			Eventually(func(g Gomega) {
 				var cs promoterv1alpha1.CommitStatus
@@ -421,7 +409,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 		// The ownership relationship is correctly established (tested above),
 		// but K8s GC in test env may not cleanup within reasonable timeout
 		PIt("should cleanup CommitStatus resources when GitCommitStatus is deleted", func() {
-			commitStatusName := gitCommitStatusResourceName(ctx, gitCommitStatus.Name, testBranchDevelopment)
+			commitStatusName := utils.CommitStatusResourceName(ctx, gitCommitStatus, testBranchDevelopment)
 
 			By("Deleting the GitCommitStatus")
 			Expect(k8sClient.Delete(ctx, gitCommitStatus)).To(Succeed())
@@ -479,7 +467,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			By("Verifying CommitStatus created for each environment")
 			for _, envBranch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
 				Eventually(func(g Gomega) {
-					commitStatusName := gitCommitStatusResourceName(ctx, gcs.Name, envBranch)
+					commitStatusName := utils.CommitStatusResourceName(ctx, gcs, envBranch)
 					var cs promoterv1alpha1.CommitStatus
 					err := k8sClient.Get(ctx, types.NamespacedName{
 						Name:      commitStatusName,
@@ -517,7 +505,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Verifying CommitStatus has empty description")
 			Eventually(func(g Gomega) {
-				commitStatusName := gitCommitStatusResourceName(ctx, gitCommitStatus.Name, testBranchDevelopment)
+				commitStatusName := utils.CommitStatusResourceName(ctx, gitCommitStatus, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -827,7 +815,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Verifying the CommitStatus for staging shows failure")
 			Eventually(func(g Gomega) {
-				commitStatusName := gitCommitStatusResourceName(ctx, gitCommitStatus.Name, testBranchStaging)
+				commitStatusName := utils.CommitStatusResourceName(ctx, gitCommitStatus, testBranchStaging)
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -1070,7 +1058,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying CommitStatus for development is success with correct SHA")
-			devCommitStatusName := gitCommitStatusResourceName(ctx, devGCS.Name, testBranchDevelopment)
+			devCommitStatusName := utils.CommitStatusResourceName(ctx, devGCS, testBranchDevelopment)
 			Eventually(func(g Gomega) {
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -1085,7 +1073,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying CommitStatus for staging is success with correct SHA")
-			stagingCommitStatusName := gitCommitStatusResourceName(ctx, stagingGCS.Name, testBranchStaging)
+			stagingCommitStatusName := utils.CommitStatusResourceName(ctx, stagingGCS, testBranchStaging)
 			Eventually(func(g Gomega) {
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -1100,7 +1088,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying CommitStatus for production is FAILURE with correct SHA - this gates the promotion")
-			prodCommitStatusName := gitCommitStatusResourceName(ctx, prodGCS.Name, testBranchProduction)
+			prodCommitStatusName := utils.CommitStatusResourceName(ctx, prodGCS, testBranchProduction)
 			Eventually(func(g Gomega) {
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
