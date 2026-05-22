@@ -32,6 +32,16 @@ import (
 // cached object whose ResourceVersion is older than what we just wrote, causing the
 // new reconcile to evaluate logic against stale state.
 //
+// TODO: replace this with controller-runtime's read-your-own-write client once
+// kubernetes-sigs/controller-runtime#3473 lands and we upgrade to a release that
+// includes it. That design provides the same guarantee (writes block subsequent
+// cached reads of the same GVK+key until the cache observes them, or the request
+// times out) for ALL controllers using the cached client, opted in via
+// `client.Options.Cache.ReadYourOwnWrite: ptr.To(true)`. At that point this
+// tracker, its Reconcile-entry stale check, and the Forget-on-NotFound cleanup
+// can all be deleted in favor of constructing the manager's client with that
+// option set.
+//
 // Usage from a reconciler is the standard pattern:
 //
 //	if t.IsCacheStale(key, obj.ResourceVersion) {
@@ -40,9 +50,9 @@ import (
 //	// ... do work, patch status ...
 //	t.Record(key, obj.ResourceVersion) // after Status().Patch returns (obj is mutated in place by the patch)
 //
-// The tracker is safe for concurrent use. Entries are never removed: the working set
-// is bounded by the number of objects the controller reconciles, which is the same
-// bound the informer cache holds, so the memory cost is negligible.
+// The tracker is safe for concurrent use. Callers should invoke Forget on the
+// IsNotFound branch of their initial Get so deleted objects don't accumulate
+// entries over the controller's lifetime.
 type ResourceVersionTracker struct {
 	lastWritten map[client.ObjectKey]string
 	mu          sync.Mutex
