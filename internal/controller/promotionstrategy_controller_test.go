@@ -1307,7 +1307,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 
-			FIt("should successfully reconcile the resource through two promotion sequences (notes hydrator)", func() {
+			It("should successfully reconcile the resource through two promotion sequences (notes hydrator)", func() {
 				// This is the notes-based equivalent of the legacy happy-path spec above. It runs
 				// the same dev → staging → prod promotion sequence (twice) but drives hydration via
 				// makeDryCommit + hydrateEnvironmentsBatched, which pushes hydrated commits AND
