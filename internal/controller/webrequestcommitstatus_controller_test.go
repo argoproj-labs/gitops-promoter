@@ -35,6 +35,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/events"
+	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -4500,3 +4502,169 @@ func wrcsPhaseForBranch(items []promoterv1alpha1.WebRequestCommitStatusPhasePerB
 	}
 	return ""
 }
+
+// This suite exercises the stale-cache requeue path against a real envtest API
+// server. The unit-level semantics of ResourceVersionTracker are covered by
+// internal/utils/resourceversion_test.go; this suite proves the wiring inside
+// WebRequestCommitStatusReconciler.Reconcile actually short-circuits the
+// reconcile (without writing status) when the tracker reports the cached object
+// is older than our last write. We seed the tracker with an artificially-future
+// RV instead of trying to reproduce real informer-cache lag, which is
+// non-deterministic in envtest.
+var _ = Describe("WebRequestCommitStatus Controller - Stale Cache Guard", Ordered, func() {
+	var (
+		ctx  context.Context
+		wrcs *promoterv1alpha1.WebRequestCommitStatus
+	)
+
+	BeforeAll(func() {
+		ctx = context.Background()
+
+		// Minimal WRCS spec: the stale-cache guard fires immediately after the
+		// initial Get(), before PromotionStrategy/namespace lookups, so a
+		// fully-wired strategy isn't needed. We still satisfy the CRD's required
+		// fields so Create() succeeds.
+		wrcs = &promoterv1alpha1.WebRequestCommitStatus{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "wrcs-stale-cache-guard",
+				Namespace: "default",
+			},
+			Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "does-not-exist"},
+				Key:                  "stale-cache-guard",
+				ReportOn:             constants.CommitRefProposed,
+				HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+					URLTemplate:    "http://127.0.0.1:1/never-called",
+					MethodTemplate: "GET",
+					Timeout:        metav1.Duration{Duration: 5 * time.Second},
+				},
+				Success: promoterv1alpha1.SuccessSpec{
+					When: promoterv1alpha1.WhenWithOutputSpec{
+						Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
+					},
+				},
+				Mode: promoterv1alpha1.ModeSpec{
+					Polling: &promoterv1alpha1.PollingModeSpec{
+						Interval: metav1.Duration{Duration: 1 * time.Hour},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, wrcs)).To(Succeed())
+	})
+
+	AfterAll(func() {
+		if wrcs != nil {
+			_ = k8sClient.Delete(ctx, wrcs)
+		}
+	})
+
+	It("requeues with the short backoff when the tracker reports the cache is stale", func() {
+		// Build a standalone reconciler so we can pre-seed its tracker. The
+		// stale-cache requeue path exits BEFORE PromotionStrategy/namespace/
+		// SettingsMgr/HTTP lookups, so we only need Client + Recorder + rvTracker.
+		// (The Scheme/SettingsMgr fields are unused on this path; we set Scheme
+		// to k8sClient.Scheme() for safety in case any helper reaches for it.)
+		r := &WebRequestCommitStatusReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			Recorder:  events.NewFakeRecorder(10),
+			rvTracker: utils.NewResourceVersionTracker(),
+		}
+
+		// Seed the tracker with an RV that the API server's current value
+		// definitely won't exceed. CompareResourceVersion uses big-integer
+		// semantics (longer-length string is greater), so 30 nines is reliably
+		// larger than any real RV. This makes IsCacheStale return true for the
+		// Get-from-cache the reconciler is about to do, simulating the race
+		// where the informer hasn't observed the previous reconcile's write.
+		key := types.NamespacedName{Name: wrcs.Name, Namespace: wrcs.Namespace}
+		r.rvTracker.Record(key, "999999999999999999999999999999")
+
+		result, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+
+		// Load-bearing assertion: a requeue of EXACTLY 100ms with nil error is
+		// the unique signature of the stale-cache guard. Any other path returns
+		// a longer RequeueAfter (the spec's polling interval / trigger requeue
+		// duration) or an error. We can't reliably check "no status write
+		// happened" via observed ResourceVersion because the running
+		// manager-managed reconciler in this suite is concurrently reconciling
+		// the same WRCS and bumps RV out from under us. The return-value check
+		// is the deterministic signal that our isolated reconcile took the
+		// short-circuit branch.
+		Expect(err).NotTo(HaveOccurred(),
+			"stale-cache requeue path must return nil error (it's a deferral, not a failure)")
+		Expect(result.RequeueAfter).To(Equal(100*time.Millisecond),
+			"stale-cache path must requeue with the short backoff so the cache can catch up")
+	})
+
+	It("proceeds past the guard and records the post-patch RV when the cache is not stale", func() {
+		// Fresh reconciler with an empty tracker — no recorded RV for this key,
+		// so IsCacheStale returns false on entry and Reconcile must proceed past
+		// the guard. We deliberately reference a non-existent PromotionStrategy
+		// so the reconcile fails after the guard, exercising the recording
+		// defer on the error path (HandleReconciliationResult still patches the
+		// Ready=False condition, which bumps RV, which the tracker records).
+		r := &WebRequestCommitStatusReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			Recorder:  events.NewFakeRecorder(10),
+			rvTracker: utils.NewResourceVersionTracker(),
+		}
+		key := types.NamespacedName{Name: wrcs.Name, Namespace: wrcs.Namespace}
+
+		// Sanity: empty tracker means no RV is recorded for this key, so
+		// IsCacheStale must return false regardless of the cached RV value.
+		Expect(r.rvTracker.IsCacheStale(key, "1")).To(BeFalse())
+
+		// Invoke Reconcile. We don't assert on the returned error — the
+		// PromotionStrategy lookup fails by design here. What matters is that
+		// (a) the call did NOT return our stale-cache requeue signature, proving
+		// we got past the guard, and (b) the tracker now has an entry for the
+		// key (set by the deferred Record after the status patch).
+		result, _ := r.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		Expect(result.RequeueAfter).NotTo(Equal(100*time.Millisecond),
+			"on the not-stale path we must NOT take the 100ms short-circuit branch")
+
+		// The post-condition we actually care about for the tracker contract:
+		// after this reconcile, the tracker has recorded SOME RV for this key.
+		// Test by asking whether an obviously-old RV ("1") is now considered
+		// stale. With an empty tracker the answer would be false (nothing
+		// recorded); after a successful patch the recorded RV is the real
+		// post-patch one which is much larger than "1", so the answer flips to
+		// true. We can't pin the exact recorded RV because the manager-managed
+		// reconciler in this suite is concurrently reconciling the same WRCS,
+		// which can bump RV further between our patch and our assertion.
+		Expect(r.rvTracker.IsCacheStale(key, "1")).To(BeTrue(),
+			"after a non-stale-path reconcile, the tracker must have recorded the post-patch RV "+
+				"so that a follow-up reconcile starting from an older cache snapshot is correctly "+
+				"flagged as stale; an unrecorded tracker would still return false here")
+	})
+
+	It("forgets the tracker entry on the NotFound branch so deleted objects don't leak memory", func() {
+		// Use a key that doesn't exist in envtest so Get returns NotFound. Seed
+		// the tracker with an entry for this key first, then invoke Reconcile,
+		// and verify the entry was dropped. This proves the cleanup wiring in
+		// the IsNotFound branch is actually called.
+		r := &WebRequestCommitStatusReconciler{
+			Client:    k8sClient,
+			Scheme:    k8sClient.Scheme(),
+			Recorder:  events.NewFakeRecorder(10),
+			rvTracker: utils.NewResourceVersionTracker(),
+		}
+		missingKey := types.NamespacedName{Name: "wrcs-stale-cache-guard-deleted", Namespace: "default"}
+		r.rvTracker.Record(missingKey, "500")
+		Expect(r.rvTracker.IsCacheStale(missingKey, "499")).To(BeTrue(),
+			"sanity: tracker has an entry for the (about-to-be-NotFound) key")
+
+		result, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: missingKey})
+		Expect(err).NotTo(HaveOccurred(), "NotFound is a benign terminal state, not an error")
+		Expect(result).To(Equal(ctrl.Result{}), "NotFound must not request a requeue")
+
+		Expect(r.rvTracker.IsCacheStale(missingKey, "499")).To(BeFalse(),
+			"after Reconcile returns on NotFound, the tracker entry must be gone "+
+				"(IsCacheStale on a forgotten key is treated as never-recorded → not stale); "+
+				"a true return here means deleted-object entries are leaking and the tracker "+
+				"will grow unbounded over the controller's lifetime")
+	})
+})
