@@ -34,15 +34,12 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/events"
 	"k8s.io/client-go/util/retry"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 //go:embed testdata/ArgoCDCommitStatus.yaml
@@ -655,6 +652,129 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
 		})
 
+		It("should delete legacy orphaned CommitStatus without parent-gate label during reconcile", func() {
+			ctx := context.TODO()
+
+			psName, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "acdcs-legacy-cleanup", "default")
+			promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
+				{Branch: testBranchStaging},
+			}
+			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: promoterv1alpha1.ArgoCDCommitStatusDefaultKey},
+			}
+
+			setupInitialTestGitRepoOnServer(ctx, gitRepo)
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+			workTreePath, err := os.MkdirTemp("", "*")
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = os.RemoveAll(workTreePath) }()
+
+			_, err = runGitCmd(ctx, workTreePath, "clone", testGitRepoCloneURL(gitRepo), ".")
+			Expect(err).ToNot(HaveOccurred())
+			_, err = runGitCmd(ctx, workTreePath, "checkout", testBranchStaging)
+			Expect(err).ToNot(HaveOccurred())
+			sha, err := runGitCmd(ctx, workTreePath, "rev-parse", "HEAD")
+			Expect(err).ToNot(HaveOccurred())
+			sha = strings.TrimSpace(sha)
+
+			appLabelKey := "acdcs-legacy-cleanup-test"
+			appLabelVal := psName
+			app := &argocd.Application{
+				TypeMeta: metav1.TypeMeta{Kind: "Application", APIVersion: "argoproj.io/v1alpha1"},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "test-app-acdcs-legacy-cleanup",
+					Labels:    map[string]string{appLabelKey: appLabelVal},
+				},
+				Spec: argocd.ApplicationSpec{
+					Source: &argocd.Source{
+						RepoURL:        testGitRepoCloneURL(gitRepo),
+						TargetRevision: testBranchStaging,
+					},
+				},
+				Status: argocd.ApplicationStatus{
+					Health: argocd.HealthStatus{Status: argocd.HealthStatusHealthy},
+					Sync:   argocd.SyncStatus{Status: argocd.SyncStatusCodeSynced, Revision: sha},
+				},
+			}
+			Expect(k8sClient.Create(ctx, app)).To(Succeed())
+
+			acs := &promoterv1alpha1.ArgoCDCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: psName},
+				Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName},
+					ApplicationSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{appLabelKey: appLabelVal},
+					},
+				},
+			}
+			currentResourceName := utils.CommitStatusResourceName(ctx, acs, testBranchStaging)
+			Expect(k8sClient.Create(ctx, acs)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				var cs promoterv1alpha1.CommitStatus
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: currentResourceName, Namespace: "default"}, &cs)).To(Succeed())
+				g.Expect(cs.Labels).To(HaveKey(utils.CommitStatusGateLabelKeyForParent(acs)))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			var acsLive promoterv1alpha1.ArgoCDCommitStatus
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: psName, Namespace: "default"}, &acsLive)).To(Succeed())
+
+			var currentCS promoterv1alpha1.CommitStatus
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: currentResourceName, Namespace: "default"}, &currentCS)).To(Succeed())
+
+			By("Injecting a pre-upgrade CommitStatus (commit-status label only, legacy resource name)")
+			legacyResourceName := utils.KubeSafeUniqueName(ctx, psName+"-"+testBranchStaging+"-argocd")
+			Expect(legacyResourceName).NotTo(Equal(currentResourceName))
+
+			legacyCS := &promoterv1alpha1.CommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      legacyResourceName,
+					Namespace: "default",
+					Labels: map[string]string{
+						promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.ArgoCDCommitStatusDefaultKey,
+					},
+				},
+				Spec: promoterv1alpha1.CommitStatusSpec{
+					RepositoryReference: currentCS.Spec.RepositoryReference,
+					Sha:                 currentCS.Spec.Sha,
+					Name:                promoterv1alpha1.ArgoCDCommitStatusDefaultKey + "/" + testBranchStaging,
+					Phase:               promoterv1alpha1.CommitPhaseSuccess,
+				},
+			}
+			Expect(controllerutil.SetControllerReference(&acsLive, legacyCS, scheme)).To(Succeed())
+			Expect(k8sClient.Create(ctx, legacyCS)).To(Succeed())
+
+			By("Triggering reconcile via Application status change")
+			appToUpdate := &argocd.Application{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: app.Name, Namespace: "default"}, appToUpdate)).To(Succeed())
+			appToUpdate.Status.Health.LastTransitionTime = &metav1.Time{Time: time.Now()}
+			Expect(k8sClient.Update(ctx, appToUpdate)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: legacyResourceName, Namespace: "default"}, &promoterv1alpha1.CommitStatus{})
+				g.Expect(apierrors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				var cs promoterv1alpha1.CommitStatus
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: currentResourceName, Namespace: "default"}, &cs)).To(Succeed())
+				g.Expect(cs.Labels).To(HaveKey(utils.CommitStatusGateLabelKeyForParent(acs)))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Expect(k8sClient.Delete(ctx, app)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, acs)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+		})
+
 		It("should reconcile when sync status changes but health status and LastTransitionTime do not change", func() {
 			ctx := context.TODO()
 
@@ -1079,80 +1199,5 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				Expect(k8sClient.Delete(ctx, app)).To(Succeed())
 			}
 		})
-	})
-})
-
-var _ = Describe("cleanupLegacyOrphanedCommitStatusesWithoutParentLabel", func() {
-	It("deletes owned CommitStatuses without the argocd-commit-status label", func() {
-		ctx := context.Background()
-		scheme := runtime.NewScheme()
-		Expect(promoterv1alpha1.AddToScheme(scheme)).To(Succeed())
-
-		owner := &promoterv1alpha1.ArgoCDCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "my-argocd-gate",
-				Namespace: "default",
-				UID:       "acs-uid",
-			},
-		}
-		ownerRef := []metav1.OwnerReference{{
-			APIVersion: promoterv1alpha1.GroupVersion.String(),
-			Kind:       "ArgoCDCommitStatus",
-			Name:       owner.Name,
-			UID:        owner.UID,
-			Controller: new(true),
-		}}
-
-		valid := &promoterv1alpha1.CommitStatus{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:            "valid-cs",
-				Namespace:       "default",
-				OwnerReferences: ownerRef,
-				Labels: map[string]string{
-					utils.CommitStatusGateLabelKeyForParent(owner): utils.KubeSafeLabel(owner.Name),
-				},
-			},
-		}
-		legacyOrphan := &promoterv1alpha1.CommitStatus{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:            "legacy-orphan-cs",
-				Namespace:       "default",
-				OwnerReferences: ownerRef,
-				Labels: map[string]string{
-					promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.ArgoCDCommitStatusDefaultKey,
-				},
-			},
-		}
-		otherOwner := &promoterv1alpha1.CommitStatus{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "other-owner-cs",
-				Namespace: "default",
-				OwnerReferences: []metav1.OwnerReference{{
-					APIVersion: promoterv1alpha1.GroupVersion.String(),
-					Kind:       "ArgoCDCommitStatus",
-					Name:       "other-gate",
-					UID:        "other-uid",
-					Controller: new(true),
-				}},
-			},
-		}
-
-		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(valid, legacyOrphan, otherOwner).Build()
-		r := &ArgoCDCommitStatusReconciler{
-			localClient: cl,
-			// Buffer must fit Eventf calls in this test; the fake recorder drops events when full.
-			Recorder: events.NewFakeRecorder(100),
-		}
-
-		err := r.cleanupLegacyOrphanedCommitStatusesWithoutParentLabel(ctx, owner, []*promoterv1alpha1.CommitStatus{valid})
-		Expect(err).NotTo(HaveOccurred())
-
-		var remaining promoterv1alpha1.CommitStatusList
-		Expect(cl.List(ctx, &remaining, client.InNamespace("default"))).To(Succeed())
-		names := make([]string, len(remaining.Items))
-		for i := range remaining.Items {
-			names[i] = remaining.Items[i].Name
-		}
-		Expect(names).To(ConsistOf("valid-cs", "other-owner-cs"))
 	})
 })
