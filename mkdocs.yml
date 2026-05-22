@@ -51,6 +51,7 @@ nav:
   - Debugging:
       - Overview: debugging/index.md
       - Finalizers: debugging/finalizers.md
+      - Labels: debugging/labels.md
   - Architecture: architecture.md
   - Custom Hydrator: custom-hydrator.md
   - CRD Specs: crd-specs.md

@@ -20,7 +20,7 @@ previous environment. This is how the PromotionStrategy ensures that the environ
 the previous environments' active commit statuses.
 
 The [Events](monitoring/events.md#changetransferpolicy) page documents the Kubernetes events produced by 
-ChangeTransferPolicies.
+ChangeTransferPolicies. PromotionStrategy and ChangeTransferPolicy controllers set standard labels on related resources; see [Labels](debugging/labels.md#promotion-and-change-transfer).
 
 ```yaml
 {!internal/controller/testdata/ChangeTransferPolicy.yaml!}
@@ -29,7 +29,7 @@ ChangeTransferPolicies.
 ### PullRequest
 
 A PullRequest is a thin wrapper around the SCM's pull request API. ChangeTransferPolicies use PullRequests to manage
-promotions.
+promotions. PullRequests carry promotion-strategy, change-transfer-policy, and environment labels for correlation; see [Labels](debugging/labels.md#promotion-and-change-transfer).
 
 ```yaml
 {!internal/controller/testdata/PullRequest.yaml!}
@@ -41,6 +41,8 @@ A CommitStatus is a thin wrapper for the SCM's commit status API. CommitStatuses
 promotion gates. In the ideal case, the CommitStatus will write its state to the SCM's API so that the appropriate
 checkmarks/failures appear in the SCM's UI. But even if the SCM API calls fail, the ChangeTransferPolicy controller will
 use the contents of the CommitStatuses `spec` fields.
+
+Controllers label CommitStatuses with three standard labels (gate `key`, environment branch, and parent gate). See [Labels](debugging/labels.md#commitstatus-gating) for label keys, derived parent-gate labels, and troubleshooting queries.
 
 ```yaml
 {!internal/controller/testdata/CommitStatus.yaml!}
@@ -153,9 +155,11 @@ resources and ensuring proper cleanup of external resources (like pull requests 
 
 **All finalizers are managed automatically by the controllers. You do not need to set them manually via GitOps.**
 
+For a complete finalizer table (including ChangeTransferPolicy cross-resource finalizers), risks of manual removal, and how to report stuck deletes, see [Finalizers](debugging/finalizers.md). Contributors adding finalizers should read [Using Finalizers](contributing/using-finalizers.md).
+
 ### PullRequest Finalizer
 
-**Finalizer**: `pullrequest.promoter.argoporoj.io/finalizer`
+**Finalizer**: `pullrequest.promoter.argoproj.io/finalizer`
 
 When a PullRequest is deleted, the finalizer ensures that the pull request is properly closed on the SCM before the 
 Kubernetes resource is removed. This prevents orphaned pull requests in your SCM.
@@ -193,6 +197,14 @@ When you delete a PromotionStrategy and its associated resources, the finalizers
 
 If you attempt to delete resources out of order, Kubernetes will mark them for deletion but they will remain in a 
 "Terminating" state until their dependent resources are removed. This is normal and expected behavior.
+
+## Labels
+
+Built-in controllers set promoter labels on `ChangeTransferPolicy`, `PullRequest`, and `CommitStatus` objects so promotion checks and cleanup can list related resources. Each gate-created `CommitStatus` gets **three** standard labels: `promoter.argoproj.io/commit-status`, `promoter.argoproj.io/environment`, and a derived parent-gate key (for example `promoter.argoproj.io/argo-cd-commit-status`).
+
+Label keys are defined in [`api/v1alpha1/constants.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/api/v1alpha1/constants.go); parent-gate label keys are derived from the gate Kind. Branch and name values are sanitized with `KubeSafeLabel` before they are stored.
+
+See [Labels](debugging/labels.md) for the full reference, useful `kubectl` queries, and troubleshooting when gating does not match expectations. For how commit-status labels relate to `PromotionStrategy` selectors, see [Gating Promotions](gating-promotions.md).
 
 ## Validation Conventions
 
