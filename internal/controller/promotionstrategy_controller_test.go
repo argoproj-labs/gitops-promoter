@@ -1969,7 +1969,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}
 
 				argocdCommitStatus = promoterv1alpha1.ArgoCDCommitStatus{
-					TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.ArgoCDCommitStatusKind),
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      name,
 						Namespace: namespace,
@@ -2229,7 +2228,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(err).To(Succeed())
 
 				argocdCommitStatus = promoterv1alpha1.ArgoCDCommitStatus{
-					TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.ArgoCDCommitStatusKind),
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      name,
 						Namespace: namespace,

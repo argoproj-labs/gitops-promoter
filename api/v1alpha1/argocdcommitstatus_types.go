@@ -53,7 +53,7 @@ type ArgoCDCommitStatusSpec struct {
 // Deprecated: CommitStatusKey exists only for clusters running a CRD without spec.key defaulting
 // (for example resources created before the key field existed). The API server applies the CRD
 // default when key is omitted on create/update, so controllers should use spec.Key directly.
-// This helper will be removed in v1.0 when spec.key becomes required.
+// TODO(v1.0, #1465): remove when spec.key becomes required.
 func (s *ArgoCDCommitStatusSpec) CommitStatusKey() string {
 	if s.Key != "" {
 		return s.Key
@@ -179,9 +179,6 @@ type ApplicationsSelected struct {
 	// the local cluster. There is no minimum length, since the local cluster is represented by an empty string.
 	ClusterName string `json:"clusterName"`
 }
-
-// ArgoCDCommitStatusKind is the API Kind for ArgoCDCommitStatus.
-const ArgoCDCommitStatusKind = "ArgoCDCommitStatus"
 
 // +kubebuilder:ac:generate=true
 // +kubebuilder:object:root=true

@@ -426,7 +426,6 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				Expect(k8sClient.Create(ctx, app)).To(Succeed())
 
 				acs := &promoterv1alpha1.ArgoCDCommitStatus{
-					TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.ArgoCDCommitStatusKind),
 					ObjectMeta: metav1.ObjectMeta{
 						Namespace: "default",
 						Name:      psName,
@@ -526,7 +525,6 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				Expect(k8sClient.Create(ctx, app)).To(Succeed())
 
 				acs := &promoterv1alpha1.ArgoCDCommitStatus{
-					TypeMeta: promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.ArgoCDCommitStatusKind),
 					ObjectMeta: metav1.ObjectMeta{
 						Namespace: "default",
 						Name:      psName,
@@ -624,7 +622,6 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			Expect(k8sClient.Create(ctx, appStaging)).To(Succeed())
 
 			acs := &promoterv1alpha1.ArgoCDCommitStatus{
-				TypeMeta:   promoterv1alpha1.ResourceTypeMeta(promoterv1alpha1.ArgoCDCommitStatusKind),
 				ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: psName},
 				Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName},
@@ -1100,7 +1097,7 @@ var _ = Describe("cleanupLegacyOrphanedCommitStatusesWithoutParentLabel", func()
 		}
 		ownerRef := []metav1.OwnerReference{{
 			APIVersion: promoterv1alpha1.GroupVersion.String(),
-			Kind:       promoterv1alpha1.ArgoCDCommitStatusKind,
+			Kind:       "ArgoCDCommitStatus",
 			Name:       owner.Name,
 			UID:        owner.UID,
 			Controller: new(true),
@@ -1132,7 +1129,7 @@ var _ = Describe("cleanupLegacyOrphanedCommitStatusesWithoutParentLabel", func()
 				Namespace: "default",
 				OwnerReferences: []metav1.OwnerReference{{
 					APIVersion: promoterv1alpha1.GroupVersion.String(),
-					Kind:       promoterv1alpha1.ArgoCDCommitStatusKind,
+					Kind:       "ArgoCDCommitStatus",
 					Name:       "other-gate",
 					UID:        "other-uid",
 					Controller: new(true),

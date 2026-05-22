@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"maps"
 	"net/url"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -219,8 +220,8 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		return ctrl.Result{}, fmt.Errorf("failed to cleanup legacy orphaned CommitStatus resources: %w", err)
 	}
 
-	// This should be a no-op while the cleanupLegacyOrphanedCommitStatusesWithoutParentLabel method is present.
-	// Keeping it so that we're certain removing cleanupLegacyOrphanedCommitStatusesWithoutParentLabel is very safe.
+	// This should be a no-op while cleanupLegacyOrphanedCommitStatusesWithoutParentLabel is present (#1460).
+	// Keeping it so that we're certain removing that method is very safe.
 	err = utils.CleanupOrphanedCommitStatuses(ctx, r.localClient, r.Recorder, &argoCDCommitStatus, commitStatuses)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to cleanup orphaned CommitStatus resources: %w", err)
@@ -677,11 +678,12 @@ func (r *ArgoCDCommitStatusReconciler) cleanupLegacyOrphanedCommitStatusesWithou
 func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.Context, promotionStrategy *promoterv1alpha1.PromotionStrategy, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, targetBranch string, sha string, phase promoterv1alpha1.CommitStatusPhase, desc string) (*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
 
-	key := argoCDCommitStatus.Spec.CommitStatusKey() //nolint:staticcheck // SA1019: empty-key fallback until v1.0; use spec.Key directly then.
+	key := argoCDCommitStatus.Spec.CommitStatusKey() //nolint:staticcheck // SA1019: #1465 use spec.Key directly in v1.0
 	commitStatusName := key + "/" + targetBranch
 
 	resourceName := utils.CommitStatusResourceName(ctx, &argoCDCommitStatus, targetBranch)
-	gvk := promoterv1alpha1.GroupVersion.WithKind(promoterv1alpha1.ArgoCDCommitStatusKind)
+	kind := reflect.TypeOf(promoterv1alpha1.ArgoCDCommitStatus{}).Name()
+	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
 	// Build the spec
 	commitStatusSpec := acv1alpha1.CommitStatusSpec().

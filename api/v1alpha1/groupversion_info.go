@@ -22,7 +22,6 @@ limitations under the License.
 package v1alpha1
 
 import (
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/scheme"
 )
@@ -40,12 +39,3 @@ var (
 	// AddToScheme adds the types in this group-version to the given scheme.
 	AddToScheme = SchemeBuilder.AddToScheme
 )
-
-// ResourceTypeMeta returns TypeMeta for a promoter.argoproj.io/v1alpha1 API Kind.
-// Use on in-memory resources (tests, simulators) so GetObjectKind reports the Kind.
-func ResourceTypeMeta(kind string) metav1.TypeMeta {
-	return metav1.TypeMeta{
-		APIVersion: GroupVersion.String(),
-		Kind:       kind,
-	}
-}

@@ -93,7 +93,7 @@ var _ = Describe("CleanupOrphanedCommitStatuses", func() {
 				},
 				OwnerReferences: []metav1.OwnerReference{{
 					APIVersion: promoterv1alpha1.GroupVersion.String(),
-					Kind:       promoterv1alpha1.TimedCommitStatusKind,
+					Kind:       "TimedCommitStatus",
 					Name:       owner.Name,
 					UID:        owner.UID,
 					Controller: new(true),
@@ -117,7 +117,7 @@ var _ = Describe("CleanupOrphanedCommitStatuses", func() {
 				},
 				OwnerReferences: []metav1.OwnerReference{{
 					APIVersion: promoterv1alpha1.GroupVersion.String(),
-					Kind:       promoterv1alpha1.TimedCommitStatusKind,
+					Kind:       "TimedCommitStatus",
 					Name:       "other",
 					UID:        "other-uid",
 					Controller: new(true),

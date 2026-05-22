@@ -24,6 +24,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strings"
 	"time"
 
@@ -386,7 +387,7 @@ func (r *WebRequestCommitStatusReconciler) applySCMAuthentication(ctx context.Co
 // The phase (Success or Pending) and sha are set from the validation outcome; description and URL are rendered from templateData.
 // The created resource is owned by the WebRequestCommitStatus so it is cleaned up when the WebRequestCommitStatus is deleted.
 func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, repositoryRefName string, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, templateData webrequest.TemplateData) (*promoterv1alpha1.CommitStatus, error) {
-	kind := promoterv1alpha1.WebRequestCommitStatusKind
+	kind := reflect.TypeOf(promoterv1alpha1.WebRequestCommitStatus{}).Name()
 	commitStatusName := utils.CommitStatusResourceName(ctx, wrcs, branch)
 
 	// Render description template

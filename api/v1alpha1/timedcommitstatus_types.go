@@ -53,7 +53,7 @@ type TimedCommitStatusSpec struct {
 // Deprecated: CommitStatusKey exists only for clusters running a CRD without spec.key defaulting
 // (for example resources created before the key field existed). The API server applies the CRD
 // default when key is omitted on create/update, so controllers should use spec.Key directly.
-// This helper will be removed in v1.0 when spec.key becomes required.
+// TODO(v1.0, #1465): remove when spec.key becomes required.
 func (s *TimedCommitStatusSpec) CommitStatusKey() string {
 	if s.Key != "" {
 		return s.Key
@@ -132,9 +132,6 @@ type TimedCommitStatusEnvironmentsStatus struct {
 	// +required
 	AtMostDurationRemaining metav1.Duration `json:"atMostDurationRemaining"`
 }
-
-// TimedCommitStatusKind is the API Kind for TimedCommitStatus.
-const TimedCommitStatusKind = "TimedCommitStatus"
 
 // +kubebuilder:ac:generate=true
 // +kubebuilder:object:root=true

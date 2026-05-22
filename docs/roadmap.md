@@ -37,7 +37,7 @@ The project is still **experimental**; v1.0 will mark a stabilized API. The item
 
 Today, **ArgoCDCommitStatus** and **TimedCommitStatus** expose an optional `spec.key` with CRD defaults (`argocd-health` and `timer`). **WebRequestCommitStatus** and **GitCommitStatus** already require `spec.key`.
 
-For v1.0, we may make `spec.key` **required** on ArgoCDCommitStatus and TimedCommitStatus so all built-in gate CRs share the same API shape. The deprecated `CommitStatusKey()` helpers on those spec types (empty-key fallback for pre-upgrade CRDs) will be removed; controllers will use `spec.Key` directly.
+For v1.0, we may make `spec.key` **required** on ArgoCDCommitStatus and TimedCommitStatus so all built-in gate CRs share the same API shape. The deprecated `CommitStatusKey()` helpers on those spec types (empty-key fallback for pre-upgrade CRDs) will be removed; controllers will use `spec.Key` directly ([#1465](https://github.com/argoproj-labs/gitops-promoter/issues/1465)).
 
 We recommend setting `spec.key` explicitly on ArgoCDCommitStatus and TimedCommitStatus now (use `argocd-health` or `timer` when those are your gate names). That keeps manifests aligned with PromotionStrategy keys and avoids churn if the field becomes required in v1.0:
 
@@ -72,3 +72,7 @@ spec:
 Use the same values in `PromotionStrategy` `activeCommitStatuses` / `proposedCommitStatuses`.
 
 See also: [Argo CD Commit Status](commit-status-controllers/argocd.md), [Timed Commit Status](commit-status-controllers/timed.md), and [Development Best Practices](commit-status-controllers/development-best-practices.md).
+
+### ArgoCDCommitStatus legacy CommitStatus cleanup (planned for v1.0)
+
+Remove `cleanupLegacyOrphanedCommitStatusesWithoutParentLabel` once clusters are past the Argo CD CommitStatus naming and parent-gate label migration ([#1460](https://github.com/argoproj-labs/gitops-promoter/issues/1460)).

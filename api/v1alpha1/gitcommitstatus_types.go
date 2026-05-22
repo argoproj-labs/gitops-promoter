@@ -182,9 +182,6 @@ type GitCommitStatusEnvironmentStatus struct {
 	ExpressionResult *bool `json:"expressionResult,omitempty"`
 }
 
-// GitCommitStatusKind is the API Kind for GitCommitStatus.
-const GitCommitStatusKind = "GitCommitStatus"
-
 // +kubebuilder:ac:generate=true
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status

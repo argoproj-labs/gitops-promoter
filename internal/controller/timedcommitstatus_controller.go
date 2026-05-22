@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
@@ -281,11 +282,11 @@ func (r *TimedCommitStatusReconciler) calculateCommitStatusPhase(requiredDuratio
 }
 
 func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, message string, envBranch string) (*promoterv1alpha1.CommitStatus, error) {
-	kind := promoterv1alpha1.TimedCommitStatusKind
+	kind := reflect.TypeOf(promoterv1alpha1.TimedCommitStatus{}).Name()
 	commitStatusName := utils.CommitStatusResourceName(ctx, tcs, branch)
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
-	key := tcs.Spec.CommitStatusKey() //nolint:staticcheck // SA1019: empty-key fallback until v1.0; use spec.Key directly then.
+	key := tcs.Spec.CommitStatusKey() //nolint:staticcheck // SA1019: #1465 use spec.Key directly in v1.0
 
 	// Build the apply configuration
 	commitStatusApply := acv1alpha1.CommitStatus(commitStatusName, tcs.Namespace).
