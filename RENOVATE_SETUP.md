@@ -96,9 +96,9 @@ Renovate is triggered by `.github/workflows/renovate.yaml` (Sun/Wed/Sat). A sepa
 
 Renovate uses regex managers to detect version strings in various files:
 
-- **Go version** in `go.mod`: `go 1.26.1`
-- **Go version** in workflows: `go-version: "1.26.1"` (patch segment optional in the regex)
-- **Go version** in Dockerfiles: `FROM golang:1.26.1@sha256:...`
+- **Go version** in `go.mod`: `go 1.26.3`
+- **Go version** in workflows: `go-version: "1.26.3"` (patch segment optional in the regex)
+- **Go version** in Dockerfiles: `FROM golang:1.26.3@sha256:...`
 - **golangci-lint** in Makefile: `GOLANGCI_LINT_VERSION ?= v2.5.0`
 - **golangci-lint** in workflows: `version: v2.5.0`
 
