@@ -34,6 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/ptr"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -1088,3 +1089,183 @@ func changeTransferPolicyResources(ctx context.Context, name, namespace string) 
 
 	return name, scmSecret, scmProvider, gitRepo, commitStatus, changeTransferPolicy
 }
+
+// --- SSA migration bug e2e ----------------------------------------------------
+//
+// End-to-end reproduction of the "SSA migration" bug as it manifests in the
+// CTP controller. So named because it only manifests in clusters that ran a
+// pre-Server-Side-Apply version of the promoter (which used
+// client.Status().Update(), defaulting to the FieldOwner "gitops-promoter")
+// and were then upgraded to the SSA-based code.
+//
+// The bug requires a specific Server-Side Apply ownership topology in K8s:
+//
+//   manager `gitops-promoter`                                       Update  owns f:status.f:proposed.f:note.f:drySha
+//   manager `promoter.argoproj.io/changetransferpolicy-controller`  Apply   owns f:status.f:proposed.f:note (parent only)
+//
+// That topology naturally arises in any cluster that ran the pre-SSA
+// controller before being upgraded. Until something else writes a different
+// value for note.drySha through the new SSA Apply manager, the legacy
+// `gitops-promoter` Update record retains exclusive ownership of
+// note.drySha. Combined with setCommitMetadata writing
+// Note=&HydratorMetadata{DrySha: ""} (which serializes to `note: {}` after
+// omitempty drops the empty string), every subsequent SSA Apply by the
+// controller silently preserves the stale OLD value of note.drySha while
+// still advancing every other field in the patch.
+//
+// We mimic the legacy state by issuing a manual k8sClient.Status().Update()
+// with FieldOwner("gitops-promoter") right after the controller's first
+// successful reconcile and before the next promotion-triggering push.
+
+// legacyManagerName is the FieldManager string the pre-SSA controller used,
+// inherited from the binary name when no FieldOwner was passed to
+// client.Status().Update(). New SSA-based code uses
+// "promoter.argoproj.io/changetransferpolicy-controller" instead.
+//
+// Defined here (rather than in the PS test) because the CTP test was the
+// first to need it; the PS test's injectFullStatus reuses it via the shared
+// `controller` package scope.
+const legacyManagerName = "gitops-promoter"
+
+// retrieveCTP gets a CTP and asserts the lookup succeeds. Tiny helper to avoid
+// the same Get+Expect dance scattered through the eventually blocks. Shared
+// with the PromotionStrategy SSA-migration-bug test via package scope.
+func retrieveCTP(ctx context.Context, name string) *promoterv1alpha1.ChangeTransferPolicy {
+	ctp := &promoterv1alpha1.ChangeTransferPolicy{}
+	Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, ctp)).To(Succeed())
+	return ctp
+}
+
+// noteDrySha returns the DrySha of a HydratorMetadata pointer, or "" if the
+// pointer is nil. Lets assertions express "Note may be either nil or have
+// empty drySha" with a single string compare.
+func noteDrySha(n *promoterv1alpha1.HydratorMetadata) string {
+	if n == nil {
+		return ""
+	}
+	return n.DrySha
+}
+
+// injectLegacyNoteOwnership simulates a pre-SSA-migration controller having
+// written Status.Proposed.Note.DrySha via an imperative client.Status().Update().
+// After this call, the apiserver records that the manager `gitops-promoter`
+// (operation=Update on the /status subresource) owns
+// f:status.f:proposed.f:note.f:drySha with the supplied drySha value.
+// Subsequent SSA Apply patches by the changetransferpolicy-controller manager
+// that omit drySha will not be able to remove the field because gitops-promoter
+// still owns it.
+func injectLegacyNoteOwnership(ctx context.Context, key types.NamespacedName, drySha string) {
+	GinkgoHelper()
+	Expect(retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		ctp := &promoterv1alpha1.ChangeTransferPolicy{}
+		if err := k8sClient.Get(ctx, key, ctp); err != nil {
+			return err //nolint:wrapcheck // retry.RetryOnConflict expects bare errors from client.Get
+		}
+		// Preserve whatever Status.Proposed already had so the imperative Update
+		// claims ownership of those fields too (matching production where the
+		// pre-migration controller wrote the entire status). Then overwrite Note
+		// with the desired drySha value.
+		ctp.Status.Proposed.Note = &promoterv1alpha1.HydratorMetadata{DrySha: drySha}
+		return k8sClient.Status().Update(ctx, ctp, ctrlclient.FieldOwner(legacyManagerName)) //nolint:wrapcheck // retry.RetryOnConflict expects bare client errors
+	})).To(Succeed())
+}
+
+var _ = Describe("SSA migration bug e2e (CTP controller produces stale Note.DrySha after legacy Update)", Ordered, func() {
+	var (
+		ctx                = context.Background()
+		ctpName            string
+		gitRepo            *promoterv1alpha1.GitRepository
+		ctp                *promoterv1alpha1.ChangeTransferPolicy
+		gitPath            string
+		initialDrySha      string
+		typeNamespacedName types.NamespacedName
+	)
+
+	BeforeAll(func() {
+		var (
+			scmSecret   *v1.Secret
+			scmProvider *promoterv1alpha1.ScmProvider
+		)
+		ctpName, scmSecret, scmProvider, gitRepo, _, ctp = changeTransferPolicyResources(ctx, "ssa-mig-bug-ctp", "default")
+		typeNamespacedName = types.NamespacedName{Name: ctpName, Namespace: "default"}
+
+		ctp.Spec.ProposedBranch = testBranchDevelopmentNext
+		ctp.Spec.ActiveBranch = testBranchDevelopment
+		// AutoMerge=false so the live controller doesn't merge the PR out from under
+		// us between the legacy-ownership injection and the new dry SHA push.
+		ctp.Spec.AutoMerge = ptr.To(false)
+
+		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		Expect(k8sClient.Create(ctx, ctp)).To(Succeed())
+
+		var err error
+		gitPath, err = os.MkdirTemp("", "*")
+		Expect(err).NotTo(HaveOccurred())
+
+		// Push the initial dry SHA + hydrated branches via the standard test helper.
+		// makeChangeAndHydrateRepo writes a hydrator.metadata FILE in the proposed
+		// branch tree, but does NOT push a git note for the hydrated commit. That
+		// means setCommitMetadata's GetHydratorNote always returns an empty
+		// HydratorMetadata{}, and the controller will set Note.DrySha = "" in
+		// memory on every reconcile - exactly the production setCommitMetadata
+		// behavior when the hydrator hasn't pushed its git note yet.
+		initialDrySha, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+
+		By("Waiting for the CTP controller to reach baseline state on the initial dry SHA")
+		Eventually(func(g Gomega) {
+			ctp = retrieveCTP(ctx, ctpName)
+			g.Expect(ctp.Status.Proposed.Dry.Sha).To(Equal(initialDrySha))
+			g.Expect(ctp.Status.Proposed.Hydrated.Sha).ToNot(BeEmpty())
+		}, constants.EventuallyTimeout).Should(Succeed())
+	})
+
+	AfterAll(func() {
+		_ = k8sClient.Delete(ctx, ctp)
+	})
+
+	It("after a new dry SHA push, Note.DrySha must NOT remain stuck at the legacy Update's old value", func() {
+		By("Injecting legacy gitops-promoter Update ownership of f:status.f:proposed.f:note.f:drySha")
+		injectLegacyNoteOwnership(ctx, typeNamespacedName, initialDrySha)
+
+		By("Pushing a new dry SHA + new hydrated commit (still no git note pushed by the hydrator)")
+		newDrySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+		Expect(newDrySha).NotTo(Equal(initialDrySha))
+
+		By("Waiting for the CTP controller to advance Status.Proposed.Dry.Sha to the new SHA")
+		Eventually(func(g Gomega) {
+			ctp = retrieveCTP(ctx, ctpName)
+			g.Expect(ctp.Status.Proposed.Dry.Sha).To(Equal(newDrySha))
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		By("Asserting Note.DrySha reflects the controller's in-memory write (empty), NOT the stale legacy value")
+		// setCommitMetadata wrote Note=&HydratorMetadata{DrySha: ""} in memory
+		// because there is no git note for the new hydrated commit. The K8s state
+		// must reflect that intent.
+		//
+		// Today (RED): K8s preserves Note.DrySha at initialDrySha because the
+		// legacy gitops-promoter Update record still owns f:note.f:drySha and the
+		// controller's SSA Apply with `note: {}` releases ownership without
+		// overwriting the value (per K8s SSA's child-field-preservation rule).
+		//
+		// Post-fix (GREEN): Note.DrySha is either "" or absent (Note=nil). The fix
+		// should ensure the controller's Apply payload claims/forces ownership of
+		// f:note.f:drySha (so the legacy ownership doesn't preserve it), or that
+		// the legacy ownership record is migrated/evicted at controller startup.
+		ctp = retrieveCTP(ctx, ctpName)
+		Expect(ctp.Status.Proposed.Dry.Sha).To(Equal(newDrySha),
+			"sanity: Dry.Sha must have advanced for this assertion to be meaningful")
+		Expect(noteDrySha(ctp.Status.Proposed.Note)).ToNot(Equal(initialDrySha),
+			"POST-FIX EXPECTATION: Note.DrySha=%q must NOT equal the stale legacy value %q. "+
+				"setCommitMetadata wrote Note=&{DrySha:\"\"} in memory; the K8s state must "+
+				"reflect that (Note.DrySha=\"\" or Note=nil). Today this fails because the "+
+				"legacy gitops-promoter Update record retains ownership of f:note.f:drySha and "+
+				"SSA's child-field-preservation rule keeps the OLD value while the rest of "+
+				"Status.Proposed advances. The fix must ensure the controller's apply either "+
+				"takes ownership of f:note.f:drySha (e.g. via an explicit ApplyConfiguration "+
+				"that includes drySha) or evicts the legacy ownership record so the inconsistent "+
+				"(Dry advanced, Note stale) state cannot form.",
+			noteDrySha(ctp.Status.Proposed.Note), initialDrySha)
+	})
+})

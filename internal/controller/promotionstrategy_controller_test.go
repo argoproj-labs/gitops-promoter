@@ -4980,3 +4980,210 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		})
 	})
 })
+
+// --- SSA migration bug e2e ----------------------------------------------------
+//
+// End-to-end reproduction of the "SSA migration" bug as it manifests in the
+// PromotionStrategy controller. So named because it only manifests in clusters
+// that ran a pre-Server-Side-Apply version of the promoter (before 0.27.0) and
+// were then upgraded to the SSA-based code.
+//
+// See changetransferpolicy_controller_test.go for the upstream half of this
+// bug (CTP controller producing the inconsistent state) plus the shared
+// helpers (legacyManagerName, retrieveCTP). This test exercises the
+// downstream consequence: the PromotionStrategy gate misfires when a
+// follower CTP has a stale Note.DrySha.
+
+var _ = Describe("SSA migration bug e2e (PromotionStrategy gates downstream env on stale Note.DrySha)", Ordered, func() {
+	var (
+		ctx                           = context.Background()
+		name                          string
+		gitRepo                       *promoterv1alpha1.GitRepository
+		promotionStrategy             *promoterv1alpha1.PromotionStrategy
+		activeCommitStatusDevelopment *promoterv1alpha1.CommitStatus
+		typeNamespacedName            types.NamespacedName
+		ctpDev, ctpStaging            *promoterv1alpha1.ChangeTransferPolicy
+		gitPath                       string
+		initialDrySha                 string
+	)
+
+	BeforeAll(func() {
+		var (
+			scmSecret   *v1.Secret
+			scmProvider *promoterv1alpha1.ScmProvider
+		)
+		name, scmSecret, scmProvider, gitRepo,
+			activeCommitStatusDevelopment, _,
+			promotionStrategy = promotionStrategyResource(ctx, "ssa-mig-bug-ps", "default")
+		setupInitialTestGitRepoOnServer(ctx, gitRepo)
+
+		typeNamespacedName = types.NamespacedName{Name: name, Namespace: "default"}
+
+		// Configure an active commit status (mirrors a typical "argocd-health"
+		// gate that has to go green on the predecessor environment before the
+		// follower can promote).
+		promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+			{Key: healthCheckCSKey},
+		}
+		activeCommitStatusDevelopment.Spec.Name = healthCheckCSKey
+		activeCommitStatusDevelopment.Labels = map[string]string{
+			promoterv1alpha1.CommitStatusLabel: healthCheckCSKey,
+		}
+
+		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+		// Wait for both child CTPs to be created by the PromotionStrategy reconciler.
+		Eventually(func(g Gomega) {
+			ctpDev = &promoterv1alpha1.ChangeTransferPolicy{}
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+				Namespace: typeNamespacedName.Namespace,
+			}, ctpDev)
+			g.Expect(err).To(Succeed())
+
+			ctpStaging = &promoterv1alpha1.ChangeTransferPolicy{}
+			err = k8sClient.Get(ctx, types.NamespacedName{
+				Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+				Namespace: typeNamespacedName.Namespace,
+			}, ctpStaging)
+			g.Expect(err).To(Succeed())
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		// Push the initial dry SHA. Both CTPs reconcile and reach baseline.
+		var err error
+		gitPath, err = os.MkdirTemp("", "*")
+		Expect(err).NotTo(HaveOccurred())
+		initialDrySha, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+
+		// Wait for dev's PR to auto-merge (it's the first env, no previous-env gate).
+		Eventually(func(g Gomega) {
+			ctpDev = retrieveCTP(ctx, ctpDev.Name)
+			g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(initialDrySha))
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		// Mark dev's active commit status success on the new active hydrated SHA so
+		// staging can promote.
+		Eventually(func(g Gomega) {
+			ctpDev = retrieveCTP(ctx, ctpDev.Name)
+			g.Expect(ctpDev.Status.Active.Hydrated.Sha).NotTo(BeEmpty())
+			_, err := controllerutil.CreateOrUpdate(ctx, k8sClient, activeCommitStatusDevelopment, func() error {
+				activeCommitStatusDevelopment.Spec.Sha = ctpDev.Status.Active.Hydrated.Sha
+				activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+				return nil
+			})
+			g.Expect(err).To(Succeed())
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		// Wait for staging to promote initialDrySha so both envs are healthy on it.
+		Eventually(func(g Gomega) {
+			ctpStaging = retrieveCTP(ctx, ctpStaging.Name)
+			g.Expect(ctpStaging.Status.Active.Dry.Sha).To(Equal(initialDrySha))
+		}, constants.EventuallyTimeout).Should(Succeed())
+	})
+
+	AfterAll(func() {
+		_ = k8sClient.Delete(ctx, promotionStrategy)
+	})
+
+	It("when a new dry SHA arrives on a CTP carrying legacy gitops-promoter Update ownership, the previous-environment gate must NOT fire success", func() {
+		By("Setting dev's autoMerge=false so its PR for the new dry SHA stays open (mirrors a real promotion in flight)")
+		Eventually(func(g Gomega) {
+			ps := &promoterv1alpha1.PromotionStrategy{}
+			g.Expect(k8sClient.Get(ctx, typeNamespacedName, ps)).To(Succeed())
+			ps.Spec.Environments[0].AutoMerge = ptr.To(false)
+			g.Expect(k8sClient.Update(ctx, ps)).To(Succeed())
+		}, constants.EventuallyTimeout).Should(Succeed())
+		// Wait for the PromotionStrategy reconciler to propagate AutoMerge=false to
+		// dev's child CTP spec, so the next push doesn't immediately auto-merge.
+		Eventually(func(g Gomega) {
+			ctpDev = retrieveCTP(ctx, ctpDev.Name)
+			g.Expect(ctpDev.Spec.AutoMerge).ToNot(BeNil())
+			g.Expect(*ctpDev.Spec.AutoMerge).To(BeFalse())
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		By("Injecting legacy gitops-promoter Update ownership of f:status.f:proposed.f:note.f:drySha on the follower (staging) CTP")
+		// Mirrors a CTP that lived through the pre-SSA-migration controller. The
+		// legacy Update entry claims f:note.f:drySha. Without a fix, the next CTP-controller
+		// reconcile's apply with note:{} could not evict this entry, and the
+		// stale Note.DrySha would persist while Proposed.Dry.Sha advances - which
+		// is exactly the production bug. WITH the fix, the next reconcile's atomic
+		// SSA Apply takes ownership in one shot, clearing the stale value.
+		stagingKey := types.NamespacedName{Name: ctpStaging.Name, Namespace: "default"}
+		injectLegacyNoteOwnership(ctx, stagingKey, initialDrySha)
+
+		By("Pushing a new dry SHA")
+		newDrySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+		Expect(newDrySha).NotTo(Equal(initialDrySha))
+
+		By("Waiting for both CTPs to reconcile to the new proposed dry SHA")
+		// makeChangeAndHydrateRepo commits a hydrator.metadata FILE (Proposed.Dry)
+		// but does not add refs/notes/hydrator.metadata on the hydrated commit, so
+		// GetHydratorNote returns empty and setCommitMetadata wants Note.DrySha="".
+		// With the schema fix, staging's SSA Apply can clear stale status Note.DrySha
+		// from the legacy Update while advancing Proposed.Dry to newDrySha. Without
+		// the fix, managed-fields ownership keeps the stale Note.DrySha=initialDrySha.
+		Eventually(func(g Gomega) {
+			ctpDev = retrieveCTP(ctx, ctpDev.Name)
+			ctpStaging = retrieveCTP(ctx, ctpStaging.Name)
+			g.Expect(ctpDev.Status.Proposed.Dry.Sha).To(Equal(newDrySha))
+			g.Expect(ctpStaging.Status.Proposed.Dry.Sha).To(Equal(newDrySha))
+
+			// calculateStatus copies each CTP's Status.Proposed onto PS.Status.Environments[i].Proposed.
+			// After the CTP controller's atomic SSA Apply clears legacy ownership of proposed.note,
+			// Note.DrySha must be empty here and on the PromotionStrategy mirror — direct proof the
+			// takeover worked (without fix, legacy Update keeps Note.DrySha=%q).
+			g.Expect(noteDrySha(ctpStaging.Status.Proposed.Note)).To(BeEmpty(),
+				"staging CTP proposed.note.drySha must be cleared (without fix legacy keeps %q)", initialDrySha)
+			ps := &promoterv1alpha1.PromotionStrategy{}
+			g.Expect(k8sClient.Get(ctx, typeNamespacedName, ps)).To(Succeed())
+			g.Expect(ps.Status.Environments).To(HaveLen(len(ps.Spec.Environments)))
+			g.Expect(ps.Status.Environments[1].Branch).To(Equal(testBranchStaging))
+			g.Expect(noteDrySha(ps.Status.Environments[1].Proposed.Note)).To(BeEmpty(),
+				"PS.status.environments[staging].proposed.note.drySha must mirror cleared CTP (calculateStatus copy; bug keeps stale %q)",
+				initialDrySha)
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		By("Asserting dev has NOT promoted the new dry SHA (autoMerge=false keeps the predecessor on initialDrySha)")
+		ctpDev = retrieveCTP(ctx, ctpDev.Name)
+		Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(initialDrySha),
+			"dev must still be on initialDrySha so the test demonstrates the gate's behavior "+
+				"when the predecessor has not been promoted to the new SHA")
+
+		By("Verifying the previous-environment CommitStatus on staging's proposed (NEW) hydrated SHA does NOT fire success")
+		// With the fix:
+		//   - staging.Note.DrySha is empty (atomic apply cleared the legacy stale
+		//     value) → getEffectiveHydratedDrySha falls back to Proposed.Dry.Sha
+		//     (=newDrySha) as the targetDrySha.
+		//   - dev.envHydratedForDrySha (from dev's note, also empty, falls back to
+		//     dev.Proposed.Dry.Sha=newDrySha).
+		//   - dev.Active.Dry.Sha (=initialDrySha) != targetDrySha (=newDrySha), so
+		//     envMergedTarget is false; the gate enters the no-op/pending branch
+		//     and returns "Waiting for previous environment to be promoted".
+		// Result: the previous-env CS is stamped as Pending (not Success).
+		//
+		// Without the fix:
+		//   - staging.Note.DrySha is the stale initialDrySha (legacy Update
+		//     preserved it) → targetDrySha = initialDrySha.
+		//   - dev's everything is on initialDrySha, gate fires success against
+		//     the stale target → previous-env CS is Success → out-of-order merge.
+		previousEnvCSName := utils.KubeSafeUniqueName(ctx,
+			promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel+ctpStaging.Name)
+		Eventually(func(g Gomega) {
+			cs := &promoterv1alpha1.CommitStatus{}
+			err := k8sClient.Get(ctx, types.NamespacedName{Name: previousEnvCSName, Namespace: "default"}, cs)
+			g.Expect(err).To(Succeed(), "PromotionStrategy must have created the previous-environment CommitStatus")
+			g.Expect(cs.Spec.Sha).To(Equal(ctpStaging.Status.Proposed.Hydrated.Sha),
+				"the previous-environment CS must be applied to the follower's proposed (NEW) hydrated SHA")
+			g.Expect(cs.Spec.Phase).ToNot(Equal(promoterv1alpha1.CommitPhaseSuccess),
+				"POST-FIX EXPECTATION: the previous-environment gate must remain pending "+
+					"because dev has not been promoted to the new dry SHA. Without the fix the "+
+					"gate would (incorrectly) fire success because staging's stale Note.DrySha "+
+					"would still be %q (preserved by the legacy gitops-promoter Update). "+
+					"Got phase=%q description=%q.",
+				initialDrySha, cs.Spec.Phase, cs.Spec.Description)
+		}, constants.EventuallyTimeout).Should(Succeed())
+	})
+})
