@@ -130,7 +130,7 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 	// a short backoff so the next reconcile gets a fresh snapshot, and skip the
 	// deferred status apply so we don't clobber the previous reconcile's write.
 	if r.rvTracker.IsCacheStale(req.NamespacedName, wrcs.ResourceVersion) {
-		logger.V(4).Info("informer cache is behind our last status write; requeueing to avoid acting on stale state",
+		logger.V(4).Info("informer cache is behind our last status write; requeuing to avoid acting on stale state",
 			"cachedResourceVersion", wrcs.ResourceVersion)
 		skipStatusWrite = true
 		return ctrl.Result{RequeueAfter: 100 * time.Millisecond}, nil

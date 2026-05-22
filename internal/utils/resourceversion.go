@@ -44,13 +44,8 @@ import (
 // is bounded by the number of objects the controller reconciles, which is the same
 // bound the informer cache holds, so the memory cost is negligible.
 type ResourceVersionTracker struct {
-	mu sync.Mutex
-	// lastWritten maps object key -> ResourceVersion of the most recent successful
-	// status write made by the owning reconciler. ResourceVersion is an opaque string
-	// from the API perspective but compares as a monotonically-increasing positive
-	// integer for kube-apiserver-served resources (see k8s.io/apimachinery/pkg/util/
-	// resourceversion docs and the conformance requirement starting with Kubernetes 1.35).
 	lastWritten map[client.ObjectKey]string
+	mu          sync.Mutex
 }
 
 // NewResourceVersionTracker returns an empty tracker ready for use.
@@ -78,7 +73,7 @@ func (t *ResourceVersionTracker) Record(key client.ObjectKey, rv string) {
 // Returns false when we have no record for key (first reconcile), when the cache is at
 // or ahead of our last write (steady state), or when either ResourceVersion fails to
 // parse as a well-formed positive integer (CompareResourceVersion rejects it). Failing
-// open on malformed input is intentional: requeueing forever on an unparseable RV would
+// open on malformed input is intentional: requeuing forever on an unparsable RV would
 // be worse than processing a request we cannot prove is stale, and the apiserver only
 // emits well-formed RVs in practice.
 func (t *ResourceVersionTracker) IsCacheStale(key client.ObjectKey, cachedRV string) bool {
