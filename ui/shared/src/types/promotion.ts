@@ -1,3 +1,15 @@
+/**
+ * RFC 3339 timestamp from the API (Kubernetes `metav1.Time` JSON, or git `%aI` on reference commits).
+ * @see https://datatracker.ietf.org/doc/html/rfc3339
+ *
+ * Must stay parseable by `new Date()` through enrichment and into `TimeAgo` / `formatDate`.
+ * Do not pass through `formatDate` in `PSData` — format only at render time.
+ */
+export type Rfc3339DateTime = string;
+
+/** Pre-computed relative time for display (e.g. `"3 hours ago"`). Not a parseable timestamp. */
+export type RelativeTimeAgo = string;
+
 export interface CommitStatus {
   key: string;
   phase: string;
@@ -10,7 +22,8 @@ export interface Commit {
   author?: string;
   subject?: string;
   body?: string;
-  commitTime?: string | null;
+  /** When the commit was made (dry/hydrated). RFC 3339 from CRD `commitTime` (`metav1.Time`). */
+  commitTime?: Rfc3339DateTime | null;
   repoURL?: string;
   references?: Array<{
     commit: ReferenceCommit;
@@ -22,7 +35,8 @@ export interface ReferenceCommit {
   author?: string;
   subject?: string;
   body?: string;
-  date?: string;
+  /** Reference commit timestamp. RFC 3339 from CRD (`git show -s --format=%aI`). */
+  date?: Rfc3339DateTime;
   url?: string;
   repoURL?: string;
 }
@@ -30,7 +44,8 @@ export interface ReferenceCommit {
 export interface PullRequest {
   id: string;
   url?: string;
-  prMergeTime?: string;
+  /** When the promotion PR was merged. RFC 3339 from CRD (`metav1.Time`). */
+  prMergeTime?: Rfc3339DateTime;
   state?: string;
   externallyMergedOrClosed?: boolean;
 }
@@ -73,7 +88,7 @@ export interface PromotionStrategy {
     uid: string;
     resourceVersion: string;
     generation: number;
-    creationTimestamp: string;
+    creationTimestamp: Rfc3339DateTime;
     labels?: Record<string, string>;
     annotations?: Record<string, string>;
   };
@@ -111,7 +126,8 @@ export interface EnrichedEnvDetails {
   activeCommitAuthor: string;
   activeCommitSubject: string;
   activeCommitMessage: string;
-  activeCommitDate: string;
+  /** RFC 3339 for `TimeAgo`; empty string when absent. */
+  activeCommitDate: Rfc3339DateTime | '';
   activeCommitUrl: string;
   activeChecks: Check[];
   activeChecksSummary: { successCount: number; totalCount: number; shouldDisplay: boolean };
@@ -129,7 +145,8 @@ export interface EnrichedEnvDetails {
   proposedDryCommitAuthor: string;
   proposedDryCommitSubject: string;
   proposedDryCommitBody: string;
-  proposedDryCommitDate: string;
+  /** RFC 3339 for `TimeAgo`; empty string when absent. */
+  proposedDryCommitDate: Rfc3339DateTime | '';
   proposedDryCommitUrl: string;
   proposedChecks: Check[];
   proposedChecksSummary: { successCount: number; totalCount: number; shouldDisplay: boolean };
@@ -138,9 +155,10 @@ export interface EnrichedEnvDetails {
   proposedReferenceCommit: ReferenceCommit | null;
   proposedReferenceCommitUrl: string | null;
 
-  // History
-  historyMergeTimeAgo: string | null;
-  activeMergeTimeAgo: string | null;
+  /** Relative display string; do not pass to `TimeAgo`. */
+  historyMergeTimeAgo: RelativeTimeAgo | null;
+  /** Relative display string; do not pass to `TimeAgo`. */
+  activeMergeTimeAgo: RelativeTimeAgo | null;
 }
 
 export type PromotionPhase = 'promoted' | 'failure' | 'pending' | 'unknown';
