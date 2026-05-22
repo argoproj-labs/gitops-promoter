@@ -25,17 +25,19 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// keyA / keyB are package-level so both the DescribeTable Entries (which are
+// evaluated at file-init time, before any BeforeEach) and the other specs share
+// the same fixtures without redeclaring them inline.
+var (
+	keyA = client.ObjectKey{Namespace: "ns", Name: "a"}
+	keyB = client.ObjectKey{Namespace: "ns", Name: "b"}
+)
+
 var _ = Describe("ResourceVersionTracker", func() {
-	var (
-		tracker *utils.ResourceVersionTracker
-		keyA    client.ObjectKey
-		keyB    client.ObjectKey
-	)
+	var tracker *utils.ResourceVersionTracker
 
 	BeforeEach(func() {
 		tracker = utils.NewResourceVersionTracker()
-		keyA = client.ObjectKey{Namespace: "ns", Name: "a"}
-		keyB = client.ObjectKey{Namespace: "ns", Name: "b"}
 	})
 
 	DescribeTable("IsCacheStale comparison semantics",
@@ -45,44 +47,24 @@ var _ = Describe("ResourceVersionTracker", func() {
 			}
 			Expect(tracker.IsCacheStale(queryKey, cachedRV)).To(Equal(wantStale))
 		},
-		Entry("no record for key returns not stale (first reconcile)",
-			map[client.ObjectKey]string(nil),
-			client.ObjectKey{Namespace: "ns", Name: "a"},
-			"100", false),
-		Entry("cache equals last write is not stale (steady state)",
-			map[client.ObjectKey]string{{Namespace: "ns", Name: "a"}: "100"},
-			client.ObjectKey{Namespace: "ns", Name: "a"},
-			"100", false),
-		Entry("cache ahead of last write is not stale (someone else updated)",
-			map[client.ObjectKey]string{{Namespace: "ns", Name: "a"}: "100"},
-			client.ObjectKey{Namespace: "ns", Name: "a"},
-			"101", false),
-		Entry("cache strictly behind last write is stale (the race we guard against)",
-			map[client.ObjectKey]string{{Namespace: "ns", Name: "a"}: "200"},
-			client.ObjectKey{Namespace: "ns", Name: "a"},
-			"199", true),
-		Entry("different key is independent",
-			map[client.ObjectKey]string{{Namespace: "ns", Name: "a"}: "999"},
-			client.ObjectKey{Namespace: "ns", Name: "b"},
-			"1", false),
-		Entry("empty cached RV is treated as unknown, not infinitely old",
-			map[client.ObjectKey]string{{Namespace: "ns", Name: "a"}: "200"},
-			client.ObjectKey{Namespace: "ns", Name: "a"},
-			"", false),
-		Entry("non-decimal stored RV fails open (not stale)",
-			map[client.ObjectKey]string{{Namespace: "ns", Name: "a"}: "abc"},
-			client.ObjectKey{Namespace: "ns", Name: "a"},
-			"100", false),
-		Entry("non-decimal cached RV fails open (not stale)",
-			map[client.ObjectKey]string{{Namespace: "ns", Name: "a"}: "100"},
-			client.ObjectKey{Namespace: "ns", Name: "a"},
-			"abc", false),
-		// "9" vs "10": lexically "9" > "10", but as integers 9 < 10.
-		// CompareResourceVersion must use bigint semantics, not strcmp.
-		Entry("longer-length RV is greater (bigint compare, not lexical)",
-			map[client.ObjectKey]string{{Namespace: "ns", Name: "a"}: "10"},
-			client.ObjectKey{Namespace: "ns", Name: "a"},
-			"9", true),
+		Entry("empty tracker => never stale (controller's first reconcile for this key)",
+			map[client.ObjectKey]string(nil), keyA, "100", false),
+		Entry("cache RV == last written RV => not stale (cache fully caught up, steady state)",
+			map[client.ObjectKey]string{keyA: "100"}, keyA, "100", false),
+		Entry("cache RV > last written RV => not stale (third party updated the object after us)",
+			map[client.ObjectKey]string{keyA: "100"}, keyA, "101", false),
+		Entry("cache RV < last written RV => stale (informer hasn't observed our last write yet)",
+			map[client.ObjectKey]string{keyA: "200"}, keyA, "199", true),
+		Entry("a record for one key does not bleed into checks for a different key",
+			map[client.ObjectKey]string{keyA: "999"}, keyB, "1", false),
+		Entry("empty cached RV => not stale (treat unknown as not-yet-known, not as infinitely old)",
+			map[client.ObjectKey]string{keyA: "200"}, keyA, "", false),
+		Entry("stored RV is malformed => not stale (fail open: bad data should not wedge reconciles)",
+			map[client.ObjectKey]string{keyA: "abc"}, keyA, "100", false),
+		Entry("cached RV is malformed => not stale (same fail-open rationale as above)",
+			map[client.ObjectKey]string{keyA: "100"}, keyA, "abc", false),
+		Entry("9 vs 10 => stale (RVs compare as integers, not lexically)",
+			map[client.ObjectKey]string{keyA: "10"}, keyA, "9", true),
 	)
 
 	Describe("Record", func() {
