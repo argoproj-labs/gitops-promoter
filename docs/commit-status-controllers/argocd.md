@@ -40,7 +40,7 @@ spec:
 
 ### `spec.key`
 
-`spec.key` is the gate name your PromotionStrategy checks in `activeCommitStatuses` or `proposedCommitStatuses`. When omitted, the CRD default is `argocd-health`. We recommend setting `spec.key` explicitly (including `argocd-health` when that is your gate name) so it matches your PromotionStrategy and your manifests are ready if the field becomes required in v1.0; see [Roadmap](../roadmap.md).
+`spec.key` is the gate name your PromotionStrategy checks in `activeCommitStatuses`. When omitted, the CRD default is `argocd-health`. We recommend setting `spec.key` explicitly (including `argocd-health` when that is your gate name) so it matches your PromotionStrategy and your manifests are ready if the field becomes required in v1.0; see [Roadmap](../roadmap.md).
 
 Reference the same key in the PromotionStrategy:
 

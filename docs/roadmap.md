@@ -69,7 +69,7 @@ spec:
       duration: 1h
 ```
 
-Use the same values in `PromotionStrategy` `activeCommitStatuses` / `proposedCommitStatuses`.
+Use the same key in `PromotionStrategy` `activeCommitStatuses` for ArgoCDCommitStatus, or in `activeCommitStatuses` / `proposedCommitStatuses` for TimedCommitStatus as appropriate.
 
 See also: [Argo CD Commit Status](commit-status-controllers/argocd.md), [Timed Commit Status](commit-status-controllers/timed.md), and [Development Best Practices](commit-status-controllers/development-best-practices.md).
 
