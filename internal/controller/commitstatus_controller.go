@@ -35,11 +35,9 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/azuredevops"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
-	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/events"
@@ -91,9 +89,6 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		logger.Error(err, "failed to get CommitStatus")
 		return ctrl.Result{}, fmt.Errorf("failed to get CommitStatus %q: %w", req.Name, err)
 	}
-
-	// Remove any existing Ready condition. We want to start fresh.
-	meta.RemoveStatusCondition(cs.GetConditions(), string(promoterConditions.Ready))
 
 	// empty phase should be impossible due to schema validation
 	if cs.Spec.Sha == "" || cs.Spec.Phase == "" {

@@ -87,7 +87,35 @@ var _ = Describe("InheritNotReadyConditionFromObjects", func() {
 		childObjs = []*promoterv1alpha1.CommitStatus{child2, child1} // Intentionally out of order to test sorting
 	})
 
-	It("should not modify parent Ready condition if all children are Ready", func() {
+	It("should remove an inherit-reason Ready condition from parent if all children are Ready", func() {
+		// All children are ready. The parent has an "inherit-reason" condition left over
+		// from a previous reconcile. InheritNotReadyConditionFromObjects must remove it so
+		// that HandleReconciliationResult can apply the default success condition.
+		meta.SetStatusCondition(child1.GetConditions(), metav1.Condition{
+			Type:               string(conditions.Ready),
+			Status:             metav1.ConditionTrue,
+			ObservedGeneration: 1,
+		})
+		meta.SetStatusCondition(child2.GetConditions(), metav1.Condition{
+			Type:               string(conditions.Ready),
+			Status:             metav1.ConditionTrue,
+			ObservedGeneration: 1,
+		})
+		meta.SetStatusCondition(parent.GetConditions(), metav1.Condition{
+			Type:   string(conditions.Ready),
+			Status: metav1.ConditionUnknown,
+			Reason: string(conditions.CommitStatusesNotReady),
+		})
+
+		utils.InheritNotReadyConditionFromObjects(parent, conditions.CommitStatusesNotReady, childObjs...)
+
+		Expect(meta.FindStatusCondition(*parent.GetConditions(), string(conditions.Ready))).To(BeNil(),
+			"inherit-reason condition should be removed when all children are Ready")
+	})
+
+	It("should leave a Reconciliation-reason Ready condition unchanged if all children are Ready", func() {
+		// When the parent's condition was set by HandleReconciliationResult (ReconciliationSuccess
+		// or ReconciliationError), InheritNotReadyConditionFromObjects must leave it untouched.
 		meta.SetStatusCondition(child1.GetConditions(), metav1.Condition{
 			Type:               string(conditions.Ready),
 			Status:             metav1.ConditionTrue,
@@ -101,11 +129,15 @@ var _ = Describe("InheritNotReadyConditionFromObjects", func() {
 		meta.SetStatusCondition(parent.GetConditions(), metav1.Condition{
 			Type:   string(conditions.Ready),
 			Status: metav1.ConditionFalse,
+			Reason: string(conditions.ReconciliationError),
 		})
 
 		utils.InheritNotReadyConditionFromObjects(parent, conditions.CommitStatusesNotReady, childObjs...)
 
-		Expect(meta.FindStatusCondition(*parent.GetConditions(), string(conditions.Ready)).Status).To(Equal(metav1.ConditionFalse))
+		cond := meta.FindStatusCondition(*parent.GetConditions(), string(conditions.Ready))
+		Expect(cond).NotTo(BeNil())
+		Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+		Expect(cond.Reason).To(Equal(string(conditions.ReconciliationError)))
 	})
 
 	It("should set parent Ready condition to False if any child is not Ready", func() {
@@ -592,5 +624,179 @@ var _ = Describe("HandleReconciliationResult fallback status apply", func() {
 		Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
 		Expect(readyCondition.Message).To(ContainSubstring("Reconciliation failed"))
 		Expect(readyCondition.Message).To(ContainSubstring("reconciliation failed for test"))
+	})
+})
+
+var _ = Describe("HandleReconciliationResult lastTransitionTime preservation", func() {
+	var (
+		ctx      context.Context
+		obj      *promoterv1alpha1.PromotionStrategy
+		recorder events.EventRecorder
+		scheme   *runtime.Scheme
+	)
+
+	BeforeEach(func() {
+		ctx = context.Background()
+		obj = &promoterv1alpha1.PromotionStrategy{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "PromotionStrategy",
+				APIVersion: "promoter.argoproj.io/v1alpha1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "test-strategy",
+				Namespace:  "default",
+				Generation: 1,
+			},
+		}
+		scheme = runtime.NewScheme()
+		_ = promoterv1alpha1.AddToScheme(scheme)
+		recorder = events.NewFakeRecorder(10)
+	})
+
+	It("should not update lastTransitionTime when reconciliation error is unchanged", func() {
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(obj).Build()
+		Expect(fakeClient.Create(ctx, obj)).To(Succeed())
+
+		// First reconcile with an error to establish the Ready=False condition.
+		var err error
+		func() {
+			defer utils.HandleReconciliationResult(ctx, time.Now(), obj, fakeClient, recorder, testFieldOwner, nil, &err)
+			err = errors.New("test reconciliation error")
+		}()
+		Expect(err).To(HaveOccurred())
+
+		// Read back the object and replace the lastTransitionTime with a well-known value
+		// so that any update would be detectable regardless of sub-second timing.
+		stored := &promoterv1alpha1.PromotionStrategy{}
+		Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(obj), stored)).To(Succeed())
+		readyCond := meta.FindStatusCondition(*stored.GetConditions(), string(conditions.Ready))
+		Expect(readyCond).ToNot(BeNil())
+		Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
+
+		knownTime := metav1.NewTime(time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC))
+		readyCond.LastTransitionTime = knownTime
+		Expect(fakeClient.Status().Update(ctx, stored)).To(Succeed())
+
+		// Simulate re-queue: the controller fetches the object (which retains the condition
+		// from the previous reconcile) and calls HandleReconciliationResult; it must preserve
+		// lastTransitionTime because the condition's Status (False) has not changed.
+		baseline := &promoterv1alpha1.PromotionStrategy{}
+		Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(obj), baseline)).To(Succeed())
+		var err2 error
+		func() {
+			defer utils.HandleReconciliationResult(ctx, time.Now(), baseline, fakeClient, recorder, testFieldOwner, nil, &err2)
+			err2 = errors.New("test reconciliation error") // same error as before
+		}()
+		Expect(err2).To(HaveOccurred())
+
+		// lastTransitionTime must be preserved — the condition's Status (False) did not change.
+		// Use BeTemporally for comparison because metav1.Time may differ in internal
+		// representation after a JSON round-trip even when representing the same instant.
+		final := &promoterv1alpha1.PromotionStrategy{}
+		Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(obj), final)).To(Succeed())
+		finalReadyCond := meta.FindStatusCondition(*final.GetConditions(), string(conditions.Ready))
+		Expect(finalReadyCond).ToNot(BeNil())
+		Expect(finalReadyCond.LastTransitionTime.Time).To(BeTemporally("==", knownTime.Time),
+			"lastTransitionTime must not be updated when condition status has not changed")
+
+		// Note: with the real API server, preserving lastTransitionTime means the SSA
+		// patch body is identical to the stored object, so resourceVersion would not be
+		// bumped. The fake client always increments resourceVersion on any write, so we
+		// cannot assert that here.
+	})
+
+	It("should not update lastTransitionTime when error message changes but status remains False", func() {
+		// lastTransitionTime tracks status transitions only (True/False/Unknown), not
+		// changes to the human-readable message or reason.
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(obj).Build()
+		Expect(fakeClient.Create(ctx, obj)).To(Succeed())
+
+		// First reconcile with an error.
+		var err error
+		func() {
+			defer utils.HandleReconciliationResult(ctx, time.Now(), obj, fakeClient, recorder, testFieldOwner, nil, &err)
+			err = errors.New("first error message")
+		}()
+		Expect(err).To(HaveOccurred())
+
+		stored := &promoterv1alpha1.PromotionStrategy{}
+		Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(obj), stored)).To(Succeed())
+		readyCond := meta.FindStatusCondition(*stored.GetConditions(), string(conditions.Ready))
+		Expect(readyCond).ToNot(BeNil())
+
+		knownTime := metav1.NewTime(time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC))
+		readyCond.LastTransitionTime = knownTime
+		Expect(fakeClient.Status().Update(ctx, stored)).To(Succeed())
+
+		// Second reconcile with a different error message but the same False status.
+		// The controller fetches the object (which retains the prior condition with knownTime)
+		// and calls HandleReconciliationResult; meta.SetStatusCondition preserves
+		// lastTransitionTime because the status (False) has not changed.
+		baseline := &promoterv1alpha1.PromotionStrategy{}
+		Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(obj), baseline)).To(Succeed())
+		var err2 error
+		func() {
+			defer utils.HandleReconciliationResult(ctx, time.Now(), baseline, fakeClient, recorder, testFieldOwner, nil, &err2)
+			err2 = errors.New("second error message — different text, same False status")
+		}()
+		Expect(err2).To(HaveOccurred())
+
+		final := &promoterv1alpha1.PromotionStrategy{}
+		Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(obj), final)).To(Succeed())
+		finalCond := meta.FindStatusCondition(*final.GetConditions(), string(conditions.Ready))
+		Expect(finalCond).ToNot(BeNil())
+		Expect(finalCond.Status).To(Equal(metav1.ConditionFalse))
+		// The message changed, but the Status (False) did not — lastTransitionTime must stay.
+		Expect(finalCond.LastTransitionTime.Time).To(BeTemporally("==", knownTime.Time),
+			"lastTransitionTime must not change when only the error message changes, not the status")
+		Expect(finalCond.Message).To(ContainSubstring("second error message"),
+			"the new error message must be reflected in the condition")
+	})
+
+	It("should update lastTransitionTime when condition transitions from False to True", func() {
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(obj).Build()
+		Expect(fakeClient.Create(ctx, obj)).To(Succeed())
+
+		// First reconcile: error → Ready=False.
+		var err error
+		func() {
+			defer utils.HandleReconciliationResult(ctx, time.Now(), obj, fakeClient, recorder, testFieldOwner, nil, &err)
+			err = errors.New("transient error")
+		}()
+		Expect(err).To(HaveOccurred())
+
+		// Replace the lastTransitionTime with a well-known value in the past so that any
+		// update to it (on the True transition) is detectable regardless of timing.
+		stored := &promoterv1alpha1.PromotionStrategy{}
+		Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(obj), stored)).To(Succeed())
+		falseCond := meta.FindStatusCondition(*stored.GetConditions(), string(conditions.Ready))
+		Expect(falseCond).ToNot(BeNil())
+		Expect(falseCond.Status).To(Equal(metav1.ConditionFalse))
+
+		knownFalseTime := metav1.NewTime(time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC))
+		falseCond.LastTransitionTime = knownFalseTime
+		Expect(fakeClient.Status().Update(ctx, stored)).To(Succeed())
+
+		// Second reconcile: success → Ready=True. The transition from False→True must
+		// produce a new lastTransitionTime (not preserve the old False time).
+		// The controller fetches the object (which has the False condition with knownFalseTime)
+		// and calls HandleReconciliationResult; meta.SetStatusCondition updates the time
+		// because the status changed from False to True.
+		baseline := &promoterv1alpha1.PromotionStrategy{}
+		Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(obj), baseline)).To(Succeed())
+		var err2 error
+		func() {
+			defer utils.HandleReconciliationResult(ctx, time.Now(), baseline, fakeClient, recorder, testFieldOwner, nil, &err2)
+			// no error → success
+		}()
+		Expect(err2).ToNot(HaveOccurred())
+
+		final := &promoterv1alpha1.PromotionStrategy{}
+		Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(obj), final)).To(Succeed())
+		trueCond := meta.FindStatusCondition(*final.GetConditions(), string(conditions.Ready))
+		Expect(trueCond).ToNot(BeNil())
+		Expect(trueCond.Status).To(Equal(metav1.ConditionTrue))
+		Expect(trueCond.LastTransitionTime.Time).NotTo(BeTemporally("==", knownFalseTime.Time),
+			"lastTransitionTime must be updated when condition transitions from False to True")
 	})
 })

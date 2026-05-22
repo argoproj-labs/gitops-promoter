@@ -30,7 +30,6 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 
@@ -94,9 +93,6 @@ func (r *GitCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		logger.Error(err, "failed to get GitCommitStatus")
 		return ctrl.Result{}, fmt.Errorf("failed to get GitCommitStatus %q: %w", req.Name, err)
 	}
-
-	// Remove any existing Ready condition. We want to start fresh.
-	meta.RemoveStatusCondition(gcs.GetConditions(), string(promoterConditions.Ready))
 
 	// Fetch the referenced PromotionStrategy
 	var ps promoterv1alpha1.PromotionStrategy
