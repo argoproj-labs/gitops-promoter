@@ -115,7 +115,10 @@ type ScmProviderList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&ScmProvider{}, &ScmProviderList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &ScmProvider{}, &ScmProviderList{})
+		return nil
+	})
 }
 
 // +kubebuilder:object:root=false
