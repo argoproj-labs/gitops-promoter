@@ -20,6 +20,7 @@ import (
 	"reflect"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -62,7 +63,10 @@ type ClusterScmProviderList struct {
 }
 
 func init() {
-	objectTypes = append(objectTypes, &ClusterScmProvider{}, &ClusterScmProviderList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &ClusterScmProvider{}, &ClusterScmProviderList{})
+		return nil
+	})
 }
 
 // +kubebuilder:object:root:false

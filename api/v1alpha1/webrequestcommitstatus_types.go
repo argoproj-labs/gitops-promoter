@@ -19,6 +19,7 @@ package v1alpha1
 import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // ContextMode represents the request-scope mode for WebRequestCommitStatus.
@@ -594,5 +595,8 @@ func (wrcs *WebRequestCommitStatus) SetObservedGeneration(generation int64) {
 }
 
 func init() {
-	objectTypes = append(objectTypes, &WebRequestCommitStatus{}, &WebRequestCommitStatusList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &WebRequestCommitStatus{}, &WebRequestCommitStatusList{})
+		return nil
+	})
 }

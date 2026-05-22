@@ -1,6 +1,9 @@
 package argocd
 
-import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+)
 
 // This lets us use argocd as the package name.
 // +versionName=v1alpha1
@@ -107,5 +110,8 @@ func (a *Application) GetEnvironment() string {
 }
 
 func init() {
-	objectTypes = append(objectTypes, &Application{}, &ApplicationList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &Application{}, &ApplicationList{})
+		return nil
+	})
 }

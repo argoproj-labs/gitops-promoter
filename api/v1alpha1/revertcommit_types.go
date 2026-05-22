@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -61,5 +62,8 @@ type RevertCommitList struct {
 }
 
 func init() {
-	objectTypes = append(objectTypes, &RevertCommit{}, &RevertCommitList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &RevertCommit{}, &RevertCommitList{})
+		return nil
+	})
 }
