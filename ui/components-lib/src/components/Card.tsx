@@ -1,5 +1,6 @@
 import { FaServer, FaHistory } from 'react-icons/fa';
 import { StatusIcon, StatusType } from './StatusIcon';
+import { Tooltip } from './Tooltip';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import CommitInfo from './CommitInfo';
 import HistoryNavigation from './HistoryNavigation';
@@ -13,11 +14,18 @@ import './Card.scss';
 
 export interface CardProps {
   environments: Environment[];
+  /**
+   * Optional handler invoked when the per-environment History button is
+   * clicked. When provided, the card delegates to the parent (e.g. to push
+   * a route to the full-page History view). When omitted, the card opens
+   * an in-place side panel via {@link HistoryNavigation}.
+   */
+  onHistoryNavigate?: (_branch: string) => void;
 }
 
-const Card: React.FC<CardProps> = ({ environments }) => {
+const Card: React.FC<CardProps> = ({ environments, onHistoryNavigate }) => {
   const [historyMode, setHistoryMode] = useState<{ [branch: string]: number }>({});
-  const [hoveredIcon, setHoveredIcon] = useState<string | null>(null);
+  const [panelBranch, setPanelBranch] = useState<string | null>(null);
   const [isVerticalLayout, setIsVerticalLayout] = useState<boolean>(true);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -65,7 +73,6 @@ const Card: React.FC<CardProps> = ({ environments }) => {
           const proposedStatus = env.promotionStatus;
           const isProcessing = processingEnvs.has(branch);
           const inHistoryMode = isInHistoryMode(branch);
-          const isNavigationVisible = hoveredIcon === branch;
           const environment = environments.find((e) => e.branch === branch);
           const history = environment?.history || [];
 
@@ -122,21 +129,26 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                       </div>
                     </div>
 
-                    <div className="history-controls" onMouseLeave={() => setHoveredIcon(null)}>
-                      {isNavigationVisible && history.length > 0 ? (
-                        <HistoryNavigation
-                          history={history}
-                          currentIndex={getHistoryIndex(branch)}
-                          onHistorySelect={(index) => selectHistoryEntry(branch, index)}
-                        />
-                      ) : (
-                        <button
-                          className={`history-toggle ${inHistoryMode ? 'active' : ''}`}
-                          onMouseEnter={() => setHoveredIcon(branch)}
-                          title={inHistoryMode ? 'View history' : 'View history'}
-                        >
-                          <FaHistory />
-                        </button>
+                    <div className="history-controls">
+                      {history.length > 0 && (
+                        <Tooltip content="View promotion history">
+                          <button
+                            type="button"
+                            className={`history-toggle ${
+                              panelBranch === branch || inHistoryMode ? 'active' : ''
+                            }`}
+                            onClick={() => {
+                              if (onHistoryNavigate) {
+                                onHistoryNavigate(branch);
+                              } else {
+                                setPanelBranch((prev) => (prev === branch ? null : branch));
+                              }
+                            }}
+                          >
+                            <FaHistory />
+                            <span className="history-toggle__label">History</span>
+                          </button>
+                        </Tooltip>
                       )}
                     </div>
                   </div>
@@ -231,6 +243,29 @@ const Card: React.FC<CardProps> = ({ environments }) => {
           );
         })}
       </div>
+
+      {/* Fallback in-place side panel: only used when the parent has not
+          wired an `onHistoryNavigate` handler. With a handler set (e.g. on
+          PromotionStrategyDetailsView), the History button routes to the
+          full-page HistoryPage instead. */}
+      {panelBranch &&
+        !onHistoryNavigate &&
+        (() => {
+          const env = environments.find((e) => e.branch === panelBranch);
+          const hist = env?.history || [];
+          if (!hist.length) return null;
+          return (
+            <HistoryNavigation
+              history={hist}
+              currentIndex={getHistoryIndex(panelBranch)}
+              onHistorySelect={(index) => selectHistoryEntry(panelBranch, index)}
+              branch={panelBranch}
+              environment={env}
+              startInPanel
+              onClose={() => setPanelBranch(null)}
+            />
+          );
+        })()}
     </div>
   );
 };

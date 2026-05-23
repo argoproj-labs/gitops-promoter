@@ -89,35 +89,46 @@
 }
 
 .history-toggle {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 6px;
-  border-radius: 4px;
-  color: $argo-color-gray-5;
-  transition: all 0.2s ease;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  font-size: 14px;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: none;
+  background: #2e7d8c;
+  color: #ffffff;
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.1s ease;
+  white-space: nowrap;
+
+  svg {
+    font-size: 11px;
+    flex-shrink: 0;
+  }
 
   &:hover {
-    color: $argo-color-gray-7;
-    background: rgba(108, 117, 125, 0.08);
+    background: #256a77;
+    box-shadow: 0 2px 8px rgba(46, 125, 140, 0.35);
   }
 
   &:active {
-    background: rgba(108, 117, 125, 0.15);
+    transform: scale(0.97);
+    background: #1f5a65;
   }
 
   &.active {
-    color: $argo-running;
-    background: rgba(13, 173, 234, 0.1);
-
-    &:hover {
-      background: rgba(13, 173, 234, 0.15);
-    }
+    background: #1f5a65;
   }
+}
+
+.history-toggle__label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
 }
 
 .history-controls {

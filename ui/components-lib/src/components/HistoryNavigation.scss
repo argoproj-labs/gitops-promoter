@@ -1,101 +1,573 @@
 @use '../styles/colors' as *;
 
-.history-navigation {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  background: white;
+/* ═══ Inline (card-embedded) mode ═══ */
+.history-subway {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px 10px;
+  margin-bottom: 12px;
+  background: #f5f7fa;
   border: 1px solid $argo-color-gray-4;
-  border-radius: 4px;
-  padding: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  position: absolute;
-  top: 0;
-  right: 0;
-  z-index: 10;
-  min-width: 24px;
-  align-items: center;
+  border-radius: 6px;
 }
 
-.history-item {
-  background: none;
-  border: none;
-  cursor: pointer;
+/* ═══ Header: title + maximize button ═══ */
+.history-subway__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.history-subway__route-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: $argo-color-gray-5;
+}
+
+.history-subway__maximize-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
   padding: 0;
-  width: 16px;
-  height: 16px;
+  border: 1px solid $argo-color-gray-4;
+  border-radius: 5px;
+  background: #ffffff;
+  color: $argo-color-gray-6;
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+
+  &:hover {
+    color: $argo-color-gray-7;
+    border-color: $argo-color-gray-5;
+    background: #f0f2f5;
+  }
+}
+
+/* ═══ Vertical track ═══ */
+.history-subway__track {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+
+/* ═══ Rail segment ═══ */
+.history-subway__rail-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 0;
+}
+
+.history-subway__rail {
+  width: 3px;
+  min-height: 24px;
+  margin-left: 15px;
+  background: $argo-color-gray-4;
+  border-radius: 2px;
+  transition: background 0.2s ease;
+  flex-shrink: 0;
+
+  &--lit {
+    background: linear-gradient(180deg, #1f4f5e 0%, #2d6a7f 100%);
+  }
+}
+
+.history-subway__transition {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 1px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+
+  &--regression {
+    background: rgba($argo-failed, 0.14);
+    color: #c63d46;
+  }
+
+  &--recovery {
+    background: rgba($argo-success, 0.14);
+    color: #0f8f72;
+  }
+}
+
+/* ═══ Stop row (clickable) ═══ */
+.history-subway__stop {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.03);
+  }
+
+  &--selected {
+    background: #eef4f7;
+    border: 1px solid $argo-color-gray-5;
+  }
+
+  &--compare {
+    background: #ffffff;
+    border-color: $argo-color-gray-5;
+    box-shadow: none;
+  }
+}
+
+/* ═══ Station dot ═══ */
+.history-subway__dot {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.2s ease;
-  position: relative;
+  font-size: 15px;
+  color: #ffffff;
+  margin-top: 2px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 
-  &:hover {
-    transform: scale(1.2);
-
-    &::after {
-      content: attr(title);
-      position: absolute;
-      right: 20px;
-      top: 50%;
-      transform: translateY(-50%);
-      background: rgba(0, 0, 0, 0.9);
-      color: white;
-      padding: 6px 10px;
-      border-radius: 4px;
-      font-size: 10px;
-      white-space: nowrap;
-      z-index: 20;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-      pointer-events: none;
-    }
-
-    &::before {
-      content: '';
-      position: absolute;
-      right: 16px;
-      top: 50%;
-      transform: translateY(-50%);
-      border: 4px solid transparent;
-      border-left-color: rgba(0, 0, 0, 0.9);
-      z-index: 20;
-      pointer-events: none;
-    }
-  }
-
-  &.active .history-item-inner {
-    background: white;
-    border: 2px solid $argo-running;
-    box-shadow: 0 0 8px rgba(13, 173, 234, 0.4);
-  }
-}
-
-.history-item-inner {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: $argo-color-gray-4;
-  border: 2px solid transparent;
-  transition: all 0.2s ease;
-
-  &.success {
+  &--success {
     background: $argo-success;
   }
-  &.failure {
+  &--failure {
     background: $argo-failed;
   }
-  &.pending {
+  &--pending {
     background: $argo-running;
   }
-  &.unknown {
-    background: $argo-color-gray-4;
+  &--unknown {
+    background: $argo-color-gray-5;
   }
 }
 
-.history-position {
-  font-size: 9px;
+/* ═══ Details block ═══ */
+.history-subway__details {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.history-subway__subject {
+  font-size: 13px;
+  font-weight: 600;
+  color: $argo-color-gray-7;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-subway__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: 11.5px;
+  color: $argo-color-gray-6;
+}
+
+.history-subway__author {
+  font-weight: 500;
+  color: $argo-color-gray-7;
+}
+
+.history-subway__sha {
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1f4f5e;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+  &--muted {
+    color: $argo-color-gray-5;
+  }
+}
+
+.history-subway__pr {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1f4f5e;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+  svg {
+    font-size: 12px;
+  }
+}
+
+/* ═══ Footer: summary pills + time ═══ */
+.history-subway__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 1px;
+}
+
+.history-subway__checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.history-subway__check {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+
+  &--pass {
+    background: rgba($argo-success, 0.14);
+    color: #0f8f72;
+  }
+  &--fail {
+    background: rgba($argo-failed, 0.16);
+    color: #c63d46;
+  }
+  &--pending {
+    background: rgba($argo-running, 0.14);
+    color: #088ec4;
+  }
+}
+
+.history-subway__time {
+  font-size: 11px;
   color: $argo-color-gray-5;
-  margin-top: 2px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════
+   Side panel (slide-in from right)
+   ═══════════════════════════════════════════ */
+
+.history-panel__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: rgba(0, 0, 0, 0.35);
+  animation: history-backdrop-fadein 0.15s ease;
+}
+
+@keyframes history-backdrop-fadein {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.history-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 9999;
+  max-width: calc(100vw - 40px);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border-left: 1px solid $argo-color-gray-4;
+  box-shadow: -6px 0 24px rgba(0, 0, 0, 0.14);
+  animation: history-panel-slidein 0.22s ease;
+}
+
+.history-panel__drag-handle {
+  position: absolute;
+  top: 0;
+  left: -4px;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 10;
+  background: transparent;
+  transition: background 0.12s ease;
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 2px;
+    transform: translateY(-50%);
+    width: 4px;
+    height: 48px;
+    border-radius: 4px;
+    background: $argo-color-gray-4;
+    transition:
+      background 0.15s ease,
+      height 0.15s ease;
+  }
+
+  &:hover::after {
+    background: $argo-color-gray-5;
+    height: 64px;
+  }
+
+  &:active::after {
+    background: $argo-running;
+    height: 80px;
+  }
+}
+
+@keyframes history-panel-slidein {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.history-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid $argo-color-gray-4;
+  flex-shrink: 0;
+}
+
+.history-panel__title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: $argo-color-gray-7;
+}
+
+.history-panel__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.history-panel__compare-btn {
+  padding: 5px 12px;
+  border: 1px solid $argo-color-gray-4;
+  border-radius: 5px;
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  color: $argo-color-gray-6;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+
+  &:hover {
+    color: $argo-color-gray-7;
+    border-color: $argo-color-gray-5;
+    background: #f0f2f5;
+  }
+
+  &--active {
+    color: #1f4f5e;
+    border-color: #1f4f5e;
+    background: rgba(31, 79, 94, 0.08);
+  }
+}
+
+.history-panel__close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid $argo-color-gray-4;
+  border-radius: 6px;
+  background: #ffffff;
+  color: $argo-color-gray-6;
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+
+  &:hover {
+    color: $argo-color-gray-7;
+    border-color: $argo-color-gray-5;
+    background: #f0f2f5;
+  }
+}
+
+/* ═══ Tabs ═══ */
+.history-panel__tabs {
+  display: flex;
+  gap: 0;
+  padding: 0 20px;
+  border-bottom: 1px solid $argo-color-gray-4;
+  flex-shrink: 0;
+}
+
+.history-panel__tab {
+  padding: 10px 18px;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 600;
+  color: $argo-color-gray-6;
+  cursor: pointer;
+  position: relative;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+
+  &:hover {
+    color: $argo-color-gray-7;
+    background: rgba(0, 0, 0, 0.03);
+  }
+
+  &--active {
+    color: #1f4f5e;
+
+    &::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: #1f4f5e;
+      border-radius: 2px 2px 0 0;
+    }
+  }
+}
+
+.history-panel__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+/* Track section inside the panel */
+.history-panel__track-section {
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid $argo-color-gray-4;
+
+  .history-subway__dot {
+    width: 34px;
+    height: 34px;
+    font-size: 16px;
+  }
+
+  .history-subway__rail {
+    min-height: 18px;
+    width: 4px;
+    margin-left: 16px;
+  }
+
+  .history-subway__stop {
+    padding: 10px 10px;
+  }
+
+  .history-subway__subject {
+    font-size: 14px;
+    white-space: normal;
+  }
+
+  .history-subway__meta {
+    font-size: 12px;
+  }
+}
+
+/* Detail section below the track */
+.history-panel__detail-section {
+  padding: 16px 20px 24px;
+}
+
+.history-panel__detail-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: $argo-color-gray-5;
+  margin-bottom: 12px;
+}
+
+.history-subway__detail-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.history-panel__no-detail {
+  margin: 0;
+  padding: 20px;
   text-align: center;
+  color: $argo-color-gray-5;
+  font-size: 13px;
+}
+
+/* ═══ Compare mode: side-by-side ═══ */
+.history-panel__compare-section {
+  display: flex;
+  flex-direction: row;
+  gap: 0;
+  padding: 16px 20px 24px;
+  min-height: 0;
+}
+
+.history-panel__compare-col {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  padding: 0 12px;
+
+  &:first-child {
+    padding-left: 0;
+  }
+
+  &:last-child {
+    padding-right: 0;
+  }
+}
+
+.history-panel__compare-divider {
+  flex: 0 0 1px;
+  background: $argo-color-gray-4;
+  align-self: stretch;
+}
+
+.history-subway__time-ago {
+  color: $argo-color-gray-5;
 }
