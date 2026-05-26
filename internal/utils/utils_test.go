@@ -620,8 +620,8 @@ var _ = Describe("EnqueueChangeTransferPolicies", func() {
 		}, ps, branches, "validation transition")
 
 		expected := []string{
-			"my-namespace/" + utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName("my-strategy", "main")),
-			"my-namespace/" + utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName("my-strategy", "staging")),
+			"my-namespace/" + utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName("my-strategy", "main")),
+			"my-namespace/" + utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName("my-strategy", "staging")),
 		}
 		Expect(enqueued).To(Equal(expected))
 	})
@@ -646,7 +646,7 @@ var _ = Describe("EnqueueChangeTransferPolicies", func() {
 			capturedName = name
 		}, ps, []string{"main"}, "validation transition")
 
-		expected := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName("my-strategy", "main"))
+		expected := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName("my-strategy", "main"))
 		Expect(capturedName).To(Equal(expected))
 	})
 })

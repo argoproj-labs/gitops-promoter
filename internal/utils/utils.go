@@ -205,7 +205,7 @@ func EnqueueChangeTransferPolicies(
 	logger := log.FromContext(ctx)
 
 	for _, envBranch := range transitionedBranches {
-		ctpName := KubeSafeUniqueName(ctx, GetChangeTransferPolicyName(ps.Name, envBranch))
+		ctpName := KubeSafeUniqueName(GetChangeTransferPolicyName(ps.Name, envBranch))
 
 		if enqueueCTP == nil {
 			logger.Info("Skipping ChangeTransferPolicy reconciliation enqueue because enqueue function is nil",
