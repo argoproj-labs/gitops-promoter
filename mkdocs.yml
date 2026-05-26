@@ -38,6 +38,7 @@ markdown_extensions:
           case: lower
 nav:
   - Overview: index.md
+  - Roadmap: roadmap.md
   - Getting Started: getting-started.md
   - Contributing:
       - Overview: contributing/index.md
@@ -50,6 +51,7 @@ nav:
   - Debugging:
       - Overview: debugging/index.md
       - Finalizers: debugging/finalizers.md
+      - Labels: debugging/labels.md
   - Architecture: architecture.md
   - Custom Hydrator: custom-hydrator.md
   - CRD Specs: crd-specs.md

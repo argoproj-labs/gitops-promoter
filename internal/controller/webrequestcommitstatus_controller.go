@@ -185,7 +185,7 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 	}
 
 	// 5. Clean up orphaned CommitStatus resources that are no longer in the environment list
-	err = r.cleanupOrphanedCommitStatuses(ctx, &wrcs, commitStatuses)
+	err = utils.CleanupOrphanedCommitStatuses(ctx, r.Client, r.Recorder, &wrcs, commitStatuses)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to cleanup orphaned CommitStatus resources: %w", err)
 	}
@@ -438,8 +438,8 @@ func (r *WebRequestCommitStatusReconciler) applySCMAuthentication(ctx context.Co
 // The phase (Success or Pending) and sha are set from the validation outcome; description and URL are rendered from templateData.
 // The created resource is owned by the WebRequestCommitStatus so it is cleaned up when the WebRequestCommitStatus is deleted.
 func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, repositoryRefName string, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, templateData webrequest.TemplateData) (*promoterv1alpha1.CommitStatus, error) {
-	// Generate a consistent name for the CommitStatus
-	commitStatusName := utils.KubeSafeUniqueName(fmt.Sprintf("%s-%s-webrequest", wrcs.Name, branch))
+	kind := reflect.TypeOf(promoterv1alpha1.WebRequestCommitStatus{}).Name()
+	commitStatusName := utils.CommitStatusResourceName(ctx, wrcs, branch)
 
 	// Render description template
 	var description string
@@ -451,8 +451,6 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 		description = rendered
 	}
 
-	// Build owner reference
-	kind := reflect.TypeOf(promoterv1alpha1.WebRequestCommitStatus{}).Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
 	// Build the spec
@@ -474,11 +472,7 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 
 	// Build the apply configuration
 	commitStatusApply := acv1alpha1.CommitStatus(commitStatusName, wrcs.Namespace).
-		WithLabels(map[string]string{
-			promoterv1alpha1.WebRequestCommitStatusLabel: utils.KubeSafeLabel(wrcs.Name),
-			promoterv1alpha1.EnvironmentLabel:            utils.KubeSafeLabel(branch),
-			promoterv1alpha1.CommitStatusLabel:           wrcs.Spec.Key,
-		}).
+		WithLabels(utils.CommitStatusStandardLabels(wrcs, branch, wrcs.Spec.Key)).
 		WithOwnerReferences(acmetav1.OwnerReference().
 			WithAPIVersion(gvk.GroupVersion().String()).
 			WithKind(gvk.Kind).
@@ -497,65 +491,6 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 	}
 
 	return commitStatus, nil
-}
-
-// cleanupOrphanedCommitStatuses removes CommitStatus resources that are owned by this WebRequestCommitStatus
-// and labeled with its key but are not in validCommitStatuses (e.g. branches no longer in the strategy).
-// Called after the reconcile dispatch so the cluster state matches the current set of applicable environments.
-//
-//nolint:dupl // Similar to cleanupOrphanedChangeTransferPolicies but operates on different types
-func (r *WebRequestCommitStatusReconciler) cleanupOrphanedCommitStatuses(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, validCommitStatuses []*promoterv1alpha1.CommitStatus) error {
-	logger := log.FromContext(ctx)
-
-	// Create a set of valid CommitStatus names for quick lookup
-	validCommitStatusNames := make(map[string]bool)
-	for _, cs := range validCommitStatuses {
-		validCommitStatusNames[cs.Name] = true
-	}
-
-	// List all CommitStatus resources in the namespace with the WebRequestCommitStatus label
-	var commitStatusList promoterv1alpha1.CommitStatusList
-	err := r.List(ctx, &commitStatusList, client.InNamespace(wrcs.Namespace), client.MatchingLabels{
-		promoterv1alpha1.WebRequestCommitStatusLabel: utils.KubeSafeLabel(wrcs.Name),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to list CommitStatus resources: %w", err)
-	}
-
-	// Delete CommitStatus resources that are not in the valid list
-	for _, cs := range commitStatusList.Items {
-		// Skip if this CommitStatus is in the valid list
-		if validCommitStatusNames[cs.Name] {
-			continue
-		}
-
-		// Verify this CommitStatus is owned by this WebRequestCommitStatus before deleting
-		if !metav1.IsControlledBy(&cs, wrcs) {
-			logger.V(4).Info("Skipping CommitStatus not owned by this WebRequestCommitStatus",
-				"commitStatusName", cs.Name,
-				"webRequestCommitStatus", wrcs.Name)
-			continue
-		}
-
-		// Delete the orphaned CommitStatus
-		logger.Info("Deleting orphaned CommitStatus",
-			"commitStatusName", cs.Name,
-			"webRequestCommitStatus", wrcs.Name,
-			"namespace", wrcs.Namespace)
-
-		if err := r.Delete(ctx, &cs); err != nil {
-			if k8serrors.IsNotFound(err) {
-				// Already deleted, which is fine
-				logger.V(4).Info("CommitStatus already deleted", "commitStatusName", cs.Name)
-				continue
-			}
-			return fmt.Errorf("failed to delete orphaned CommitStatus %q: %w", cs.Name, err)
-		}
-
-		r.Recorder.Eventf(wrcs, nil, "Normal", constants.OrphanedCommitStatusDeletedReason, "CleaningOrphanedResources", constants.OrphanedCommitStatusDeletedMessage, cs.Name)
-	}
-
-	return nil
 }
 
 // enqueueWebRequestCommitStatusForPromotionStrategy returns the watch handler for PromotionStrategy. When a

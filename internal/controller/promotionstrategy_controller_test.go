@@ -2267,14 +2267,16 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				// Expect(err).To(Succeed())
 				for _, environment := range promotionStrategy.Spec.Environments {
 					commitStatus := promoterv1alpha1.CommitStatus{}
-					commitStatusName := environment.Branch + "/health"
-					resourceName := strings.ReplaceAll(commitStatusName, "/", "-") + "-" + hash([]byte(argocdCommitStatus.Name))
+					commitStatusName := promoterv1alpha1.ArgoCDCommitStatusDefaultKey + "/" + environment.Branch
+					resourceName := utils.CommitStatusResourceName(ctx, &argocdCommitStatus, environment.Branch)
 					Eventually(func(g Gomega) {
 						err := k8sClient.Get(ctx, types.NamespacedName{
 							Name:      resourceName,
 							Namespace: argoCDAppDev.GetNamespace(),
 						}, &commitStatus)
 						g.Expect(err).To(Succeed())
+						g.Expect(commitStatus.Spec.Name).To(Equal(commitStatusName))
+						g.Expect(commitStatus.Labels[promoterv1alpha1.CommitStatusLabel]).To(Equal(promoterv1alpha1.ArgoCDCommitStatusDefaultKey))
 					}, constants.EventuallyTimeout).Should(Succeed())
 				}
 
@@ -2511,14 +2513,16 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				// Expect(err).To(Succeed())
 				for _, environment := range promotionStrategy.Spec.Environments {
 					commitStatus := promoterv1alpha1.CommitStatus{}
-					commitStatusName := environment.Branch + "/health"
-					resourceName := strings.ReplaceAll(commitStatusName, "/", "-") + "-" + hash([]byte(argocdCommitStatus.Name))
+					commitStatusName := promoterv1alpha1.ArgoCDCommitStatusDefaultKey + "/" + environment.Branch
+					resourceName := utils.CommitStatusResourceName(ctx, &argocdCommitStatus, environment.Branch)
 					Eventually(func(g Gomega) {
 						err := k8sClient.Get(ctx, types.NamespacedName{
 							Name:      resourceName,
 							Namespace: argoCDAppDev.GetNamespace(),
 						}, &commitStatus)
 						g.Expect(err).To(Succeed())
+						g.Expect(commitStatus.Spec.Name).To(Equal(commitStatusName))
+						g.Expect(commitStatus.Labels[promoterv1alpha1.CommitStatusLabel]).To(Equal(promoterv1alpha1.ArgoCDCommitStatusDefaultKey))
 						switch environment.Branch {
 						case testBranchDevelopment:
 							g.Expect(commitStatus.Spec.Url).To(Equal("https://dev.argocd.local/applications?labels=app%3Dmc-promo-strategy-with-active-commit-status-argocdcommitstatus%2C"))

@@ -1,10 +1,10 @@
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: ArgoCDCommitStatus
 metadata:
-  # An ArgoCDCommitStatus produces CommitStatuses with the key `argocd-health`. That key is hardcoded, and the name of
-  # the ArgoCDCommitStatus does not affect the key name.
   name: argocdcommitstatus-sample
 spec:
+  # Gate key for PromotionStrategy; default argocd-health
+  key: argocd-health
   applicationSelector:
     matchLabels:
       app: demo

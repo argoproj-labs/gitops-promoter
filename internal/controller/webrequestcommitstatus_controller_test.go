@@ -273,7 +273,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				g.Expect(*devEnvStatus.LastResponseStatusCode).To(Equal(200))
 
 				// Verify CommitStatus was created for dev environment with success phase
-				commitStatusName := utils.KubeSafeUniqueName(name + "-polling-success-" + testBranchDevelopment + "-webrequest")
+				commitStatusName := utils.CommitStatusResourceName(ctx, &wrcs, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -364,7 +364,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				g.Expect(devEnvStatus.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
 
 				// Verify CommitStatus was created for dev environment with pending phase
-				commitStatusName := utils.KubeSafeUniqueName(name + "-polling-failure-" + testBranchDevelopment + "-webrequest")
+				commitStatusName := utils.CommitStatusResourceName(ctx, &wrcs, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -938,7 +938,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 
 			By("Verifying CommitStatus has rendered description and URL")
 			Eventually(func(g Gomega) {
-				commitStatusName := utils.KubeSafeUniqueName(name + "-template-test-" + testBranchDevelopment + "-webrequest")
+				commitStatusName := utils.CommitStatusResourceName(ctx, webRequestCommitStatus, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -1068,7 +1068,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 
 			By("Waiting for CommitStatus description to contain the variable value")
 			Eventually(func(g Gomega) {
-				commitStatusName := utils.KubeSafeUniqueName(name + "-success-vars-test-" + testBranchDevelopment + "-webrequest")
+				commitStatusName := utils.CommitStatusResourceName(ctx, wrcsVars, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: commitStatusName, Namespace: "default"}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -1114,7 +1114,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 
 			By("Waiting for CommitStatus description to contain the trigger variable value")
 			Eventually(func(g Gomega) {
-				commitStatusName := utils.KubeSafeUniqueName(name + "-trigger-vars-test-" + testBranchDevelopment + "-webrequest")
+				commitStatusName := utils.CommitStatusResourceName(ctx, wrcsTriggerVars, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: commitStatusName, Namespace: "default"}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -1220,7 +1220,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				// Should have status for at least dev environment
 				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
 
-				devCommitStatusName = utils.KubeSafeUniqueName(name + "-cleanup-test-" + testBranchDevelopment + "-webrequest")
+				devCommitStatusName = utils.CommitStatusResourceName(ctx, &wrcs, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      devCommitStatusName,
@@ -2396,7 +2396,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 				for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
 					g.Expect(wrcsPhaseForBranch(fetched.Status.PromotionStrategyContext.PhasePerBranch, branch)).To(
 						Equal(promoterv1alpha1.CommitPhaseSuccess), "PhasePerBranch for %s should be success", branch)
-					csName := utils.KubeSafeUniqueName(wrcs.Name + "-" + branch + "-webrequest")
+					csName := utils.CommitStatusResourceName(ctx, wrcs, branch)
 					var cs promoterv1alpha1.CommitStatus
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      csName,
@@ -2474,7 +2474,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 				for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
 					g.Expect(wrcsPhaseForBranch(fetched.Status.PromotionStrategyContext.PhasePerBranch, branch)).To(
 						Equal(promoterv1alpha1.CommitPhasePending), "PhasePerBranch for %s should be pending", branch)
-					csName := utils.KubeSafeUniqueName(wrcs.Name + "-" + branch + "-webrequest")
+					csName := utils.CommitStatusResourceName(ctx, wrcs, branch)
 					var cs promoterv1alpha1.CommitStatus
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      csName,
@@ -2564,19 +2564,19 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 				g.Expect(wrcsPhaseForBranch(fetched.Status.PromotionStrategyContext.PhasePerBranch, testBranchProduction)).To(
 					Equal(promoterv1alpha1.CommitPhasePending), "production should be pending")
 
-				devCSName := utils.KubeSafeUniqueName(wrcs.Name + "-" + testBranchDevelopment + "-webrequest")
+				devCSName := utils.CommitStatusResourceName(ctx, wrcs, testBranchDevelopment)
 				var devCS promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{Name: devCSName, Namespace: "default"}, &devCS)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(devCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 
-				stagingCSName := utils.KubeSafeUniqueName(wrcs.Name + "-" + testBranchStaging + "-webrequest")
+				stagingCSName := utils.CommitStatusResourceName(ctx, wrcs, testBranchStaging)
 				var stagingCS promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{Name: stagingCSName, Namespace: "default"}, &stagingCS)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(stagingCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
 
-				prodCSName := utils.KubeSafeUniqueName(wrcs.Name + "-" + testBranchProduction + "-webrequest")
+				prodCSName := utils.CommitStatusResourceName(ctx, wrcs, testBranchProduction)
 				var prodCS promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{Name: prodCSName, Namespace: "default"}, &prodCS)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -2663,7 +2663,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 				for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
 					g.Expect(wrcsPhaseForBranch(fetched.Status.PromotionStrategyContext.PhasePerBranch, branch)).To(
 						Equal(promoterv1alpha1.CommitPhaseSuccess), "PhasePerBranch for %s should be success", branch)
-					csName := utils.KubeSafeUniqueName(wrcs.Name + "-" + branch + "-webrequest")
+					csName := utils.CommitStatusResourceName(ctx, wrcs, branch)
 					var cs promoterv1alpha1.CommitStatus
 					err = k8sClient.Get(ctx, types.NamespacedName{Name: csName, Namespace: "default"}, &cs)
 					g.Expect(err).NotTo(HaveOccurred(), "CommitStatus for %s should exist", branch)
@@ -2917,7 +2917,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 				g.Expect(*fetched.Status.PromotionStrategyContext.LastResponseStatusCode).To(Equal(500))
 
 				for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
-					csName := utils.KubeSafeUniqueName(wrcs.Name + "-" + branch + "-webrequest")
+					csName := utils.CommitStatusResourceName(ctx, wrcs, branch)
 					var cs promoterv1alpha1.CommitStatus
 					err = k8sClient.Get(ctx, types.NamespacedName{Name: csName, Namespace: "default"}, &cs)
 					g.Expect(err).NotTo(HaveOccurred(), "CommitStatus for %s should exist", branch)
@@ -3150,7 +3150,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy 
 			g.Expect(wrcsPhaseForBranch(fetched.Status.PromotionStrategyContext.PhasePerBranch, testBranchDevelopment)).To(
 				Equal(promoterv1alpha1.CommitPhaseSuccess))
 
-			csName := utils.KubeSafeUniqueName(webRequestCS.Name + "-" + testBranchDevelopment + "-webrequest")
+			csName := utils.CommitStatusResourceName(ctx, webRequestCS, testBranchDevelopment)
 			var cs promoterv1alpha1.CommitStatus
 			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: csName, Namespace: "default"}, &cs)).To(Succeed())
 			g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
@@ -3290,7 +3290,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context Switching", Ordere
 			for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
 				g.Expect(wrcsPhaseForBranch(fetched.Status.PromotionStrategyContext.PhasePerBranch, branch)).To(
 					Equal(promoterv1alpha1.CommitPhaseSuccess), "PhasePerBranch for %s should be success", branch)
-				csName := utils.KubeSafeUniqueName(wrcs.Name + "-" + branch + "-webrequest")
+				csName := utils.CommitStatusResourceName(ctx, wrcs, branch)
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{Name: csName, Namespace: "default"}, &cs)
 				g.Expect(err).NotTo(HaveOccurred(), "CommitStatus for %s should exist", branch)
@@ -3454,7 +3454,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 				}
 
 				// Verify CommitStatus was created with success phase
-				csName := utils.KubeSafeUniqueName(wrcs.Name + "-" + testBranchDevelopment + "-webrequest")
+				csName := utils.CommitStatusResourceName(ctx, wrcs, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{Name: csName, Namespace: "default"}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -3736,7 +3736,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 				httpHitsMu.Unlock()
 				g.Expect(h).To(BeNumerically(">=", 3), "each environment fires once on first SHA track")
 
-				csName := utils.KubeSafeUniqueName(wrcs.Name + "-" + testBranchDevelopment + "-webrequest")
+				csName := utils.CommitStatusResourceName(ctx, wrcs, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{Name: csName, Namespace: "default"}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -3763,7 +3763,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 					}
 				}
 
-				csName := utils.KubeSafeUniqueName(wrcs.Name + "-" + testBranchDevelopment + "-webrequest")
+				csName := utils.CommitStatusResourceName(ctx, wrcs, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{Name: csName, Namespace: "default"}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -4286,7 +4286,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard", Ordered, f
 
 			By("Verifying the CommitStatus resource is also pending")
 			Eventually(func(g Gomega) {
-				csName := utils.KubeSafeUniqueName(wrcs.Name + "-" + testBranchDevelopment + "-webrequest")
+				csName := utils.CommitStatusResourceName(ctx, wrcs, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: csName, Namespace: "default"}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -4484,7 +4484,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard (PromotionSt
 
 			By("Verifying CommitStatus for development is pending")
 			Eventually(func(g Gomega) {
-				csName := utils.KubeSafeUniqueName(wrcs.Name + "-" + testBranchDevelopment + "-webrequest")
+				csName := utils.CommitStatusResourceName(ctx, wrcs, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: csName, Namespace: "default"}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())

@@ -8,7 +8,7 @@ This document outlines best practices for implementing custom commit status cont
 
 ## Required Labels
 
-All commit status controllers should set the following standard labels on the `CommitStatus` resources they create:
+All commit status controllers should set the following standard labels on the `CommitStatus` resources they create. Use `utils.CommitStatusStandardLabels(parent, branch, key)` to set all three at once.
 
 ### 1. Commit Status Label
 
@@ -16,12 +16,7 @@ All commit status controllers should set the following standard labels on the `C
 commitStatus.Labels[promoterv1alpha1.CommitStatusLabel] = "your-controller-key"
 ```
 
-**Purpose:** This label identifies which controller created the commit status. The value should match the `key` used in the PromotionStrategy's `proposedCommitStatuses` configuration.
-
-**Examples:**
-- `"argocd-health"` - Used by ArgoCDCommitStatus controller
-- `"timer"` - Used by TimedCommitStatus controller
-- `"manual-approval"` - Could be used by a manual approval controller
+**Purpose:** The value must equal the gate `key` from the parent CR's `spec.key` (and the same `key` in the PromotionStrategy's `activeCommitStatuses` or `proposedCommitStatuses`). Controllers set this automatically; end users configure `spec.key` on the gate CR, not this label.
 
 **Usage in PromotionStrategy:**
 ```yaml
@@ -31,8 +26,8 @@ metadata:
   name: my-app
 spec:
   activeCommitStatuses:
-    - key: argocd-health  # Matches the label value
-    - key: timer          # Matches the label value
+    - key: argocd-health  # same as ArgoCDCommitStatus.spec.key
+    - key: timer          # same as TimedCommitStatus.spec.key
 ```
 
 ### 2. Environment Label
@@ -54,19 +49,11 @@ commitStatus.Labels[promoterv1alpha1.EnvironmentLabel] = utils.KubeSafeLabel(bra
 
 ### ArgoCDCommitStatus Controller
 
-The ArgoCDCommitStatus controller sets:
-- `promoter.argoproj.io/commit-status: "argocd-health"`
-- `promoter.argoproj.io/environment: <branch>`
-
-See: `internal/controller/argocdcommitstatus_controller.go` lines 557-560
+Uses `ArgoCDCommitStatus.spec.key` (default `argocd-health`).
 
 ### TimedCommitStatus Controller
 
-The TimedCommitStatus controller sets:
-- `promoter.argoproj.io/commit-status: "timer"`
-- `promoter.argoproj.io/environment: <branch>`
-
-See: `internal/controller/timedcommitstatus_controller.go` lines 295-296
+Uses `TimedCommitStatus.spec.key` (default `timer`).
 
 ## Additional Best Practices
 
@@ -84,18 +71,40 @@ This ensures that when the parent resource (e.g., ArgoCDCommitStatus, TimedCommi
 
 ### Naming Convention
 
-Use a consistent naming pattern for CommitStatus resources:
+#### SCM status name (`CommitStatus.spec.name`)
+
+Built-in controllers use `{spec.key}/{environment-branch}` for the name shown in the SCM (for example `argocd-health/environment/staging`). The `key` is the same value the PromotionStrategy references in `activeCommitStatuses` or `proposedCommitStatuses`.
 
 ```go
-commitStatusName := utils.KubeSafeUniqueName(
-    fmt.Sprintf("%s-%s-%s", parentResourceName, branch, controllerType))
+commitStatus.Spec.Name = key + "/" + branch
+commitStatus.Labels[promoterv1alpha1.CommitStatusLabel] = key
 ```
 
-Example: `my-app-environment-development-timer`
+#### Kubernetes resource name
+
+Use `utils.CommitStatusResourceName` for the CommitStatus **resource** name (distinct from `spec.name`):
+
+```go
+resourceName := utils.CommitStatusResourceName(ctx, parent, branch)
+```
+
+`parent` may omit `TypeMeta.Kind` (common on typed objects from client `Get` in tests); the helper resolves Kind from the runtime scheme via `apiutil.GVKForObject` and panics only if resolution fails.
+
+The kebab-case gate stem is derived from the parent Kind (for example `TimedCommitStatus` → `timed`, `WebRequestCommitStatus` → `web-request`, `ArgoCDCommitStatus` → `argo-cd`). The same stem is used for the resource-name suffix and for the parent-gate label key (`promoter.argoproj.io/<stem>-commit-status`).
+
+The helper applies `KubeSafeUniqueName` to `parent.metadata.name-branch-<stem>`.
+
+Example: `my-app-environment-development-timed-<hash>` (or `...-argo-cd-<hash>` for Argo CD gates)
+
+Set the standard CommitStatus labels with `utils.CommitStatusStandardLabels(parent, branch, key)` (parent gate, environment, and commit-status key).
+
+#### Orphan cleanup
+
+At the end of each reconcile, call `utils.CleanupOrphanedCommitStatuses` with the current valid `[]*CommitStatus` slice. The helper derives the parent gate label from the owner's Kind and removes owned CommitStatuses that are no longer in the valid set.
 
 ### Custom Labels
 
-You can add additional labels specific to your controller, but the two standard labels above are recommended:
+You can add additional labels specific to your controller, but the standard labels above are recommended:
 
 ```go
 commitStatus.Labels["my-controller.example.com/custom-info"] = "value"

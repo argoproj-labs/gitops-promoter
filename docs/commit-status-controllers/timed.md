@@ -31,6 +31,7 @@ kind: TimedCommitStatus
 metadata:
   name: webservice-tier-1
 spec:
+  key: timer
   promotionStrategyRef:
     name: webservice-tier-1
   environments:
@@ -44,9 +45,13 @@ This configuration:
 - Requires changes to run in `development` for 1 hour before they can be promoted out
 - Requires changes to run in `staging` for 4 hours before they can be promoted out
 
+### `spec.key`
+
+`spec.key` is the gate name your PromotionStrategy checks in `activeCommitStatuses` or `proposedCommitStatuses`. When omitted, the CRD default is `timer`. We recommend setting `spec.key` explicitly (including `timer` when that is your gate name) so it matches your PromotionStrategy and your manifests are ready if the field becomes required in v1.0; see [Roadmap](../roadmap.md).
+
 ### Integrating with PromotionStrategy
 
-To use time-based gating, configure your PromotionStrategy to check for the `timer` commit status key as an active commit status:
+Reference the same key in `activeCommitStatuses` (must match `TimedCommitStatus.spec.key`):
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
@@ -96,6 +101,7 @@ kind: TimedCommitStatus
 metadata:
   name: webservice-tier-1
 spec:
+  key: timer
   promotionStrategyRef:
     name: webservice-tier-1
   environments:
