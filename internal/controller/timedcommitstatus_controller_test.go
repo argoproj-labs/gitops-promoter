@@ -358,7 +358,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 			var ctpStaging promoterv1alpha1.ChangeTransferPolicy
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+					Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
 					Namespace: "default",
 				}, &ctpStaging)
 				g.Expect(err).To(Succeed())

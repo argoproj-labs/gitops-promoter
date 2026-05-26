@@ -1,5 +1,7 @@
-//Get duration ago (E.g: 1 day ago)
-export const timeAgo = (dateString: string): string => {
+import type { Rfc3339DateTime } from '../types/promotion';
+
+/** Relative time from an {@link Rfc3339DateTime} (e.g. `"3 hours ago"`). */
+export const timeAgo = (dateString: Rfc3339DateTime): string => {
   const now = new Date();
   const date = new Date(dateString);
 
@@ -45,8 +47,11 @@ export function extractBodyPreTrailer(body: string): string {
   return lines.slice(0, trailerStart).join('\n').trim();
 }
 
-// date formatting (e.g: Jul 5 2025, 12:15pm EDT)
-export function formatDate(date?: string): string {
+/**
+ * Locale display string from an {@link Rfc3339DateTime} such as `2026-05-22T15:00:36Z`.
+ * Shape depends on the browser locale and timezone (e.g. `May 22, 2026, 11:00 AM EDT`).
+ */
+export function formatDate(date?: Rfc3339DateTime): string {
   if (!date) return '-';
   const d = new Date(date);
   return d

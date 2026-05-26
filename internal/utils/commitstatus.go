@@ -18,7 +18,8 @@ import (
 // matches commitStatusGateKebabStem (for example timed, argo-cd, web-request).
 // Kind is taken from TypeMeta when set; otherwise resolved from GetScheme via apiutil.GVKForObject.
 func CommitStatusResourceName(ctx context.Context, parent client.Object, branch string) string {
-	return KubeSafeUniqueName(ctx, parent.GetName()+"-"+branch+"-"+commitStatusGateKebabStem(parent))
+	_ = ctx // reserved for future scheme-aware naming; naming is deterministic from parent + branch.
+	return KubeSafeUniqueName(parent.GetName() + "-" + branch + "-" + commitStatusGateKebabStem(parent))
 }
 
 // CleanupOrphanedCommitStatuses deletes CommitStatus resources labeled for the parent gate

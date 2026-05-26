@@ -1124,7 +1124,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying ChangeTransferPolicy for production has failing commit status")
-			ctpProdName := utils.KubeSafeUniqueName(ctx, gatingName+"-"+testBranchProduction)
+			ctpProdName := utils.KubeSafeUniqueName(gatingName + "-" + testBranchProduction)
 			Eventually(func(g Gomega) {
 				var ctp promoterv1alpha1.ChangeTransferPolicy
 				err := k8sClient.Get(ctx, types.NamespacedName{

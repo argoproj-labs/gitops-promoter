@@ -729,7 +729,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: currentResourceName, Namespace: "default"}, &currentCS)).To(Succeed())
 
 			By("Injecting a pre-upgrade CommitStatus (commit-status label only, legacy resource name)")
-			legacyResourceName := utils.KubeSafeUniqueName(ctx, psName+"-"+testBranchStaging+"-argocd")
+			legacyResourceName := utils.KubeSafeUniqueName( psName+"-"+testBranchStaging+"-argocd")
 			Expect(legacyResourceName).NotTo(Equal(currentResourceName))
 
 			legacyCS := &promoterv1alpha1.CommitStatus{

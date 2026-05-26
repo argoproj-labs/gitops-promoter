@@ -7,12 +7,15 @@ spec:
     name: example-git-repository
   proposedBranch: environment/dev-next
   activeBranch: environment/dev
+  # Defaults to true when omitted
+  autoMerge: true
   activeCommitStatuses:
   - key: argocd-app-health
   proposedCommitStatuses:
   - key: security-scan
   - key: promoter-previous-environment
 status:
+  observedGeneration: 123 # compare with metadata.generation to detect stale status
   conditions:
     # The Ready condition indicates that the resource has been successfully reconciled, when there is an error during
     # reconciliation, the condition will be False with a reason of ReconciliationError. When we successfully reconcile the resource,
@@ -23,8 +26,6 @@ status:
       message: Reconciliation succeeded
       reason: ReconciliationSuccess # ReconciliationSuccess ReconciliationError, or PullRequestNotReady
       status: "True" # "True," "False," or "Unknown"
-      # observedGeneration is the generation of the resource that was last reconciled. This is used to track if the
-      # resource has changed since the last reconciliation.
       observedGeneration: 123
 
   proposed:
@@ -37,7 +38,46 @@ status:
       subject: "chore: Example commit subject line"
     hydrated:
     # The hydrated field contains the same fields as proposed.dry.
+    note:
+      # Only drySha is populated from the hydrator git note
+      drySha: "abcdef1234567890abcdef1234567890abcdef12"
     commitStatuses:
       - key: example-key
         phase: pending # pending, success, or failure
+        url: https://example.com/checks/example-key
+        description: Waiting for check
   active:
+    dry:
+      sha: "fedcba0987654321fedcba0987654321fedcba09"
+      commitTime: 2023-09-15T00:00:00Z
+      repoURL: "https://git.example.com/org/repo.git"
+      subject: "chore: Currently deployed commit"
+    hydrated:
+    # same structure as proposed.dry
+    commitStatuses:
+      - key: argocd-app-health
+        phase: success
+  pullRequest:
+    id: "848"
+    state: open # open, closed, or merged; empty when externallyMergedOrClosed is true
+    url: https://github.com/org/repo/pull/848
+    prCreationTime: 2023-10-01T00:00:00Z
+    # prMergeTime: set when merged
+    # externallyMergedOrClosed: true  # PR closed/merged outside the controller
+  history:
+    # Recent promotions merged by the controller (newest first, at most 5 entries).
+    - active:
+        dry:
+          sha: "fedcba0987654321fedcba0987654321fedcba09"
+      proposed:
+        hydrated:
+          sha: "abcdef1234567890abcdef1234567890abcdef12"
+        commitStatuses:
+          - key: example-key
+            phase: success
+      pullRequest:
+        id: "847"
+        state: merged
+        prCreationTime: 2023-09-01T00:00:00Z
+        prMergeTime: 2023-09-01T01:00:00Z
+        url: https://github.com/org/repo/pull/847

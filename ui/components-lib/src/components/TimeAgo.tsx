@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { timeAgo, formatDate } from '../../../shared/src/utils/util';
+import type { Rfc3339DateTime } from '@shared/types/promotion';
 
 interface TimeAgoProps {
-  date: string | Date;
+  /** RFC 3339 string or `Date`; do not pass pre-formatted `formatDate` output. */
+  date: Rfc3339DateTime | Date;
   interval?: number;
 }
 

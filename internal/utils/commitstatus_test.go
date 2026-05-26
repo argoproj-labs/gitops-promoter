@@ -48,7 +48,7 @@ var _ = Describe("CommitStatusResourceName", func() {
 			ctx := context.Background()
 			parent.SetName("my-gate")
 			got := utils.CommitStatusResourceName(ctx, parent, branch)
-			want := utils.KubeSafeUniqueName(ctx, "my-gate-"+branch+"-"+partialKind)
+			want := utils.KubeSafeUniqueName( "my-gate-"+branch+"-"+partialKind)
 			Expect(got).To(Equal(want))
 		},
 		Entry("TimedCommitStatus", &promoterv1alpha1.TimedCommitStatus{}, "environment/development", "timed"),

@@ -1057,7 +1057,7 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		return nil, errors.New("unsupported git repository type")
 	}
 
-	prName = utils.KubeSafeUniqueName(ctx, prName)
+	prName = utils.KubeSafeUniqueName(prName)
 
 	ps, err := r.getPromotionStrategy(ctx, ctp)
 	if err != nil {
