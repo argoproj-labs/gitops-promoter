@@ -16,6 +16,15 @@ func init() {
 	delete(sanitizedSprigFuncMap, "expandenv")
 	delete(sanitizedSprigFuncMap, "getHostByName")
 	sanitizedSprigFuncMap["urlQueryEscape"] = url.QueryEscape
+	sanitizedSprigFuncMap["deref"] = derefBool
+}
+
+// derefBool dereferences a *bool pointer, returning false if nil.
+func derefBool(ptr *bool) bool {
+	if ptr == nil {
+		return false
+	}
+	return *ptr
 }
 
 // RenderStringTemplate renders a string template with the provided data.

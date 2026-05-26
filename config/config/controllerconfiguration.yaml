@@ -48,11 +48,67 @@ spec:
               maxFastAttempts: 3
     template:
       title: "Promote {{ trunc 5 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }} to `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`"
-      description: "This PR is promoting the environment branch `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}` which is currently on dry sha {{ .ChangeTransferPolicy.Status.Active.Dry.Sha }} to dry sha {{ .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}."
+      description: |
+        This PR is promoting the environment branch `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`
+        
+        ## Changes
+        Active dry SHA: {{ trunc 7 .ChangeTransferPolicy.Status.Active.Dry.Sha }}
+        Proposed dry SHA: {{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}
+        
+        {{- range .PromotionStrategy.Status.Environments }}{{- if eq .Branch $.ChangeTransferPolicy.Spec.ActiveBranch }}
+        {{- if .Active.Dry.References }}
+        ### Current (Active)
+        | Subject | Repo | Date | Sha |
+        |---------|------|------|------|
+        {{- range .Active.Dry.References }}
+        | {{ .Commit.Subject }} | {{ .Commit.RepoURL }} | {{ .Commit.Date }} | [{{ trunc 7 .Commit.Sha }}]({{ .Commit.RepoURL }}/commit/{{ .Commit.Sha }}) |
+        {{- end }}
+        {{- end }}
+        {{- end }}{{- end }}
+        
+        {{- range .PromotionStrategy.Status.Environments }}{{- if eq .Branch $.ChangeTransferPolicy.Spec.ActiveBranch }}
+        {{- if .Proposed.Dry.References }}
+        ### Proposed
+        | Subject | Repo | Date | Sha |
+        |---------|------|------|------|
+        {{- range .Proposed.Dry.References }}
+        | {{ .Commit.Subject }} | {{ .Commit.RepoURL }} | {{ .Commit.Date }} | [{{ trunc 7 .Commit.Sha }}]({{ .Commit.RepoURL }}/commit/{{ .Commit.Sha }}) |
+        {{- end }}
+        {{- end }}
+        {{- end }}{{- end }}
+        
+        ## 🔄 Promotion Flow
+        
+        {{- range .PromotionStrategy.Status.Environments }}
+        {{- if eq .Branch $.ChangeTransferPolicy.Spec.ActiveBranch }}
+        - **{{ .Branch }}** ← (this PR)
+        {{- else if .PullRequest }}
+        {{- if .PullRequest.Url }}
+        - [{{ .Branch }}]({{ .PullRequest.Url }})
+        {{- else }}
+        - {{ .Branch }}
+        {{- end }}
+        {{- else }}
+        - {{ .Branch }}
+        {{- end }}
+        {{- end }}
+        
+        
+        ```mermaid
+        graph LR
+        {{- range $i, $env := .PromotionStrategy.Spec.Environments }}
+        {{- if gt $i 0 }}
+            {{ (index $.PromotionStrategy.Spec.Environments (sub $i 1)).Branch }} --> {{ .Branch }}
+        {{- end }}
+        {{- if eq .Branch $.ChangeTransferPolicy.Spec.ActiveBranch }}
+            style {{ .Branch }} fill:#90EE90,stroke:#228B22
+        {{- end }}
+        {{- end }}
+        ```
   commitStatus:
     workQueue:
       maxConcurrentReconciles: 10
-      requeueDuration: "5m"
+      requeueDuration: "1m"
       rateLimiter:
         maxOf:
           - bucket:
