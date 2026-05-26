@@ -94,6 +94,16 @@ duration before being promoted.
 {!internal/controller/testdata/TimedCommitStatus.yaml!}
 ```
 
+### GitCommitStatus
+
+A GitCommitStatus evaluates commit data with a custom expression and creates CommitStatus resources for
+promotion gating. See [Git Commit Status](commit-status-controllers/git-commit.md) for configuration, expression
+variables, and examples.
+
+```yaml
+{!internal/controller/testdata/GitCommitStatus.yaml!}
+```
+
 ### WebRequestCommitStatus
 
 A WebRequestCommitStatus gates promotions on external HTTP/HTTPS API validation. It makes HTTP requests to configurable endpoints, evaluates a validation expression against the response, and creates or updates CommitStatus resources. It supports polling mode (fixed interval) or trigger mode (expression-based triggering). See the [Web Request Commit Status](commit-status-controllers/web-request.md) documentation for full configuration, examples, and template variables.
@@ -120,12 +130,21 @@ Every CRD which is reconciled has a `status.conditions` field. Each CRD currentl
 condition. If the `Ready` condition is `True`, then it means that 1) reconciliation of the resource has completed 
 successfully, and 2) all child resources also had a `Ready` condition of `True`.
 
+### Observed generation
+
+Reconciled CRDs (all resources in this document except `ControllerConfiguration`) set `status.observedGeneration`
+to the `metadata.generation` that produced the current status. When it equals `metadata.generation`, status is current;
+when it is lower, reconciliation has not caught up yet (or the last apply failed — see the `Ready` condition). Each
+`Ready` condition also has its own `observedGeneration` for the generation that condition reflects; on a failed apply,
+top-level `status.observedGeneration` may stay pinned to the last successful reconcile while the condition records the
+attempted generation.
+
 ### Condition Reasons
 
 All CRDs may have the following condition reasons:
 
 * `ReconciliationSuccess`
-* `ReconciliationFailed`
+* `ReconciliationError`
 
 #### `ArgoCDCommitStatus`
 
@@ -155,10 +174,20 @@ resources and ensuring proper cleanup of external resources (like pull requests 
 
 ### PullRequest Finalizer
 
-**Finalizer**: `pullrequest.promoter.argoporoj.io/finalizer`
+**Finalizer**: `pullrequest.promoter.argoproj.io/finalizer`
 
 When a PullRequest is deleted, the finalizer ensures that the pull request is properly closed on the SCM before the 
 Kubernetes resource is removed. This prevents orphaned pull requests in your SCM.
+
+**ChangeTransferPolicy-owned PullRequest finalizer**: `changetransferpolicy.promoter.argoproj.io/pullrequest-finalizer`
+
+Set on PullRequests managed by a ChangeTransferPolicy so the CTP controller can copy PR status before the PullRequest
+resource is removed.
+
+**ChangeTransferPolicy cleanup finalizer**: `changetransferpolicy.promoter.argoproj.io/finalizer`
+
+Set on ChangeTransferPolicy while owned PullRequests may still carry the pullrequest finalizer above; cleared after
+cleanup during deletion.
 
 ### GitRepository Finalizer
 

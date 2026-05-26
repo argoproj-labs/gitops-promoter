@@ -131,7 +131,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 				g.Expect(tcs.Status.Environments[0].AtMostDurationRemaining.Duration).To(BeNumerically(">", 0), "AtMostDurationRemaining should be > 0 when pending")
 
 				// Verify CommitStatus was created for dev environment with pending phase
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-pending-"+testBranchDevelopment+"-timed")
+				commitStatusName := utils.KubeSafeUniqueName(name + "-pending-" + testBranchDevelopment + "-timed")
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -203,7 +203,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 					"AtMostDurationRemaining must be 0 for success phase")
 
 				// Verify CommitStatus was created for dev environment (current environment) with success phase
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-time-met-"+testBranchDevelopment+"-timed")
+				commitStatusName := utils.KubeSafeUniqueName(name + "-time-met-" + testBranchDevelopment + "-timed")
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -235,7 +235,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 					"AtMostDurationRemaining should remain 0")
 
 				// Verify CommitStatus phase remains success for dev environment
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-time-met-"+testBranchDevelopment+"-timed")
+				commitStatusName := utils.KubeSafeUniqueName(name + "-time-met-" + testBranchDevelopment + "-timed")
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -324,7 +324,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 					"AtMostDurationRemaining should still be > 0 (24 hours not elapsed)")
 
 				// Verify CommitStatus phase remains pending for dev environment
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-time-not-met-"+testBranchDevelopment+"-timed")
+				commitStatusName := utils.KubeSafeUniqueName(name + "-time-not-met-" + testBranchDevelopment + "-timed")
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -356,7 +356,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 			var ctpStaging promoterv1alpha1.ChangeTransferPolicy
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+					Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
 					Namespace: "default",
 				}, &ctpStaging)
 				g.Expect(err).To(Succeed())
@@ -511,9 +511,9 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(tcs.Status.Environments).To(HaveLen(3))
 
-				oldCommitStatusDevName = utils.KubeSafeUniqueName(ctx, name+"-cleanup-"+testBranchDevelopment+"-timed")
-				oldCommitStatusStagingName = utils.KubeSafeUniqueName(ctx, name+"-cleanup-"+testBranchStaging+"-timed")
-				oldCommitStatusProdName = utils.KubeSafeUniqueName(ctx, name+"-cleanup-"+testBranchProduction+"-timed")
+				oldCommitStatusDevName = utils.KubeSafeUniqueName(name + "-cleanup-" + testBranchDevelopment + "-timed")
+				oldCommitStatusStagingName = utils.KubeSafeUniqueName(name + "-cleanup-" + testBranchStaging + "-timed")
+				oldCommitStatusProdName = utils.KubeSafeUniqueName(name + "-cleanup-" + testBranchProduction + "-timed")
 
 				// Verify all three CommitStatus resources exist
 				oldCsDev := &promoterv1alpha1.CommitStatus{}

@@ -231,11 +231,12 @@ func EnqueueChangeTransferPolicies(
 // sanitization is all hyphens), the stem falls back to "x" so the result is still "x-<hash>" instead of "-<hash>",
 // which would violate DNS1123 (names must start and end with an alphanumeric character). The same fallback
 // applies if the stem would end up empty after TruncateString + TrimRight.
-func KubeSafeUniqueName(ctx context.Context, name string) string {
+func KubeSafeUniqueName(name string) string {
 	s := strings.ToLower(m1.ReplaceAllString(name, "-"))
 	h := fnv.New32a()
 	if _, err := h.Write([]byte(s)); err != nil {
-		log.FromContext(ctx).Error(err, "Failed to write to hash")
+		// hash.Hash.Write is documented to never return an error; this panic should never be reached.
+		panic(fmt.Sprintf("KubeSafeUniqueName: unexpected error writing to FNV hash: %v", err))
 	}
 	hash := strconv.FormatUint(uint64(h.Sum32()), 16)
 	limit := validation.DNS1123SubdomainMaxLength

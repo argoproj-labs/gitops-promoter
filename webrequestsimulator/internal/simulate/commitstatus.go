@@ -17,7 +17,6 @@ limitations under the License.
 package simulate
 
 import (
-	"context"
 	"fmt"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,7 +35,6 @@ import (
 // OwnerReferences and Status are intentionally omitted — the simulator does not
 // run against a live cluster, so it has no UID to reference and observes no state.
 func renderCommitStatus(
-	ctx context.Context,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
 	repositoryRefName, branch, sha string,
 	phase promoterv1alpha1.CommitStatusPhase,
@@ -48,7 +46,7 @@ func renderCommitStatus(
 			Kind:       "CommitStatus",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-webrequest", wrcs.Name, branch)),
+			Name:      utils.KubeSafeUniqueName(fmt.Sprintf("%s-%s-webrequest", wrcs.Name, branch)),
 			Namespace: wrcs.Namespace,
 			Labels: map[string]string{
 				promoterv1alpha1.WebRequestCommitStatusLabel: utils.KubeSafeLabel(wrcs.Name),

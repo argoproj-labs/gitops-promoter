@@ -357,7 +357,7 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusEnvironments(ctx context.Con
 	}
 
 	psEnvStatusMap := getEnvsByBranch(ps)
-	applicableEnvs := getApplicableEnvironments(ps, wrcs.Spec.Key, wrcs.Spec.ReportOn)
+	applicableEnvs := utils.GetApplicableEnvironments(ps, wrcs.Spec.Key, wrcs.Spec.ReportOn)
 	currentShas, err := getCurrentShasByBranch(applicableEnvs, psEnvStatusMap, wrcs.Spec.ReportOn)
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("failed to resolve current SHAs: %w", err)
@@ -477,7 +477,7 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusPromotionStrategy(ctx contex
 		return nil, nil, 0, errors.New("WebRequestCommitStatus is required")
 	}
 
-	applicableEnvs := getApplicableEnvironments(ps, wrcs.Spec.Key, wrcs.Spec.ReportOn)
+	applicableEnvs := utils.GetApplicableEnvironments(ps, wrcs.Spec.Key, wrcs.Spec.ReportOn)
 	if len(applicableEnvs) == 0 {
 		// RequeueAfter 0: do not schedule a timed requeue; the reconciler runs again on watch events
 		// (e.g. PromotionStrategy or WRCS spec changes) or informer resync—not on a polling interval.

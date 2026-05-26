@@ -39,7 +39,7 @@ type Args struct {
 type simulatedCommitEmitter struct{}
 
 func (simulatedCommitEmitter) EmitCommitStatus(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, repositoryRefName, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, td webrequest.TemplateData) (*promoterv1alpha1.CommitStatus, error) {
-	return renderCommitStatus(ctx, wrcs, repositoryRefName, branch, sha, phase, td)
+	return renderCommitStatus(wrcs, repositoryRefName, branch, sha, phase, td)
 }
 
 // Simulate runs one WebRequestCommitStatus reconcile against args, using

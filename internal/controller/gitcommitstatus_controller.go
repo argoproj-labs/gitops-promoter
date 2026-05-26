@@ -165,36 +165,6 @@ type CommitData struct {
 	Author   string              `expr:"Author"`
 }
 
-// getApplicableEnvironments returns the environments from the PromotionStrategy that this GitCommitStatus applies to.
-// An environment is applicable if the GitCommitStatus key is referenced in either:
-// - The global ps.Spec.ProposedCommitStatuses, or
-// - The environment-specific psEnv.ProposedCommitStatuses
-func (r *GitCommitStatusReconciler) getApplicableEnvironments(ps *promoterv1alpha1.PromotionStrategy, key string) []promoterv1alpha1.Environment {
-	// Check if globally referenced
-	globallyProposed := false
-	for _, selector := range ps.Spec.ProposedCommitStatuses {
-		if selector.Key == key {
-			globallyProposed = true
-			break
-		}
-	}
-
-	applicable := make([]promoterv1alpha1.Environment, 0, len(ps.Spec.Environments))
-	for _, env := range ps.Spec.Environments {
-		if globallyProposed {
-			applicable = append(applicable, env)
-			continue
-		}
-		for _, selector := range env.ProposedCommitStatuses {
-			if selector.Key == key {
-				applicable = append(applicable, env)
-				break
-			}
-		}
-	}
-	return applicable
-}
-
 // processEnvironments processes each environment defined in the GitCommitStatus spec,
 // evaluating expressions against the proposed hydrated commit for each environment.
 // Returns a list of environment branches that transitioned from non-success to success
@@ -215,7 +185,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 	}
 
 	// Get environments this GitCommitStatus applies to
-	applicableEnvs := r.getApplicableEnvironments(ps, gcs.Spec.Key)
+	applicableEnvs := utils.GetApplicableEnvironments(ps, gcs.Spec.Key, constants.CommitRefProposed)
 
 	// Initialize tracking variables
 	transitionedEnvironments := make([]string, 0)
@@ -421,7 +391,7 @@ func (r *GitCommitStatusReconciler) evaluateExpression(expression string, commit
 // upsertCommitStatus creates or updates a CommitStatus resource for the validation result.
 func (r *GitCommitStatusReconciler) upsertCommitStatus(ctx context.Context, gcs *promoterv1alpha1.GitCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha, phase, validationName string) (*promoterv1alpha1.CommitStatus, error) {
 	// Generate a consistent name for the CommitStatus
-	commitStatusName := utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-%s", gcs.Name, branch, validationName))
+	commitStatusName := utils.KubeSafeUniqueName(fmt.Sprintf("%s-%s-%s", gcs.Name, branch, validationName))
 
 	commitStatus := promoterv1alpha1.CommitStatus{
 		ObjectMeta: metav1.ObjectMeta{

@@ -113,14 +113,14 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				Eventually(func(g Gomega) {
 					typeNamespacedNamePR := types.NamespacedName{
-						Name:      utils.KubeSafeUniqueName(ctx, prName),
+						Name:      utils.KubeSafeUniqueName(prName),
 						Namespace: "default",
 					}
 					err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
 					g.Expect(err).To(Succeed())
 					g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `%s`", shortSha, testBranchDevelopment)))
 					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-					g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
+					g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(prName)))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Adding another pending commit")
@@ -128,13 +128,13 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, types.NamespacedName{
-						Name:      utils.KubeSafeUniqueName(ctx, prName),
+						Name:      utils.KubeSafeUniqueName(prName),
 						Namespace: "default",
 					}, &pr)
 					g.Expect(err).To(Succeed())
 					g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `%s`", shortSha, testBranchDevelopment)))
 					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-					g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
+					g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(prName)))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Eventually(func(g Gomega) {
@@ -155,7 +155,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				Eventually(func(g Gomega) {
 					typeNamespacedNamePR := types.NamespacedName{
-						Name:      utils.KubeSafeUniqueName(ctx, prName),
+						Name:      utils.KubeSafeUniqueName(prName),
 						Namespace: "default",
 					}
 					err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
@@ -270,7 +270,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				Eventually(func(g Gomega) {
 					typeNamespacedNamePR := types.NamespacedName{
-						Name:      utils.KubeSafeUniqueName(ctx, prName),
+						Name:      utils.KubeSafeUniqueName(prName),
 						Namespace: "default",
 					}
 					err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
@@ -340,14 +340,14 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				Eventually(func(g Gomega) {
 					typeNamespacedNamePR := types.NamespacedName{
-						Name:      utils.KubeSafeUniqueName(ctx, prName),
+						Name:      utils.KubeSafeUniqueName(prName),
 						Namespace: "default",
 					}
 					err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
 					g.Expect(err).To(Succeed())
 					g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `%s`", shortSha, testBranchDevelopment)))
 					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-					g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
+					g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(prName)))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Adding another pending commit")
@@ -355,13 +355,13 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, types.NamespacedName{
-						Name:      utils.KubeSafeUniqueName(ctx, prName),
+						Name:      utils.KubeSafeUniqueName(prName),
 						Namespace: "default",
 					}, &pr)
 					g.Expect(err).To(Succeed())
 					g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `%s`", shortSha, testBranchDevelopment)))
 					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-					g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
+					g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(prName)))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Eventually(func(g Gomega) {
@@ -375,7 +375,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				Eventually(func(g Gomega) {
 					typeNamespacedNamePR := types.NamespacedName{
-						Name:      utils.KubeSafeUniqueName(ctx, prName),
+						Name:      utils.KubeSafeUniqueName(prName),
 						Namespace: "default",
 					}
 					err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
@@ -429,7 +429,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				// Verify mergeSha is set and matches the current proposed hydrated SHA
 				Eventually(func(g Gomega) {
 					typeNamespacedNamePR := types.NamespacedName{
-						Name:      utils.KubeSafeUniqueName(ctx, prName),
+						Name:      utils.KubeSafeUniqueName(prName),
 						Namespace: "default",
 					}
 					err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
@@ -618,7 +618,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				var createdPR promoterv1alpha1.PullRequest
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, types.NamespacedName{
-						Name:      utils.KubeSafeUniqueName(ctx, prName),
+						Name:      utils.KubeSafeUniqueName(prName),
 						Namespace: "default",
 					}, &createdPR)
 					g.Expect(err).To(Succeed())
@@ -656,7 +656,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				var createdPR promoterv1alpha1.PullRequest
 				Eventually(func(g Gomega) {
 					typeNamespacedNamePR := types.NamespacedName{
-						Name:      utils.KubeSafeUniqueName(ctx, prName),
+						Name:      utils.KubeSafeUniqueName(prName),
 						Namespace: "default",
 					}
 					err := k8sClient.Get(ctx, typeNamespacedNamePR, &createdPR)
@@ -1015,7 +1015,7 @@ var _ = Describe("tooManyPRsError", func() {
 
 //nolint:unparam // namespace is always "default" in tests but kept for consistency with other test helpers
 func changeTransferPolicyResources(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.ChangeTransferPolicy) {
-	name = name + "-" + utils.KubeSafeUniqueName(ctx, randomString(15))
+	name = name + "-" + utils.KubeSafeUniqueName(randomString(15))
 	gitRepo := &promoterv1alpha1.GitRepository{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
