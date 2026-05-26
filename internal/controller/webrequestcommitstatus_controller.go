@@ -83,7 +83,7 @@ type WebRequestCommitStatusReconciler struct {
 
 // Reconcile fetches the WebRequestCommitStatus and its PromotionStrategy, processes each applicable
 // environment (evaluating trigger and optionally making the HTTP request and validation), upserts
-// CommitStatus resources, cleans up orphaned CommitStatuses, and touches ChangeTransferPolicies when
+// CommitStatus resources, cleans up orphaned CommitStatuses, and enqueues ChangeTransferPolicies when
 // an environment transitions to success. Result status and requeue time are updated via the deferred handler.
 func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
@@ -193,10 +193,8 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 	// 6. Inherit conditions from CommitStatus objects
 	utils.InheritNotReadyConditionFromObjects(&wrcs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
 
-	// 7. If any validations transitioned to success, touch the corresponding ChangeTransferPolicies to trigger reconciliation
-	if len(transitionedEnvironments) > 0 {
-		r.touchChangeTransferPolicies(ctx, &ps, transitionedEnvironments)
-	}
+	// 7. If any validations transitioned to success, enqueue the corresponding ChangeTransferPolicies to trigger reconciliation
+	utils.EnqueueChangeTransferPolicies(ctx, r.EnqueueCTP, &ps, transitionedEnvironments, "validation transition")
 
 	return ctrl.Result{RequeueAfter: requeueAfter}, nil
 }
@@ -558,28 +556,6 @@ func (r *WebRequestCommitStatusReconciler) cleanupOrphanedCommitStatuses(ctx con
 	}
 
 	return nil
-}
-
-// touchChangeTransferPolicies enqueues the ChangeTransferPolicy for each environment in transitionedEnvironments,
-// so the CTP controller re-runs and can merge the PR now that this WebRequestCommitStatus has reported success.
-// Called from Reconcile when at least one environment's validation has just transitioned to success.
-func (r *WebRequestCommitStatusReconciler) touchChangeTransferPolicies(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, transitionedEnvironments []string) {
-	logger := log.FromContext(ctx)
-
-	// For each transitioned environment, trigger reconciliation of the corresponding ChangeTransferPolicy
-	for _, envBranch := range transitionedEnvironments {
-		// Generate the ChangeTransferPolicy name using the same logic as the PromotionStrategy controller
-		ctpName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(ps.Name, envBranch))
-
-		logger.Info("Triggering ChangeTransferPolicy reconciliation due to validation transition",
-			"changeTransferPolicy", ctpName,
-			"branch", envBranch)
-
-		// Use the enqueue function to trigger reconciliation.
-		if r.EnqueueCTP != nil {
-			r.EnqueueCTP(ps.Namespace, ctpName)
-		}
-	}
 }
 
 // enqueueWebRequestCommitStatusForPromotionStrategy returns the watch handler for PromotionStrategy. When a
