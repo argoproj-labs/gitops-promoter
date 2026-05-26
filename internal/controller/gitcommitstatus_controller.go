@@ -393,7 +393,7 @@ func (r *GitCommitStatusReconciler) evaluateExpression(expression string, commit
 // upsertCommitStatus creates or updates a CommitStatus resource for the validation result.
 func (r *GitCommitStatusReconciler) upsertCommitStatus(ctx context.Context, gcs *promoterv1alpha1.GitCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha, phase, validationName string) (*promoterv1alpha1.CommitStatus, error) {
 	// Generate a consistent name for the CommitStatus
-	commitStatusName := utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-%s", gcs.Name, branch, validationName))
+	commitStatusName := utils.KubeSafeUniqueName(fmt.Sprintf("%s-%s-%s", gcs.Name, branch, validationName))
 
 	commitStatus := promoterv1alpha1.CommitStatus{
 		ObjectMeta: metav1.ObjectMeta{
@@ -453,7 +453,7 @@ func (r *GitCommitStatusReconciler) touchChangeTransferPolicies(ctx context.Cont
 	// For each transitioned environment, trigger reconciliation of the corresponding ChangeTransferPolicy
 	for _, envBranch := range transitionedEnvironments {
 		// Generate the ChangeTransferPolicy name using the same logic as the PromotionStrategy controller
-		ctpName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(ps.Name, envBranch))
+		ctpName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(ps.Name, envBranch))
 
 		logger.Info("Triggering ChangeTransferPolicy reconciliation due to validation transition",
 			"changeTransferPolicy", ctpName,

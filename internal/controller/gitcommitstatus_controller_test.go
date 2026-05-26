@@ -133,7 +133,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Verifying CommitStatus was created with custom description")
 			Eventually(func(g Gomega) {
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-simple-"+testBranchDevelopment+"-test-validation")
+				commitStatusName := utils.KubeSafeUniqueName(name + "-simple-" + testBranchDevelopment + "-test-validation")
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -238,7 +238,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Verifying CommitStatus was created with failure phase")
 			Eventually(func(g Gomega) {
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-fail-"+testBranchDevelopment+"-test-validation")
+				commitStatusName := utils.KubeSafeUniqueName(name + "-fail-" + testBranchDevelopment + "-test-validation")
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -350,7 +350,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Waiting for CommitStatus to be created")
 			Eventually(func(g Gomega) {
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-cleanup-"+testBranchDevelopment+"-test-validation")
+				commitStatusName := utils.KubeSafeUniqueName(name + "-cleanup-" + testBranchDevelopment + "-test-validation")
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -366,7 +366,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 		// The ownership relationship is correctly established (tested above),
 		// but K8s GC in test env may not cleanup within reasonable timeout
 		PIt("should cleanup CommitStatus resources when GitCommitStatus is deleted", func() {
-			commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-cleanup-"+testBranchDevelopment+"-test-validation")
+			commitStatusName := utils.KubeSafeUniqueName(name + "-cleanup-" + testBranchDevelopment + "-test-validation")
 
 			By("Deleting the GitCommitStatus")
 			Expect(k8sClient.Delete(ctx, gitCommitStatus)).To(Succeed())
@@ -423,7 +423,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			By("Verifying CommitStatus created for each environment")
 			for _, envBranch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
 				Eventually(func(g Gomega) {
-					commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-multi-env-"+envBranch+"-test-validation")
+					commitStatusName := utils.KubeSafeUniqueName(name + "-multi-env-" + envBranch + "-test-validation")
 					var cs promoterv1alpha1.CommitStatus
 					err := k8sClient.Get(ctx, types.NamespacedName{
 						Name:      commitStatusName,
@@ -460,7 +460,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Verifying CommitStatus has empty description")
 			Eventually(func(g Gomega) {
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-no-desc-"+testBranchDevelopment+"-test-validation")
+				commitStatusName := utils.KubeSafeUniqueName(name + "-no-desc-" + testBranchDevelopment + "-test-validation")
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -767,7 +767,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Verifying the CommitStatus for staging shows failure")
 			Eventually(func(g Gomega) {
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-revert-check-"+testBranchStaging+"-test-validation")
+				commitStatusName := utils.KubeSafeUniqueName(name + "-revert-check-" + testBranchStaging + "-test-validation")
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -1007,8 +1007,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying CommitStatus for development is success with correct SHA")
-			devCommitStatusName := utils.KubeSafeUniqueName(ctx,
-				gatingName+"-"+devGateKey+"-"+testBranchDevelopment+"-"+devGateKey)
+			devCommitStatusName := utils.KubeSafeUniqueName(
+				gatingName + "-" + devGateKey + "-" + testBranchDevelopment + "-" + devGateKey)
 			Eventually(func(g Gomega) {
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -1023,8 +1023,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying CommitStatus for staging is success with correct SHA")
-			stagingCommitStatusName := utils.KubeSafeUniqueName(ctx,
-				gatingName+"-"+stagingGateKey+"-"+testBranchStaging+"-"+stagingGateKey)
+			stagingCommitStatusName := utils.KubeSafeUniqueName(
+				gatingName + "-" + stagingGateKey + "-" + testBranchStaging + "-" + stagingGateKey)
 			Eventually(func(g Gomega) {
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -1039,8 +1039,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying CommitStatus for production is FAILURE with correct SHA - this gates the promotion")
-			prodCommitStatusName := utils.KubeSafeUniqueName(ctx,
-				gatingName+"-"+prodGateKey+"-"+testBranchProduction+"-"+prodGateKey)
+			prodCommitStatusName := utils.KubeSafeUniqueName(
+				gatingName + "-" + prodGateKey + "-" + testBranchProduction + "-" + prodGateKey)
 			Eventually(func(g Gomega) {
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -1055,7 +1055,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying ChangeTransferPolicy for production has failing commit status")
-			ctpProdName := utils.KubeSafeUniqueName(ctx, gatingName+"-"+testBranchProduction)
+			ctpProdName := utils.KubeSafeUniqueName(gatingName + "-" + testBranchProduction)
 			Eventually(func(g Gomega) {
 				var ctp promoterv1alpha1.ChangeTransferPolicy
 				err := k8sClient.Get(ctx, types.NamespacedName{
