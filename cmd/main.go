@@ -25,26 +25,24 @@ import (
 	"os"
 	"runtime/debug"
 	"syscall"
+	"time"
 
 	"go.uber.org/zap/zapcore"
-	"sigs.k8s.io/controller-runtime/pkg/cluster"
+	"k8s.io/client-go/rest"
 
 	"github.com/argoproj-labs/gitops-promoter/cmd/demo"
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils/gitpaths"
+	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
 	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
-
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/sync/errgroup"
-
-	"github.com/argoproj-labs/gitops-promoter/internal/settings"
-	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
-	"github.com/argoproj-labs/gitops-promoter/internal/utils/gitpaths"
-	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -53,7 +51,11 @@ import (
 	"k8s.io/klog/v2"
 
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/cluster"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
@@ -104,6 +106,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	return cmd
 }
 
+//nolint:gocyclo // A long function in this case is clearer than a bunch of small functions.
 func runController(
 	metricsAddr string,
 	probeAddr string,
@@ -116,6 +119,21 @@ func runController(
 	controllerNamespace, _, err := clientConfig.Namespace()
 	if err != nil {
 		setupLog.Error(err, "failed to get namespace")
+		os.Exit(1)
+	}
+	if controllerNamespace == "" {
+		setupLog.Error(err, "kubeconfig must set a default (install) namespace")
+	}
+
+	restCfg, err := clientConfig.ClientConfig()
+	if err != nil {
+		setupLog.Error(err, "failed to get rest config")
+		os.Exit(1)
+	}
+
+	namespaced, err := getNamespaced(restCfg, controllerNamespace)
+	if err != nil {
+		setupLog.Error(err, "failed to get namespaced mode config")
 		os.Exit(1)
 	}
 
@@ -148,6 +166,12 @@ func runController(
 		TLSOpts: tlsOpts,
 	})
 
+	if namespaced {
+		setupLog.Info("restricting controller-runtime cache to controller install namespace; "+
+			"list/watch requests will be namespace-scoped (compatible with a namespaced Role)",
+			"namespace", controllerNamespace)
+	}
+
 	// Create the kubeconfig provider with options
 	providerOpts := kubeconfigprovider.Options{
 		Namespace:             controllerNamespace,
@@ -163,7 +187,7 @@ func runController(
 	// Create the provider first, then the manager with the provider
 	provider := kubeconfigprovider.New(providerOpts)
 
-	mcMgr, err := mcmanager.New(ctrl.GetConfigOrDie(), provider, ctrl.Options{
+	managerOpts := ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress:    metricsAddr,
@@ -187,7 +211,15 @@ func runController(
 		// if you are doing or is intended to do any operation such as perform cleanups
 		// after the manager stops then its usage might be unsafe.
 		// LeaderElectionReleaseOnCancel: true,
-	})
+	}
+
+	if namespaced {
+		managerOpts.Cache.DefaultNamespaces = map[string]cache.Config{
+			controllerNamespace: {},
+		}
+	}
+
+	mcMgr, err := mcmanager.New(restCfg, provider, managerOpts)
 	if err != nil {
 		panic(fmt.Errorf("unable to start manager: %w", err))
 	}
@@ -373,6 +405,24 @@ func runController(
 		setupLog.Info("cleaning directory", "directory", path)
 	}
 	return nil
+}
+
+func getNamespaced(restCfg *rest.Config, controllerNamespace string) (bool, error) {
+	bootstrapClient, err := client.New(restCfg, client.Options{Scheme: scheme})
+	if err != nil {
+		return false, fmt.Errorf("create kubernetes client for bootstrap: %w", err)
+	}
+	bootstrapSettings := settings.NewManager(bootstrapClient, bootstrapClient, settings.ManagerConfig{
+		ControllerNamespace: controllerNamespace,
+	})
+
+	readCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	useRestrictedCache, err := bootstrapSettings.GetNamespacedDirect(readCtx)
+	if err != nil {
+		return false, fmt.Errorf("bootstrap read of ControllerConfiguration: %w", err)
+	}
+	return useRestrictedCache, nil
 }
 
 func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {

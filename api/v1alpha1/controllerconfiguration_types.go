@@ -70,6 +70,13 @@ type ControllerConfigurationSpec struct {
 	// including WorkQueue settings that control reconciliation behavior.
 	// +required
 	WebRequestCommitStatus WebRequestCommitStatusConfiguration `json:"webRequestCommitStatus"`
+
+	// Namespaced, when true, configures the controller-runtime cache to list/watch only in the
+	// controller install namespace (the kubeconfig default namespace / ManagerConfig.controllerNamespace).
+	// This matches namespace-scoped Role RBAC. When false or unset, the controller uses the default
+	// cluster-wide list/watch (ClusterRole). Changing this value requires a controller restart to take effect.
+	// +optional
+	Namespaced bool `json:"namespaced,omitempty"`
 }
 
 // PromotionStrategyConfiguration defines the configuration for the PromotionStrategy controller.

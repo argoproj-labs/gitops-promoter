@@ -8,6 +8,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"golang.org/x/time/rate"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -61,6 +62,8 @@ type ControllerResultTypes interface {
 type ManagerConfig struct {
 	// ControllerNamespace is the namespace where the promoter controller is running.
 	// This namespace is used when fetching the ControllerConfiguration resource from the cluster.
+	// When ControllerConfiguration.spec.namespaced is true, the
+	// controller-runtime cache is also limited to this namespace.
 	ControllerNamespace string
 }
 
@@ -237,6 +240,20 @@ func GetRateLimiterDirect[T ControllerConfigurationTypes, R ControllerResultType
 	}
 
 	return limiter, nil
+}
+
+// GetNamespacedDirect returns spec.namespaced using a non-cached read.
+// It is safe to call before the manager cache has started.
+func (m *Manager) GetNamespacedDirect(ctx context.Context) (bool, error) {
+	cc, err := m.getControllerConfigurationDirect(ctx)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return false, fmt.Errorf("ControllerConfiguration %q not found in namespace %q (required before controller start): %w",
+				ControllerConfigurationName, m.config.ControllerNamespace, err)
+		}
+		return false, err
+	}
+	return cc.Spec.Namespaced, nil
 }
 
 // getWorkQueueForController retrieves the WorkQueue configuration for a specific controller type.
