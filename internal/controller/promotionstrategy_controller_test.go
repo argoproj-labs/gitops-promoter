@@ -3148,6 +3148,45 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 	return psName, scmSecret, scmProvider, gitRepo, commitStatusDevelopment, commitStatusStaging, promotionStrategy
 }
 
+// commitStatusFixture builds a fresh PromotionStrategy + GitRepository +
+// ScmProvider + Secret stack for one integration spec, applies the optional
+// mutator to the PromotionStrategy before creation (so callers can set
+// Environments / ActiveCommitStatuses / ProposedCommitStatuses), seeds the bare
+// git repo on the test server, creates everything, and registers DeferCleanup
+// to delete the chain in reverse order at the end of the spec.
+//
+// This is the per-test isolation pattern from
+// https://github.com/argoproj-labs/gitops-promoter/issues/1466 — every caller
+// gets its own random-stem stack via promotionStrategyResource, so specs are
+// order-independent and parallel-safe.
+//
+// Returned handles let callers inspect or mutate downstream resources (e.g.
+// cloning the gitRepo to capture HEAD SHAs, or referencing the scmProvider
+// from a ClusterScmProvider test).
+func commitStatusFixture(ctx context.Context, scenario string, mutate func(*promoterv1alpha1.PromotionStrategy)) (string, *promoterv1alpha1.GitRepository, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.PromotionStrategy) {
+	psName, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, scenario, "default")
+
+	if mutate != nil {
+		mutate(promotionStrategy)
+	}
+
+	setupInitialTestGitRepoOnServer(ctx, gitRepo)
+
+	Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+	Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+	Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+	Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+	DeferCleanup(func() {
+		_ = k8sClient.Delete(ctx, promotionStrategy)
+		_ = k8sClient.Delete(ctx, gitRepo)
+		_ = k8sClient.Delete(ctx, scmProvider)
+		_ = k8sClient.Delete(ctx, scmSecret)
+	})
+
+	return psName, gitRepo, scmProvider, promotionStrategy
+}
+
 func argocdApplications(namespace, appLabel, repoOwner, repoName string) (argocd.Application, argocd.Application, argocd.Application) {
 	environments := []string{"development", "staging", "production"}
 	apps := make([]argocd.Application, len(environments))

@@ -129,7 +129,7 @@ func expectHTTPRequestCountStabilizes(mu *sync.Mutex, count *int, failureContext
 	return final
 }
 
-var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
+var _ = Describe("WebRequestCommitStatus Controller - Unmarshalling", func() {
 	Context("When unmarshalling the test data", func() {
 		It("should unmarshal the WebRequestCommitStatus resource", func() {
 			err := unmarshalYamlStrict(testWebRequestCommitStatusYAML, &promoterv1alpha1.WebRequestCommitStatus{})
@@ -141,50 +141,25 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})
+})
 
+var _ = Describe("WebRequestCommitStatus Controller", func() {
 	var (
 		ctx               context.Context
 		name              string
-		scmSecret         *corev1.Secret
-		scmProvider       *promoterv1alpha1.ScmProvider
-		gitRepo           *promoterv1alpha1.GitRepository
 		promotionStrategy *promoterv1alpha1.PromotionStrategy
 		testServer        *httptest.Server
 	)
 
-	BeforeAll(func() {
+	BeforeEach(func() {
 		ctx = context.Background()
 
 		By("Setting up test git repository and resources")
-		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "webrequest-commit-status-test", "default")
-
-		// Configure ProposedCommitStatuses to check for web-request commit status
-		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-			{Key: "external-approval"},
-		}
-
-		setupInitialTestGitRepoOnServer(ctx, gitRepo)
-
-		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-	})
-
-	AfterAll(func() {
-		By("Cleaning up test resources")
-		if promotionStrategy != nil {
-			_ = k8sClient.Delete(ctx, promotionStrategy)
-		}
-		if gitRepo != nil {
-			_ = k8sClient.Delete(ctx, gitRepo)
-		}
-		if scmProvider != nil {
-			_ = k8sClient.Delete(ctx, scmProvider)
-		}
-		if scmSecret != nil {
-			_ = k8sClient.Delete(ctx, scmSecret)
-		}
+		name, _, _, promotionStrategy = commitStatusFixture(ctx, "wrcs-basic", func(ps *promoterv1alpha1.PromotionStrategy) {
+			ps.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "external-approval"},
+			}
+		})
 	})
 
 	Describe("Polling Mode - Success Response", func() {
@@ -1337,13 +1312,9 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 })
 
 // Test ResponseOutput feature (trigger mode only)
-var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, func() {
+var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", func() {
 	var (
 		name                   string
-		promotionStrategy      *promoterv1alpha1.PromotionStrategy
-		gitRepo                *promoterv1alpha1.GitRepository
-		scmProvider            *promoterv1alpha1.ScmProvider
-		scmSecret              *corev1.Secret
 		webRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
 		testServer             *httptest.Server
 		requestCount           int
@@ -1356,43 +1327,16 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 
 	ctx := context.Background()
 
-	BeforeAll(func() {
-		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "webrequest-responsedata", "default")
-
-		// Override to only use development environment for this test suite
-		promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
-			{Branch: testBranchDevelopment},
-		}
-
-		promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-			{Key: "responsedata-test"},
-		}
-
-		setupInitialTestGitRepoOnServer(ctx, gitRepo)
-
-		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-	})
-
-	AfterAll(func() {
-		By("Cleaning up test resources")
-		if promotionStrategy != nil {
-			_ = k8sClient.Delete(ctx, promotionStrategy)
-		}
-		if gitRepo != nil {
-			_ = k8sClient.Delete(ctx, gitRepo)
-		}
-		if scmProvider != nil {
-			_ = k8sClient.Delete(ctx, scmProvider)
-		}
-		if scmSecret != nil {
-			_ = k8sClient.Delete(ctx, scmSecret)
-		}
-	})
-
 	BeforeEach(func() {
+		name, _, _, _ = commitStatusFixture(ctx, "wrcs-resp", func(ps *promoterv1alpha1.PromotionStrategy) {
+			// Override to only use development environment for this test suite
+			ps.Spec.Environments = []promoterv1alpha1.Environment{
+				{Branch: testBranchDevelopment},
+			}
+			ps.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "responsedata-test"},
+			}
+		})
 		requestCount = 0
 	})
 
@@ -2280,49 +2224,22 @@ var _ = Describe("WebRequestCommitStatus Controller - SCM Host Validation", func
 	})
 })
 
-var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy", Ordered, func() {
+var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy", func() {
 	var (
-		ctx               context.Context
-		name              string
-		scmSecret         *corev1.Secret
-		scmProvider       *promoterv1alpha1.ScmProvider
-		gitRepo           *promoterv1alpha1.GitRepository
-		promotionStrategy *promoterv1alpha1.PromotionStrategy
-		testServer        *httptest.Server
+		ctx        context.Context
+		name       string
+		testServer *httptest.Server
 	)
 
-	BeforeAll(func() {
+	BeforeEach(func() {
 		ctx = context.Background()
 
 		By("Setting up test git repository and resources for context=promotionstrategy tests")
-		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "wrcs-ctx-ps-test", "default")
-
-		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-			{Key: "ps-context-check"},
-		}
-
-		setupInitialTestGitRepoOnServer(ctx, gitRepo)
-
-		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-	})
-
-	AfterAll(func() {
-		By("Cleaning up test resources")
-		if promotionStrategy != nil {
-			_ = k8sClient.Delete(ctx, promotionStrategy)
-		}
-		if gitRepo != nil {
-			_ = k8sClient.Delete(ctx, gitRepo)
-		}
-		if scmProvider != nil {
-			_ = k8sClient.Delete(ctx, scmProvider)
-		}
-		if scmSecret != nil {
-			_ = k8sClient.Delete(ctx, scmSecret)
-		}
+		name, _, _, _ = commitStatusFixture(ctx, "wrcs-ctxps", func(ps *promoterv1alpha1.PromotionStrategy) {
+			ps.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "ps-context-check"},
+			}
+		})
 	})
 
 	Describe("Polling Mode - Boolean Success Expression", func() {
@@ -2929,35 +2846,25 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 	})
 })
 
-var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy Zero Applicable Environments", Ordered, func() {
+var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy Zero Applicable Environments", func() {
 	var (
 		ctx                context.Context
 		name               string
-		scmSecret          *corev1.Secret
-		scmProvider        *promoterv1alpha1.ScmProvider
-		gitRepo            *promoterv1alpha1.GitRepository
-		promotionStrategy  *promoterv1alpha1.PromotionStrategy
 		testServer         *httptest.Server
 		wrcs               *promoterv1alpha1.WebRequestCommitStatus
 		httpRequestCount   int
 		httpRequestCountMu sync.Mutex
 	)
 
-	BeforeAll(func() {
+	BeforeEach(func() {
 		ctx = context.Background()
 
-		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "wrcs-ctx-ps-zero-app", "default")
-		// List a commit-status key that our WebRequestCommitStatus will not use, so no environment is applicable.
-		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-			{Key: "other-promotion-gate"},
-		}
-
-		setupInitialTestGitRepoOnServer(ctx, gitRepo)
-
-		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+		name, _, _, _ = commitStatusFixture(ctx, "wrcs-ctxps-zero", func(ps *promoterv1alpha1.PromotionStrategy) {
+			// List a commit-status key that our WebRequestCommitStatus will not use, so no environment is applicable.
+			ps.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "other-promotion-gate"},
+			}
+		})
 
 		httpRequestCount = 0
 		testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -2968,24 +2875,14 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy 
 		}))
 	})
 
-	AfterAll(func() {
+	AfterEach(func() {
 		if wrcs != nil {
 			_ = k8sClient.Delete(ctx, wrcs)
+			wrcs = nil
 		}
 		if testServer != nil {
 			testServer.Close()
-		}
-		if promotionStrategy != nil {
-			_ = k8sClient.Delete(ctx, promotionStrategy)
-		}
-		if gitRepo != nil {
-			_ = k8sClient.Delete(ctx, gitRepo)
-		}
-		if scmProvider != nil {
-			_ = k8sClient.Delete(ctx, scmProvider)
-		}
-		if scmSecret != nil {
-			_ = k8sClient.Delete(ctx, scmSecret)
+			testServer = nil
 		}
 	})
 
@@ -3034,36 +2931,26 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy 
 	})
 })
 
-var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy ReportOn Active", Ordered, func() {
+var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy ReportOn Active", func() {
 	var (
-		ctx               context.Context
-		name              string
-		scmSecret         *corev1.Secret
-		scmProvider       *promoterv1alpha1.ScmProvider
-		gitRepo           *promoterv1alpha1.GitRepository
-		promotionStrategy *promoterv1alpha1.PromotionStrategy
-		testServer        *httptest.Server
-		webRequestCS      *promoterv1alpha1.WebRequestCommitStatus
+		ctx          context.Context
+		name         string
+		testServer   *httptest.Server
+		webRequestCS *promoterv1alpha1.WebRequestCommitStatus
 	)
 
-	BeforeAll(func() {
+	BeforeEach(func() {
 		ctx = context.Background()
 
 		By("Setting up PromotionStrategy with activeCommitStatuses and a single environment")
-		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "wrcs-ctx-ps-active", "default")
-		promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
-			{Branch: testBranchDevelopment},
-		}
-		promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-			{Key: "ps-active-ctx-check"},
-		}
-
-		setupInitialTestGitRepoOnServer(ctx, gitRepo)
-
-		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+		name, _, _, _ = commitStatusFixture(ctx, "wrcs-ctxps-active", func(ps *promoterv1alpha1.PromotionStrategy) {
+			ps.Spec.Environments = []promoterv1alpha1.Environment{
+				{Branch: testBranchDevelopment},
+			}
+			ps.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "ps-active-ctx-check"},
+			}
+		})
 
 		testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
@@ -3074,24 +2961,14 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy 
 		}))
 	})
 
-	AfterAll(func() {
+	AfterEach(func() {
 		if webRequestCS != nil {
 			_ = k8sClient.Delete(ctx, webRequestCS)
+			webRequestCS = nil
 		}
 		if testServer != nil {
 			testServer.Close()
-		}
-		if promotionStrategy != nil {
-			_ = k8sClient.Delete(ctx, promotionStrategy)
-		}
-		if gitRepo != nil {
-			_ = k8sClient.Delete(ctx, gitRepo)
-		}
-		if scmProvider != nil {
-			_ = k8sClient.Delete(ctx, scmProvider)
-		}
-		if scmSecret != nil {
-			_ = k8sClient.Delete(ctx, scmSecret)
+			testServer = nil
 		}
 	})
 
@@ -3159,34 +3036,23 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy 
 	})
 })
 
-var _ = Describe("WebRequestCommitStatus Controller - Context Switching", Ordered, func() {
+var _ = Describe("WebRequestCommitStatus Controller - Context Switching", func() {
 	var (
-		ctx               context.Context
-		name              string
-		scmSecret         *corev1.Secret
-		scmProvider       *promoterv1alpha1.ScmProvider
-		gitRepo           *promoterv1alpha1.GitRepository
-		promotionStrategy *promoterv1alpha1.PromotionStrategy
-		testServer        *httptest.Server
-		wrcs              *promoterv1alpha1.WebRequestCommitStatus
+		ctx        context.Context
+		name       string
+		testServer *httptest.Server
+		wrcs       *promoterv1alpha1.WebRequestCommitStatus
 	)
 
-	BeforeAll(func() {
+	BeforeEach(func() {
 		ctx = context.Background()
 
 		By("Setting up test git repository and resources for context-switching tests")
-		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "wrcs-ctx-switch-test", "default")
-
-		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-			{Key: "ctx-switch-check"},
-		}
-
-		setupInitialTestGitRepoOnServer(ctx, gitRepo)
-
-		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+		name, _, _, _ = commitStatusFixture(ctx, "wrcs-ctx-switch", func(ps *promoterv1alpha1.PromotionStrategy) {
+			ps.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "ctx-switch-check"},
+			}
+		})
 
 		By("Creating a test HTTP server that returns approved=true")
 		testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -3198,24 +3064,14 @@ var _ = Describe("WebRequestCommitStatus Controller - Context Switching", Ordere
 		}))
 	})
 
-	AfterAll(func() {
+	AfterEach(func() {
 		if testServer != nil {
 			testServer.Close()
+			testServer = nil
 		}
 		if wrcs != nil {
 			_ = k8sClient.Delete(ctx, wrcs)
-		}
-		if promotionStrategy != nil {
-			_ = k8sClient.Delete(ctx, promotionStrategy)
-		}
-		if gitRepo != nil {
-			_ = k8sClient.Delete(ctx, gitRepo)
-		}
-		if scmProvider != nil {
-			_ = k8sClient.Delete(ctx, scmProvider)
-		}
-		if scmSecret != nil {
-			_ = k8sClient.Delete(ctx, scmSecret)
+			wrcs = nil
 		}
 	})
 
@@ -3330,48 +3186,22 @@ var _ = Describe("WebRequestCommitStatus Controller - Context Switching", Ordere
 	})
 })
 
-var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconcile", Ordered, func() {
+var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconcile", func() {
 	var (
-		ctx               context.Context
-		name              string
-		scmSecret         *corev1.Secret
-		scmProvider       *promoterv1alpha1.ScmProvider
-		gitRepo           *promoterv1alpha1.GitRepository
-		promotionStrategy *promoterv1alpha1.PromotionStrategy
-		testServer        *httptest.Server
+		ctx        context.Context
+		name       string
+		testServer *httptest.Server
 	)
 
-	BeforeAll(func() {
+	BeforeEach(func() {
 		ctx = context.Background()
 
 		By("Setting up test git repository and resources")
-		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "wrcs-sw-test", "default")
-
-		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-			{Key: "external-approval"},
-		}
-
-		setupInitialTestGitRepoOnServer(ctx, gitRepo)
-
-		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-	})
-
-	AfterAll(func() {
-		if promotionStrategy != nil {
-			_ = k8sClient.Delete(ctx, promotionStrategy)
-		}
-		if gitRepo != nil {
-			_ = k8sClient.Delete(ctx, gitRepo)
-		}
-		if scmProvider != nil {
-			_ = k8sClient.Delete(ctx, scmProvider)
-		}
-		if scmSecret != nil {
-			_ = k8sClient.Delete(ctx, scmSecret)
-		}
+		name, _, _, _ = commitStatusFixture(ctx, "wrcs-sw", func(ps *promoterv1alpha1.PromotionStrategy) {
+			ps.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "external-approval"},
+			}
+		})
 	})
 
 	Describe("Enriched context (environments context)", func() {
@@ -3773,14 +3603,10 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 	})
 })
 
-var _ = Describe("WebRequestCommitStatus Controller - SuccessOutput", Ordered, func() {
+var _ = Describe("WebRequestCommitStatus Controller - SuccessOutput", func() {
 	var (
-		name              string
-		promotionStrategy *promoterv1alpha1.PromotionStrategy
-		gitRepo           *promoterv1alpha1.GitRepository
-		scmProvider       *promoterv1alpha1.ScmProvider
-		scmSecret         *corev1.Secret
-		testServer        *httptest.Server
+		name       string
+		testServer *httptest.Server
 	)
 
 	const (
@@ -3791,40 +3617,17 @@ var _ = Describe("WebRequestCommitStatus Controller - SuccessOutput", Ordered, f
 
 	ctx := context.Background()
 
-	BeforeAll(func() {
-		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "webrequest-successoutput", "default")
-
-		promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
-			{Branch: testBranchDevelopment},
-			{Branch: testBranchStaging},
-			{Branch: testBranchProduction},
-		}
-
-		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-			{Key: "success-output-test"},
-		}
-
-		setupInitialTestGitRepoOnServer(ctx, gitRepo)
-
-		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-	})
-
-	AfterAll(func() {
-		if promotionStrategy != nil {
-			_ = k8sClient.Delete(ctx, promotionStrategy)
-		}
-		if gitRepo != nil {
-			_ = k8sClient.Delete(ctx, gitRepo)
-		}
-		if scmProvider != nil {
-			_ = k8sClient.Delete(ctx, scmProvider)
-		}
-		if scmSecret != nil {
-			_ = k8sClient.Delete(ctx, scmSecret)
-		}
+	BeforeEach(func() {
+		name, _, _, _ = commitStatusFixture(ctx, "wrcs-so", func(ps *promoterv1alpha1.PromotionStrategy) {
+			ps.Spec.Environments = []promoterv1alpha1.Environment{
+				{Branch: testBranchDevelopment},
+				{Branch: testBranchStaging},
+				{Branch: testBranchProduction},
+			}
+			ps.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "success-output-test"},
+			}
+		})
 	})
 
 	Describe("Environments Context - success.when.output stores data in status", func() {
@@ -4135,14 +3938,11 @@ var _ = Describe("WebRequestCommitStatus Controller - SuccessOutput", Ordered, f
 	})
 })
 
-var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard", Ordered, func() {
+var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard", func() {
 	var (
-		name              string
-		promotionStrategy *promoterv1alpha1.PromotionStrategy
-		gitRepo           *promoterv1alpha1.GitRepository
-		scmProvider       *promoterv1alpha1.ScmProvider
-		scmSecret         *corev1.Secret
-		testServer        *httptest.Server
+		name       string
+		gitRepo    *promoterv1alpha1.GitRepository
+		testServer *httptest.Server
 	)
 
 	const (
@@ -4151,34 +3951,12 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard", Ordered, f
 
 	ctx := context.Background()
 
-	BeforeAll(func() {
-		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "wrcs-dry-sha-guard", "default")
-
-		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-			{Key: "dry-sha-guard"},
-		}
-
-		setupInitialTestGitRepoOnServer(ctx, gitRepo)
-
-		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-	})
-
-	AfterAll(func() {
-		if promotionStrategy != nil {
-			_ = k8sClient.Delete(ctx, promotionStrategy)
-		}
-		if gitRepo != nil {
-			_ = k8sClient.Delete(ctx, gitRepo)
-		}
-		if scmProvider != nil {
-			_ = k8sClient.Delete(ctx, scmProvider)
-		}
-		if scmSecret != nil {
-			_ = k8sClient.Delete(ctx, scmSecret)
-		}
+	BeforeEach(func() {
+		name, gitRepo, _, _ = commitStatusFixture(ctx, "wrcs-drysha", func(ps *promoterv1alpha1.PromotionStrategy) {
+			ps.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "dry-sha-guard"},
+			}
+		})
 	})
 
 	Describe("Trigger Mode - resets to pending when new commit arrives and is not yet approved", func() {
@@ -4296,14 +4074,11 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard", Ordered, f
 	})
 })
 
-var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard (PromotionStrategy Context)", Ordered, func() {
+var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard (PromotionStrategy Context)", func() {
 	var (
-		name              string
-		promotionStrategy *promoterv1alpha1.PromotionStrategy
-		gitRepo           *promoterv1alpha1.GitRepository
-		scmProvider       *promoterv1alpha1.ScmProvider
-		scmSecret         *corev1.Secret
-		testServer        *httptest.Server
+		name       string
+		gitRepo    *promoterv1alpha1.GitRepository
+		testServer *httptest.Server
 	)
 
 	const (
@@ -4314,40 +4089,17 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard (PromotionSt
 
 	ctx := context.Background()
 
-	BeforeAll(func() {
-		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "wrcs-drysha-ps-ctx", "default")
-
-		promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
-			{Branch: testBranchDevelopment},
-			{Branch: testBranchStaging},
-			{Branch: testBranchProduction},
-		}
-
-		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-			{Key: "dry-sha-ps-guard"},
-		}
-
-		setupInitialTestGitRepoOnServer(ctx, gitRepo)
-
-		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-	})
-
-	AfterAll(func() {
-		if promotionStrategy != nil {
-			_ = k8sClient.Delete(ctx, promotionStrategy)
-		}
-		if gitRepo != nil {
-			_ = k8sClient.Delete(ctx, gitRepo)
-		}
-		if scmProvider != nil {
-			_ = k8sClient.Delete(ctx, scmProvider)
-		}
-		if scmSecret != nil {
-			_ = k8sClient.Delete(ctx, scmSecret)
-		}
+	BeforeEach(func() {
+		name, gitRepo, _, _ = commitStatusFixture(ctx, "wrcs-drysha-psctx", func(ps *promoterv1alpha1.PromotionStrategy) {
+			ps.Spec.Environments = []promoterv1alpha1.Environment{
+				{Branch: testBranchDevelopment},
+				{Branch: testBranchStaging},
+				{Branch: testBranchProduction},
+			}
+			ps.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "dry-sha-ps-guard"},
+			}
+		})
 	})
 
 	Describe("Per-branch phases with dry SHA guard", func() {
@@ -4511,22 +4263,23 @@ func wrcsPhaseForBranch(items []promoterv1alpha1.WebRequestCommitStatusPhasePerB
 // is older than our last write. We seed the tracker with an artificially-future
 // RV instead of trying to reproduce real informer-cache lag, which is
 // non-deterministic in envtest.
-var _ = Describe("WebRequestCommitStatus Controller - Stale Cache Guard", Ordered, func() {
+var _ = Describe("WebRequestCommitStatus Controller - Stale Cache Guard", func() {
 	var (
 		ctx  context.Context
 		wrcs *promoterv1alpha1.WebRequestCommitStatus
 	)
 
-	BeforeAll(func() {
+	BeforeEach(func() {
 		ctx = context.Background()
 
 		// Minimal WRCS spec: the stale-cache guard fires immediately after the
 		// initial Get(), before PromotionStrategy/namespace lookups, so a
 		// fully-wired strategy isn't needed. We still satisfy the CRD's required
-		// fields so Create() succeeds.
+		// fields so Create() succeeds. Use a unique per-test name so specs are
+		// parallel-safe.
 		wrcs = &promoterv1alpha1.WebRequestCommitStatus{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "wrcs-stale-cache-guard",
+				Name:      "wrcs-stale-cache-" + utils.KubeSafeUniqueName(randomString(8)),
 				Namespace: "default",
 			},
 			Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
@@ -4551,12 +4304,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Stale Cache Guard", Ordere
 			},
 		}
 		Expect(k8sClient.Create(ctx, wrcs)).To(Succeed())
-	})
-
-	AfterAll(func() {
-		if wrcs != nil {
-			_ = k8sClient.Delete(ctx, wrcs)
-		}
+		DeferCleanup(func() { _ = k8sClient.Delete(ctx, wrcs) })
 	})
 
 	It("requeues with the short backoff when the tracker reports the cache is stale", func() {

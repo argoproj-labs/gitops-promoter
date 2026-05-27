@@ -24,7 +24,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,76 +35,34 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
-// This Ordered suite shares one PromotionStrategy. Each spec must use a distinct
-// spec.key (and matching proposed key on that strategy) so ChangeTransferPolicy
-// does not match multiple CommitStatus objects with the same key and proposed SHA
-// (see parallel integration flakes). Per-test repo/PS isolation is tracked in
-// https://github.com/argoproj-labs/gitops-promoter/issues/1466
-
-// setPromotionStrategyGlobalProposedCommitStatusKey configures the shared suite
-// PromotionStrategy for a single proposed commit status key and clears per-environment
-// overrides left by prior tests (for example the cleanup spec).
-func setPromotionStrategyGlobalProposedCommitStatusKey(ctx context.Context, psName, key string) {
-	Eventually(func(g Gomega) {
-		var ps promoterv1alpha1.PromotionStrategy
-		g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: psName, Namespace: "default"}, &ps)).To(Succeed())
+// withGlobalProposedKey returns a PromotionStrategy mutator that configures a
+// single global ProposedCommitStatuses key (clearing any per-environment
+// overrides). Used by the GitCommitStatus integration specs that gate against
+// the proposed branch.
+func withGlobalProposedKey(key string) func(*promoterv1alpha1.PromotionStrategy) {
+	return func(ps *promoterv1alpha1.PromotionStrategy) {
 		ps.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 			{Key: key},
 		}
 		for i := range ps.Spec.Environments {
 			ps.Spec.Environments[i].ProposedCommitStatuses = nil
 		}
-		g.Expect(k8sClient.Update(ctx, &ps)).To(Succeed())
-	}, constants.EventuallyTimeout).Should(Succeed())
+	}
 }
 
-var _ = Describe("GitCommitStatus Controller", Ordered, func() {
-	var (
-		ctx               context.Context
-		name              string
-		scmSecret         *v1.Secret
-		scmProvider       *promoterv1alpha1.ScmProvider
-		gitRepo           *promoterv1alpha1.GitRepository
-		promotionStrategy *promoterv1alpha1.PromotionStrategy
-		gitCommitStatus   *promoterv1alpha1.GitCommitStatus
-	)
+var _ = Describe("GitCommitStatus Controller", func() {
+	var ctx context.Context
 
-	BeforeAll(func() {
+	BeforeEach(func() {
 		ctx = context.Background()
-
-		By("Setting up test git repository and resources")
-		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "git-commit-status-test", "default")
-
-		setupInitialTestGitRepoOnServer(ctx, gitRepo)
-
-		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-	})
-
-	AfterAll(func() {
-		By("Cleaning up test resources")
-		if promotionStrategy != nil {
-			_ = k8sClient.Delete(ctx, promotionStrategy)
-		}
-		if gitRepo != nil {
-			_ = k8sClient.Delete(ctx, gitRepo)
-		}
-		if scmProvider != nil {
-			_ = k8sClient.Delete(ctx, scmProvider)
-		}
-		if scmSecret != nil {
-			_ = k8sClient.Delete(ctx, scmSecret)
-		}
 	})
 
 	Describe("Basic Expression Evaluation", func() {
-		BeforeEach(func() {
-			setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, "gcs-simple")
+		It("should evaluate the active commit and report success", func() {
+			name, _, _, _ := commitStatusFixture(ctx, "gcs-simple", withGlobalProposedKey("gcs-simple"))
 
 			By("Creating a GitCommitStatus with a simple passing expression")
-			gitCommitStatus = &promoterv1alpha1.GitCommitStatus{
+			gitCommitStatus := &promoterv1alpha1.GitCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name + "-simple",
 					Namespace: "default",
@@ -120,15 +77,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, gitCommitStatus)).To(Succeed())
-		})
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, gitCommitStatus) })
 
-		AfterEach(func() {
-			if gitCommitStatus != nil {
-				_ = k8sClient.Delete(ctx, gitCommitStatus)
-			}
-		})
-
-		It("should evaluate the active commit and report success", func() {
 			By("Waiting for GitCommitStatus to process all environments")
 			Eventually(func(g Gomega) {
 				var gcs promoterv1alpha1.GitCommitStatus
@@ -138,10 +88,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				}, &gcs)
 				g.Expect(err).NotTo(HaveOccurred())
 
-				// Should have status for all three environments
 				g.Expect(gcs.Status.Environments).To(HaveLen(3))
 
-				// Verify each environment has proper status
 				for _, env := range gcs.Status.Environments {
 					g.Expect(env.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)), "Environment "+env.Branch+" should succeed")
 					g.Expect(env.ProposedHydratedSha).ToNot(BeEmpty(), "ProposedHydratedSha should be populated")
@@ -168,11 +116,11 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 	})
 
 	Describe("Expression with Commit Subject and Body", func() {
-		BeforeEach(func() {
-			setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, "gcs-subject")
+		It("should evaluate expression against commit subject field", func() {
+			name, _, _, _ := commitStatusFixture(ctx, "gcs-subject", withGlobalProposedKey("gcs-subject"))
 
 			By("Creating a GitCommitStatus that checks commit subject")
-			gitCommitStatus = &promoterv1alpha1.GitCommitStatus{
+			gitCommitStatus := &promoterv1alpha1.GitCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name + "-subject",
 					Namespace: "default",
@@ -186,15 +134,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, gitCommitStatus)).To(Succeed())
-		})
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, gitCommitStatus) })
 
-		AfterEach(func() {
-			if gitCommitStatus != nil {
-				_ = k8sClient.Delete(ctx, gitCommitStatus)
-			}
-		})
-
-		It("should evaluate expression against commit subject field", func() {
 			By("Waiting for evaluation to complete")
 			Eventually(func(g Gomega) {
 				var gcs promoterv1alpha1.GitCommitStatus
@@ -205,7 +146,6 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(gcs.Status.Environments).ToNot(BeEmpty())
 
-				// The subject should not be empty - should pass for all environments
 				for _, env := range gcs.Status.Environments {
 					g.Expect(env.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 					g.Expect(env.ExpressionResult).ToNot(BeNil())
@@ -216,11 +156,11 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 	})
 
 	Describe("Failing Expression", func() {
-		BeforeEach(func() {
-			setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, "gcs-fail")
+		It("should report failure status for all environments", func() {
+			name, _, _, _ := commitStatusFixture(ctx, "gcs-fail", withGlobalProposedKey("gcs-fail"))
 
 			By("Creating a GitCommitStatus with an expression that always fails")
-			gitCommitStatus = &promoterv1alpha1.GitCommitStatus{
+			gitCommitStatus := &promoterv1alpha1.GitCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name + "-fail",
 					Namespace: "default",
@@ -234,15 +174,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, gitCommitStatus)).To(Succeed())
-		})
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, gitCommitStatus) })
 
-		AfterEach(func() {
-			if gitCommitStatus != nil {
-				_ = k8sClient.Delete(ctx, gitCommitStatus)
-			}
-		})
-
-		It("should report failure status for all environments", func() {
 			By("Waiting for evaluation to complete")
 			Eventually(func(g Gomega) {
 				var gcs promoterv1alpha1.GitCommitStatus
@@ -275,11 +208,11 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 	})
 
 	Describe("Invalid Expression", func() {
-		BeforeEach(func() {
-			setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, "gcs-invalid")
+		It("should report failure with compilation error message", func() {
+			name, _, _, _ := commitStatusFixture(ctx, "gcs-invalid", withGlobalProposedKey("gcs-invalid"))
 
 			By("Creating a GitCommitStatus with invalid expression syntax")
-			gitCommitStatus = &promoterv1alpha1.GitCommitStatus{
+			gitCommitStatus := &promoterv1alpha1.GitCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name + "-invalid",
 					Namespace: "default",
@@ -293,15 +226,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, gitCommitStatus)).To(Succeed())
-		})
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, gitCommitStatus) })
 
-		AfterEach(func() {
-			if gitCommitStatus != nil {
-				_ = k8sClient.Delete(ctx, gitCommitStatus)
-			}
-		})
-
-		It("should report failure with compilation error message", func() {
 			By("Waiting for the Ready condition to show the compilation error")
 			Eventually(func(g Gomega) {
 				var gcs promoterv1alpha1.GitCommitStatus
@@ -311,8 +237,6 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				}, &gcs)
 				g.Expect(err).NotTo(HaveOccurred())
 
-				// The controller should error out due to expression compilation failure
-				// This will set Ready=False via HandleReconciliationResult
 				readyCondition := meta.FindStatusCondition(gcs.Status.Conditions, "Ready")
 				g.Expect(readyCondition).NotTo(BeNil())
 				g.Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
@@ -323,10 +247,13 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 	Describe("Missing PromotionStrategy", func() {
 		It("should handle missing PromotionStrategy gracefully", func() {
+			// No fixture: this spec asserts behavior when the PS doesn't exist.
+			resourceName := "gcs-missing-ps-" + utils.KubeSafeUniqueName(randomString(8))
+
 			By("Creating a GitCommitStatus referencing non-existent PromotionStrategy")
 			gcs := &promoterv1alpha1.GitCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-missing-ps",
+					Name:      resourceName,
 					Namespace: "default",
 				},
 				Spec: promoterv1alpha1.GitCommitStatusSpec{
@@ -338,30 +265,26 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, gcs)).To(Succeed())
-			defer func() {
-				_ = k8sClient.Delete(ctx, gcs)
-			}()
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, gcs) })
 
-			// The controller should handle this gracefully - it will error but not crash
 			Consistently(func(g Gomega) {
 				var retrieved promoterv1alpha1.GitCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name + "-missing-ps",
+					Name:      resourceName,
 					Namespace: "default",
 				}, &retrieved)
 				g.Expect(err).NotTo(HaveOccurred())
-				// Status should remain empty since PromotionStrategy doesn't exist
 				g.Expect(retrieved.Status.Environments).To(BeEmpty())
 			}, "5s", "1s").Should(Succeed())
 		})
 	})
 
 	Describe("CommitStatus Ownership and Cleanup", func() {
-		BeforeEach(func() {
-			setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, "gcs-cleanup")
+		It("should cleanup orphaned CommitStatus when environments no longer apply", func() {
+			name, _, _, _ := commitStatusFixture(ctx, "gcs-cleanup", withGlobalProposedKey("gcs-cleanup"))
 
 			By("Creating a GitCommitStatus")
-			gitCommitStatus = &promoterv1alpha1.GitCommitStatus{
+			gitCommitStatus := &promoterv1alpha1.GitCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name + "-cleanup",
 					Namespace: "default",
@@ -375,6 +298,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, gitCommitStatus)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, gitCommitStatus) })
 
 			By("Waiting for CommitStatus to be created")
 			Eventually(func(g Gomega) {
@@ -388,9 +312,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				g.Expect(cs.OwnerReferences).ToNot(BeEmpty())
 				g.Expect(cs.OwnerReferences[0].Name).To(Equal(name + "-cleanup"))
 			}, constants.EventuallyTimeout).Should(Succeed())
-		})
 
-		It("should cleanup orphaned CommitStatus when environments no longer apply", func() {
 			stagingCommitStatusName := utils.CommitStatusResourceName(ctx, gitCommitStatus, testBranchStaging)
 			prodCommitStatusName := utils.CommitStatusResourceName(ctx, gitCommitStatus, testBranchProduction)
 
@@ -431,6 +353,23 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 		// The ownership relationship is correctly established (tested above),
 		// but K8s GC in test env may not cleanup within reasonable timeout
 		PIt("should cleanup CommitStatus resources when GitCommitStatus is deleted", func() {
+			name, _, _, _ := commitStatusFixture(ctx, "gcs-gc", withGlobalProposedKey("gcs-gc"))
+
+			gitCommitStatus := &promoterv1alpha1.GitCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-gc",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.GitCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key:        "gcs-gc",
+					Expression: `true`,
+				},
+			}
+			Expect(k8sClient.Create(ctx, gitCommitStatus)).To(Succeed())
+
 			commitStatusName := utils.CommitStatusResourceName(ctx, gitCommitStatus, testBranchDevelopment)
 
 			By("Deleting the GitCommitStatus")
@@ -450,7 +389,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 	Describe("Multiple Environments", func() {
 		It("should evaluate independently for each environment", func() {
-			setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, "gcs-multi-env")
+			name, _, _, _ := commitStatusFixture(ctx, "gcs-multi-env", withGlobalProposedKey("gcs-multi-env"))
 
 			By("Creating a GitCommitStatus that applies to all environments")
 			gcs := &promoterv1alpha1.GitCommitStatus{
@@ -467,9 +406,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, gcs)).To(Succeed())
-			defer func() {
-				_ = k8sClient.Delete(ctx, gcs)
-			}()
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, gcs) })
 
 			By("Verifying all three environments are evaluated")
 			Eventually(func(g Gomega) {
@@ -481,7 +418,6 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(retrieved.Status.Environments).To(HaveLen(3))
 
-				// All should succeed
 				for _, env := range retrieved.Status.Environments {
 					g.Expect(env.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				}
@@ -505,7 +441,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 	Describe("Default Description Behavior", func() {
 		It("should use empty description when not specified", func() {
-			setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, "gcs-no-desc")
+			name, _, _, _ := commitStatusFixture(ctx, "gcs-no-desc", withGlobalProposedKey("gcs-no-desc"))
 
 			By("Creating a GitCommitStatus without description")
 			gcs := &promoterv1alpha1.GitCommitStatus{
@@ -519,13 +455,10 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 					},
 					Key:        "gcs-no-desc",
 					Expression: `true`,
-					// Description not set
 				},
 			}
 			Expect(k8sClient.Create(ctx, gcs)).To(Succeed())
-			defer func() {
-				_ = k8sClient.Delete(ctx, gcs)
-			}()
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, gcs) })
 
 			By("Verifying CommitStatus has empty description")
 			Eventually(func(g Gomega) {
@@ -543,7 +476,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 	Describe("Active vs Proposed SHA Validation", func() {
 		It("should give different validation results when active and proposed commits have different properties", func() {
-			setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, "gcs-active-proposed")
+			name, gitRepo, _, _ := commitStatusFixture(ctx, "gcs-active-proposed", withGlobalProposedKey("gcs-active-proposed"))
 
 			By("Updating git repo to create a commit with a different subject")
 			gitPath, err := os.MkdirTemp("", "*")
@@ -567,7 +500,6 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				}, &ps)
 				g.Expect(err).NotTo(HaveOccurred())
 
-				// Check development environment
 				for _, env := range ps.Status.Environments {
 					if env.Branch == testBranchDevelopment {
 						g.Expect(env.Proposed.Hydrated.Sha).ToNot(BeEmpty())
@@ -618,12 +550,10 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				}
 				g.Expect(devEnv).ToNot(BeNil())
 
-				// Verify it's checking the active SHA
 				g.Expect(devEnv.TargetedSha).To(Equal(developmentActiveSHA))
 				g.Expect(devEnv.Phase).ToNot(BeEmpty())
 				activePhase = devEnv.Phase
 
-				// Active commit doesn't have "feat:" prefix, so expression should fail
 				g.Expect(devEnv.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseFailure)))
 				g.Expect(devEnv.ExpressionResult).ToNot(BeNil())
 				g.Expect(*devEnv.ExpressionResult).To(BeFalse())
@@ -656,9 +586,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, gcsProposed)).To(Succeed())
-			defer func() {
-				_ = k8sClient.Delete(ctx, gcsProposed)
-			}()
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, gcsProposed) })
 
 			By("Verifying proposed mode gives success (proposed SHA has 'feat:' prefix)")
 			Eventually(func(g Gomega) {
@@ -679,25 +607,20 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				}
 				g.Expect(devEnv).ToNot(BeNil())
 
-				// Verify it's checking the proposed SHA
 				g.Expect(devEnv.TargetedSha).To(Equal(developmentProposedSHA))
-				// Proposed commit subject starts with "feat:", so should succeed
 				g.Expect(devEnv.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(devEnv.ExpressionResult).ToNot(BeNil())
 				g.Expect(*devEnv.ExpressionResult).To(BeTrue())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying the two modes can give different results")
-			// If active and proposed SHAs are different and have different properties,
-			// the validation results should differ. Here, proposed will succeed with "feat:" prefix
-			// while active may or may not depending on whether it's been promoted
 			Expect(activePhase).ToNot(BeEmpty(), "Active validation should have completed")
 		})
 	})
 
 	Describe("Revert Detection Flow", func() {
 		It("should detect reverts on staging and fail the commit status", func() {
-			setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, "gcs-revert")
+			name, gitRepo, _, _ := commitStatusFixture(ctx, "gcs-revert", withGlobalProposedKey("gcs-revert"))
 
 			By("Creating a GitCommitStatus that detects 'Revert' prefix on active commits")
 			gcsRevertCheck := &promoterv1alpha1.GitCommitStatus{
@@ -716,9 +639,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, gcsRevertCheck)).To(Succeed())
-			defer func() {
-				_ = k8sClient.Delete(ctx, gcsRevertCheck)
-			}()
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, gcsRevertCheck) })
 
 			By("Waiting for initial validation to pass on all environments (no reverts yet)")
 			Eventually(func(g Gomega) {
@@ -730,7 +651,6 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(retrieved.Status.Environments).To(HaveLen(3))
 
-				// All environments should pass initially (no reverts)
 				for _, env := range retrieved.Status.Environments {
 					g.Expect(env.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)),
 						"Environment %s should pass initially", env.Branch)
@@ -744,7 +664,6 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				_ = os.RemoveAll(gitPath)
 			}()
 
-			// Clone the repo
 			repoURL := testGitRepoCloneURL(gitRepo)
 			_, err = runGitCmd(ctx, gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", repoURL, ".")
 			Expect(err).NotTo(HaveOccurred())
@@ -754,11 +673,9 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			_, err = runGitCmd(ctx, gitPath, "config", "user.email", "testmail@test.com")
 			Expect(err).NotTo(HaveOccurred())
 
-			// Checkout the staging active branch
 			_, err = runGitCmd(ctx, gitPath, "checkout", "-B", testBranchStaging, "origin/"+testBranchStaging)
 			Expect(err).NotTo(HaveOccurred())
 
-			// First, create a commit that we can revert
 			f, err := os.Create(gitPath + "/feature-to-revert.yaml")
 			Expect(err).NotTo(HaveOccurred())
 			_, err = f.WriteString("feature: enabled\n")
@@ -771,25 +688,20 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			_, err = runGitCmd(ctx, gitPath, "commit", "-m", "feat: add new feature")
 			Expect(err).NotTo(HaveOccurred())
 
-			// Get the SHA of the commit we just created (to revert it)
 			commitToRevert, err := runGitCmd(ctx, gitPath, "rev-parse", "HEAD")
 			Expect(err).NotTo(HaveOccurred())
 			commitToRevert = strings.TrimSpace(commitToRevert)
 
-			// Get the SHA before we make the revert for the webhook
 			beforeSha, err := runGitCmd(ctx, gitPath, "rev-parse", testBranchStaging)
 			Expect(err).NotTo(HaveOccurred())
 			beforeSha = strings.TrimSpace(beforeSha)
 
-			// Use actual git revert command - this creates a commit with "Revert" prefix automatically
 			_, err = runGitCmd(ctx, gitPath, "revert", "--no-edit", commitToRevert)
 			Expect(err).NotTo(HaveOccurred())
 
-			// Push the revert commit
 			_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", testBranchStaging)
 			Expect(err).NotTo(HaveOccurred())
 
-			// Send webhook to trigger reconciliation
 			sendWebhookForPush(ctx, beforeSha, testBranchStaging)
 
 			By("Verifying staging environment fails due to revert detection")
@@ -823,14 +735,12 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				g.Expect(devEnv).ToNot(BeNil(), "Development environment should exist")
 				g.Expect(prodEnv).ToNot(BeNil(), "Production environment should exist")
 
-				// Staging should fail because active commit starts with "Revert"
 				g.Expect(stagingEnv.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseFailure)),
 					"Staging should fail due to revert commit")
 				g.Expect(stagingEnv.ExpressionResult).ToNot(BeNil())
 				g.Expect(*stagingEnv.ExpressionResult).To(BeFalse(),
 					"Expression should evaluate to false for revert commit")
 
-				// Development and Production should still pass (no reverts on those branches)
 				g.Expect(devEnv.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)),
 					"Development should still pass")
 				g.Expect(prodEnv.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)),
@@ -863,72 +773,29 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			prodGateKey    = "prod-gate"
 		)
 
-		var (
-			devGCS     *promoterv1alpha1.GitCommitStatus
-			stagingGCS *promoterv1alpha1.GitCommitStatus
-			prodGCS    *promoterv1alpha1.GitCommitStatus
-			gatingPS   *promoterv1alpha1.PromotionStrategy
-			gatingName string
-		)
-
-		BeforeEach(func() {
-			By("Creating a PromotionStrategy with per-environment commit status requirements")
-			gatingName, scmSecret, scmProvider, gitRepo, _, _, gatingPS = promotionStrategyResource(ctx, "git-commit-gating", "default")
-
-			// Configure per-environment ProposedCommitStatuses
-			for i := range gatingPS.Spec.Environments {
-				env := &gatingPS.Spec.Environments[i]
-				switch env.Branch {
-				case testBranchDevelopment:
-					env.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-						{Key: devGateKey},
-					}
-				case testBranchStaging:
-					env.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-						{Key: stagingGateKey},
-					}
-				case testBranchProduction:
-					env.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-						{Key: prodGateKey},
-					}
-				default:
-					// No commit status requirements for other environments
-				}
-			}
-
-			setupInitialTestGitRepoOnServer(ctx, gitRepo)
-
-			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Create(ctx, gatingPS)).To(Succeed())
-		})
-
-		AfterEach(func() {
-			if devGCS != nil {
-				_ = k8sClient.Delete(ctx, devGCS)
-			}
-			if stagingGCS != nil {
-				_ = k8sClient.Delete(ctx, stagingGCS)
-			}
-			if prodGCS != nil {
-				_ = k8sClient.Delete(ctx, prodGCS)
-			}
-			if gatingPS != nil {
-				_ = k8sClient.Delete(ctx, gatingPS)
-			}
-			if gitRepo != nil {
-				_ = k8sClient.Delete(ctx, gitRepo)
-			}
-			if scmProvider != nil {
-				_ = k8sClient.Delete(ctx, scmProvider)
-			}
-			if scmSecret != nil {
-				_ = k8sClient.Delete(ctx, scmSecret)
-			}
-		})
-
 		It("should gate production promotion when its GitCommitStatus fails while dev and staging pass", func() {
+			gatingName, gitRepo, _, _ := commitStatusFixture(ctx, "git-commit-gating", func(ps *promoterv1alpha1.PromotionStrategy) {
+				for i := range ps.Spec.Environments {
+					env := &ps.Spec.Environments[i]
+					switch env.Branch {
+					case testBranchDevelopment:
+						env.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+							{Key: devGateKey},
+						}
+					case testBranchStaging:
+						env.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+							{Key: stagingGateKey},
+						}
+					case testBranchProduction:
+						env.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+							{Key: prodGateKey},
+						}
+					default:
+						// No commit status requirements for other environments
+					}
+				}
+			})
+
 			By("Making a change and hydrating the repo to create proposed commits")
 			gitPath, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
@@ -949,7 +816,6 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				g.Expect(ps.Status.Environments).To(HaveLen(3))
 
 				for _, env := range ps.Status.Environments {
-					// Verify the dry SHA matches what we committed
 					g.Expect(env.Proposed.Dry.Sha).To(Equal(drySha),
 						"Proposed dry SHA should match the committed dry SHA for "+env.Branch)
 					g.Expect(env.Proposed.Hydrated.Sha).ToNot(BeEmpty(),
@@ -977,7 +843,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				"prodProposedSha", prodProposedSha)
 
 			By("Creating GitCommitStatus for development - PASSING (author exists)")
-			devGCS = &promoterv1alpha1.GitCommitStatus{
+			devGCS := &promoterv1alpha1.GitCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      gatingName + "-" + devGateKey,
 					Namespace: "default",
@@ -992,9 +858,10 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, devGCS)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, devGCS) })
 
 			By("Creating GitCommitStatus for staging - PASSING (subject exists)")
-			stagingGCS = &promoterv1alpha1.GitCommitStatus{
+			stagingGCS := &promoterv1alpha1.GitCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      gatingName + "-" + stagingGateKey,
 					Namespace: "default",
@@ -1009,9 +876,10 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, stagingGCS)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, stagingGCS) })
 
 			By("Creating GitCommitStatus for production - FAILING (requires non-existent author)")
-			prodGCS = &promoterv1alpha1.GitCommitStatus{
+			prodGCS := &promoterv1alpha1.GitCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      gatingName + "-" + prodGateKey,
 					Namespace: "default",
@@ -1026,6 +894,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, prodGCS)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, prodGCS) })
 
 			By("Verifying development GitCommitStatus passes with correct SHA")
 			Eventually(func(g Gomega) {
@@ -1133,11 +1002,9 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				}, &ctp)
 				g.Expect(err).NotTo(HaveOccurred())
 
-				// The CTP should have the commit status in its proposed statuses
 				g.Expect(ctp.Status.Proposed.CommitStatuses).ToNot(BeEmpty(),
 					"Production CTP should have proposed commit statuses")
 
-				// Find the prod-gate status
 				var foundProdGate bool
 				for _, status := range ctp.Status.Proposed.CommitStatuses {
 					if status.Key == prodGateKey {
@@ -1161,13 +1028,10 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				g.Expect(ps.Status.Environments).To(HaveLen(3))
 
 				for _, envStatus := range ps.Status.Environments {
-					// Check Proposed commit statuses - these gate whether a PR can be merged
 					switch envStatus.Branch {
 					case testBranchDevelopment:
-						// Verify SHA matches what we captured earlier
 						g.Expect(envStatus.Proposed.Hydrated.Sha).To(Equal(devProposedSha),
 							"Development proposed SHA should match captured SHA")
-						// Dev should have passing commit status on proposed
 						g.Expect(envStatus.Proposed.CommitStatuses).ToNot(BeEmpty(),
 							"Development should have proposed commit statuses")
 						var foundDevGate bool
@@ -1182,10 +1046,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 							"Should find dev-gate in PromotionStrategy development environment")
 
 					case testBranchStaging:
-						// Verify SHA matches what we captured earlier
 						g.Expect(envStatus.Proposed.Hydrated.Sha).To(Equal(stagingProposedSha),
 							"Staging proposed SHA should match captured SHA")
-						// Staging should have passing commit status on proposed
 						g.Expect(envStatus.Proposed.CommitStatuses).ToNot(BeEmpty(),
 							"Staging should have proposed commit statuses")
 						var foundStagingGate bool
@@ -1200,10 +1062,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 							"Should find staging-gate in PromotionStrategy staging environment")
 
 					case testBranchProduction:
-						// Verify SHA matches what we captured earlier
 						g.Expect(envStatus.Proposed.Hydrated.Sha).To(Equal(prodProposedSha),
 							"Production proposed SHA should match captured SHA")
-						// Production should have FAILING commit status on proposed - this gates the promotion
 						g.Expect(envStatus.Proposed.CommitStatuses).ToNot(BeEmpty(),
 							"Production should have proposed commit statuses")
 						var foundProdGate bool
@@ -1231,7 +1091,6 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				}, &ps)
 				g.Expect(err).NotTo(HaveOccurred())
 
-				// Find production environment
 				for _, envStatus := range ps.Status.Environments {
 					if envStatus.Branch == testBranchProduction {
 						g.Expect(envStatus.Proposed.CommitStatuses).ToNot(BeEmpty(),
@@ -1257,7 +1116,6 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				}, &gcs)
 				g.Expect(err).NotTo(HaveOccurred())
 
-				// Change expression to one that passes
 				gcs.Spec.Expression = `Commit.Author != ""` // Now passes - commits always have authors
 				gcs.Spec.Description = "Production gate - now approved"
 				err = k8sClient.Update(ctx, &gcs)
@@ -1289,7 +1147,6 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				}, &ps)
 				g.Expect(err).NotTo(HaveOccurred())
 
-				// Find production environment and verify gate is now passing
 				for _, envStatus := range ps.Status.Environments {
 					if envStatus.Branch == testBranchProduction {
 						g.Expect(envStatus.Proposed.CommitStatuses).ToNot(BeEmpty(),
