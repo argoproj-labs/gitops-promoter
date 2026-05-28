@@ -240,14 +240,14 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 		return false, "", time.Time{}, fmt.Errorf("failed to get repo: %w", err)
 	}
 
-	options := &gitlab.ListMergeRequestsOptions{
+	options := &gitlab.ListProjectMergeRequestsOptions{
 		SourceBranch: gitlab.Ptr(pullRequest.Spec.SourceBranch),
 		TargetBranch: gitlab.Ptr(pullRequest.Spec.TargetBranch),
 		State:        gitlab.Ptr("opened"),
 	}
 
 	start := time.Now()
-	mrs, resp, err := pr.client.MergeRequests.ListMergeRequests(options)
+	mrs, resp, err := pr.client.MergeRequests.ListProjectMergeRequests(repo.Spec.GitLab.ProjectID, options)
 	if resp == nil {
 		statusCode := -1
 		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
