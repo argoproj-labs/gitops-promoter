@@ -149,3 +149,16 @@ jobs:
           go-version: "1.26.3"
       - name: Run Nilaway
         run: make nilaway-no-test
+  deadcode:
+    name: Dead Code Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98 # pin@v4
+      - name: Set up Go
+        uses: actions/setup-go@4aaadf42668403795cdfdb15b1c4250e9fed12b9 # pin@v5
+        with:
+          go-version: "1.26.3"
+      - name: Run deadcode
+        run: make deadcode
