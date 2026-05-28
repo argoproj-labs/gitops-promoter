@@ -6,7 +6,6 @@ require (
 	code.gitea.io/sdk/gitea v0.25.1
 	codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v2 v2.2.0
 	github.com/AlecAivazis/survey/v2 v2.3.7
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.21.1
 	github.com/bradleyfalzon/ghinstallation/v2 v2.18.0
 	github.com/expr-lang/expr v1.17.8
 	github.com/fatih/color v1.19.0
@@ -48,7 +47,6 @@ require (
 
 require (
 	github.com/42wim/httpsig v1.2.4 // indirect
-	github.com/Azure/azure-sdk-for-go/sdk/internal v1.12.0 // indirect
 	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
