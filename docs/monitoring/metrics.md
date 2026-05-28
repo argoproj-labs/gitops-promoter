@@ -146,6 +146,15 @@ A counter for the number of times the ArgoCD application watch event handler is 
 
 No labels.
 
+## promoter_build_info
+
+A gauge that is always `1`. Version information is carried in the labels rather than the value. This metric is useful for querying the running version from dashboards and alerts.
+
+Labels:
+
+* `version`: The version of the GitOps Promoter binary (for example `v0.12.0`). Set to `unknown` when the binary was not built with release tooling.
+* `build_date`: The date and time at which the binary was built (RFC 3339 format). Set to `unknown` when the binary was not built with release tooling.
+
 ## promoter_kubernetes_resources
 
 A gauge of how many `promoter.argoproj.io` custom resources currently exist in the **local** Kubernetes cluster, broken out by API kind and readiness (for example `PromotionStrategy`, `GitRepository`).
