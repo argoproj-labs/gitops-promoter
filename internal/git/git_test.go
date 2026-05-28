@@ -563,7 +563,7 @@ var _ = Describe("ActivePath support", func() {
 		Expect(metadata.Sha).To(Equal("app-sha"))
 	})
 
-	It("keeps proposed changes only in activePath during conflict resolution", func() {
+	It("path-scoped merge: proposed wins inside activePath, active wins outside on conflict", func() {
 		base := map[string]string{
 			"apps/app-one/config.yaml": "version: base\n",
 			"apps/app-two/config.yaml": "version: base\n",
@@ -589,6 +589,7 @@ var _ = Describe("ActivePath support", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-one", "config.yaml"), []byte("version: proposed\n"), 0o644)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-two", "config.yaml"), []byte("version: proposed\n"), 0o644)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"proposed-root"}`), 0o644)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-one", "hydrator.metadata"), []byte(`{"drySha":"proposed"}`), 0o644)).To(Succeed())
 		_, err = runGitCmd(workDir, "add", "-A")
 		Expect(err).NotTo(HaveOccurred())
@@ -599,6 +600,7 @@ var _ = Describe("ActivePath support", func() {
 
 		_, err = runGitCmd(workDir, "checkout", "active")
 		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"active-root"}`), 0o644)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-one", "config.yaml"), []byte("version: active\n"), 0o644)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-two", "config.yaml"), []byte("version: active\n"), 0o644)).To(Succeed())
 		_, err = runGitCmd(workDir, "add", "-A")
@@ -614,8 +616,9 @@ var _ = Describe("ActivePath support", func() {
 		_, err = g.GetBranchShas(GinkgoT().Context(), "proposed-app-one-next", "apps/app-one")
 		Expect(err).NotTo(HaveOccurred())
 
-		err = g.MergeWithOursStrategyForPath(GinkgoT().Context(), "proposed-app-one-next", "active", "apps/app-one")
+		mergedSha, err := g.MergeWithOursStrategyForPath(GinkgoT().Context(), "proposed-app-one-next", "active", "apps/app-one")
 		Expect(err).NotTo(HaveOccurred())
+		Expect(mergedSha).NotTo(BeEmpty(), "MergeWithOursStrategyForPath should return the SHA of the new merge commit")
 
 		_, err = runGitCmd(workDir, "fetch", "origin")
 		Expect(err).NotTo(HaveOccurred())
@@ -624,11 +627,22 @@ var _ = Describe("ActivePath support", func() {
 
 		appOneContent, err := os.ReadFile(filepath.Join(workDir, "apps", "app-one", "config.yaml"))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(strings.TrimSpace(string(appOneContent))).To(Equal("version: proposed"), "app-one should keep proposed content")
+		Expect(strings.TrimSpace(string(appOneContent))).To(Equal("version: proposed"),
+			"inside activePath, proposed wins")
 
 		appTwoContent, err := os.ReadFile(filepath.Join(workDir, "apps", "app-two", "config.yaml"))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(strings.TrimSpace(string(appTwoContent))).To(Equal("version: active"), "app-two should use active content")
+		Expect(strings.TrimSpace(string(appTwoContent))).To(Equal("version: active"),
+			"outside activePath, active wins on conflict")
+
+		rootMetadata, err := os.ReadFile(filepath.Join(workDir, "hydrator.metadata"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(strings.TrimSpace(string(rootMetadata))).To(ContainSubstring("active-root"),
+			"root hydrator.metadata is no longer special-cased: outside activePath, active wins on conflict")
+
+		hasConflict, err := g.HasConflict(GinkgoT().Context(), "proposed-app-one-next", "active")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(hasConflict).To(BeFalse(), "resolved proposed branch should merge cleanly into active for SCM")
 	})
 
 	It("removes files deleted in the proposed branch from activePath during conflict resolution", func() {

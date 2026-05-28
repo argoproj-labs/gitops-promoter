@@ -39,11 +39,37 @@ Use:
 
 - `PromotionStrategy.spec.activePath` to scope each strategy to an app directory
 - `ArgoCDCommitStatus.spec.key` (and `TimedCommitStatus.spec.key`) to give each app a distinct commit status key — required to avoid key collisions when multiple apps share the same active branch
-- a hydrator that writes metadata at `<activePath>/hydrator.metadata` and does not overwrite other app directories
+- a hydrator that writes `<activePath>/hydrator.metadata` with the run's `drySha` and does not overwrite other
+  app directories. A repository-root `hydrator.metadata` is optional in this mode (the Argo CD source hydrator
+  writes one by default; GitOps Promoter only reads the path-scoped file when `activePath` is set)
 
 In this pattern, `PromotionStrategy.spec.activePath`, `sourceHydrator.drySource.path`, and
 `sourceHydrator.syncSource.path` should point to the same app directory so the hydrator writes and Argo CD reads from
 the same location.
+
+#### Constraints when multiple PromotionStrategies share an active branch
+
+Two configuration constraints apply whenever more than one `PromotionStrategy` targets the same active branch.
+Neither is enforced by API-level validation today, so treat them as authoring rules until a webhook check catches up.
+
+1. **All-or-nothing on `activePath`.** Either every `PromotionStrategy` on the branch uses `activePath`, or none do.
+   Mixing modes is silently unsafe: a default-mode PS resolves promotion conflicts with git's whole-tree `-s ours`
+   strategy, which discards active's tree entirely on the merge result. The next promotion of that PS therefore
+   wipes any other PS's app subtree off the active branch, even if its own hydrator was perfectly well-behaved
+   inside its own directory.
+
+2. **`activePath`s must be sibling-disjoint.** No `activePath` may be a prefix of another (`apps` and `apps/app-b`
+   are nested), and no two `PromotionStrategy` resources on the same active branch may share an identical
+   `activePath`.
+
+   - Nesting is detected loudly by git itself at first hydrator push: the proposed-branch naming convention
+     `<active>-next/<activePath>` puts the two branches in a parent/child relationship on `refs/heads/`, and git
+     refuses to coexist with `fatal: cannot lock ref 'refs/heads/<...>': '<parent>' exists`. Even if git did allow
+     it, the outer PS's path-scoped merge restores its whole `<activePath>` subtree from its own proposed branch,
+     which would silently overwrite the inner PS's directory.
+   - Duplicate `activePath`s are not detected by git: both `PromotionStrategy` resources would create distinct
+     `ChangeTransferPolicy` resources but share a single proposed branch and race destructively on it. Give each
+     PS a unique sibling path under a common parent (e.g. `apps/app-one`, `apps/app-two`).
 
 Example (dev/test/prod, simple list generator):
 

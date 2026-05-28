@@ -1326,12 +1326,14 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 				err = os.MkdirAll(path.Join(gitPath, activePath), 0o755)
 				Expect(err).ToNot(HaveOccurred())
-				err = os.WriteFile(path.Join(gitPath, activePath, "hydrator.metadata"), []byte(fmt.Sprintf("{\"drySHA\": \"%s\"}", drySha)), 0o644)
+				metadata := fmt.Sprintf("{\"drySha\": \"%s\"}", drySha)
+				Expect(os.WriteFile(path.Join(gitPath, "hydrator.metadata"), []byte(metadata), 0o644)).To(Succeed())
+				err = os.WriteFile(path.Join(gitPath, activePath, "hydrator.metadata"), []byte(metadata), 0o644)
 				Expect(err).ToNot(HaveOccurred())
 				err = os.WriteFile(path.Join(gitPath, activePath, "manifests-fake.yaml"), []byte(fmt.Sprintf("hydrated: %s\ntime: %s\n", drySha, time.Now().Format(time.RFC3339Nano))), 0o644)
 				Expect(err).ToNot(HaveOccurred())
 
-				_, err = runGitCmd(ctx, gitPath, "add", path.Join(activePath, "hydrator.metadata"), path.Join(activePath, "manifests-fake.yaml"))
+				_, err = runGitCmd(ctx, gitPath, "add", "hydrator.metadata", path.Join(activePath, "hydrator.metadata"), path.Join(activePath, "manifests-fake.yaml"))
 				Expect(err).ToNot(HaveOccurred())
 				_, err = runGitCmd(ctx, gitPath, "commit", "-m", commitMessage)
 				Expect(err).ToNot(HaveOccurred())
@@ -1389,6 +1391,215 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						g.Expect(os.IsNotExist(readErr)).To(BeTrue())
 					}
 				}, constants.EventuallyTimeout).Should(Succeed())
+			}
+		})
+	})
+
+	Context("When two PromotionStrategies share an active branch with activePath (notes hydrator)", func() {
+		const (
+			activePathOne = "apps/app-one"
+			activePathTwo = "apps/app-two"
+		)
+
+		var gitRepo *promoterv1alpha1.GitRepository
+		var scmSecret *v1.Secret
+		var scmProvider *promoterv1alpha1.ScmProvider
+		var promotionStrategyOne, promotionStrategyTwo promoterv1alpha1.PromotionStrategy
+
+		getCTP := func(g Gomega, ps *promoterv1alpha1.PromotionStrategy) promoterv1alpha1.ChangeTransferPolicy {
+			var ctp promoterv1alpha1.ChangeTransferPolicy
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(ps.Name, testBranchDevelopment)),
+				Namespace: ps.Namespace,
+			}, &ctp)
+			g.Expect(err).To(Succeed())
+			return ctp
+		}
+
+		BeforeEach(func() {
+			By("Creating shared SCM and GitRepository resources")
+			var baseStrategy *promoterv1alpha1.PromotionStrategy
+			_, scmSecret, scmProvider, gitRepo, _, _, baseStrategy = promotionStrategyResource(ctx, "promotion-strategy-shared-active-path-notes", "default")
+			setupInitialTestGitRepoForActivePath(ctx, gitRepo)
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+
+			psOne := baseStrategy.DeepCopy()
+			psOne.Name = baseStrategy.Name + "-app-one"
+			psOne.Spec.ActivePath = activePathOne
+			psOne.Spec.Environments = []promoterv1alpha1.Environment{
+				{Branch: testBranchDevelopment, AutoMerge: ptr.To(true)},
+			}
+			Expect(k8sClient.Create(ctx, psOne)).To(Succeed())
+			promotionStrategyOne = *psOne
+
+			psTwo := baseStrategy.DeepCopy()
+			psTwo.Name = baseStrategy.Name + "-app-two"
+			psTwo.Spec.ActivePath = activePathTwo
+			psTwo.Spec.Environments = []promoterv1alpha1.Environment{
+				{Branch: testBranchDevelopment, AutoMerge: ptr.To(true)},
+			}
+			Expect(k8sClient.Create(ctx, psTwo)).To(Succeed())
+			promotionStrategyTwo = *psTwo
+
+			Eventually(func(g Gomega) {
+				g.Expect(getCTP(g, &promotionStrategyOne).Spec.ProposedBranch).To(Equal(path.Join(testBranchDevelopmentNext, activePathOne)))
+				g.Expect(getCTP(g, &promotionStrategyTwo).Spec.ProposedBranch).To(Equal(path.Join(testBranchDevelopmentNext, activePathTwo)))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		AfterEach(func() {
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, &promotionStrategyOne))).To(Succeed())
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, &promotionStrategyTwo))).To(Succeed())
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, gitRepo))).To(Succeed())
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, scmProvider))).To(Succeed())
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, scmSecret))).To(Succeed())
+		})
+
+		It("should hydrate and promote each app independently without cross-path interference", func() {
+			const promotionIterations = 2
+			activeRef := "origin/" + testBranchDevelopment
+
+			for iter := 1; iter <= promotionIterations; iter++ {
+				iterLabel := fmt.Sprintf("(iteration %d/%d)", iter, promotionIterations)
+
+				By("Creating independent dry commits per app " + iterLabel)
+				gitPath, err := cloneTestRepo(ctx, gitRepo)
+				Expect(err).NotTo(HaveOccurred())
+
+				dryShaOne, err := makeDryCommit(ctx, gitPath, "dry commit app-one "+iterLabel)
+				Expect(err).NotTo(HaveOccurred())
+				dryShaTwo, err := makeDryCommit(ctx, gitPath, "dry commit app-two "+iterLabel)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(dryShaOne).NotTo(Equal(dryShaTwo))
+
+				noteDelay := time.Duration(0)
+				if iter == 2 {
+					noteDelay = 5 * time.Second
+				}
+
+				By("Hydrating both app proposed branches in parallel via git notes " + iterLabel)
+				Expect(hydrateEnvironmentsBatchedTargets(ctx, gitRepo, []BatchedHydrationTarget{
+					{
+						Branch:          path.Join(testBranchDevelopmentNext, activePathOne),
+						ActivePath:      activePathOne,
+						BootstrapBranch: testBranchDevelopment,
+						DrySha:          dryShaOne,
+					},
+					{
+						Branch:          path.Join(testBranchDevelopmentNext, activePathTwo),
+						ActivePath:      activePathTwo,
+						BootstrapBranch: testBranchDevelopment,
+						DrySha:          dryShaTwo,
+					},
+				}, "hydrate shared active-path apps "+iterLabel, noteDelay)).To(Succeed())
+
+				expectedDryByPath := map[string]string{
+					activePathOne: dryShaOne,
+					activePathTwo: dryShaTwo,
+				}
+
+				By("Verifying each CTP tracks only its own dry SHA on proposed " + iterLabel)
+				Eventually(func(g Gomega) {
+					for _, tc := range []struct {
+						ps         *promoterv1alpha1.PromotionStrategy
+						activePath string
+					}{
+						{ps: &promotionStrategyOne, activePath: activePathOne},
+						{ps: &promotionStrategyTwo, activePath: activePathTwo},
+					} {
+						ctp := getCTP(g, tc.ps)
+						g.Expect(ctp.Spec.ActivePath).To(Equal(tc.activePath))
+						g.Expect(ctp.Spec.ActiveBranch).To(Equal(testBranchDevelopment))
+						// Status.Proposed.Dry.Sha is the contract this test cares about: each CTP's
+						// proposed branch reports the dry SHA its own hydrator pushed, with no leakage
+						// from the sibling CTP. We intentionally do not assert on Status.Proposed.Note
+						// here. After conflict resolution, MergeWithOursStrategyForPath rewrites the
+						// proposed branch tip to a new merge commit that the hydrator never wrote a
+						// git note for. setCommitMetadata then correctly clears Status.Proposed.Note
+						// (the "clear stale note" regression guard); getEffectiveHydratedDrySha falls
+						// back to Proposed.Dry.Sha, which is what we assert here. The Consistently
+						// block below still catches any cross-contamination of Note.DrySha during the
+						// note-propagation race window.
+						g.Expect(ctp.Status.Proposed.Dry.Sha).To(Equal(expectedDryByPath[tc.activePath]))
+					}
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Verifying proposed status does not cross-contaminate while notes propagate " + iterLabel)
+				if noteDelay > 0 {
+					Consistently(func(g Gomega) {
+						ctpOne := getCTP(g, &promotionStrategyOne)
+						ctpTwo := getCTP(g, &promotionStrategyTwo)
+						if ctpOne.Status.Proposed.Note != nil {
+							g.Expect(ctpOne.Status.Proposed.Note.DrySha).NotTo(Equal(dryShaTwo),
+								"app-one CTP should not observe app-two dry SHA")
+						}
+						if ctpTwo.Status.Proposed.Note != nil {
+							g.Expect(ctpTwo.Status.Proposed.Note.DrySha).NotTo(Equal(dryShaOne),
+								"app-two CTP should not observe app-one dry SHA")
+						}
+					}, time.Second*2, time.Millisecond*250).Should(Succeed())
+				}
+
+				By("Promoting app-one first so shared active-branch merges do not race " + iterLabel)
+				var appOneManifestOnActive string
+				var ctpOne promoterv1alpha1.ChangeTransferPolicy
+				Eventually(func(g Gomega) {
+					ctpOne = getCTP(g, &promotionStrategyOne)
+				}).Should(Succeed())
+				enqueueCTP(ctpOne.Namespace, ctpOne.Name)
+				Eventually(func(g Gomega) {
+					ctpOne = getCTP(g, &promotionStrategyOne)
+					g.Expect(ctpOne.Status.Active.Dry.Sha).To(Equal(dryShaOne))
+
+					_, readErr := runGitCmd(ctx, gitPath, "fetch", "origin", testBranchDevelopment)
+					g.Expect(readErr).NotTo(HaveOccurred())
+					manifest, readErr := gitShowPathAtRef(ctx, gitPath, activeRef, path.Join(activePathOne, "manifests-fake.yaml"))
+					g.Expect(readErr).NotTo(HaveOccurred())
+					g.Expect(manifest).To(ContainSubstring(dryShaOne))
+					g.Expect(manifest).To(ContainSubstring(activePathOne))
+					appOneManifestOnActive = manifest
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Promoting app-two without disturbing app-one on the shared active branch " + iterLabel)
+				var ctpTwo promoterv1alpha1.ChangeTransferPolicy
+				Eventually(func(g Gomega) {
+					ctpTwo = getCTP(g, &promotionStrategyTwo)
+				}).Should(Succeed())
+				enqueueCTP(ctpTwo.Namespace, ctpTwo.Name)
+				Eventually(func(g Gomega) {
+					ctpTwo = getCTP(g, &promotionStrategyTwo)
+					g.Expect(ctpTwo.Status.Active.Dry.Sha).To(Equal(dryShaTwo))
+
+					_, readErr := runGitCmd(ctx, gitPath, "fetch", "origin", testBranchDevelopment)
+					g.Expect(readErr).NotTo(HaveOccurred())
+					manifestOne, readErr := gitShowPathAtRef(ctx, gitPath, activeRef, path.Join(activePathOne, "manifests-fake.yaml"))
+					g.Expect(readErr).NotTo(HaveOccurred())
+					g.Expect(manifestOne).To(Equal(appOneManifestOnActive))
+					g.Expect(manifestOne).To(ContainSubstring(dryShaOne))
+
+					manifestTwo, readErr := gitShowPathAtRef(ctx, gitPath, activeRef, path.Join(activePathTwo, "manifests-fake.yaml"))
+					g.Expect(readErr).NotTo(HaveOccurred())
+					g.Expect(manifestTwo).To(ContainSubstring(dryShaTwo))
+					g.Expect(manifestTwo).To(ContainSubstring(activePathTwo))
+
+					rootMetadata, readErr := gitShowPathAtRef(ctx, gitPath, activeRef, "hydrator.metadata")
+					g.Expect(readErr).NotTo(HaveOccurred())
+					// Both PromotionStrategies have AutoMerge=true with no commit-status gate, so the
+					// order in which the two CTPs promote (and therefore which one's root
+					// hydrator.metadata wins via path-scoped merge) is racey. The cross-contamination
+					// invariant we actually want to assert is that root metadata holds one of the two
+					// promoted dry SHAs (not a stale base value, not the wrong app's stale value); the
+					// per-path manifest assertions above already verify per-app isolation.
+					g.Expect(rootMetadata).To(SatisfyAny(
+						ContainSubstring(dryShaOne),
+						ContainSubstring(dryShaTwo),
+					), "shared root hydrator.metadata should reflect one of the promoted apps' dry SHAs")
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				_ = os.RemoveAll(gitPath)
 			}
 		})
 	})

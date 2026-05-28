@@ -43,11 +43,17 @@ as `<active-branch>-next/<activePath>`.
 
 ### 3. Include `hydrator.metadata` File
 
-Each hydrated commit **must** include a `hydrator.metadata` file. This JSON file tells GitOps Promoter which DRY
-commit was used to produce the hydrated content.
+Each hydrated commit **must** include a `hydrator.metadata` file that GitOps Promoter can read. This JSON file
+tells GitOps Promoter which DRY commit was used to produce the hydrated content.
 
-- Default mode (no `activePath`): put `hydrator.metadata` at repository root.
-- Shared-active-branch mode (`activePath` set): put `hydrator.metadata` at `<activePath>/hydrator.metadata`.
+- Default mode (no `activePath`): put `hydrator.metadata` at the repository root. This is the file the controller
+  reads.
+- Shared-active-branch mode (`activePath` set): put `hydrator.metadata` at `<activePath>/hydrator.metadata`. This
+  is the file the controller reads. Writing a root `hydrator.metadata` is *not* required by GitOps Promoter when
+  every `PromotionStrategy` on the branch uses `activePath` — the controller ignores it. It is still useful to
+  write one for tooling that expects a single repository-root marker (the Argo CD source hydrator writes both by
+  default, for example), and writing one is fine: it falls under the general rule for files outside `activePath`
+  described below.
 
 #### Required Fields
 
@@ -105,12 +111,53 @@ This prevents GitOps Promoter from creating Pull Requests for changes that have 
 
 ### 5. Preserve Other Application Directories (Shared Active Branch Mode)
 
-If you use `activePath` to share one active branch across multiple applications, hydration must be path-scoped:
+If you use `activePath` to share one active branch across multiple applications, hydration must be path-scoped.
+For the configuration-side constraints (no mixing default-mode and `activePath`-mode `PromotionStrategy` resources
+on the same active branch; no nested or duplicate `activePath`s), see
+[Repository Structure: constraints when multiple PromotionStrategies share an active branch](repository-structure.md#constraints-when-multiple-promotionstrategies-share-an-active-branch).
+For the hydrator's part of the contract:
 
 1. Update only files for the current app path.
 2. Do not delete or rewrite other applications' directories on the same branch.
+3. Treat anything outside your `<activePath>` as belonging to other apps or to the active branch as a whole.
 
-This ensures independent PromotionStrategies can safely share the same active branch.
+GitOps Promoter enforces (3) at promotion time. When it rewrites the proposed branch to prepare a clean SCM merge,
+it explicitly takes proposed's content for `<activePath>` and active's content for everything else. The practical
+consequences for files outside your `<activePath>`:
+
+- If your hydrator's proposed branch and the active branch both modify the same file outside `<activePath>`,
+  active wins. Your hydrator's value is silently discarded on promotion.
+- If your hydrator adds a brand-new file outside `<activePath>` that active doesn't have, the file does end up on
+  active after the promotion's SCM merge. This is a leak, not a feature: rely on it only if you have a deliberate
+  reason and you know no other hydrator will ever introduce a different value at the same path. The intended
+  contract is still "don't write outside `<activePath>`."
+
+The optional repository-root `hydrator.metadata` (next section) is a specific instance of this rule.
+
+### 6. Optional Root `hydrator.metadata` on Shared Active Branches
+
+GitOps Promoter does not read root `hydrator.metadata` when `activePath` is set on the `PromotionStrategy` —
+the path-scoped `<activePath>/hydrator.metadata` is the file the controller uses. You can therefore omit the
+root file entirely if every `PromotionStrategy` on the branch uses `activePath` and you control all hydrators.
+
+Some hydrators (notably the Argo CD source hydrator) write the root file unconditionally, and existing tooling
+sometimes inspects it as a quick repository-root indicator of "what was last hydrated here." Writing it is fine,
+but be aware that the value on the active branch follows the rule from section 5:
+
+- If active does not yet have a root `hydrator.metadata`, the first promotion that has one in its proposed branch
+  will propagate it to active.
+- Once active has one, subsequent promotions whose proposed branches disagree with active's value lose the
+  conflict. Active keeps the value it already had.
+
+In a shared-active-branch setup the root file therefore tends to reflect whichever PS first added it, not "the
+most recent promotion." The authoritative dry SHA for your application always lives in
+`<activePath>/hydrator.metadata`, which the controller does promote per app.
+
+If you choose to write the root file:
+
+1. Write root and path metadata with the **same** `drySha` for the hydration you are pushing.
+2. Do not read another app's `<activePath>/hydrator.metadata` to decide what to write at the repository root.
+3. Treat the root file as advisory; do not depend on it being current for any specific app.
 
 ## Example Implementations
 
