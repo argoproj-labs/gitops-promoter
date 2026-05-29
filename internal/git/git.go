@@ -276,7 +276,7 @@ func (g *EnvironmentOperations) GetShaMetadataFromGit(ctx context.Context, sha s
 
 	commitSubject, err := g.GetShaSubject(ctx, sha)
 	if err != nil {
-		return v1alpha1.CommitShaState{}, fmt.Errorf("failed to get commit time for hydrated SHA %q: %w", sha, err)
+		return v1alpha1.CommitShaState{}, fmt.Errorf("failed to get commit subject for hydrated SHA %q: %w", sha, err)
 	}
 
 	commitBody, err := g.GetShaBody(ctx, sha)
