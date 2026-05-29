@@ -216,11 +216,16 @@
       },
     },
     {
+      // NOTE: kubebuilder must stay in sync with the external gitops-promoter-helm
+      // repo (see the comment in kubebuilder_helm.yaml); review/coordinate manually.
       description: 'kubebuilder version must match the external gitops-promoter-helm repo; review manually',
       matchDepNames: [
         'kubernetes-sigs/kubebuilder',
       ],
-      groupName: 'kubebuilder (coordinate with helm repo)',
+      groupName: 'kubebuilder',
+      addLabels: [
+        'coordinate-with-helm-repo',
+      ],
       semanticCommits: 'enabled',
       semanticCommitType: 'chore',
       semanticCommitScope: 'deps',
