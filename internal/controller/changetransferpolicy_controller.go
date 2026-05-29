@@ -179,7 +179,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{RequeueAfter: 100 * time.Millisecond}, nil
 	}
 
-	pr, err := r.creatOrUpdatePullRequest(ctx, &ctp)
+	pr, err := r.createOrUpdatePullRequest(ctx, &ctp)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to set promotion state: %w", err)
 	}
@@ -210,7 +210,6 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	}, nil
 }
 
-// calculateHistory this function calculates the history by getting the first parents on the active branch and using the trailers to reconstruct the history.
 // calculateHistory calculates the history by getting the first parents on the active branch and using the trailers to reconstruct the history.
 // This function is best effort and will log errors but continue processing if it encounters issues with individual commits. This is because history is stored in git
 // in order to get out of a bad state requires re-writing git history or pushing a bunch of commits greater than the max history limit.
@@ -747,7 +746,7 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 			"sha", targetCommitBranchState.Hydrated.Sha,
 			"phase", phase,
 			"found", found,
-			"toManyMatchingSha", tooManyMatchingShaError != nil,
+			"tooManyMatchingSha", tooManyMatchingShaError != nil,
 			"foundCount", len(csList.Items))
 	}
 
@@ -1034,7 +1033,7 @@ func tooManyPRsError(pr *promoterv1alpha1.PullRequestList) error {
 	return fmt.Errorf("found more than one open PullRequest: %s", summary)
 }
 
-func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) (*promoterv1alpha1.PullRequest, error) {
+func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) (*promoterv1alpha1.PullRequest, error) {
 	logger := log.FromContext(ctx)
 	if ctp.Status.Proposed.Dry.Sha == ctp.Status.Active.Dry.Sha {
 		// If the proposed dry sha is the same as the active dry sha, no need to create a pull request
@@ -1258,7 +1257,7 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 	}
 
 	// Update the PR state to merged using SSA.
-	// Re-specify labels, owner references, finalizers, and spec so this field manager stays consistent with creatOrUpdatePullRequest.
+	// Re-specify labels, owner references, finalizers, and spec so this field manager stays consistent with createOrUpdatePullRequest.
 	prApply := pullRequestApplyOwnedByChangeTransferPolicy(&pullRequest, ptr.To(promoterv1alpha1.PullRequestMerged), true)
 
 	// Apply using Server-Side Apply with Patch to get the result directly
@@ -1310,10 +1309,10 @@ func (r *ChangeTransferPolicyReconciler) gitMergeStrategyOurs(ctx context.Contex
 
 // handleFinalizer ensures ChangeTransferPolicyPullRequestCleanupFinalizer is on the CTP while it exists so deletion
 // runs handleCTPCleanupOnDelete (strip ChangeTransferPolicyPullRequestFinalizer from PullRequests) before the policy
-// is removed. This is reconciled at entry, separate from PullRequest SSA in creatOrUpdatePullRequest / mergePullRequests.
+// is removed. This is reconciled at entry, separate from PullRequest SSA in createOrUpdatePullRequest / mergePullRequests.
 //
 // The first bool is true when Reconcile should not run normal promotion work (for example the CTP is deleting, so we
-// must not re-add PR finalizers via creatOrUpdatePullRequest / mergePullRequests).
+// must not re-add PR finalizers via createOrUpdatePullRequest / mergePullRequests).
 func (r *ChangeTransferPolicyReconciler) handleFinalizer(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) (bool, error) {
 	finalizer := promoterv1alpha1.ChangeTransferPolicyPullRequestCleanupFinalizer
 

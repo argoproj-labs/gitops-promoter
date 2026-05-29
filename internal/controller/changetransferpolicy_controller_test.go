@@ -928,7 +928,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 		//   3. The first reconcile reads the proposed branch tip S_old, detects a conflict,
 		//      runs MergeWithOursStrategy (which pushes a new merge commit S_new on the
 		//      proposed branch), and *in the same reconcile cycle* calls
-		//      creatOrUpdatePullRequest with PR.Spec.MergeSha = ctp.Status.Proposed.Hydrated.Sha
+		//      createOrUpdatePullRequest with PR.Spec.MergeSha = ctp.Status.Proposed.Hydrated.Sha
 		//      = S_old (the value calculateStatus set before the merge ran). mergePullRequests
 		//      then flips PR.Spec.State to merged.
 		//   4. The PullRequest controller picks up state=merged and asks the SCM provider to
