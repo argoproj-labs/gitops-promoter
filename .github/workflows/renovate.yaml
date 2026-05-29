@@ -61,4 +61,4 @@ jobs:
           RENOVATE_DRY_RUN: ${{ inputs.dryRun == 'true' }}
           # Global-only options that cannot be in renovate.json5
           RENOVATE_REPOSITORIES: ${{ github.repository }}
-          RENOVATE_ALLOWED_POST_UPGRADE_COMMANDS: '["^go mod tidy$","^make lint-fix"]'
+          RENOVATE_ALLOWED_POST_UPGRADE_COMMANDS: '["^go mod tidy$","^make lint-fix","^make mockery-gen$","^make build-installer","^make manifests","^make generate","^pip install pip-tools$","^pip-compile"]'
