@@ -40,15 +40,13 @@ jobs:
           app-id: ${{ secrets.RENOVATE_APP_ID }}
           private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
           # https://docs.renovatebot.com/modules/platform/github/#running-as-a-github-app
-          permission-checks: write
-          permission-statuses: write
+          # These MUST be a subset of the permissions granted to the App installation
+          # (Contents, Pull Requests, Issues, Metadata, Workflows -- see RENOVATE_SETUP.md).
+          # Requesting any ungranted permission makes token minting fail with HTTP 422.
           permission-contents: write
           permission-issues: write
           permission-pull-requests: write
           permission-workflows: write
-          permission-administration: read
-          permission-dependabot-alerts: read
-          permission-members: read
           permission-metadata: read
 
       - name: Self-hosted Renovate
