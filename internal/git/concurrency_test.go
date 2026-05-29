@@ -65,13 +65,13 @@ var _ = Describe("Concurrency (gitops-promoter#1495)", func() {
 			proposed := proposedBranches[i]
 			for range iterations {
 				if _, err := env.GetBranchShas(ctx, proposed); err != nil {
-					return err
+					return fmt.Errorf("get proposed shas: %w", err)
 				}
 				if _, err := env.GetBranchShas(ctx, s.active); err != nil {
-					return err
+					return fmt.Errorf("get active shas: %w", err)
 				}
 				if err := env.MergeWithOursStrategy(ctx, proposed, s.active); err != nil {
-					return err
+					return fmt.Errorf("merge: %w", err)
 				}
 			}
 			return nil
@@ -265,7 +265,7 @@ func buildConflictRepo() *sharedRepo {
 // same repo + activeBranch. Because the clone key includes identity, each env gets its own on-disk
 // clone.
 func (s *sharedRepo) newEnv(identity string) *git.EnvironmentOperations {
-	return git.NewEnvironmentOperations(s.repo, s.gap, s.active, identity)
+	return git.NewEnvironmentOperations(s.repo, s.gap, identity)
 }
 
 // addProposedBranch creates a distinct proposed branch off base. Distinct CTPs have their own
@@ -292,7 +292,7 @@ func (s *sharedRepo) advanceProposed(n int) (string, error) {
 	}
 	for rel, content := range files {
 		if err := os.WriteFile(filepath.Join(s.workDir, rel), []byte(content), 0o644); err != nil {
-			return "", err
+			return "", fmt.Errorf("write %s: %w", rel, err)
 		}
 	}
 	for _, args := range [][]string{
@@ -365,12 +365,10 @@ func runConcurrently(n int, fn func(i int) error) []error {
 	start := make(chan struct{})
 	var wg sync.WaitGroup
 	for i := range n {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
+		wg.Go(func() {
 			<-start
 			errs[i] = fn(i)
-		}(i)
+		})
 	}
 	close(start)
 	wg.Wait()

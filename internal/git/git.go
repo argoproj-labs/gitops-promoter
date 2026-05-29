@@ -3,8 +3,8 @@
 // # Clones
 //
 // EnvironmentOperations interacts with a single on-disk clone of a repository. Each clone is keyed by
-// repo URL + active branch + a caller-supplied identity (see NewEnvironmentOperations), so every
-// distinct identity gets its own clone. Operations that do not need a clone are implemented as
+// repo URL + a caller-supplied identity (see NewEnvironmentOperations), so every distinct identity
+// gets its own clone. Operations that do not need a clone are implemented as
 // package-level functions that accept a GitOperationsProvider and a GitRepository (for example
 // LsRemote); prefer those when no clone is required, as they hold no state.
 //
@@ -65,10 +65,9 @@ import (
 type EnvironmentOperations struct {
 	gap     scms.GitOperationsProvider
 	gitRepo *v1alpha1.GitRepository
-	// activeBranch is part of the clone key (see cloneKey) so that different environments resolve to different clones.
-	activeBranch string
-	// identity is an opaque, caller-supplied identifier that is part of the clone key (see cloneKey). Distinct
-	// identities get distinct on-disk clones, which isolates concurrent callers that share a repo + activeBranch.
+	// identity is an opaque, caller-supplied identifier that, together with the repo URL, forms the clone key (see
+	// cloneKey). Distinct identities get distinct on-disk clones, which isolates concurrent callers that share a
+	// repository.
 	identity string
 }
 
@@ -78,29 +77,26 @@ type HydratorMetadata = v1alpha1.HydratorMetadata
 // HydratorNotesRef is the git notes reference used by hydrators to store metadata about hydrated commits.
 const HydratorNotesRef = "refs/notes/hydrator.metadata"
 
-// NewEnvironmentOperations creates a new EnvironmentOperations instance. The activeBranch parameter differentiates
-// between environments that share a GitRepository. The identity parameter is an opaque, caller-supplied identifier
-// (for example the owning object's namespace/name); together with the repo URL and activeBranch it forms the clone
-// key, so each identity gets its own on-disk clone. Callers must serialize operations for a given identity.
-func NewEnvironmentOperations(gitRepo *v1alpha1.GitRepository, gap scms.GitOperationsProvider, activeBranch string, identity string) *EnvironmentOperations {
+// NewEnvironmentOperations creates a new EnvironmentOperations instance. The identity parameter is an opaque,
+// caller-supplied identifier (for example the owning object's namespace/name); together with the repo URL it forms
+// the clone key, so each identity gets its own on-disk clone. Each identity corresponds to a single environment, so
+// the active branch is not part of the key. Callers must serialize operations for a given identity.
+func NewEnvironmentOperations(gitRepo *v1alpha1.GitRepository, gap scms.GitOperationsProvider, identity string) *EnvironmentOperations {
 	return &EnvironmentOperations{
-		gap:          gap,
-		gitRepo:      gitRepo,
-		activeBranch: activeBranch,
-		identity:     identity,
+		gap:      gap,
+		gitRepo:  gitRepo,
+		identity: identity,
 	}
 }
 
 // cloneKey returns the gitpaths key identifying this environment's on-disk clone.
 //
-// The key includes the caller-supplied identity so that each identity gets its own clone. This keeps
-// concurrent callers that share a repo + activeBranch from interleaving local git operations on a
-// shared working copy.
+// The key is the repo URL plus the caller-supplied identity, so each identity gets its own clone. This keeps
+// concurrent callers that share a repository from interleaving local git operations on a shared working copy.
 func (g *EnvironmentOperations) cloneKey() gitpaths.Key {
 	return gitpaths.Key{
-		RepoURL:      g.gap.GetGitHttpsRepoUrl(*g.gitRepo),
-		ActiveBranch: g.activeBranch,
-		Identity:     g.identity,
+		RepoURL:  g.gap.GetGitHttpsRepoUrl(*g.gitRepo),
+		Identity: g.identity,
 	}
 }
 

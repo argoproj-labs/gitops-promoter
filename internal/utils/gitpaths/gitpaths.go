@@ -5,13 +5,11 @@ import (
 )
 
 // Key uniquely identifies an on-disk clone. It is a struct rather than a concatenated string so that
-// distinct field combinations can never collide (e.g. {RepoURL: "ab", ActiveBranch: "c"} vs
-// {RepoURL: "a", ActiveBranch: "bc"} would both yield "abc" as a string key).
+// distinct field combinations can never collide (e.g. {RepoURL: "ab", Identity: "c"} vs
+// {RepoURL: "a", Identity: "bc"} would both yield "abc" as a string key).
 type Key struct {
 	// RepoURL is the HTTPS URL of the repository.
 	RepoURL string
-	// ActiveBranch is the environment's active branch.
-	ActiveBranch string
 	// Identity is an opaque, caller-supplied identifier that scopes the clone to a single logical owner, so that
 	// distinct identities map to distinct clones.
 	Identity string
