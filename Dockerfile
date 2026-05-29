@@ -1,5 +1,5 @@
 # Build the dashboard UI
-FROM node:24-bullseye-slim@sha256:727689e6f04f3f6c5487a8d2775842bc5c3115c8fa28fd1f67eae43229fcfa1d AS dashboard-builder
+FROM node:24.14.0-bullseye-slim@sha256:727689e6f04f3f6c5487a8d2775842bc5c3115c8fa28fd1f67eae43229fcfa1d AS dashboard-builder
 WORKDIR /workspace
 
 # Copy package files first for better layer caching
