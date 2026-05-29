@@ -1,7 +1,7 @@
 # Image URL to use all building/pushing image targets
 IMG ?= quay.io/argoprojlabs/gitops-promoter:latest
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
-ENVTEST_K8S_VERSION = 1.31.0
+ENVTEST_K8S_VERSION = 1.36.1
 
 CURRENT_DIR=$(shell pwd)
 
@@ -324,7 +324,7 @@ GORELEASER ?= $(LOCALBIN)/goreleaser-$(GORELEASER_VERSION)
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.3.0
 CONTROLLER_TOOLS_VERSION ?= v0.20.1
-ENVTEST_VERSION ?= release-0.19
+ENVTEST_VERSION ?= release-0.24
 GOLANGCI_LINT_VERSION ?= v2.11.4
 DEADCODE_VERSION ?= v0.45.0
 DEADCODE_FILTER ?= github.com/argoproj-labs/gitops-promoter/internal
