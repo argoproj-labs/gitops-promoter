@@ -32,6 +32,9 @@ var (
 
 	// findOpenCallCount is incremented on every FindOpen call (for tests).
 	findOpenCallCount atomic.Uint64
+	// mergeShaMismatchCount is incremented every time Merge is called with a PR
+	// whose Spec.MergeSha does not match origin/<sourceBranch> (for tests).
+	mergeShaMismatchCount atomic.Uint64
 )
 
 type pullRequestProviderState struct {
@@ -175,6 +178,7 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 	}
 	actualSha = strings.TrimSpace(actualSha)
 	if actualSha != pullRequest.Spec.MergeSha {
+		mergeShaMismatchCount.Add(1)
 		return fmt.Errorf("source branch HEAD SHA %q does not match expected merge SHA %q", actualSha, pullRequest.Spec.MergeSha)
 	}
 
@@ -222,6 +226,22 @@ func ResetFindOpenCallCount() {
 // FindOpenCallCount returns how many times FindOpen has been invoked since the last reset.
 func FindOpenCallCount() uint64 {
 	return findOpenCallCount.Load()
+}
+
+// ResetMergeShaMismatchCount resets the test-only counter of Merge calls that hit the
+// PR.Spec.MergeSha != origin/<sourceBranch> guard. The counter is process-wide; reset it
+// before any test that asserts on it.
+func ResetMergeShaMismatchCount() {
+	mergeShaMismatchCount.Store(0)
+}
+
+// MergeShaMismatchCount returns how many times Merge has been called with a PR whose
+// Spec.MergeSha did not match origin/<sourceBranch> since the last reset. A non-zero value
+// means the controller asked the SCM to merge a sha the SCM no longer has on the source
+// branch — typically because the controller pushed a fresh commit to the proposed branch
+// (for example via MergeWithOursStrategy) without updating PR.Spec.MergeSha to match.
+func MergeShaMismatchCount() uint64 {
+	return mergeShaMismatchCount.Load()
 }
 
 // GetRecordedState returns the PR entry stored in the fake provider for the given resource, if any.
