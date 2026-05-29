@@ -2,6 +2,7 @@ package fake
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 
