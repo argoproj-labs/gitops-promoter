@@ -3,74 +3,81 @@ package fake
 import (
 	"context"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	crfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
-func TestCreateAndGetURL(t *testing.T) {
-	ctx := context.Background()
-	provider, pullRequest := newTestPullRequestProvider(t)
+func TestFake(t *testing.T) {
+	t.Parallel()
 
-	id, err := provider.Create(ctx, "title", "head", "base", "description", pullRequest)
-	if err != nil {
-		t.Fatalf("Create() error = %v", err)
-	}
-	if id != "1" {
-		t.Fatalf("Create() id = %q, want %q", id, "1")
-	}
-
-	url, err := provider.GetUrl(ctx, pullRequest)
-	if err != nil {
-		t.Fatalf("GetUrl() error = %v", err)
-	}
-
-	want := "http://localhost:5000/test-owner/test-repo/pull/1"
-	if url != want {
-		t.Fatalf("GetUrl() = %q, want %q", url, want)
-	}
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "Fake SCM Suite")
 }
 
-func TestMergeReturnsErrorWhenTempDirCreationFails(t *testing.T) {
-	ctx := context.Background()
-	provider, pullRequest := newTestPullRequestProvider(t)
-	pullRequest.Status.ID = "1"
+var _ = Describe("PullRequest", func() {
+	It("creates a pull request and returns its URL", func() {
+		ctx := context.Background()
+		provider, pullRequest := newTestPullRequestProvider()
 
-	tmpFile := t.TempDir() + "/not-a-directory"
-	if err := os.WriteFile(tmpFile, []byte("x"), 0o600); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-	t.Setenv("TMPDIR", tmpFile)
+		id, err := provider.Create(ctx, "title", "head", "base", "description", pullRequest)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(id).To(Equal("1"))
 
-	err := provider.Merge(ctx, pullRequest)
-	if err == nil {
-		t.Fatal("Merge() error = nil, want error")
-	}
-	if !strings.Contains(err.Error(), "could not make temp dir for repo server") {
-		t.Fatalf("Merge() error = %q, want substring %q", err.Error(), "could not make temp dir for repo server")
-	}
-}
+		url, err := provider.GetUrl(ctx, pullRequest)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(url).To(Equal("http://localhost:5000/test-owner/test-repo/pull/1"))
+	})
 
-func newTestPullRequestProvider(t *testing.T) (*PullRequest, v1alpha1.PullRequest) {
-	t.Helper()
+	It("returns an error when temp dir creation fails during merge", func() {
+		ctx := context.Background()
+		provider, pullRequest := newTestPullRequestProvider()
+		pullRequest.Status.ID = "1"
+
+		tmpDir, err := os.MkdirTemp("", "fake-pr-merge-*")
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() {
+			Expect(os.RemoveAll(tmpDir)).To(Succeed())
+		})
+
+		tmpFile := tmpDir + "/not-a-directory"
+		Expect(os.WriteFile(tmpFile, []byte("x"), 0o600)).To(Succeed())
+
+		originalTMPDIR, hadTMPDIR := os.LookupEnv("TMPDIR")
+		Expect(os.Setenv("TMPDIR", tmpFile)).To(Succeed())
+		DeferCleanup(func() {
+			if hadTMPDIR {
+				Expect(os.Setenv("TMPDIR", originalTMPDIR)).To(Succeed())
+				return
+			}
+			Expect(os.Unsetenv("TMPDIR")).To(Succeed())
+		})
+
+		err = provider.Merge(ctx, pullRequest)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("could not make temp dir for repo server"))
+	})
+})
+
+func newTestPullRequestProvider() (*PullRequest, v1alpha1.PullRequest) {
+	GinkgoHelper()
 
 	mutexPR.Lock()
 	pullRequests = nil
 	mutexPR.Unlock()
-	t.Cleanup(func() {
+	DeferCleanup(func() {
 		mutexPR.Lock()
 		pullRequests = nil
 		mutexPR.Unlock()
 	})
 
 	scheme := runtime.NewScheme()
-	if err := v1alpha1.AddToScheme(scheme); err != nil {
-		t.Fatalf("AddToScheme() error = %v", err)
-	}
+	Expect(v1alpha1.AddToScheme(scheme)).To(Succeed())
 
 	const (
 		namespace = "default"
