@@ -190,9 +190,9 @@ var _ = Describe("Concurrency (gitops-promoter#1495)", func() {
 	})
 })
 
-// sharedRepo is a local bare repository with conflicting active/proposed branches. Building two
-// EnvironmentOperations from the same repo + activeBranch makes them share one on-disk clone.
-type sharedRepo struct {
+// sharedRepo is a local bare repository with conflicting active/proposed branches.
+// Each goroutine models a distinct ChangeTransferPolicy identity; because the clone key includes
+// identity, multiple EnvironmentOperations against the same repo get distinct on-disk clones.
 	gap      *fakeGitProvider
 	repo     *v1alpha1.GitRepository
 	bareRepo string
