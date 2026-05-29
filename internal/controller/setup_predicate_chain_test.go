@@ -27,8 +27,9 @@ import (
 // tests will fail with a precise file:line citation.
 
 const (
-	helperPkgAlias = "promoterpredicate"
-	helperFunc     = "InstanceID"
+	helperPkgAlias       = "promoterpredicate"
+	helperFunc           = "InstanceID"
+	crdPromotionStrategy = "PromotionStrategy"
 )
 
 // expectedWiring captures, per reconciler file, the syntactic predicate-chain
@@ -57,7 +58,7 @@ var simpleReconcilers = []expectedWiring{
 	{file: "pullrequest_controller.go", forCRD: "PullRequest"},
 	{file: "revertcommit_controller.go", forCRD: "RevertCommit"},
 	{file: "commitstatus_controller.go", forCRD: "CommitStatus"},
-	{file: "promotionstrategy_controller.go", forCRD: "PromotionStrategy"},
+	{file: "promotionstrategy_controller.go", forCRD: crdPromotionStrategy},
 	{file: "scmprovider_controller.go", forCRD: "ScmProvider"},
 	{file: "gitrepository_controller.go", forCRD: "GitRepository"},
 	{file: "controllerconfiguration_controller.go", forCRD: "ControllerConfiguration"},
@@ -65,17 +66,17 @@ var simpleReconcilers = []expectedWiring{
 	{
 		file:                  "timedcommitstatus_controller.go",
 		forCRD:                "TimedCommitStatus",
-		watchesWithInstanceID: []string{"PromotionStrategy"},
+		watchesWithInstanceID: []string{crdPromotionStrategy},
 	},
 	{
 		file:                  "gitcommitstatus_controller.go",
 		forCRD:                "GitCommitStatus",
-		watchesWithInstanceID: []string{"PromotionStrategy"},
+		watchesWithInstanceID: []string{crdPromotionStrategy},
 	},
 	{
 		file:                  "webrequestcommitstatus_controller.go",
 		forCRD:                "WebRequestCommitStatus",
-		watchesWithInstanceID: []string{"PromotionStrategy"},
+		watchesWithInstanceID: []string{crdPromotionStrategy},
 	},
 }
 
@@ -102,10 +103,10 @@ func TestChangeTransferPolicyWiring(t *testing.T) {
 	// WatchesRawSource(Channel) bypasses controller-runtime predicates.
 	src := loadControllerSource(t, wiring.file)
 	if !strings.Contains(src, "r.InstanceID != \"\"") {
-		t.Errorf("changetransferpolicy_controller.go: expected sender-side instance-id gate `r.InstanceID != \"\"` inside enqueueFunc; not found. Without it WatchesRawSource(Channel) events leak across instances.")
+		t.Error("changetransferpolicy_controller.go: expected sender-side instance-id gate `r.InstanceID != \"\"` inside enqueueFunc; not found. Without it WatchesRawSource(Channel) events leak across instances.")
 	}
 	if !strings.Contains(src, "promoterv1alpha1.InstanceIDLabel") {
-		t.Errorf("changetransferpolicy_controller.go: expected reference to promoterv1alpha1.InstanceIDLabel inside enqueueFunc; not found.")
+		t.Error("changetransferpolicy_controller.go: expected reference to promoterv1alpha1.InstanceIDLabel inside enqueueFunc; not found.")
 	}
 }
 
@@ -115,7 +116,7 @@ func TestArgoCDCommitStatusOptionB(t *testing.T) {
 	wiring := expectedWiring{
 		file:                     "argocdcommitstatus_controller.go",
 		forCRD:                   "ArgoCDCommitStatus",
-		watchesWithInstanceID:    []string{"PromotionStrategy"},
+		watchesWithInstanceID:    []string{crdPromotionStrategy},
 		watchesWithoutInstanceID: []string{"Application"},
 	}
 	assertReconcilerWiring(t, wiring)
