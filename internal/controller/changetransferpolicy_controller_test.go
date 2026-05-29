@@ -940,8 +940,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 		//      after which the next merge attempt succeeds and the active branch advances.
 		//
 		// The merge does eventually land, but the bug burns at least one extra
-		// SCM merge call per conflict-resolved promotion. With activePath promotions
-		// conflicting routinely on shared root files, that extra call multiplies. The fix is
+		// SCM merge call per conflict-resolved promotion. The fix is
 		// to short-circuit the rest of this reconcile when MergeWithOursStrategy rewrites the
 		// proposed branch and requeue immediately so the next reconcile creates/updates the PR
 		// with the correct mergeSha on the very next attempt.
