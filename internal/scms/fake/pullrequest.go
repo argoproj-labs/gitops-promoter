@@ -75,9 +75,6 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 			return id, errors.New("pull request already exists and is open")
 		}
 	}
-	if pullRequestCopy == nil {
-		return "", errors.New("pull request is nil")
-	}
 
 	id = strconv.Itoa(len(pullRequests) + 1)
 	pullRequests[pr.getMapKey(*pullRequestCopy, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)] = pullRequestProviderState{
@@ -127,15 +124,15 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 	}
 
 	gitPath, err := os.MkdirTemp("", "*")
+	if err != nil {
+		return fmt.Errorf("could not make temp dir for repo server: %w", err)
+	}
 	defer func() {
 		err := os.RemoveAll(gitPath)
 		if err != nil {
 			logger.Error(err, "failed to remove temp dir")
 		}
 	}()
-	if err != nil {
-		panic("could not make temp dir for repo server")
-	}
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
@@ -411,6 +408,8 @@ func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequ
 	}
 
 	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+	mutexPR.RLock()
+	defer mutexPR.RUnlock()
 	if prState, ok := pullRequests[prKey]; ok {
 		return fmt.Sprintf("http://localhost:5000/%s/%s/pull/%s", gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, prState.id), nil
 	}
