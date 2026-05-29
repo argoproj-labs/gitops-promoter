@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"time"
 
@@ -31,7 +32,7 @@ import (
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
 	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	"k8s.io/utils/ptr"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -46,6 +47,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 )
 
 // GitCommitStatusReconciler reconciles a GitCommitStatus object
@@ -243,7 +245,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 				break
 			}
 		}
-		if previousPhase != string(promoterv1alpha1.CommitPhaseSuccess) && phase == string(promoterv1alpha1.CommitPhaseSuccess) {
+		if previousPhase != string(promoterv1alpha1.CommitPhaseSuccess) && phase == promoterv1alpha1.CommitPhaseSuccess {
 			transitionedEnvironments = append(transitionedEnvironments, branch)
 			logger.Info("Validation transitioned to success",
 				"branch", branch,
@@ -256,7 +258,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 			ProposedHydratedSha: proposedSha,
 			ActiveHydratedSha:   activeHydratedSha,
 			TargetedSha:         shaToValidate,
-			Phase:               phase,
+			Phase:               string(phase),
 			ExpressionResult:    expressionResult,
 		}
 		gcs.Status.Environments = append(gcs.Status.Environments, envValidationStatus)
@@ -365,7 +367,7 @@ func (r *GitCommitStatusReconciler) getCompiledExpression(expression string) (*v
 
 // evaluateExpression evaluates the configured expression against commit data.
 // Returns the phase (success/failure) and the boolean result.
-func (r *GitCommitStatusReconciler) evaluateExpression(expression string, commitData *CommitData) (string, *bool, error) {
+func (r *GitCommitStatusReconciler) evaluateExpression(expression string, commitData *CommitData) (promoterv1alpha1.CommitStatusPhase, *bool, error) {
 	// Get compiled expression from cache or compile it
 	program, err := r.getCompiledExpression(expression)
 	if err != nil {
@@ -388,56 +390,43 @@ func (r *GitCommitStatusReconciler) evaluateExpression(expression string, commit
 	}
 
 	if result {
-		return string(promoterv1alpha1.CommitPhaseSuccess), ptr.To(true), nil
+		return promoterv1alpha1.CommitPhaseSuccess, ptr.To(true), nil
 	}
-	return string(promoterv1alpha1.CommitPhaseFailure), ptr.To(false), nil
+	return promoterv1alpha1.CommitPhaseFailure, ptr.To(false), nil
 }
 
-// upsertCommitStatus creates or updates a CommitStatus resource for the validation result.
-func (r *GitCommitStatusReconciler) upsertCommitStatus(ctx context.Context, gcs *promoterv1alpha1.GitCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha, phase, validationName string) (*promoterv1alpha1.CommitStatus, error) {
+// upsertCommitStatus creates or updates a CommitStatus resource for the validation result using Server-Side Apply.
+func (r *GitCommitStatusReconciler) upsertCommitStatus(ctx context.Context, gcs *promoterv1alpha1.GitCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, validationName string) (*promoterv1alpha1.CommitStatus, error) {
+	kind := reflect.TypeOf(promoterv1alpha1.GitCommitStatus{}).Name()
 	commitStatusName := utils.CommitStatusResourceName(ctx, gcs, branch)
+	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
-	commitStatus := promoterv1alpha1.CommitStatus{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      commitStatusName,
-			Namespace: gcs.Namespace,
-		},
+	// Build the apply configuration
+	commitStatusApply := acv1alpha1.CommitStatus(commitStatusName, gcs.Namespace).
+		WithLabels(utils.CommitStatusStandardLabels(gcs, branch, validationName)).
+		WithOwnerReferences(acmetav1.OwnerReference().
+			WithAPIVersion(gvk.GroupVersion().String()).
+			WithKind(gvk.Kind).
+			WithName(gcs.Name).
+			WithUID(gcs.UID).
+			WithController(true).
+			WithBlockOwnerDeletion(true)).
+		WithSpec(acv1alpha1.CommitStatusSpec().
+			WithRepositoryReference(acv1alpha1.ObjectReference().WithName(ps.Spec.RepositoryReference.Name)).
+			WithName(validationName + "/" + branch).
+			WithDescription(gcs.Spec.Description).
+			WithPhase(phase).
+			WithSha(sha))
+
+	// Apply using Server-Side Apply with Patch to get the result directly
+	commitStatus := &promoterv1alpha1.CommitStatus{}
+	commitStatus.Name = commitStatusName
+	commitStatus.Namespace = gcs.Namespace
+	if err := r.Patch(ctx, commitStatus, utils.ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(constants.GitCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
+		return nil, fmt.Errorf("failed to apply CommitStatus: %w", err)
 	}
 
-	// Create or update the CommitStatus
-	_, err := ctrl.CreateOrUpdate(ctx, r.Client, &commitStatus, func() error {
-		// Set owner reference to the GitCommitStatus
-		if err := ctrl.SetControllerReference(gcs, &commitStatus, r.Scheme); err != nil {
-			return fmt.Errorf("failed to set controller reference: %w", err)
-		}
-
-		commitStatus.Labels = utils.CommitStatusStandardLabels(gcs, branch, validationName)
-
-		// Convert phase string to CommitStatusPhase
-		var commitPhase promoterv1alpha1.CommitStatusPhase
-		switch phase {
-		case string(promoterv1alpha1.CommitPhaseSuccess):
-			commitPhase = promoterv1alpha1.CommitPhaseSuccess
-		case string(promoterv1alpha1.CommitPhaseFailure):
-			commitPhase = promoterv1alpha1.CommitPhaseFailure
-		default:
-			commitPhase = promoterv1alpha1.CommitPhasePending
-		}
-
-		// Set the spec
-		commitStatus.Spec.RepositoryReference = ps.Spec.RepositoryReference
-		commitStatus.Spec.Name = validationName + "/" + branch
-		commitStatus.Spec.Description = gcs.Spec.Description
-		commitStatus.Spec.Phase = commitPhase
-		commitStatus.Spec.Sha = sha
-
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create or update CommitStatus: %w", err)
-	}
-
-	return &commitStatus, nil
+	return commitStatus, nil
 }
 
 // enqueueGitCommitStatusForPromotionStrategy returns a handler that enqueues all GitCommitStatus resources
