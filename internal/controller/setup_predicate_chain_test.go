@@ -243,6 +243,9 @@ func collectBuilderCalls(fn *ast.FuncDecl) (forCall *ast.CallExpr, watchCalls []
 			forCall = call
 		case "Watches":
 			watchCalls = append(watchCalls, call)
+		default:
+			// Other builder calls (e.g. WithEventFilter, Owns, Complete) are
+			// not relevant for this assertion.
 		}
 		return true
 	})
@@ -359,6 +362,8 @@ func mentionsInstanceID(expr ast.Expr) bool {
 				found = true
 				return false
 			}
+		default:
+			// Other AST nodes don't carry an instance-id reference.
 		}
 		return true
 	})
@@ -405,6 +410,8 @@ func exprMentionsInstanceID(expr ast.Expr) bool {
 		if x.Name == "instanceIDPredicate" {
 			return true
 		}
+	default:
+		// Other expression kinds don't reference instance-id directly.
 	}
 	return false
 }
