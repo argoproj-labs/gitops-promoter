@@ -103,7 +103,7 @@ var _ = Describe("GetBranchShas", func() {
 				},
 			}
 			gap := &fakeGitProvider{tempDirPath: tempRepoDir}
-			g := git.NewEnvironmentOperations(repo, gap, defaultBranch)
+			g := git.NewEnvironmentOperations(repo, gap, "default/testrepo")
 			Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
 
 			// Call GetBranchShas with a non-existent branch
@@ -373,7 +373,7 @@ var _ = Describe("HasConflict", func() {
 
 	prepareEnvOps := func() {
 		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
-		g = git.NewEnvironmentOperations(repo, gap, "active")
+		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
 		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
 		_, err := g.GetBranchShas(GinkgoT().Context(), "active")
 		Expect(err).NotTo(HaveOccurred())
@@ -471,7 +471,7 @@ var _ = Describe("HasConflict", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
-		g = git.NewEnvironmentOperations(repo, gap, "active")
+		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
 		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
 		_, err = g.GetBranchShas(GinkgoT().Context(), "active")
 		Expect(err).NotTo(HaveOccurred())
