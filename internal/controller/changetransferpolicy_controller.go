@@ -142,7 +142,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
-	gitOperations := git.NewEnvironmentOperations(gitRepo, gitAuthProvider, ctp.Spec.ActiveBranch)
+	gitOperations := git.NewEnvironmentOperations(gitRepo, gitAuthProvider, ctp.Spec.ActiveBranch, ctp.Namespace+"/"+ctp.Name)
 
 	// TODO: could probably short circuit the clone and use an ls-remote to compare the sha's of the current ctp status,
 	// this would help with slamming the git provider with clone requests on controller restarts.
@@ -524,7 +524,9 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
 	logger := log.FromContext(ctx)
 
-	// TODO: consider parallelizing parts of this function that are network-bound work.
+	// TODO: consider parallelizing parts of this function that are network-bound work. This requires the git library
+	// to be made concurrency-safe for a single identity first; today its EnvironmentOperations methods share one
+	// on-disk clone and must be called sequentially (see the internal/git package documentation).
 
 	proposedShas, err := gitOperations.GetBranchShas(ctx, ctp.Spec.ProposedBranch)
 	if err != nil {

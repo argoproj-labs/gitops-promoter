@@ -1,11 +1,37 @@
 // Package git provides operations for managing Git repositories.
 //
-// The EnvironmentOperations struct provides methods for interacting with a particular clone of a repository. It ensures
-// there is a separate clone for each environment to avoid concurrency issues.
+// # Clones
 //
-// When implementing operations that do not require an environment-specific clone, create a static function that accepts
-// the GitOperationsProvider and the GitRepository as parameters. This avoids the need to manage state to avoid
-// concurrency issues. See LsRemote for an example of such a function.
+// EnvironmentOperations interacts with a single on-disk clone of a repository. Each clone is keyed by
+// repo URL + active branch + a caller-supplied identity (see NewEnvironmentOperations), so every
+// distinct identity gets its own clone. Operations that do not need a clone are implemented as
+// package-level functions that accept a GitOperationsProvider and a GitRepository (for example
+// LsRemote); prefer those when no clone is required, as they hold no state.
+//
+// # Concurrency
+//
+// EnvironmentOperations is NOT safe for concurrent use within a single identity. Its methods shell
+// out to git against a shared working copy (the .git index, HEAD, refs, FETCH_HEAD and the object
+// store), so concurrent calls for the same identity can corrupt that state or compute a result from
+// a mix of versions. Callers MUST serialize all operations for a given identity. (Callers that
+// already process one owner at a time, such as a controller whose work queue serializes reconciles
+// per object, get this for free.)
+//
+// Because each identity has its own clone, EnvironmentOperations for DIFFERENT identities are
+// independent and may be used concurrently. The one exception is remote operations: two identities
+// targeting the same repo and branch (for example two owners pushing the same branch) can lose a
+// race on the remote ref. That failure is transient and non-corrupting — git updates refs atomically
+// and quarantines incoming objects — so retrying (re-fetching and recomputing) eventually succeeds.
+//
+// The package-level functions that do not use a clone (LsRemote, AddTrailerToCommitMessage,
+// ParseTrailersFromMessage) are concurrency-safe.
+//
+// # Future work
+//
+// The per-identity-clone model trades disk space for safety. In the future the library could be made
+// concurrency-safe within a single identity (for example by serializing access to each clone with a
+// lock), which would in turn allow multiple identities for the same repo to share one clone to save
+// disk space. Those improvements are intentionally left for later.
 package git
 
 import (
@@ -30,13 +56,20 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils/gitpaths"
 )
 
-// EnvironmentOperations provides methods for interacting with a specific clone of a Git repository for an environment.
+// EnvironmentOperations provides methods for interacting with a specific clone of a Git repository.
+//
+// EnvironmentOperations is NOT safe for concurrent use within a single identity: its methods operate
+// on a shared on-disk clone, so callers must serialize all operations for a given identity. Distinct
+// identities use distinct clones and are independent (see the package documentation for details,
+// including the remote-operation caveat).
 type EnvironmentOperations struct {
 	gap     scms.GitOperationsProvider
 	gitRepo *v1alpha1.GitRepository
-	// activeBranch is used as part of the git path key to make sure there's one clone "per environment". Since there
-	// should be only one CTP for each unique active branch, we shouldn't run into concurrency issues between clones.
+	// activeBranch is part of the clone key (see cloneKey) so that different environments resolve to different clones.
 	activeBranch string
+	// identity is an opaque, caller-supplied identifier that is part of the clone key (see cloneKey). Distinct
+	// identities get distinct on-disk clones, which isolates concurrent callers that share a repo + activeBranch.
+	identity string
 }
 
 // HydratorMetadata is an alias to v1alpha1.HydratorMetadata for convenience.
@@ -45,20 +78,42 @@ type HydratorMetadata = v1alpha1.HydratorMetadata
 // HydratorNotesRef is the git notes reference used by hydrators to store metadata about hydrated commits.
 const HydratorNotesRef = "refs/notes/hydrator.metadata"
 
-// NewEnvironmentOperations creates a new EnvironmentOperations instance. The activeBranch parameter is used to differentiate
-// between different environments that might use the same GitRepository and avoid conflicts between concurrent
-// operations.
-func NewEnvironmentOperations(gitRepo *v1alpha1.GitRepository, gap scms.GitOperationsProvider, activeBranch string) *EnvironmentOperations {
+// NewEnvironmentOperations creates a new EnvironmentOperations instance. The activeBranch parameter differentiates
+// between environments that share a GitRepository. The identity parameter is an opaque, caller-supplied identifier
+// (for example the owning object's namespace/name); together with the repo URL and activeBranch it forms the clone
+// key, so each identity gets its own on-disk clone. Callers must serialize operations for a given identity.
+func NewEnvironmentOperations(gitRepo *v1alpha1.GitRepository, gap scms.GitOperationsProvider, activeBranch string, identity string) *EnvironmentOperations {
 	return &EnvironmentOperations{
 		gap:          gap,
 		gitRepo:      gitRepo,
 		activeBranch: activeBranch,
+		identity:     identity,
 	}
+}
+
+// cloneKey returns the gitpaths key identifying this environment's on-disk clone.
+//
+// The key includes the caller-supplied identity so that each identity gets its own clone. This keeps
+// concurrent callers that share a repo + activeBranch from interleaving local git operations on a
+// shared working copy.
+func (g *EnvironmentOperations) cloneKey() gitpaths.Key {
+	return gitpaths.Key{
+		RepoURL:      g.gap.GetGitHttpsRepoUrl(*g.gitRepo),
+		ActiveBranch: g.activeBranch,
+		Identity:     g.identity,
+	}
+}
+
+// ClonePath returns the on-disk path of this environment's registered clone, or "" if it has not been cloned.
+//
+// ClonePath is concurrency-safe: it only reads from the process-wide clone registry (a sync.Map).
+func (g *EnvironmentOperations) ClonePath() string {
+	return gitpaths.Get(g.cloneKey())
 }
 
 // CloneRepo clones the gitRepo to a temporary directory if needed. Does nothing if the repo is already cloned.
 func (g *EnvironmentOperations) CloneRepo(ctx context.Context) error {
-	if gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.activeBranch) != "" {
+	if g.ClonePath() != "" {
 		// Already cloned
 		return nil
 	}
@@ -96,9 +151,9 @@ func (g *EnvironmentOperations) CloneRepo(ctx context.Context) error {
 		return err
 	}
 
-	logger.V(4).Info("Cloned repo successful", "repo", g.gap.GetGitHttpsRepoUrl(*g.gitRepo))
+	logger.V(4).Info("Cloned repo successful", "repo", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), "identity", g.identity)
 
-	gitpaths.Set(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.activeBranch, path)
+	gitpaths.Set(g.cloneKey(), path)
 
 	return nil
 }
@@ -114,7 +169,7 @@ type BranchShas struct {
 // GetBranchShas checks out the given branch, pulls the latest changes, and returns the hydrated and dry SHAs.
 func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch string) (BranchShas, error) {
 	logger := log.FromContext(ctx)
-	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
+	gitPath := g.ClonePath()
 	if gitPath == "" {
 		return BranchShas{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
@@ -169,7 +224,7 @@ func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch string
 func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha string) (v1alpha1.CommitShaState, error) {
 	logger := log.FromContext(ctx)
 
-	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
+	gitPath := g.ClonePath()
 	if gitPath == "" {
 		return v1alpha1.CommitShaState{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
@@ -208,7 +263,7 @@ func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha 
 
 // GetShaMetadataFromGit retrieves commit metadata by running git commands for a given SHA.
 func (g *EnvironmentOperations) GetShaMetadataFromGit(ctx context.Context, sha string) (v1alpha1.CommitShaState, error) {
-	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
+	gitPath := g.ClonePath()
 	if gitPath == "" {
 		return v1alpha1.CommitShaState{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
@@ -248,7 +303,7 @@ func (g *EnvironmentOperations) GetShaMetadataFromGit(ctx context.Context, sha s
 func (g *EnvironmentOperations) GetShaBody(ctx context.Context, sha string) (string, error) {
 	logger := log.FromContext(ctx)
 
-	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
+	gitPath := g.ClonePath()
 	if gitPath == "" {
 		return "", fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
@@ -266,7 +321,7 @@ func (g *EnvironmentOperations) GetShaBody(ctx context.Context, sha string) (str
 // GetShaAuthor retrieves the author of a commit given its SHA.
 func (g *EnvironmentOperations) GetShaAuthor(ctx context.Context, sha string) (string, error) {
 	logger := log.FromContext(ctx)
-	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
+	gitPath := g.ClonePath()
 	if gitPath == "" {
 		return "", fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
@@ -284,7 +339,7 @@ func (g *EnvironmentOperations) GetShaAuthor(ctx context.Context, sha string) (s
 // GetShaSubject retrieves the subject of a commit given its SHA.
 func (g *EnvironmentOperations) GetShaSubject(ctx context.Context, sha string) (string, error) {
 	logger := log.FromContext(ctx)
-	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
+	gitPath := g.ClonePath()
 	if gitPath == "" {
 		return "", fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
@@ -302,7 +357,7 @@ func (g *EnvironmentOperations) GetShaSubject(ctx context.Context, sha string) (
 // GetShaTime retrieves the commit time of a commit given its SHA.
 func (g *EnvironmentOperations) GetShaTime(ctx context.Context, sha string) (v1.Time, error) {
 	logger := log.FromContext(ctx)
-	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
+	gitPath := g.ClonePath()
 	if gitPath == "" {
 		return v1.Time{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
@@ -324,6 +379,8 @@ func (g *EnvironmentOperations) GetShaTime(ctx context.Context, sha string) (v1.
 }
 
 // LsRemote returns a map of branch names to SHAs for the given branches using git ls-remote.
+//
+// LsRemote is concurrency-safe: it queries the remote directly and uses no on-disk clone or other shared state.
 func LsRemote(ctx context.Context, gap scms.GitOperationsProvider, gitRepo *v1alpha1.GitRepository, branches ...string) (map[string]string, error) {
 	logger := log.FromContext(ctx)
 
@@ -426,7 +483,7 @@ func runCmd(ctx context.Context, gap scms.GitOperationsProvider, directory strin
 // currently fetched and updated in the local repository. This should happen via GetBranchShas function earlier in the reconcile.
 func (g *EnvironmentOperations) HasConflict(ctx context.Context, proposedBranch, activeBranch string) (bool, error) {
 	logger := log.FromContext(ctx)
-	repoPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
+	repoPath := g.ClonePath()
 
 	// Use git merge-tree --write-tree to perform a stateless merge check
 	// With --write-tree, git exits with code 1 if conflicts exist, and writes conflict info to stdout
@@ -452,7 +509,7 @@ func (g *EnvironmentOperations) HasConflict(ctx context.Context, proposedBranch,
 // ensuring we merge the exact same refs that were checked for conflicts.
 func (g *EnvironmentOperations) MergeWithOursStrategy(ctx context.Context, proposedBranch, activeBranch string) error {
 	logger := log.FromContext(ctx)
-	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
+	gitPath := g.ClonePath()
 
 	// Checkout the proposed branch from the already-fetched origin ref
 	// We use the origin ref to ensure we're working with the same commits that were checked for conflicts
@@ -484,7 +541,7 @@ func (g *EnvironmentOperations) MergeWithOursStrategy(ctx context.Context, propo
 func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, branch string, maxCount int) ([]string, error) {
 	logger := log.FromContext(ctx)
 
-	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
+	gitPath := g.ClonePath()
 	if gitPath == "" {
 		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
@@ -507,6 +564,8 @@ func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, branc
 // AddTrailerToCommitMessage adds a trailer to a commit message using git interpret-trailers.
 // This ensures we follow Git's exact trailer conventions and formatting rules.
 // The trailer will be appended at the end of the trailer block.
+//
+// AddTrailerToCommitMessage is concurrency-safe: it operates only on the provided message via stdin and uses no clone.
 //
 // Note: We use git interpret-trailers instead of manually parsing/formatting trailers to ensure
 // we follow Git's exact trailer conventions and formatting rules. While git interpret-trailers
@@ -535,7 +594,7 @@ func AddTrailerToCommitMessage(ctx context.Context, commitMessage, trailerKey, t
 // FetchNotes fetches the git notes from the remote repository.
 func (g *EnvironmentOperations) FetchNotes(ctx context.Context) error {
 	logger := log.FromContext(ctx)
-	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
+	gitPath := g.ClonePath()
 	if gitPath == "" {
 		return fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
@@ -564,7 +623,7 @@ func (g *EnvironmentOperations) FetchNotes(ctx context.Context) error {
 // Returns an empty HydratorMetadata if no note exists for the commit.
 func (g *EnvironmentOperations) GetHydratorNote(ctx context.Context, sha string) (*HydratorMetadata, error) {
 	logger := log.FromContext(ctx)
-	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
+	gitPath := g.ClonePath()
 	if gitPath == "" {
 		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
@@ -592,6 +651,8 @@ func (g *EnvironmentOperations) GetHydratorNote(ctx context.Context, sha string)
 
 // ParseTrailersFromMessage parses git trailers from a commit message using git interpret-trailers.
 // Returns a map where each key can have multiple values (e.g., multiple "Signed-off-by" trailers).
+//
+// ParseTrailersFromMessage is concurrency-safe: it operates only on the provided message via stdin and uses no clone.
 func ParseTrailersFromMessage(ctx context.Context, commitMessage string) (map[string][]string, error) {
 	logger := log.FromContext(ctx)
 
@@ -638,7 +699,7 @@ func ParseTrailersFromMessage(ctx context.Context, commitMessage string) (map[st
 func (g *EnvironmentOperations) GetTrailers(ctx context.Context, sha string) (map[string][]string, error) {
 	logger := log.FromContext(ctx)
 	// run git interpret-trailers to get the trailers from the last commit
-	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
+	gitPath := g.ClonePath()
 	if gitPath == "" {
 		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
