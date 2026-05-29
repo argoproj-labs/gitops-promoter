@@ -60,6 +60,7 @@ spec:
     #       expression: ""      # expr returning map, stored in status.responseOutput
 
 status:
+  observedGeneration: 123 # compare with metadata.generation to detect stale status
   conditions:
     # The Ready condition indicates that the resource has been successfully reconciled.
     - type: Ready
@@ -67,7 +68,7 @@ status:
       message: Reconciliation succeeded
       reason: ReconciliationSuccess
       status: "True"
-      observedGeneration: 1
+      observedGeneration: 123
   # Status per environment; populated by the controller
   environments:
     - branch: environment/development
@@ -98,12 +99,22 @@ status:
 #     polling:
 #       interval: 2m
 # status:
+#   observedGeneration: 123
+#   conditions:
+#     - type: Ready
+#       reason: ReconciliationSuccess
+#       status: "True"
+#       observedGeneration: 123
+#   # status.environments is empty when context is promotionstrategy
 #   promotionStrategyContext:
 #     phasePerBranch:
 #       - branch: environment/dev
 #         phase: success
+#       - branch: environment/staging
+#         phase: pending
 #     lastSuccessfulShas:
 #       - branch: environment/dev
-#         lastSuccessfulSha: abc123def456789012345678901234567890abcd
+#         lastSuccessfulSha: abcdef1234567890abcdef1234567890abcdef12
 #     lastRequestTime: "2024-01-15T10:30:00Z"
 #     lastResponseStatusCode: 200
+#     # triggerOutput / responseOutput / successOutput: JSON maps from expr output expressions

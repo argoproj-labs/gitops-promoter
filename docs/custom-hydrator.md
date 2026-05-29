@@ -208,12 +208,29 @@ git fetch origin ${PROPOSED_BRANCH} 2>/dev/null || {
 }
 BRANCH_EXISTS=${BRANCH_EXISTS:-true}
 
+push_note_with_retry() {
+  local commit_sha=$1
+  local note_content="{\"drySha\": \"${DRY_SHA}\"}"
+
+  for attempt in 1 2 3 4 5 6 7 8; do
+    git fetch origin +${NOTES_REF}:${NOTES_REF} 2>/dev/null || true
+    git notes --ref=${NOTES_REF} add -f -m "${note_content}" ${commit_sha}
+    if git push origin ${NOTES_REF}; then
+      return 0
+    fi
+    sleep 0.1
+  done
+
+  echo "Failed to push git note after retries" >&2
+  return 1
+}
+
 if [ "${BRANCH_EXISTS}" = "true" ]; then
   # Get the current hydrated commit SHA
   HYDRATED_SHA=$(git rev-parse origin/${PROPOSED_BRANCH})
   
   # Fetch and check the git note - if drySha matches, we can skip entirely
-  git fetch origin ${NOTES_REF}:${NOTES_REF} 2>/dev/null || true
+  git fetch origin +${NOTES_REF}:${NOTES_REF} 2>/dev/null || true
   EXISTING_NOTE=$(git notes --ref=${NOTES_REF} show ${HYDRATED_SHA} 2>/dev/null || echo "{}")
   EXISTING_DRY_SHA=$(echo "${EXISTING_NOTE}" | jq -r '.drySha // ""')
   
@@ -247,8 +264,7 @@ if [ "${BRANCH_EXISTS}" = "true" ] && diff -q ${NEW_MANIFESTS} ${CURRENT_MANIFES
   #
   echo "No manifest changes for ${ENV}, updating git note only"
   
-  git notes --ref=${NOTES_REF} add -f -m "{\"drySha\": \"${DRY_SHA}\"}" ${HYDRATED_SHA}
-  git push origin ${NOTES_REF}
+  push_note_with_retry ${HYDRATED_SHA}
   
   echo "Updated git note on ${HYDRATED_SHA} with drySha ${DRY_SHA}"
 else
@@ -283,12 +299,10 @@ EOF
   git commit -m "Hydrate ${ENV} from ${DRY_SHA:0:7}"
   
   HYDRATED_SHA=$(git rev-parse HEAD)
-  
-  # Add git note to the new commit
-  git notes --ref=${NOTES_REF} add -f -m "{\"drySha\": \"${DRY_SHA}\"}" ${HYDRATED_SHA}
-  
-  # Push branch and notes together
-  git push origin ${PROPOSED_BRANCH} ${NOTES_REF}
+
+  # Push branch, then update notes ref with retry for concurrent writers
+  git push origin ${PROPOSED_BRANCH}
+  push_note_with_retry ${HYDRATED_SHA}
   
   echo "Created hydrated commit ${HYDRATED_SHA}"
 fi
@@ -314,4 +328,3 @@ Promoter.
 2. **Atomic Commits**: Each hydrated commit should represent a complete, valid state. Don't push partial changes.
 
 3. **Meaningful Commit Messages**: Include the DRY SHA in your hydrated commit messages for traceability.
-

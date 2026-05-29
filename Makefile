@@ -153,6 +153,12 @@ fuzz-explore: ## Exploratory fuzzing for FUZZ_TIME per target (default $(FUZZ_TI
 lint: golangci-lint ## Run golangci-lint linter & yamllint
 	$(GOLANGCI_LINT) run
 
+.PHONY: deadcode
+deadcode: ## Report unreachable functions in module internals (from cmd entrypoints).
+	$(MAKE) $(DEADCODE)
+	@out=$$($(DEADCODE) -test -filter='$(DEADCODE_FILTER)' ./... 2>&1); \
+	if [ -n "$$out" ]; then echo "$$out"; exit 1; fi
+
 .PHONY: lint-fix
 lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 	$(GOLANGCI_LINT) run --fix
@@ -309,6 +315,7 @@ KUSTOMIZE ?= $(LOCALBIN)/kustomize-$(KUSTOMIZE_VERSION)
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen-$(CONTROLLER_TOOLS_VERSION)
 ENVTEST ?= $(LOCALBIN)/setup-envtest-$(ENVTEST_VERSION)
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
+DEADCODE = $(LOCALBIN)/deadcode-$(DEADCODE_VERSION)
 MOCKERY = $(LOCALBIN)/mockery-$(MOCKERY_VERSION)
 NILAWAY = $(LOCALBIN)/nilaway-$(NILAWAY_VERSION)
 GINKGO = $(LOCALBIN)/ginkgo-$(GINKGO_VERSION)
@@ -319,6 +326,8 @@ KUSTOMIZE_VERSION ?= v5.3.0
 CONTROLLER_TOOLS_VERSION ?= v0.20.1
 ENVTEST_VERSION ?= release-0.19
 GOLANGCI_LINT_VERSION ?= v2.11.4
+DEADCODE_VERSION ?= v0.45.0
+DEADCODE_FILTER ?= github.com/argoproj-labs/gitops-promoter/internal
 MOCKERY_VERSION ?= v2.42.2
 NILAWAY_VERSION ?= latest
 GINKGO_VERSION=$(shell go list -m all | grep github.com/onsi/ginkgo/v2 | awk '{print $$2}')
@@ -347,6 +356,9 @@ setup-envtest: envtest ## configure envtest k8s directory.
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
 	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,${GOLANGCI_LINT_VERSION})
+
+$(DEADCODE): $(LOCALBIN)
+	$(call go-install-tool,$(DEADCODE),golang.org/x/tools/cmd/deadcode,${DEADCODE_VERSION})
 
 .PHONY: mockery
 mockery:

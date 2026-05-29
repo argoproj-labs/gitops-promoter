@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"time"
 
@@ -32,7 +33,7 @@ import (
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
 	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	"k8s.io/utils/ptr"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -47,6 +48,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 )
 
 // GitCommitStatusReconciler reconciles a GitCommitStatus object
@@ -123,13 +125,16 @@ func (r *GitCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, fmt.Errorf("failed to process environments: %w", err)
 	}
 
+	err = utils.CleanupOrphanedCommitStatuses(ctx, r.Client, r.Recorder, &gcs, commitStatuses)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to cleanup orphaned CommitStatus resources: %w", err)
+	}
+
 	// Inherit conditions from CommitStatus objects
 	utils.InheritNotReadyConditionFromObjects(&gcs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
 
-	// If any validations transitioned to success, touch the corresponding ChangeTransferPolicies
-	if len(transitionedEnvironments) > 0 {
-		r.touchChangeTransferPolicies(ctx, &ps, transitionedEnvironments)
-	}
+	// If any validations transitioned to success, enqueue the corresponding ChangeTransferPolicies
+	utils.EnqueueChangeTransferPolicies(ctx, r.EnqueueCTP, &ps, transitionedEnvironments, "validation transition")
 
 	return ctrl.Result{}, nil
 }
@@ -178,36 +183,6 @@ type CommitData struct {
 	Author   string              `expr:"Author"`
 }
 
-// getApplicableEnvironments returns the environments from the PromotionStrategy that this GitCommitStatus applies to.
-// An environment is applicable if the GitCommitStatus key is referenced in either:
-// - The global ps.Spec.ProposedCommitStatuses, or
-// - The environment-specific psEnv.ProposedCommitStatuses
-func (r *GitCommitStatusReconciler) getApplicableEnvironments(ps *promoterv1alpha1.PromotionStrategy, key string) []promoterv1alpha1.Environment {
-	// Check if globally referenced
-	globallyProposed := false
-	for _, selector := range ps.Spec.ProposedCommitStatuses {
-		if selector.Key == key {
-			globallyProposed = true
-			break
-		}
-	}
-
-	applicable := make([]promoterv1alpha1.Environment, 0, len(ps.Spec.Environments))
-	for _, env := range ps.Spec.Environments {
-		if globallyProposed {
-			applicable = append(applicable, env)
-			continue
-		}
-		for _, selector := range env.ProposedCommitStatuses {
-			if selector.Key == key {
-				applicable = append(applicable, env)
-				break
-			}
-		}
-	}
-	return applicable
-}
-
 // processEnvironments processes each environment defined in the GitCommitStatus spec,
 // evaluating expressions against the proposed hydrated commit for each environment.
 // Returns a list of environment branches that transitioned from non-success to success
@@ -228,7 +203,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 	}
 
 	// Get environments this GitCommitStatus applies to
-	applicableEnvs := r.getApplicableEnvironments(ps, gcs.Spec.Key)
+	applicableEnvs := utils.GetApplicableEnvironments(ps, gcs.Spec.Key, constants.CommitRefProposed)
 
 	// Initialize tracking variables
 	transitionedEnvironments := make([]string, 0)
@@ -281,7 +256,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 				break
 			}
 		}
-		if previousPhase != string(promoterv1alpha1.CommitPhaseSuccess) && phase == string(promoterv1alpha1.CommitPhaseSuccess) {
+		if previousPhase != string(promoterv1alpha1.CommitPhaseSuccess) && phase == promoterv1alpha1.CommitPhaseSuccess {
 			transitionedEnvironments = append(transitionedEnvironments, branch)
 			logger.Info("Validation transitioned to success",
 				"branch", branch,
@@ -294,7 +269,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 			ProposedHydratedSha: proposedSha,
 			ActiveHydratedSha:   activeHydratedSha,
 			TargetedSha:         shaToValidate,
-			Phase:               phase,
+			Phase:               string(phase),
 			ExpressionResult:    expressionResult,
 		}
 		gcs.Status.Environments = append(gcs.Status.Environments, envValidationStatus)
@@ -403,7 +378,7 @@ func (r *GitCommitStatusReconciler) getCompiledExpression(expression string) (*v
 
 // evaluateExpression evaluates the configured expression against commit data.
 // Returns the phase (success/failure) and the boolean result.
-func (r *GitCommitStatusReconciler) evaluateExpression(expression string, commitData *CommitData) (string, *bool, error) {
+func (r *GitCommitStatusReconciler) evaluateExpression(expression string, commitData *CommitData) (promoterv1alpha1.CommitStatusPhase, *bool, error) {
 	// Get compiled expression from cache or compile it
 	program, err := r.getCompiledExpression(expression)
 	if err != nil {
@@ -426,86 +401,48 @@ func (r *GitCommitStatusReconciler) evaluateExpression(expression string, commit
 	}
 
 	if result {
-		return string(promoterv1alpha1.CommitPhaseSuccess), ptr.To(true), nil
+		return promoterv1alpha1.CommitPhaseSuccess, ptr.To(true), nil
 	}
-	return string(promoterv1alpha1.CommitPhaseFailure), ptr.To(false), nil
+	return promoterv1alpha1.CommitPhaseFailure, ptr.To(false), nil
 }
 
-// upsertCommitStatus creates or updates a CommitStatus resource for the validation result.
-func (r *GitCommitStatusReconciler) upsertCommitStatus(ctx context.Context, gcs *promoterv1alpha1.GitCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha, phase, validationName string) (*promoterv1alpha1.CommitStatus, error) {
-	// Generate a consistent name for the CommitStatus
-	commitStatusName := utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-%s", gcs.Name, branch, validationName))
+// upsertCommitStatus creates or updates a CommitStatus resource for the validation result using Server-Side Apply.
+func (r *GitCommitStatusReconciler) upsertCommitStatus(ctx context.Context, gcs *promoterv1alpha1.GitCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, validationName string) (*promoterv1alpha1.CommitStatus, error) {
+	kind := reflect.TypeOf(promoterv1alpha1.GitCommitStatus{}).Name()
+	commitStatusName := utils.CommitStatusResourceName(ctx, gcs, branch)
+	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
-	commitStatus := promoterv1alpha1.CommitStatus{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      commitStatusName,
-			Namespace: gcs.Namespace,
-		},
+	// Build the apply configuration. Compose main's standard-labels helper with
+	// our instance-id propagation (ARGO-3085).
+	commitStatusLabels := utils.CopyInstanceIDLabelToMap(
+		gcs,
+		utils.CommitStatusStandardLabels(gcs, branch, validationName),
+	)
+	commitStatusApply := acv1alpha1.CommitStatus(commitStatusName, gcs.Namespace).
+		WithLabels(commitStatusLabels).
+		WithOwnerReferences(acmetav1.OwnerReference().
+			WithAPIVersion(gvk.GroupVersion().String()).
+			WithKind(gvk.Kind).
+			WithName(gcs.Name).
+			WithUID(gcs.UID).
+			WithController(true).
+			WithBlockOwnerDeletion(true)).
+		WithSpec(acv1alpha1.CommitStatusSpec().
+			WithRepositoryReference(acv1alpha1.ObjectReference().WithName(ps.Spec.RepositoryReference.Name)).
+			WithName(validationName + "/" + branch).
+			WithDescription(gcs.Spec.Description).
+			WithPhase(phase).
+			WithSha(sha))
+
+	// Apply using Server-Side Apply with Patch to get the result directly
+	commitStatus := &promoterv1alpha1.CommitStatus{}
+	commitStatus.Name = commitStatusName
+	commitStatus.Namespace = gcs.Namespace
+	if err := r.Patch(ctx, commitStatus, utils.ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(constants.GitCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
+		return nil, fmt.Errorf("failed to apply CommitStatus: %w", err)
 	}
 
-	// Create or update the CommitStatus
-	_, err := ctrl.CreateOrUpdate(ctx, r.Client, &commitStatus, func() error {
-		// Set owner reference to the GitCommitStatus
-		if err := ctrl.SetControllerReference(gcs, &commitStatus, r.Scheme); err != nil {
-			return fmt.Errorf("failed to set controller reference: %w", err)
-		}
-
-		// Set labels for easy identification
-		if commitStatus.Labels == nil {
-			commitStatus.Labels = make(map[string]string)
-		}
-		commitStatus.Labels["promoter.argoproj.io/git-commit-status"] = utils.KubeSafeLabel(gcs.Name)
-		commitStatus.Labels[promoterv1alpha1.EnvironmentLabel] = utils.KubeSafeLabel(branch)
-		commitStatus.Labels[promoterv1alpha1.CommitStatusLabel] = validationName
-		utils.CopyInstanceIDLabel(gcs, &commitStatus)
-
-		// Convert phase string to CommitStatusPhase
-		var commitPhase promoterv1alpha1.CommitStatusPhase
-		switch phase {
-		case string(promoterv1alpha1.CommitPhaseSuccess):
-			commitPhase = promoterv1alpha1.CommitPhaseSuccess
-		case string(promoterv1alpha1.CommitPhaseFailure):
-			commitPhase = promoterv1alpha1.CommitPhaseFailure
-		default:
-			commitPhase = promoterv1alpha1.CommitPhasePending
-		}
-
-		// Set the spec
-		commitStatus.Spec.RepositoryReference = ps.Spec.RepositoryReference
-		commitStatus.Spec.Name = validationName + "/" + branch
-		commitStatus.Spec.Description = gcs.Spec.Description
-		commitStatus.Spec.Phase = commitPhase
-		commitStatus.Spec.Sha = sha
-
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create or update CommitStatus: %w", err)
-	}
-
-	return &commitStatus, nil
-}
-
-// touchChangeTransferPolicies triggers reconciliation of the ChangeTransferPolicies
-// for the environments that had validations transition to success.
-// This triggers the ChangeTransferPolicy controller to reconcile and potentially merge PRs.
-func (r *GitCommitStatusReconciler) touchChangeTransferPolicies(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, transitionedEnvironments []string) {
-	logger := log.FromContext(ctx)
-
-	// For each transitioned environment, trigger reconciliation of the corresponding ChangeTransferPolicy
-	for _, envBranch := range transitionedEnvironments {
-		// Generate the ChangeTransferPolicy name using the same logic as the PromotionStrategy controller
-		ctpName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(ps.Name, envBranch))
-
-		logger.Info("Triggering ChangeTransferPolicy reconciliation due to validation transition",
-			"changeTransferPolicy", ctpName,
-			"branch", envBranch)
-
-		// Use the enqueue function to trigger reconciliation.
-		if r.EnqueueCTP != nil {
-			r.EnqueueCTP(ps.Namespace, ctpName)
-		}
-	}
+	return commitStatus, nil
 }
 
 // enqueueGitCommitStatusForPromotionStrategy returns a handler that enqueues all GitCommitStatus resources

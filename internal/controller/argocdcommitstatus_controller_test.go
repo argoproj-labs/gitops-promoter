@@ -31,12 +31,15 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 //go:embed testdata/ArgoCDCommitStatus.yaml
@@ -349,6 +352,423 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 
 			Expect(k8sClient.Delete(ctx, app)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, commitStatus)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+		})
+
+		Context("commit status key", func() {
+			It("should use default key argocd-health on CommitStatus when spec.key is omitted", func() {
+				ctx := context.TODO()
+
+				psName, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "acdcs-key-default", "default")
+				promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
+					{Branch: testBranchStaging},
+				}
+				promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+					{Key: promoterv1alpha1.ArgoCDCommitStatusDefaultKey},
+				}
+
+				setupInitialTestGitRepoOnServer(ctx, gitRepo)
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+				workTreePath, err := os.MkdirTemp("", "*")
+				Expect(err).ToNot(HaveOccurred())
+				defer func() { _ = os.RemoveAll(workTreePath) }()
+
+				_, err = runGitCmd(ctx, workTreePath, "clone", testGitRepoCloneURL(gitRepo), ".")
+				Expect(err).ToNot(HaveOccurred())
+				_, err = runGitCmd(ctx, workTreePath, "checkout", testBranchStaging)
+				Expect(err).ToNot(HaveOccurred())
+				sha, err := runGitCmd(ctx, workTreePath, "rev-parse", "HEAD")
+				Expect(err).ToNot(HaveOccurred())
+				sha = strings.TrimSpace(sha)
+
+				appLabelKey := "acdcs-key-default-test"
+				appLabelVal := psName
+				app := &argocd.Application{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "Application",
+						APIVersion: "argoproj.io/v1alpha1",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: "default",
+						Name:      "test-app-acdcs-key-default",
+						Labels: map[string]string{
+							appLabelKey: appLabelVal,
+						},
+					},
+					Spec: argocd.ApplicationSpec{
+						Source: &argocd.Source{
+							RepoURL:        testGitRepoCloneURL(gitRepo),
+							TargetRevision: testBranchStaging,
+						},
+					},
+					Status: argocd.ApplicationStatus{
+						Health: argocd.HealthStatus{
+							Status:             argocd.HealthStatusHealthy,
+							LastTransitionTime: nil,
+						},
+						Sync: argocd.SyncStatus{
+							Status:   argocd.SyncStatusCodeSynced,
+							Revision: sha,
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, app)).To(Succeed())
+
+				acs := &promoterv1alpha1.ArgoCDCommitStatus{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: "default",
+						Name:      psName,
+					},
+					Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
+						PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName},
+						ApplicationSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{appLabelKey: appLabelVal},
+						},
+					},
+				}
+				commitStatusName := promoterv1alpha1.ArgoCDCommitStatusDefaultKey + "/" + testBranchStaging
+				resourceName := utils.CommitStatusResourceName(ctx, acs, testBranchStaging)
+				Expect(k8sClient.Create(ctx, acs)).To(Succeed())
+
+				Eventually(func(g Gomega) {
+					var updated promoterv1alpha1.ArgoCDCommitStatus
+					g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: psName, Namespace: "default"}, &updated)).To(Succeed())
+					g.Expect(updated.Status.ApplicationsSelected).To(HaveLen(1))
+
+					var cs promoterv1alpha1.CommitStatus
+					g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: resourceName, Namespace: "default"}, &cs)).To(Succeed())
+					g.Expect(cs.Labels[promoterv1alpha1.CommitStatusLabel]).To(Equal(promoterv1alpha1.ArgoCDCommitStatusDefaultKey))
+					g.Expect(cs.Spec.Name).To(Equal(commitStatusName))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				Expect(k8sClient.Delete(ctx, app)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, acs)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+			})
+
+			It("should use custom spec.key on CommitStatus label and name", func() {
+				ctx := context.TODO()
+				const customKey = "my-argocd-gate"
+
+				psName, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "acdcs-key-custom", "default")
+				promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
+					{Branch: testBranchStaging},
+				}
+				promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+					{Key: customKey},
+				}
+
+				setupInitialTestGitRepoOnServer(ctx, gitRepo)
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+				workTreePath, err := os.MkdirTemp("", "*")
+				Expect(err).ToNot(HaveOccurred())
+				defer func() { _ = os.RemoveAll(workTreePath) }()
+
+				_, err = runGitCmd(ctx, workTreePath, "clone", testGitRepoCloneURL(gitRepo), ".")
+				Expect(err).ToNot(HaveOccurred())
+				_, err = runGitCmd(ctx, workTreePath, "checkout", testBranchStaging)
+				Expect(err).ToNot(HaveOccurred())
+				sha, err := runGitCmd(ctx, workTreePath, "rev-parse", "HEAD")
+				Expect(err).ToNot(HaveOccurred())
+				sha = strings.TrimSpace(sha)
+
+				appLabelKey := "acdcs-key-custom-test"
+				appLabelVal := psName
+				app := &argocd.Application{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "Application",
+						APIVersion: "argoproj.io/v1alpha1",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: "default",
+						Name:      "test-app-acdcs-key-custom",
+						Labels: map[string]string{
+							appLabelKey: appLabelVal,
+						},
+					},
+					Spec: argocd.ApplicationSpec{
+						Source: &argocd.Source{
+							RepoURL:        testGitRepoCloneURL(gitRepo),
+							TargetRevision: testBranchStaging,
+						},
+					},
+					Status: argocd.ApplicationStatus{
+						Health: argocd.HealthStatus{
+							Status:             argocd.HealthStatusHealthy,
+							LastTransitionTime: nil,
+						},
+						Sync: argocd.SyncStatus{
+							Status:   argocd.SyncStatusCodeSynced,
+							Revision: sha,
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, app)).To(Succeed())
+
+				acs := &promoterv1alpha1.ArgoCDCommitStatus{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: "default",
+						Name:      psName,
+					},
+					Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
+						Key:                  customKey,
+						PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName},
+						ApplicationSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{appLabelKey: appLabelVal},
+						},
+					},
+				}
+				commitStatusName := customKey + "/" + testBranchStaging
+				resourceName := utils.CommitStatusResourceName(ctx, acs, testBranchStaging)
+				Expect(k8sClient.Create(ctx, acs)).To(Succeed())
+
+				Eventually(func(g Gomega) {
+					var updated promoterv1alpha1.ArgoCDCommitStatus
+					g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: psName, Namespace: "default"}, &updated)).To(Succeed())
+					g.Expect(updated.Status.ApplicationsSelected).To(HaveLen(1))
+
+					var cs promoterv1alpha1.CommitStatus
+					g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: resourceName, Namespace: "default"}, &cs)).To(Succeed())
+					g.Expect(cs.Labels[promoterv1alpha1.CommitStatusLabel]).To(Equal(customKey))
+					g.Expect(cs.Spec.Name).To(Equal(commitStatusName))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				Expect(k8sClient.Delete(ctx, app)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, acs)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+			})
+		})
+
+		It("should cleanup orphaned CommitStatus when a branch is no longer selected", func() {
+			ctx := context.TODO()
+
+			psName, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "acdcs-cleanup", "default")
+			promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
+				{Branch: testBranchDevelopment},
+				{Branch: testBranchStaging},
+			}
+			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: promoterv1alpha1.ArgoCDCommitStatusDefaultKey},
+			}
+
+			setupInitialTestGitRepoOnServer(ctx, gitRepo)
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+			workTreePath, err := os.MkdirTemp("", "*")
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = os.RemoveAll(workTreePath) }()
+
+			_, err = runGitCmd(ctx, workTreePath, "clone", testGitRepoCloneURL(gitRepo), ".")
+			Expect(err).ToNot(HaveOccurred())
+
+			appLabelKey := "acdcs-cleanup-test"
+			appLabelVal := psName
+
+			createApp := func(appName, branch string) *argocd.Application {
+				_, err = runGitCmd(ctx, workTreePath, "checkout", branch)
+				Expect(err).ToNot(HaveOccurred())
+				sha, err := runGitCmd(ctx, workTreePath, "rev-parse", "HEAD")
+				Expect(err).ToNot(HaveOccurred())
+				sha = strings.TrimSpace(sha)
+				return &argocd.Application{
+					TypeMeta: metav1.TypeMeta{Kind: "Application", APIVersion: "argoproj.io/v1alpha1"},
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: "default",
+						Name:      appName,
+						Labels:    map[string]string{appLabelKey: appLabelVal},
+					},
+					Spec: argocd.ApplicationSpec{
+						Source: &argocd.Source{
+							RepoURL:        testGitRepoCloneURL(gitRepo),
+							TargetRevision: branch,
+						},
+					},
+					Status: argocd.ApplicationStatus{
+						Health: argocd.HealthStatus{Status: argocd.HealthStatusHealthy},
+						Sync:   argocd.SyncStatus{Status: argocd.SyncStatusCodeSynced, Revision: sha},
+					},
+				}
+			}
+
+			appDev := createApp("test-app-acdcs-cleanup-dev", testBranchDevelopment)
+			appStaging := createApp("test-app-acdcs-cleanup-staging", testBranchStaging)
+			Expect(k8sClient.Create(ctx, appDev)).To(Succeed())
+			Expect(k8sClient.Create(ctx, appStaging)).To(Succeed())
+
+			acs := &promoterv1alpha1.ArgoCDCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: psName},
+				Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName},
+					ApplicationSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{appLabelKey: appLabelVal},
+					},
+				},
+			}
+			stagingResourceName := utils.CommitStatusResourceName(ctx, acs, testBranchStaging)
+			Expect(k8sClient.Create(ctx, acs)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				var cs promoterv1alpha1.CommitStatus
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: stagingResourceName, Namespace: "default"}, &cs)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Removing the staging Application so that branch is no longer selected")
+			Expect(k8sClient.Delete(ctx, appStaging)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				var cs promoterv1alpha1.CommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: stagingResourceName, Namespace: "default"}, &cs)
+				g.Expect(apierrors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Expect(k8sClient.Delete(ctx, appDev)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, acs)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+		})
+
+		It("should delete legacy orphaned CommitStatus without parent-gate label during reconcile", func() {
+			ctx := context.TODO()
+
+			psName, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "acdcs-legacy-cleanup", "default")
+			promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
+				{Branch: testBranchStaging},
+			}
+			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: promoterv1alpha1.ArgoCDCommitStatusDefaultKey},
+			}
+
+			setupInitialTestGitRepoOnServer(ctx, gitRepo)
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+			workTreePath, err := os.MkdirTemp("", "*")
+			Expect(err).ToNot(HaveOccurred())
+			defer func() { _ = os.RemoveAll(workTreePath) }()
+
+			_, err = runGitCmd(ctx, workTreePath, "clone", testGitRepoCloneURL(gitRepo), ".")
+			Expect(err).ToNot(HaveOccurred())
+			_, err = runGitCmd(ctx, workTreePath, "checkout", testBranchStaging)
+			Expect(err).ToNot(HaveOccurred())
+			sha, err := runGitCmd(ctx, workTreePath, "rev-parse", "HEAD")
+			Expect(err).ToNot(HaveOccurred())
+			sha = strings.TrimSpace(sha)
+
+			appLabelKey := "acdcs-legacy-cleanup-test"
+			appLabelVal := psName
+			app := &argocd.Application{
+				TypeMeta: metav1.TypeMeta{Kind: "Application", APIVersion: "argoproj.io/v1alpha1"},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "test-app-acdcs-legacy-cleanup",
+					Labels:    map[string]string{appLabelKey: appLabelVal},
+				},
+				Spec: argocd.ApplicationSpec{
+					Source: &argocd.Source{
+						RepoURL:        testGitRepoCloneURL(gitRepo),
+						TargetRevision: testBranchStaging,
+					},
+				},
+				Status: argocd.ApplicationStatus{
+					Health: argocd.HealthStatus{Status: argocd.HealthStatusHealthy},
+					Sync:   argocd.SyncStatus{Status: argocd.SyncStatusCodeSynced, Revision: sha},
+				},
+			}
+			Expect(k8sClient.Create(ctx, app)).To(Succeed())
+
+			acs := &promoterv1alpha1.ArgoCDCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: psName},
+				Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName},
+					ApplicationSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{appLabelKey: appLabelVal},
+					},
+				},
+			}
+			currentResourceName := utils.CommitStatusResourceName(ctx, acs, testBranchStaging)
+			Expect(k8sClient.Create(ctx, acs)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				var cs promoterv1alpha1.CommitStatus
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: currentResourceName, Namespace: "default"}, &cs)).To(Succeed())
+				g.Expect(cs.Labels).To(HaveKey(utils.CommitStatusGateLabelKeyForParent(acs)))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			var acsLive promoterv1alpha1.ArgoCDCommitStatus
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: psName, Namespace: "default"}, &acsLive)).To(Succeed())
+
+			var currentCS promoterv1alpha1.CommitStatus
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: currentResourceName, Namespace: "default"}, &currentCS)).To(Succeed())
+
+			By("Injecting a pre-upgrade CommitStatus (commit-status label only, legacy resource name)")
+			legacyResourceName := utils.KubeSafeUniqueName(psName + "-" + testBranchStaging + "-argocd")
+			Expect(legacyResourceName).NotTo(Equal(currentResourceName))
+
+			legacyCS := &promoterv1alpha1.CommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      legacyResourceName,
+					Namespace: "default",
+					Labels: map[string]string{
+						promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.ArgoCDCommitStatusDefaultKey,
+					},
+				},
+				Spec: promoterv1alpha1.CommitStatusSpec{
+					RepositoryReference: currentCS.Spec.RepositoryReference,
+					Sha:                 currentCS.Spec.Sha,
+					Name:                promoterv1alpha1.ArgoCDCommitStatusDefaultKey + "/" + testBranchStaging,
+					Phase:               promoterv1alpha1.CommitPhaseSuccess,
+				},
+			}
+			Expect(controllerutil.SetControllerReference(&acsLive, legacyCS, scheme)).To(Succeed())
+			Expect(k8sClient.Create(ctx, legacyCS)).To(Succeed())
+
+			By("Triggering reconcile via Application status change")
+			appToUpdate := &argocd.Application{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: app.Name, Namespace: "default"}, appToUpdate)).To(Succeed())
+			appToUpdate.Status.Health.LastTransitionTime = &metav1.Time{Time: time.Now()}
+			Expect(k8sClient.Update(ctx, appToUpdate)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: legacyResourceName, Namespace: "default"}, &promoterv1alpha1.CommitStatus{})
+				g.Expect(apierrors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				var cs promoterv1alpha1.CommitStatus
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: currentResourceName, Namespace: "default"}, &cs)).To(Succeed())
+				g.Expect(cs.Labels).To(HaveKey(utils.CommitStatusGateLabelKeyForParent(acs)))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Expect(k8sClient.Delete(ctx, app)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, acs)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())

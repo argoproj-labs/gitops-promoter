@@ -35,13 +35,16 @@ import (
 	"time"
 
 	"go.uber.org/zap/zapcore"
+	"golang.org/x/sync/errgroup"
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/clientcmd/api"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/ptr"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
@@ -882,29 +885,33 @@ func makeDryCommit(ctx context.Context, gitPath, commitMessage string) (drySha s
 	return drySha, nil
 }
 
-// hydrateEnvironment hydrates a single environment branch with a new commit containing
-// hydrator.metadata and a git note. This simulates what a hydrator does.
-// Returns the hydrated commit SHA.
-func hydrateEnvironment(ctx context.Context, gitPath, branch, drySha, commitMessage string) error {
-	// Fetch latest and checkout the branch
-	_, err := runGitCmd(ctx, gitPath, "fetch", "origin")
+// pushHydratedBranch fetches origin, checks out `branch` from its remote
+// counterpart, writes a fresh `hydrator.metadata` file (with `drySha`) and a
+// new `manifests-fake.yaml` payload, commits the change, and pushes the branch
+// to origin. It returns the SHA the branch pointed at *before* the push (for
+// use as the webhook's "before" SHA) and the new hydrated SHA after the push.
+//
+// This is the "branch" half of a hydrator step. The matching note half lives in
+// pushGitNote. The two are separated so callers can decide whether to publish
+// the note immediately (see hydrateEnvironment) or to delay it (see
+// hydrateEnvironmentsBatched), simulating real-world note-propagation lag.
+func pushHydratedBranch(ctx context.Context, gitPath, branch, drySha, commitMessage string) (beforeSha, hydratedSha string, err error) {
+	_, err = runGitCmd(ctx, gitPath, "fetch", "origin")
 	if err != nil {
-		return fmt.Errorf("failed to fetch: %w", err)
+		return "", "", fmt.Errorf("failed to fetch: %w", err)
 	}
 
 	_, err = runGitCmd(ctx, gitPath, "checkout", "-B", branch, "origin/"+branch)
 	if err != nil {
-		return fmt.Errorf("failed to checkout branch %s: %w", branch, err)
+		return "", "", fmt.Errorf("failed to checkout branch %s: %w", branch, err)
 	}
 
-	// Get the SHA before we make changes - this is the "before" SHA for the webhook
-	beforeSha, err := runGitCmd(ctx, gitPath, "rev-parse", branch)
+	beforeSha, err = runGitCmd(ctx, gitPath, "rev-parse", branch)
 	if err != nil {
-		return fmt.Errorf("failed to get before SHA: %w", err)
+		return "", "", fmt.Errorf("failed to get before SHA: %w", err)
 	}
 	beforeSha = strings.TrimSpace(beforeSha)
 
-	// Create hydrator.metadata
 	metadata := git.HydratorMetadata{
 		DrySha:  drySha,
 		Author:  "testuser <testmail@test.com>",
@@ -913,25 +920,23 @@ func hydrateEnvironment(ctx context.Context, gitPath, branch, drySha, commitMess
 	}
 	m, err := json.MarshalIndent(metadata, "", "\t")
 	if err != nil {
-		return fmt.Errorf("failed to marshal metadata: %w", err)
+		return "", "", fmt.Errorf("failed to marshal metadata: %w", err)
 	}
 
 	metadataPath := path.Join(gitPath, "hydrator.metadata")
 	if err := os.WriteFile(metadataPath, m, 0o644); err != nil {
-		return fmt.Errorf("failed to write hydrator.metadata: %w", err)
+		return "", "", fmt.Errorf("failed to write hydrator.metadata: %w", err)
 	}
 
-	// Update manifests with unique content
 	manifestContent := fmt.Sprintf("{\"time\": \"%s\"}", time.Now().Format(time.RFC3339Nano))
 	manifestPath := path.Join(gitPath, "manifests-fake.yaml")
 	if err := os.WriteFile(manifestPath, []byte(manifestContent), 0o644); err != nil {
-		return fmt.Errorf("failed to write manifests-fake.yaml: %w", err)
+		return "", "", fmt.Errorf("failed to write manifests-fake.yaml: %w", err)
 	}
 
-	// Commit and push
 	_, err = runGitCmd(ctx, gitPath, "add", "-A")
 	if err != nil {
-		return fmt.Errorf("failed to add files: %w", err)
+		return "", "", fmt.Errorf("failed to add files: %w", err)
 	}
 
 	if commitMessage == "" {
@@ -939,42 +944,210 @@ func hydrateEnvironment(ctx context.Context, gitPath, branch, drySha, commitMess
 	}
 	_, err = runGitCmd(ctx, gitPath, "commit", "-m", commitMessage)
 	if err != nil {
-		return fmt.Errorf("failed to commit: %w", err)
+		return "", "", fmt.Errorf("failed to commit: %w", err)
 	}
 
 	_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", branch)
 	if err != nil {
-		return fmt.Errorf("failed to push: %w", err)
+		return "", "", fmt.Errorf("failed to push: %w", err)
 	}
 
-	// Get the new hydrated SHA
-	hydratedSha, err := runGitCmd(ctx, gitPath, "rev-parse", branch)
+	hydratedSha, err = runGitCmd(ctx, gitPath, "rev-parse", branch)
 	if err != nil {
-		return fmt.Errorf("failed to get hydrated SHA: %w", err)
+		return "", "", fmt.Errorf("failed to get hydrated SHA: %w", err)
 	}
 	hydratedSha = strings.TrimSpace(hydratedSha)
+	return beforeSha, hydratedSha, nil
+}
 
-	// Add git note
+// hydrateEnvironment hydrates a single environment branch with a new commit containing
+// hydrator.metadata and a git note. This simulates what a hydrator does.
+//
+// The note is pushed immediately after the branch and the controller-facing
+// webhook is fired only once the note has landed, so observers never see an
+// in-flight "new branch, stale note" state. Use hydrateEnvironmentsBatched if
+// you want to expose that timing window.
+func hydrateEnvironment(ctx context.Context, gitPath, branch, drySha, commitMessage string) error {
+	beforeSha, hydratedSha, err := pushHydratedBranch(ctx, gitPath, branch, drySha, commitMessage)
+	if err != nil {
+		return err
+	}
+
 	if err := pushGitNote(ctx, gitPath, hydratedSha, drySha); err != nil {
 		return err
 	}
 
-	// Send webhook for the branch
 	sendWebhookForPush(ctx, beforeSha, branch)
-
 	return nil
 }
 
+// hydrateEnvironmentsBatched hydrates each branch in two phases to simulate
+// note-propagation lag observable by the controller:
+//
+//  1. In parallel (one goroutine per branch, each with its own clone): write
+//     the new hydrated commit, push it, and fire the branch-push webhook. The
+//     controller starts reconciling on each new branch but cannot yet read the
+//     note for the new hydrated commit.
+//  2. Sleep for noteDelay so the controller's reconciles in the gap operate on
+//     the (now-stale) Note.DrySha from any previous hydration of the branch.
+//  3. In parallel (reusing each goroutine's phase-1 clone): push the git note
+//     for its new hydrated commit.
+//
+// This shape exposes ordering bugs (e.g. PR #1428 — stale Status.Proposed.Note
+// retained when a new hydrated commit has no note yet) that the per-branch
+// hydrateEnvironment helper masks because it always publishes the note before
+// firing the webhook. The parallelism also models real-world hydrators that
+// run independently per environment, firing their webhooks at roughly the same
+// wall clock time rather than serialized by the test harness.
+//
+// Each goroutine is given its own clone of `repo` because git's working tree
+// cannot safely host multiple concurrent checkouts/commits on the same path.
+//
+// noteDelay = 0 collapses phases 1 and 2 with no artificial pause but still
+// delivers the controller a webhook before the matching note.
+func hydrateEnvironmentsBatched(ctx context.Context, repo *promoterv1alpha1.GitRepository, branches []string, drySha, commitMessage string, noteDelay time.Duration) error {
+	type pushed struct {
+		branch      string
+		beforeSha   string
+		hydratedSha string
+		gitPath     string
+	}
+	hydrated := make([]pushed, len(branches))
+
+	// Phase 1: each goroutine clones fresh, pushes its hydrated branch, and
+	// fires its branch-push webhook. The clone is retained so phase 2 can push
+	// the matching note without re-cloning.
+	g, gctx := errgroup.WithContext(ctx)
+	for i, branch := range branches {
+		g.Go(func() error {
+			gp, err := cloneTestRepo(gctx, repo)
+			if err != nil {
+				return fmt.Errorf("failed to clone for branch %q: %w", branch, err)
+			}
+			beforeSha, hydratedSha, err := pushHydratedBranch(gctx, gp, branch, drySha, commitMessage)
+			if err != nil {
+				return fmt.Errorf("failed to push hydrated branch %q: %w", branch, err)
+			}
+			hydrated[i] = pushed{branch: branch, beforeSha: beforeSha, hydratedSha: hydratedSha, gitPath: gp}
+			sendWebhookForPush(gctx, beforeSha, branch)
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("failed to push hydrated branches: %w", err)
+	}
+
+	if noteDelay > 0 {
+		time.Sleep(noteDelay)
+	}
+
+	// Phase 2: publish notes in parallel. Concurrent goroutines pushing to the
+	// same refs/notes/<ref> on origin will race; the loser sees a non-fast-
+	// forward "fetch first" rejection. pushGitNoteWithRetry handles that by
+	// re-fetching and retrying. Note pushes do not trigger webhooks (see
+	// promotionstrategy_controller comments), so the controller will only
+	// re-reconcile via periodic reconciles or enqueueOutOfSyncCTPs after this
+	// phase.
+	g2, gctx2 := errgroup.WithContext(ctx)
+	for _, h := range hydrated {
+		g2.Go(func() error {
+			if err := pushGitNoteWithRetry(gctx2, h.gitPath, h.hydratedSha, drySha); err != nil {
+				return fmt.Errorf("failed to push git note for branch %q: %w", h.branch, err)
+			}
+			return nil
+		})
+	}
+	if err := g2.Wait(); err != nil {
+		return fmt.Errorf("failed to push git notes: %w", err)
+	}
+	return nil
+}
+
+// notePushBackoff is the backoff schedule for pushGitNoteWithRetry. 16 steps
+// at ~50-100ms each (50ms base + uniform 0-50ms jitter, no exponential growth)
+// gives roughly a 1s budget — long enough for concurrent hydrators to settle
+// against the gitkit fake remote's ref lock, short enough to surface real
+// failures quickly.
+var notePushBackoff = wait.Backoff{
+	Steps:    16,
+	Duration: 50 * time.Millisecond,
+	Factor:   1.0,
+	Jitter:   1.0,
+}
+
+// pushGitNoteWithRetry wraps pushGitNote with bounded retries on the
+// transient races that occur when multiple concurrent hydrators push to the
+// same notes ref:
+//
+//   - "fetch first" / "non-fast-forward": the local ref is behind because
+//     another writer pushed a competing note first.
+//   - "remote rejected" + "cannot lock ref": the gitkit fake remote serializes
+//     ref updates with a lock and rejects with this message when the lock is
+//     contended.
+//
+// Each retry re-fetches the remote notes ref (inside pushGitNote) before
+// re-adding the note locally, so the local ref converges with whatever the
+// previous winner pushed.
+func pushGitNoteWithRetry(ctx context.Context, gitPath, commitSha, drySha string) error {
+	return retry.OnError(notePushBackoff, isRetryableNotePushError, func() error { //nolint:wrapcheck // OnError returns the last pushGitNote error which is already wrapped
+		return pushGitNote(ctx, gitPath, commitSha, drySha)
+	})
+}
+
+// isRetryableNotePushError returns true for the transient race conditions a
+// concurrent notes-ref push can hit against the test git server. Anything
+// else is treated as fatal so genuine bugs aren't masked by silent retries.
+func isRetryableNotePushError(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "fetch first") ||
+		strings.Contains(msg, "non-fast-forward") ||
+		strings.Contains(msg, "cannot lock ref") ||
+		strings.Contains(msg, "remote rejected")
+}
+
 // pushGitNote adds a git note to a commit and pushes it to origin.
+//
+// `git clone` does not fetch refs/notes/* by default, so a fresh clone will
+// have an empty local notes ref even if the remote already has notes from a
+// previous run. If we just `git notes add` and `git push`, the local ref
+// becomes a brand-new commit chain unrelated to the remote, and the push is
+// rejected ("fetch first" / non-fast-forward). To match what a well-behaved
+// hydrator must do (and what the controller's FetchNotes already does), we
+// force-fetch the notes ref into our local clone before mutating it.
+//
+// pushGitNote does not artificially delay; if you want to simulate
+// note-propagation lag relative to the branch push, sleep in the caller (see
+// hydrateEnvironmentsBatched) instead of inside this helper.
 func pushGitNote(ctx context.Context, gitPath, commitSha, drySha string) error {
+	err := fetchNotesRef(ctx, gitPath)
+	if err != nil {
+		return err
+	}
 	noteContent := fmt.Sprintf(`{"drySha": "%s"}`, drySha)
-	_, err := runGitCmd(ctx, gitPath, "notes", "--ref="+git.HydratorNotesRef, "add", "-f", "-m", noteContent, commitSha)
+	_, err = runGitCmd(ctx, gitPath, "notes", "--ref="+git.HydratorNotesRef, "add", "-f", "-m", noteContent, commitSha)
 	if err != nil {
 		return fmt.Errorf("failed to add git note: %w", err)
 	}
 	_, err = runGitCmd(ctx, gitPath, "push", "origin", git.HydratorNotesRef)
 	if err != nil {
 		return fmt.Errorf("failed to push git notes: %w", err)
+	}
+	return nil
+}
+
+// fetchNotesRef force-fetches the hydrator notes ref from origin into the
+// local clone. It tolerates the case where the remote does not yet have the
+// notes ref (first hydrator run on a brand-new repo).
+func fetchNotesRef(ctx context.Context, gitPath string) error {
+	refspec := "+" + git.HydratorNotesRef + ":" + git.HydratorNotesRef
+	_, err := runGitCmd(ctx, gitPath, "fetch", "origin", refspec)
+	if err != nil {
+		// The remote may simply not have the notes ref yet; that is not an
+		// error for a hydrator that is about to create the first note.
+		if strings.Contains(err.Error(), "couldn't find remote ref") {
+			return nil
+		}
+		return fmt.Errorf("failed to fetch git notes ref: %w", err)
 	}
 	return nil
 }

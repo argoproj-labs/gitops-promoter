@@ -19,6 +19,7 @@ spec:
       proposedCommitStatuses:
       - key: deployment-freeze
 status:
+  observedGeneration: 123 # compare with metadata.generation to detect stale status
   conditions:
     # The Ready condition indicates that the resource has been successfully reconciled, when there is an error during
     # reconciliation, the condition will be False with a reason of ReconciliationError. When we successfully reconcile the resource,
@@ -29,8 +30,6 @@ status:
       message: Reconciliation succeeded
       reason: ReconciliationSuccess # ReconciliationSuccess, ReconciliationError, ChangeTransferPolicyNotReady, or PreviousEnvironmentCommitStatusNotReady
       status: "True" # "True," "False," or "Unknown"
-      # observedGeneration is the generation of the resource that was last reconciled. This is used to track if the
-      # resource has changed since the last reconciliation.
       observedGeneration: 123
   environments:
   - branch: environment/dev
@@ -59,11 +58,21 @@ status:
       hydrated:
         # The hydrated field contains the same fields as proposed.dry, but the contents correspond to a hydrated commit
         # instead of a dry commit.
+      note:
+        # Dry SHA from the hydrator git note on the proposed hydrated commit (only drySha is populated today)
+        drySha: "abcdef1234567890abcdef1234567890abcdef12"
       commitStatuses:
         - key: example-key
           phase: pending # pending, success, or failure
+          url: https://example.com/checks/example-key
+          description: Waiting for check
     active:
     # The active field contains the same fields as proposed.
+    pullRequest:
+      id: "848"
+      state: open # open, closed, or merged; empty when externallyMergedOrClosed is true
+      url: https://github.com/org/repo/pull/848
+      prCreationTime: 2023-10-01T00:00:00Z
     history:
       # The history field contains a snapshot of each promotion that has occurred in the environment. The most recent promotion
       # is at the front of the list. The fields here are similar to those in proposed and active top level fields. They only differ in

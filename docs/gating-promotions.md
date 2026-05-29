@@ -154,7 +154,7 @@ The [ArgoCDCommitStatus](commit-status-controllers/argocd.md) controller monitor
 Key features:
 
 - Monitors Argo CD Applications with specific labels
-- Creates CommitStatus resources with key `argocd-health`
+- `spec.key` (default `argocd-health` when omitted; set explicitly, including the default value)
 - Reports application health status (Healthy, Progressing, Degraded, etc.)
 
 ### Time-Based Gating
@@ -164,7 +164,7 @@ The [TimedCommitStatus](commit-status-controllers/timed.md) controller implement
 Key features:
 
 - Monitors how long commits have been running in each environment
-- Creates CommitStatus resources with key `timer`
+- `spec.key` (default `timer` when omitted; set explicitly, including the default value)
 - Reports pending until the required duration is met
 - Prevents promotions when there are pending changes in lower environments
 

@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -29,6 +30,16 @@ type ArgoCDCommitStatusSpec struct {
 	// +kubebuilder:validation:Required
 	PromotionStrategyRef ObjectReference `json:"promotionStrategyRef,omitempty"`
 
+	// Key is the gate name referenced in the PromotionStrategy's activeCommitStatuses.
+	// When omitted, the CRD default is argocd-health. Set Key explicitly, even if you use the CRD default.
+	// Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
+	// +optional
+	// +kubebuilder:default=argocd-health
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+	Key string `json:"key,omitempty"`
+
 	// ApplicationSelector is a label selector that selects the Argo CD applications to which this commit status applies.
 	// +kubebuilder:validation:Required
 	ApplicationSelector *metav1.LabelSelector `json:"applicationSelector,omitempty"`
@@ -36,6 +47,19 @@ type ArgoCDCommitStatusSpec struct {
 	// URL generates the URL to use in the CommitStatus, for example a link to the Argo CD UI.
 	// +kubebuilder:validation:Optional
 	URL URLConfig `json:"url,omitempty"`
+}
+
+// CommitStatusKey returns spec.key, or the default when Key is empty.
+//
+// Deprecated: CommitStatusKey exists only for clusters running a CRD without spec.key defaulting
+// (for example resources created before the key field existed). The API server applies the CRD
+// default when key is omitted on create/update, so controllers should use spec.Key directly.
+// TODO(v1.0, #1465): remove when spec.key becomes required.
+func (s *ArgoCDCommitStatusSpec) CommitStatusKey() string {
+	if s.Key != "" {
+		return s.Key
+	}
+	return ArgoCDCommitStatusDefaultKey
 }
 
 // URLConfig is a template that can be rendered using the Go template engine.
@@ -182,5 +206,8 @@ type ArgoCDCommitStatusList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&ArgoCDCommitStatus{}, &ArgoCDCommitStatusList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &ArgoCDCommitStatus{}, &ArgoCDCommitStatusList{})
+		return nil
+	})
 }
