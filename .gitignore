@@ -89,6 +89,12 @@ yarn-error.log*
 
 # Built UI static files
 ui/web/static/
+!ui/web/static/
+ui/web/static/*
+!ui/web/static/index.html
+!ui/web/static/assets/
+ui/web/static/assets/*
+!ui/web/static/assets/placeholder.txt
 
 # MkDocs build output
 mkdocs-lint.log
@@ -100,4 +106,3 @@ main
 # Claude Code
 .claude
 CLAUDE.md
-

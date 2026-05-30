@@ -1,0 +1,1 @@
+This placeholder keeps the embedded dashboard assets directory present in fresh checkouts.
