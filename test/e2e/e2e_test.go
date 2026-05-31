@@ -158,7 +158,7 @@ var _ = Describe("controller", Ordered, func() {
 				)
 				out, err := utils.Run(cmd)
 				if err != nil {
-					return err
+					return fmt.Errorf("failed to get APIService status: %w", err)
 				}
 				if strings.TrimSpace(string(out)) != "True" {
 					return fmt.Errorf("APIService not Available yet: %q", string(out))
@@ -170,8 +170,10 @@ var _ = Describe("controller", Ordered, func() {
 			By("confirming the aggregated resource is discoverable")
 			verifyDiscoverable := func() error {
 				cmd = exec.Command("kubectl", "get", "promotionstrategydetails", "-A")
-				_, err := utils.Run(cmd)
-				return err
+				if _, err := utils.Run(cmd); err != nil {
+					return fmt.Errorf("promotionstrategydetails not discoverable yet: %w", err)
+				}
+				return nil
 			}
 			EventuallyWithOffset(1, verifyDiscoverable, time.Minute, 5*time.Second).Should(Succeed())
 		})
