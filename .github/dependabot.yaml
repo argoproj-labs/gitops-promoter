@@ -1,17 +1,21 @@
 version: 2
 updates:
-  # Note: Go version and golangci-lint version updates are handled by Renovate
-  # See renovate.json5 for configuration
+  # Note: Go version and golangci-lint version updates are handled by Renovate.
+  # The coupled Kubernetes platform packages (k8s.io/*, controller-runtime,
+  # multicluster-runtime, and their staging deps) are ALSO owned by Renovate so
+  # they can be bumped in lockstep with the Makefile envtest versions; they are
+  # ignored here to avoid duplicate PRs. See renovate.json5 for configuration.
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
       interval: "daily"
-    groups:
-      k8s-deps:
-        patterns:
-          - "k8s.io/api" # a single dependency name
-          - "k8s.io/apimachinery"
-          - "k8s.io/client-go"
+    ignore:
+      - dependency-name: "k8s.io/*"
+      - dependency-name: "sigs.k8s.io/controller-runtime"
+      - dependency-name: "sigs.k8s.io/multicluster-runtime"
+      - dependency-name: "sigs.k8s.io/structured-merge-diff/*"
+      - dependency-name: "sigs.k8s.io/json"
+      - dependency-name: "sigs.k8s.io/randfill"
 
   - package-ecosystem: "github-actions"
     directory: "/"

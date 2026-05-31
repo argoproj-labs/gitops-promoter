@@ -11,108 +11,278 @@
     'dependencies',
   ],
   prConcurrentLimit: 3,
+  // The hashed lockfile is generated from docs/requirements.txt via a post-upgrade
+  // task; Renovate must never try to edit it directly.
+  ignorePaths: [
+    'docs/requirements-hashed.txt',
+  ],
   packageRules: [
+    // ----------------------------------------------------------------------
+    // Ownership split with Dependabot
+    // ----------------------------------------------------------------------
     {
-      description: 'Automatically update Go version across all files',
+      description: 'Let Dependabot own GitHub Action SHAs (avoid duplicate PRs)',
       matchManagers: [
-        'gomod',
-        'custom.regex',
+        'github-actions',
       ],
-      matchPackageNames: [
-        'go',
-        'golang',
-      ],
-      matchDepTypes: [
-        'golang-version',
-      ],
-      semanticCommits: 'enabled',
-      semanticCommitType: 'chore',
-      semanticCommitScope: 'deps',
-      commitMessageTopic: 'Go',
-      groupName: 'Go version',
-      automerge: false,
-      postUpgradeTasks: {
-        commands: [
-          'go mod tidy',
-          'make lint-fix || true',
-        ],
-        fileFilters: [
-          '**/*.go',
-          'go.mod',
-          'go.sum',
-        ],
-        executionMode: 'branch',
-      },
+      enabled: false,
     },
     {
-      description: 'Automatically update golangci-lint version',
+      description: 'UI npm dependencies are updated manually / via npm audit fix, not Renovate',
       matchManagers: [
-        'custom.regex',
+        'npm',
       ],
-      matchDepTypes: [
-        'golangci-lint',
-      ],
-      semanticCommits: 'enabled',
-      semanticCommitType: 'chore',
-      semanticCommitScope: 'deps',
-      commitMessageTopic: 'golangci-lint',
-      groupName: 'golangci-lint version',
-      automerge: false,
-      postUpgradeTasks: {
-        commands: [
-          'make lint-fix || true',
-        ],
-        fileFilters: [
-          '**/*.go',
-        ],
-        executionMode: 'branch',
-      },
+      enabled: false,
     },
     {
-      description: 'Group Go and golangci-lint updates together',
-      matchManagers: [
-        'gomod',
-        'custom.regex',
-      ],
-      matchPackageNames: [
-        'go',
-        'golang',
-        'golangci-lint',
-      ],
-      matchDepTypes: [
-        'golang-version',
-        'golangci-lint',
-      ],
-      groupName: 'Go and linter tooling',
-      semanticCommits: 'enabled',
-      semanticCommitType: 'chore',
-      semanticCommitScope: 'deps',
-      automerge: false,
-      postUpgradeTasks: {
-        commands: [
-          'go mod tidy',
-          'make lint-fix || true',
-        ],
-        fileFilters: [
-          '**/*.go',
-          'go.mod',
-          'go.sum',
-        ],
-        executionMode: 'branch',
-      },
-    },
-    {
-      description: 'Disable Go module dependency updates (keep using Dependabot for those)',
+      description: 'Dependabot owns general Go module updates',
       matchManagers: [
         'gomod',
       ],
       matchDepTypes: [
         'require',
+        'indirect',
       ],
       enabled: false,
     },
+    // ----------------------------------------------------------------------
+    // Group A: Kubernetes platform (gomod + Makefile + e2e workflow, lockstep)
+    // controller-runtime <-> multicluster-runtime <-> k8s.io/* <-> setup-envtest
+    // ----------------------------------------------------------------------
+    {
+      description: 'Renovate owns the coupled Kubernetes platform gomod deps so they bump in lockstep',
+      matchManagers: [
+        'gomod',
+      ],
+      matchPackageNames: [
+        'k8s.io/**',
+        'sigs.k8s.io/controller-runtime',
+        'sigs.k8s.io/multicluster-runtime',
+        'sigs.k8s.io/structured-merge-diff/**',
+        'sigs.k8s.io/json',
+        'sigs.k8s.io/randfill',
+      ],
+      enabled: true,
+      groupName: 'Kubernetes platform',
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      automerge: false,
+      postUpgradeTasks: {
+        commands: [
+          'go mod tidy',
+          'make manifests generate || true',
+          'make lint-fix || true',
+        ],
+        fileFilters: [
+          '**/*.go',
+          'go.mod',
+          'go.sum',
+          'config/**',
+          'test/**',
+        ],
+        executionMode: 'branch',
+      },
+    },
+    {
+      description: 'Group the envtest Makefile/e2e versions into the Kubernetes platform bump',
+      matchManagers: [
+        'custom.regex',
+      ],
+      matchDepNames: [
+        'setup-envtest',
+        'envtest-k8s',
+      ],
+      groupName: 'Kubernetes platform',
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      automerge: false,
+    },
+    // ----------------------------------------------------------------------
+    // Group B: Go toolchain + golangci-lint (+ golang base image)
+    // ----------------------------------------------------------------------
+    {
+      description: 'Group Go, the golang base image, and golangci-lint together',
+      matchManagers: [
+        'gomod',
+        'custom.regex',
+        'dockerfile',
+      ],
+      matchPackageNames: [
+        'go',
+        'golang',
+        'golangci-lint',
+        'golangci/golangci-lint',
+      ],
+      groupName: 'Go and linter tooling',
+      commitMessageTopic: 'Go and linter tooling',
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      automerge: false,
+      postUpgradeTasks: {
+        commands: [
+          'go mod tidy',
+          'make lint-fix || true',
+        ],
+        fileFilters: [
+          '**/*.go',
+          'go.mod',
+          'go.sum',
+        ],
+        executionMode: 'branch',
+      },
+    },
+    // ----------------------------------------------------------------------
+    // Group C: goreleaser (Makefile + both release workflows in one PR)
+    // ----------------------------------------------------------------------
+    {
+      description: 'Keep goreleaser in sync across the Makefile and release workflows',
+      matchDepNames: [
+        'goreleaser/goreleaser',
+      ],
+      groupName: 'goreleaser',
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      automerge: false,
+    },
+    // ----------------------------------------------------------------------
+    // Other Makefile tools with their required post-ops
+    // ----------------------------------------------------------------------
+    {
+      description: 'mockery: stay on v2 (v3 is a breaking rewrite) and always regenerate mocks',
+      matchDepNames: [
+        'vektra/mockery',
+      ],
+      allowedVersions: '<3.0.0',
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      automerge: false,
+      postUpgradeTasks: {
+        commands: [
+          'make mockery-gen',
+        ],
+        fileFilters: [
+          '**/mocks/**',
+          '**/*.go',
+        ],
+        executionMode: 'branch',
+      },
+    },
+    {
+      description: 'kustomize: regenerate the consolidated installer after a bump',
+      matchDepNames: [
+        'kubernetes-sigs/kustomize',
+      ],
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      automerge: false,
+      postUpgradeTasks: {
+        commands: [
+          'make build-installer || true',
+        ],
+        fileFilters: [
+          'dist/**',
+        ],
+        executionMode: 'branch',
+      },
+    },
+    {
+      description: 'controller-tools: regenerate manifests and deepcopy code after a bump',
+      matchDepNames: [
+        'kubernetes-sigs/controller-tools',
+      ],
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      automerge: false,
+      postUpgradeTasks: {
+        commands: [
+          'go mod tidy',
+          'make manifests generate || true',
+        ],
+        fileFilters: [
+          'config/**',
+          'test/**',
+          '**/*.go',
+          'go.mod',
+          'go.sum',
+        ],
+        executionMode: 'branch',
+      },
+    },
+    {
+      // NOTE: kubebuilder must stay in sync with the external gitops-promoter-helm
+      // repo (see the comment in kubebuilder_helm.yaml); review/coordinate manually.
+      description: 'kubebuilder version must match the external gitops-promoter-helm repo; review manually',
+      matchDepNames: [
+        'kubernetes-sigs/kubebuilder',
+      ],
+      groupName: 'kubebuilder',
+      addLabels: [
+        'coordinate-with-helm-repo',
+      ],
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      automerge: false,
+    },
+    // ----------------------------------------------------------------------
+    // Docker base images: full version tags only, never digest-only PRs
+    // ----------------------------------------------------------------------
+    {
+      description: 'No digest-only image bumps; only bump on a real new version tag',
+      matchDatasources: [
+        'docker',
+      ],
+      matchUpdateTypes: [
+        'digest',
+        'pinDigest',
+      ],
+      enabled: false,
+    },
+    {
+      description: 'The golang base image rides with the Go toolchain group',
+      matchDatasources: [
+        'docker',
+      ],
+      matchPackageNames: [
+        'golang',
+      ],
+      groupName: 'Go and linter tooling',
+      automerge: false,
+    },
+    // ----------------------------------------------------------------------
+    // Docs (MkDocs / pip): group and regenerate the hashed lockfile
+    // ----------------------------------------------------------------------
+    {
+      description: 'Group MkDocs/pip docs dependencies and regenerate the hashed lockfile',
+      matchManagers: [
+        'pip_requirements',
+      ],
+      groupName: 'docs dependencies',
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'docs',
+      automerge: false,
+      postUpgradeTasks: {
+        commands: [
+          'pip install pip-tools',
+          'pip-compile --generate-hashes -o docs/requirements-hashed.txt docs/requirements.txt',
+        ],
+        fileFilters: [
+          'docs/requirements-hashed.txt',
+        ],
+        executionMode: 'branch',
+      },
+    },
   ],
   customManagers: [
+    // ===== Go toolchain version (go.mod + workflows) =====
     {
       customType: 'regex',
       description: 'Update Go version in go.mod',
@@ -139,20 +309,7 @@
       datasourceTemplate: 'golang-version',
       versioningTemplate: 'semver',
     },
-    {
-      customType: 'regex',
-      description: 'Update Go version in Dockerfiles',
-      managerFilePatterns: [
-        '/(^|/)Dockerfile$/',
-        '/(^|/)Dockerfile\\.[^/]*$/',
-      ],
-      matchStrings: [
-        'FROM\\s+golang:(?<currentValue>\\d+\\.\\d+(\\.\\d+)?)',
-      ],
-      depNameTemplate: 'golang',
-      datasourceTemplate: 'docker',
-      versioningTemplate: 'docker',
-    },
+    // ===== golangci-lint (Makefile + workflows, incl. SHA-pinned action) =====
     {
       customType: 'regex',
       description: 'Update golangci-lint version in Makefile',
@@ -170,16 +327,219 @@
     },
     {
       customType: 'regex',
-      description: 'Update golangci-lint version in GitHub Actions',
+      description: 'Update golangci-lint version in GitHub Actions (handles SHA-pinned action)',
       managerFilePatterns: [
         '/^\\.github/workflows/.*\\.ya?ml$/',
       ],
       matchStrings: [
-        'uses:\\s+golangci/golangci-lint-action@v\\d+[\\s\\S]*?version:\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
+        'golangci/golangci-lint-action@(?:[0-9a-f]{7,40}|v\\d+)[\\s\\S]*?version:\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
       ],
       depNameTemplate: 'golangci-lint',
       packageNameTemplate: 'golangci/golangci-lint',
       datasourceTemplate: 'github-releases',
+      versioningTemplate: 'semver',
+      extractVersionTemplate: '^v(?<version>.*)$',
+    },
+    // ===== kube-rbac-proxy (runtime sidecar image) =====
+    {
+      customType: 'regex',
+      description: 'Update kube-rbac-proxy image version',
+      managerFilePatterns: [
+        '/^config/default/manager_auth_proxy_patch\\.yaml$/',
+      ],
+      matchStrings: [
+        'image:\\s*quay\\.io/brancz/kube-rbac-proxy:(?<currentValue>v\\d+\\.\\d+\\.\\d+)',
+      ],
+      depNameTemplate: 'quay.io/brancz/kube-rbac-proxy',
+      datasourceTemplate: 'docker',
+      versioningTemplate: 'semver',
+    },
+    // ===== Kubernetes platform: envtest tooling + assets + e2e matrix =====
+    {
+      customType: 'regex',
+      description: 'Update setup-envtest release branch to track the controller-runtime minor',
+      managerFilePatterns: [
+        '/^Makefile$/',
+      ],
+      matchStrings: [
+        'ENVTEST_VERSION\\s*\\??=\\s*release-(?<currentValue>\\d+\\.\\d+)',
+      ],
+      depNameTemplate: 'setup-envtest',
+      packageNameTemplate: 'kubernetes-sigs/controller-runtime',
+      datasourceTemplate: 'github-tags',
+      versioningTemplate: 'loose',
+      extractVersionTemplate: '^v(?<version>\\d+\\.\\d+)',
+    },
+    {
+      customType: 'regex',
+      description: 'Update envtest Kubernetes assets version',
+      managerFilePatterns: [
+        '/^Makefile$/',
+      ],
+      matchStrings: [
+        'ENVTEST_K8S_VERSION\\s*\\??=\\s*(?<currentValue>\\d+\\.\\d+\\.\\d+)',
+      ],
+      depNameTemplate: 'envtest-k8s',
+      packageNameTemplate: 'kubernetes/kubernetes',
+      datasourceTemplate: 'github-tags',
+      versioningTemplate: 'semver',
+      extractVersionTemplate: '^v(?<version>.*)$',
+    },
+    // ===== Makefile tool versions =====
+    {
+      customType: 'regex',
+      description: 'Update kustomize version in Makefile',
+      managerFilePatterns: [
+        '/^Makefile$/',
+      ],
+      matchStrings: [
+        'KUSTOMIZE_VERSION\\s*\\??=\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
+      ],
+      depNameTemplate: 'kubernetes-sigs/kustomize',
+      datasourceTemplate: 'github-releases',
+      versioningTemplate: 'semver',
+      extractVersionTemplate: '^kustomize/v(?<version>.*)$',
+    },
+    {
+      customType: 'regex',
+      description: 'Update controller-tools version in Makefile',
+      managerFilePatterns: [
+        '/^Makefile$/',
+      ],
+      matchStrings: [
+        'CONTROLLER_TOOLS_VERSION\\s*\\??=\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
+      ],
+      depNameTemplate: 'kubernetes-sigs/controller-tools',
+      datasourceTemplate: 'github-releases',
+      versioningTemplate: 'semver',
+      extractVersionTemplate: '^v(?<version>.*)$',
+    },
+    {
+      customType: 'regex',
+      description: 'Update mockery version in Makefile',
+      managerFilePatterns: [
+        '/^Makefile$/',
+      ],
+      matchStrings: [
+        'MOCKERY_VERSION\\s*\\??=\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
+      ],
+      depNameTemplate: 'vektra/mockery',
+      datasourceTemplate: 'github-releases',
+      versioningTemplate: 'semver',
+      extractVersionTemplate: '^v(?<version>.*)$',
+    },
+    {
+      customType: 'regex',
+      description: 'Update deadcode (golang.org/x/tools) version in Makefile',
+      managerFilePatterns: [
+        '/^Makefile$/',
+      ],
+      matchStrings: [
+        'DEADCODE_VERSION\\s*\\??=\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
+      ],
+      depNameTemplate: 'golang.org/x/tools',
+      datasourceTemplate: 'go',
+      versioningTemplate: 'semver',
+    },
+    {
+      customType: 'regex',
+      description: 'Update goreleaser version in Makefile',
+      managerFilePatterns: [
+        '/^Makefile$/',
+      ],
+      matchStrings: [
+        'GORELEASER_VERSION\\s*\\??=\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
+      ],
+      depNameTemplate: 'goreleaser/goreleaser',
+      datasourceTemplate: 'github-releases',
+      versioningTemplate: 'semver',
+      extractVersionTemplate: '^v(?<version>.*)$',
+    },
+    // ===== goreleaser pinned in release workflows (kept in lockstep) =====
+    {
+      customType: 'regex',
+      description: 'Update goreleaser version pinned in release workflows',
+      managerFilePatterns: [
+        '/^\\.github/workflows/release\\.yaml$/',
+        '/^\\.github/workflows/release-latest\\.yaml$/',
+      ],
+      matchStrings: [
+        'goreleaser/goreleaser-action@[\\s\\S]*?version:\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
+      ],
+      depNameTemplate: 'goreleaser/goreleaser',
+      datasourceTemplate: 'github-releases',
+      versioningTemplate: 'semver',
+      extractVersionTemplate: '^v(?<version>.*)$',
+    },
+    // ===== Workflow tool inputs (version: fields Dependabot cannot reach) =====
+    {
+      customType: 'regex',
+      description: 'Update Tilt version in the tilt-ci workflow',
+      managerFilePatterns: [
+        '/^\\.github/workflows/tilt-ci\\.yaml$/',
+      ],
+      matchStrings: [
+        'TILT_VERSION=v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
+      ],
+      depNameTemplate: 'tilt-dev/tilt',
+      datasourceTemplate: 'github-releases',
+      versioningTemplate: 'semver',
+      extractVersionTemplate: '^v(?<version>.*)$',
+    },
+    {
+      customType: 'regex',
+      description: 'Update kind version in helm/kind-action inputs',
+      managerFilePatterns: [
+        '/^\\.github/workflows/.*\\.ya?ml$/',
+      ],
+      matchStrings: [
+        'helm/kind-action@[\\s\\S]*?\\n\\s*version:\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
+      ],
+      depNameTemplate: 'kubernetes-sigs/kind',
+      datasourceTemplate: 'github-releases',
+      versioningTemplate: 'semver',
+      extractVersionTemplate: '^v(?<version>.*)$',
+    },
+    {
+      customType: 'regex',
+      description: 'Update helm version in the azure/setup-helm input',
+      managerFilePatterns: [
+        '/^\\.github/workflows/.*\\.ya?ml$/',
+      ],
+      matchStrings: [
+        'azure/setup-helm@[\\s\\S]*?version:\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
+      ],
+      depNameTemplate: 'helm/helm',
+      datasourceTemplate: 'github-releases',
+      versioningTemplate: 'semver',
+      extractVersionTemplate: '^v(?<version>.*)$',
+    },
+    {
+      customType: 'regex',
+      description: 'Update kubebuilder version in the kubebuilder_helm workflow',
+      managerFilePatterns: [
+        '/^\\.github/workflows/kubebuilder_helm\\.yaml$/',
+      ],
+      matchStrings: [
+        'KUBEBUILDER_VERSION:\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
+      ],
+      depNameTemplate: 'kubernetes-sigs/kubebuilder',
+      datasourceTemplate: 'github-releases',
+      versioningTemplate: 'semver',
+      extractVersionTemplate: '^v(?<version>.*)$',
+    },
+    {
+      customType: 'regex',
+      description: 'Update docker engine version pinned in release workflows',
+      managerFilePatterns: [
+        '/^\\.github/workflows/release\\.yaml$/',
+        '/^\\.github/workflows/release-latest\\.yaml$/',
+      ],
+      matchStrings: [
+        'docker/setup-docker-action@[\\s\\S]*?tag=(?<currentValue>\\d+\\.\\d+\\.\\d+)',
+      ],
+      depNameTemplate: 'moby/moby',
+      datasourceTemplate: 'github-tags',
       versioningTemplate: 'semver',
       extractVersionTemplate: '^v(?<version>.*)$',
     },
