@@ -1,9 +1,26 @@
 import { create } from 'zustand';
 import { enrichFromCRD } from '@shared/utils/PSData';
 import type { PromotionStrategy } from '@shared/utils/PSData';
+import type { PromotionStrategyBundle, EnvironmentRollup } from '@shared/types/bundle';
 
 interface CRDItem extends PromotionStrategy {
   enriched?: unknown;
+  /** Server-computed per-environment rollup carried alongside the PromotionStrategy. */
+  rollup?: EnvironmentRollup[];
+}
+
+// The dashboard now consumes a single, server-computed PromotionStrategyDetails
+// bundle (group dashboard.promoter.argoproj.io) instead of four raw CRD streams.
+// Each bundle embeds the full PromotionStrategy under `promotionStrategy`, so we
+// normalize it back to the PromotionStrategy shape the UI components expect and
+// attach the server `environments` rollup.
+function bundleToItem<T extends CRDItem>(bundle: PromotionStrategyBundle): T {
+  const ps = bundle.promotionStrategy;
+  return {
+    ...(ps as PromotionStrategy),
+    enriched: enrichFromCRD(ps),
+    rollup: bundle.environments,
+  } as T;
 }
 
 export function createCRDStore<T extends CRDItem>(kind: string, eventName: string) {
@@ -24,34 +41,32 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
     error: null,
     connectionStatus: 'connecting',
 
-    // Fetch items from via /list endpoint
+    // Fetch the current set of bundles via the /list endpoint.
     fetchItems: async (namespace: string) => {
       set({ loading: true, error: null });
       try {
         const res = await fetch(`/list?kind=${kind}&namespace=${namespace}`);
 
         if (!res.ok) throw new Error(`Error: ${res.status}`);
-        const data = await res.json();
+        const data: PromotionStrategyBundle[] = await res.json();
 
-        set({ items: data, loading: false });
+        set({ items: (data || []).map((b) => bundleToItem<T>(b)), loading: false });
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         set({ error: errorMessage, loading: false });
       }
     },
 
-    // Subscribing to SSE
+    // Subscribe to bundle updates over SSE.
     subscribe: (namespace: string) => {
       if (eventSource) eventSource.close();
 
-      // Real-Time fetch via /watch endpoint
       eventSource = new EventSource(`/watch?kind=${kind}&namespace=${namespace}`);
 
-      // Handle PromotionStrategy SSE events
       eventSource.addEventListener(eventName, async (evt: MessageEvent) => {
         try {
-          const updated = JSON.parse(evt.data);
-          const enriched = enrichFromCRD(updated);
+          const bundle: PromotionStrategyBundle = JSON.parse(evt.data);
+          const updated = bundleToItem<T>(bundle);
           set((state) => {
             const idx = state.items.findIndex(
               (item: T) =>
@@ -61,9 +76,9 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
             let newItems: T[];
             if (idx >= 0) {
               newItems = [...state.items];
-              newItems[idx] = { ...updated, enriched };
+              newItems[idx] = updated;
             } else {
-              newItems = [...state.items, { ...updated, enriched }];
+              newItems = [...state.items, updated];
             }
             return { items: newItems };
           });

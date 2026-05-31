@@ -1,0 +1,7 @@
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  name: v1alpha1.dashboard.promoter.argoproj.io
+  annotations:
+    # cert-manager's ca-injector populates .spec.caBundle from the named Certificate.
+    cert-manager.io/inject-ca-from: promoter-system/promoter-apiserver-serving-cert

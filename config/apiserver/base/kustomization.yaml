@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# This base is intentionally self-contained (final resource names and namespaces
+# are baked in) so it can be applied directly with `kubectl apply -k`. It is NOT
+# folded into config/default because:
+#   * the APIService name must be exactly v1alpha1.dashboard.promoter.argoproj.io
+#     (config/default's namePrefix would corrupt it), and
+#   * the extension-apiserver-authentication-reader RoleBinding must stay in
+#     kube-system (config/default's namespace transformer would move it).
+#
+# Pick a cert overlay instead of applying this base directly:
+#   kubectl apply -k config/apiserver/certs-manual
+#   kubectl apply -k config/apiserver/certs-cert-manager
+# (the base ships without a caBundle on the APIService).
+
+resources:
+  - serviceaccount.yaml
+  - deployment.yaml
+  - service.yaml
+  - rbac.yaml
+  - apiservice.yaml

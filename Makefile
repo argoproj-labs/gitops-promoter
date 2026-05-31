@@ -65,7 +65,12 @@ help: ## Display this help.
 
 .PHONY: manifests
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
-	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) rbac:roleName=manager-role webhook paths="./..."
+	# CRD generation is scoped to the packages that actually define CRDs. The
+	# dashboard aggregation API (api/dashboard/...) is served by an extension
+	# apiserver, not as CRDs; including it would make controller-gen's CRD generator
+	# treat those TypeMeta/ObjectMeta types as Kinds and fail.
+	$(CONTROLLER_GEN) crd paths="./api/v1alpha1/..." paths="./internal/types/argocd/..." output:crd:artifacts:config=config/crd/bases
 	# Move the Application CRD to the test dir. We don't need it in the promoter config, but we need it for e2e tests.
 	mv config/crd/bases/argoproj.io_applications.yaml test/external_crds/
 
@@ -80,9 +85,41 @@ generate-extension-icon-styles: ## Generate Argo CD extension icon styles from l
 .PHONY: generate-all
 generate-all: generate generate-extension-icon-styles ## Run all code generation used in CI (controller-gen, extension icon styles). For mocks, run make mockery-gen separately.
 
+# Code generation for the dashboard aggregation API (api/dashboard/...).
+#
+# These are aggregated-apiserver types (NOT CRDs), so they are owned entirely by the
+# k8s code-generators here, never by controller-gen:
+#   * deepcopy-gen   -> zz_generated.deepcopy.go   (DeepCopy + DeepCopyObject)
+#   * conversion-gen -> zz_generated.conversion.go (internal <-> v1alpha1)
+#   * openapi-gen    -> zz_generated.openapi.go    (OpenAPI definitions)
+# The packages carry no kubebuilder markers, so `make generate` (controller-gen) and
+# `make manifests` skip them and never emit a CRD for this group. Re-run this target
+# after changing any type in api/dashboard/...; the output is committed.
+.PHONY: generate-apiserver
+generate-apiserver: ## Generate deepcopy/conversion/openapi for the dashboard aggregation API (api/dashboard/...).
+	go run k8s.io/code-generator/cmd/deepcopy-gen \
+		--output-file zz_generated.deepcopy.go \
+		--go-header-file hack/boilerplate.go.txt \
+		./api/dashboard/v1alpha1 ./api/dashboard/dashboard
+	go run k8s.io/code-generator/cmd/conversion-gen \
+		--output-file zz_generated.conversion.go \
+		--go-header-file hack/boilerplate.go.txt \
+		./api/dashboard/v1alpha1
+	go run k8s.io/kube-openapi/cmd/openapi-gen \
+		--output-dir ./api/dashboard/v1alpha1 \
+		--output-pkg github.com/argoproj-labs/gitops-promoter/api/dashboard/v1alpha1 \
+		--output-file zz_generated.openapi.go \
+		--go-header-file hack/boilerplate.go.txt \
+		./api/dashboard/v1alpha1 ./api/v1alpha1 \
+		k8s.io/apimachinery/pkg/apis/meta/v1 k8s.io/apimachinery/pkg/runtime k8s.io/apimachinery/pkg/version
+
 .PHONY: mockery-gen
 mockery-gen: mockery
 	$(MOCKERY)
+
+.PHONY: apiserver-certs
+apiserver-certs: ## Generate self-signed serving certs for the dashboard apiserver and patch the APIService caBundle (manual cert path).
+	./hack/gen-apiserver-certs.sh
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.

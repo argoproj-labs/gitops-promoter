@@ -12,12 +12,19 @@ import (
 	"strings"
 	"time"
 
+	dashboardv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/dashboard/v1alpha1"
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	webserverlogr "github.com/argoproj-labs/gitops-promoter/internal/webserver/logr"
 	"github.com/argoproj-labs/gitops-promoter/ui/web"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/dynamic/dynamicinformer"
+	"k8s.io/client-go/rest"
+	toolscache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -28,6 +35,10 @@ import (
 )
 
 var logger = ctrl.Log.WithName("webServer")
+
+// promotionStrategyDetailsKind is the Kind of the aggregated bundle resource and
+// the SSE event name the dashboard UI subscribes to.
+const promotionStrategyDetailsKind = "PromotionStrategyDetails"
 
 // WebServer handles the web server functionality for the dashboard and API endpoints.
 type WebServer struct {
@@ -116,86 +127,31 @@ func (ws *WebServer) sendDeleteEvent(e client.Object) {
 }
 
 // SetupWithManager sets up the WebServer controller with the given manager.
+//
+// Rather than watching the four raw promoter CRD kinds and stitching them together
+// in the browser, the dashboard now watches the single server-computed
+// PromotionStrategyDetails bundle served by the dashboard aggregation apiserver and
+// forwards each bundle to clients over SSE.
 func (ws *WebServer) SetupWithManager(mgr ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(mgr).
 		Named("webServer").
-		Watches(&promoterv1alpha1.PromotionStrategy{}, handler.Funcs{ //nolint:dupl // similar watch handlers are intentional for different resource types
+		Watches(&dashboardv1alpha1.PromotionStrategyDetails{}, handler.Funcs{
 			CreateFunc: func(ctx context.Context, e event.TypedCreateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if ps, ok := e.Object.(*promoterv1alpha1.PromotionStrategy); ok {
-					ps.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("PromotionStrategy"))
-					ws.sendEvent(ps)
+				if bundle, ok := e.Object.(*dashboardv1alpha1.PromotionStrategyDetails); ok {
+					bundle.SetGroupVersionKind(dashboardv1alpha1.GroupVersion.WithKind(promotionStrategyDetailsKind))
+					ws.sendEvent(bundle)
 				}
 			},
 			UpdateFunc: func(ctx context.Context, e event.TypedUpdateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if ps, ok := e.ObjectNew.(*promoterv1alpha1.PromotionStrategy); ok {
-					ps.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("PromotionStrategy"))
-					ws.sendEvent(ps)
+				if bundle, ok := e.ObjectNew.(*dashboardv1alpha1.PromotionStrategyDetails); ok {
+					bundle.SetGroupVersionKind(dashboardv1alpha1.GroupVersion.WithKind(promotionStrategyDetailsKind))
+					ws.sendEvent(bundle)
 				}
 			},
 			DeleteFunc: func(ctx context.Context, e event.TypedDeleteEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if ps, ok := e.Object.(*promoterv1alpha1.PromotionStrategy); ok {
-					ps.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("PromotionStrategy"))
-					ws.sendDeleteEvent(ps)
-				}
-			},
-		}).
-		Watches(&promoterv1alpha1.ChangeTransferPolicy{}, handler.Funcs{ //nolint:dupl // similar watch handlers are intentional for different resource types
-			CreateFunc: func(ctx context.Context, e event.TypedCreateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if ctp, ok := e.Object.(*promoterv1alpha1.ChangeTransferPolicy); ok {
-					ctp.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("ChangeTransferPolicy"))
-					ws.sendEvent(ctp)
-				}
-			},
-			UpdateFunc: func(ctx context.Context, e event.TypedUpdateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if ctp, ok := e.ObjectNew.(*promoterv1alpha1.ChangeTransferPolicy); ok {
-					ctp.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("ChangeTransferPolicy"))
-					ws.sendEvent(ctp)
-				}
-			},
-			DeleteFunc: func(ctx context.Context, e event.TypedDeleteEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if ctp, ok := e.Object.(*promoterv1alpha1.ChangeTransferPolicy); ok {
-					ctp.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("ChangeTransferPolicy"))
-					ws.sendDeleteEvent(ctp)
-				}
-			},
-		}).
-		Watches(&promoterv1alpha1.PullRequest{}, handler.Funcs{ //nolint:dupl // similar watch handlers are intentional for different resource types
-			CreateFunc: func(ctx context.Context, e event.TypedCreateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if pr, ok := e.Object.(*promoterv1alpha1.PullRequest); ok {
-					pr.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("PullRequest"))
-					ws.sendEvent(pr)
-				}
-			},
-			UpdateFunc: func(ctx context.Context, e event.TypedUpdateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if pr, ok := e.ObjectNew.(*promoterv1alpha1.PullRequest); ok {
-					pr.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("PullRequest"))
-					ws.sendEvent(pr)
-				}
-			},
-			DeleteFunc: func(ctx context.Context, e event.TypedDeleteEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if pr, ok := e.Object.(*promoterv1alpha1.PullRequest); ok {
-					pr.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("PullRequest"))
-					ws.sendDeleteEvent(pr)
-				}
-			},
-		}).
-		Watches(&promoterv1alpha1.CommitStatus{}, handler.Funcs{ //nolint:dupl // similar watch handlers are intentional for different resource types
-			CreateFunc: func(ctx context.Context, e event.TypedCreateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if cs, ok := e.Object.(*promoterv1alpha1.CommitStatus); ok {
-					cs.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("CommitStatus"))
-					ws.sendEvent(cs)
-				}
-			},
-			UpdateFunc: func(ctx context.Context, e event.TypedUpdateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if cs, ok := e.ObjectNew.(*promoterv1alpha1.CommitStatus); ok {
-					cs.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("CommitStatus"))
-					ws.sendEvent(cs)
-				}
-			},
-			DeleteFunc: func(ctx context.Context, e event.TypedDeleteEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if cs, ok := e.Object.(*promoterv1alpha1.CommitStatus); ok {
-					cs.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("CommitStatus"))
-					ws.sendDeleteEvent(cs)
+				if bundle, ok := e.Object.(*dashboardv1alpha1.PromotionStrategyDetails); ok {
+					bundle.SetGroupVersionKind(dashboardv1alpha1.GroupVersion.WithKind(promotionStrategyDetailsKind))
+					ws.sendDeleteEvent(bundle)
 				}
 			},
 		}).
@@ -203,6 +159,60 @@ func (ws *WebServer) SetupWithManager(mgr ctrl.Manager) error {
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
 	}
+	return nil
+}
+
+// StartDynamicBundleWatch is a fallback to the controller-runtime watch in
+// SetupWithManager. If the controller-runtime cache ever rejects the apiserver's
+// synthetic resourceVersion, the dashboard can instead watch PromotionStrategyDetails
+// directly with a dynamic client and pump each event into the SSE broadcaster.
+//
+// It is opt-in (the dashboard command enables it via PROMOTER_DASHBOARD_DYNAMIC_WATCH)
+// and must not run concurrently with the controller-runtime watch, or events would
+// be emitted twice.
+func (ws *WebServer) StartDynamicBundleWatch(ctx context.Context, cfg *rest.Config) error {
+	dynClient, err := dynamic.NewForConfig(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create dynamic client: %w", err)
+	}
+
+	gvr := schema.GroupVersionResource{
+		Group:    dashboardv1alpha1.GroupName,
+		Version:  "v1alpha1",
+		Resource: "promotionstrategydetails",
+	}
+
+	factory := dynamicinformer.NewDynamicSharedInformerFactory(dynClient, 10*time.Minute)
+	informer := factory.ForResource(gvr).Informer()
+
+	emit := func(obj any, deleted bool) {
+		u, ok := obj.(*unstructured.Unstructured)
+		if !ok {
+			if tombstone, tok := obj.(toolscache.DeletedFinalStateUnknown); tok {
+				u, ok = tombstone.Obj.(*unstructured.Unstructured)
+			}
+			if !ok {
+				return
+			}
+		}
+		u.SetGroupVersionKind(dashboardv1alpha1.GroupVersion.WithKind(promotionStrategyDetailsKind))
+		if deleted {
+			ws.sendDeleteEvent(u)
+			return
+		}
+		ws.sendEvent(u)
+	}
+
+	if _, err := informer.AddEventHandler(toolscache.ResourceEventHandlerFuncs{
+		AddFunc:    func(obj any) { emit(obj, false) },
+		UpdateFunc: func(_, obj any) { emit(obj, false) },
+		DeleteFunc: func(obj any) { emit(obj, true) },
+	}); err != nil {
+		return fmt.Errorf("failed to add dynamic informer handler: %w", err)
+	}
+
+	logger.Info("starting dynamic PromotionStrategyDetails watch (fallback mode)")
+	informer.Run(ctx.Done())
 	return nil
 }
 
@@ -359,6 +369,15 @@ func (ws *WebServer) httpGet(c *gin.Context) {
 	name := strings.ToLower(c.Query("name"))
 
 	switch kind {
+	case "promotionstrategydetails":
+		bundle := &dashboardv1alpha1.PromotionStrategyDetails{}
+		err := ws.Get(c, client.ObjectKey{Namespace: namespace, Name: name}, bundle)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, err.Error())
+			return
+		}
+		c.JSON(http.StatusOK, bundle)
+
 	case "promotionstrategy":
 		ps := &promoterv1alpha1.PromotionStrategy{}
 		err := ws.Get(c, client.ObjectKey{Namespace: namespace, Name: name}, ps)
@@ -412,6 +431,15 @@ func (ws *WebServer) httpList(c *gin.Context) {
 	}
 
 	switch kind {
+	case "promotionstrategydetails":
+		bundleList := &dashboardv1alpha1.PromotionStrategyDetailsList{}
+		err := ws.List(c, bundleList, listOptions)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, err.Error())
+			return
+		}
+		c.JSON(http.StatusOK, bundleList.Items)
+
 	case "promotionstrategy":
 		psl := &promoterv1alpha1.PromotionStrategyList{}
 		err := ws.List(c, psl, listOptions)

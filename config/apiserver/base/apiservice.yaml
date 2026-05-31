@@ -1,0 +1,20 @@
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  name: v1alpha1.dashboard.promoter.argoproj.io
+  labels:
+    app.kubernetes.io/name: apiservice
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/part-of: promoter
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  group: dashboard.promoter.argoproj.io
+  version: v1alpha1
+  groupPriorityMinimum: 1000
+  versionPriority: 15
+  service:
+    name: promoter-apiserver
+    namespace: promoter-system
+    port: 443
+  # caBundle is supplied by a cert overlay (certs-manual or certs-cert-manager),
+  # or set insecureSkipTLSVerify in a dev overlay. The base intentionally omits it.
