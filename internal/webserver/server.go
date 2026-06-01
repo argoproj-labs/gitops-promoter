@@ -18,13 +18,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/ui/web"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/dynamic/dynamicinformer"
-	"k8s.io/client-go/rest"
-	toolscache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -159,60 +153,6 @@ func (ws *WebServer) SetupWithManager(mgr ctrl.Manager) error {
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
 	}
-	return nil
-}
-
-// StartDynamicBundleWatch is a fallback to the controller-runtime watch in
-// SetupWithManager. If the controller-runtime cache ever rejects the apiserver's
-// synthetic resourceVersion, the dashboard can instead watch PromotionStrategyDetails
-// directly with a dynamic client and pump each event into the SSE broadcaster.
-//
-// It is opt-in (the dashboard command enables it via PROMOTER_DASHBOARD_DYNAMIC_WATCH)
-// and must not run concurrently with the controller-runtime watch, or events would
-// be emitted twice.
-func (ws *WebServer) StartDynamicBundleWatch(ctx context.Context, cfg *rest.Config) error {
-	dynClient, err := dynamic.NewForConfig(cfg)
-	if err != nil {
-		return fmt.Errorf("failed to create dynamic client: %w", err)
-	}
-
-	gvr := schema.GroupVersionResource{
-		Group:    dashboardv1alpha1.GroupName,
-		Version:  "v1alpha1",
-		Resource: "promotionstrategydetails",
-	}
-
-	factory := dynamicinformer.NewDynamicSharedInformerFactory(dynClient, 10*time.Minute)
-	informer := factory.ForResource(gvr).Informer()
-
-	emit := func(obj any, deleted bool) {
-		u, ok := obj.(*unstructured.Unstructured)
-		if !ok {
-			if tombstone, tok := obj.(toolscache.DeletedFinalStateUnknown); tok {
-				u, ok = tombstone.Obj.(*unstructured.Unstructured)
-			}
-			if !ok {
-				return
-			}
-		}
-		u.SetGroupVersionKind(dashboardv1alpha1.GroupVersion.WithKind(promotionStrategyDetailsKind))
-		if deleted {
-			ws.sendDeleteEvent(u)
-			return
-		}
-		ws.sendEvent(u)
-	}
-
-	if _, err := informer.AddEventHandler(toolscache.ResourceEventHandlerFuncs{
-		AddFunc:    func(obj any) { emit(obj, false) },
-		UpdateFunc: func(_, obj any) { emit(obj, false) },
-		DeleteFunc: func(obj any) { emit(obj, true) },
-	}); err != nil {
-		return fmt.Errorf("failed to add dynamic informer handler: %w", err)
-	}
-
-	logger.Info("starting dynamic PromotionStrategyDetails watch (fallback mode)")
-	informer.Run(ctx.Done())
 	return nil
 }
 

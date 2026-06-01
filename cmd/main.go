@@ -412,15 +412,10 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 
 			ws := webserver.NewWebServer(mgr)
 
-			// By default the dashboard watches the aggregated PromotionStrategyDetails
-			// bundle via the controller-runtime manager cache. As a fallback (in case
-			// the cache rejects the apiserver's synthetic resourceVersion), set
-			// PROMOTER_DASHBOARD_DYNAMIC_WATCH to watch with a dynamic client instead.
-			useDynamicWatch := os.Getenv("PROMOTER_DASHBOARD_DYNAMIC_WATCH") != ""
-			if !useDynamicWatch {
-				if err = ws.SetupWithManager(mgr); err != nil {
-					panic("unable to create WebServer controller")
-				}
+			// The dashboard watches the aggregated PromotionStrategyDetails bundle via
+			// the controller-runtime manager cache and forwards each bundle over SSE.
+			if err = ws.SetupWithManager(mgr); err != nil {
+				panic("unable to create WebServer controller")
 			}
 
 			// Start manager in background
@@ -429,14 +424,6 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 					panic(err)
 				}
 			}()
-
-			if useDynamicWatch {
-				go func() {
-					if err := ws.StartDynamicBundleWatch(ctx, restConfig); err != nil {
-						setupLog.Error(err, "dynamic bundle watch failed")
-					}
-				}()
-			}
 
 			// Make port configurable
 			setupLog.Info("Dashboard starting at", "port", fmt.Sprintf(" http://localhost:%d", port))
