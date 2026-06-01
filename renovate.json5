@@ -3,19 +3,41 @@
   extends: [
     'config:recommended',
   ],
-  gitAuthor: 'Renovate Bot <bot@renovateapp.com>',
+  // GitHub App commits via the Contents API; avoids gitAuthor mismatch with the App bot.
+  platformCommit: 'enabled',
   timezone: 'UTC',
   // PR cadence is enforced by .github/workflows/renovate.yaml (Sun/Wed/Sat). A
   // weekend-only schedule here prevented those mid-week runs from opening updates.
   labels: [
     'dependencies',
   ],
-  prConcurrentLimit: 3,
+  prConcurrentLimit: 10,
+  // Run `go mod tidy` natively as part of every gomod artifact update. This is the
+  // reliable equivalent of the CI codegen `go mod tidy` check -- unlike a shell
+  // postUpgradeTask it needs no allowedCommands entry and uses the go.mod toolchain,
+  // so go.sum is always tidy in the PR (no chicken-and-egg with the allowlist).
+  postUpdateOptions: [
+    'gomodTidy',
+  ],
   // The hashed lockfile is generated from docs/requirements.txt via a post-upgrade
   // task; Renovate must never try to edit it directly.
   ignorePaths: [
     'docs/requirements-hashed.txt',
   ],
+  // Custom datasource for envtest Kubernetes assets. setup-envtest discovers binaries
+  // from this exact index (its --index default), so reading the same file guarantees
+  // Renovate only proposes ENVTEST_K8S_VERSION values that actually have binaries.
+  // The YAML shape is { releases: { "v1.36.0": {...}, ... } }; we map the keys to
+  // the { releases: [ { version } ] } structure Renovate expects.
+  customDatasources: {
+    'envtest-k8s': {
+      defaultRegistryUrlTemplate: 'https://raw.githubusercontent.com/kubernetes-sigs/controller-tools/HEAD/envtest-releases.yaml',
+      format: 'yaml',
+      transformTemplates: [
+        '{ "releases": $map($keys(releases), function($v) { { "version": $v } }) }',
+      ],
+    },
+  },
   packageRules: [
     // ----------------------------------------------------------------------
     // Ownership split with Dependabot
@@ -68,21 +90,6 @@
       semanticCommitType: 'chore',
       semanticCommitScope: 'deps',
       automerge: false,
-      postUpgradeTasks: {
-        commands: [
-          'go mod tidy',
-          'make manifests generate || true',
-          'make lint-fix || true',
-        ],
-        fileFilters: [
-          '**/*.go',
-          'go.mod',
-          'go.sum',
-          'config/**',
-          'test/**',
-        ],
-        executionMode: 'branch',
-      },
     },
     {
       description: 'Group the envtest Makefile/e2e versions into the Kubernetes platform bump',
@@ -123,7 +130,6 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
-          'go mod tidy',
           'make lint-fix || true',
         ],
         fileFilters: [
@@ -211,6 +217,28 @@
           '**/*.go',
           'go.mod',
           'go.sum',
+        ],
+        executionMode: 'branch',
+      },
+    },
+    {
+      description: 'kube-rbac-proxy image is baked into config + dist/install.yaml; regenerate them on bump',
+      matchDepNames: [
+        'quay.io/brancz/kube-rbac-proxy',
+      ],
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      automerge: false,
+      postUpgradeTasks: {
+        commands: [
+          'make manifests || true',
+          'make build-installer || true',
+        ],
+        fileFilters: [
+          'config/**',
+          'test/**',
+          'dist/**',
         ],
         executionMode: 'branch',
       },
@@ -372,7 +400,12 @@
     },
     {
       customType: 'regex',
-      description: 'Update envtest Kubernetes assets version',
+      // Track ENVTEST_K8S_VERSION against the SAME index setup-envtest reads
+      // (custom datasource 'envtest-k8s' -> controller-tools envtest-releases.yaml),
+      // so Renovate only ever proposes a k8s version that has published envtest
+      // binaries. Using kubernetes/kubernetes tags here previously proposed 1.36.1,
+      // which envtest never built, breaking tests with `exec: "etcd": ... not found`.
+      description: 'Update envtest Kubernetes assets version (only versions with published envtest binaries)',
       managerFilePatterns: [
         '/^Makefile$/',
       ],
@@ -380,8 +413,7 @@
         'ENVTEST_K8S_VERSION\\s*\\??=\\s*(?<currentValue>\\d+\\.\\d+\\.\\d+)',
       ],
       depNameTemplate: 'envtest-k8s',
-      packageNameTemplate: 'kubernetes/kubernetes',
-      datasourceTemplate: 'github-tags',
+      datasourceTemplate: 'custom.envtest-k8s',
       versioningTemplate: 'semver',
       extractVersionTemplate: '^v(?<version>.*)$',
     },
