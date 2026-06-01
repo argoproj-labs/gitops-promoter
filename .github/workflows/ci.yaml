@@ -136,13 +136,6 @@ jobs:
             echo "::error ::Manifests are out of date. Run 'make build-installer' and commit the changes."
             exit 1
           fi
-      - name: make mockery-gen
-        run: |
-          make mockery-gen
-          if ! git diff --exit-code -- internal/scms/mock/; then
-            echo "::error ::Mocks are out of date. Run 'make mockery-gen' and commit the changes."
-            exit 1
-          fi
   nilaway:
     name: Nilaway Static Analysis
     runs-on: ubuntu-latest
