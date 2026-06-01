@@ -33,6 +33,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
+      - name: Set up Go
+        uses: actions/setup-go@4aaadf42668403795cdfdb15b1c4250e9fed12b9 # pin@v5
+        with:
+          go-version: "1.26.3"
+
       - name: Get token
         id: get_token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
@@ -41,22 +46,35 @@ jobs:
           private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
           # https://docs.renovatebot.com/modules/platform/github/#running-as-a-github-app
           # These MUST be a subset of the permissions granted to the App installation
-          # (Contents, Pull Requests, Issues, Metadata, Workflows -- see RENOVATE_SETUP.md).
-          # Requesting any ungranted permission makes token minting fail with HTTP 422.
+          # (see RENOVATE_SETUP.md). Requesting any ungranted permission makes token
+          # minting fail with HTTP 422.
           permission-contents: write
           permission-issues: write
           permission-pull-requests: write
           permission-workflows: write
           permission-metadata: read
+          permission-statuses: write
+          permission-vulnerability-alerts: read
 
       - name: Self-hosted Renovate
         uses: renovatebot/github-action@693b9ef15eec82123529a37c782242f091365961 # v46.1.14
         with:
           configurationFile: renovate.json5
           token: ${{ steps.get_token.outputs.token }}
+          # Post-upgrade tasks (make mockery-gen, etc.) run inside the Renovate
+          # container; mount the runner Go toolchain and pass PATH through.
+          docker-volumes: |
+            /tmp:/tmp ;
+            /opt/hostedtoolcache:/opt/hostedtoolcache
+          env-regex: '^(?:RENOVATE_\w+|LOG_LEVEL|PATH|GOROOT|GOPATH|GOBIN|HOME)$'
         env:
           LOG_LEVEL: ${{ inputs.logLevel || 'info' }}
           RENOVATE_DRY_RUN: ${{ inputs.dryRun == 'true' }}
           # Global-only options that cannot be in renovate.json5
           RENOVATE_REPOSITORIES: ${{ github.repository }}
           RENOVATE_ALLOWED_POST_UPGRADE_COMMANDS: '["^go mod tidy$","^make lint-fix","^make mockery-gen$","^make build-installer","^make manifests","^make generate","^pip install pip-tools$","^pip-compile"]'
+          PATH: ${{ env.PATH }}
+          GOROOT: ${{ env.GOROOT }}
+          GOPATH: ${{ env.GOPATH }}
+          GOBIN: ${{ env.GOBIN }}
+          HOME: ${{ env.HOME }}
