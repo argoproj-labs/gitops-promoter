@@ -24,6 +24,7 @@ import (
 	unsafe "unsafe"
 
 	dashboard "github.com/argoproj-labs/gitops-promoter/api/dashboard/dashboard"
+	apiv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	conversion "k8s.io/apimachinery/pkg/conversion"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
@@ -61,16 +62,16 @@ func RegisterConversions(s *runtime.Scheme) error {
 func autoConvert_v1alpha1_PromotionStrategyDetails_To_dashboard_PromotionStrategyDetails(in *PromotionStrategyDetails, out *dashboard.PromotionStrategyDetails, s conversion.Scope) error {
 	out.ObjectMeta = in.ObjectMeta
 	out.PromotionStrategy = in.PromotionStrategy
-	out.ChangeTransferPolicies = *(*[]runtime.RawExtension)(unsafe.Pointer(&in.ChangeTransferPolicies))
-	out.PullRequests = *(*[]runtime.RawExtension)(unsafe.Pointer(&in.PullRequests))
-	out.CommitStatuses = *(*[]runtime.RawExtension)(unsafe.Pointer(&in.CommitStatuses))
-	out.ArgoCDCommitStatuses = *(*[]runtime.RawExtension)(unsafe.Pointer(&in.ArgoCDCommitStatuses))
-	out.GitCommitStatuses = *(*[]runtime.RawExtension)(unsafe.Pointer(&in.GitCommitStatuses))
-	out.TimedCommitStatuses = *(*[]runtime.RawExtension)(unsafe.Pointer(&in.TimedCommitStatuses))
-	out.WebRequestCommitStatuses = *(*[]runtime.RawExtension)(unsafe.Pointer(&in.WebRequestCommitStatuses))
-	out.GitRepository = (*runtime.RawExtension)(unsafe.Pointer(in.GitRepository))
-	out.ScmProvider = (*runtime.RawExtension)(unsafe.Pointer(in.ScmProvider))
-	out.ClusterScmProvider = (*runtime.RawExtension)(unsafe.Pointer(in.ClusterScmProvider))
+	out.ChangeTransferPolicies = *(*[]apiv1alpha1.ChangeTransferPolicy)(unsafe.Pointer(&in.ChangeTransferPolicies))
+	out.PullRequests = *(*[]apiv1alpha1.PullRequest)(unsafe.Pointer(&in.PullRequests))
+	out.CommitStatuses = *(*[]apiv1alpha1.CommitStatus)(unsafe.Pointer(&in.CommitStatuses))
+	out.ArgoCDCommitStatuses = *(*[]apiv1alpha1.ArgoCDCommitStatus)(unsafe.Pointer(&in.ArgoCDCommitStatuses))
+	out.GitCommitStatuses = *(*[]apiv1alpha1.GitCommitStatus)(unsafe.Pointer(&in.GitCommitStatuses))
+	out.TimedCommitStatuses = *(*[]apiv1alpha1.TimedCommitStatus)(unsafe.Pointer(&in.TimedCommitStatuses))
+	out.WebRequestCommitStatuses = *(*[]apiv1alpha1.WebRequestCommitStatus)(unsafe.Pointer(&in.WebRequestCommitStatuses))
+	out.GitRepository = (*apiv1alpha1.GitRepository)(unsafe.Pointer(in.GitRepository))
+	out.ScmProvider = (*apiv1alpha1.ScmProvider)(unsafe.Pointer(in.ScmProvider))
+	out.ClusterScmProvider = (*apiv1alpha1.ClusterScmProvider)(unsafe.Pointer(in.ClusterScmProvider))
 	return nil
 }
 
@@ -82,16 +83,16 @@ func Convert_v1alpha1_PromotionStrategyDetails_To_dashboard_PromotionStrategyDet
 func autoConvert_dashboard_PromotionStrategyDetails_To_v1alpha1_PromotionStrategyDetails(in *dashboard.PromotionStrategyDetails, out *PromotionStrategyDetails, s conversion.Scope) error {
 	out.ObjectMeta = in.ObjectMeta
 	out.PromotionStrategy = in.PromotionStrategy
-	out.ChangeTransferPolicies = *(*[]runtime.RawExtension)(unsafe.Pointer(&in.ChangeTransferPolicies))
-	out.PullRequests = *(*[]runtime.RawExtension)(unsafe.Pointer(&in.PullRequests))
-	out.CommitStatuses = *(*[]runtime.RawExtension)(unsafe.Pointer(&in.CommitStatuses))
-	out.ArgoCDCommitStatuses = *(*[]runtime.RawExtension)(unsafe.Pointer(&in.ArgoCDCommitStatuses))
-	out.GitCommitStatuses = *(*[]runtime.RawExtension)(unsafe.Pointer(&in.GitCommitStatuses))
-	out.TimedCommitStatuses = *(*[]runtime.RawExtension)(unsafe.Pointer(&in.TimedCommitStatuses))
-	out.WebRequestCommitStatuses = *(*[]runtime.RawExtension)(unsafe.Pointer(&in.WebRequestCommitStatuses))
-	out.GitRepository = (*runtime.RawExtension)(unsafe.Pointer(in.GitRepository))
-	out.ScmProvider = (*runtime.RawExtension)(unsafe.Pointer(in.ScmProvider))
-	out.ClusterScmProvider = (*runtime.RawExtension)(unsafe.Pointer(in.ClusterScmProvider))
+	out.ChangeTransferPolicies = *(*[]apiv1alpha1.ChangeTransferPolicy)(unsafe.Pointer(&in.ChangeTransferPolicies))
+	out.PullRequests = *(*[]apiv1alpha1.PullRequest)(unsafe.Pointer(&in.PullRequests))
+	out.CommitStatuses = *(*[]apiv1alpha1.CommitStatus)(unsafe.Pointer(&in.CommitStatuses))
+	out.ArgoCDCommitStatuses = *(*[]apiv1alpha1.ArgoCDCommitStatus)(unsafe.Pointer(&in.ArgoCDCommitStatuses))
+	out.GitCommitStatuses = *(*[]apiv1alpha1.GitCommitStatus)(unsafe.Pointer(&in.GitCommitStatuses))
+	out.TimedCommitStatuses = *(*[]apiv1alpha1.TimedCommitStatus)(unsafe.Pointer(&in.TimedCommitStatuses))
+	out.WebRequestCommitStatuses = *(*[]apiv1alpha1.WebRequestCommitStatus)(unsafe.Pointer(&in.WebRequestCommitStatuses))
+	out.GitRepository = (*apiv1alpha1.GitRepository)(unsafe.Pointer(in.GitRepository))
+	out.ScmProvider = (*apiv1alpha1.ScmProvider)(unsafe.Pointer(in.ScmProvider))
+	out.ClusterScmProvider = (*apiv1alpha1.ClusterScmProvider)(unsafe.Pointer(in.ClusterScmProvider))
 	return nil
 }
 
