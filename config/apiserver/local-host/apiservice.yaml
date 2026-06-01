@@ -1,0 +1,22 @@
+# Registers the dashboard aggregation API with the cluster aggregator, routed to a
+# locally-running `make run-apiserver` via the selector-less Service + EndpointSlice.
+# insecureSkipTLSVerify is required because the local self-signed serving cert
+# (--cert-dir) only has localhost/127.0.0.1 SANs, not the in-cluster service DNS.
+# NOT production-safe; for local development only.
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  name: v1alpha1.dashboard.promoter.argoproj.io
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver-local
+    app.kubernetes.io/part-of: promoter
+spec:
+  group: dashboard.promoter.argoproj.io
+  version: v1alpha1
+  groupPriorityMinimum: 1000
+  versionPriority: 15
+  insecureSkipTLSVerify: true
+  service:
+    name: promoter-apiserver-local
+    namespace: promoter-system
+    port: 443
