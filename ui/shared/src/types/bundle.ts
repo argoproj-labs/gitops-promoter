@@ -1,39 +1,4 @@
-import type { CommitStatus, Commit, PromotionStrategy, PullRequest } from './promotion';
-
-/**
- * Server-computed summary of the commit-status gates for one branch state,
- * produced by the dashboard aggregation apiserver.
- */
-export interface GateSummary {
-  total: number;
-  pending: number;
-  success: number;
-  failure: number;
-}
-
-/**
- * Server-computed per-environment rollup. Mirrors the Go
- * dashboard.EnvironmentRollup. The active/proposed branch states reuse the same
- * shape as PromotionStrategy environment statuses.
- */
-export interface EnvironmentRollup {
-  branch: string;
-  changeTransferPolicyName?: string;
-  active?: {
-    dry?: Commit;
-    hydrated?: Commit;
-    commitStatuses?: CommitStatus[];
-  };
-  proposed?: {
-    dry?: Commit;
-    hydrated?: Commit;
-    commitStatuses?: CommitStatus[];
-  };
-  activeGates?: GateSummary;
-  proposedGates?: GateSummary;
-  pullRequest?: PullRequest;
-  promoted: boolean;
-}
+import type { PromotionStrategy } from './promotion';
 
 /**
  * PromotionStrategyBundle is the JSON shape of the aggregated
@@ -65,5 +30,4 @@ export interface PromotionStrategyBundle {
   gitRepository?: unknown;
   scmProvider?: unknown;
   clusterScmProvider?: unknown;
-  environments?: EnvironmentRollup[];
 }

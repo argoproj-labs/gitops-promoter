@@ -43,27 +43,6 @@ type PromotionStrategyDetails struct {
 	GitRepository            *promoterv1alpha1.GitRepository
 	ScmProvider              *promoterv1alpha1.ScmProvider
 	ClusterScmProvider       *promoterv1alpha1.ClusterScmProvider
-	Environments             []EnvironmentRollup
-}
-
-// EnvironmentRollup is the internal representation of a per-environment rollup.
-type EnvironmentRollup struct {
-	Branch                   string
-	ChangeTransferPolicyName string
-	Active                   promoterv1alpha1.CommitBranchState
-	Proposed                 promoterv1alpha1.CommitBranchState
-	ActiveGates              GateSummary
-	ProposedGates            GateSummary
-	PullRequest              *promoterv1alpha1.PullRequestCommonStatus
-	Promoted                 bool
-}
-
-// GateSummary is the internal representation of a gate summary.
-type GateSummary struct {
-	Total   int
-	Pending int
-	Success int
-	Failure int
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

@@ -13,8 +13,8 @@ apiserver that serves a single, read-only, server-computed resource that bundles
 Each bundle contains the `PromotionStrategy`, its `ChangeTransferPolicy`,
 `PullRequest`, and `CommitStatus` children, the four commit-status manager kinds
 (`ArgoCDCommitStatus`, `GitCommitStatus`, `TimedCommitStatus`,
-`WebRequestCommitStatus`), the git config (`GitRepository` plus its `ScmProvider`
-or `ClusterScmProvider`), and a server-computed per-environment rollup.
+`WebRequestCommitStatus`), and the git config (`GitRepository` plus its
+`ScmProvider` or `ClusterScmProvider`).
 
 !!! warning "Secrets are never included"
     The bundle resolves the SCM provider but **never** reads or includes the

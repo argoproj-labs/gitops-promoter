@@ -111,7 +111,10 @@ generate-apiserver: ## Generate deepcopy/conversion/openapi for the dashboard ag
 		--output-file zz_generated.openapi.go \
 		--go-header-file hack/boilerplate.go.txt \
 		./api/dashboard/v1alpha1 ./api/v1alpha1 \
-		k8s.io/apimachinery/pkg/apis/meta/v1 k8s.io/apimachinery/pkg/runtime k8s.io/apimachinery/pkg/version
+		k8s.io/api/core/v1 \
+		k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1 \
+		k8s.io/apimachinery/pkg/apis/meta/v1 k8s.io/apimachinery/pkg/runtime k8s.io/apimachinery/pkg/version \
+		k8s.io/apimachinery/pkg/api/resource k8s.io/apimachinery/pkg/util/intstr
 
 .PHONY: mockery-gen
 mockery-gen: mockery
@@ -244,6 +247,35 @@ run-dashboard-dev:
 .PHONY: run-dashboard
 run-dashboard: build-dashboard 
 	go run ./cmd/main.go dashboard
+
+# Run the dashboard aggregation apiserver from your host (out-of-cluster), against
+# the current kubeconfig context. It self-signs a serving cert into APISERVER_CERT_DIR
+# (no --tls-cert-file), and delegates authn/authz to the cluster via the kubeconfig.
+# Note: `kubectl get promotionstrategydetails` won't route here (the cluster's
+# aggregator can't reach your host) — curl it directly, e.g.
+#   curl -k https://127.0.0.1:$(APISERVER_SECURE_PORT)/healthz
+APISERVER_KUBECONFIG ?= $(HOME)/.kube/config
+APISERVER_SECURE_PORT ?= 6443
+APISERVER_CERT_DIR ?= /tmp/promoter-apiserver-certs
+.PHONY: run-apiserver
+run-apiserver: ## Run the dashboard aggregation apiserver locally (out-of-cluster) against the current kubeconfig.
+	go run ./cmd/main.go apiserver \
+		--authentication-kubeconfig "$(APISERVER_KUBECONFIG)" \
+		--authorization-kubeconfig "$(APISERVER_KUBECONFIG)" \
+		--secure-port $(APISERVER_SECURE_PORT) \
+		--cert-dir "$(APISERVER_CERT_DIR)"
+
+# Register/unregister the APIService so a kind/Docker-Desktop cluster routes the
+# aggregated PromotionStrategyDetails resource to your locally-running `make
+# run-apiserver`. Auto-detects the host IP via host.docker.internal; override with
+# HOST_IP=... (and KIND_NODE=..., PORT=...). Local-dev only (insecureSkipTLSVerify).
+.PHONY: apiserver-register-local
+apiserver-register-local: ## Point the cluster aggregator at your local run-apiserver (kind/Docker Desktop).
+	PORT=$(APISERVER_SECURE_PORT) ./hack/apiserver-local-register.sh register
+
+.PHONY: apiserver-unregister-local
+apiserver-unregister-local: ## Remove the local APIService registration created by apiserver-register-local.
+	./hack/apiserver-local-register.sh unregister
 
 .PHONY: lint-dashboard
 lint-dashboard: ## Run dashboard type-check, lint and audit checks

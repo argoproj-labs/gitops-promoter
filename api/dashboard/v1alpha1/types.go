@@ -72,52 +72,6 @@ type PromotionStrategyDetails struct {
 	// ClusterScmProvider is the cluster-scoped ScmProvider referenced by the GitRepository, if applicable.
 	// The credentials Secret referenced by the provider is never resolved or included.
 	ClusterScmProvider *promoterv1alpha1.ClusterScmProvider `json:"clusterScmProvider,omitempty"`
-
-	// Environments is a server-computed per-environment rollup, in the order
-	// declared by the PromotionStrategy spec.
-	Environments []EnvironmentRollup `json:"environments,omitempty"`
-}
-
-// EnvironmentRollup is a server-computed summary of a single environment in the
-// promotion sequence, joining the PromotionStrategy environment status with its
-// owning ChangeTransferPolicy and gate statuses.
-type EnvironmentRollup struct {
-	// Branch is the active branch name for the environment.
-	Branch string `json:"branch"`
-
-	// ChangeTransferPolicyName is the name of the CTP that owns this environment, if known.
-	ChangeTransferPolicyName string `json:"changeTransferPolicyName,omitempty"`
-
-	// Active is the state of the active branch for this environment.
-	Active promoterv1alpha1.CommitBranchState `json:"active,omitempty"`
-
-	// Proposed is the state of the proposed branch for this environment.
-	Proposed promoterv1alpha1.CommitBranchState `json:"proposed,omitempty"`
-
-	// ActiveGates summarizes the active commit-status gates for this environment.
-	ActiveGates GateSummary `json:"activeGates,omitempty"`
-
-	// ProposedGates summarizes the proposed commit-status gates for this environment.
-	ProposedGates GateSummary `json:"proposedGates,omitempty"`
-
-	// PullRequest is the state of the pull request for this environment, if any.
-	PullRequest *promoterv1alpha1.PullRequestCommonStatus `json:"pullRequest,omitempty"`
-
-	// Promoted is true when the proposed dry SHA matches the active dry SHA, i.e.
-	// the latest change has been promoted into this environment.
-	Promoted bool `json:"promoted"`
-}
-
-// GateSummary summarizes the phases of a set of commit-status gates.
-type GateSummary struct {
-	// Total is the number of gates considered.
-	Total int `json:"total"`
-	// Pending is the number of gates in the pending phase.
-	Pending int `json:"pending"`
-	// Success is the number of gates in the success phase.
-	Success int `json:"success"`
-	// Failure is the number of gates in the failure phase.
-	Failure int `json:"failure"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

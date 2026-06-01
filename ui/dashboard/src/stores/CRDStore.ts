@@ -1,25 +1,21 @@
 import { create } from 'zustand';
 import { enrichFromCRD } from '@shared/utils/PSData';
 import type { PromotionStrategy } from '@shared/utils/PSData';
-import type { PromotionStrategyBundle, EnvironmentRollup } from '@shared/types/bundle';
+import type { PromotionStrategyBundle } from '@shared/types/bundle';
 
 interface CRDItem extends PromotionStrategy {
   enriched?: unknown;
-  /** Server-computed per-environment rollup carried alongside the PromotionStrategy. */
-  rollup?: EnvironmentRollup[];
 }
 
 // The dashboard now consumes a single, server-computed PromotionStrategyDetails
 // bundle (group dashboard.promoter.argoproj.io) instead of four raw CRD streams.
 // Each bundle embeds the full PromotionStrategy under `promotionStrategy`, so we
-// normalize it back to the PromotionStrategy shape the UI components expect and
-// attach the server `environments` rollup.
+// normalize it back to the PromotionStrategy shape the UI components expect.
 function bundleToItem<T extends CRDItem>(bundle: PromotionStrategyBundle): T {
   const ps = bundle.promotionStrategy;
   return {
     ...(ps as PromotionStrategy),
     enriched: enrichFromCRD(ps),
-    rollup: bundle.environments,
   } as T;
 }
 

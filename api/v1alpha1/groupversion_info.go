@@ -14,11 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package v1alpha1 contains API Schema definitions for the promoter v1alpha1 API group
-// +kubebuilder:object:generate=true
-// +kubebuilder:ac:generate=true
-// +kubebuilder:ac:output:package=../../applyconfiguration
-// +groupName=promoter.argoproj.io
 package v1alpha1
 
 import (

@@ -22,8 +22,10 @@ import (
 
 	"github.com/spf13/pflag"
 	"k8s.io/apiserver/pkg/admission"
+	openapinamer "k8s.io/apiserver/pkg/endpoints/openapi"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	genericoptions "k8s.io/apiserver/pkg/server/options"
+	utilcompatibility "k8s.io/apiserver/pkg/util/compatibility"
 
 	dashboardv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/dashboard/v1alpha1"
 )
@@ -52,6 +54,10 @@ func NewOptions() *Options {
 	// command's persistent --kubeconfig. Delegated authn/authz use their own
 	// --authentication-kubeconfig/--authorization-kubeconfig flags (or in-cluster).
 	o.RecommendedOptions.CoreAPI = nil
+	// API Priority & Fairness requires a core Kubernetes client (from CoreAPI), which
+	// we don't wire up. Disable it: this is a small, read-only aggregated API that
+	// doesn't need server-side request prioritization.
+	o.RecommendedOptions.Features.EnablePriorityAndFairness = false
 	// Required: ApplyTo always invokes ExtraAdmissionInitializers even when
 	// Admission is nil, so provide a no-op.
 	o.RecommendedOptions.ExtraAdmissionInitializers = func(*genericapiserver.RecommendedConfig) ([]admission.PluginInitializer, error) {
@@ -86,6 +92,20 @@ func (o *Options) Config(provider *BundleProvider) (*Config, error) {
 	}
 
 	serverConfig := genericapiserver.NewRecommendedConfig(Codecs)
+	// EffectiveVersion is normally populated by ServerRunOptions (which we don't use).
+	// Without it, Config.Complete() nil-derefs on c.EffectiveVersion.EmulationVersion().
+	serverConfig.EffectiveVersion = utilcompatibility.DefaultBuildEffectiveVersion()
+
+	// Wire the generated OpenAPI definitions (zz_generated.openapi.go). InstallAPIGroup
+	// requires both the v2 and v3 OpenAPI configs to be non-nil.
+	namer := openapinamer.NewDefinitionNamer(Scheme)
+	serverConfig.OpenAPIConfig = genericapiserver.DefaultOpenAPIConfig(dashboardv1alpha1.GetOpenAPIDefinitions, namer)
+	serverConfig.OpenAPIConfig.Info.Title = "gitops-promoter-dashboard"
+	serverConfig.OpenAPIConfig.Info.Version = "v1alpha1"
+	serverConfig.OpenAPIV3Config = genericapiserver.DefaultOpenAPIV3Config(dashboardv1alpha1.GetOpenAPIDefinitions, namer)
+	serverConfig.OpenAPIV3Config.Info.Title = "gitops-promoter-dashboard"
+	serverConfig.OpenAPIV3Config.Info.Version = "v1alpha1"
+
 	if err := o.RecommendedOptions.ApplyTo(serverConfig); err != nil {
 		return nil, fmt.Errorf("error applying recommended options: %w", err)
 	}

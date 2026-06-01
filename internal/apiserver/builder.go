@@ -135,8 +135,6 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 		return nil, err
 	}
 
-	bundle.Environments = computeEnvironmentRollups(ps, bundle.ChangeTransferPolicies)
-
 	return bundle, nil
 }
 

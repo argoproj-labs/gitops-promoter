@@ -165,10 +165,6 @@ var _ = Describe("BuildBundle", func() {
 		Expect(bundle.ScmProvider.Spec.SecretRef.Name).To(Equal("my-secret"))
 		Expect(bundle.ClusterScmProvider).To(BeNil())
 
-		By("computing the per-environment rollup")
-		Expect(bundle.Environments).To(HaveLen(1))
-		Expect(bundle.Environments[0].Promoted).To(BeTrue())
-
 		By("stripping managedFields and the last-applied annotation")
 		Expect(bundle.PromotionStrategy.ManagedFields).To(BeNil())
 		Expect(bundle.PromotionStrategy.Annotations).NotTo(HaveKey(lastAppliedAnnotation))

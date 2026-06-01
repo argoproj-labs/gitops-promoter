@@ -14,11 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package dashboard contains the internal ("hub") API types for the dashboard
-// aggregation layer, converted to/from the versioned types in the v1alpha1
-// sub-package. Owned by the k8s code-generators (no kubebuilder markers).
-//
-// +k8s:deepcopy-gen=package
 package dashboard
 
 import (
