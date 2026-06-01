@@ -3,7 +3,8 @@
   extends: [
     'config:recommended',
   ],
-  gitAuthor: 'Renovate Bot <bot@renovateapp.com>',
+  // GitHub App commits via the Contents API; avoids gitAuthor mismatch with the App bot.
+  platformCommit: 'enabled',
   timezone: 'UTC',
   // PR cadence is enforced by .github/workflows/renovate.yaml (Sun/Wed/Sat). A
   // weekend-only schedule here prevented those mid-week runs from opening updates.
