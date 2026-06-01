@@ -47,6 +47,12 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 	}
 	sanitize(ps)
 
+	// The PromotionStrategy's status is a per-environment aggregation of the
+	// ChangeTransferPolicy statuses, which are already embedded in the bundle
+	// (.changeTransferPolicies). Drop it to avoid duplicating that data; consumers
+	// reconstruct per-environment state from the CTPs.
+	ps.Status = promoterv1alpha1.PromotionStrategyStatus{}
+
 	bundle := &dashboardapi.PromotionStrategyDetails{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              name,

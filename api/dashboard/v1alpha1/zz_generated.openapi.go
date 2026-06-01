@@ -21,6 +21,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	apiv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	v1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	resource "k8s.io/apimachinery/pkg/api/resource"
@@ -34,449 +35,449 @@ import (
 
 func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenAPIDefinition {
 	return map[string]common.OpenAPIDefinition{
-		"github.com/argoproj-labs/gitops-promoter/api/dashboard/v1alpha1.PromotionStrategyDetails":                   schema_gitops_promoter_api_dashboard_v1alpha1_PromotionStrategyDetails(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/dashboard/v1alpha1.PromotionStrategyDetailsList":               schema_gitops_promoter_api_dashboard_v1alpha1_PromotionStrategyDetailsList(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ApplicationsSelected":                                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_ApplicationsSelected(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ArgoCDCommitStatus":                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatus(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ArgoCDCommitStatusConfiguration":                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusConfiguration(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ArgoCDCommitStatusList":                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusList(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ArgoCDCommitStatusSpec":                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusSpec(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ArgoCDCommitStatusStatus":                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusStatus(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.AzureDevOps":                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_AzureDevOps(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.AzureDevOpsRepo":                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_AzureDevOpsRepo(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.BasicAuth":                                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_BasicAuth(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.BearerAuth":                                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_BearerAuth(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.BitbucketCloud":                                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_BitbucketCloud(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.BitbucketCloudRepo":                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_BitbucketCloudRepo(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.Bucket":                                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_Bucket(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ChangeRequestPolicyCommitStatusPhase":                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeRequestPolicyCommitStatusPhase(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ChangeTransferPolicy":                                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicy(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ChangeTransferPolicyConfiguration":                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyConfiguration(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ChangeTransferPolicyList":                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyList(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ChangeTransferPolicySpec":                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicySpec(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ChangeTransferPolicyStatus":                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyStatus(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ClusterScmProvider":                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProvider(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ClusterScmProviderList":                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProviderList(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitBranchState":                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitBranchState(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitBranchStateHistoryProposed":                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitBranchStateHistoryProposed(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitConfiguration":                                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitConfiguration(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitMetadata":                                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitMetadata(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitShaState":                                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitShaState(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitStatus":                                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitStatus(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitStatusConfiguration":                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitStatusConfiguration(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitStatusList":                                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitStatusList(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitStatusSelector":                                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitStatusSelector(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitStatusSpec":                                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitStatusSpec(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitStatusStatus":                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitStatusStatus(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ControllerConfiguration":                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfiguration(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ControllerConfigurationList":                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationList(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ControllerConfigurationSpec":                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSpec(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ControllerConfigurationStatus":                        schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationStatus(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.Environment":                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_Environment(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.EnvironmentStatus":                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_EnvironmentStatus(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ExponentialFailure":                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_ExponentialFailure(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.Fake":                                                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_Fake(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.FakeRepo":                                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_FakeRepo(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.FastSlow":                                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_FastSlow(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.Forgejo":                                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_Forgejo(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ForgejoRepo":                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_ForgejoRepo(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitCommitStatus":                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatus(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitCommitStatusConfiguration":                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusConfiguration(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitCommitStatusEnvironmentStatus":                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusEnvironmentStatus(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitCommitStatusList":                                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusList(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitCommitStatusSpec":                                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusSpec(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitCommitStatusStatus":                                schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusStatus(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitHub":                                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitHub(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitHubRepo":                                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitHubRepo(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitLab":                                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitLab(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitLabRepo":                                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitLabRepo(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitRepository":                                        schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitRepository(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitRepositoryList":                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitRepositoryList(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitRepositorySpec":                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitRepositorySpec(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitRepositoryStatus":                                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitRepositoryStatus(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.Gitea":                                                schema_argoproj_labs_gitops_promoter_api_v1alpha1_Gitea(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GiteaRepo":                                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_GiteaRepo(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.HTTPAuthentication":                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_HTTPAuthentication(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.HTTPRequestSpec":                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_HTTPRequestSpec(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.HealthyDryShas":                                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_HealthyDryShas(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.History":                                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_History(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.HydratorMetadata":                                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_HydratorMetadata(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ModeSpec":                                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_ModeSpec(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.OAuth2Auth":                                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_OAuth2Auth(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ObjectReference":                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_ObjectReference(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.OutputSpec":                                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_OutputSpec(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PollingModeSpec":                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_PollingModeSpec(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PromotionStrategy":                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategy(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PromotionStrategyConfiguration":                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategyConfiguration(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PromotionStrategyList":                                schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategyList(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PromotionStrategySpec":                                schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategySpec(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PromotionStrategyStatus":                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategyStatus(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PullRequest":                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequest(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PullRequestCommonStatus":                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestCommonStatus(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PullRequestConfiguration":                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestConfiguration(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PullRequestList":                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestList(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PullRequestSpec":                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestSpec(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PullRequestStatus":                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestStatus(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PullRequestTemplate":                                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestTemplate(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.RateLimiter":                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_RateLimiter(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.RateLimiterTypes":                                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_RateLimiterTypes(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ResponseOutputSpec":                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_ResponseOutputSpec(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.RevertCommit":                                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommit(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.RevertCommitList":                                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommitList(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.RevertCommitSpec":                                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommitSpec(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.RevertCommitStatus":                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommitStatus(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.RevisionReference":                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevisionReference(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.Scm":                                                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_Scm(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ScmProvider":                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProvider(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ScmProviderList":                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderList(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ScmProviderObjectReference":                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderObjectReference(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ScmProviderSpec":                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderSpec(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ScmProviderStatus":                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderStatus(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.SuccessSpec":                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_SuccessSpec(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.TLSAuth":                                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_TLSAuth(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.TimedCommitStatus":                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatus(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.TimedCommitStatusConfiguration":                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusConfiguration(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.TimedCommitStatusEnvironments":                        schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusEnvironments(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.TimedCommitStatusEnvironmentsStatus":                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusEnvironmentsStatus(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.TimedCommitStatusList":                                schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusList(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.TimedCommitStatusSpec":                                schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusSpec(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.TimedCommitStatusStatus":                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusStatus(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.TriggerModeSpec":                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_TriggerModeSpec(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.URLConfig":                                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_URLConfig(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WebRequestCommitStatus":                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatus(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WebRequestCommitStatusConfiguration":                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusConfiguration(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WebRequestCommitStatusEnvironmentStatus":              schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusEnvironmentStatus(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WebRequestCommitStatusLastSuccessfulShaItem":          schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusLastSuccessfulShaItem(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WebRequestCommitStatusList":                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusList(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WebRequestCommitStatusPhasePerBranchItem":             schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusPhasePerBranchItem(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus": schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusPromotionStrategyContextStatus(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WebRequestCommitStatusSpec":                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusSpec(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WebRequestCommitStatusStatus":                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusStatus(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WhenWithOutputSpec":                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_WhenWithOutputSpec(ref),
-		"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WorkQueue":                                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_WorkQueue(ref),
-		v1.AWSElasticBlockStoreVolumeSource{}.OpenAPIModelName():                                                     schema_k8sio_api_core_v1_AWSElasticBlockStoreVolumeSource(ref),
-		v1.Affinity{}.OpenAPIModelName():                                                                             schema_k8sio_api_core_v1_Affinity(ref),
-		v1.AppArmorProfile{}.OpenAPIModelName():                                                                      schema_k8sio_api_core_v1_AppArmorProfile(ref),
-		v1.AttachedVolume{}.OpenAPIModelName():                                                                       schema_k8sio_api_core_v1_AttachedVolume(ref),
-		v1.AvoidPods{}.OpenAPIModelName():                                                                            schema_k8sio_api_core_v1_AvoidPods(ref),
-		v1.AzureDiskVolumeSource{}.OpenAPIModelName():                                                                schema_k8sio_api_core_v1_AzureDiskVolumeSource(ref),
-		v1.AzureFilePersistentVolumeSource{}.OpenAPIModelName():                                                      schema_k8sio_api_core_v1_AzureFilePersistentVolumeSource(ref),
-		v1.AzureFileVolumeSource{}.OpenAPIModelName():                                                                schema_k8sio_api_core_v1_AzureFileVolumeSource(ref),
-		v1.Binding{}.OpenAPIModelName():                                                                              schema_k8sio_api_core_v1_Binding(ref),
-		v1.CSIPersistentVolumeSource{}.OpenAPIModelName():                                                            schema_k8sio_api_core_v1_CSIPersistentVolumeSource(ref),
-		v1.CSIVolumeSource{}.OpenAPIModelName():                                                                      schema_k8sio_api_core_v1_CSIVolumeSource(ref),
-		v1.Capabilities{}.OpenAPIModelName():                                                                         schema_k8sio_api_core_v1_Capabilities(ref),
-		v1.CephFSPersistentVolumeSource{}.OpenAPIModelName():                                                         schema_k8sio_api_core_v1_CephFSPersistentVolumeSource(ref),
-		v1.CephFSVolumeSource{}.OpenAPIModelName():                                                                   schema_k8sio_api_core_v1_CephFSVolumeSource(ref),
-		v1.CinderPersistentVolumeSource{}.OpenAPIModelName():                                                         schema_k8sio_api_core_v1_CinderPersistentVolumeSource(ref),
-		v1.CinderVolumeSource{}.OpenAPIModelName():                                                                   schema_k8sio_api_core_v1_CinderVolumeSource(ref),
-		v1.ClientIPConfig{}.OpenAPIModelName():                                                                       schema_k8sio_api_core_v1_ClientIPConfig(ref),
-		v1.ClusterTrustBundleProjection{}.OpenAPIModelName():                                                         schema_k8sio_api_core_v1_ClusterTrustBundleProjection(ref),
-		v1.ComponentCondition{}.OpenAPIModelName():                                                                   schema_k8sio_api_core_v1_ComponentCondition(ref),
-		v1.ComponentStatus{}.OpenAPIModelName():                                                                      schema_k8sio_api_core_v1_ComponentStatus(ref),
-		v1.ComponentStatusList{}.OpenAPIModelName():                                                                  schema_k8sio_api_core_v1_ComponentStatusList(ref),
-		v1.ConfigMap{}.OpenAPIModelName():                                                                            schema_k8sio_api_core_v1_ConfigMap(ref),
-		v1.ConfigMapEnvSource{}.OpenAPIModelName():                                                                   schema_k8sio_api_core_v1_ConfigMapEnvSource(ref),
-		v1.ConfigMapKeySelector{}.OpenAPIModelName():                                                                 schema_k8sio_api_core_v1_ConfigMapKeySelector(ref),
-		v1.ConfigMapList{}.OpenAPIModelName():                                                                        schema_k8sio_api_core_v1_ConfigMapList(ref),
-		v1.ConfigMapNodeConfigSource{}.OpenAPIModelName():                                                            schema_k8sio_api_core_v1_ConfigMapNodeConfigSource(ref),
-		v1.ConfigMapProjection{}.OpenAPIModelName():                                                                  schema_k8sio_api_core_v1_ConfigMapProjection(ref),
-		v1.ConfigMapVolumeSource{}.OpenAPIModelName():                                                                schema_k8sio_api_core_v1_ConfigMapVolumeSource(ref),
-		v1.Container{}.OpenAPIModelName():                                                                            schema_k8sio_api_core_v1_Container(ref),
-		v1.ContainerExtendedResourceRequest{}.OpenAPIModelName():                                                     schema_k8sio_api_core_v1_ContainerExtendedResourceRequest(ref),
-		v1.ContainerImage{}.OpenAPIModelName():                                                                       schema_k8sio_api_core_v1_ContainerImage(ref),
-		v1.ContainerPort{}.OpenAPIModelName():                                                                        schema_k8sio_api_core_v1_ContainerPort(ref),
-		v1.ContainerResizePolicy{}.OpenAPIModelName():                                                                schema_k8sio_api_core_v1_ContainerResizePolicy(ref),
-		v1.ContainerRestartRule{}.OpenAPIModelName():                                                                 schema_k8sio_api_core_v1_ContainerRestartRule(ref),
-		v1.ContainerRestartRuleOnExitCodes{}.OpenAPIModelName():                                                      schema_k8sio_api_core_v1_ContainerRestartRuleOnExitCodes(ref),
-		v1.ContainerState{}.OpenAPIModelName():                                                                       schema_k8sio_api_core_v1_ContainerState(ref),
-		v1.ContainerStateRunning{}.OpenAPIModelName():                                                                schema_k8sio_api_core_v1_ContainerStateRunning(ref),
-		v1.ContainerStateTerminated{}.OpenAPIModelName():                                                             schema_k8sio_api_core_v1_ContainerStateTerminated(ref),
-		v1.ContainerStateWaiting{}.OpenAPIModelName():                                                                schema_k8sio_api_core_v1_ContainerStateWaiting(ref),
-		v1.ContainerStatus{}.OpenAPIModelName():                                                                      schema_k8sio_api_core_v1_ContainerStatus(ref),
-		v1.ContainerUser{}.OpenAPIModelName():                                                                        schema_k8sio_api_core_v1_ContainerUser(ref),
-		v1.DaemonEndpoint{}.OpenAPIModelName():                                                                       schema_k8sio_api_core_v1_DaemonEndpoint(ref),
-		v1.DownwardAPIProjection{}.OpenAPIModelName():                                                                schema_k8sio_api_core_v1_DownwardAPIProjection(ref),
-		v1.DownwardAPIVolumeFile{}.OpenAPIModelName():                                                                schema_k8sio_api_core_v1_DownwardAPIVolumeFile(ref),
-		v1.DownwardAPIVolumeSource{}.OpenAPIModelName():                                                              schema_k8sio_api_core_v1_DownwardAPIVolumeSource(ref),
-		v1.EmptyDirVolumeSource{}.OpenAPIModelName():                                                                 schema_k8sio_api_core_v1_EmptyDirVolumeSource(ref),
-		v1.EndpointAddress{}.OpenAPIModelName():                                                                      schema_k8sio_api_core_v1_EndpointAddress(ref),
-		v1.EndpointPort{}.OpenAPIModelName():                                                                         schema_k8sio_api_core_v1_EndpointPort(ref),
-		v1.EndpointSubset{}.OpenAPIModelName():                                                                       schema_k8sio_api_core_v1_EndpointSubset(ref),
-		v1.Endpoints{}.OpenAPIModelName():                                                                            schema_k8sio_api_core_v1_Endpoints(ref),
-		v1.EndpointsList{}.OpenAPIModelName():                                                                        schema_k8sio_api_core_v1_EndpointsList(ref),
-		v1.EnvFromSource{}.OpenAPIModelName():                                                                        schema_k8sio_api_core_v1_EnvFromSource(ref),
-		v1.EnvVar{}.OpenAPIModelName():                                                                               schema_k8sio_api_core_v1_EnvVar(ref),
-		v1.EnvVarSource{}.OpenAPIModelName():                                                                         schema_k8sio_api_core_v1_EnvVarSource(ref),
-		v1.EphemeralContainer{}.OpenAPIModelName():                                                                   schema_k8sio_api_core_v1_EphemeralContainer(ref),
-		v1.EphemeralContainerCommon{}.OpenAPIModelName():                                                             schema_k8sio_api_core_v1_EphemeralContainerCommon(ref),
-		v1.EphemeralVolumeSource{}.OpenAPIModelName():                                                                schema_k8sio_api_core_v1_EphemeralVolumeSource(ref),
-		v1.Event{}.OpenAPIModelName():                                                                                schema_k8sio_api_core_v1_Event(ref),
-		v1.EventList{}.OpenAPIModelName():                                                                            schema_k8sio_api_core_v1_EventList(ref),
-		v1.EventSeries{}.OpenAPIModelName():                                                                          schema_k8sio_api_core_v1_EventSeries(ref),
-		v1.EventSource{}.OpenAPIModelName():                                                                          schema_k8sio_api_core_v1_EventSource(ref),
-		v1.ExecAction{}.OpenAPIModelName():                                                                           schema_k8sio_api_core_v1_ExecAction(ref),
-		v1.FCVolumeSource{}.OpenAPIModelName():                                                                       schema_k8sio_api_core_v1_FCVolumeSource(ref),
-		v1.FileKeySelector{}.OpenAPIModelName():                                                                      schema_k8sio_api_core_v1_FileKeySelector(ref),
-		v1.FlexPersistentVolumeSource{}.OpenAPIModelName():                                                           schema_k8sio_api_core_v1_FlexPersistentVolumeSource(ref),
-		v1.FlexVolumeSource{}.OpenAPIModelName():                                                                     schema_k8sio_api_core_v1_FlexVolumeSource(ref),
-		v1.FlockerVolumeSource{}.OpenAPIModelName():                                                                  schema_k8sio_api_core_v1_FlockerVolumeSource(ref),
-		v1.GCEPersistentDiskVolumeSource{}.OpenAPIModelName():                                                        schema_k8sio_api_core_v1_GCEPersistentDiskVolumeSource(ref),
-		v1.GRPCAction{}.OpenAPIModelName():                                                                           schema_k8sio_api_core_v1_GRPCAction(ref),
-		v1.GitRepoVolumeSource{}.OpenAPIModelName():                                                                  schema_k8sio_api_core_v1_GitRepoVolumeSource(ref),
-		v1.GlusterfsPersistentVolumeSource{}.OpenAPIModelName():                                                      schema_k8sio_api_core_v1_GlusterfsPersistentVolumeSource(ref),
-		v1.GlusterfsVolumeSource{}.OpenAPIModelName():                                                                schema_k8sio_api_core_v1_GlusterfsVolumeSource(ref),
-		v1.HTTPGetAction{}.OpenAPIModelName():                                                                        schema_k8sio_api_core_v1_HTTPGetAction(ref),
-		v1.HTTPHeader{}.OpenAPIModelName():                                                                           schema_k8sio_api_core_v1_HTTPHeader(ref),
-		v1.HostAlias{}.OpenAPIModelName():                                                                            schema_k8sio_api_core_v1_HostAlias(ref),
-		v1.HostIP{}.OpenAPIModelName():                                                                               schema_k8sio_api_core_v1_HostIP(ref),
-		v1.HostPathVolumeSource{}.OpenAPIModelName():                                                                 schema_k8sio_api_core_v1_HostPathVolumeSource(ref),
-		v1.ISCSIPersistentVolumeSource{}.OpenAPIModelName():                                                          schema_k8sio_api_core_v1_ISCSIPersistentVolumeSource(ref),
-		v1.ISCSIVolumeSource{}.OpenAPIModelName():                                                                    schema_k8sio_api_core_v1_ISCSIVolumeSource(ref),
-		v1.ImageVolumeSource{}.OpenAPIModelName():                                                                    schema_k8sio_api_core_v1_ImageVolumeSource(ref),
-		v1.ImageVolumeStatus{}.OpenAPIModelName():                                                                    schema_k8sio_api_core_v1_ImageVolumeStatus(ref),
-		v1.KeyToPath{}.OpenAPIModelName():                                                                            schema_k8sio_api_core_v1_KeyToPath(ref),
-		v1.Lifecycle{}.OpenAPIModelName():                                                                            schema_k8sio_api_core_v1_Lifecycle(ref),
-		v1.LifecycleHandler{}.OpenAPIModelName():                                                                     schema_k8sio_api_core_v1_LifecycleHandler(ref),
-		v1.LimitRange{}.OpenAPIModelName():                                                                           schema_k8sio_api_core_v1_LimitRange(ref),
-		v1.LimitRangeItem{}.OpenAPIModelName():                                                                       schema_k8sio_api_core_v1_LimitRangeItem(ref),
-		v1.LimitRangeList{}.OpenAPIModelName():                                                                       schema_k8sio_api_core_v1_LimitRangeList(ref),
-		v1.LimitRangeSpec{}.OpenAPIModelName():                                                                       schema_k8sio_api_core_v1_LimitRangeSpec(ref),
-		v1.LinuxContainerUser{}.OpenAPIModelName():                                                                   schema_k8sio_api_core_v1_LinuxContainerUser(ref),
-		v1.List{}.OpenAPIModelName():                                                                                 schema_k8sio_api_core_v1_List(ref),
-		v1.LoadBalancerIngress{}.OpenAPIModelName():                                                                  schema_k8sio_api_core_v1_LoadBalancerIngress(ref),
-		v1.LoadBalancerStatus{}.OpenAPIModelName():                                                                   schema_k8sio_api_core_v1_LoadBalancerStatus(ref),
-		v1.LocalObjectReference{}.OpenAPIModelName():                                                                 schema_k8sio_api_core_v1_LocalObjectReference(ref),
-		v1.LocalVolumeSource{}.OpenAPIModelName():                                                                    schema_k8sio_api_core_v1_LocalVolumeSource(ref),
-		v1.ModifyVolumeStatus{}.OpenAPIModelName():                                                                   schema_k8sio_api_core_v1_ModifyVolumeStatus(ref),
-		v1.NFSVolumeSource{}.OpenAPIModelName():                                                                      schema_k8sio_api_core_v1_NFSVolumeSource(ref),
-		v1.Namespace{}.OpenAPIModelName():                                                                            schema_k8sio_api_core_v1_Namespace(ref),
-		v1.NamespaceCondition{}.OpenAPIModelName():                                                                   schema_k8sio_api_core_v1_NamespaceCondition(ref),
-		v1.NamespaceList{}.OpenAPIModelName():                                                                        schema_k8sio_api_core_v1_NamespaceList(ref),
-		v1.NamespaceSpec{}.OpenAPIModelName():                                                                        schema_k8sio_api_core_v1_NamespaceSpec(ref),
-		v1.NamespaceStatus{}.OpenAPIModelName():                                                                      schema_k8sio_api_core_v1_NamespaceStatus(ref),
-		v1.Node{}.OpenAPIModelName():                                                                                 schema_k8sio_api_core_v1_Node(ref),
-		v1.NodeAddress{}.OpenAPIModelName():                                                                          schema_k8sio_api_core_v1_NodeAddress(ref),
-		v1.NodeAffinity{}.OpenAPIModelName():                                                                         schema_k8sio_api_core_v1_NodeAffinity(ref),
-		v1.NodeAllocatableResourceClaimStatus{}.OpenAPIModelName():                                                   schema_k8sio_api_core_v1_NodeAllocatableResourceClaimStatus(ref),
-		v1.NodeCondition{}.OpenAPIModelName():                                                                        schema_k8sio_api_core_v1_NodeCondition(ref),
-		v1.NodeConfigSource{}.OpenAPIModelName():                                                                     schema_k8sio_api_core_v1_NodeConfigSource(ref),
-		v1.NodeConfigStatus{}.OpenAPIModelName():                                                                     schema_k8sio_api_core_v1_NodeConfigStatus(ref),
-		v1.NodeDaemonEndpoints{}.OpenAPIModelName():                                                                  schema_k8sio_api_core_v1_NodeDaemonEndpoints(ref),
-		v1.NodeFeatures{}.OpenAPIModelName():                                                                         schema_k8sio_api_core_v1_NodeFeatures(ref),
-		v1.NodeList{}.OpenAPIModelName():                                                                             schema_k8sio_api_core_v1_NodeList(ref),
-		v1.NodeProxyOptions{}.OpenAPIModelName():                                                                     schema_k8sio_api_core_v1_NodeProxyOptions(ref),
-		v1.NodeRuntimeHandler{}.OpenAPIModelName():                                                                   schema_k8sio_api_core_v1_NodeRuntimeHandler(ref),
-		v1.NodeRuntimeHandlerFeatures{}.OpenAPIModelName():                                                           schema_k8sio_api_core_v1_NodeRuntimeHandlerFeatures(ref),
-		v1.NodeSelector{}.OpenAPIModelName():                                                                         schema_k8sio_api_core_v1_NodeSelector(ref),
-		v1.NodeSelectorRequirement{}.OpenAPIModelName():                                                              schema_k8sio_api_core_v1_NodeSelectorRequirement(ref),
-		v1.NodeSelectorTerm{}.OpenAPIModelName():                                                                     schema_k8sio_api_core_v1_NodeSelectorTerm(ref),
-		v1.NodeSpec{}.OpenAPIModelName():                                                                             schema_k8sio_api_core_v1_NodeSpec(ref),
-		v1.NodeStatus{}.OpenAPIModelName():                                                                           schema_k8sio_api_core_v1_NodeStatus(ref),
-		v1.NodeSwapStatus{}.OpenAPIModelName():                                                                       schema_k8sio_api_core_v1_NodeSwapStatus(ref),
-		v1.NodeSystemInfo{}.OpenAPIModelName():                                                                       schema_k8sio_api_core_v1_NodeSystemInfo(ref),
-		v1.ObjectFieldSelector{}.OpenAPIModelName():                                                                  schema_k8sio_api_core_v1_ObjectFieldSelector(ref),
-		v1.ObjectReference{}.OpenAPIModelName():                                                                      schema_k8sio_api_core_v1_ObjectReference(ref),
-		v1.PersistentVolume{}.OpenAPIModelName():                                                                     schema_k8sio_api_core_v1_PersistentVolume(ref),
-		v1.PersistentVolumeClaim{}.OpenAPIModelName():                                                                schema_k8sio_api_core_v1_PersistentVolumeClaim(ref),
-		v1.PersistentVolumeClaimCondition{}.OpenAPIModelName():                                                       schema_k8sio_api_core_v1_PersistentVolumeClaimCondition(ref),
-		v1.PersistentVolumeClaimList{}.OpenAPIModelName():                                                            schema_k8sio_api_core_v1_PersistentVolumeClaimList(ref),
-		v1.PersistentVolumeClaimSpec{}.OpenAPIModelName():                                                            schema_k8sio_api_core_v1_PersistentVolumeClaimSpec(ref),
-		v1.PersistentVolumeClaimStatus{}.OpenAPIModelName():                                                          schema_k8sio_api_core_v1_PersistentVolumeClaimStatus(ref),
-		v1.PersistentVolumeClaimTemplate{}.OpenAPIModelName():                                                        schema_k8sio_api_core_v1_PersistentVolumeClaimTemplate(ref),
-		v1.PersistentVolumeClaimVolumeSource{}.OpenAPIModelName():                                                    schema_k8sio_api_core_v1_PersistentVolumeClaimVolumeSource(ref),
-		v1.PersistentVolumeList{}.OpenAPIModelName():                                                                 schema_k8sio_api_core_v1_PersistentVolumeList(ref),
-		v1.PersistentVolumeSource{}.OpenAPIModelName():                                                               schema_k8sio_api_core_v1_PersistentVolumeSource(ref),
-		v1.PersistentVolumeSpec{}.OpenAPIModelName():                                                                 schema_k8sio_api_core_v1_PersistentVolumeSpec(ref),
-		v1.PersistentVolumeStatus{}.OpenAPIModelName():                                                               schema_k8sio_api_core_v1_PersistentVolumeStatus(ref),
-		v1.PhotonPersistentDiskVolumeSource{}.OpenAPIModelName():                                                     schema_k8sio_api_core_v1_PhotonPersistentDiskVolumeSource(ref),
-		v1.Pod{}.OpenAPIModelName():                                                                                  schema_k8sio_api_core_v1_Pod(ref),
-		v1.PodAffinity{}.OpenAPIModelName():                                                                          schema_k8sio_api_core_v1_PodAffinity(ref),
-		v1.PodAffinityTerm{}.OpenAPIModelName():                                                                      schema_k8sio_api_core_v1_PodAffinityTerm(ref),
-		v1.PodAntiAffinity{}.OpenAPIModelName():                                                                      schema_k8sio_api_core_v1_PodAntiAffinity(ref),
-		v1.PodAttachOptions{}.OpenAPIModelName():                                                                     schema_k8sio_api_core_v1_PodAttachOptions(ref),
-		v1.PodCertificateProjection{}.OpenAPIModelName():                                                             schema_k8sio_api_core_v1_PodCertificateProjection(ref),
-		v1.PodCondition{}.OpenAPIModelName():                                                                         schema_k8sio_api_core_v1_PodCondition(ref),
-		v1.PodDNSConfig{}.OpenAPIModelName():                                                                         schema_k8sio_api_core_v1_PodDNSConfig(ref),
-		v1.PodDNSConfigOption{}.OpenAPIModelName():                                                                   schema_k8sio_api_core_v1_PodDNSConfigOption(ref),
-		v1.PodExecOptions{}.OpenAPIModelName():                                                                       schema_k8sio_api_core_v1_PodExecOptions(ref),
-		v1.PodExtendedResourceClaimStatus{}.OpenAPIModelName():                                                       schema_k8sio_api_core_v1_PodExtendedResourceClaimStatus(ref),
-		v1.PodIP{}.OpenAPIModelName():                                                                                schema_k8sio_api_core_v1_PodIP(ref),
-		v1.PodList{}.OpenAPIModelName():                                                                              schema_k8sio_api_core_v1_PodList(ref),
-		v1.PodLogOptions{}.OpenAPIModelName():                                                                        schema_k8sio_api_core_v1_PodLogOptions(ref),
-		v1.PodOS{}.OpenAPIModelName():                                                                                schema_k8sio_api_core_v1_PodOS(ref),
-		v1.PodPortForwardOptions{}.OpenAPIModelName():                                                                schema_k8sio_api_core_v1_PodPortForwardOptions(ref),
-		v1.PodProxyOptions{}.OpenAPIModelName():                                                                      schema_k8sio_api_core_v1_PodProxyOptions(ref),
-		v1.PodReadinessGate{}.OpenAPIModelName():                                                                     schema_k8sio_api_core_v1_PodReadinessGate(ref),
-		v1.PodResourceClaim{}.OpenAPIModelName():                                                                     schema_k8sio_api_core_v1_PodResourceClaim(ref),
-		v1.PodResourceClaimStatus{}.OpenAPIModelName():                                                               schema_k8sio_api_core_v1_PodResourceClaimStatus(ref),
-		v1.PodSchedulingGate{}.OpenAPIModelName():                                                                    schema_k8sio_api_core_v1_PodSchedulingGate(ref),
-		v1.PodSchedulingGroup{}.OpenAPIModelName():                                                                   schema_k8sio_api_core_v1_PodSchedulingGroup(ref),
-		v1.PodSecurityContext{}.OpenAPIModelName():                                                                   schema_k8sio_api_core_v1_PodSecurityContext(ref),
-		v1.PodSignature{}.OpenAPIModelName():                                                                         schema_k8sio_api_core_v1_PodSignature(ref),
-		v1.PodSpec{}.OpenAPIModelName():                                                                              schema_k8sio_api_core_v1_PodSpec(ref),
-		v1.PodStatus{}.OpenAPIModelName():                                                                            schema_k8sio_api_core_v1_PodStatus(ref),
-		v1.PodStatusResult{}.OpenAPIModelName():                                                                      schema_k8sio_api_core_v1_PodStatusResult(ref),
-		v1.PodTemplate{}.OpenAPIModelName():                                                                          schema_k8sio_api_core_v1_PodTemplate(ref),
-		v1.PodTemplateList{}.OpenAPIModelName():                                                                      schema_k8sio_api_core_v1_PodTemplateList(ref),
-		v1.PodTemplateSpec{}.OpenAPIModelName():                                                                      schema_k8sio_api_core_v1_PodTemplateSpec(ref),
-		v1.PortStatus{}.OpenAPIModelName():                                                                           schema_k8sio_api_core_v1_PortStatus(ref),
-		v1.PortworxVolumeSource{}.OpenAPIModelName():                                                                 schema_k8sio_api_core_v1_PortworxVolumeSource(ref),
-		v1.PreferAvoidPodsEntry{}.OpenAPIModelName():                                                                 schema_k8sio_api_core_v1_PreferAvoidPodsEntry(ref),
-		v1.PreferredSchedulingTerm{}.OpenAPIModelName():                                                              schema_k8sio_api_core_v1_PreferredSchedulingTerm(ref),
-		v1.Probe{}.OpenAPIModelName():                                                                                schema_k8sio_api_core_v1_Probe(ref),
-		v1.ProbeHandler{}.OpenAPIModelName():                                                                         schema_k8sio_api_core_v1_ProbeHandler(ref),
-		v1.ProjectedVolumeSource{}.OpenAPIModelName():                                                                schema_k8sio_api_core_v1_ProjectedVolumeSource(ref),
-		v1.QuobyteVolumeSource{}.OpenAPIModelName():                                                                  schema_k8sio_api_core_v1_QuobyteVolumeSource(ref),
-		v1.RBDPersistentVolumeSource{}.OpenAPIModelName():                                                            schema_k8sio_api_core_v1_RBDPersistentVolumeSource(ref),
-		v1.RBDVolumeSource{}.OpenAPIModelName():                                                                      schema_k8sio_api_core_v1_RBDVolumeSource(ref),
-		v1.RangeAllocation{}.OpenAPIModelName():                                                                      schema_k8sio_api_core_v1_RangeAllocation(ref),
-		v1.ReplicationController{}.OpenAPIModelName():                                                                schema_k8sio_api_core_v1_ReplicationController(ref),
-		v1.ReplicationControllerCondition{}.OpenAPIModelName():                                                       schema_k8sio_api_core_v1_ReplicationControllerCondition(ref),
-		v1.ReplicationControllerList{}.OpenAPIModelName():                                                            schema_k8sio_api_core_v1_ReplicationControllerList(ref),
-		v1.ReplicationControllerSpec{}.OpenAPIModelName():                                                            schema_k8sio_api_core_v1_ReplicationControllerSpec(ref),
-		v1.ReplicationControllerStatus{}.OpenAPIModelName():                                                          schema_k8sio_api_core_v1_ReplicationControllerStatus(ref),
-		v1.ResourceClaim{}.OpenAPIModelName():                                                                        schema_k8sio_api_core_v1_ResourceClaim(ref),
-		v1.ResourceFieldSelector{}.OpenAPIModelName():                                                                schema_k8sio_api_core_v1_ResourceFieldSelector(ref),
-		v1.ResourceHealth{}.OpenAPIModelName():                                                                       schema_k8sio_api_core_v1_ResourceHealth(ref),
-		v1.ResourceQuota{}.OpenAPIModelName():                                                                        schema_k8sio_api_core_v1_ResourceQuota(ref),
-		v1.ResourceQuotaList{}.OpenAPIModelName():                                                                    schema_k8sio_api_core_v1_ResourceQuotaList(ref),
-		v1.ResourceQuotaSpec{}.OpenAPIModelName():                                                                    schema_k8sio_api_core_v1_ResourceQuotaSpec(ref),
-		v1.ResourceQuotaStatus{}.OpenAPIModelName():                                                                  schema_k8sio_api_core_v1_ResourceQuotaStatus(ref),
-		v1.ResourceRequirements{}.OpenAPIModelName():                                                                 schema_k8sio_api_core_v1_ResourceRequirements(ref),
-		v1.ResourceStatus{}.OpenAPIModelName():                                                                       schema_k8sio_api_core_v1_ResourceStatus(ref),
-		v1.SELinuxOptions{}.OpenAPIModelName():                                                                       schema_k8sio_api_core_v1_SELinuxOptions(ref),
-		v1.ScaleIOPersistentVolumeSource{}.OpenAPIModelName():                                                        schema_k8sio_api_core_v1_ScaleIOPersistentVolumeSource(ref),
-		v1.ScaleIOVolumeSource{}.OpenAPIModelName():                                                                  schema_k8sio_api_core_v1_ScaleIOVolumeSource(ref),
-		v1.ScopeSelector{}.OpenAPIModelName():                                                                        schema_k8sio_api_core_v1_ScopeSelector(ref),
-		v1.ScopedResourceSelectorRequirement{}.OpenAPIModelName():                                                    schema_k8sio_api_core_v1_ScopedResourceSelectorRequirement(ref),
-		v1.SeccompProfile{}.OpenAPIModelName():                                                                       schema_k8sio_api_core_v1_SeccompProfile(ref),
-		v1.Secret{}.OpenAPIModelName():                                                                               schema_k8sio_api_core_v1_Secret(ref),
-		v1.SecretEnvSource{}.OpenAPIModelName():                                                                      schema_k8sio_api_core_v1_SecretEnvSource(ref),
-		v1.SecretKeySelector{}.OpenAPIModelName():                                                                    schema_k8sio_api_core_v1_SecretKeySelector(ref),
-		v1.SecretList{}.OpenAPIModelName():                                                                           schema_k8sio_api_core_v1_SecretList(ref),
-		v1.SecretProjection{}.OpenAPIModelName():                                                                     schema_k8sio_api_core_v1_SecretProjection(ref),
-		v1.SecretReference{}.OpenAPIModelName():                                                                      schema_k8sio_api_core_v1_SecretReference(ref),
-		v1.SecretVolumeSource{}.OpenAPIModelName():                                                                   schema_k8sio_api_core_v1_SecretVolumeSource(ref),
-		v1.SecurityContext{}.OpenAPIModelName():                                                                      schema_k8sio_api_core_v1_SecurityContext(ref),
-		v1.SerializedReference{}.OpenAPIModelName():                                                                  schema_k8sio_api_core_v1_SerializedReference(ref),
-		v1.Service{}.OpenAPIModelName():                                                                              schema_k8sio_api_core_v1_Service(ref),
-		v1.ServiceAccount{}.OpenAPIModelName():                                                                       schema_k8sio_api_core_v1_ServiceAccount(ref),
-		v1.ServiceAccountList{}.OpenAPIModelName():                                                                   schema_k8sio_api_core_v1_ServiceAccountList(ref),
-		v1.ServiceAccountTokenProjection{}.OpenAPIModelName():                                                        schema_k8sio_api_core_v1_ServiceAccountTokenProjection(ref),
-		v1.ServiceList{}.OpenAPIModelName():                                                                          schema_k8sio_api_core_v1_ServiceList(ref),
-		v1.ServicePort{}.OpenAPIModelName():                                                                          schema_k8sio_api_core_v1_ServicePort(ref),
-		v1.ServiceProxyOptions{}.OpenAPIModelName():                                                                  schema_k8sio_api_core_v1_ServiceProxyOptions(ref),
-		v1.ServiceSpec{}.OpenAPIModelName():                                                                          schema_k8sio_api_core_v1_ServiceSpec(ref),
-		v1.ServiceStatus{}.OpenAPIModelName():                                                                        schema_k8sio_api_core_v1_ServiceStatus(ref),
-		v1.SessionAffinityConfig{}.OpenAPIModelName():                                                                schema_k8sio_api_core_v1_SessionAffinityConfig(ref),
-		v1.SleepAction{}.OpenAPIModelName():                                                                          schema_k8sio_api_core_v1_SleepAction(ref),
-		v1.StorageOSPersistentVolumeSource{}.OpenAPIModelName():                                                      schema_k8sio_api_core_v1_StorageOSPersistentVolumeSource(ref),
-		v1.StorageOSVolumeSource{}.OpenAPIModelName():                                                                schema_k8sio_api_core_v1_StorageOSVolumeSource(ref),
-		v1.Sysctl{}.OpenAPIModelName():                                                                               schema_k8sio_api_core_v1_Sysctl(ref),
-		v1.TCPSocketAction{}.OpenAPIModelName():                                                                      schema_k8sio_api_core_v1_TCPSocketAction(ref),
-		v1.Taint{}.OpenAPIModelName():                                                                                schema_k8sio_api_core_v1_Taint(ref),
-		v1.Toleration{}.OpenAPIModelName():                                                                           schema_k8sio_api_core_v1_Toleration(ref),
-		v1.TopologySelectorLabelRequirement{}.OpenAPIModelName():                                                     schema_k8sio_api_core_v1_TopologySelectorLabelRequirement(ref),
-		v1.TopologySelectorTerm{}.OpenAPIModelName():                                                                 schema_k8sio_api_core_v1_TopologySelectorTerm(ref),
-		v1.TopologySpreadConstraint{}.OpenAPIModelName():                                                             schema_k8sio_api_core_v1_TopologySpreadConstraint(ref),
-		v1.TypedLocalObjectReference{}.OpenAPIModelName():                                                            schema_k8sio_api_core_v1_TypedLocalObjectReference(ref),
-		v1.TypedObjectReference{}.OpenAPIModelName():                                                                 schema_k8sio_api_core_v1_TypedObjectReference(ref),
-		v1.Volume{}.OpenAPIModelName():                                                                               schema_k8sio_api_core_v1_Volume(ref),
-		v1.VolumeDevice{}.OpenAPIModelName():                                                                         schema_k8sio_api_core_v1_VolumeDevice(ref),
-		v1.VolumeMount{}.OpenAPIModelName():                                                                          schema_k8sio_api_core_v1_VolumeMount(ref),
-		v1.VolumeMountStatus{}.OpenAPIModelName():                                                                    schema_k8sio_api_core_v1_VolumeMountStatus(ref),
-		v1.VolumeNodeAffinity{}.OpenAPIModelName():                                                                   schema_k8sio_api_core_v1_VolumeNodeAffinity(ref),
-		v1.VolumeProjection{}.OpenAPIModelName():                                                                     schema_k8sio_api_core_v1_VolumeProjection(ref),
-		v1.VolumeResourceRequirements{}.OpenAPIModelName():                                                           schema_k8sio_api_core_v1_VolumeResourceRequirements(ref),
-		v1.VolumeSource{}.OpenAPIModelName():                                                                         schema_k8sio_api_core_v1_VolumeSource(ref),
-		v1.VolumeStatus{}.OpenAPIModelName():                                                                         schema_k8sio_api_core_v1_VolumeStatus(ref),
-		v1.VsphereVirtualDiskVolumeSource{}.OpenAPIModelName():                                                       schema_k8sio_api_core_v1_VsphereVirtualDiskVolumeSource(ref),
-		v1.WeightedPodAffinityTerm{}.OpenAPIModelName():                                                              schema_k8sio_api_core_v1_WeightedPodAffinityTerm(ref),
-		v1.WindowsSecurityContextOptions{}.OpenAPIModelName():                                                        schema_k8sio_api_core_v1_WindowsSecurityContextOptions(ref),
-		apiextensionsv1.ConversionRequest{}.OpenAPIModelName():                                                       schema_pkg_apis_apiextensions_v1_ConversionRequest(ref),
-		apiextensionsv1.ConversionResponse{}.OpenAPIModelName():                                                      schema_pkg_apis_apiextensions_v1_ConversionResponse(ref),
-		apiextensionsv1.ConversionReview{}.OpenAPIModelName():                                                        schema_pkg_apis_apiextensions_v1_ConversionReview(ref),
-		apiextensionsv1.CustomResourceColumnDefinition{}.OpenAPIModelName():                                          schema_pkg_apis_apiextensions_v1_CustomResourceColumnDefinition(ref),
-		apiextensionsv1.CustomResourceConversion{}.OpenAPIModelName():                                                schema_pkg_apis_apiextensions_v1_CustomResourceConversion(ref),
-		apiextensionsv1.CustomResourceDefinition{}.OpenAPIModelName():                                                schema_pkg_apis_apiextensions_v1_CustomResourceDefinition(ref),
-		apiextensionsv1.CustomResourceDefinitionCondition{}.OpenAPIModelName():                                       schema_pkg_apis_apiextensions_v1_CustomResourceDefinitionCondition(ref),
-		apiextensionsv1.CustomResourceDefinitionList{}.OpenAPIModelName():                                            schema_pkg_apis_apiextensions_v1_CustomResourceDefinitionList(ref),
-		apiextensionsv1.CustomResourceDefinitionNames{}.OpenAPIModelName():                                           schema_pkg_apis_apiextensions_v1_CustomResourceDefinitionNames(ref),
-		apiextensionsv1.CustomResourceDefinitionSpec{}.OpenAPIModelName():                                            schema_pkg_apis_apiextensions_v1_CustomResourceDefinitionSpec(ref),
-		apiextensionsv1.CustomResourceDefinitionStatus{}.OpenAPIModelName():                                          schema_pkg_apis_apiextensions_v1_CustomResourceDefinitionStatus(ref),
-		apiextensionsv1.CustomResourceDefinitionVersion{}.OpenAPIModelName():                                         schema_pkg_apis_apiextensions_v1_CustomResourceDefinitionVersion(ref),
-		apiextensionsv1.CustomResourceSubresourceScale{}.OpenAPIModelName():                                          schema_pkg_apis_apiextensions_v1_CustomResourceSubresourceScale(ref),
-		apiextensionsv1.CustomResourceSubresourceStatus{}.OpenAPIModelName():                                         schema_pkg_apis_apiextensions_v1_CustomResourceSubresourceStatus(ref),
-		apiextensionsv1.CustomResourceSubresources{}.OpenAPIModelName():                                              schema_pkg_apis_apiextensions_v1_CustomResourceSubresources(ref),
-		apiextensionsv1.CustomResourceValidation{}.OpenAPIModelName():                                                schema_pkg_apis_apiextensions_v1_CustomResourceValidation(ref),
-		apiextensionsv1.ExternalDocumentation{}.OpenAPIModelName():                                                   schema_pkg_apis_apiextensions_v1_ExternalDocumentation(ref),
-		apiextensionsv1.JSON{}.OpenAPIModelName():                                                                    schema_pkg_apis_apiextensions_v1_JSON(ref),
-		apiextensionsv1.JSONSchemaProps{}.OpenAPIModelName():                                                         schema_pkg_apis_apiextensions_v1_JSONSchemaProps(ref),
-		apiextensionsv1.JSONSchemaPropsOrArray{}.OpenAPIModelName():                                                  schema_pkg_apis_apiextensions_v1_JSONSchemaPropsOrArray(ref),
-		apiextensionsv1.JSONSchemaPropsOrBool{}.OpenAPIModelName():                                                   schema_pkg_apis_apiextensions_v1_JSONSchemaPropsOrBool(ref),
-		apiextensionsv1.JSONSchemaPropsOrStringArray{}.OpenAPIModelName():                                            schema_pkg_apis_apiextensions_v1_JSONSchemaPropsOrStringArray(ref),
-		apiextensionsv1.SelectableField{}.OpenAPIModelName():                                                         schema_pkg_apis_apiextensions_v1_SelectableField(ref),
-		apiextensionsv1.ServiceReference{}.OpenAPIModelName():                                                        schema_pkg_apis_apiextensions_v1_ServiceReference(ref),
-		apiextensionsv1.ValidationRule{}.OpenAPIModelName():                                                          schema_pkg_apis_apiextensions_v1_ValidationRule(ref),
-		apiextensionsv1.WebhookClientConfig{}.OpenAPIModelName():                                                     schema_pkg_apis_apiextensions_v1_WebhookClientConfig(ref),
-		apiextensionsv1.WebhookConversion{}.OpenAPIModelName():                                                       schema_pkg_apis_apiextensions_v1_WebhookConversion(ref),
-		resource.Quantity{}.OpenAPIModelName():                                                                       schema_apimachinery_pkg_api_resource_Quantity(ref),
-		metav1.APIGroup{}.OpenAPIModelName():                                                                         schema_pkg_apis_meta_v1_APIGroup(ref),
-		metav1.APIGroupList{}.OpenAPIModelName():                                                                     schema_pkg_apis_meta_v1_APIGroupList(ref),
-		metav1.APIResource{}.OpenAPIModelName():                                                                      schema_pkg_apis_meta_v1_APIResource(ref),
-		metav1.APIResourceList{}.OpenAPIModelName():                                                                  schema_pkg_apis_meta_v1_APIResourceList(ref),
-		metav1.APIVersions{}.OpenAPIModelName():                                                                      schema_pkg_apis_meta_v1_APIVersions(ref),
-		metav1.ApplyOptions{}.OpenAPIModelName():                                                                     schema_pkg_apis_meta_v1_ApplyOptions(ref),
-		metav1.Condition{}.OpenAPIModelName():                                                                        schema_pkg_apis_meta_v1_Condition(ref),
-		metav1.CreateOptions{}.OpenAPIModelName():                                                                    schema_pkg_apis_meta_v1_CreateOptions(ref),
-		metav1.DeleteOptions{}.OpenAPIModelName():                                                                    schema_pkg_apis_meta_v1_DeleteOptions(ref),
-		metav1.Duration{}.OpenAPIModelName():                                                                         schema_pkg_apis_meta_v1_Duration(ref),
-		metav1.FieldSelectorRequirement{}.OpenAPIModelName():                                                         schema_pkg_apis_meta_v1_FieldSelectorRequirement(ref),
-		metav1.FieldsV1{}.OpenAPIModelName():                                                                         schema_pkg_apis_meta_v1_FieldsV1(ref),
-		metav1.GetOptions{}.OpenAPIModelName():                                                                       schema_pkg_apis_meta_v1_GetOptions(ref),
-		metav1.GroupKind{}.OpenAPIModelName():                                                                        schema_pkg_apis_meta_v1_GroupKind(ref),
-		metav1.GroupResource{}.OpenAPIModelName():                                                                    schema_pkg_apis_meta_v1_GroupResource(ref),
-		metav1.GroupVersion{}.OpenAPIModelName():                                                                     schema_pkg_apis_meta_v1_GroupVersion(ref),
-		metav1.GroupVersionForDiscovery{}.OpenAPIModelName():                                                         schema_pkg_apis_meta_v1_GroupVersionForDiscovery(ref),
-		metav1.GroupVersionKind{}.OpenAPIModelName():                                                                 schema_pkg_apis_meta_v1_GroupVersionKind(ref),
-		metav1.GroupVersionResource{}.OpenAPIModelName():                                                             schema_pkg_apis_meta_v1_GroupVersionResource(ref),
-		metav1.InternalEvent{}.OpenAPIModelName():                                                                    schema_pkg_apis_meta_v1_InternalEvent(ref),
-		metav1.LabelSelector{}.OpenAPIModelName():                                                                    schema_pkg_apis_meta_v1_LabelSelector(ref),
-		metav1.LabelSelectorRequirement{}.OpenAPIModelName():                                                         schema_pkg_apis_meta_v1_LabelSelectorRequirement(ref),
-		metav1.List{}.OpenAPIModelName():                                                                             schema_pkg_apis_meta_v1_List(ref),
-		metav1.ListMeta{}.OpenAPIModelName():                                                                         schema_pkg_apis_meta_v1_ListMeta(ref),
-		metav1.ListOptions{}.OpenAPIModelName():                                                                      schema_pkg_apis_meta_v1_ListOptions(ref),
-		metav1.ManagedFieldsEntry{}.OpenAPIModelName():                                                               schema_pkg_apis_meta_v1_ManagedFieldsEntry(ref),
-		metav1.MicroTime{}.OpenAPIModelName():                                                                        schema_pkg_apis_meta_v1_MicroTime(ref),
-		metav1.ObjectMeta{}.OpenAPIModelName():                                                                       schema_pkg_apis_meta_v1_ObjectMeta(ref),
-		metav1.OwnerReference{}.OpenAPIModelName():                                                                   schema_pkg_apis_meta_v1_OwnerReference(ref),
-		metav1.PartialObjectMetadata{}.OpenAPIModelName():                                                            schema_pkg_apis_meta_v1_PartialObjectMetadata(ref),
-		metav1.PartialObjectMetadataList{}.OpenAPIModelName():                                                        schema_pkg_apis_meta_v1_PartialObjectMetadataList(ref),
-		metav1.Patch{}.OpenAPIModelName():                                                                            schema_pkg_apis_meta_v1_Patch(ref),
-		metav1.PatchOptions{}.OpenAPIModelName():                                                                     schema_pkg_apis_meta_v1_PatchOptions(ref),
-		metav1.Preconditions{}.OpenAPIModelName():                                                                    schema_pkg_apis_meta_v1_Preconditions(ref),
-		metav1.RootPaths{}.OpenAPIModelName():                                                                        schema_pkg_apis_meta_v1_RootPaths(ref),
-		metav1.ServerAddressByClientCIDR{}.OpenAPIModelName():                                                        schema_pkg_apis_meta_v1_ServerAddressByClientCIDR(ref),
-		metav1.ShardInfo{}.OpenAPIModelName():                                                                        schema_pkg_apis_meta_v1_ShardInfo(ref),
-		metav1.Status{}.OpenAPIModelName():                                                                           schema_pkg_apis_meta_v1_Status(ref),
-		metav1.StatusCause{}.OpenAPIModelName():                                                                      schema_pkg_apis_meta_v1_StatusCause(ref),
-		metav1.StatusDetails{}.OpenAPIModelName():                                                                    schema_pkg_apis_meta_v1_StatusDetails(ref),
-		metav1.Table{}.OpenAPIModelName():                                                                            schema_pkg_apis_meta_v1_Table(ref),
-		metav1.TableColumnDefinition{}.OpenAPIModelName():                                                            schema_pkg_apis_meta_v1_TableColumnDefinition(ref),
-		metav1.TableOptions{}.OpenAPIModelName():                                                                     schema_pkg_apis_meta_v1_TableOptions(ref),
-		metav1.TableRow{}.OpenAPIModelName():                                                                         schema_pkg_apis_meta_v1_TableRow(ref),
-		metav1.TableRowCondition{}.OpenAPIModelName():                                                                schema_pkg_apis_meta_v1_TableRowCondition(ref),
-		metav1.Time{}.OpenAPIModelName():                                                                             schema_pkg_apis_meta_v1_Time(ref),
-		metav1.Timestamp{}.OpenAPIModelName():                                                                        schema_pkg_apis_meta_v1_Timestamp(ref),
-		metav1.TypeMeta{}.OpenAPIModelName():                                                                         schema_pkg_apis_meta_v1_TypeMeta(ref),
-		metav1.UpdateOptions{}.OpenAPIModelName():                                                                    schema_pkg_apis_meta_v1_UpdateOptions(ref),
-		metav1.WatchEvent{}.OpenAPIModelName():                                                                       schema_pkg_apis_meta_v1_WatchEvent(ref),
-		runtime.RawExtension{}.OpenAPIModelName():                                                                    schema_k8sio_apimachinery_pkg_runtime_RawExtension(ref),
-		runtime.TypeMeta{}.OpenAPIModelName():                                                                        schema_k8sio_apimachinery_pkg_runtime_TypeMeta(ref),
-		runtime.Unknown{}.OpenAPIModelName():                                                                         schema_k8sio_apimachinery_pkg_runtime_Unknown(ref),
-		intstr.IntOrString{}.OpenAPIModelName():                                                                      schema_apimachinery_pkg_util_intstr_IntOrString(ref),
-		version.Info{}.OpenAPIModelName():                                                                            schema_k8sio_apimachinery_pkg_version_Info(ref),
+		PromotionStrategyDetails{}.OpenAPIModelName():                                         schema_gitops_promoter_api_dashboard_v1alpha1_PromotionStrategyDetails(ref),
+		PromotionStrategyDetailsList{}.OpenAPIModelName():                                     schema_gitops_promoter_api_dashboard_v1alpha1_PromotionStrategyDetailsList(ref),
+		apiv1alpha1.ApplicationsSelected{}.OpenAPIModelName():                                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_ApplicationsSelected(ref),
+		apiv1alpha1.ArgoCDCommitStatus{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatus(ref),
+		apiv1alpha1.ArgoCDCommitStatusConfiguration{}.OpenAPIModelName():                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusConfiguration(ref),
+		apiv1alpha1.ArgoCDCommitStatusList{}.OpenAPIModelName():                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusList(ref),
+		apiv1alpha1.ArgoCDCommitStatusSpec{}.OpenAPIModelName():                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusSpec(ref),
+		apiv1alpha1.ArgoCDCommitStatusStatus{}.OpenAPIModelName():                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusStatus(ref),
+		apiv1alpha1.AzureDevOps{}.OpenAPIModelName():                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_AzureDevOps(ref),
+		apiv1alpha1.AzureDevOpsRepo{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_AzureDevOpsRepo(ref),
+		apiv1alpha1.BasicAuth{}.OpenAPIModelName():                                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_BasicAuth(ref),
+		apiv1alpha1.BearerAuth{}.OpenAPIModelName():                                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_BearerAuth(ref),
+		apiv1alpha1.BitbucketCloud{}.OpenAPIModelName():                                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_BitbucketCloud(ref),
+		apiv1alpha1.BitbucketCloudRepo{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_BitbucketCloudRepo(ref),
+		apiv1alpha1.Bucket{}.OpenAPIModelName():                                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_Bucket(ref),
+		apiv1alpha1.ChangeRequestPolicyCommitStatusPhase{}.OpenAPIModelName():                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeRequestPolicyCommitStatusPhase(ref),
+		apiv1alpha1.ChangeTransferPolicy{}.OpenAPIModelName():                                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicy(ref),
+		apiv1alpha1.ChangeTransferPolicyConfiguration{}.OpenAPIModelName():                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyConfiguration(ref),
+		apiv1alpha1.ChangeTransferPolicyList{}.OpenAPIModelName():                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyList(ref),
+		apiv1alpha1.ChangeTransferPolicySpec{}.OpenAPIModelName():                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicySpec(ref),
+		apiv1alpha1.ChangeTransferPolicyStatus{}.OpenAPIModelName():                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyStatus(ref),
+		apiv1alpha1.ClusterScmProvider{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProvider(ref),
+		apiv1alpha1.ClusterScmProviderList{}.OpenAPIModelName():                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProviderList(ref),
+		apiv1alpha1.CommitBranchState{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitBranchState(ref),
+		apiv1alpha1.CommitBranchStateHistoryProposed{}.OpenAPIModelName():                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitBranchStateHistoryProposed(ref),
+		apiv1alpha1.CommitConfiguration{}.OpenAPIModelName():                                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitConfiguration(ref),
+		apiv1alpha1.CommitMetadata{}.OpenAPIModelName():                                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitMetadata(ref),
+		apiv1alpha1.CommitShaState{}.OpenAPIModelName():                                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitShaState(ref),
+		apiv1alpha1.CommitStatus{}.OpenAPIModelName():                                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitStatus(ref),
+		apiv1alpha1.CommitStatusConfiguration{}.OpenAPIModelName():                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitStatusConfiguration(ref),
+		apiv1alpha1.CommitStatusList{}.OpenAPIModelName():                                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitStatusList(ref),
+		apiv1alpha1.CommitStatusSelector{}.OpenAPIModelName():                                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitStatusSelector(ref),
+		apiv1alpha1.CommitStatusSpec{}.OpenAPIModelName():                                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitStatusSpec(ref),
+		apiv1alpha1.CommitStatusStatus{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitStatusStatus(ref),
+		apiv1alpha1.ControllerConfiguration{}.OpenAPIModelName():                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfiguration(ref),
+		apiv1alpha1.ControllerConfigurationList{}.OpenAPIModelName():                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationList(ref),
+		apiv1alpha1.ControllerConfigurationSpec{}.OpenAPIModelName():                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSpec(ref),
+		apiv1alpha1.ControllerConfigurationStatus{}.OpenAPIModelName():                        schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationStatus(ref),
+		apiv1alpha1.Environment{}.OpenAPIModelName():                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_Environment(ref),
+		apiv1alpha1.EnvironmentStatus{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_EnvironmentStatus(ref),
+		apiv1alpha1.ExponentialFailure{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_ExponentialFailure(ref),
+		apiv1alpha1.Fake{}.OpenAPIModelName():                                                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_Fake(ref),
+		apiv1alpha1.FakeRepo{}.OpenAPIModelName():                                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_FakeRepo(ref),
+		apiv1alpha1.FastSlow{}.OpenAPIModelName():                                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_FastSlow(ref),
+		apiv1alpha1.Forgejo{}.OpenAPIModelName():                                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_Forgejo(ref),
+		apiv1alpha1.ForgejoRepo{}.OpenAPIModelName():                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_ForgejoRepo(ref),
+		apiv1alpha1.GitCommitStatus{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatus(ref),
+		apiv1alpha1.GitCommitStatusConfiguration{}.OpenAPIModelName():                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusConfiguration(ref),
+		apiv1alpha1.GitCommitStatusEnvironmentStatus{}.OpenAPIModelName():                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusEnvironmentStatus(ref),
+		apiv1alpha1.GitCommitStatusList{}.OpenAPIModelName():                                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusList(ref),
+		apiv1alpha1.GitCommitStatusSpec{}.OpenAPIModelName():                                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusSpec(ref),
+		apiv1alpha1.GitCommitStatusStatus{}.OpenAPIModelName():                                schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusStatus(ref),
+		apiv1alpha1.GitHub{}.OpenAPIModelName():                                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitHub(ref),
+		apiv1alpha1.GitHubRepo{}.OpenAPIModelName():                                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitHubRepo(ref),
+		apiv1alpha1.GitLab{}.OpenAPIModelName():                                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitLab(ref),
+		apiv1alpha1.GitLabRepo{}.OpenAPIModelName():                                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitLabRepo(ref),
+		apiv1alpha1.GitRepository{}.OpenAPIModelName():                                        schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitRepository(ref),
+		apiv1alpha1.GitRepositoryList{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitRepositoryList(ref),
+		apiv1alpha1.GitRepositorySpec{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitRepositorySpec(ref),
+		apiv1alpha1.GitRepositoryStatus{}.OpenAPIModelName():                                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitRepositoryStatus(ref),
+		apiv1alpha1.Gitea{}.OpenAPIModelName():                                                schema_argoproj_labs_gitops_promoter_api_v1alpha1_Gitea(ref),
+		apiv1alpha1.GiteaRepo{}.OpenAPIModelName():                                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_GiteaRepo(ref),
+		apiv1alpha1.HTTPAuthentication{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_HTTPAuthentication(ref),
+		apiv1alpha1.HTTPRequestSpec{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_HTTPRequestSpec(ref),
+		apiv1alpha1.HealthyDryShas{}.OpenAPIModelName():                                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_HealthyDryShas(ref),
+		apiv1alpha1.History{}.OpenAPIModelName():                                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_History(ref),
+		apiv1alpha1.HydratorMetadata{}.OpenAPIModelName():                                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_HydratorMetadata(ref),
+		apiv1alpha1.ModeSpec{}.OpenAPIModelName():                                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_ModeSpec(ref),
+		apiv1alpha1.OAuth2Auth{}.OpenAPIModelName():                                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_OAuth2Auth(ref),
+		apiv1alpha1.ObjectReference{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_ObjectReference(ref),
+		apiv1alpha1.OutputSpec{}.OpenAPIModelName():                                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_OutputSpec(ref),
+		apiv1alpha1.PollingModeSpec{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_PollingModeSpec(ref),
+		apiv1alpha1.PromotionStrategy{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategy(ref),
+		apiv1alpha1.PromotionStrategyConfiguration{}.OpenAPIModelName():                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategyConfiguration(ref),
+		apiv1alpha1.PromotionStrategyList{}.OpenAPIModelName():                                schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategyList(ref),
+		apiv1alpha1.PromotionStrategySpec{}.OpenAPIModelName():                                schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategySpec(ref),
+		apiv1alpha1.PromotionStrategyStatus{}.OpenAPIModelName():                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategyStatus(ref),
+		apiv1alpha1.PullRequest{}.OpenAPIModelName():                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequest(ref),
+		apiv1alpha1.PullRequestCommonStatus{}.OpenAPIModelName():                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestCommonStatus(ref),
+		apiv1alpha1.PullRequestConfiguration{}.OpenAPIModelName():                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestConfiguration(ref),
+		apiv1alpha1.PullRequestList{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestList(ref),
+		apiv1alpha1.PullRequestSpec{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestSpec(ref),
+		apiv1alpha1.PullRequestStatus{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestStatus(ref),
+		apiv1alpha1.PullRequestTemplate{}.OpenAPIModelName():                                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestTemplate(ref),
+		apiv1alpha1.RateLimiter{}.OpenAPIModelName():                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_RateLimiter(ref),
+		apiv1alpha1.RateLimiterTypes{}.OpenAPIModelName():                                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_RateLimiterTypes(ref),
+		apiv1alpha1.ResponseOutputSpec{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_ResponseOutputSpec(ref),
+		apiv1alpha1.RevertCommit{}.OpenAPIModelName():                                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommit(ref),
+		apiv1alpha1.RevertCommitList{}.OpenAPIModelName():                                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommitList(ref),
+		apiv1alpha1.RevertCommitSpec{}.OpenAPIModelName():                                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommitSpec(ref),
+		apiv1alpha1.RevertCommitStatus{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommitStatus(ref),
+		apiv1alpha1.RevisionReference{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevisionReference(ref),
+		apiv1alpha1.Scm{}.OpenAPIModelName():                                                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_Scm(ref),
+		apiv1alpha1.ScmProvider{}.OpenAPIModelName():                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProvider(ref),
+		apiv1alpha1.ScmProviderList{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderList(ref),
+		apiv1alpha1.ScmProviderObjectReference{}.OpenAPIModelName():                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderObjectReference(ref),
+		apiv1alpha1.ScmProviderSpec{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderSpec(ref),
+		apiv1alpha1.ScmProviderStatus{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderStatus(ref),
+		apiv1alpha1.SuccessSpec{}.OpenAPIModelName():                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_SuccessSpec(ref),
+		apiv1alpha1.TLSAuth{}.OpenAPIModelName():                                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_TLSAuth(ref),
+		apiv1alpha1.TimedCommitStatus{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatus(ref),
+		apiv1alpha1.TimedCommitStatusConfiguration{}.OpenAPIModelName():                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusConfiguration(ref),
+		apiv1alpha1.TimedCommitStatusEnvironments{}.OpenAPIModelName():                        schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusEnvironments(ref),
+		apiv1alpha1.TimedCommitStatusEnvironmentsStatus{}.OpenAPIModelName():                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusEnvironmentsStatus(ref),
+		apiv1alpha1.TimedCommitStatusList{}.OpenAPIModelName():                                schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusList(ref),
+		apiv1alpha1.TimedCommitStatusSpec{}.OpenAPIModelName():                                schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusSpec(ref),
+		apiv1alpha1.TimedCommitStatusStatus{}.OpenAPIModelName():                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusStatus(ref),
+		apiv1alpha1.TriggerModeSpec{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_TriggerModeSpec(ref),
+		apiv1alpha1.URLConfig{}.OpenAPIModelName():                                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_URLConfig(ref),
+		apiv1alpha1.WebRequestCommitStatus{}.OpenAPIModelName():                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatus(ref),
+		apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName():                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusConfiguration(ref),
+		apiv1alpha1.WebRequestCommitStatusEnvironmentStatus{}.OpenAPIModelName():              schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusEnvironmentStatus(ref),
+		apiv1alpha1.WebRequestCommitStatusLastSuccessfulShaItem{}.OpenAPIModelName():          schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusLastSuccessfulShaItem(ref),
+		apiv1alpha1.WebRequestCommitStatusList{}.OpenAPIModelName():                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusList(ref),
+		apiv1alpha1.WebRequestCommitStatusPhasePerBranchItem{}.OpenAPIModelName():             schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusPhasePerBranchItem(ref),
+		apiv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus{}.OpenAPIModelName(): schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusPromotionStrategyContextStatus(ref),
+		apiv1alpha1.WebRequestCommitStatusSpec{}.OpenAPIModelName():                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusSpec(ref),
+		apiv1alpha1.WebRequestCommitStatusStatus{}.OpenAPIModelName():                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusStatus(ref),
+		apiv1alpha1.WhenWithOutputSpec{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_WhenWithOutputSpec(ref),
+		apiv1alpha1.WorkQueue{}.OpenAPIModelName():                                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_WorkQueue(ref),
+		v1.AWSElasticBlockStoreVolumeSource{}.OpenAPIModelName():                              schema_k8sio_api_core_v1_AWSElasticBlockStoreVolumeSource(ref),
+		v1.Affinity{}.OpenAPIModelName():                                                      schema_k8sio_api_core_v1_Affinity(ref),
+		v1.AppArmorProfile{}.OpenAPIModelName():                                               schema_k8sio_api_core_v1_AppArmorProfile(ref),
+		v1.AttachedVolume{}.OpenAPIModelName():                                                schema_k8sio_api_core_v1_AttachedVolume(ref),
+		v1.AvoidPods{}.OpenAPIModelName():                                                     schema_k8sio_api_core_v1_AvoidPods(ref),
+		v1.AzureDiskVolumeSource{}.OpenAPIModelName():                                         schema_k8sio_api_core_v1_AzureDiskVolumeSource(ref),
+		v1.AzureFilePersistentVolumeSource{}.OpenAPIModelName():                               schema_k8sio_api_core_v1_AzureFilePersistentVolumeSource(ref),
+		v1.AzureFileVolumeSource{}.OpenAPIModelName():                                         schema_k8sio_api_core_v1_AzureFileVolumeSource(ref),
+		v1.Binding{}.OpenAPIModelName():                                                       schema_k8sio_api_core_v1_Binding(ref),
+		v1.CSIPersistentVolumeSource{}.OpenAPIModelName():                                     schema_k8sio_api_core_v1_CSIPersistentVolumeSource(ref),
+		v1.CSIVolumeSource{}.OpenAPIModelName():                                               schema_k8sio_api_core_v1_CSIVolumeSource(ref),
+		v1.Capabilities{}.OpenAPIModelName():                                                  schema_k8sio_api_core_v1_Capabilities(ref),
+		v1.CephFSPersistentVolumeSource{}.OpenAPIModelName():                                  schema_k8sio_api_core_v1_CephFSPersistentVolumeSource(ref),
+		v1.CephFSVolumeSource{}.OpenAPIModelName():                                            schema_k8sio_api_core_v1_CephFSVolumeSource(ref),
+		v1.CinderPersistentVolumeSource{}.OpenAPIModelName():                                  schema_k8sio_api_core_v1_CinderPersistentVolumeSource(ref),
+		v1.CinderVolumeSource{}.OpenAPIModelName():                                            schema_k8sio_api_core_v1_CinderVolumeSource(ref),
+		v1.ClientIPConfig{}.OpenAPIModelName():                                                schema_k8sio_api_core_v1_ClientIPConfig(ref),
+		v1.ClusterTrustBundleProjection{}.OpenAPIModelName():                                  schema_k8sio_api_core_v1_ClusterTrustBundleProjection(ref),
+		v1.ComponentCondition{}.OpenAPIModelName():                                            schema_k8sio_api_core_v1_ComponentCondition(ref),
+		v1.ComponentStatus{}.OpenAPIModelName():                                               schema_k8sio_api_core_v1_ComponentStatus(ref),
+		v1.ComponentStatusList{}.OpenAPIModelName():                                           schema_k8sio_api_core_v1_ComponentStatusList(ref),
+		v1.ConfigMap{}.OpenAPIModelName():                                                     schema_k8sio_api_core_v1_ConfigMap(ref),
+		v1.ConfigMapEnvSource{}.OpenAPIModelName():                                            schema_k8sio_api_core_v1_ConfigMapEnvSource(ref),
+		v1.ConfigMapKeySelector{}.OpenAPIModelName():                                          schema_k8sio_api_core_v1_ConfigMapKeySelector(ref),
+		v1.ConfigMapList{}.OpenAPIModelName():                                                 schema_k8sio_api_core_v1_ConfigMapList(ref),
+		v1.ConfigMapNodeConfigSource{}.OpenAPIModelName():                                     schema_k8sio_api_core_v1_ConfigMapNodeConfigSource(ref),
+		v1.ConfigMapProjection{}.OpenAPIModelName():                                           schema_k8sio_api_core_v1_ConfigMapProjection(ref),
+		v1.ConfigMapVolumeSource{}.OpenAPIModelName():                                         schema_k8sio_api_core_v1_ConfigMapVolumeSource(ref),
+		v1.Container{}.OpenAPIModelName():                                                     schema_k8sio_api_core_v1_Container(ref),
+		v1.ContainerExtendedResourceRequest{}.OpenAPIModelName():                              schema_k8sio_api_core_v1_ContainerExtendedResourceRequest(ref),
+		v1.ContainerImage{}.OpenAPIModelName():                                                schema_k8sio_api_core_v1_ContainerImage(ref),
+		v1.ContainerPort{}.OpenAPIModelName():                                                 schema_k8sio_api_core_v1_ContainerPort(ref),
+		v1.ContainerResizePolicy{}.OpenAPIModelName():                                         schema_k8sio_api_core_v1_ContainerResizePolicy(ref),
+		v1.ContainerRestartRule{}.OpenAPIModelName():                                          schema_k8sio_api_core_v1_ContainerRestartRule(ref),
+		v1.ContainerRestartRuleOnExitCodes{}.OpenAPIModelName():                               schema_k8sio_api_core_v1_ContainerRestartRuleOnExitCodes(ref),
+		v1.ContainerState{}.OpenAPIModelName():                                                schema_k8sio_api_core_v1_ContainerState(ref),
+		v1.ContainerStateRunning{}.OpenAPIModelName():                                         schema_k8sio_api_core_v1_ContainerStateRunning(ref),
+		v1.ContainerStateTerminated{}.OpenAPIModelName():                                      schema_k8sio_api_core_v1_ContainerStateTerminated(ref),
+		v1.ContainerStateWaiting{}.OpenAPIModelName():                                         schema_k8sio_api_core_v1_ContainerStateWaiting(ref),
+		v1.ContainerStatus{}.OpenAPIModelName():                                               schema_k8sio_api_core_v1_ContainerStatus(ref),
+		v1.ContainerUser{}.OpenAPIModelName():                                                 schema_k8sio_api_core_v1_ContainerUser(ref),
+		v1.DaemonEndpoint{}.OpenAPIModelName():                                                schema_k8sio_api_core_v1_DaemonEndpoint(ref),
+		v1.DownwardAPIProjection{}.OpenAPIModelName():                                         schema_k8sio_api_core_v1_DownwardAPIProjection(ref),
+		v1.DownwardAPIVolumeFile{}.OpenAPIModelName():                                         schema_k8sio_api_core_v1_DownwardAPIVolumeFile(ref),
+		v1.DownwardAPIVolumeSource{}.OpenAPIModelName():                                       schema_k8sio_api_core_v1_DownwardAPIVolumeSource(ref),
+		v1.EmptyDirVolumeSource{}.OpenAPIModelName():                                          schema_k8sio_api_core_v1_EmptyDirVolumeSource(ref),
+		v1.EndpointAddress{}.OpenAPIModelName():                                               schema_k8sio_api_core_v1_EndpointAddress(ref),
+		v1.EndpointPort{}.OpenAPIModelName():                                                  schema_k8sio_api_core_v1_EndpointPort(ref),
+		v1.EndpointSubset{}.OpenAPIModelName():                                                schema_k8sio_api_core_v1_EndpointSubset(ref),
+		v1.Endpoints{}.OpenAPIModelName():                                                     schema_k8sio_api_core_v1_Endpoints(ref),
+		v1.EndpointsList{}.OpenAPIModelName():                                                 schema_k8sio_api_core_v1_EndpointsList(ref),
+		v1.EnvFromSource{}.OpenAPIModelName():                                                 schema_k8sio_api_core_v1_EnvFromSource(ref),
+		v1.EnvVar{}.OpenAPIModelName():                                                        schema_k8sio_api_core_v1_EnvVar(ref),
+		v1.EnvVarSource{}.OpenAPIModelName():                                                  schema_k8sio_api_core_v1_EnvVarSource(ref),
+		v1.EphemeralContainer{}.OpenAPIModelName():                                            schema_k8sio_api_core_v1_EphemeralContainer(ref),
+		v1.EphemeralContainerCommon{}.OpenAPIModelName():                                      schema_k8sio_api_core_v1_EphemeralContainerCommon(ref),
+		v1.EphemeralVolumeSource{}.OpenAPIModelName():                                         schema_k8sio_api_core_v1_EphemeralVolumeSource(ref),
+		v1.Event{}.OpenAPIModelName():                                                         schema_k8sio_api_core_v1_Event(ref),
+		v1.EventList{}.OpenAPIModelName():                                                     schema_k8sio_api_core_v1_EventList(ref),
+		v1.EventSeries{}.OpenAPIModelName():                                                   schema_k8sio_api_core_v1_EventSeries(ref),
+		v1.EventSource{}.OpenAPIModelName():                                                   schema_k8sio_api_core_v1_EventSource(ref),
+		v1.ExecAction{}.OpenAPIModelName():                                                    schema_k8sio_api_core_v1_ExecAction(ref),
+		v1.FCVolumeSource{}.OpenAPIModelName():                                                schema_k8sio_api_core_v1_FCVolumeSource(ref),
+		v1.FileKeySelector{}.OpenAPIModelName():                                               schema_k8sio_api_core_v1_FileKeySelector(ref),
+		v1.FlexPersistentVolumeSource{}.OpenAPIModelName():                                    schema_k8sio_api_core_v1_FlexPersistentVolumeSource(ref),
+		v1.FlexVolumeSource{}.OpenAPIModelName():                                              schema_k8sio_api_core_v1_FlexVolumeSource(ref),
+		v1.FlockerVolumeSource{}.OpenAPIModelName():                                           schema_k8sio_api_core_v1_FlockerVolumeSource(ref),
+		v1.GCEPersistentDiskVolumeSource{}.OpenAPIModelName():                                 schema_k8sio_api_core_v1_GCEPersistentDiskVolumeSource(ref),
+		v1.GRPCAction{}.OpenAPIModelName():                                                    schema_k8sio_api_core_v1_GRPCAction(ref),
+		v1.GitRepoVolumeSource{}.OpenAPIModelName():                                           schema_k8sio_api_core_v1_GitRepoVolumeSource(ref),
+		v1.GlusterfsPersistentVolumeSource{}.OpenAPIModelName():                               schema_k8sio_api_core_v1_GlusterfsPersistentVolumeSource(ref),
+		v1.GlusterfsVolumeSource{}.OpenAPIModelName():                                         schema_k8sio_api_core_v1_GlusterfsVolumeSource(ref),
+		v1.HTTPGetAction{}.OpenAPIModelName():                                                 schema_k8sio_api_core_v1_HTTPGetAction(ref),
+		v1.HTTPHeader{}.OpenAPIModelName():                                                    schema_k8sio_api_core_v1_HTTPHeader(ref),
+		v1.HostAlias{}.OpenAPIModelName():                                                     schema_k8sio_api_core_v1_HostAlias(ref),
+		v1.HostIP{}.OpenAPIModelName():                                                        schema_k8sio_api_core_v1_HostIP(ref),
+		v1.HostPathVolumeSource{}.OpenAPIModelName():                                          schema_k8sio_api_core_v1_HostPathVolumeSource(ref),
+		v1.ISCSIPersistentVolumeSource{}.OpenAPIModelName():                                   schema_k8sio_api_core_v1_ISCSIPersistentVolumeSource(ref),
+		v1.ISCSIVolumeSource{}.OpenAPIModelName():                                             schema_k8sio_api_core_v1_ISCSIVolumeSource(ref),
+		v1.ImageVolumeSource{}.OpenAPIModelName():                                             schema_k8sio_api_core_v1_ImageVolumeSource(ref),
+		v1.ImageVolumeStatus{}.OpenAPIModelName():                                             schema_k8sio_api_core_v1_ImageVolumeStatus(ref),
+		v1.KeyToPath{}.OpenAPIModelName():                                                     schema_k8sio_api_core_v1_KeyToPath(ref),
+		v1.Lifecycle{}.OpenAPIModelName():                                                     schema_k8sio_api_core_v1_Lifecycle(ref),
+		v1.LifecycleHandler{}.OpenAPIModelName():                                              schema_k8sio_api_core_v1_LifecycleHandler(ref),
+		v1.LimitRange{}.OpenAPIModelName():                                                    schema_k8sio_api_core_v1_LimitRange(ref),
+		v1.LimitRangeItem{}.OpenAPIModelName():                                                schema_k8sio_api_core_v1_LimitRangeItem(ref),
+		v1.LimitRangeList{}.OpenAPIModelName():                                                schema_k8sio_api_core_v1_LimitRangeList(ref),
+		v1.LimitRangeSpec{}.OpenAPIModelName():                                                schema_k8sio_api_core_v1_LimitRangeSpec(ref),
+		v1.LinuxContainerUser{}.OpenAPIModelName():                                            schema_k8sio_api_core_v1_LinuxContainerUser(ref),
+		v1.List{}.OpenAPIModelName():                                                          schema_k8sio_api_core_v1_List(ref),
+		v1.LoadBalancerIngress{}.OpenAPIModelName():                                           schema_k8sio_api_core_v1_LoadBalancerIngress(ref),
+		v1.LoadBalancerStatus{}.OpenAPIModelName():                                            schema_k8sio_api_core_v1_LoadBalancerStatus(ref),
+		v1.LocalObjectReference{}.OpenAPIModelName():                                          schema_k8sio_api_core_v1_LocalObjectReference(ref),
+		v1.LocalVolumeSource{}.OpenAPIModelName():                                             schema_k8sio_api_core_v1_LocalVolumeSource(ref),
+		v1.ModifyVolumeStatus{}.OpenAPIModelName():                                            schema_k8sio_api_core_v1_ModifyVolumeStatus(ref),
+		v1.NFSVolumeSource{}.OpenAPIModelName():                                               schema_k8sio_api_core_v1_NFSVolumeSource(ref),
+		v1.Namespace{}.OpenAPIModelName():                                                     schema_k8sio_api_core_v1_Namespace(ref),
+		v1.NamespaceCondition{}.OpenAPIModelName():                                            schema_k8sio_api_core_v1_NamespaceCondition(ref),
+		v1.NamespaceList{}.OpenAPIModelName():                                                 schema_k8sio_api_core_v1_NamespaceList(ref),
+		v1.NamespaceSpec{}.OpenAPIModelName():                                                 schema_k8sio_api_core_v1_NamespaceSpec(ref),
+		v1.NamespaceStatus{}.OpenAPIModelName():                                               schema_k8sio_api_core_v1_NamespaceStatus(ref),
+		v1.Node{}.OpenAPIModelName():                                                          schema_k8sio_api_core_v1_Node(ref),
+		v1.NodeAddress{}.OpenAPIModelName():                                                   schema_k8sio_api_core_v1_NodeAddress(ref),
+		v1.NodeAffinity{}.OpenAPIModelName():                                                  schema_k8sio_api_core_v1_NodeAffinity(ref),
+		v1.NodeAllocatableResourceClaimStatus{}.OpenAPIModelName():                            schema_k8sio_api_core_v1_NodeAllocatableResourceClaimStatus(ref),
+		v1.NodeCondition{}.OpenAPIModelName():                                                 schema_k8sio_api_core_v1_NodeCondition(ref),
+		v1.NodeConfigSource{}.OpenAPIModelName():                                              schema_k8sio_api_core_v1_NodeConfigSource(ref),
+		v1.NodeConfigStatus{}.OpenAPIModelName():                                              schema_k8sio_api_core_v1_NodeConfigStatus(ref),
+		v1.NodeDaemonEndpoints{}.OpenAPIModelName():                                           schema_k8sio_api_core_v1_NodeDaemonEndpoints(ref),
+		v1.NodeFeatures{}.OpenAPIModelName():                                                  schema_k8sio_api_core_v1_NodeFeatures(ref),
+		v1.NodeList{}.OpenAPIModelName():                                                      schema_k8sio_api_core_v1_NodeList(ref),
+		v1.NodeProxyOptions{}.OpenAPIModelName():                                              schema_k8sio_api_core_v1_NodeProxyOptions(ref),
+		v1.NodeRuntimeHandler{}.OpenAPIModelName():                                            schema_k8sio_api_core_v1_NodeRuntimeHandler(ref),
+		v1.NodeRuntimeHandlerFeatures{}.OpenAPIModelName():                                    schema_k8sio_api_core_v1_NodeRuntimeHandlerFeatures(ref),
+		v1.NodeSelector{}.OpenAPIModelName():                                                  schema_k8sio_api_core_v1_NodeSelector(ref),
+		v1.NodeSelectorRequirement{}.OpenAPIModelName():                                       schema_k8sio_api_core_v1_NodeSelectorRequirement(ref),
+		v1.NodeSelectorTerm{}.OpenAPIModelName():                                              schema_k8sio_api_core_v1_NodeSelectorTerm(ref),
+		v1.NodeSpec{}.OpenAPIModelName():                                                      schema_k8sio_api_core_v1_NodeSpec(ref),
+		v1.NodeStatus{}.OpenAPIModelName():                                                    schema_k8sio_api_core_v1_NodeStatus(ref),
+		v1.NodeSwapStatus{}.OpenAPIModelName():                                                schema_k8sio_api_core_v1_NodeSwapStatus(ref),
+		v1.NodeSystemInfo{}.OpenAPIModelName():                                                schema_k8sio_api_core_v1_NodeSystemInfo(ref),
+		v1.ObjectFieldSelector{}.OpenAPIModelName():                                           schema_k8sio_api_core_v1_ObjectFieldSelector(ref),
+		v1.ObjectReference{}.OpenAPIModelName():                                               schema_k8sio_api_core_v1_ObjectReference(ref),
+		v1.PersistentVolume{}.OpenAPIModelName():                                              schema_k8sio_api_core_v1_PersistentVolume(ref),
+		v1.PersistentVolumeClaim{}.OpenAPIModelName():                                         schema_k8sio_api_core_v1_PersistentVolumeClaim(ref),
+		v1.PersistentVolumeClaimCondition{}.OpenAPIModelName():                                schema_k8sio_api_core_v1_PersistentVolumeClaimCondition(ref),
+		v1.PersistentVolumeClaimList{}.OpenAPIModelName():                                     schema_k8sio_api_core_v1_PersistentVolumeClaimList(ref),
+		v1.PersistentVolumeClaimSpec{}.OpenAPIModelName():                                     schema_k8sio_api_core_v1_PersistentVolumeClaimSpec(ref),
+		v1.PersistentVolumeClaimStatus{}.OpenAPIModelName():                                   schema_k8sio_api_core_v1_PersistentVolumeClaimStatus(ref),
+		v1.PersistentVolumeClaimTemplate{}.OpenAPIModelName():                                 schema_k8sio_api_core_v1_PersistentVolumeClaimTemplate(ref),
+		v1.PersistentVolumeClaimVolumeSource{}.OpenAPIModelName():                             schema_k8sio_api_core_v1_PersistentVolumeClaimVolumeSource(ref),
+		v1.PersistentVolumeList{}.OpenAPIModelName():                                          schema_k8sio_api_core_v1_PersistentVolumeList(ref),
+		v1.PersistentVolumeSource{}.OpenAPIModelName():                                        schema_k8sio_api_core_v1_PersistentVolumeSource(ref),
+		v1.PersistentVolumeSpec{}.OpenAPIModelName():                                          schema_k8sio_api_core_v1_PersistentVolumeSpec(ref),
+		v1.PersistentVolumeStatus{}.OpenAPIModelName():                                        schema_k8sio_api_core_v1_PersistentVolumeStatus(ref),
+		v1.PhotonPersistentDiskVolumeSource{}.OpenAPIModelName():                              schema_k8sio_api_core_v1_PhotonPersistentDiskVolumeSource(ref),
+		v1.Pod{}.OpenAPIModelName():                                                           schema_k8sio_api_core_v1_Pod(ref),
+		v1.PodAffinity{}.OpenAPIModelName():                                                   schema_k8sio_api_core_v1_PodAffinity(ref),
+		v1.PodAffinityTerm{}.OpenAPIModelName():                                               schema_k8sio_api_core_v1_PodAffinityTerm(ref),
+		v1.PodAntiAffinity{}.OpenAPIModelName():                                               schema_k8sio_api_core_v1_PodAntiAffinity(ref),
+		v1.PodAttachOptions{}.OpenAPIModelName():                                              schema_k8sio_api_core_v1_PodAttachOptions(ref),
+		v1.PodCertificateProjection{}.OpenAPIModelName():                                      schema_k8sio_api_core_v1_PodCertificateProjection(ref),
+		v1.PodCondition{}.OpenAPIModelName():                                                  schema_k8sio_api_core_v1_PodCondition(ref),
+		v1.PodDNSConfig{}.OpenAPIModelName():                                                  schema_k8sio_api_core_v1_PodDNSConfig(ref),
+		v1.PodDNSConfigOption{}.OpenAPIModelName():                                            schema_k8sio_api_core_v1_PodDNSConfigOption(ref),
+		v1.PodExecOptions{}.OpenAPIModelName():                                                schema_k8sio_api_core_v1_PodExecOptions(ref),
+		v1.PodExtendedResourceClaimStatus{}.OpenAPIModelName():                                schema_k8sio_api_core_v1_PodExtendedResourceClaimStatus(ref),
+		v1.PodIP{}.OpenAPIModelName():                                                         schema_k8sio_api_core_v1_PodIP(ref),
+		v1.PodList{}.OpenAPIModelName():                                                       schema_k8sio_api_core_v1_PodList(ref),
+		v1.PodLogOptions{}.OpenAPIModelName():                                                 schema_k8sio_api_core_v1_PodLogOptions(ref),
+		v1.PodOS{}.OpenAPIModelName():                                                         schema_k8sio_api_core_v1_PodOS(ref),
+		v1.PodPortForwardOptions{}.OpenAPIModelName():                                         schema_k8sio_api_core_v1_PodPortForwardOptions(ref),
+		v1.PodProxyOptions{}.OpenAPIModelName():                                               schema_k8sio_api_core_v1_PodProxyOptions(ref),
+		v1.PodReadinessGate{}.OpenAPIModelName():                                              schema_k8sio_api_core_v1_PodReadinessGate(ref),
+		v1.PodResourceClaim{}.OpenAPIModelName():                                              schema_k8sio_api_core_v1_PodResourceClaim(ref),
+		v1.PodResourceClaimStatus{}.OpenAPIModelName():                                        schema_k8sio_api_core_v1_PodResourceClaimStatus(ref),
+		v1.PodSchedulingGate{}.OpenAPIModelName():                                             schema_k8sio_api_core_v1_PodSchedulingGate(ref),
+		v1.PodSchedulingGroup{}.OpenAPIModelName():                                            schema_k8sio_api_core_v1_PodSchedulingGroup(ref),
+		v1.PodSecurityContext{}.OpenAPIModelName():                                            schema_k8sio_api_core_v1_PodSecurityContext(ref),
+		v1.PodSignature{}.OpenAPIModelName():                                                  schema_k8sio_api_core_v1_PodSignature(ref),
+		v1.PodSpec{}.OpenAPIModelName():                                                       schema_k8sio_api_core_v1_PodSpec(ref),
+		v1.PodStatus{}.OpenAPIModelName():                                                     schema_k8sio_api_core_v1_PodStatus(ref),
+		v1.PodStatusResult{}.OpenAPIModelName():                                               schema_k8sio_api_core_v1_PodStatusResult(ref),
+		v1.PodTemplate{}.OpenAPIModelName():                                                   schema_k8sio_api_core_v1_PodTemplate(ref),
+		v1.PodTemplateList{}.OpenAPIModelName():                                               schema_k8sio_api_core_v1_PodTemplateList(ref),
+		v1.PodTemplateSpec{}.OpenAPIModelName():                                               schema_k8sio_api_core_v1_PodTemplateSpec(ref),
+		v1.PortStatus{}.OpenAPIModelName():                                                    schema_k8sio_api_core_v1_PortStatus(ref),
+		v1.PortworxVolumeSource{}.OpenAPIModelName():                                          schema_k8sio_api_core_v1_PortworxVolumeSource(ref),
+		v1.PreferAvoidPodsEntry{}.OpenAPIModelName():                                          schema_k8sio_api_core_v1_PreferAvoidPodsEntry(ref),
+		v1.PreferredSchedulingTerm{}.OpenAPIModelName():                                       schema_k8sio_api_core_v1_PreferredSchedulingTerm(ref),
+		v1.Probe{}.OpenAPIModelName():                                                         schema_k8sio_api_core_v1_Probe(ref),
+		v1.ProbeHandler{}.OpenAPIModelName():                                                  schema_k8sio_api_core_v1_ProbeHandler(ref),
+		v1.ProjectedVolumeSource{}.OpenAPIModelName():                                         schema_k8sio_api_core_v1_ProjectedVolumeSource(ref),
+		v1.QuobyteVolumeSource{}.OpenAPIModelName():                                           schema_k8sio_api_core_v1_QuobyteVolumeSource(ref),
+		v1.RBDPersistentVolumeSource{}.OpenAPIModelName():                                     schema_k8sio_api_core_v1_RBDPersistentVolumeSource(ref),
+		v1.RBDVolumeSource{}.OpenAPIModelName():                                               schema_k8sio_api_core_v1_RBDVolumeSource(ref),
+		v1.RangeAllocation{}.OpenAPIModelName():                                               schema_k8sio_api_core_v1_RangeAllocation(ref),
+		v1.ReplicationController{}.OpenAPIModelName():                                         schema_k8sio_api_core_v1_ReplicationController(ref),
+		v1.ReplicationControllerCondition{}.OpenAPIModelName():                                schema_k8sio_api_core_v1_ReplicationControllerCondition(ref),
+		v1.ReplicationControllerList{}.OpenAPIModelName():                                     schema_k8sio_api_core_v1_ReplicationControllerList(ref),
+		v1.ReplicationControllerSpec{}.OpenAPIModelName():                                     schema_k8sio_api_core_v1_ReplicationControllerSpec(ref),
+		v1.ReplicationControllerStatus{}.OpenAPIModelName():                                   schema_k8sio_api_core_v1_ReplicationControllerStatus(ref),
+		v1.ResourceClaim{}.OpenAPIModelName():                                                 schema_k8sio_api_core_v1_ResourceClaim(ref),
+		v1.ResourceFieldSelector{}.OpenAPIModelName():                                         schema_k8sio_api_core_v1_ResourceFieldSelector(ref),
+		v1.ResourceHealth{}.OpenAPIModelName():                                                schema_k8sio_api_core_v1_ResourceHealth(ref),
+		v1.ResourceQuota{}.OpenAPIModelName():                                                 schema_k8sio_api_core_v1_ResourceQuota(ref),
+		v1.ResourceQuotaList{}.OpenAPIModelName():                                             schema_k8sio_api_core_v1_ResourceQuotaList(ref),
+		v1.ResourceQuotaSpec{}.OpenAPIModelName():                                             schema_k8sio_api_core_v1_ResourceQuotaSpec(ref),
+		v1.ResourceQuotaStatus{}.OpenAPIModelName():                                           schema_k8sio_api_core_v1_ResourceQuotaStatus(ref),
+		v1.ResourceRequirements{}.OpenAPIModelName():                                          schema_k8sio_api_core_v1_ResourceRequirements(ref),
+		v1.ResourceStatus{}.OpenAPIModelName():                                                schema_k8sio_api_core_v1_ResourceStatus(ref),
+		v1.SELinuxOptions{}.OpenAPIModelName():                                                schema_k8sio_api_core_v1_SELinuxOptions(ref),
+		v1.ScaleIOPersistentVolumeSource{}.OpenAPIModelName():                                 schema_k8sio_api_core_v1_ScaleIOPersistentVolumeSource(ref),
+		v1.ScaleIOVolumeSource{}.OpenAPIModelName():                                           schema_k8sio_api_core_v1_ScaleIOVolumeSource(ref),
+		v1.ScopeSelector{}.OpenAPIModelName():                                                 schema_k8sio_api_core_v1_ScopeSelector(ref),
+		v1.ScopedResourceSelectorRequirement{}.OpenAPIModelName():                             schema_k8sio_api_core_v1_ScopedResourceSelectorRequirement(ref),
+		v1.SeccompProfile{}.OpenAPIModelName():                                                schema_k8sio_api_core_v1_SeccompProfile(ref),
+		v1.Secret{}.OpenAPIModelName():                                                        schema_k8sio_api_core_v1_Secret(ref),
+		v1.SecretEnvSource{}.OpenAPIModelName():                                               schema_k8sio_api_core_v1_SecretEnvSource(ref),
+		v1.SecretKeySelector{}.OpenAPIModelName():                                             schema_k8sio_api_core_v1_SecretKeySelector(ref),
+		v1.SecretList{}.OpenAPIModelName():                                                    schema_k8sio_api_core_v1_SecretList(ref),
+		v1.SecretProjection{}.OpenAPIModelName():                                              schema_k8sio_api_core_v1_SecretProjection(ref),
+		v1.SecretReference{}.OpenAPIModelName():                                               schema_k8sio_api_core_v1_SecretReference(ref),
+		v1.SecretVolumeSource{}.OpenAPIModelName():                                            schema_k8sio_api_core_v1_SecretVolumeSource(ref),
+		v1.SecurityContext{}.OpenAPIModelName():                                               schema_k8sio_api_core_v1_SecurityContext(ref),
+		v1.SerializedReference{}.OpenAPIModelName():                                           schema_k8sio_api_core_v1_SerializedReference(ref),
+		v1.Service{}.OpenAPIModelName():                                                       schema_k8sio_api_core_v1_Service(ref),
+		v1.ServiceAccount{}.OpenAPIModelName():                                                schema_k8sio_api_core_v1_ServiceAccount(ref),
+		v1.ServiceAccountList{}.OpenAPIModelName():                                            schema_k8sio_api_core_v1_ServiceAccountList(ref),
+		v1.ServiceAccountTokenProjection{}.OpenAPIModelName():                                 schema_k8sio_api_core_v1_ServiceAccountTokenProjection(ref),
+		v1.ServiceList{}.OpenAPIModelName():                                                   schema_k8sio_api_core_v1_ServiceList(ref),
+		v1.ServicePort{}.OpenAPIModelName():                                                   schema_k8sio_api_core_v1_ServicePort(ref),
+		v1.ServiceProxyOptions{}.OpenAPIModelName():                                           schema_k8sio_api_core_v1_ServiceProxyOptions(ref),
+		v1.ServiceSpec{}.OpenAPIModelName():                                                   schema_k8sio_api_core_v1_ServiceSpec(ref),
+		v1.ServiceStatus{}.OpenAPIModelName():                                                 schema_k8sio_api_core_v1_ServiceStatus(ref),
+		v1.SessionAffinityConfig{}.OpenAPIModelName():                                         schema_k8sio_api_core_v1_SessionAffinityConfig(ref),
+		v1.SleepAction{}.OpenAPIModelName():                                                   schema_k8sio_api_core_v1_SleepAction(ref),
+		v1.StorageOSPersistentVolumeSource{}.OpenAPIModelName():                               schema_k8sio_api_core_v1_StorageOSPersistentVolumeSource(ref),
+		v1.StorageOSVolumeSource{}.OpenAPIModelName():                                         schema_k8sio_api_core_v1_StorageOSVolumeSource(ref),
+		v1.Sysctl{}.OpenAPIModelName():                                                        schema_k8sio_api_core_v1_Sysctl(ref),
+		v1.TCPSocketAction{}.OpenAPIModelName():                                               schema_k8sio_api_core_v1_TCPSocketAction(ref),
+		v1.Taint{}.OpenAPIModelName():                                                         schema_k8sio_api_core_v1_Taint(ref),
+		v1.Toleration{}.OpenAPIModelName():                                                    schema_k8sio_api_core_v1_Toleration(ref),
+		v1.TopologySelectorLabelRequirement{}.OpenAPIModelName():                              schema_k8sio_api_core_v1_TopologySelectorLabelRequirement(ref),
+		v1.TopologySelectorTerm{}.OpenAPIModelName():                                          schema_k8sio_api_core_v1_TopologySelectorTerm(ref),
+		v1.TopologySpreadConstraint{}.OpenAPIModelName():                                      schema_k8sio_api_core_v1_TopologySpreadConstraint(ref),
+		v1.TypedLocalObjectReference{}.OpenAPIModelName():                                     schema_k8sio_api_core_v1_TypedLocalObjectReference(ref),
+		v1.TypedObjectReference{}.OpenAPIModelName():                                          schema_k8sio_api_core_v1_TypedObjectReference(ref),
+		v1.Volume{}.OpenAPIModelName():                                                        schema_k8sio_api_core_v1_Volume(ref),
+		v1.VolumeDevice{}.OpenAPIModelName():                                                  schema_k8sio_api_core_v1_VolumeDevice(ref),
+		v1.VolumeMount{}.OpenAPIModelName():                                                   schema_k8sio_api_core_v1_VolumeMount(ref),
+		v1.VolumeMountStatus{}.OpenAPIModelName():                                             schema_k8sio_api_core_v1_VolumeMountStatus(ref),
+		v1.VolumeNodeAffinity{}.OpenAPIModelName():                                            schema_k8sio_api_core_v1_VolumeNodeAffinity(ref),
+		v1.VolumeProjection{}.OpenAPIModelName():                                              schema_k8sio_api_core_v1_VolumeProjection(ref),
+		v1.VolumeResourceRequirements{}.OpenAPIModelName():                                    schema_k8sio_api_core_v1_VolumeResourceRequirements(ref),
+		v1.VolumeSource{}.OpenAPIModelName():                                                  schema_k8sio_api_core_v1_VolumeSource(ref),
+		v1.VolumeStatus{}.OpenAPIModelName():                                                  schema_k8sio_api_core_v1_VolumeStatus(ref),
+		v1.VsphereVirtualDiskVolumeSource{}.OpenAPIModelName():                                schema_k8sio_api_core_v1_VsphereVirtualDiskVolumeSource(ref),
+		v1.WeightedPodAffinityTerm{}.OpenAPIModelName():                                       schema_k8sio_api_core_v1_WeightedPodAffinityTerm(ref),
+		v1.WindowsSecurityContextOptions{}.OpenAPIModelName():                                 schema_k8sio_api_core_v1_WindowsSecurityContextOptions(ref),
+		apiextensionsv1.ConversionRequest{}.OpenAPIModelName():                                schema_pkg_apis_apiextensions_v1_ConversionRequest(ref),
+		apiextensionsv1.ConversionResponse{}.OpenAPIModelName():                               schema_pkg_apis_apiextensions_v1_ConversionResponse(ref),
+		apiextensionsv1.ConversionReview{}.OpenAPIModelName():                                 schema_pkg_apis_apiextensions_v1_ConversionReview(ref),
+		apiextensionsv1.CustomResourceColumnDefinition{}.OpenAPIModelName():                   schema_pkg_apis_apiextensions_v1_CustomResourceColumnDefinition(ref),
+		apiextensionsv1.CustomResourceConversion{}.OpenAPIModelName():                         schema_pkg_apis_apiextensions_v1_CustomResourceConversion(ref),
+		apiextensionsv1.CustomResourceDefinition{}.OpenAPIModelName():                         schema_pkg_apis_apiextensions_v1_CustomResourceDefinition(ref),
+		apiextensionsv1.CustomResourceDefinitionCondition{}.OpenAPIModelName():                schema_pkg_apis_apiextensions_v1_CustomResourceDefinitionCondition(ref),
+		apiextensionsv1.CustomResourceDefinitionList{}.OpenAPIModelName():                     schema_pkg_apis_apiextensions_v1_CustomResourceDefinitionList(ref),
+		apiextensionsv1.CustomResourceDefinitionNames{}.OpenAPIModelName():                    schema_pkg_apis_apiextensions_v1_CustomResourceDefinitionNames(ref),
+		apiextensionsv1.CustomResourceDefinitionSpec{}.OpenAPIModelName():                     schema_pkg_apis_apiextensions_v1_CustomResourceDefinitionSpec(ref),
+		apiextensionsv1.CustomResourceDefinitionStatus{}.OpenAPIModelName():                   schema_pkg_apis_apiextensions_v1_CustomResourceDefinitionStatus(ref),
+		apiextensionsv1.CustomResourceDefinitionVersion{}.OpenAPIModelName():                  schema_pkg_apis_apiextensions_v1_CustomResourceDefinitionVersion(ref),
+		apiextensionsv1.CustomResourceSubresourceScale{}.OpenAPIModelName():                   schema_pkg_apis_apiextensions_v1_CustomResourceSubresourceScale(ref),
+		apiextensionsv1.CustomResourceSubresourceStatus{}.OpenAPIModelName():                  schema_pkg_apis_apiextensions_v1_CustomResourceSubresourceStatus(ref),
+		apiextensionsv1.CustomResourceSubresources{}.OpenAPIModelName():                       schema_pkg_apis_apiextensions_v1_CustomResourceSubresources(ref),
+		apiextensionsv1.CustomResourceValidation{}.OpenAPIModelName():                         schema_pkg_apis_apiextensions_v1_CustomResourceValidation(ref),
+		apiextensionsv1.ExternalDocumentation{}.OpenAPIModelName():                            schema_pkg_apis_apiextensions_v1_ExternalDocumentation(ref),
+		apiextensionsv1.JSON{}.OpenAPIModelName():                                             schema_pkg_apis_apiextensions_v1_JSON(ref),
+		apiextensionsv1.JSONSchemaProps{}.OpenAPIModelName():                                  schema_pkg_apis_apiextensions_v1_JSONSchemaProps(ref),
+		apiextensionsv1.JSONSchemaPropsOrArray{}.OpenAPIModelName():                           schema_pkg_apis_apiextensions_v1_JSONSchemaPropsOrArray(ref),
+		apiextensionsv1.JSONSchemaPropsOrBool{}.OpenAPIModelName():                            schema_pkg_apis_apiextensions_v1_JSONSchemaPropsOrBool(ref),
+		apiextensionsv1.JSONSchemaPropsOrStringArray{}.OpenAPIModelName():                     schema_pkg_apis_apiextensions_v1_JSONSchemaPropsOrStringArray(ref),
+		apiextensionsv1.SelectableField{}.OpenAPIModelName():                                  schema_pkg_apis_apiextensions_v1_SelectableField(ref),
+		apiextensionsv1.ServiceReference{}.OpenAPIModelName():                                 schema_pkg_apis_apiextensions_v1_ServiceReference(ref),
+		apiextensionsv1.ValidationRule{}.OpenAPIModelName():                                   schema_pkg_apis_apiextensions_v1_ValidationRule(ref),
+		apiextensionsv1.WebhookClientConfig{}.OpenAPIModelName():                              schema_pkg_apis_apiextensions_v1_WebhookClientConfig(ref),
+		apiextensionsv1.WebhookConversion{}.OpenAPIModelName():                                schema_pkg_apis_apiextensions_v1_WebhookConversion(ref),
+		resource.Quantity{}.OpenAPIModelName():                                                schema_apimachinery_pkg_api_resource_Quantity(ref),
+		metav1.APIGroup{}.OpenAPIModelName():                                                  schema_pkg_apis_meta_v1_APIGroup(ref),
+		metav1.APIGroupList{}.OpenAPIModelName():                                              schema_pkg_apis_meta_v1_APIGroupList(ref),
+		metav1.APIResource{}.OpenAPIModelName():                                               schema_pkg_apis_meta_v1_APIResource(ref),
+		metav1.APIResourceList{}.OpenAPIModelName():                                           schema_pkg_apis_meta_v1_APIResourceList(ref),
+		metav1.APIVersions{}.OpenAPIModelName():                                               schema_pkg_apis_meta_v1_APIVersions(ref),
+		metav1.ApplyOptions{}.OpenAPIModelName():                                              schema_pkg_apis_meta_v1_ApplyOptions(ref),
+		metav1.Condition{}.OpenAPIModelName():                                                 schema_pkg_apis_meta_v1_Condition(ref),
+		metav1.CreateOptions{}.OpenAPIModelName():                                             schema_pkg_apis_meta_v1_CreateOptions(ref),
+		metav1.DeleteOptions{}.OpenAPIModelName():                                             schema_pkg_apis_meta_v1_DeleteOptions(ref),
+		metav1.Duration{}.OpenAPIModelName():                                                  schema_pkg_apis_meta_v1_Duration(ref),
+		metav1.FieldSelectorRequirement{}.OpenAPIModelName():                                  schema_pkg_apis_meta_v1_FieldSelectorRequirement(ref),
+		metav1.FieldsV1{}.OpenAPIModelName():                                                  schema_pkg_apis_meta_v1_FieldsV1(ref),
+		metav1.GetOptions{}.OpenAPIModelName():                                                schema_pkg_apis_meta_v1_GetOptions(ref),
+		metav1.GroupKind{}.OpenAPIModelName():                                                 schema_pkg_apis_meta_v1_GroupKind(ref),
+		metav1.GroupResource{}.OpenAPIModelName():                                             schema_pkg_apis_meta_v1_GroupResource(ref),
+		metav1.GroupVersion{}.OpenAPIModelName():                                              schema_pkg_apis_meta_v1_GroupVersion(ref),
+		metav1.GroupVersionForDiscovery{}.OpenAPIModelName():                                  schema_pkg_apis_meta_v1_GroupVersionForDiscovery(ref),
+		metav1.GroupVersionKind{}.OpenAPIModelName():                                          schema_pkg_apis_meta_v1_GroupVersionKind(ref),
+		metav1.GroupVersionResource{}.OpenAPIModelName():                                      schema_pkg_apis_meta_v1_GroupVersionResource(ref),
+		metav1.InternalEvent{}.OpenAPIModelName():                                             schema_pkg_apis_meta_v1_InternalEvent(ref),
+		metav1.LabelSelector{}.OpenAPIModelName():                                             schema_pkg_apis_meta_v1_LabelSelector(ref),
+		metav1.LabelSelectorRequirement{}.OpenAPIModelName():                                  schema_pkg_apis_meta_v1_LabelSelectorRequirement(ref),
+		metav1.List{}.OpenAPIModelName():                                                      schema_pkg_apis_meta_v1_List(ref),
+		metav1.ListMeta{}.OpenAPIModelName():                                                  schema_pkg_apis_meta_v1_ListMeta(ref),
+		metav1.ListOptions{}.OpenAPIModelName():                                               schema_pkg_apis_meta_v1_ListOptions(ref),
+		metav1.ManagedFieldsEntry{}.OpenAPIModelName():                                        schema_pkg_apis_meta_v1_ManagedFieldsEntry(ref),
+		metav1.MicroTime{}.OpenAPIModelName():                                                 schema_pkg_apis_meta_v1_MicroTime(ref),
+		metav1.ObjectMeta{}.OpenAPIModelName():                                                schema_pkg_apis_meta_v1_ObjectMeta(ref),
+		metav1.OwnerReference{}.OpenAPIModelName():                                            schema_pkg_apis_meta_v1_OwnerReference(ref),
+		metav1.PartialObjectMetadata{}.OpenAPIModelName():                                     schema_pkg_apis_meta_v1_PartialObjectMetadata(ref),
+		metav1.PartialObjectMetadataList{}.OpenAPIModelName():                                 schema_pkg_apis_meta_v1_PartialObjectMetadataList(ref),
+		metav1.Patch{}.OpenAPIModelName():                                                     schema_pkg_apis_meta_v1_Patch(ref),
+		metav1.PatchOptions{}.OpenAPIModelName():                                              schema_pkg_apis_meta_v1_PatchOptions(ref),
+		metav1.Preconditions{}.OpenAPIModelName():                                             schema_pkg_apis_meta_v1_Preconditions(ref),
+		metav1.RootPaths{}.OpenAPIModelName():                                                 schema_pkg_apis_meta_v1_RootPaths(ref),
+		metav1.ServerAddressByClientCIDR{}.OpenAPIModelName():                                 schema_pkg_apis_meta_v1_ServerAddressByClientCIDR(ref),
+		metav1.ShardInfo{}.OpenAPIModelName():                                                 schema_pkg_apis_meta_v1_ShardInfo(ref),
+		metav1.Status{}.OpenAPIModelName():                                                    schema_pkg_apis_meta_v1_Status(ref),
+		metav1.StatusCause{}.OpenAPIModelName():                                               schema_pkg_apis_meta_v1_StatusCause(ref),
+		metav1.StatusDetails{}.OpenAPIModelName():                                             schema_pkg_apis_meta_v1_StatusDetails(ref),
+		metav1.Table{}.OpenAPIModelName():                                                     schema_pkg_apis_meta_v1_Table(ref),
+		metav1.TableColumnDefinition{}.OpenAPIModelName():                                     schema_pkg_apis_meta_v1_TableColumnDefinition(ref),
+		metav1.TableOptions{}.OpenAPIModelName():                                              schema_pkg_apis_meta_v1_TableOptions(ref),
+		metav1.TableRow{}.OpenAPIModelName():                                                  schema_pkg_apis_meta_v1_TableRow(ref),
+		metav1.TableRowCondition{}.OpenAPIModelName():                                         schema_pkg_apis_meta_v1_TableRowCondition(ref),
+		metav1.Time{}.OpenAPIModelName():                                                      schema_pkg_apis_meta_v1_Time(ref),
+		metav1.Timestamp{}.OpenAPIModelName():                                                 schema_pkg_apis_meta_v1_Timestamp(ref),
+		metav1.TypeMeta{}.OpenAPIModelName():                                                  schema_pkg_apis_meta_v1_TypeMeta(ref),
+		metav1.UpdateOptions{}.OpenAPIModelName():                                             schema_pkg_apis_meta_v1_UpdateOptions(ref),
+		metav1.WatchEvent{}.OpenAPIModelName():                                                schema_pkg_apis_meta_v1_WatchEvent(ref),
+		runtime.RawExtension{}.OpenAPIModelName():                                             schema_k8sio_apimachinery_pkg_runtime_RawExtension(ref),
+		runtime.TypeMeta{}.OpenAPIModelName():                                                 schema_k8sio_apimachinery_pkg_runtime_TypeMeta(ref),
+		runtime.Unknown{}.OpenAPIModelName():                                                  schema_k8sio_apimachinery_pkg_runtime_Unknown(ref),
+		intstr.IntOrString{}.OpenAPIModelName():                                               schema_apimachinery_pkg_util_intstr_IntOrString(ref),
+		version.Info{}.OpenAPIModelName():                                                     schema_k8sio_apimachinery_pkg_version_Info(ref),
 	}
 }
 
@@ -511,7 +512,7 @@ func schema_gitops_promoter_api_dashboard_v1alpha1_PromotionStrategyDetails(ref 
 						SchemaProps: spec.SchemaProps{
 							Description: "PromotionStrategy is the source PromotionStrategy this bundle describes.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PromotionStrategy"),
+							Ref:         ref(apiv1alpha1.PromotionStrategy{}.OpenAPIModelName()),
 						},
 					},
 					"changeTransferPolicies": {
@@ -522,7 +523,7 @@ func schema_gitops_promoter_api_dashboard_v1alpha1_PromotionStrategyDetails(ref 
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ChangeTransferPolicy"),
+										Ref:     ref(apiv1alpha1.ChangeTransferPolicy{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -536,7 +537,7 @@ func schema_gitops_promoter_api_dashboard_v1alpha1_PromotionStrategyDetails(ref 
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PullRequest"),
+										Ref:     ref(apiv1alpha1.PullRequest{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -550,7 +551,7 @@ func schema_gitops_promoter_api_dashboard_v1alpha1_PromotionStrategyDetails(ref 
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitStatus"),
+										Ref:     ref(apiv1alpha1.CommitStatus{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -564,7 +565,7 @@ func schema_gitops_promoter_api_dashboard_v1alpha1_PromotionStrategyDetails(ref 
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ArgoCDCommitStatus"),
+										Ref:     ref(apiv1alpha1.ArgoCDCommitStatus{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -578,7 +579,7 @@ func schema_gitops_promoter_api_dashboard_v1alpha1_PromotionStrategyDetails(ref 
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitCommitStatus"),
+										Ref:     ref(apiv1alpha1.GitCommitStatus{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -592,7 +593,7 @@ func schema_gitops_promoter_api_dashboard_v1alpha1_PromotionStrategyDetails(ref 
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.TimedCommitStatus"),
+										Ref:     ref(apiv1alpha1.TimedCommitStatus{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -606,7 +607,7 @@ func schema_gitops_promoter_api_dashboard_v1alpha1_PromotionStrategyDetails(ref 
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WebRequestCommitStatus"),
+										Ref:     ref(apiv1alpha1.WebRequestCommitStatus{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -615,19 +616,19 @@ func schema_gitops_promoter_api_dashboard_v1alpha1_PromotionStrategyDetails(ref 
 					"gitRepository": {
 						SchemaProps: spec.SchemaProps{
 							Description: "GitRepository is the GitRepository referenced by the PromotionStrategy, if resolvable.",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitRepository"),
+							Ref:         ref(apiv1alpha1.GitRepository{}.OpenAPIModelName()),
 						},
 					},
 					"scmProvider": {
 						SchemaProps: spec.SchemaProps{
 							Description: "ScmProvider is the namespaced ScmProvider referenced by the GitRepository, if applicable. The credentials Secret referenced by the provider is never resolved or included.",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ScmProvider"),
+							Ref:         ref(apiv1alpha1.ScmProvider{}.OpenAPIModelName()),
 						},
 					},
 					"clusterScmProvider": {
 						SchemaProps: spec.SchemaProps{
 							Description: "ClusterScmProvider is the cluster-scoped ScmProvider referenced by the GitRepository, if applicable. The credentials Secret referenced by the provider is never resolved or included.",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ClusterScmProvider"),
+							Ref:         ref(apiv1alpha1.ClusterScmProvider{}.OpenAPIModelName()),
 						},
 					},
 				},
@@ -635,7 +636,7 @@ func schema_gitops_promoter_api_dashboard_v1alpha1_PromotionStrategyDetails(ref 
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ArgoCDCommitStatus", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ChangeTransferPolicy", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ClusterScmProvider", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitStatus", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitCommitStatus", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitRepository", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PromotionStrategy", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PullRequest", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ScmProvider", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.TimedCommitStatus", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WebRequestCommitStatus", metav1.ObjectMeta{}.OpenAPIModelName()},
+			apiv1alpha1.ArgoCDCommitStatus{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicy{}.OpenAPIModelName(), apiv1alpha1.ClusterScmProvider{}.OpenAPIModelName(), apiv1alpha1.CommitStatus{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatus{}.OpenAPIModelName(), apiv1alpha1.GitRepository{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategy{}.OpenAPIModelName(), apiv1alpha1.PullRequest{}.OpenAPIModelName(), apiv1alpha1.ScmProvider{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatus{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -673,7 +674,7 @@ func schema_gitops_promoter_api_dashboard_v1alpha1_PromotionStrategyDetailsList(
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/dashboard/v1alpha1.PromotionStrategyDetails"),
+										Ref:     ref(PromotionStrategyDetails{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -684,7 +685,7 @@ func schema_gitops_promoter_api_dashboard_v1alpha1_PromotionStrategyDetailsList(
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/dashboard/v1alpha1.PromotionStrategyDetails", metav1.ListMeta{}.OpenAPIModelName()},
+			PromotionStrategyDetails{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -788,20 +789,20 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatus(ref co
 					"spec": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ArgoCDCommitStatusSpec"),
+							Ref:     ref(apiv1alpha1.ArgoCDCommitStatusSpec{}.OpenAPIModelName()),
 						},
 					},
 					"status": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ArgoCDCommitStatusStatus"),
+							Ref:     ref(apiv1alpha1.ArgoCDCommitStatusStatus{}.OpenAPIModelName()),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ArgoCDCommitStatusSpec", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ArgoCDCommitStatusStatus", metav1.ObjectMeta{}.OpenAPIModelName()},
+			apiv1alpha1.ArgoCDCommitStatusSpec{}.OpenAPIModelName(), apiv1alpha1.ArgoCDCommitStatusStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -816,7 +817,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusConfigu
 						SchemaProps: spec.SchemaProps{
 							Description: "WorkQueue contains the work queue configuration for the ArgoCDCommitStatus controller. This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WorkQueue"),
+							Ref:         ref(apiv1alpha1.WorkQueue{}.OpenAPIModelName()),
 						},
 					},
 					"watchLocalApplications": {
@@ -832,7 +833,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusConfigu
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WorkQueue"},
+			apiv1alpha1.WorkQueue{}.OpenAPIModelName()},
 	}
 }
 
@@ -870,7 +871,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusList(re
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ArgoCDCommitStatus"),
+										Ref:     ref(apiv1alpha1.ArgoCDCommitStatus{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -881,7 +882,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusList(re
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ArgoCDCommitStatus", metav1.ListMeta{}.OpenAPIModelName()},
+			apiv1alpha1.ArgoCDCommitStatus{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -896,7 +897,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusSpec(re
 						SchemaProps: spec.SchemaProps{
 							Description: "PromotionStrategyRef is a reference to the promotion strategy that this commit status applies to.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ObjectReference"),
+							Ref:         ref(apiv1alpha1.ObjectReference{}.OpenAPIModelName()),
 						},
 					},
 					"key": {
@@ -916,14 +917,14 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusSpec(re
 						SchemaProps: spec.SchemaProps{
 							Description: "URL generates the URL to use in the CommitStatus, for example a link to the Argo CD UI.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.URLConfig"),
+							Ref:         ref(apiv1alpha1.URLConfig{}.OpenAPIModelName()),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ObjectReference", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.URLConfig", metav1.LabelSelector{}.OpenAPIModelName()},
+			apiv1alpha1.ObjectReference{}.OpenAPIModelName(), apiv1alpha1.URLConfig{}.OpenAPIModelName(), metav1.LabelSelector{}.OpenAPIModelName()},
 	}
 }
 
@@ -949,7 +950,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusStatus(
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ApplicationsSelected"),
+										Ref:     ref(apiv1alpha1.ApplicationsSelected{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -983,7 +984,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusStatus(
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ApplicationsSelected", metav1.Condition{}.OpenAPIModelName()},
+			apiv1alpha1.ApplicationsSelected{}.OpenAPIModelName(), metav1.Condition{}.OpenAPIModelName()},
 	}
 }
 
@@ -1235,20 +1236,20 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicy(ref 
 					"spec": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ChangeTransferPolicySpec"),
+							Ref:     ref(apiv1alpha1.ChangeTransferPolicySpec{}.OpenAPIModelName()),
 						},
 					},
 					"status": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ChangeTransferPolicyStatus"),
+							Ref:     ref(apiv1alpha1.ChangeTransferPolicyStatus{}.OpenAPIModelName()),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ChangeTransferPolicySpec", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ChangeTransferPolicyStatus", metav1.ObjectMeta{}.OpenAPIModelName()},
+			apiv1alpha1.ChangeTransferPolicySpec{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -1263,7 +1264,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyConfi
 						SchemaProps: spec.SchemaProps{
 							Description: "WorkQueue contains the work queue configuration for the ChangeTransferPolicy controller. This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WorkQueue"),
+							Ref:         ref(apiv1alpha1.WorkQueue{}.OpenAPIModelName()),
 						},
 					},
 				},
@@ -1271,7 +1272,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyConfi
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WorkQueue"},
+			apiv1alpha1.WorkQueue{}.OpenAPIModelName()},
 	}
 }
 
@@ -1309,7 +1310,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyList(
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ChangeTransferPolicy"),
+										Ref:     ref(apiv1alpha1.ChangeTransferPolicy{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -1320,7 +1321,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyList(
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ChangeTransferPolicy", metav1.ListMeta{}.OpenAPIModelName()},
+			apiv1alpha1.ChangeTransferPolicy{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -1335,7 +1336,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicySpec(
 						SchemaProps: spec.SchemaProps{
 							Description: "RepositoryReference what repository to open the PR on.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ObjectReference"),
+							Ref:         ref(apiv1alpha1.ObjectReference{}.OpenAPIModelName()),
 						},
 					},
 					"proposedBranch": {
@@ -1375,7 +1376,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicySpec(
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitStatusSelector"),
+										Ref:     ref(apiv1alpha1.CommitStatusSelector{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -1396,7 +1397,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicySpec(
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitStatusSelector"),
+										Ref:     ref(apiv1alpha1.CommitStatusSelector{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -1407,7 +1408,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicySpec(
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitStatusSelector", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ObjectReference"},
+			apiv1alpha1.CommitStatusSelector{}.OpenAPIModelName(), apiv1alpha1.ObjectReference{}.OpenAPIModelName()},
 	}
 }
 
@@ -1429,20 +1430,20 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyStatu
 						SchemaProps: spec.SchemaProps{
 							Description: "Proposed is the state of the proposed branch.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitBranchState"),
+							Ref:         ref(apiv1alpha1.CommitBranchState{}.OpenAPIModelName()),
 						},
 					},
 					"active": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Active is the state of the active branch.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitBranchState"),
+							Ref:         ref(apiv1alpha1.CommitBranchState{}.OpenAPIModelName()),
 						},
 					},
 					"pullRequest": {
 						SchemaProps: spec.SchemaProps{
 							Description: "PullRequest is the state of the pull request that was created for this ChangeTransferPolicy.",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PullRequestCommonStatus"),
+							Ref:         ref(apiv1alpha1.PullRequestCommonStatus{}.OpenAPIModelName()),
 						},
 					},
 					"history": {
@@ -1453,7 +1454,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyStatu
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.History"),
+										Ref:     ref(apiv1alpha1.History{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -1487,7 +1488,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyStatu
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitBranchState", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.History", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PullRequestCommonStatus", metav1.Condition{}.OpenAPIModelName()},
+			apiv1alpha1.CommitBranchState{}.OpenAPIModelName(), apiv1alpha1.History{}.OpenAPIModelName(), apiv1alpha1.PullRequestCommonStatus{}.OpenAPIModelName(), metav1.Condition{}.OpenAPIModelName()},
 	}
 }
 
@@ -1521,20 +1522,20 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProvider(ref co
 					"spec": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ScmProviderSpec"),
+							Ref:     ref(apiv1alpha1.ScmProviderSpec{}.OpenAPIModelName()),
 						},
 					},
 					"status": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ScmProviderStatus"),
+							Ref:     ref(apiv1alpha1.ScmProviderStatus{}.OpenAPIModelName()),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ScmProviderSpec", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ScmProviderStatus", metav1.ObjectMeta{}.OpenAPIModelName()},
+			apiv1alpha1.ScmProviderSpec{}.OpenAPIModelName(), apiv1alpha1.ScmProviderStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -1572,7 +1573,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProviderList(re
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ClusterScmProvider"),
+										Ref:     ref(apiv1alpha1.ClusterScmProvider{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -1583,7 +1584,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProviderList(re
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ClusterScmProvider", metav1.ListMeta{}.OpenAPIModelName()},
+			apiv1alpha1.ClusterScmProvider{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -1598,20 +1599,20 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitBranchState(ref com
 						SchemaProps: spec.SchemaProps{
 							Description: "Dry is the dry state of the branch, which is the commit that is being proposed.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitShaState"),
+							Ref:         ref(apiv1alpha1.CommitShaState{}.OpenAPIModelName()),
 						},
 					},
 					"hydrated": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitShaState"),
+							Ref:         ref(apiv1alpha1.CommitShaState{}.OpenAPIModelName()),
 						},
 					},
 					"note": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Note is the hydrator metadata from the git note attached to the hydrated commit.",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.HydratorMetadata"),
+							Ref:         ref(apiv1alpha1.HydratorMetadata{}.OpenAPIModelName()),
 						},
 					},
 					"commitStatuses": {
@@ -1629,7 +1630,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitBranchState(ref com
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ChangeRequestPolicyCommitStatusPhase"),
+										Ref:     ref(apiv1alpha1.ChangeRequestPolicyCommitStatusPhase{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -1639,7 +1640,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitBranchState(ref com
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ChangeRequestPolicyCommitStatusPhase", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitShaState", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.HydratorMetadata"},
+			apiv1alpha1.ChangeRequestPolicyCommitStatusPhase{}.OpenAPIModelName(), apiv1alpha1.CommitShaState{}.OpenAPIModelName(), apiv1alpha1.HydratorMetadata{}.OpenAPIModelName()},
 	}
 }
 
@@ -1654,7 +1655,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitBranchStateHistoryP
 						SchemaProps: spec.SchemaProps{
 							Description: "Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitShaState"),
+							Ref:         ref(apiv1alpha1.CommitShaState{}.OpenAPIModelName()),
 						},
 					},
 					"commitStatuses": {
@@ -1665,7 +1666,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitBranchStateHistoryP
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ChangeRequestPolicyCommitStatusPhase"),
+										Ref:     ref(apiv1alpha1.ChangeRequestPolicyCommitStatusPhase{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -1675,7 +1676,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitBranchStateHistoryP
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ChangeRequestPolicyCommitStatusPhase", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitShaState"},
+			apiv1alpha1.ChangeRequestPolicyCommitStatusPhase{}.OpenAPIModelName(), apiv1alpha1.CommitShaState{}.OpenAPIModelName()},
 	}
 }
 
@@ -1813,7 +1814,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitShaState(ref common
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.RevisionReference"),
+										Ref:     ref(apiv1alpha1.RevisionReference{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -1823,7 +1824,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitShaState(ref common
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.RevisionReference", metav1.Time{}.OpenAPIModelName()},
+			apiv1alpha1.RevisionReference{}.OpenAPIModelName(), metav1.Time{}.OpenAPIModelName()},
 	}
 }
 
@@ -1857,20 +1858,20 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitStatus(ref common.R
 					"spec": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitStatusSpec"),
+							Ref:     ref(apiv1alpha1.CommitStatusSpec{}.OpenAPIModelName()),
 						},
 					},
 					"status": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitStatusStatus"),
+							Ref:     ref(apiv1alpha1.CommitStatusStatus{}.OpenAPIModelName()),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitStatusSpec", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitStatusStatus", metav1.ObjectMeta{}.OpenAPIModelName()},
+			apiv1alpha1.CommitStatusSpec{}.OpenAPIModelName(), apiv1alpha1.CommitStatusStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -1885,7 +1886,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitStatusConfiguration
 						SchemaProps: spec.SchemaProps{
 							Description: "WorkQueue contains the work queue configuration for the CommitStatus controller. This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WorkQueue"),
+							Ref:         ref(apiv1alpha1.WorkQueue{}.OpenAPIModelName()),
 						},
 					},
 				},
@@ -1893,7 +1894,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitStatusConfiguration
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WorkQueue"},
+			apiv1alpha1.WorkQueue{}.OpenAPIModelName()},
 	}
 }
 
@@ -1931,7 +1932,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitStatusList(ref comm
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitStatus"),
+										Ref:     ref(apiv1alpha1.CommitStatus{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -1942,7 +1943,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitStatusList(ref comm
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitStatus", metav1.ListMeta{}.OpenAPIModelName()},
+			apiv1alpha1.CommitStatus{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -1977,7 +1978,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitStatusSpec(ref comm
 					"gitRepositoryRef": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ObjectReference"),
+							Ref:     ref(apiv1alpha1.ObjectReference{}.OpenAPIModelName()),
 						},
 					},
 					"sha": {
@@ -2024,7 +2025,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitStatusSpec(ref comm
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ObjectReference"},
+			apiv1alpha1.ObjectReference{}.OpenAPIModelName()},
 	}
 }
 
@@ -2125,20 +2126,20 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfiguration(r
 					"spec": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ControllerConfigurationSpec"),
+							Ref:     ref(apiv1alpha1.ControllerConfigurationSpec{}.OpenAPIModelName()),
 						},
 					},
 					"status": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ControllerConfigurationStatus"),
+							Ref:     ref(apiv1alpha1.ControllerConfigurationStatus{}.OpenAPIModelName()),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ControllerConfigurationSpec", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ControllerConfigurationStatus", metav1.ObjectMeta{}.OpenAPIModelName()},
+			apiv1alpha1.ControllerConfigurationSpec{}.OpenAPIModelName(), apiv1alpha1.ControllerConfigurationStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -2176,7 +2177,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationLi
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ControllerConfiguration"),
+										Ref:     ref(apiv1alpha1.ControllerConfiguration{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -2187,7 +2188,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationLi
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ControllerConfiguration", metav1.ListMeta{}.OpenAPIModelName()},
+			apiv1alpha1.ControllerConfiguration{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -2202,56 +2203,56 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSp
 						SchemaProps: spec.SchemaProps{
 							Description: "PromotionStrategy contains the configuration for the PromotionStrategy controller, including WorkQueue settings that control reconciliation behavior.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PromotionStrategyConfiguration"),
+							Ref:         ref(apiv1alpha1.PromotionStrategyConfiguration{}.OpenAPIModelName()),
 						},
 					},
 					"changeTransferPolicy": {
 						SchemaProps: spec.SchemaProps{
 							Description: "ChangeTransferPolicy contains the configuration for the ChangeTransferPolicy controller, including WorkQueue settings that control reconciliation behavior.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ChangeTransferPolicyConfiguration"),
+							Ref:         ref(apiv1alpha1.ChangeTransferPolicyConfiguration{}.OpenAPIModelName()),
 						},
 					},
 					"pullRequest": {
 						SchemaProps: spec.SchemaProps{
 							Description: "PullRequest contains the configuration for the PullRequest controller, including WorkQueue settings and pull request template configuration.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PullRequestConfiguration"),
+							Ref:         ref(apiv1alpha1.PullRequestConfiguration{}.OpenAPIModelName()),
 						},
 					},
 					"commitStatus": {
 						SchemaProps: spec.SchemaProps{
 							Description: "CommitStatus contains the configuration for the CommitStatus controller, including WorkQueue settings that control reconciliation behavior.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitStatusConfiguration"),
+							Ref:         ref(apiv1alpha1.CommitStatusConfiguration{}.OpenAPIModelName()),
 						},
 					},
 					"argocdCommitStatus": {
 						SchemaProps: spec.SchemaProps{
 							Description: "ArgoCDCommitStatus contains the configuration for the ArgoCDCommitStatus controller, including WorkQueue settings that control reconciliation behavior.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ArgoCDCommitStatusConfiguration"),
+							Ref:         ref(apiv1alpha1.ArgoCDCommitStatusConfiguration{}.OpenAPIModelName()),
 						},
 					},
 					"timedCommitStatus": {
 						SchemaProps: spec.SchemaProps{
 							Description: "TimedCommitStatus contains the configuration for the TimedCommitStatus controller, including WorkQueue settings that control reconciliation behavior.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.TimedCommitStatusConfiguration"),
+							Ref:         ref(apiv1alpha1.TimedCommitStatusConfiguration{}.OpenAPIModelName()),
 						},
 					},
 					"gitCommitStatus": {
 						SchemaProps: spec.SchemaProps{
 							Description: "GitCommitStatus contains the configuration for the GitCommitStatus controller, including WorkQueue settings that control reconciliation behavior.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitCommitStatusConfiguration"),
+							Ref:         ref(apiv1alpha1.GitCommitStatusConfiguration{}.OpenAPIModelName()),
 						},
 					},
 					"webRequestCommitStatus": {
 						SchemaProps: spec.SchemaProps{
 							Description: "WebRequestCommitStatus contains the configuration for the WebRequestCommitStatus controller, including WorkQueue settings that control reconciliation behavior.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WebRequestCommitStatusConfiguration"),
+							Ref:         ref(apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName()),
 						},
 					},
 				},
@@ -2259,7 +2260,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSp
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ArgoCDCommitStatusConfiguration", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ChangeTransferPolicyConfiguration", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitStatusConfiguration", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitCommitStatusConfiguration", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PromotionStrategyConfiguration", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PullRequestConfiguration", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.TimedCommitStatusConfiguration", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WebRequestCommitStatusConfiguration"},
+			apiv1alpha1.ArgoCDCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyConfiguration{}.OpenAPIModelName(), apiv1alpha1.CommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategyConfiguration{}.OpenAPIModelName(), apiv1alpha1.PullRequestConfiguration{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName()},
 	}
 }
 
@@ -2311,7 +2312,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_Environment(ref common.Re
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitStatusSelector"),
+										Ref:     ref(apiv1alpha1.CommitStatusSelector{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -2332,7 +2333,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_Environment(ref common.Re
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitStatusSelector"),
+										Ref:     ref(apiv1alpha1.CommitStatusSelector{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -2343,7 +2344,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_Environment(ref common.Re
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitStatusSelector"},
+			apiv1alpha1.CommitStatusSelector{}.OpenAPIModelName()},
 	}
 }
 
@@ -2366,20 +2367,20 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_EnvironmentStatus(ref com
 						SchemaProps: spec.SchemaProps{
 							Description: "Proposed is the state of the proposed branch for the environment.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitBranchState"),
+							Ref:         ref(apiv1alpha1.CommitBranchState{}.OpenAPIModelName()),
 						},
 					},
 					"active": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Active is the state of the active branch for the environment.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitBranchState"),
+							Ref:         ref(apiv1alpha1.CommitBranchState{}.OpenAPIModelName()),
 						},
 					},
 					"pullRequest": {
 						SchemaProps: spec.SchemaProps{
 							Description: "PullRequest is the state of the pull request that was created for this environment.",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PullRequestCommonStatus"),
+							Ref:         ref(apiv1alpha1.PullRequestCommonStatus{}.OpenAPIModelName()),
 						},
 					},
 					"lastHealthyDryShas": {
@@ -2390,7 +2391,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_EnvironmentStatus(ref com
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.HealthyDryShas"),
+										Ref:     ref(apiv1alpha1.HealthyDryShas{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -2404,7 +2405,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_EnvironmentStatus(ref com
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.History"),
+										Ref:     ref(apiv1alpha1.History{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -2415,7 +2416,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_EnvironmentStatus(ref com
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitBranchState", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.HealthyDryShas", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.History", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PullRequestCommonStatus"},
+			apiv1alpha1.CommitBranchState{}.OpenAPIModelName(), apiv1alpha1.HealthyDryShas{}.OpenAPIModelName(), apiv1alpha1.History{}.OpenAPIModelName(), apiv1alpha1.PullRequestCommonStatus{}.OpenAPIModelName()},
 	}
 }
 
@@ -2617,14 +2618,14 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatus(ref commo
 						SchemaProps: spec.SchemaProps{
 							Description: "spec defines the desired state of GitCommitStatus",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitCommitStatusSpec"),
+							Ref:         ref(apiv1alpha1.GitCommitStatusSpec{}.OpenAPIModelName()),
 						},
 					},
 					"status": {
 						SchemaProps: spec.SchemaProps{
 							Description: "status defines the observed state of GitCommitStatus",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitCommitStatusStatus"),
+							Ref:         ref(apiv1alpha1.GitCommitStatusStatus{}.OpenAPIModelName()),
 						},
 					},
 				},
@@ -2632,7 +2633,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatus(ref commo
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitCommitStatusSpec", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitCommitStatusStatus", metav1.ObjectMeta{}.OpenAPIModelName()},
+			apiv1alpha1.GitCommitStatusSpec{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatusStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -2647,7 +2648,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusConfigurat
 						SchemaProps: spec.SchemaProps{
 							Description: "WorkQueue contains the work queue configuration for the GitCommitStatus controller. This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WorkQueue"),
+							Ref:         ref(apiv1alpha1.WorkQueue{}.OpenAPIModelName()),
 						},
 					},
 				},
@@ -2655,7 +2656,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusConfigurat
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WorkQueue"},
+			apiv1alpha1.WorkQueue{}.OpenAPIModelName()},
 	}
 }
 
@@ -2752,7 +2753,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusList(ref c
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitCommitStatus"),
+										Ref:     ref(apiv1alpha1.GitCommitStatus{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -2763,7 +2764,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusList(ref c
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitCommitStatus", metav1.ListMeta{}.OpenAPIModelName()},
+			apiv1alpha1.GitCommitStatus{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -2778,7 +2779,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusSpec(ref c
 						SchemaProps: spec.SchemaProps{
 							Description: "PromotionStrategyRef is a reference to the promotion strategy that this commit status applies to. The controller will validate commits from ALL environments in the referenced PromotionStrategy where this GitCommitStatus.Spec.Key matches an entry in either:\n  - PromotionStrategy.Spec.ProposedCommitStatuses (applies to all environments), OR\n  - Environment.ProposedCommitStatuses (applies to specific environment)",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ObjectReference"),
+							Ref:         ref(apiv1alpha1.ObjectReference{}.OpenAPIModelName()),
 						},
 					},
 					"key": {
@@ -2816,7 +2817,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusSpec(ref c
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ObjectReference"},
+			apiv1alpha1.ObjectReference{}.OpenAPIModelName()},
 	}
 }
 
@@ -2850,7 +2851,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusStatus(ref
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitCommitStatusEnvironmentStatus"),
+										Ref:     ref(apiv1alpha1.GitCommitStatusEnvironmentStatus{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -2882,7 +2883,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusStatus(ref
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitCommitStatusEnvironmentStatus", metav1.Condition{}.OpenAPIModelName()},
+			apiv1alpha1.GitCommitStatusEnvironmentStatus{}.OpenAPIModelName(), metav1.Condition{}.OpenAPIModelName()},
 	}
 }
 
@@ -3040,20 +3041,20 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitRepository(ref common.
 					"spec": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitRepositorySpec"),
+							Ref:     ref(apiv1alpha1.GitRepositorySpec{}.OpenAPIModelName()),
 						},
 					},
 					"status": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitRepositoryStatus"),
+							Ref:     ref(apiv1alpha1.GitRepositoryStatus{}.OpenAPIModelName()),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitRepositorySpec", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitRepositoryStatus", metav1.ObjectMeta{}.OpenAPIModelName()},
+			apiv1alpha1.GitRepositorySpec{}.OpenAPIModelName(), apiv1alpha1.GitRepositoryStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -3091,7 +3092,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitRepositoryList(ref com
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitRepository"),
+										Ref:     ref(apiv1alpha1.GitRepository{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -3102,7 +3103,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitRepositoryList(ref com
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitRepository", metav1.ListMeta{}.OpenAPIModelName()},
+			apiv1alpha1.GitRepository{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -3115,43 +3116,43 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitRepositorySpec(ref com
 				Properties: map[string]spec.Schema{
 					"github": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitHubRepo"),
+							Ref: ref(apiv1alpha1.GitHubRepo{}.OpenAPIModelName()),
 						},
 					},
 					"gitlab": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitLabRepo"),
+							Ref: ref(apiv1alpha1.GitLabRepo{}.OpenAPIModelName()),
 						},
 					},
 					"forgejo": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ForgejoRepo"),
+							Ref: ref(apiv1alpha1.ForgejoRepo{}.OpenAPIModelName()),
 						},
 					},
 					"gitea": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GiteaRepo"),
+							Ref: ref(apiv1alpha1.GiteaRepo{}.OpenAPIModelName()),
 						},
 					},
 					"bitbucketCloud": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.BitbucketCloudRepo"),
+							Ref: ref(apiv1alpha1.BitbucketCloudRepo{}.OpenAPIModelName()),
 						},
 					},
 					"azureDevOps": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.AzureDevOpsRepo"),
+							Ref: ref(apiv1alpha1.AzureDevOpsRepo{}.OpenAPIModelName()),
 						},
 					},
 					"fake": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.FakeRepo"),
+							Ref: ref(apiv1alpha1.FakeRepo{}.OpenAPIModelName()),
 						},
 					},
 					"scmProviderRef": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ScmProviderObjectReference"),
+							Ref:     ref(apiv1alpha1.ScmProviderObjectReference{}.OpenAPIModelName()),
 						},
 					},
 				},
@@ -3159,7 +3160,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitRepositorySpec(ref com
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.AzureDevOpsRepo", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.BitbucketCloudRepo", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.FakeRepo", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ForgejoRepo", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitHubRepo", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitLabRepo", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GiteaRepo", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ScmProviderObjectReference"},
+			apiv1alpha1.AzureDevOpsRepo{}.OpenAPIModelName(), apiv1alpha1.BitbucketCloudRepo{}.OpenAPIModelName(), apiv1alpha1.FakeRepo{}.OpenAPIModelName(), apiv1alpha1.ForgejoRepo{}.OpenAPIModelName(), apiv1alpha1.GitHubRepo{}.OpenAPIModelName(), apiv1alpha1.GitLabRepo{}.OpenAPIModelName(), apiv1alpha1.GiteaRepo{}.OpenAPIModelName(), apiv1alpha1.ScmProviderObjectReference{}.OpenAPIModelName()},
 	}
 }
 
@@ -3271,38 +3272,38 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_HTTPAuthentication(ref co
 					"basic": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Basic specifies HTTP Basic Authentication. Credentials can be provided inline (with secret references) or via secretRef.",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.BasicAuth"),
+							Ref:         ref(apiv1alpha1.BasicAuth{}.OpenAPIModelName()),
 						},
 					},
 					"bearer": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Bearer specifies Bearer token authentication. Token can be provided inline (with secret reference) or via secretRef.",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.BearerAuth"),
+							Ref:         ref(apiv1alpha1.BearerAuth{}.OpenAPIModelName()),
 						},
 					},
 					"oauth2": {
 						SchemaProps: spec.SchemaProps{
 							Description: "OAuth2 specifies OAuth2 client credentials authentication. The controller will automatically obtain access tokens from the specified tokenURL.",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.OAuth2Auth"),
+							Ref:         ref(apiv1alpha1.OAuth2Auth{}.OpenAPIModelName()),
 						},
 					},
 					"tls": {
 						SchemaProps: spec.SchemaProps{
 							Description: "TLS specifies TLS client certificate authentication (mutual TLS). Requires a secret containing the client certificate and private key.",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.TLSAuth"),
+							Ref:         ref(apiv1alpha1.TLSAuth{}.OpenAPIModelName()),
 						},
 					},
 					"scm": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Scm specifies authentication using credentials from the SCM provider. This uses the credentials configured in the ScmProvider referenced by the PromotionStrategy, applying the appropriate authentication method based on the SCM provider type (GitHub App, GitLab token, Azure DevOps PAT, etc.). To use this auth type, just set it to an empty object, i.e. scm: {}.",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.Scm"),
+							Ref:         ref(apiv1alpha1.Scm{}.OpenAPIModelName()),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.BasicAuth", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.BearerAuth", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.OAuth2Auth", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.Scm", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.TLSAuth"},
+			apiv1alpha1.BasicAuth{}.OpenAPIModelName(), apiv1alpha1.BearerAuth{}.OpenAPIModelName(), apiv1alpha1.OAuth2Auth{}.OpenAPIModelName(), apiv1alpha1.Scm{}.OpenAPIModelName(), apiv1alpha1.TLSAuth{}.OpenAPIModelName()},
 	}
 }
 
@@ -3367,7 +3368,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_HTTPRequestSpec(ref commo
 					"authentication": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Authentication specifies authentication configuration for the HTTP request.\n\nSupports multiple authentication methods: - Basic Auth: HTTP Basic Authentication with username/password - Bearer Token: Bearer token authentication (e.g., API keys, JWTs) - OAuth2: OAuth2 client credentials flow for obtaining access tokens - TLS: Mutual TLS (mTLS) with client certificates - SCM: Reuses credentials from the ScmProvider referenced by the PromotionStrategy (no extra secret needed)\n\nFor Basic, Bearer, OAuth2, and TLS, credentials must be stored in Kubernetes secrets and referenced via secretRef fields. For SCM, credentials are obtained automatically from the SCM provider; just set scm: {}.\n\nExamples:\n  # Basic Auth\n  authentication:\n    basic:\n      secretRef:\n        name: my-creds\n\n  # Bearer Token\n  authentication:\n    bearer:\n      secretRef:\n        name: api-token\n\n  # OAuth2 Client Credentials\n  authentication:\n    oauth2:\n      tokenURL: \"https://auth.example.com/oauth/token\"\n      secretRef:\n        name: oauth-creds\n\n  # TLS Client Certificate\n  authentication:\n    tls:\n      secretRef:\n        name: my-tls-cert\n\n  # SCM Provider Credentials\n  authentication:\n    scm: {}",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.HTTPAuthentication"),
+							Ref:         ref(apiv1alpha1.HTTPAuthentication{}.OpenAPIModelName()),
 						},
 					},
 				},
@@ -3375,7 +3376,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_HTTPRequestSpec(ref commo
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.HTTPAuthentication", metav1.Duration{}.OpenAPIModelName()},
+			apiv1alpha1.HTTPAuthentication{}.OpenAPIModelName(), metav1.Duration{}.OpenAPIModelName()},
 	}
 }
 
@@ -3420,27 +3421,27 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_History(ref common.Refere
 						SchemaProps: spec.SchemaProps{
 							Description: "Proposed is the state of the proposed branch at the time the PR was merged.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitBranchStateHistoryProposed"),
+							Ref:         ref(apiv1alpha1.CommitBranchStateHistoryProposed{}.OpenAPIModelName()),
 						},
 					},
 					"active": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Active is the state of the active branch at the time the PR was merged.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitBranchState"),
+							Ref:         ref(apiv1alpha1.CommitBranchState{}.OpenAPIModelName()),
 						},
 					},
 					"pullRequest": {
 						SchemaProps: spec.SchemaProps{
 							Description: "PullRequest is the state of the pull request that was created for this ChangeTransferPolicy.",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PullRequestCommonStatus"),
+							Ref:         ref(apiv1alpha1.PullRequestCommonStatus{}.OpenAPIModelName()),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitBranchState", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitBranchStateHistoryProposed", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PullRequestCommonStatus"},
+			apiv1alpha1.CommitBranchState{}.OpenAPIModelName(), apiv1alpha1.CommitBranchStateHistoryProposed{}.OpenAPIModelName(), apiv1alpha1.PullRequestCommonStatus{}.OpenAPIModelName()},
 	}
 }
 
@@ -3500,7 +3501,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_HydratorMetadata(ref comm
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.RevisionReference"),
+										Ref:     ref(apiv1alpha1.RevisionReference{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -3510,7 +3511,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_HydratorMetadata(ref comm
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.RevisionReference", metav1.Time{}.OpenAPIModelName()},
+			apiv1alpha1.RevisionReference{}.OpenAPIModelName(), metav1.Time{}.OpenAPIModelName()},
 	}
 }
 
@@ -3524,13 +3525,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ModeSpec(ref common.Refer
 					"polling": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Polling enables interval-based polling mode. The controller will poll the HTTP endpoint at the specified interval.",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PollingModeSpec"),
+							Ref:         ref(apiv1alpha1.PollingModeSpec{}.OpenAPIModelName()),
 						},
 					},
 					"trigger": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Trigger enables expression-based triggering mode. The controller will evaluate the expression to determine when to make HTTP requests.",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.TriggerModeSpec"),
+							Ref:         ref(apiv1alpha1.TriggerModeSpec{}.OpenAPIModelName()),
 						},
 					},
 					"context": {
@@ -3544,7 +3545,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ModeSpec(ref common.Refer
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PollingModeSpec", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.TriggerModeSpec"},
+			apiv1alpha1.PollingModeSpec{}.OpenAPIModelName(), apiv1alpha1.TriggerModeSpec{}.OpenAPIModelName()},
 	}
 }
 
@@ -3688,20 +3689,20 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategy(ref com
 					"spec": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PromotionStrategySpec"),
+							Ref:     ref(apiv1alpha1.PromotionStrategySpec{}.OpenAPIModelName()),
 						},
 					},
 					"status": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PromotionStrategyStatus"),
+							Ref:     ref(apiv1alpha1.PromotionStrategyStatus{}.OpenAPIModelName()),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PromotionStrategySpec", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PromotionStrategyStatus", metav1.ObjectMeta{}.OpenAPIModelName()},
+			apiv1alpha1.PromotionStrategySpec{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategyStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -3716,7 +3717,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategyConfigur
 						SchemaProps: spec.SchemaProps{
 							Description: "WorkQueue contains the work queue configuration for the PromotionStrategy controller. This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WorkQueue"),
+							Ref:         ref(apiv1alpha1.WorkQueue{}.OpenAPIModelName()),
 						},
 					},
 				},
@@ -3724,7 +3725,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategyConfigur
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WorkQueue"},
+			apiv1alpha1.WorkQueue{}.OpenAPIModelName()},
 	}
 }
 
@@ -3762,7 +3763,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategyList(ref
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PromotionStrategy"),
+										Ref:     ref(apiv1alpha1.PromotionStrategy{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -3773,7 +3774,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategyList(ref
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PromotionStrategy", metav1.ListMeta{}.OpenAPIModelName()},
+			apiv1alpha1.PromotionStrategy{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -3788,7 +3789,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategySpec(ref
 						SchemaProps: spec.SchemaProps{
 							Description: "RepositoryReference indicates what repository to promote commits in.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ObjectReference"),
+							Ref:         ref(apiv1alpha1.ObjectReference{}.OpenAPIModelName()),
 						},
 					},
 					"activeCommitStatuses": {
@@ -3806,7 +3807,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategySpec(ref
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitStatusSelector"),
+										Ref:     ref(apiv1alpha1.CommitStatusSelector{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -3827,7 +3828,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategySpec(ref
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitStatusSelector"),
+										Ref:     ref(apiv1alpha1.CommitStatusSelector{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -3848,7 +3849,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategySpec(ref
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.Environment"),
+										Ref:     ref(apiv1alpha1.Environment{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -3859,7 +3860,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategySpec(ref
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitStatusSelector", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.Environment", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ObjectReference"},
+			apiv1alpha1.CommitStatusSelector{}.OpenAPIModelName(), apiv1alpha1.Environment{}.OpenAPIModelName(), apiv1alpha1.ObjectReference{}.OpenAPIModelName()},
 	}
 }
 
@@ -3892,7 +3893,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategyStatus(r
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.EnvironmentStatus"),
+										Ref:     ref(apiv1alpha1.EnvironmentStatus{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -3927,7 +3928,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategyStatus(r
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.EnvironmentStatus", metav1.Condition{}.OpenAPIModelName()},
+			apiv1alpha1.EnvironmentStatus{}.OpenAPIModelName(), metav1.Condition{}.OpenAPIModelName()},
 	}
 }
 
@@ -3961,20 +3962,20 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequest(ref common.Re
 					"spec": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PullRequestSpec"),
+							Ref:     ref(apiv1alpha1.PullRequestSpec{}.OpenAPIModelName()),
 						},
 					},
 					"status": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PullRequestStatus"),
+							Ref:     ref(apiv1alpha1.PullRequestStatus{}.OpenAPIModelName()),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PullRequestSpec", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PullRequestStatus", metav1.ObjectMeta{}.OpenAPIModelName()},
+			apiv1alpha1.PullRequestSpec{}.OpenAPIModelName(), apiv1alpha1.PullRequestStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -4044,14 +4045,14 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestConfiguration(
 						SchemaProps: spec.SchemaProps{
 							Description: "Template is the template configuration used to generate pull request titles and descriptions. Uses Go template syntax with Sprig functions available.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PullRequestTemplate"),
+							Ref:         ref(apiv1alpha1.PullRequestTemplate{}.OpenAPIModelName()),
 						},
 					},
 					"workQueue": {
 						SchemaProps: spec.SchemaProps{
 							Description: "WorkQueue contains the work queue configuration for the PullRequest controller. This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WorkQueue"),
+							Ref:         ref(apiv1alpha1.WorkQueue{}.OpenAPIModelName()),
 						},
 					},
 				},
@@ -4059,7 +4060,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestConfiguration(
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PullRequestTemplate", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WorkQueue"},
+			apiv1alpha1.PullRequestTemplate{}.OpenAPIModelName(), apiv1alpha1.WorkQueue{}.OpenAPIModelName()},
 	}
 }
 
@@ -4097,7 +4098,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestList(ref commo
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PullRequest"),
+										Ref:     ref(apiv1alpha1.PullRequest{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -4108,7 +4109,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestList(ref commo
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.PullRequest", metav1.ListMeta{}.OpenAPIModelName()},
+			apiv1alpha1.PullRequest{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -4123,7 +4124,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestSpec(ref commo
 						SchemaProps: spec.SchemaProps{
 							Description: "RepositoryReference indicates what repository to open the PR on.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ObjectReference"),
+							Ref:         ref(apiv1alpha1.ObjectReference{}.OpenAPIModelName()),
 						},
 					},
 					"title": {
@@ -4161,7 +4162,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestSpec(ref commo
 						SchemaProps: spec.SchemaProps{
 							Description: "Commit contains configuration for how we will merge/squash/etc the pull request.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitConfiguration"),
+							Ref:         ref(apiv1alpha1.CommitConfiguration{}.OpenAPIModelName()),
 						},
 					},
 					"mergeSha": {
@@ -4185,7 +4186,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestSpec(ref commo
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitConfiguration", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ObjectReference"},
+			apiv1alpha1.CommitConfiguration{}.OpenAPIModelName(), apiv1alpha1.ObjectReference{}.OpenAPIModelName()},
 	}
 }
 
@@ -4309,19 +4310,19 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RateLimiter(ref common.Re
 					"fastSlow": {
 						SchemaProps: spec.SchemaProps{
 							Description: "FastSlow rate limiter provides fast retries initially, then switches to slow retries. Useful for quickly retrying transient errors while backing off for persistent failures.",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.FastSlow"),
+							Ref:         ref(apiv1alpha1.FastSlow{}.OpenAPIModelName()),
 						},
 					},
 					"exponentialFailure": {
 						SchemaProps: spec.SchemaProps{
 							Description: "ExponentialFailure rate limiter increases delay exponentially with each failure. Standard approach for backing off when operations fail repeatedly.",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ExponentialFailure"),
+							Ref:         ref(apiv1alpha1.ExponentialFailure{}.OpenAPIModelName()),
 						},
 					},
 					"bucket": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Bucket rate limiter uses a token bucket algorithm to control request rate. Allows bursts while maintaining an average rate limit.",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.Bucket"),
+							Ref:         ref(apiv1alpha1.Bucket{}.OpenAPIModelName()),
 						},
 					},
 					"maxOf": {
@@ -4332,7 +4333,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RateLimiter(ref common.Re
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.RateLimiterTypes"),
+										Ref:     ref(apiv1alpha1.RateLimiterTypes{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -4342,7 +4343,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RateLimiter(ref common.Re
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.Bucket", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ExponentialFailure", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.FastSlow", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.RateLimiterTypes"},
+			apiv1alpha1.Bucket{}.OpenAPIModelName(), apiv1alpha1.ExponentialFailure{}.OpenAPIModelName(), apiv1alpha1.FastSlow{}.OpenAPIModelName(), apiv1alpha1.RateLimiterTypes{}.OpenAPIModelName()},
 	}
 }
 
@@ -4356,26 +4357,26 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RateLimiterTypes(ref comm
 					"fastSlow": {
 						SchemaProps: spec.SchemaProps{
 							Description: "FastSlow rate limiter provides fast retries initially, then switches to slow retries. Useful for quickly retrying transient errors while backing off for persistent failures.",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.FastSlow"),
+							Ref:         ref(apiv1alpha1.FastSlow{}.OpenAPIModelName()),
 						},
 					},
 					"exponentialFailure": {
 						SchemaProps: spec.SchemaProps{
 							Description: "ExponentialFailure rate limiter increases delay exponentially with each failure. Standard approach for backing off when operations fail repeatedly.",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ExponentialFailure"),
+							Ref:         ref(apiv1alpha1.ExponentialFailure{}.OpenAPIModelName()),
 						},
 					},
 					"bucket": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Bucket rate limiter uses a token bucket algorithm to control request rate. Allows bursts while maintaining an average rate limit.",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.Bucket"),
+							Ref:         ref(apiv1alpha1.Bucket{}.OpenAPIModelName()),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.Bucket", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ExponentialFailure", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.FastSlow"},
+			apiv1alpha1.Bucket{}.OpenAPIModelName(), apiv1alpha1.ExponentialFailure{}.OpenAPIModelName(), apiv1alpha1.FastSlow{}.OpenAPIModelName()},
 	}
 }
 
@@ -4390,7 +4391,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ResponseOutputSpec(ref co
 						SchemaProps: spec.SchemaProps{
 							Description: "Output is evaluated after the HTTP request completes (any status). Response variables are the same as for spec.success.when.expression — see WhenWithOutputSpec.Expression. The result is stored in status (environments[].responseOutput or promotionStrategyContext.responseOutput) and exposed on the next reconcile as ResponseOutput in trigger expressions and templates. Must return a map/object.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.OutputSpec"),
+							Ref:         ref(apiv1alpha1.OutputSpec{}.OpenAPIModelName()),
 						},
 					},
 				},
@@ -4398,7 +4399,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ResponseOutputSpec(ref co
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.OutputSpec"},
+			apiv1alpha1.OutputSpec{}.OpenAPIModelName()},
 	}
 }
 
@@ -4432,20 +4433,20 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommit(ref common.R
 					"spec": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.RevertCommitSpec"),
+							Ref:     ref(apiv1alpha1.RevertCommitSpec{}.OpenAPIModelName()),
 						},
 					},
 					"status": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.RevertCommitStatus"),
+							Ref:     ref(apiv1alpha1.RevertCommitStatus{}.OpenAPIModelName()),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.RevertCommitSpec", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.RevertCommitStatus", metav1.ObjectMeta{}.OpenAPIModelName()},
+			apiv1alpha1.RevertCommitSpec{}.OpenAPIModelName(), apiv1alpha1.RevertCommitStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -4483,7 +4484,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommitList(ref comm
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.RevertCommit"),
+										Ref:     ref(apiv1alpha1.RevertCommit{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -4494,7 +4495,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommitList(ref comm
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.RevertCommit", metav1.ListMeta{}.OpenAPIModelName()},
+			apiv1alpha1.RevertCommit{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -4539,14 +4540,14 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevisionReference(ref com
 					"commit": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Commit contains metadata about the commit that is related in some way to another commit.",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitMetadata"),
+							Ref:         ref(apiv1alpha1.CommitMetadata{}.OpenAPIModelName()),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.CommitMetadata"},
+			apiv1alpha1.CommitMetadata{}.OpenAPIModelName()},
 	}
 }
 
@@ -4591,20 +4592,20 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProvider(ref common.Re
 					"spec": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ScmProviderSpec"),
+							Ref:     ref(apiv1alpha1.ScmProviderSpec{}.OpenAPIModelName()),
 						},
 					},
 					"status": {
 						SchemaProps: spec.SchemaProps{
 							Default: map[string]interface{}{},
-							Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ScmProviderStatus"),
+							Ref:     ref(apiv1alpha1.ScmProviderStatus{}.OpenAPIModelName()),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ScmProviderSpec", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ScmProviderStatus", metav1.ObjectMeta{}.OpenAPIModelName()},
+			apiv1alpha1.ScmProviderSpec{}.OpenAPIModelName(), apiv1alpha1.ScmProviderStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -4642,7 +4643,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderList(ref commo
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ScmProvider"),
+										Ref:     ref(apiv1alpha1.ScmProvider{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -4653,7 +4654,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderList(ref commo
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ScmProvider", metav1.ListMeta{}.OpenAPIModelName()},
+			apiv1alpha1.ScmProvider{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -4703,50 +4704,50 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderSpec(ref commo
 					"github": {
 						SchemaProps: spec.SchemaProps{
 							Description: "GitHub required configuration for GitHub as the SCM provider",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitHub"),
+							Ref:         ref(apiv1alpha1.GitHub{}.OpenAPIModelName()),
 						},
 					},
 					"gitlab": {
 						SchemaProps: spec.SchemaProps{
 							Description: "GitLab required configuration for GitLab as the SCM provider",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitLab"),
+							Ref:         ref(apiv1alpha1.GitLab{}.OpenAPIModelName()),
 						},
 					},
 					"forgejo": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Forgejo required configuration for Forgejo as the SCM provider",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.Forgejo"),
+							Ref:         ref(apiv1alpha1.Forgejo{}.OpenAPIModelName()),
 						},
 					},
 					"gitea": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Gitea required configuration for Gitea as the SCM provider",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.Gitea"),
+							Ref:         ref(apiv1alpha1.Gitea{}.OpenAPIModelName()),
 						},
 					},
 					"bitbucketCloud": {
 						SchemaProps: spec.SchemaProps{
 							Description: "BitbucketCloud required configuration for Bitbucket Cloud as the SCM provider",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.BitbucketCloud"),
+							Ref:         ref(apiv1alpha1.BitbucketCloud{}.OpenAPIModelName()),
 						},
 					},
 					"azureDevOps": {
 						SchemaProps: spec.SchemaProps{
 							Description: "AzureDevOps required configuration for Azure DevOps as the SCM provider",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.AzureDevOps"),
+							Ref:         ref(apiv1alpha1.AzureDevOps{}.OpenAPIModelName()),
 						},
 					},
 					"fake": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Fake required configuration for Fake as the SCM provider",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.Fake"),
+							Ref:         ref(apiv1alpha1.Fake{}.OpenAPIModelName()),
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.AzureDevOps", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.BitbucketCloud", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.Fake", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.Forgejo", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitHub", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.GitLab", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.Gitea", v1.LocalObjectReference{}.OpenAPIModelName()},
+			apiv1alpha1.AzureDevOps{}.OpenAPIModelName(), apiv1alpha1.BitbucketCloud{}.OpenAPIModelName(), apiv1alpha1.Fake{}.OpenAPIModelName(), apiv1alpha1.Forgejo{}.OpenAPIModelName(), apiv1alpha1.GitHub{}.OpenAPIModelName(), apiv1alpha1.GitLab{}.OpenAPIModelName(), apiv1alpha1.Gitea{}.OpenAPIModelName(), v1.LocalObjectReference{}.OpenAPIModelName()},
 	}
 }
 
@@ -4807,7 +4808,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_SuccessSpec(ref common.Re
 						SchemaProps: spec.SchemaProps{
 							Description: "When is evaluated every reconcile. See WhenWithOutputSpec.Expression.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WhenWithOutputSpec"),
+							Ref:         ref(apiv1alpha1.WhenWithOutputSpec{}.OpenAPIModelName()),
 						},
 					},
 				},
@@ -4815,7 +4816,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_SuccessSpec(ref common.Re
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WhenWithOutputSpec"},
+			apiv1alpha1.WhenWithOutputSpec{}.OpenAPIModelName()},
 	}
 }
 
@@ -4873,14 +4874,14 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatus(ref com
 						SchemaProps: spec.SchemaProps{
 							Description: "spec defines the desired state of TimedCommitStatus",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.TimedCommitStatusSpec"),
+							Ref:         ref(apiv1alpha1.TimedCommitStatusSpec{}.OpenAPIModelName()),
 						},
 					},
 					"status": {
 						SchemaProps: spec.SchemaProps{
 							Description: "status defines the observed state of TimedCommitStatus",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.TimedCommitStatusStatus"),
+							Ref:         ref(apiv1alpha1.TimedCommitStatusStatus{}.OpenAPIModelName()),
 						},
 					},
 				},
@@ -4888,7 +4889,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatus(ref com
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.TimedCommitStatusSpec", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.TimedCommitStatusStatus", metav1.ObjectMeta{}.OpenAPIModelName()},
+			apiv1alpha1.TimedCommitStatusSpec{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatusStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -4903,7 +4904,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusConfigur
 						SchemaProps: spec.SchemaProps{
 							Description: "WorkQueue contains the work queue configuration for the TimedCommitStatus controller. This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WorkQueue"),
+							Ref:         ref(apiv1alpha1.WorkQueue{}.OpenAPIModelName()),
 						},
 					},
 				},
@@ -4911,7 +4912,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusConfigur
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WorkQueue"},
+			apiv1alpha1.WorkQueue{}.OpenAPIModelName()},
 	}
 }
 
@@ -5037,7 +5038,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusList(ref
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.TimedCommitStatus"),
+										Ref:     ref(apiv1alpha1.TimedCommitStatus{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -5048,7 +5049,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusList(ref
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.TimedCommitStatus", metav1.ListMeta{}.OpenAPIModelName()},
+			apiv1alpha1.TimedCommitStatus{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -5063,7 +5064,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusSpec(ref
 						SchemaProps: spec.SchemaProps{
 							Description: "PromotionStrategyRef is a reference to the promotion strategy that this timed commit status applies to.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ObjectReference"),
+							Ref:         ref(apiv1alpha1.ObjectReference{}.OpenAPIModelName()),
 						},
 					},
 					"key": {
@@ -5080,7 +5081,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusSpec(ref
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.TimedCommitStatusEnvironments"),
+										Ref:     ref(apiv1alpha1.TimedCommitStatusEnvironments{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -5091,7 +5092,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusSpec(ref
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ObjectReference", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.TimedCommitStatusEnvironments"},
+			apiv1alpha1.ObjectReference{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatusEnvironments{}.OpenAPIModelName()},
 	}
 }
 
@@ -5125,7 +5126,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusStatus(r
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.TimedCommitStatusEnvironmentsStatus"),
+										Ref:     ref(apiv1alpha1.TimedCommitStatusEnvironmentsStatus{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -5157,7 +5158,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusStatus(r
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.TimedCommitStatusEnvironmentsStatus", metav1.Condition{}.OpenAPIModelName()},
+			apiv1alpha1.TimedCommitStatusEnvironmentsStatus{}.OpenAPIModelName(), metav1.Condition{}.OpenAPIModelName()},
 	}
 }
 
@@ -5178,13 +5179,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TriggerModeSpec(ref commo
 						SchemaProps: spec.SchemaProps{
 							Description: "When configures the boolean guard and optional output expression that control whether the HTTP request is made.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WhenWithOutputSpec"),
+							Ref:         ref(apiv1alpha1.WhenWithOutputSpec{}.OpenAPIModelName()),
 						},
 					},
 					"response": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Response optionally configures an expression that extracts data from the HTTP response into ResponseOutput.",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ResponseOutputSpec"),
+							Ref:         ref(apiv1alpha1.ResponseOutputSpec{}.OpenAPIModelName()),
 						},
 					},
 				},
@@ -5192,7 +5193,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TriggerModeSpec(ref commo
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ResponseOutputSpec", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WhenWithOutputSpec", metav1.Duration{}.OpenAPIModelName()},
+			apiv1alpha1.ResponseOutputSpec{}.OpenAPIModelName(), apiv1alpha1.WhenWithOutputSpec{}.OpenAPIModelName(), metav1.Duration{}.OpenAPIModelName()},
 	}
 }
 
@@ -5263,14 +5264,14 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatus(re
 						SchemaProps: spec.SchemaProps{
 							Description: "spec defines the desired state of WebRequestCommitStatus",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WebRequestCommitStatusSpec"),
+							Ref:         ref(apiv1alpha1.WebRequestCommitStatusSpec{}.OpenAPIModelName()),
 						},
 					},
 					"status": {
 						SchemaProps: spec.SchemaProps{
 							Description: "status defines the observed state of WebRequestCommitStatus",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WebRequestCommitStatusStatus"),
+							Ref:         ref(apiv1alpha1.WebRequestCommitStatusStatus{}.OpenAPIModelName()),
 						},
 					},
 				},
@@ -5278,7 +5279,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatus(re
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WebRequestCommitStatusSpec", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WebRequestCommitStatusStatus", metav1.ObjectMeta{}.OpenAPIModelName()},
+			apiv1alpha1.WebRequestCommitStatusSpec{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -5293,7 +5294,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusCon
 						SchemaProps: spec.SchemaProps{
 							Description: "WorkQueue contains the work queue configuration for the WebRequestCommitStatus controller. This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WorkQueue"),
+							Ref:         ref(apiv1alpha1.WorkQueue{}.OpenAPIModelName()),
 						},
 					},
 				},
@@ -5301,7 +5302,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusCon
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WorkQueue"},
+			apiv1alpha1.WorkQueue{}.OpenAPIModelName()},
 	}
 }
 
@@ -5445,7 +5446,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusLis
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WebRequestCommitStatus"),
+										Ref:     ref(apiv1alpha1.WebRequestCommitStatus{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -5456,7 +5457,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusLis
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WebRequestCommitStatus", metav1.ListMeta{}.OpenAPIModelName()},
+			apiv1alpha1.WebRequestCommitStatus{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -5513,7 +5514,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusPro
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WebRequestCommitStatusPhasePerBranchItem"),
+										Ref:     ref(apiv1alpha1.WebRequestCommitStatusPhasePerBranchItem{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -5566,7 +5567,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusPro
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WebRequestCommitStatusLastSuccessfulShaItem"),
+										Ref:     ref(apiv1alpha1.WebRequestCommitStatusLastSuccessfulShaItem{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -5576,7 +5577,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusPro
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WebRequestCommitStatusLastSuccessfulShaItem", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WebRequestCommitStatusPhasePerBranchItem", apiextensionsv1.JSON{}.OpenAPIModelName(), metav1.Time{}.OpenAPIModelName()},
+			apiv1alpha1.WebRequestCommitStatusLastSuccessfulShaItem{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusPhasePerBranchItem{}.OpenAPIModelName(), apiextensionsv1.JSON{}.OpenAPIModelName(), metav1.Time{}.OpenAPIModelName()},
 	}
 }
 
@@ -5591,7 +5592,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusSpe
 						SchemaProps: spec.SchemaProps{
 							Description: "PromotionStrategyRef references the PromotionStrategy this applies to. The controller will check commits from ALL environments in the referenced PromotionStrategy where this WebRequestCommitStatus.Spec.Key matches an entry in either:\n  - PromotionStrategy.Spec.ProposedCommitStatuses (applies to all environments), OR\n  - PromotionStrategy.Spec.ActiveCommitStatuses (applies to all environments), OR\n  - Environment.ProposedCommitStatuses (applies to specific environment), OR\n  - Environment.ActiveCommitStatuses (applies to specific environment)",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ObjectReference"),
+							Ref:         ref(apiv1alpha1.ObjectReference{}.OpenAPIModelName()),
 						},
 					},
 					"key": {
@@ -5627,21 +5628,21 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusSpe
 						SchemaProps: spec.SchemaProps{
 							Description: "HTTPRequest configures the outbound HTTP call. See HTTPRequestSpec.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.HTTPRequestSpec"),
+							Ref:         ref(apiv1alpha1.HTTPRequestSpec{}.OpenAPIModelName()),
 						},
 					},
 					"success": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Success defines when the commit status phase is success. Evaluated every reconcile. See SuccessSpec.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.SuccessSpec"),
+							Ref:         ref(apiv1alpha1.SuccessSpec{}.OpenAPIModelName()),
 						},
 					},
 					"mode": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Mode selects polling vs trigger and request scope (context). See ModeSpec.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ModeSpec"),
+							Ref:         ref(apiv1alpha1.ModeSpec{}.OpenAPIModelName()),
 						},
 					},
 				},
@@ -5649,7 +5650,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusSpe
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.HTTPRequestSpec", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ModeSpec", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.ObjectReference", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.SuccessSpec"},
+			apiv1alpha1.HTTPRequestSpec{}.OpenAPIModelName(), apiv1alpha1.ModeSpec{}.OpenAPIModelName(), apiv1alpha1.ObjectReference{}.OpenAPIModelName(), apiv1alpha1.SuccessSpec{}.OpenAPIModelName()},
 	}
 }
 
@@ -5683,7 +5684,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusSta
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Default: map[string]interface{}{},
-										Ref:     ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WebRequestCommitStatusEnvironmentStatus"),
+										Ref:     ref(apiv1alpha1.WebRequestCommitStatusEnvironmentStatus{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -5692,7 +5693,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusSta
 					"promotionStrategyContext": {
 						SchemaProps: spec.SchemaProps{
 							Description: "PromotionStrategyContext holds the result of the one HTTP run when context is \"promotionstrategy\". At most one request is made per WebRequestCommitStatus; phase(s) are reported on each environment's CommitStatus.",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus"),
+							Ref:         ref(apiv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus{}.OpenAPIModelName()),
 						},
 					},
 					"conditions": {
@@ -5721,7 +5722,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusSta
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WebRequestCommitStatusEnvironmentStatus", "github.com/argoproj-labs/gitops-promoter/api/v1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus", metav1.Condition{}.OpenAPIModelName()},
+			apiv1alpha1.WebRequestCommitStatusEnvironmentStatus{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus{}.OpenAPIModelName(), metav1.Condition{}.OpenAPIModelName()},
 	}
 }
 
@@ -5735,7 +5736,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WhenWithOutputSpec(ref co
 					"variables": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Variables optionally holds an expression that runs before Expression and Output.Expression. It receives the same variables as Expression (see Expression documentation below) and must return a map/object. The result is injected as top-level binding Variables (map) for Expression and Output.Expression only — use Variables.<key> in those expressions. The Variables binding is not set when spec.variables is omitted. It is not available to response.output.expression. The result is also available in Go templates for DescriptionTemplate and UrlTemplate:\n  - trigger.when.variables result → {{ index .TriggerVariables \"key\" }}\n  - success.when.variables result → {{ index .SuccessVariables \"key\" }}",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.OutputSpec"),
+							Ref:         ref(apiv1alpha1.OutputSpec{}.OpenAPIModelName()),
 						},
 					},
 					"expression": {
@@ -5749,7 +5750,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WhenWithOutputSpec(ref co
 					"output": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Output optionally holds an expression that produces a map of data to persist across reconcile cycles. The expression runs on every reconcile (whether or not the HTTP request is made). Its result is stored in status (per-environment under environments[].triggerOutput, or under promotionStrategyContext.triggerOutput when context is promotionstrategy) and is available in the next reconcile as TriggerOutput in when.expression, when.output.expression, and in templates. Use it to track state such as attempt counts, last-seen SHAs, or timestamps.\n\nDelivery semantics caveat: persisted output is read from the controller's informer cache at the start of the next reconcile. Under cache-propagation lag, controller restarts, or status-write retries, the next reconcile may not see the most recently persisted output and may re-fire the HTTP request. Treat this as AT-LEAST-ONCE delivery — counters built on TriggerOutput are eventually-consistent (a stale read can cause a duplicate increment), so use them for backoff hints, not for hard \"fail after N attempts\" gates.\n\nVariables are the same as for Expression (see above). The expression must return a map/object; every key is stored in TriggerOutput.\n\nExamples:\n  # Track SHA to detect changes (idempotent: replays produce the same trackedSha for the same input)\n  - \"{ trackedSha: find(PromotionStrategy.Status.Environments, {.Branch == Branch}).Proposed.Hydrated.Sha }\"\n\n  # Increment attempt counter (eventually-consistent; may briefly under-count under cache lag)\n  - \"{ attemptCount: (TriggerOutput[\\\"attemptCount\\\"] ?? 0) + 1 }\"",
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.OutputSpec"),
+							Ref:         ref(apiv1alpha1.OutputSpec{}.OpenAPIModelName()),
 						},
 					},
 				},
@@ -5757,7 +5758,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WhenWithOutputSpec(ref co
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.OutputSpec"},
+			apiv1alpha1.OutputSpec{}.OpenAPIModelName()},
 	}
 }
 
@@ -5786,7 +5787,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WorkQueue(ref common.Refe
 						SchemaProps: spec.SchemaProps{
 							Description: "RateLimiter defines the rate limiting strategy for the controller's work queue. Rate limiting controls how quickly failed reconciliations are retried and helps prevent overwhelming external APIs or systems.",
 							Default:     map[string]interface{}{},
-							Ref:         ref("github.com/argoproj-labs/gitops-promoter/api/v1alpha1.RateLimiter"),
+							Ref:         ref(apiv1alpha1.RateLimiter{}.OpenAPIModelName()),
 						},
 					},
 				},
@@ -5794,7 +5795,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WorkQueue(ref common.Refe
 			},
 		},
 		Dependencies: []string{
-			"github.com/argoproj-labs/gitops-promoter/api/v1alpha1.RateLimiter", metav1.Duration{}.OpenAPIModelName()},
+			apiv1alpha1.RateLimiter{}.OpenAPIModelName(), metav1.Duration{}.OpenAPIModelName()},
 	}
 }
 

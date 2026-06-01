@@ -23,6 +23,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metainternalversion "k8s.io/apimachinery/pkg/apis/meta/internalversion"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -120,6 +121,31 @@ var _ = Describe("REST storage", func() {
 			defer w.Stop()
 
 			Consistently(w.ResultChan(), 200*time.Millisecond).ShouldNot(Receive())
+		})
+
+		It("ends the initial events with an annotated bookmark for the watch-list protocol", func() {
+			ctx := nsContext()
+			sendInitialEvents := true
+			w, err := store.Watch(ctx, &metainternalversion.ListOptions{
+				SendInitialEvents:    &sendInitialEvents,
+				ResourceVersionMatch: metav1.ResourceVersionMatchNotOlderThan,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			defer w.Stop()
+
+			// First the ADDED snapshot for the seeded PromotionStrategy.
+			var added watch.Event
+			Eventually(w.ResultChan()).Should(Receive(&added))
+			Expect(added.Type).To(Equal(watch.Added))
+
+			// Then the terminating bookmark marking the end of the initial events.
+			var bookmark watch.Event
+			Eventually(w.ResultChan()).Should(Receive(&bookmark))
+			Expect(bookmark.Type).To(Equal(watch.Bookmark))
+			obj, err := meta.Accessor(bookmark.Object)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(obj.GetAnnotations()).To(HaveKeyWithValue(metav1.InitialEventsAnnotationKey, "true"))
+			Expect(obj.GetResourceVersion()).NotTo(BeEmpty())
 		})
 	})
 })

@@ -20,10 +20,12 @@ limitations under the License.
 // +kubebuilder:ac:output:package=../../applyconfiguration
 // +groupName=promoter.argoproj.io
 // +k8s:openapi-gen=true
+// +k8s:openapi-model-package=io.argoproj.promoter.v1alpha1
 //
-// The +k8s:openapi-gen marker is here (in doc.go) so openapi-gen picks it up as the
-// package-level marker — it does not resolve package markers from other files such as
-// groupversion_info.go. The dashboard aggregation apiserver embeds these types in its
-// served PromotionStrategyDetails bundle and needs their OpenAPI definitions; this
-// marker is inert for controller-gen.
+// The +k8s:openapi-* markers let openapi-gen emit definitions and slash-free
+// OpenAPIModelName() accessors (zz_generated.model_name.go) for these types, which
+// the dashboard aggregation apiserver embeds in its PromotionStrategyDetails bundle.
+// The model package (io.argoproj.promoter.v1alpha1) intentionally matches the names
+// these CRDs already publish in the cluster OpenAPI, since both schemas derive from
+// the same Go types. These markers are inert for controller-gen.
 package v1alpha1

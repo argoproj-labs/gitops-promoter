@@ -170,6 +170,9 @@ var _ = Describe("BuildBundle", func() {
 		Expect(bundle.PromotionStrategy.Annotations).NotTo(HaveKey(lastAppliedAnnotation))
 		Expect(bundle.PromotionStrategy.Annotations).To(HaveKeyWithValue("keep-me", "yes"))
 
+		By("dropping the PromotionStrategy status (reconstructed from CTPs by consumers)")
+		Expect(bundle.PromotionStrategy.Status.Environments).To(BeEmpty())
+
 		By("never leaking the Secret value into the serialized bundle")
 		// bundle is the internal ("hub") type, which intentionally carries no JSON
 		// tags; marshaling it is fine for this leak check (field names differ from the
