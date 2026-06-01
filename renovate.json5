@@ -12,6 +12,7 @@
     'dependencies',
   ],
   prConcurrentLimit: 10,
+  prHourlyLimit: 0,
   // Run `go mod tidy` natively as part of every gomod artifact update. This is the
   // reliable equivalent of the CI codegen `go mod tidy` check -- unlike a shell
   // postUpgradeTask it needs no allowedCommands entry and uses the go.mod toolchain,
