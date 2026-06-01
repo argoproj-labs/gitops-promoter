@@ -25,6 +25,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -51,6 +52,13 @@ func psLabeledMeta(name string) metav1.ObjectMeta {
 // newFakeReader builds a fake controller-runtime read client over the promoter scheme.
 func newFakeReader(objs ...client.Object) client.Reader {
 	return fake.NewClientBuilder().WithScheme(utils.GetScheme()).WithObjects(objs...).Build()
+}
+
+// decodeRaw unmarshals a bundle RawExtension back into a typed object.
+func decodeRaw[T any](raw runtime.RawExtension) T {
+	var out T
+	ExpectWithOffset(1, json.Unmarshal(raw.Raw, &out)).To(Succeed())
+	return out
 }
 
 // seedObjects returns a representative PromotionStrategy and all of its related
@@ -143,7 +151,8 @@ var _ = Describe("BuildBundle", func() {
 		Expect(bundle.Name).To(Equal(testPSName))
 		Expect(bundle.Namespace).To(Equal(testNamespace))
 		Expect(bundle.ResourceVersion).To(Equal("42"))
-		Expect(bundle.PromotionStrategy.Name).To(Equal(testPSName))
+		ps := decodeRaw[promoterv1alpha1.PromotionStrategy](bundle.PromotionStrategy)
+		Expect(ps.Name).To(Equal(testPSName))
 
 		By("selecting label-owned children")
 		Expect(bundle.ChangeTransferPolicies).To(HaveLen(1))
@@ -152,23 +161,27 @@ var _ = Describe("BuildBundle", func() {
 
 		By("filtering managers by promotionStrategyRef.name")
 		Expect(bundle.ArgoCDCommitStatuses).To(HaveLen(1))
-		Expect(bundle.ArgoCDCommitStatuses[0].Name).To(Equal("argo-1"))
+		Expect(decodeRaw[promoterv1alpha1.ArgoCDCommitStatus](bundle.ArgoCDCommitStatuses[0]).Name).To(Equal("argo-1"))
 		Expect(bundle.GitCommitStatuses).To(HaveLen(1))
 		Expect(bundle.TimedCommitStatuses).To(HaveLen(1))
 		Expect(bundle.WebRequestCommitStatuses).To(HaveLen(1))
 
 		By("resolving git config but never the Secret")
 		Expect(bundle.GitRepository).NotTo(BeNil())
-		Expect(bundle.GitRepository.Name).To(Equal("my-repo"))
+		Expect(decodeRaw[promoterv1alpha1.GitRepository](*bundle.GitRepository).Name).To(Equal("my-repo"))
 		Expect(bundle.ScmProvider).NotTo(BeNil())
-		Expect(bundle.ScmProvider.Spec.SecretRef).NotTo(BeNil())
-		Expect(bundle.ScmProvider.Spec.SecretRef.Name).To(Equal("my-secret"))
+		scmProvider := decodeRaw[promoterv1alpha1.ScmProvider](*bundle.ScmProvider)
+		Expect(scmProvider.Spec.SecretRef).NotTo(BeNil())
+		Expect(scmProvider.Spec.SecretRef.Name).To(Equal("my-secret"))
 		Expect(bundle.ClusterScmProvider).To(BeNil())
 
 		By("stripping managedFields and the last-applied annotation")
-		Expect(bundle.PromotionStrategy.ManagedFields).To(BeNil())
-		Expect(bundle.PromotionStrategy.Annotations).NotTo(HaveKey(lastAppliedAnnotation))
-		Expect(bundle.PromotionStrategy.Annotations).To(HaveKeyWithValue("keep-me", "yes"))
+		Expect(ps.ManagedFields).To(BeNil())
+		Expect(ps.Annotations).NotTo(HaveKey(lastAppliedAnnotation))
+		Expect(ps.Annotations).To(HaveKeyWithValue("keep-me", "yes"))
+
+		By("dropping the PromotionStrategy status (reconstructed from CTPs by consumers)")
+		Expect(ps.Status.Environments).To(BeEmpty())
 
 		By("never leaking the Secret value into the serialized bundle")
 		// bundle is the internal ("hub") type, which intentionally carries no JSON
@@ -210,6 +223,6 @@ var _ = Describe("BuildBundle", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(bundle.ScmProvider).To(BeNil())
 		Expect(bundle.ClusterScmProvider).NotTo(BeNil())
-		Expect(bundle.ClusterScmProvider.Name).To(Equal("cluster-scm"))
+		Expect(decodeRaw[promoterv1alpha1.ClusterScmProvider](*bundle.ClusterScmProvider).Name).To(Equal("cluster-scm"))
 	})
 })

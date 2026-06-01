@@ -105,16 +105,24 @@ generate-apiserver: ## Generate deepcopy/conversion/openapi for the dashboard ag
 		--output-file zz_generated.conversion.go \
 		--go-header-file hack/boilerplate.go.txt \
 		./api/dashboard/v1alpha1
+	# The bundle embeds objects as runtime.RawExtension (opaque), so its OpenAPI only
+	# references apimachinery meta types - no promoter/core/apiextensions packages.
+	# --output-model-name-file generates OpenAPIModelName() accessors so the served
+	# model names are dot-separated (io.argoproj.promoter.dashboard.v1alpha1.*) instead
+	# of the Go import path; slash-containing names break strict OpenAPI v2 consumers
+	# (e.g. Argo CD). The apimachinery packages already ship their own model names, so
+	# they are marked --readonly-pkg (don't regenerate into the module cache).
 	go run k8s.io/kube-openapi/cmd/openapi-gen \
 		--output-dir ./api/dashboard/v1alpha1 \
 		--output-pkg github.com/argoproj-labs/gitops-promoter/api/dashboard/v1alpha1 \
 		--output-file zz_generated.openapi.go \
+		--output-model-name-file zz_generated.model_name.go \
 		--go-header-file hack/boilerplate.go.txt \
-		./api/dashboard/v1alpha1 ./api/v1alpha1 \
-		k8s.io/api/core/v1 \
-		k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1 \
-		k8s.io/apimachinery/pkg/apis/meta/v1 k8s.io/apimachinery/pkg/runtime k8s.io/apimachinery/pkg/version \
-		k8s.io/apimachinery/pkg/api/resource k8s.io/apimachinery/pkg/util/intstr
+		--readonly-pkg k8s.io/apimachinery/pkg/apis/meta/v1 \
+		--readonly-pkg k8s.io/apimachinery/pkg/runtime \
+		--readonly-pkg k8s.io/apimachinery/pkg/version \
+		./api/dashboard/v1alpha1 \
+		k8s.io/apimachinery/pkg/apis/meta/v1 k8s.io/apimachinery/pkg/runtime k8s.io/apimachinery/pkg/version
 
 .PHONY: mockery-gen
 mockery-gen: mockery

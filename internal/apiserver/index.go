@@ -334,9 +334,12 @@ func (p *BundleProvider) List(ctx context.Context, namespace string) (*dashboard
 }
 
 // Watch registers a watcher for the given namespace (and optional name filter).
-// When sendInitial is true, the current set of bundles is delivered as ADDED
-// events before subsequent deltas stream in.
-func (p *BundleProvider) Watch(ctx context.Context, namespace, name string, sendInitial bool) (watch.Interface, error) {
+// When sendInitial is true, the current set of bundles is delivered as ADDED events
+// before subsequent deltas stream in. When sendInitialEventsBookmark is also true
+// (client-go "watch list" protocol), a terminating Bookmark event annotated with
+// k8s.io/initial-events-end is sent after the snapshot so reflectors know the initial
+// list is complete.
+func (p *BundleProvider) Watch(ctx context.Context, namespace, name string, sendInitial, sendInitialEventsBookmark bool) (watch.Interface, error) {
 	w := &bundleWatcher{
 		namespace: namespace,
 		name:      name,
@@ -363,6 +366,16 @@ func (p *BundleProvider) Watch(ctx context.Context, namespace, name string, send
 			}
 			select {
 			case w.result <- watch.Event{Type: watch.Added, Object: &item}:
+			default:
+			}
+		}
+
+		if sendInitialEventsBookmark {
+			bookmark := &dashboardapi.PromotionStrategyDetails{}
+			bookmark.SetResourceVersion(list.ResourceVersion)
+			bookmark.SetAnnotations(map[string]string{metav1.InitialEventsAnnotationKey: "true"})
+			select {
+			case w.result <- watch.Event{Type: watch.Bookmark, Object: bookmark}:
 			default:
 			}
 		}

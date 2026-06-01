@@ -17,6 +17,14 @@ limitations under the License.
 // +k8s:deepcopy-gen=package
 // +k8s:conversion-gen=github.com/argoproj-labs/gitops-promoter/api/dashboard/dashboard
 // +k8s:openapi-gen=true
+// +k8s:openapi-model-package=io.argoproj.promoter.dashboard.v1alpha1
+//
+// The +k8s:openapi-model-package tag makes openapi-gen emit OpenAPIModelName()
+// accessors (zz_generated.model_name.go) returning dot-separated, slash-free OpenAPI
+// model names (e.g. io.argoproj.promoter.dashboard.v1alpha1.PromotionStrategyDetails).
+// Without it the model names default to the Go import path (with slashes), which
+// produces $refs that JSON-pointer-escape the slashes (~1) and fail to resolve in
+// strict OpenAPI v2 consumers like Argo CD's gnostic parser.
 //
 // These are aggregated API types served by the extension apiserver, NOT CRDs, so
 // they are owned exclusively by the k8s code-generators (deepcopy-gen, conversion-gen,

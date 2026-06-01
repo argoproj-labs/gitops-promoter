@@ -21,7 +21,6 @@ limitations under the License.
 package dashboard
 
 import (
-	v1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -33,66 +32,66 @@ func (in *PromotionStrategyDetails) DeepCopyInto(out *PromotionStrategyDetails) 
 	in.PromotionStrategy.DeepCopyInto(&out.PromotionStrategy)
 	if in.ChangeTransferPolicies != nil {
 		in, out := &in.ChangeTransferPolicies, &out.ChangeTransferPolicies
-		*out = make([]v1alpha1.ChangeTransferPolicy, len(*in))
+		*out = make([]runtime.RawExtension, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
 	if in.PullRequests != nil {
 		in, out := &in.PullRequests, &out.PullRequests
-		*out = make([]v1alpha1.PullRequest, len(*in))
+		*out = make([]runtime.RawExtension, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
 	if in.CommitStatuses != nil {
 		in, out := &in.CommitStatuses, &out.CommitStatuses
-		*out = make([]v1alpha1.CommitStatus, len(*in))
+		*out = make([]runtime.RawExtension, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
 	if in.ArgoCDCommitStatuses != nil {
 		in, out := &in.ArgoCDCommitStatuses, &out.ArgoCDCommitStatuses
-		*out = make([]v1alpha1.ArgoCDCommitStatus, len(*in))
+		*out = make([]runtime.RawExtension, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
 	if in.GitCommitStatuses != nil {
 		in, out := &in.GitCommitStatuses, &out.GitCommitStatuses
-		*out = make([]v1alpha1.GitCommitStatus, len(*in))
+		*out = make([]runtime.RawExtension, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
 	if in.TimedCommitStatuses != nil {
 		in, out := &in.TimedCommitStatuses, &out.TimedCommitStatuses
-		*out = make([]v1alpha1.TimedCommitStatus, len(*in))
+		*out = make([]runtime.RawExtension, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
 	if in.WebRequestCommitStatuses != nil {
 		in, out := &in.WebRequestCommitStatuses, &out.WebRequestCommitStatuses
-		*out = make([]v1alpha1.WebRequestCommitStatus, len(*in))
+		*out = make([]runtime.RawExtension, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
 	if in.GitRepository != nil {
 		in, out := &in.GitRepository, &out.GitRepository
-		*out = new(v1alpha1.GitRepository)
+		*out = new(runtime.RawExtension)
 		(*in).DeepCopyInto(*out)
 	}
 	if in.ScmProvider != nil {
 		in, out := &in.ScmProvider, &out.ScmProvider
-		*out = new(v1alpha1.ScmProvider)
+		*out = new(runtime.RawExtension)
 		(*in).DeepCopyInto(*out)
 	}
 	if in.ClusterScmProvider != nil {
 		in, out := &in.ClusterScmProvider, &out.ClusterScmProvider
-		*out = new(v1alpha1.ClusterScmProvider)
+		*out = new(runtime.RawExtension)
 		(*in).DeepCopyInto(*out)
 	}
 	return

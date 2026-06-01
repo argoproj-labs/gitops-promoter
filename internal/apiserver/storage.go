@@ -93,12 +93,19 @@ func (r *REST) List(ctx context.Context, _ *metainternalversion.ListOptions) (ru
 	return r.provider.List(ctx, namespace)
 }
 
-// Watch streams bundle changes for the request namespace. When the client does not
-// supply a resourceVersion (i.e. a fresh watch), the current set of bundles is sent
-// as ADDED events first, followed by deltas.
+// Watch streams bundle changes for the request namespace.
+//
+// It supports the client-go "watch list" protocol (sendInitialEvents): the current
+// set of bundles is delivered as ADDED events, terminated by a Bookmark event marked
+// with the k8s.io/initial-events-end annotation, after which deltas stream. Modern
+// reflectors (client-go v0.32+) hang waiting for that bookmark, so emitting it is
+// required for the dashboard's controller-runtime cache to sync. Plain watches
+// (resourceVersion == "" / "0") also get the initial snapshot, without the bookmark.
 func (r *REST) Watch(ctx context.Context, options *metainternalversion.ListOptions) (watch.Interface, error) {
 	namespace := genericapirequest.NamespaceValue(ctx)
-	sendInitial := options == nil || options.ResourceVersion == "" || options.ResourceVersion == "0"
+
+	sendInitialEvents := options != nil && options.SendInitialEvents != nil && *options.SendInitialEvents
+	sendInitial := sendInitialEvents || options == nil || options.ResourceVersion == "" || options.ResourceVersion == "0"
 
 	var name string
 	if options != nil && options.FieldSelector != nil {
@@ -107,7 +114,7 @@ func (r *REST) Watch(ctx context.Context, options *metainternalversion.ListOptio
 		}
 	}
 
-	return r.provider.Watch(ctx, namespace, name, sendInitial)
+	return r.provider.Watch(ctx, namespace, name, sendInitial, sendInitialEvents)
 }
 
 // ConvertToTable converts objects to a table for kubectl output.

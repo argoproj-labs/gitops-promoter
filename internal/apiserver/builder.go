@@ -18,10 +18,12 @@ package apiserver
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dashboardapi "github.com/argoproj-labs/gitops-promoter/api/dashboard/dashboard"
@@ -36,7 +38,9 @@ const lastAppliedAnnotation = "kubectl.kubernetes.io/last-applied-configuration"
 // from the given reader. It returns a NotFound error (scoped to the dashboard
 // resource) when the PromotionStrategy does not exist. Secrets are never read.
 //
-// The returned bundle has its ResourceVersion set to the provided value.
+// Embedded objects are stored as runtime.RawExtension (opaque JSON), so the served
+// OpenAPI schema does not reference the promoter/core type universe. The returned
+// bundle has its ResourceVersion set to the provided value.
 func buildBundle(ctx context.Context, reader client.Reader, namespace, name, resourceVersion string) (*dashboardapi.PromotionStrategyDetails, error) {
 	ps := &promoterv1alpha1.PromotionStrategy{}
 	if err := reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, ps); err != nil {
@@ -47,6 +51,17 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 	}
 	sanitize(ps)
 
+	// The PromotionStrategy's status is a per-environment aggregation of the
+	// ChangeTransferPolicy statuses, which are already embedded in the bundle
+	// (.changeTransferPolicies). Drop it to avoid duplicating that data; consumers
+	// reconstruct per-environment state from the CTPs.
+	ps.Status = promoterv1alpha1.PromotionStrategyStatus{}
+
+	psRaw, err := marshalRaw(ps)
+	if err != nil {
+		return nil, err
+	}
+
 	bundle := &dashboardapi.PromotionStrategyDetails{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              name,
@@ -56,7 +71,7 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 			CreationTimestamp: ps.CreationTimestamp,
 			Labels:            ps.Labels,
 		},
-		PromotionStrategy: *ps,
+		PromotionStrategy: psRaw,
 	}
 
 	// CTPs, PullRequests, base CommitStatuses are labelled with the PS name.
@@ -66,67 +81,69 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 	if err := reader.List(ctx, ctpList, client.InNamespace(namespace), psLabel); err != nil {
 		return nil, fmt.Errorf("failed to list ChangeTransferPolicies: %w", err)
 	}
-	bundle.ChangeTransferPolicies = sanitizeSlice(ctpList.Items)
+	if bundle.ChangeTransferPolicies, err = rawExtensionSlice(ctpList.Items); err != nil {
+		return nil, err
+	}
 
 	prList := &promoterv1alpha1.PullRequestList{}
 	if err := reader.List(ctx, prList, client.InNamespace(namespace), psLabel); err != nil {
 		return nil, fmt.Errorf("failed to list PullRequests: %w", err)
 	}
-	bundle.PullRequests = sanitizeSlice(prList.Items)
+	if bundle.PullRequests, err = rawExtensionSlice(prList.Items); err != nil {
+		return nil, err
+	}
 
 	csList := &promoterv1alpha1.CommitStatusList{}
 	if err := reader.List(ctx, csList, client.InNamespace(namespace), psLabel); err != nil {
 		return nil, fmt.Errorf("failed to list CommitStatuses: %w", err)
 	}
-	bundle.CommitStatuses = sanitizeSlice(csList.Items)
+	if bundle.CommitStatuses, err = rawExtensionSlice(csList.Items); err != nil {
+		return nil, err
+	}
 
 	// Commit-status managers reference the PS by spec.promotionStrategyRef.name.
 	argocdList := &promoterv1alpha1.ArgoCDCommitStatusList{}
 	if err := reader.List(ctx, argocdList, client.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list ArgoCDCommitStatuses: %w", err)
 	}
-	for i := range argocdList.Items {
-		if argocdList.Items[i].Spec.PromotionStrategyRef.Name == name {
-			item := argocdList.Items[i]
-			sanitize(&item)
-			bundle.ArgoCDCommitStatuses = append(bundle.ArgoCDCommitStatuses, item)
-		}
+	argocd := filterByPromotionStrategy(argocdList.Items, name, func(i *promoterv1alpha1.ArgoCDCommitStatus) string {
+		return i.Spec.PromotionStrategyRef.Name
+	})
+	if bundle.ArgoCDCommitStatuses, err = rawExtensionSlice(argocd); err != nil {
+		return nil, err
 	}
 
 	gitCSList := &promoterv1alpha1.GitCommitStatusList{}
 	if err := reader.List(ctx, gitCSList, client.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list GitCommitStatuses: %w", err)
 	}
-	for i := range gitCSList.Items {
-		if gitCSList.Items[i].Spec.PromotionStrategyRef.Name == name {
-			item := gitCSList.Items[i]
-			sanitize(&item)
-			bundle.GitCommitStatuses = append(bundle.GitCommitStatuses, item)
-		}
+	gitCS := filterByPromotionStrategy(gitCSList.Items, name, func(i *promoterv1alpha1.GitCommitStatus) string {
+		return i.Spec.PromotionStrategyRef.Name
+	})
+	if bundle.GitCommitStatuses, err = rawExtensionSlice(gitCS); err != nil {
+		return nil, err
 	}
 
 	timedCSList := &promoterv1alpha1.TimedCommitStatusList{}
 	if err := reader.List(ctx, timedCSList, client.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list TimedCommitStatuses: %w", err)
 	}
-	for i := range timedCSList.Items {
-		if timedCSList.Items[i].Spec.PromotionStrategyRef.Name == name {
-			item := timedCSList.Items[i]
-			sanitize(&item)
-			bundle.TimedCommitStatuses = append(bundle.TimedCommitStatuses, item)
-		}
+	timedCS := filterByPromotionStrategy(timedCSList.Items, name, func(i *promoterv1alpha1.TimedCommitStatus) string {
+		return i.Spec.PromotionStrategyRef.Name
+	})
+	if bundle.TimedCommitStatuses, err = rawExtensionSlice(timedCS); err != nil {
+		return nil, err
 	}
 
 	webReqCSList := &promoterv1alpha1.WebRequestCommitStatusList{}
 	if err := reader.List(ctx, webReqCSList, client.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list WebRequestCommitStatuses: %w", err)
 	}
-	for i := range webReqCSList.Items {
-		if webReqCSList.Items[i].Spec.PromotionStrategyRef.Name == name {
-			item := webReqCSList.Items[i]
-			sanitize(&item)
-			bundle.WebRequestCommitStatuses = append(bundle.WebRequestCommitStatuses, item)
-		}
+	webReqCS := filterByPromotionStrategy(webReqCSList.Items, name, func(i *promoterv1alpha1.WebRequestCommitStatus) string {
+		return i.Spec.PromotionStrategyRef.Name
+	})
+	if bundle.WebRequestCommitStatuses, err = rawExtensionSlice(webReqCS); err != nil {
+		return nil, err
 	}
 
 	// Git config: GitRepository -> ScmProvider / ClusterScmProvider.
@@ -156,7 +173,12 @@ func attachGitConfig(ctx context.Context, reader client.Reader, namespace string
 	}
 
 	sanitize(gitRepo)
-	bundle.GitRepository = gitRepo
+	repoRaw, err := marshalRawPtr(gitRepo)
+	if err != nil {
+		return err
+	}
+	bundle.GitRepository = repoRaw
+
 	return attachScmProvider(ctx, reader, namespace, gitRepo, bundle)
 }
 
@@ -174,7 +196,11 @@ func attachScmProvider(ctx context.Context, reader client.Reader, namespace stri
 			return fmt.Errorf("failed to get ClusterScmProvider %s: %w", ref.Name, err)
 		}
 		sanitize(provider)
-		bundle.ClusterScmProvider = provider
+		raw, err := marshalRawPtr(provider)
+		if err != nil {
+			return err
+		}
+		bundle.ClusterScmProvider = raw
 	default: // "ScmProvider" (also the kubebuilder default)
 		provider := &promoterv1alpha1.ScmProvider{}
 		if err := reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: ref.Name}, provider); err != nil {
@@ -184,7 +210,11 @@ func attachScmProvider(ctx context.Context, reader client.Reader, namespace stri
 			return fmt.Errorf("failed to get ScmProvider %s/%s: %w", namespace, ref.Name, err)
 		}
 		sanitize(provider)
-		bundle.ScmProvider = provider
+		raw, err := marshalRawPtr(provider)
+		if err != nil {
+			return err
+		}
+		bundle.ScmProvider = raw
 	}
 	return nil
 }
@@ -200,16 +230,53 @@ func sanitize(obj client.Object) {
 	}
 }
 
-// sanitizeSlice sanitizes each element of a slice in place and returns it (nil when empty).
-func sanitizeSlice[T any, PT interface {
+// marshalRaw JSON-encodes an object into a runtime.RawExtension.
+func marshalRaw(obj any) (runtime.RawExtension, error) {
+	data, err := json.Marshal(obj)
+	if err != nil {
+		return runtime.RawExtension{}, fmt.Errorf("failed to marshal %T for bundle: %w", obj, err)
+	}
+	return runtime.RawExtension{Raw: data}, nil
+}
+
+// marshalRawPtr is marshalRaw returning a pointer (for optional bundle fields).
+func marshalRawPtr(obj any) (*runtime.RawExtension, error) {
+	raw, err := marshalRaw(obj)
+	if err != nil {
+		return nil, err
+	}
+	return &raw, nil
+}
+
+// rawExtensionSlice sanitizes each element of a slice in place and returns them as
+// RawExtensions (nil when empty).
+func rawExtensionSlice[T any, PT interface {
 	client.Object
 	*T
-}](items []T) []T {
+}](items []T) ([]runtime.RawExtension, error) {
 	if len(items) == 0 {
-		return nil
+		return nil, nil
 	}
+	out := make([]runtime.RawExtension, 0, len(items))
 	for i := range items {
 		sanitize(PT(&items[i]))
+		raw, err := marshalRaw(PT(&items[i]))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, raw)
 	}
-	return items
+	return out, nil
+}
+
+// filterByPromotionStrategy returns the items whose referenced PromotionStrategy
+// name matches psName.
+func filterByPromotionStrategy[T any](items []T, psName string, refName func(*T) string) []T {
+	var out []T
+	for i := range items {
+		if refName(&items[i]) == psName {
+			out = append(out, items[i])
+		}
+	}
+	return out
 }
