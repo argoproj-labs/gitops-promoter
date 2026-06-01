@@ -133,6 +133,9 @@
         commands: [
           'make lint-fix || true',
         ],
+        installTools: {
+          golang: {},
+        },
         fileFilters: [
           '**/*.go',
           'go.mod',
@@ -172,6 +175,9 @@
         commands: [
           'make mockery-gen',
         ],
+        installTools: {
+          golang: {},
+        },
         fileFilters: [
           '**/mocks/**',
           '**/*.go',
@@ -192,6 +198,9 @@
         commands: [
           'make build-installer || true',
         ],
+        installTools: {
+          golang: {},
+        },
         fileFilters: [
           'dist/**',
         ],
@@ -212,6 +221,9 @@
           'go mod tidy',
           'make manifests generate || true',
         ],
+        installTools: {
+          golang: {},
+        },
         fileFilters: [
           'config/**',
           'test/**',
@@ -236,6 +248,9 @@
           'make manifests || true',
           'make build-installer || true',
         ],
+        installTools: {
+          golang: {},
+        },
         fileFilters: [
           'config/**',
           'test/**',
@@ -300,9 +315,12 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
-          'pip install pip-tools',
           'pip-compile --generate-hashes -o docs/requirements-hashed.txt docs/requirements.txt',
         ],
+        installTools: {
+          python: {},
+          'pip-tools': {},
+        },
         fileFilters: [
           'docs/requirements-hashed.txt',
         ],
