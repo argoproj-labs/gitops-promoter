@@ -70,6 +70,7 @@
     // ----------------------------------------------------------------------
     // Group A: Kubernetes platform (gomod + Makefile + e2e workflow, lockstep)
     // controller-runtime <-> multicluster-runtime <-> k8s.io/* <-> setup-envtest
+    // <-> controller-tools (must bump with k8s gomod so codegen succeeds)
     // ----------------------------------------------------------------------
     {
       description: 'Renovate owns the coupled Kubernetes platform gomod deps so they bump in lockstep',
@@ -90,15 +91,32 @@
       semanticCommitType: 'chore',
       semanticCommitScope: 'deps',
       automerge: false,
+      postUpgradeTasks: {
+        commands: [
+          'make manifests generate',
+          'make build-installer',
+        ],
+        fileFilters: [
+          'config/**',
+          'test/**',
+          'applyconfiguration/**',
+          'dist/**',
+          '**/*.go',
+          'go.mod',
+          'go.sum',
+        ],
+        executionMode: 'branch',
+      },
     },
     {
-      description: 'Group the envtest Makefile/e2e versions into the Kubernetes platform bump',
+      description: 'Group envtest Makefile versions and controller-tools into the Kubernetes platform bump',
       matchManagers: [
         'custom.regex',
       ],
       matchDepNames: [
         'setup-envtest',
         'envtest-k8s',
+        'kubernetes-sigs/controller-tools',
       ],
       groupName: 'Kubernetes platform',
       semanticCommits: 'enabled',
@@ -193,30 +211,6 @@
         ],
         fileFilters: [
           'dist/**',
-        ],
-        executionMode: 'branch',
-      },
-    },
-    {
-      description: 'controller-tools: regenerate manifests and deepcopy code after a bump',
-      matchDepNames: [
-        'kubernetes-sigs/controller-tools',
-      ],
-      semanticCommits: 'enabled',
-      semanticCommitType: 'chore',
-      semanticCommitScope: 'deps',
-      automerge: false,
-      postUpgradeTasks: {
-        commands: [
-          'go mod tidy',
-          'make manifests generate || true',
-        ],
-        fileFilters: [
-          'config/**',
-          'test/**',
-          '**/*.go',
-          'go.mod',
-          'go.sum',
         ],
         executionMode: 'branch',
       },
@@ -434,7 +428,7 @@
     },
     {
       customType: 'regex',
-      description: 'Update controller-tools version in Makefile',
+      description: 'Update controller-tools version in Makefile (grouped with Kubernetes platform)',
       managerFilePatterns: [
         '/^Makefile$/',
       ],
