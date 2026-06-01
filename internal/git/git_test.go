@@ -616,9 +616,8 @@ var _ = Describe("ActivePath support", func() {
 		_, err = g.GetBranchShas(GinkgoT().Context(), "proposed-app-one-next", "apps/app-one")
 		Expect(err).NotTo(HaveOccurred())
 
-		mergedSha, err := g.MergeWithOursStrategyForPath(GinkgoT().Context(), "proposed-app-one-next", "active", "apps/app-one")
+		err = g.MergeWithOursStrategyForPath(GinkgoT().Context(), "proposed-app-one-next", "active", "apps/app-one")
 		Expect(err).NotTo(HaveOccurred())
-		Expect(mergedSha).NotTo(BeEmpty(), "MergeWithOursStrategyForPath should return the SHA of the new merge commit")
 
 		_, err = runGitCmd(workDir, "fetch", "origin")
 		Expect(err).NotTo(HaveOccurred())

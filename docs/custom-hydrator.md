@@ -111,15 +111,16 @@ This prevents GitOps Promoter from creating Pull Requests for changes that have 
 
 ### 5. Preserve Other Application Directories (Shared Active Branch Mode)
 
-If you use `activePath` to share one active branch across multiple applications, hydration must be path-scoped.
-For the configuration-side constraints (no mixing default-mode and `activePath`-mode `PromotionStrategy` resources
-on the same active branch; no nested or duplicate `activePath`s), see
-[Repository Structure: constraints when multiple PromotionStrategies share an active branch](repository-structure.md#constraints-when-multiple-promotionstrategies-share-an-active-branch).
-For the hydrator's part of the contract:
+If you use `activePath` to share one active branch across multiple applications, hydration must be path-scoped:
 
 1. Update only files for the current app path.
 2. Do not delete or rewrite other applications' directories on the same branch.
 3. Treat anything outside your `<activePath>` as belonging to other apps or to the active branch as a whole.
+
+> [!NOTE]
+> Users of `activePath` must configure their PromotionStrategies in a way that avoids conflicts.
+> See the [repository structure](repository-structure.md#constraints-when-multiple-promotionstrategies-share-an-active-branch)
+> documentation for details.
 
 GitOps Promoter enforces (3) at promotion time. When it rewrites the proposed branch to prepare a clean SCM merge,
 it explicitly takes proposed's content for `<activePath>` and active's content for everything else. The practical
