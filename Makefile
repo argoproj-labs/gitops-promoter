@@ -83,7 +83,7 @@ generate-extension-icon-styles: ## Generate Argo CD extension icon styles from l
 	./hack/extension-icon-styles.sh
 
 .PHONY: generate-all
-generate-all: generate generate-extension-icon-styles ## Run all code generation used in CI (controller-gen, extension icon styles). For mocks, run make mockery-gen separately.
+generate-all: generate generate-apiserver generate-extension-icon-styles ## Run all code generation used in CI (controller-gen, dashboard apiserver codegen, extension icon styles). For mocks, run make mockery-gen separately.
 
 # Code generation for the dashboard aggregation API (api/dashboard/...).
 #
