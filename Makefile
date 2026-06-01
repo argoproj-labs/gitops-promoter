@@ -97,11 +97,11 @@ generate-all: generate generate-apiserver generate-extension-icon-styles ## Run 
 # after changing any type in api/dashboard/...; the output is committed.
 .PHONY: generate-apiserver
 generate-apiserver: ## Generate deepcopy/conversion/openapi for the dashboard aggregation API (api/dashboard/...).
-	go run k8s.io/code-generator/cmd/deepcopy-gen \
+	go tool deepcopy-gen \
 		--output-file zz_generated.deepcopy.go \
 		--go-header-file hack/boilerplate.go.txt \
 		./api/dashboard/v1alpha1 ./api/dashboard/dashboard
-	go run k8s.io/code-generator/cmd/conversion-gen \
+	go tool conversion-gen \
 		--output-file zz_generated.conversion.go \
 		--go-header-file hack/boilerplate.go.txt \
 		./api/dashboard/v1alpha1
@@ -113,7 +113,7 @@ generate-apiserver: ## Generate deepcopy/conversion/openapi for the dashboard ag
 	# rather than the Go import path; slash-containing names break strict OpenAPI v2
 	# consumers (e.g. Argo CD). The k8s.io dependency packages already ship their own
 	# model names, so they are marked --readonly-pkg (don't regenerate into the cache).
-	go run k8s.io/kube-openapi/cmd/openapi-gen \
+	go tool openapi-gen \
 		--output-dir ./api/dashboard/v1alpha1 \
 		--output-pkg github.com/argoproj-labs/gitops-promoter/api/dashboard/v1alpha1 \
 		--output-file zz_generated.openapi.go \
@@ -162,11 +162,11 @@ test-deps: ginkgo manifests generate fmt vet envtest
 
 .PHONY: test-parallel
 test-parallel: test-deps ## Run tests in parallel
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GINKGO) -p -procs=4 -r -v -cover -coverprofile=cover.out -coverpkg=./... --junit-report=junit.xml internal/
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go tool ginkgo -p -procs=4 -r -v -cover -coverprofile=cover.out -coverpkg=./... --junit-report=junit.xml internal/
 
 .PHONY: test-parallel-repeat3
 test-parallel-repeat3: test-deps ## Run tests in parallel 3 times to check for flakiness --repeat does not count the first run
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GINKGO) -p -procs=4 -r -v -cover -coverprofile=cover.out -coverpkg=./... --junit-report=junit.xml --repeat=2 internal/
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go tool ginkgo -p -procs=4 -r -v -cover -coverprofile=cover.out -coverpkg=./... --junit-report=junit.xml --repeat=2 internal/
 
 ##@ Fuzzing
 
@@ -403,7 +403,6 @@ GOLANGCI_LINT = $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
 DEADCODE = $(LOCALBIN)/deadcode-$(DEADCODE_VERSION)
 MOCKERY = $(LOCALBIN)/mockery-$(MOCKERY_VERSION)
 NILAWAY = $(LOCALBIN)/nilaway-$(NILAWAY_VERSION)
-GINKGO = $(LOCALBIN)/ginkgo-$(GINKGO_VERSION)
 GORELEASER ?= $(LOCALBIN)/goreleaser-$(GORELEASER_VERSION)
 
 ## Tool Versions
@@ -415,7 +414,6 @@ DEADCODE_VERSION ?= v0.45.0
 DEADCODE_FILTER ?= github.com/argoproj-labs/gitops-promoter/internal
 MOCKERY_VERSION ?= v2.42.2
 NILAWAY_VERSION ?= latest
-GINKGO_VERSION=$(shell go list -m all | grep github.com/onsi/ginkgo/v2 | awk '{print $$2}')
 GORELEASER_VERSION ?= v2.16.0
 
 .PHONY: kustomize
@@ -454,8 +452,8 @@ nilaway:
 	$(call go-install-tool,$(NILAWAY),go.uber.org/nilaway/cmd/nilaway,${NILAWAY_VERSION})
 
 .PHONY: ginkgo
-ginkgo:
-	$(call go-install-tool,$(GINKGO),github.com/onsi/ginkgo/v2/ginkgo,${GINKGO_VERSION})
+ginkgo: ## Ginkgo CLI is pinned via the go.mod `tool` directive (matches the ginkgo/v2 library version); this just verifies it builds.
+	go tool ginkgo version
 
 .PHONY: goreleaser
 goreleaser: $(GORELEASER)
