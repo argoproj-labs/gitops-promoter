@@ -59,6 +59,13 @@ type PromotionStrategySpec struct {
 	// +listType:=map
 	// +listMapKey=branch
 	Environments []Environment `json:"environments"`
+
+	// ActivePath is the default repository subpath for this strategy's active state.
+	// When set, proposed branches are created as <environment-branch>-next/<activePath>.
+	// Individual environments can override this value via their own activePath field.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MinLength=1
+	ActivePath string `json:"activePath,omitempty"`
 }
 
 // Environment defines a single environment in the promotion sequence.
@@ -91,6 +98,12 @@ type Environment struct {
 	// +listType:=map
 	// +listMapKey=key
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses,omitempty"`
+
+	// ActivePath optionally overrides the strategy-level activePath for this environment.
+	// When set, this environment's CTP uses this path instead of spec.activePath.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MinLength=1
+	ActivePath string `json:"activePath,omitempty"`
 }
 
 // GetAutoMerge returns the value of the AutoMerge field, defaulting to true if the field is nil.

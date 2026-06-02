@@ -14,6 +14,9 @@ GOBIN=$(shell go env GOPATH)/bin
 else
 GOBIN=$(shell go env GOBIN)
 endif
+# containerbase install-tool (Renovate postUpgradeTasks) symlinks `go` into PATH but
+# not sibling tools like gofmt; GOROOT/bin is the standard place to find them.
+export PATH := $(shell go env GOROOT)/bin:$(PATH)
 
 GIT_TAG:=$(if $(GIT_TAG),$(GIT_TAG),$(shell if [ -z "`git status --porcelain`" ]; then git describe --exact-match --tags HEAD 2>/dev/null; fi))
 
@@ -412,7 +415,7 @@ ENVTEST_VERSION ?= release-0.24
 GOLANGCI_LINT_VERSION ?= v2.11.4
 DEADCODE_VERSION ?= v0.45.0
 DEADCODE_FILTER ?= github.com/argoproj-labs/gitops-promoter/internal
-MOCKERY_VERSION ?= v2.42.2
+MOCKERY_VERSION ?= v2.53.6
 NILAWAY_VERSION ?= latest
 GORELEASER_VERSION ?= v2.16.0
 

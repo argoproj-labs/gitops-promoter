@@ -42,6 +42,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -162,8 +163,15 @@ type BranchShas struct {
 	Hydrated string
 }
 
+func buildHydratorMetadataPath(activePath string) string {
+	if activePath == "" {
+		return "hydrator.metadata"
+	}
+	return path.Join(activePath, "hydrator.metadata")
+}
+
 // GetBranchShas checks out the given branch, pulls the latest changes, and returns the hydrated and dry SHAs.
-func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch string) (BranchShas, error) {
+func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch, activePath string) (BranchShas, error) {
 	logger := log.FromContext(ctx)
 	gitPath := g.ClonePath()
 	if gitPath == "" {
@@ -194,7 +202,7 @@ func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch string
 	logger.V(4).Info("Got hydrated branch sha", "branch", branch, "sha", shas.Hydrated)
 
 	// Get the metadata file contents directly from the remote branch
-	metadataFileStdout, stderr, err := g.runCmd(ctx, gitPath, "show", "origin/"+branch+":hydrator.metadata")
+	metadataFileStdout, stderr, err := g.runCmd(ctx, gitPath, "show", "origin/"+branch+":"+buildHydratorMetadataPath(activePath))
 	if err != nil {
 		if strings.Contains(stderr, "does not exist") || strings.Contains(stderr, "Path not in") {
 			logger.Info("hydrator.metadata file not found", "branch", branch)
@@ -217,7 +225,7 @@ func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch string
 }
 
 // GetShaMetadataFromFile retrieves commit metadata from the hydrator.metadata file for a given SHA.
-func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha string) (v1alpha1.CommitShaState, error) {
+func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha, activePath string) (v1alpha1.CommitShaState, error) {
 	logger := log.FromContext(ctx)
 
 	gitPath := g.ClonePath()
@@ -225,7 +233,7 @@ func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha 
 		return v1alpha1.CommitShaState{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
-	metadataFileStdout, stderr, err := g.runCmd(ctx, gitPath, "show", sha+":hydrator.metadata")
+	metadataFileStdout, stderr, err := g.runCmd(ctx, gitPath, "show", sha+":"+buildHydratorMetadataPath(activePath))
 	if err != nil {
 		logger.V(4).Info("could not git show file", "sha", sha, "gitError", stderr, "err", err)
 		return v1alpha1.CommitShaState{}, nil
@@ -512,7 +520,7 @@ func (g *EnvironmentOperations) MergeWithOursStrategy(ctx context.Context, propo
 	_, stderr, err := g.runCmd(ctx, gitPath, "checkout", "-B", proposedBranch, "origin/"+proposedBranch)
 	if err != nil {
 		logger.Error(err, "Failed to checkout branch", "branch", proposedBranch, "stderr", stderr)
-		return fmt.Errorf("failed to checkout branch %q: %w", proposedBranch, err)
+		return fmt.Errorf("failed to checkout branch %q: %w (stderr: %s)", proposedBranch, err, stderr)
 	}
 
 	// Perform the merge with "ours" strategy using the already-fetched origin ref
@@ -530,6 +538,67 @@ func (g *EnvironmentOperations) MergeWithOursStrategy(ctx context.Context, propo
 	}
 
 	logger.Info("Successfully merged branches with 'ours' strategy", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
+	return nil
+}
+
+// MergeWithOursStrategyForPath resolves conflicts by taking proposed branch content only within activePath and
+// active branch content everywhere else.
+func (g *EnvironmentOperations) MergeWithOursStrategyForPath(ctx context.Context, proposedBranch, activeBranch, activePath string) error {
+	logger := log.FromContext(ctx)
+	gitPath := g.ClonePath()
+
+	_, stderr, err := g.runCmd(ctx, gitPath, "checkout", "-B", proposedBranch, "origin/"+proposedBranch)
+	if err != nil {
+		logger.Error(err, "Failed to checkout branch", "branch", proposedBranch, "stderr", stderr)
+		return fmt.Errorf("failed to checkout branch %q: %w", proposedBranch, err)
+	}
+
+	stdout, stderr, err := g.runCmd(ctx, gitPath, "merge", "--no-commit", "--no-ff", "origin/"+activeBranch)
+	if err != nil && !strings.Contains(stdout, "CONFLICT") && !strings.Contains(stderr, "CONFLICT") &&
+		!strings.Contains(stdout, "Automatic merge failed") && !strings.Contains(stderr, "Automatic merge failed") {
+		logger.Error(err, "Failed to start merge", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
+		return fmt.Errorf("failed to merge branch %q into %q: %w (stdout: %s, stderr: %s)", activeBranch, proposedBranch, err, stdout, stderr)
+	}
+
+	_, stderr, err = g.runCmd(ctx, gitPath, "checkout", "origin/"+activeBranch, "--", ".")
+	if err != nil {
+		logger.Error(err, "Failed to checkout active branch content", "activeBranch", activeBranch, "stderr", stderr)
+		return fmt.Errorf("failed to checkout active branch content from %q: %w (stderr: %s)", activeBranch, err, stderr)
+	}
+
+	// Remove the activePath subtree before checking it out from the proposed branch so that
+	// files deleted in proposedBranch are not left behind from the activeBranch checkout above.
+	_, stderr, err = g.runCmd(ctx, gitPath, "rm", "-r", "-f", "--ignore-unmatch", "--", ":(literal)"+activePath)
+	if err != nil {
+		logger.Error(err, "Failed to remove activePath before proposed checkout", "activePath", activePath, "stderr", stderr)
+		return fmt.Errorf("failed to remove activePath %q before proposed checkout: %w (stderr: %s)", activePath, err, stderr)
+	}
+
+	_, stderr, err = g.runCmd(ctx, gitPath, "checkout", "origin/"+proposedBranch, "--", ":(literal)"+activePath)
+	if err != nil {
+		logger.Error(err, "Failed to checkout proposed activePath content", "proposedBranch", proposedBranch, "activePath", activePath, "stderr", stderr)
+		return fmt.Errorf("failed to checkout activePath %q from proposed branch %q: %w (stderr: %s)", activePath, proposedBranch, err, stderr)
+	}
+
+	_, stderr, err = g.runCmd(ctx, gitPath, "add", "-A")
+	if err != nil {
+		logger.Error(err, "Failed to stage files during path-scoped merge", "stderr", stderr)
+		return fmt.Errorf("failed to stage files for path-scoped merge: %w (stderr: %s)", err, stderr)
+	}
+
+	_, stderr, err = g.runCmd(ctx, gitPath, "commit", "-m", "Resolve conflicts for "+activePath)
+	if err != nil {
+		logger.Error(err, "Failed to commit path-scoped merge", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "activePath", activePath, "stderr", stderr)
+		return fmt.Errorf("failed to commit path-scoped merge for branch %q: %w (stderr: %s)", proposedBranch, err, stderr)
+	}
+
+	_, stderr, err = g.runCmd(ctx, gitPath, "push", "origin", proposedBranch)
+	if err != nil {
+		logger.Error(err, "Failed to push merged branch", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
+		return fmt.Errorf("failed to push merged branch %q: %w (stderr: %s)", proposedBranch, err, stderr)
+	}
+
+	logger.Info("Successfully merged branches with path-scoped strategy", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "activePath", activePath)
 	return nil
 }
 

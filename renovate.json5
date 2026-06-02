@@ -12,6 +12,7 @@
     'dependencies',
   ],
   prConcurrentLimit: 10,
+  prHourlyLimit: 0,
   // Run `go mod tidy` natively as part of every gomod artifact update. This is the
   // reliable equivalent of the CI codegen `go mod tidy` check -- unlike a shell
   // postUpgradeTask it needs no allowedCommands entry and uses the go.mod toolchain,
@@ -132,6 +133,9 @@
         commands: [
           'make lint-fix || true',
         ],
+        installTools: {
+          golang: {},
+        },
         fileFilters: [
           '**/*.go',
           'go.mod',
@@ -171,8 +175,11 @@
         commands: [
           'make mockery-gen',
         ],
+        installTools: {
+          golang: {},
+        },
         fileFilters: [
-          '**/mocks/**',
+          '**/mock/**',
           '**/*.go',
         ],
         executionMode: 'branch',
@@ -189,8 +196,11 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
-          'make build-installer || true',
+          'make build-installer',
         ],
+        installTools: {
+          golang: {},
+        },
         fileFilters: [
           'dist/**',
         ],
@@ -209,8 +219,12 @@
       postUpgradeTasks: {
         commands: [
           'go mod tidy',
-          'make manifests generate || true',
+          'make manifests',
+          'make generate',
         ],
+        installTools: {
+          golang: {},
+        },
         fileFilters: [
           'config/**',
           'test/**',
@@ -232,9 +246,12 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
-          'make manifests || true',
-          'make build-installer || true',
+          'make manifests',
+          'make build-installer',
         ],
+        installTools: {
+          golang: {},
+        },
         fileFilters: [
           'config/**',
           'test/**',
@@ -299,9 +316,12 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
-          'pip install pip-tools',
           'pip-compile --generate-hashes -o docs/requirements-hashed.txt docs/requirements.txt',
         ],
+        installTools: {
+          python: {},
+          'pip-tools': {},
+        },
         fileFilters: [
           'docs/requirements-hashed.txt',
         ],

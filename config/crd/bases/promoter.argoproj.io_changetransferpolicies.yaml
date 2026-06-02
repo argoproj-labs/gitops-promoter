@@ -79,6 +79,12 @@ spec:
                 x-kubernetes-list-map-keys:
                 - key
                 x-kubernetes-list-type: map
+              activePath:
+                description: |-
+                  ActivePath is an optional repository subpath for this policy's active state.
+                  When set, hydrator metadata is read from <activePath>/hydrator.metadata.
+                minLength: 1
+                type: string
               autoMerge:
                 default: true
                 type: boolean

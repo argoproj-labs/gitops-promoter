@@ -677,7 +677,6 @@ func (r *ArgoCDCommitStatusReconciler) cleanupLegacyOrphanedCommitStatusesWithou
 // If err is nil, the returned CommitStatus is guaranteed to be non-nil.
 func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.Context, promotionStrategy *promoterv1alpha1.PromotionStrategy, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, targetBranch string, sha string, phase promoterv1alpha1.CommitStatusPhase, desc string) (*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
-
 	key := argoCDCommitStatus.Spec.CommitStatusKey() //nolint:staticcheck // SA1019: #1465 use spec.Key directly in v1.0
 	commitStatusName := key + "/" + targetBranch
 
