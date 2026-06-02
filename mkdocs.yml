@@ -46,6 +46,7 @@ nav:
       - Continuous Integration: contributing/ci.md
       - Cutting a Release: contributing/cutting-a-release.md
       - Using Finalizers: contributing/using-finalizers.md
+      - Maintaining CRDs: contributing/maintaining-crds.md
       - Maintaining Resource Status: contributing/updating-status.md
   - Security: security.md
   - Debugging:

@@ -39,6 +39,9 @@ spec:
       openAPIV3Schema:
         description: ArgoCDCommitStatus is the Schema for the argocdcommitstatuses
           API.
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#argocdcommitstatus
         properties:
           apiVersion:
             description: |-
@@ -353,6 +356,9 @@ spec:
       openAPIV3Schema:
         description: ChangeTransferPolicy is the Schema for the changetransferpolicies
           API
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#changetransferpolicy
         properties:
           apiVersion:
             description: |-
@@ -1627,6 +1633,9 @@ spec:
       openAPIV3Schema:
         description: ClusterScmProvider is the Schema for the clusterscmproviders
           API.
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#clusterscmprovider
         properties:
           apiVersion:
             description: |-
@@ -1887,6 +1896,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: CommitStatus is the Schema for the commitstatuses API
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#commitstatus
         properties:
           apiVersion:
             description: |-
@@ -2084,6 +2096,9 @@ spec:
       openAPIV3Schema:
         description: ControllerConfiguration is the Schema for the controllerconfigurations
           API.
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#controllerconfiguration
         properties:
           apiVersion:
             description: |-
@@ -3890,6 +3905,9 @@ spec:
 
           Common use cases:
             - "Ensure active commit is not a revert before promoting"
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#gitcommitstatus
         properties:
           apiVersion:
             description: |-
@@ -4180,6 +4198,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: GitRepository is the Schema for the gitrepositories API
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#gitrepository
         properties:
           apiVersion:
             description: |-
@@ -4462,6 +4483,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: PromotionStrategy is the Schema for the promotionstrategies API
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#promotionstrategy
         properties:
           apiVersion:
             description: |-
@@ -5912,6 +5936,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: PullRequest is the Schema for the pullrequests API
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#pullrequest
         properties:
           apiVersion:
             description: |-
@@ -6199,6 +6226,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: ScmProvider is the Schema for the scmproviders API
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#scmprovider
         properties:
           apiVersion:
             description: |-
@@ -6448,6 +6478,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: TimedCommitStatus is the Schema for the timedcommitstatuses API
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#timedcommitstatus
         properties:
           apiVersion:
             description: |-
@@ -6683,6 +6716,9 @@ spec:
       openAPIV3Schema:
         description: WebRequestCommitStatus is the Schema for the webrequestcommitstatuses
           API
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#webrequestcommitstatus
         properties:
           apiVersion:
             description: |-

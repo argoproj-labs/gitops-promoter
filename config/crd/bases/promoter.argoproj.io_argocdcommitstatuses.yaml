@@ -27,6 +27,9 @@ spec:
       openAPIV3Schema:
         description: ArgoCDCommitStatus is the Schema for the argocdcommitstatuses
           API.
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#argocdcommitstatus
         properties:
           apiVersion:
             description: |-

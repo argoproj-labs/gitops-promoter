@@ -23,6 +23,9 @@ spec:
       openAPIV3Schema:
         description: ClusterScmProvider is the Schema for the clusterscmproviders
           API.
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#clusterscmprovider
         properties:
           apiVersion:
             description: |-

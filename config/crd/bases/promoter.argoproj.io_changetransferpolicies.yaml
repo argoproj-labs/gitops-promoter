@@ -35,6 +35,9 @@ spec:
       openAPIV3Schema:
         description: ChangeTransferPolicy is the Schema for the changetransferpolicies
           API
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#changetransferpolicy
         properties:
           apiVersion:
             description: |-

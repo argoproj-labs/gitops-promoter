@@ -53,6 +53,9 @@ spec:
 
           Common use cases:
             - "Ensure active commit is not a revert before promoting"
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#gitcommitstatus
         properties:
           apiVersion:
             description: |-

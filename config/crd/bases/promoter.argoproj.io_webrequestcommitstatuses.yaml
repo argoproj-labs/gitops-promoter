@@ -32,6 +32,9 @@ spec:
       openAPIV3Schema:
         description: WebRequestCommitStatus is the Schema for the webrequestcommitstatuses
           API
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#webrequestcommitstatus
         properties:
           apiVersion:
             description: |-
