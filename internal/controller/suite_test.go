@@ -1191,10 +1191,21 @@ func hydrateEnvironmentsBatchedTargets(ctx context.Context, repo *promoterv1alph
 
 	g2, gctx2 := errgroup.WithContext(ctx)
 	for _, h := range hydrated {
+		h := h
 		g2.Go(func() error {
 			if err := pushGitNoteWithRetry(gctx2, h.gitPath, h.hydratedSha, h.target.DrySha); err != nil {
 				return fmt.Errorf("failed to push git note for branch %q: %w", h.target.Branch, err)
 			}
+			// Intentionally NO webhook here. Real SCMs do not emit webhooks when git
+			// notes are pushed (only on ref/branch updates), so faking one would let
+			// tests pass for the wrong reason and mask the controller's real note-sync
+			// behavior. In production a freshly landed note becomes visible in status
+			// only via (a) a later branch-push webhook, (b) PromotionStrategy's
+			// enqueueOutOfSyncCTPs nudge, or (c) the periodic CTP requeue
+			// (changeTransferPolicy.workQueue.requeueDuration, shipped default 5m).
+			// Tests that need a note reflected promptly must nudge reconciliation
+			// in-process via enqueueCTP (the same mechanism enqueueOutOfSyncCTPs uses),
+			// rather than relying on a webhook that an SCM would never send.
 			return nil
 		})
 	}

@@ -170,6 +170,24 @@ func buildHydratorMetadataPath(activePath string) string {
 	return path.Join(activePath, "hydrator.metadata")
 }
 
+// isPathNotInRefError reports whether a `git show <ref>:<path>` stderr indicates that the path
+// simply does not exist in the target ref (as opposed to a real git failure). git phrases this
+// several ways depending on version and whether the path happens to exist in the working tree:
+//   - "fatal: path '<p>' does not exist in '<ref>'"
+//   - "fatal: path '<p>' exists on disk, but not in '<ref>'"
+//   - "fatal: Path '<p>' does not exist in '<ref>'" / "...is not in ..." (older phrasings)
+//
+// This matters for activePath: <activePath>/hydrator.metadata is absent from the active branch
+// until the app's first promotion, and the clone's working tree often holds that path from a
+// prior proposed-branch checkout — which is exactly the case that triggers the "exists on disk,
+// but not in" variant. Treating all of these as "not present yet" keeps reconciliation from
+// erroring on a normal pre-promotion state.
+func isPathNotInRefError(stderr string) bool {
+	return strings.Contains(stderr, "does not exist") ||
+		strings.Contains(stderr, "exists on disk, but not in") ||
+		strings.Contains(stderr, "Path not in")
+}
+
 // GetBranchShas checks out the given branch, pulls the latest changes, and returns the hydrated and dry SHAs.
 func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch, activePath string) (BranchShas, error) {
 	logger := log.FromContext(ctx)
@@ -204,8 +222,19 @@ func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch, activ
 	// Get the metadata file contents directly from the remote branch
 	metadataFileStdout, stderr, err := g.runCmd(ctx, gitPath, "show", "origin/"+branch+":"+buildHydratorMetadataPath(activePath))
 	if err != nil {
-		if strings.Contains(stderr, "does not exist") || strings.Contains(stderr, "Path not in") {
-			logger.Info("hydrator.metadata file not found", "branch", branch)
+		// The metadata file legitimately may not exist on this ref yet — most commonly with
+		// activePath, where <activePath>/hydrator.metadata only appears on the active branch
+		// after that app's first promotion. git reports this absence with different phrasings:
+		//   - "does not exist in '<ref>'"            (path not in ref, and not in the worktree)
+		//   - "exists on disk, but not in '<ref>'"   (path not in ref, but present in the clone's
+		//                                             worktree — e.g. left there by a prior
+		//                                             checkout of the proposed branch during
+		//                                             conflict resolution)
+		//   - "Path '...' does not exist in '<ref>'" / "Path '...' is not in ..." (older git)
+		// All of these mean "no hydrator.metadata for this path on this ref yet", which is a
+		// normal pre-promotion state, not a reconcile error. Treat them uniformly.
+		if isPathNotInRefError(stderr) {
+			logger.Info("hydrator.metadata file not found", "branch", branch, "activePath", activePath)
 			return shas, nil
 		}
 		logger.Error(err, "could not get metadata file", "gitError", stderr)

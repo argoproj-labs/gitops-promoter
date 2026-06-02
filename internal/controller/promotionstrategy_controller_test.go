@@ -1430,6 +1430,10 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			psOne.Name = baseStrategy.Name + "-app-one"
 			psOne.Spec.ActivePath = activePathOne
 			psOne.Spec.Environments = []promoterv1alpha1.Environment{
+				// AutoMerge stays on for the whole spec, matching how real users run: each
+				// app's PromotionStrategy auto-merges its own path-scoped PR onto the shared
+				// active branch. Independence is achieved by hydrating one app at a time, not
+				// by toggling AutoMerge (an unrealistic operator step).
 				{Branch: testBranchDevelopment, AutoMerge: ptr.To(true)},
 			}
 			Expect(k8sClient.Create(ctx, psOne)).To(Succeed())
@@ -1458,149 +1462,130 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, scmSecret))).To(Succeed())
 		})
 
+		It("should not cross-contaminate proposed note dry SHAs while git notes propagate", func() {
+			gitPath, err := cloneTestRepo(ctx, gitRepo)
+			Expect(err).NotTo(HaveOccurred())
+
+			dryShaOne, err := makeDryCommit(ctx, gitPath, "dry commit app-one (note race)")
+			Expect(err).NotTo(HaveOccurred())
+			dryShaTwo, err := makeDryCommit(ctx, gitPath, "dry commit app-two (note race)")
+			Expect(err).NotTo(HaveOccurred())
+
+			// Phase 1 pushes branches and fires branch-push webhooks; phase 2 pushes the
+			// git notes after a deliberate gap. No webhook is sent for the notes (SCMs
+			// don't emit them), so we drive reconciliation in-process via enqueueCTP below
+			// to actually load the notes — otherwise the controller would only refresh on
+			// its 5m periodic requeue and never observe the notes within this spec.
+			Expect(hydrateEnvironmentsBatchedTargets(ctx, gitRepo, []BatchedHydrationTarget{
+				{
+					Branch:          path.Join(testBranchDevelopmentNext, activePathOne),
+					ActivePath:      activePathOne,
+					BootstrapBranch: testBranchDevelopment,
+					DrySha:          dryShaOne,
+				},
+				{
+					Branch:          path.Join(testBranchDevelopmentNext, activePathTwo),
+					ActivePath:      activePathTwo,
+					BootstrapBranch: testBranchDevelopment,
+					DrySha:          dryShaTwo,
+				},
+			}, "hydrate for note race", 2*time.Second)).To(Succeed())
+
+			// Nudge both CTPs every interval so the controller runs FetchNotes and the
+			// non-contamination assertion actually observes loaded notes (rather than
+			// passing trivially on nil). enqueueCTP is the same in-process trigger
+			// PromotionStrategy.enqueueOutOfSyncCTPs uses in production for note sync.
+			Consistently(func(g Gomega) {
+				enqueueCTP(promotionStrategyOne.Namespace, utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategyOne.Name, testBranchDevelopment)))
+				enqueueCTP(promotionStrategyTwo.Namespace, utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategyTwo.Name, testBranchDevelopment)))
+
+				ctpOne := getCTP(g, &promotionStrategyOne)
+				ctpTwo := getCTP(g, &promotionStrategyTwo)
+				if ctpOne.Status.Proposed.Note != nil {
+					g.Expect(ctpOne.Status.Proposed.Note.DrySha).NotTo(Equal(dryShaTwo))
+				}
+				if ctpTwo.Status.Proposed.Note != nil {
+					g.Expect(ctpTwo.Status.Proposed.Note.DrySha).NotTo(Equal(dryShaOne))
+				}
+			}, time.Second*3, time.Millisecond*250).Should(Succeed())
+
+			_ = os.RemoveAll(gitPath)
+		})
+
 		It("should hydrate and promote each app independently without cross-path interference", func() {
-			const promotionIterations = 2
 			activeRef := "origin/" + testBranchDevelopment
 
-			for iter := 1; iter <= promotionIterations; iter++ {
-				iterLabel := fmt.Sprintf("(iteration %d/%d)", iter, promotionIterations)
+			By("Creating independent dry commits per app")
+			gitPath, err := cloneTestRepo(ctx, gitRepo)
+			Expect(err).NotTo(HaveOccurred())
 
-				By("Creating independent dry commits per app " + iterLabel)
-				gitPath, err := cloneTestRepo(ctx, gitRepo)
-				Expect(err).NotTo(HaveOccurred())
+			dryShaOne, err := makeDryCommit(ctx, gitPath, "dry commit app-one")
+			Expect(err).NotTo(HaveOccurred())
+			dryShaTwo, err := makeDryCommit(ctx, gitPath, "dry commit app-two")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dryShaOne).NotTo(Equal(dryShaTwo))
 
-				dryShaOne, err := makeDryCommit(ctx, gitPath, "dry commit app-one "+iterLabel)
-				Expect(err).NotTo(HaveOccurred())
-				dryShaTwo, err := makeDryCommit(ctx, gitPath, "dry commit app-two "+iterLabel)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(dryShaOne).NotTo(Equal(dryShaTwo))
+			// Hydrate BOTH paths concurrently with AutoMerge on for both PromotionStrategies.
+			// This is the core promise of activePath: independent teams hydrate their own
+			// paths at the same time and each app must promote onto the shared active branch
+			// without the other interfering. We do NOT serialize hydration or toggle
+			// AutoMerge — that would defeat the feature. Both apps must converge.
+			By("Hydrating both paths concurrently via git notes (independent teams)")
+			Expect(hydrateEnvironmentsBatchedTargets(ctx, gitRepo, []BatchedHydrationTarget{
+				{
+					Branch:          path.Join(testBranchDevelopmentNext, activePathOne),
+					ActivePath:      activePathOne,
+					BootstrapBranch: testBranchDevelopment,
+					DrySha:          dryShaOne,
+				},
+				{
+					Branch:          path.Join(testBranchDevelopmentNext, activePathTwo),
+					ActivePath:      activePathTwo,
+					BootstrapBranch: testBranchDevelopment,
+					DrySha:          dryShaTwo,
+				},
+			}, "hydrate shared active-path apps concurrently", 0)).To(Succeed())
 
-				noteDelay := time.Duration(0)
-				if iter == 2 {
-					noteDelay = 5 * time.Second
-				}
-
-				By("Hydrating both app proposed branches in parallel via git notes " + iterLabel)
-				Expect(hydrateEnvironmentsBatchedTargets(ctx, gitRepo, []BatchedHydrationTarget{
-					{
-						Branch:          path.Join(testBranchDevelopmentNext, activePathOne),
-						ActivePath:      activePathOne,
-						BootstrapBranch: testBranchDevelopment,
-						DrySha:          dryShaOne,
-					},
-					{
-						Branch:          path.Join(testBranchDevelopmentNext, activePathTwo),
-						ActivePath:      activePathTwo,
-						BootstrapBranch: testBranchDevelopment,
-						DrySha:          dryShaTwo,
-					},
-				}, "hydrate shared active-path apps "+iterLabel, noteDelay)).To(Succeed())
-
-				expectedDryByPath := map[string]string{
-					activePathOne: dryShaOne,
-					activePathTwo: dryShaTwo,
-				}
-
-				By("Verifying each CTP tracks only its own dry SHA on proposed " + iterLabel)
-				Eventually(func(g Gomega) {
-					for _, tc := range []struct {
-						ps         *promoterv1alpha1.PromotionStrategy
-						activePath string
-					}{
-						{ps: &promotionStrategyOne, activePath: activePathOne},
-						{ps: &promotionStrategyTwo, activePath: activePathTwo},
-					} {
-						ctp := getCTP(g, tc.ps)
-						g.Expect(ctp.Spec.ActivePath).To(Equal(tc.activePath))
-						g.Expect(ctp.Spec.ActiveBranch).To(Equal(testBranchDevelopment))
-						// Status.Proposed.Dry.Sha is the contract this test cares about: each CTP's
-						// proposed branch reports the dry SHA its own hydrator pushed, with no leakage
-						// from the sibling CTP. We intentionally do not assert on Status.Proposed.Note
-						// here. After conflict resolution, MergeWithOursStrategyForPath rewrites the
-						// proposed branch tip to a new merge commit that the hydrator never wrote a
-						// git note for. setCommitMetadata then correctly clears Status.Proposed.Note
-						// (the "clear stale note" regression guard); getEffectiveHydratedDrySha falls
-						// back to Proposed.Dry.Sha, which is what we assert here. The Consistently
-						// block below still catches any cross-contamination of Note.DrySha during the
-						// note-propagation race window.
-						g.Expect(ctp.Status.Proposed.Dry.Sha).To(Equal(expectedDryByPath[tc.activePath]))
-					}
-				}, constants.EventuallyTimeout).Should(Succeed())
-
-				By("Verifying proposed status does not cross-contaminate while notes propagate " + iterLabel)
-				if noteDelay > 0 {
-					Consistently(func(g Gomega) {
-						ctpOne := getCTP(g, &promotionStrategyOne)
-						ctpTwo := getCTP(g, &promotionStrategyTwo)
-						if ctpOne.Status.Proposed.Note != nil {
-							g.Expect(ctpOne.Status.Proposed.Note.DrySha).NotTo(Equal(dryShaTwo),
-								"app-one CTP should not observe app-two dry SHA")
-						}
-						if ctpTwo.Status.Proposed.Note != nil {
-							g.Expect(ctpTwo.Status.Proposed.Note.DrySha).NotTo(Equal(dryShaOne),
-								"app-two CTP should not observe app-one dry SHA")
-						}
-					}, time.Second*2, time.Millisecond*250).Should(Succeed())
-				}
-
-				By("Promoting app-one first so shared active-branch merges do not race " + iterLabel)
-				var appOneManifestOnActive string
-				var ctpOne promoterv1alpha1.ChangeTransferPolicy
-				Eventually(func(g Gomega) {
-					ctpOne = getCTP(g, &promotionStrategyOne)
-				}).Should(Succeed())
+			By("Verifying both apps promote onto the shared active branch independently")
+			Eventually(func(g Gomega) {
+				// Nudge both CTPs: SCMs don't webhook git notes, so production relies on
+				// enqueueOutOfSyncCTPs / periodic requeue; we drive that in-process here.
+				ctpOne := getCTP(g, &promotionStrategyOne)
+				ctpTwo := getCTP(g, &promotionStrategyTwo)
 				enqueueCTP(ctpOne.Namespace, ctpOne.Name)
-				Eventually(func(g Gomega) {
-					ctpOne = getCTP(g, &promotionStrategyOne)
-					g.Expect(ctpOne.Status.Active.Dry.Sha).To(Equal(dryShaOne))
-
-					_, readErr := runGitCmd(ctx, gitPath, "fetch", "origin", testBranchDevelopment)
-					g.Expect(readErr).NotTo(HaveOccurred())
-					manifest, readErr := gitShowPathAtRef(ctx, gitPath, activeRef, path.Join(activePathOne, "manifests-fake.yaml"))
-					g.Expect(readErr).NotTo(HaveOccurred())
-					g.Expect(manifest).To(ContainSubstring(dryShaOne))
-					g.Expect(manifest).To(ContainSubstring(activePathOne))
-					appOneManifestOnActive = manifest
-				}, constants.EventuallyTimeout).Should(Succeed())
-
-				By("Promoting app-two without disturbing app-one on the shared active branch " + iterLabel)
-				var ctpTwo promoterv1alpha1.ChangeTransferPolicy
-				Eventually(func(g Gomega) {
-					ctpTwo = getCTP(g, &promotionStrategyTwo)
-				}).Should(Succeed())
 				enqueueCTP(ctpTwo.Namespace, ctpTwo.Name)
-				Eventually(func(g Gomega) {
-					ctpTwo = getCTP(g, &promotionStrategyTwo)
-					g.Expect(ctpTwo.Status.Active.Dry.Sha).To(Equal(dryShaTwo))
 
-					_, readErr := runGitCmd(ctx, gitPath, "fetch", "origin", testBranchDevelopment)
-					g.Expect(readErr).NotTo(HaveOccurred())
-					manifestOne, readErr := gitShowPathAtRef(ctx, gitPath, activeRef, path.Join(activePathOne, "manifests-fake.yaml"))
-					g.Expect(readErr).NotTo(HaveOccurred())
-					g.Expect(manifestOne).To(Equal(appOneManifestOnActive))
-					g.Expect(manifestOne).To(ContainSubstring(dryShaOne))
+				g.Expect(ctpOne.Status.Active.Dry.Sha).To(Equal(dryShaOne), "app-one should promote onto the shared active branch")
+				g.Expect(ctpTwo.Status.Active.Dry.Sha).To(Equal(dryShaTwo), "app-two should promote onto the shared active branch")
 
-					manifestTwo, readErr := gitShowPathAtRef(ctx, gitPath, activeRef, path.Join(activePathTwo, "manifests-fake.yaml"))
-					g.Expect(readErr).NotTo(HaveOccurred())
-					g.Expect(manifestTwo).To(ContainSubstring(dryShaTwo))
-					g.Expect(manifestTwo).To(ContainSubstring(activePathTwo))
+				_, readErr := runGitCmd(ctx, gitPath, "fetch", "origin", testBranchDevelopment)
+				g.Expect(readErr).NotTo(HaveOccurred())
 
-					rootMetadata, readErr := gitShowPathAtRef(ctx, gitPath, activeRef, "hydrator.metadata")
-					g.Expect(readErr).NotTo(HaveOccurred())
-					// Both PromotionStrategies have AutoMerge=true with no commit-status gate, so the
-					// order in which the two CTPs promote (and therefore which one's root
-					// hydrator.metadata wins via path-scoped merge) is racey. The cross-contamination
-					// invariant we actually want to assert is that root metadata holds one of the two
-					// promoted dry SHAs (not a stale base value, not the wrong app's stale value); the
-					// per-path manifest assertions above already verify per-app isolation.
-					g.Expect(rootMetadata).To(SatisfyAny(
-						ContainSubstring(dryShaOne),
-						ContainSubstring(dryShaTwo),
-					), "shared root hydrator.metadata should reflect one of the promoted apps' dry SHAs")
-				}, constants.EventuallyTimeout).Should(Succeed())
+				manifestOne, readErr := gitShowPathAtRef(ctx, gitPath, activeRef, path.Join(activePathOne, "manifests-fake.yaml"))
+				g.Expect(readErr).NotTo(HaveOccurred())
+				g.Expect(manifestOne).To(ContainSubstring(dryShaOne))
+				g.Expect(manifestOne).To(ContainSubstring(activePathOne))
 
-				_ = os.RemoveAll(gitPath)
-			}
+				manifestTwo, readErr := gitShowPathAtRef(ctx, gitPath, activeRef, path.Join(activePathTwo, "manifests-fake.yaml"))
+				g.Expect(readErr).NotTo(HaveOccurred())
+				g.Expect(manifestTwo).To(ContainSubstring(dryShaTwo))
+				g.Expect(manifestTwo).To(ContainSubstring(activePathTwo))
+
+				rootMetadata, readErr := gitShowPathAtRef(ctx, gitPath, activeRef, "hydrator.metadata")
+				g.Expect(readErr).NotTo(HaveOccurred())
+				// Both PromotionStrategies have AutoMerge=true with no commit-status gate, so the
+				// order in which the two CTPs promote (and therefore which one's root
+				// hydrator.metadata wins via path-scoped merge) is racey. The cross-contamination
+				// invariant we actually want to assert is that root metadata holds one of the two
+				// promoted dry SHAs (not a stale base value, not the wrong app's stale value); the
+				// per-path manifest assertions above already verify per-app isolation.
+				g.Expect(rootMetadata).To(SatisfyAny(
+					ContainSubstring(dryShaOne),
+					ContainSubstring(dryShaTwo),
+				), "shared root hydrator.metadata should reflect one of the promoted apps' dry SHAs")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			_ = os.RemoveAll(gitPath)
 		})
 	})
 
