@@ -80,6 +80,7 @@ CI’s **Check Codegen** job runs `make build-installer` and fails on drift; see
 ## API design reminders
 
 - Put validation on Go types with kubebuilder markers (`// +kubebuilder:validation:…`, CEL `XValidation`, and so on); do not hand-edit `config/crd/bases/` except via generation.
+- Prefer **`// +k8s:immutable`** on fields that must not change after set (controller-gen v0.21+); it emits the same `self == oldSelf` rule as hand-written immutability `XValidation` (see `PullRequest` `sourceBranch` / `targetBranch`).
 - Express reconciler RBAC with **`// +kubebuilder:rbac`** on controllers; regenerate manifests rather than editing `config/rbac/role.yaml` by hand.
 - For SCM-facing types and commit-status controllers, see [Adding an SCM Provider](adding-an-scm-provider.md) and [Commit status development best practices](../commit-status-controllers/development-best-practices.md).
 

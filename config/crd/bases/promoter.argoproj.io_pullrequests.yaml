@@ -106,7 +106,7 @@ spec:
                   merging into Head ---> Base
                 type: string
                 x-kubernetes-validations:
-                - message: Value is immutable
+                - message: field is immutable
                   rule: self == oldSelf
               state:
                 default: open
@@ -123,7 +123,7 @@ spec:
                   from Head ---> Base
                 type: string
                 x-kubernetes-validations:
-                - message: Value is immutable
+                - message: field is immutable
                   rule: self == oldSelf
               title:
                 description: Title is the title of the pull request.

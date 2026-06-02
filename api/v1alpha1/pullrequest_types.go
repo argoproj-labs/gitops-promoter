@@ -37,11 +37,11 @@ type PullRequestSpec struct {
 	// +kubebuilder:validation:MinLength=1
 	Title string `json:"title"`
 	// TargetBranch is the head the git reference we are merging from Head ---> Base
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
+	// +k8s:immutable
 	// +kubebuilder:validation:Required
 	TargetBranch string `json:"targetBranch"`
 	// SourceBranch is the base the git reference that we are merging into Head ---> Base
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
+	// +k8s:immutable
 	// +kubebuilder:validation:Required
 	SourceBranch string `json:"sourceBranch"`
 	// Description is the description body of the pull/merge request
