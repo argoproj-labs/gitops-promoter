@@ -1,3 +1,4 @@
+//nolint:goconst // Prometheus label names are inlined next to metric definitions; extracting constants hurts readability.
 package metrics
 
 import (
