@@ -35,7 +35,7 @@ jobs:
         uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
         with:
           cluster_name: kind
-          version: v0.31.0
+          version: v0.32.0
           node_image: kindest/node:v${{ matrix.kubernetes-minor-version }}
           kubectl_version: v${{ matrix.kubernetes-minor-version }}
       - name: Checkout Repo
