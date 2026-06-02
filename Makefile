@@ -80,12 +80,8 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 # only masks that one-shot migration failure.
 .PHONY: generate
 generate: controller-gen ## Generate DeepCopy and applyconfiguration code (controller-gen object + applyconfiguration).
-	@$(MAKE) generate-once || true
-	@$(MAKE) generate-once
-
-.PHONY: generate-once
-generate-once: controller-gen ## Single controller-gen pass (see comment above generate).
-	$(CONTROLLER_GEN) applyconfiguration:headerFile="hack/boilerplate.go.txt" object:headerFile="hack/boilerplate.go.txt" paths="./..."
+	@$(CONTROLLER_GEN) applyconfiguration:headerFile="hack/boilerplate.go.txt" object:headerFile="hack/boilerplate.go.txt" paths="./..." || true
+	@$(CONTROLLER_GEN) applyconfiguration:headerFile="hack/boilerplate.go.txt" object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
 .PHONY: generate-extension-icon-styles
 generate-extension-icon-styles: ## Generate Argo CD extension icon styles from logo SVGs.
