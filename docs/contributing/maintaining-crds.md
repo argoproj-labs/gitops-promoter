@@ -81,6 +81,7 @@ CI’s **Check Codegen** job runs `make build-installer` and fails on drift; see
 
 - Put validation on Go types with kubebuilder markers (`// +kubebuilder:validation:…`, CEL `XValidation`, and so on); do not hand-edit `config/crd/bases/` except via generation.
 - Prefer **`// +k8s:immutable`** on fields that must not change after set (controller-gen v0.21+); it emits the same `self == oldSelf` rule as hand-written immutability `XValidation` (see `PullRequest` `sourceBranch` / `targetBranch`).
+- Use **`// +k8s:enum`** on a `type Foo string` plus `const` block only when **every** field typed `Foo` shares the same allowed values. Remove redundant field `Enum` markers only in that case. Do **not** put `+k8s:enum` on a type that is also used from status fields allowing `""` or a subset of consts (controller-gen applies the type enum to all references; field `Enum` is not merged for extras like `""`). Example in-tree: `ContextMode` on `WebRequestCommitStatus`. Plain `string` fields still use field `Enum`.
 - Express reconciler RBAC with **`// +kubebuilder:rbac`** on controllers; regenerate manifests rather than editing `config/rbac/role.yaml` by hand.
 - For SCM-facing types and commit-status controllers, see [Adding an SCM Provider](adding-an-scm-provider.md) and [Commit status development best practices](../commit-status-controllers/development-best-practices.md).
 
