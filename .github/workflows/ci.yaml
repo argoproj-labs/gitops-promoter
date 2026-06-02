@@ -129,11 +129,18 @@ jobs:
             echo "::error file=go.sum,line=$line::go.sum is out of date. Run 'go mod tidy' and commit the changes."
             exit 1
           fi
+      - name: make mockery-gen
+        run: |
+          make mockery-gen
+          if ! git diff --exit-code -- internal/scms/mock/; then
+            echo "::error ::Mocks are out of date. Run 'make mockery-gen' and commit the changes."
+            exit 1
+          fi
       - name: make build-installer
         run: |
           make build-installer
           if ! git diff --exit-code; then
-            echo "::error ::Manifests are out of date. Run 'make build-installer' and commit the changes."
+            echo "::error ::Generated files are out of date. Run 'make build-installer' and commit the changes (CRDs, applyconfiguration, deepcopy, extension icon styles, dist/install.yaml)."
             exit 1
           fi
   nilaway:
