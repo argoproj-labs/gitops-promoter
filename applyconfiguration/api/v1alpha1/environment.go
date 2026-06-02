@@ -40,6 +40,9 @@ type EnvironmentApplyConfiguration struct {
 	// The commit statuses specified in this field apply to this environment only. You can also specify commit statuses
 	// for all environments in the `spec.proposedCommitStatuses` field.
 	ProposedCommitStatuses []CommitStatusSelectorApplyConfiguration `json:"proposedCommitStatuses,omitempty"`
+	// ActivePath optionally overrides the strategy-level activePath for this environment.
+	// When set, this environment's CTP uses this path instead of spec.activePath.
+	ActivePath *string `json:"activePath,omitempty"`
 }
 
 // EnvironmentApplyConfiguration constructs a declarative configuration of the Environment type for use with
@@ -87,5 +90,13 @@ func (b *EnvironmentApplyConfiguration) WithProposedCommitStatuses(values ...*Co
 		}
 		b.ProposedCommitStatuses = append(b.ProposedCommitStatuses, *values[i])
 	}
+	return b
+}
+
+// WithActivePath sets the ActivePath field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ActivePath field is set to the value of the last call.
+func (b *EnvironmentApplyConfiguration) WithActivePath(value string) *EnvironmentApplyConfiguration {
+	b.ActivePath = &value
 	return b
 }

@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"path"
 	"reflect"
 	"sync"
 	"time"
@@ -231,13 +232,27 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 		}
 	}
 
+	activePath := ps.Spec.ActivePath
+	if environment.ActivePath != "" {
+		activePath = environment.ActivePath
+	}
+
+	proposedBranch := fmt.Sprintf("%s-%s", environment.Branch, "next")
+	if activePath != "" {
+		proposedBranch = path.Join(proposedBranch, activePath)
+	}
+
 	// Build the spec
 	ctpSpec := acv1alpha1.ChangeTransferPolicySpec().
 		WithRepositoryReference(acv1alpha1.ObjectReference().WithName(ps.Spec.RepositoryReference.Name)).
-		WithProposedBranch(fmt.Sprintf("%s-%s", environment.Branch, "next")).
+		WithProposedBranch(proposedBranch).
 		WithActiveBranch(environment.Branch).
 		WithActiveCommitStatuses(activeCommitStatuses...).
 		WithProposedCommitStatuses(proposedCommitStatuses...)
+
+	if activePath != "" {
+		ctpSpec = ctpSpec.WithActivePath(activePath)
+	}
 
 	if environment.AutoMerge != nil {
 		ctpSpec = ctpSpec.WithAutoMerge(*environment.AutoMerge)

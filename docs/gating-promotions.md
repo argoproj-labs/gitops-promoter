@@ -187,4 +187,3 @@ Key features:
 ### Custom Controllers
 
 You can also create your own controllers that manage CommitStatus resources. Any system that can create Kubernetes resources can participate in the gating logic by creating CommitStatus resources with the appropriate SHAs and phases.
-
