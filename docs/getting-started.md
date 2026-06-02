@@ -488,9 +488,69 @@ spec:
 > The `autoMerge` field is optional and defaults to `true`. We set it to `false` here because we do not have any
 > CommitStatus checks configured. With these all set to `false` we will have to manually merge the PRs.
 
-## Launching the UI
+## Dashboard
 
 GitOps Promoter comes with a web UI that you can use to visualize the state of your PromotionStrategy resources.
+
+The UI does not talk to the four raw CRDs directly. Instead it watches a single,
+server-computed resource — `PromotionStrategyDetails` — that bundles a `PromotionStrategy`
+together with everything related to it (its `ChangeTransferPolicy`, `PullRequest`,
+`CommitStatus`, the commit-status managers, and the git config). That resource is served
+by a Kubernetes **aggregation layer** (an extension apiserver), so you must install the
+aggregation API into your cluster before the dashboard can load any data.
+
+### Install the dashboard aggregation API
+
+The aggregation apiserver is **not** part of `install.yaml` — it ships as its own release
+bundle. (Its `APIService` and its `kube-system` RoleBinding must keep exact names, which a
+combined install would mangle.) The apiserver needs a TLS serving cert whose CA matches the
+`APIService` `caBundle`, so two bundles are published — pick the one that matches how you
+want to manage that cert. Install the promoter controller first (see
+[Installation](#installation) above).
+
+/// tab | cert-manager
+
+If [cert-manager](https://cert-manager.io/) is installed in the cluster, this bundle lets it
+issue and rotate the serving cert (and keep the `caBundle` injected) automatically — a single
+apply with nothing else to do:
+
+```bash
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/<version>/install-dashboard-apiserver-cert-manager.yaml
+```
+
+///
+
+/// tab | Bring your own cert
+
+This bundle has no cert-manager dependency. Apply it, then supply the
+`promoter-apiserver-serving-cert` Secret and patch the `APIService` `caBundle` yourself:
+
+```bash
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/<version>/install-dashboard-apiserver-byo-cert.yaml
+```
+
+See the [Dashboard Aggregation API](dashboard-apiserver.md#serving-certs) page for the
+scripted/manual cert steps and cert rotation.
+
+///
+
+> [!NOTE]
+> Replace `<version>` with the GitOps Promoter release you installed above. These bundles are
+> available starting with the first release that ships the dashboard aggregation API.
+
+Confirm the API registered and is healthy before launching the UI:
+
+```bash
+kubectl get apiservice v1alpha1.dashboard.promoter.argoproj.io   # AVAILABLE should be True
+kubectl get promotionstrategydetails -A
+```
+
+> [!NOTE]
+> If the `APIService` reports `Available=False` with an `x509`/TLS error, the `caBundle`
+> does not match the apiserver's serving cert. See the
+> [Dashboard Aggregation API](dashboard-apiserver.md#verifying-the-install) page.
+
+### Launch the UI
 
 To launch the UI, first download the gitops-promoter CLI from the [releases page](https://github.com/argoproj-labs/gitops-promoter/releases).
 

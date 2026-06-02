@@ -43,6 +43,14 @@ default overlay's `namePrefix` would corrupt it) and the
 Install the controller first (`config/default`), then apply one of the cert
 overlays below.
 
+For installs without a checkout of this repo, each release also publishes two flattened,
+image-pinned bundles — `install-dashboard-apiserver-cert-manager.yaml` (cert-manager issues
+and rotates the serving cert) and `install-dashboard-apiserver-byo-cert.yaml` (no
+cert-manager; you supply the serving cert + `caBundle`). See the
+[Getting Started](getting-started.md#install-the-dashboard-aggregation-api) guide. They are
+built from the `config/apiserver/release-cert-manager` and `config/apiserver/release-byo-cert`
+overlays respectively.
+
 ## Serving certs
 
 The apiserver needs a TLS serving cert, and the `APIService` needs the matching CA

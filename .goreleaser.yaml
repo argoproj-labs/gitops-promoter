@@ -77,6 +77,8 @@ docker_manifests:
 checksum:
   extra_files:
     - glob: ./install.yaml
+    - glob: ./install-dashboard-apiserver-cert-manager.yaml
+    - glob: ./install-dashboard-apiserver-byo-cert.yaml
 
 sboms:
   - artifacts: archive
@@ -128,6 +130,8 @@ release:
   draft: true
   extra_files:
     - glob: ./install.yaml
+    - glob: ./install-dashboard-apiserver-cert-manager.yaml
+    - glob: ./install-dashboard-apiserver-byo-cert.yaml
   header: |
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/argoproj-labs/gitops-promoter/b0d68761a0f8103ea83f84b5faa382cebcd0ebd4/docs/assets/logo/stacked/secondary.svg">
