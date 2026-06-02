@@ -162,6 +162,8 @@ spec:
   applicationSelector:
     matchLabels:
       app: my-app
+  # Optional. Defaults to argocd-health.
+  key: argocd-health-my-app
 ```
 
 ## Multi-Cluster Support
