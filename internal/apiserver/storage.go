@@ -27,7 +27,6 @@ import (
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/rest"
 
-	dashboardapi "github.com/argoproj-labs/gitops-promoter/api/dashboard/dashboard"
 	dashboardv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/dashboard/v1alpha1"
 )
 
@@ -58,17 +57,17 @@ func NewREST(provider *BundleProvider) *REST {
 	}
 }
 
-// New returns a new (empty) PromotionStrategyDetails (internal type).
+// New returns a new (empty) PromotionStrategyDetails.
 func (r *REST) New() runtime.Object {
-	return &dashboardapi.PromotionStrategyDetails{}
+	return &dashboardv1alpha1.PromotionStrategyDetails{}
 }
 
 // Destroy releases resources; nothing to do for a virtual resource.
 func (r *REST) Destroy() {}
 
-// NewList returns a new (empty) PromotionStrategyDetailsList (internal type).
+// NewList returns a new (empty) PromotionStrategyDetailsList.
 func (r *REST) NewList() runtime.Object {
-	return &dashboardapi.PromotionStrategyDetailsList{}
+	return &dashboardv1alpha1.PromotionStrategyDetailsList{}
 }
 
 // NamespaceScoped reports that PromotionStrategyDetails is namespaced.

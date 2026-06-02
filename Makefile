@@ -93,19 +93,16 @@ generate-all: generate generate-apiserver generate-extension-icon-styles ## Run 
 # These are aggregated-apiserver types (NOT CRDs), so they are owned entirely by the
 # k8s code-generators here, never by controller-gen:
 #   * deepcopy-gen   -> zz_generated.deepcopy.go   (DeepCopy + DeepCopyObject)
-#   * conversion-gen -> zz_generated.conversion.go (internal <-> v1alpha1)
 #   * openapi-gen    -> zz_generated.openapi.go    (OpenAPI definitions)
-# The packages carry no kubebuilder markers, so `make generate` (controller-gen) and
-# `make manifests` skip them and never emit a CRD for this group. Re-run this target
-# after changing any type in api/dashboard/...; the output is committed.
+# The resource has a single served version (v1alpha1) and no etcd backing, so there
+# is no internal/hub version and no conversion-gen step. The package carries no
+# kubebuilder markers, so `make generate` (controller-gen) and `make manifests` skip
+# it and never emit a CRD for this group. Re-run this target after changing any type
+# in api/dashboard/...; the output is committed.
 .PHONY: generate-apiserver
-generate-apiserver: ## Generate deepcopy/conversion/openapi for the dashboard aggregation API (api/dashboard/...).
+generate-apiserver: ## Generate deepcopy/openapi for the dashboard aggregation API (api/dashboard/...).
 	go tool deepcopy-gen \
 		--output-file zz_generated.deepcopy.go \
-		--go-header-file hack/boilerplate.go.txt \
-		./api/dashboard/v1alpha1 ./api/dashboard/dashboard
-	go tool conversion-gen \
-		--output-file zz_generated.conversion.go \
 		--go-header-file hack/boilerplate.go.txt \
 		./api/dashboard/v1alpha1
 	# The bundle embeds the promoter v1alpha1 types, so openapi-gen runs over both the
