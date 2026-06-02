@@ -178,8 +178,6 @@ func (ws *WebServer) StartDashboard(ctx context.Context, addr string) error {
 	router.Use(gzip.Gzip(gzip.DefaultCompression))
 	router.GET("/list", ws.httpList)
 
-	router.GET("/get", ws.httpGet)
-
 	router.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, "ok")
 	})
@@ -234,7 +232,7 @@ func (ws *WebServer) StartDashboard(ctx context.Context, addr string) error {
 		section := c.Param("section")
 
 		// Skip if it's an API or static asset
-		if section == "watch" || section == "list" || section == "get" || section == "healthz" ||
+		if section == "watch" || section == "list" || section == "healthz" ||
 			section == "assets" {
 			c.Status(http.StatusNotFound)
 			return
@@ -291,74 +289,6 @@ func (ws *WebServer) StartDashboard(ctx context.Context, addr string) error {
 	return nil
 }
 
-func (ws *WebServer) httpGet(c *gin.Context) {
-	if c.Query("kind") == "" {
-		c.JSON(http.StatusBadRequest, "kind is required")
-		return
-	}
-	if c.Query("namespace") == "" {
-		c.JSON(http.StatusBadRequest, "namespace is required")
-		return
-	}
-	if c.Query("name") == "" {
-		c.JSON(http.StatusBadRequest, "name is required")
-		return
-	}
-	kind := strings.ToLower(c.Query("kind"))
-	namespace := strings.ToLower(c.Query("namespace"))
-	name := strings.ToLower(c.Query("name"))
-
-	switch kind {
-	case "promotionstrategydetails":
-		bundle := &dashboardv1alpha1.PromotionStrategyDetails{}
-		err := ws.Get(c, client.ObjectKey{Namespace: namespace, Name: name}, bundle)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, err.Error())
-			return
-		}
-		c.JSON(http.StatusOK, bundle)
-
-	case "promotionstrategy":
-		ps := &promoterv1alpha1.PromotionStrategy{}
-		err := ws.Get(c, client.ObjectKey{Namespace: namespace, Name: name}, ps)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, err.Error())
-			return
-		}
-		c.JSON(http.StatusOK, ps)
-
-	case "changetransferpolicy":
-		ctps := &promoterv1alpha1.ChangeTransferPolicy{}
-		err := ws.Get(c, client.ObjectKey{Namespace: namespace, Name: name}, ctps)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, err.Error())
-			return
-		}
-		c.JSON(http.StatusOK, ctps)
-
-	case "pullrequest":
-		pr := &promoterv1alpha1.PullRequest{}
-		err := ws.Get(c, client.ObjectKey{Namespace: namespace, Name: name}, pr)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, err.Error())
-			return
-		}
-		c.JSON(http.StatusOK, pr)
-
-	case "commitstatus":
-		cs := &promoterv1alpha1.CommitStatus{}
-		err := ws.Get(c, client.ObjectKey{Namespace: namespace, Name: name}, cs)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, err.Error())
-			return
-		}
-		c.JSON(http.StatusOK, cs)
-
-	default:
-		c.JSON(http.StatusBadRequest, "invalid kind")
-	}
-}
-
 func (ws *WebServer) httpList(c *gin.Context) {
 	if c.Query("kind") == "" {
 		c.JSON(http.StatusBadRequest, "kind is required")
@@ -379,42 +309,6 @@ func (ws *WebServer) httpList(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusOK, bundleList.Items)
-
-	case "promotionstrategy":
-		psl := &promoterv1alpha1.PromotionStrategyList{}
-		err := ws.List(c, psl, listOptions)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, err.Error())
-			return
-		}
-		c.JSON(http.StatusOK, psl.Items)
-
-	case "changetransferpolicy":
-		ctpl := &promoterv1alpha1.ChangeTransferPolicyList{}
-		err := ws.List(c, ctpl, listOptions)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, err.Error())
-			return
-		}
-		c.JSON(http.StatusOK, ctpl.Items)
-
-	case "pullrequest":
-		prl := &promoterv1alpha1.PullRequestList{}
-		err := ws.List(c, prl, listOptions)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, err.Error())
-			return
-		}
-		c.JSON(http.StatusOK, prl.Items)
-
-	case "commitstatus":
-		csl := &promoterv1alpha1.CommitStatusList{}
-		err := ws.List(c, csl, listOptions)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, err.Error())
-			return
-		}
-		c.JSON(http.StatusOK, csl.Items)
 
 	case "namespace":
 		if c.Query("namespace") != "" {
