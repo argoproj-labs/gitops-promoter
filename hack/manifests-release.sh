@@ -24,17 +24,19 @@ cd "${SRCROOT}/config/release" && $KUSTOMIZE edit set image "quay.io/argoprojlab
 echo "${AUTOGENMSG}" > "${SRCROOT}/install.yaml"
 $KUSTOMIZE build "${SRCROOT}/config/release" >> "${SRCROOT}/install.yaml"
 
-# Dashboard aggregation apiserver bundles. These are published as separate release
-# artifacts (not folded into install.yaml) because the APIService name must stay exactly
-# v1alpha1.dashboard.promoter.argoproj.io and the extension-apiserver-authentication-reader
-# RoleBinding must stay in kube-system - see docs/dashboard-apiserver.md. We ship two
-# variants so users can pick their serving-cert strategy:
-#   * cert-manager: cert-manager issues and rotates the serving cert (single apply).
+# Combined bundles: the controller PLUS the dashboard aggregation apiserver in a single
+# file, so installing the dashboard is one `kubectl apply`. We ship two variants so users
+# can pick their serving-cert strategy:
+#   * cert-manager: cert-manager issues and rotates the serving cert.
 #   * byo-cert:     no cert-manager; the operator provides the serving cert + caBundle.
-cd "${SRCROOT}/config/apiserver/release-cert-manager" && $KUSTOMIZE edit set image "quay.io/argoprojlabs/gitops-promoter=${IMAGE_FQN}"
-echo "${AUTOGENMSG}" > "${SRCROOT}/install-dashboard-apiserver-cert-manager.yaml"
-$KUSTOMIZE build "${SRCROOT}/config/apiserver/release-cert-manager" >> "${SRCROOT}/install-dashboard-apiserver-cert-manager.yaml"
+# The apiserver is unioned (not folded into config/default) so its base stays intact - in
+# particular the extension-apiserver-authentication-reader RoleBinding stays in kube-system,
+# which config/default's namespace transformer would otherwise relocate. See
+# docs/dashboard-apiserver.md.
+cd "${SRCROOT}/config/apiserver/release-combined-cert-manager" && $KUSTOMIZE edit set image "quay.io/argoprojlabs/gitops-promoter=${IMAGE_FQN}"
+echo "${AUTOGENMSG}" > "${SRCROOT}/install-with-dashboard-cert-manager.yaml"
+$KUSTOMIZE build "${SRCROOT}/config/apiserver/release-combined-cert-manager" >> "${SRCROOT}/install-with-dashboard-cert-manager.yaml"
 
-cd "${SRCROOT}/config/apiserver/release-byo-cert" && $KUSTOMIZE edit set image "quay.io/argoprojlabs/gitops-promoter=${IMAGE_FQN}"
-echo "${AUTOGENMSG}" > "${SRCROOT}/install-dashboard-apiserver-byo-cert.yaml"
-$KUSTOMIZE build "${SRCROOT}/config/apiserver/release-byo-cert" >> "${SRCROOT}/install-dashboard-apiserver-byo-cert.yaml"
+cd "${SRCROOT}/config/apiserver/release-combined-byo-cert" && $KUSTOMIZE edit set image "quay.io/argoprojlabs/gitops-promoter=${IMAGE_FQN}"
+echo "${AUTOGENMSG}" > "${SRCROOT}/install-with-dashboard-byo-cert.yaml"
+$KUSTOMIZE build "${SRCROOT}/config/apiserver/release-combined-byo-cert" >> "${SRCROOT}/install-with-dashboard-byo-cert.yaml"

@@ -33,8 +33,8 @@ go.work.sum
 *.pem
 secret.yaml
 install.yaml
-install-dashboard-apiserver-cert-manager.yaml
-install-dashboard-apiserver-byo-cert.yaml
+install-with-dashboard-cert-manager.yaml
+install-with-dashboard-byo-cert.yaml
 
 junit.xml
 

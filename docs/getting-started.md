@@ -501,12 +501,13 @@ aggregation API into your cluster before the dashboard can load any data.
 
 ### Install the dashboard aggregation API
 
-The aggregation apiserver is **not** part of `install.yaml` — it ships as its own release
-bundle. (Its `APIService` and its `kube-system` RoleBinding must keep exact names, which a
-combined install would mangle.) The apiserver needs a TLS serving cert whose CA matches the
-`APIService` `caBundle`, so two bundles are published — pick the one that matches how you
-want to manage that cert. Install the promoter controller first (see
-[Installation](#installation) above).
+The aggregation apiserver is **not** part of the plain `install.yaml` (it needs a TLS serving
+cert, and the `caBundle` must match it). Instead, each release publishes a **combined bundle**
+that contains the controller *and* the dashboard apiserver in a single file — so installing
+with the dashboard is one `kubectl apply`. Two variants are published; pick the one that
+matches how you want to manage the serving cert. Use one of these **instead of** the plain
+`install.yaml` from [Installation](#installation) above (each combined bundle already includes
+the controller).
 
 /// tab | cert-manager
 
@@ -515,7 +516,7 @@ issue and rotate the serving cert (and keep the `caBundle` injected) automatical
 apply with nothing else to do:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/<version>/install-dashboard-apiserver-cert-manager.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.30.1/install-with-dashboard-cert-manager.yaml
 ```
 
 ///
@@ -526,7 +527,7 @@ This bundle has no cert-manager dependency. Apply it, then supply the
 `promoter-apiserver-serving-cert` Secret and patch the `APIService` `caBundle` yourself:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/<version>/install-dashboard-apiserver-byo-cert.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.30.1/install-with-dashboard-byo-cert.yaml
 ```
 
 See the [Dashboard Aggregation API](dashboard-apiserver.md#serving-certs) page for the
@@ -535,8 +536,8 @@ scripted/manual cert steps and cert rotation.
 ///
 
 > [!NOTE]
-> Replace `<version>` with the GitOps Promoter release you installed above. These bundles are
-> available starting with the first release that ships the dashboard aggregation API.
+> The combined bundles are published starting with the first release that ships the dashboard
+> aggregation API; on older releases only the plain `install.yaml` exists.
 
 Confirm the API registered and is healthy before launching the UI:
 

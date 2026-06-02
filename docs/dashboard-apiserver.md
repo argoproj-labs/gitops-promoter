@@ -36,20 +36,25 @@ kube-aggregator proxy.
 | `APIService v1alpha1.dashboard.promoter.argoproj.io` | registers the group with the kube-aggregator |
 | `ServiceAccount promoter-apiserver` + RBAC | read all promoter CRDs; `system:auth-delegator`; `extension-apiserver-authentication-reader` in `kube-system` |
 
-The base is intentionally **not** folded into `config/default`, because the
-`APIService` name must be exactly `v1alpha1.dashboard.promoter.argoproj.io` (the
-default overlay's `namePrefix` would corrupt it) and the
-`extension-apiserver-authentication-reader` RoleBinding must stay in `kube-system`.
-Install the controller first (`config/default`), then apply one of the cert
-overlays below.
+The base is intentionally **not** folded into `config/default`: the default overlay's
+`namespace: promoter-system` transformer would relocate the
+`extension-apiserver-authentication-reader` RoleBinding out of `kube-system`, which breaks
+the apiserver's delegated authentication. (A RoleBinding resolves its `roleRef` in its own
+namespace, and that Role — granting read on the `extension-apiserver-authentication`
+ConfigMap — only exists in `kube-system`.) The overlay's `namePrefix` is harmless to the
+`APIService` name itself, since kustomize leaves `APIService`/`CRD` names alone. Install the
+controller first (`config/default`), then apply one of the cert overlays below.
 
 For installs without a checkout of this repo, each release also publishes two flattened,
-image-pinned bundles — `install-dashboard-apiserver-cert-manager.yaml` (cert-manager issues
-and rotates the serving cert) and `install-dashboard-apiserver-byo-cert.yaml` (no
-cert-manager; you supply the serving cert + `caBundle`). See the
+image-pinned **combined** bundles that contain the controller *and* this apiserver in one
+file — `install-with-dashboard-cert-manager.yaml` (cert-manager issues and rotates the
+serving cert) and `install-with-dashboard-byo-cert.yaml` (no cert-manager; you supply the
+serving cert + `caBundle`). Apply one of these instead of the plain `install.yaml`. See the
 [Getting Started](getting-started.md#install-the-dashboard-aggregation-api) guide. They are
-built from the `config/apiserver/release-cert-manager` and `config/apiserver/release-byo-cert`
-overlays respectively.
+built from the `config/apiserver/release-combined-cert-manager` and
+`config/apiserver/release-combined-byo-cert` overlays respectively, which union
+`config/default` with a cert overlay (no extra namespace transformer, so the `kube-system`
+RoleBinding is preserved).
 
 ## Serving certs
 
