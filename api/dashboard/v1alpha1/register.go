@@ -20,12 +20,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-
-	"github.com/argoproj-labs/gitops-promoter/api/dashboard/dashboard"
 )
 
 // GroupName is the API group for the dashboard aggregation layer.
-const GroupName = dashboard.GroupName
+const GroupName = "dashboard.promoter.argoproj.io"
 
 // SchemeGroupVersion is the group version used to register these objects.
 var SchemeGroupVersion = schema.GroupVersion{Group: GroupName, Version: "v1alpha1"}
@@ -46,11 +44,7 @@ func Resource(resource string) schema.GroupResource {
 var (
 	// SchemeBuilder collects functions that add types to a scheme.
 	SchemeBuilder = runtime.NewSchemeBuilder(addKnownTypes)
-	// localSchemeBuilder is the pointer the generated conversion/defaulter init()
-	// functions register into (see zz_generated.conversion.go).
-	localSchemeBuilder = &SchemeBuilder
-	// AddToScheme adds the types in this group-version (and registered conversions)
-	// to the given scheme.
+	// AddToScheme adds the types in this group-version to the given scheme.
 	AddToScheme = SchemeBuilder.AddToScheme
 )
 

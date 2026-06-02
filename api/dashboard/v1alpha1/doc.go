@@ -15,7 +15,6 @@ limitations under the License.
 */
 
 // +k8s:deepcopy-gen=package
-// +k8s:conversion-gen=github.com/argoproj-labs/gitops-promoter/api/dashboard/dashboard
 // +k8s:openapi-gen=true
 // +k8s:openapi-model-package=io.argoproj.promoter.dashboard.v1alpha1
 //
@@ -27,12 +26,15 @@ limitations under the License.
 // strict OpenAPI v2 consumers like Argo CD's gnostic parser.
 //
 // These are aggregated API types served by the extension apiserver, NOT CRDs, so
-// they are owned exclusively by the k8s code-generators (deepcopy-gen, conversion-gen,
-// openapi-gen) via `make generate-apiserver`. They intentionally carry NO kubebuilder
-// markers (no +groupName, +kubebuilder:object:*), so controller-gen (`make generate`
-// / `make manifests`) skips this group entirely and never tries to emit a CRD for it.
+// they are owned exclusively by the k8s code-generators (deepcopy-gen, openapi-gen)
+// via `make generate-apiserver`. They intentionally carry NO kubebuilder markers
+// (no +groupName, +kubebuilder:object:*), so controller-gen (`make generate` /
+// `make manifests`) skips this group entirely and never tries to emit a CRD for it.
 
-// Package v1alpha1 contains the external (served) API types for the dashboard
-// aggregation layer. PromotionStrategyDetails is a read-only, server-computed
-// bundle that joins a PromotionStrategy with all of its related resources.
+// Package v1alpha1 contains the API types for the dashboard aggregation layer.
+// PromotionStrategyDetails is a read-only, server-computed bundle that joins a
+// PromotionStrategy with all of its related resources. It is the single served
+// version and is also the type the extension apiserver builds and stores in
+// memory; there is no separate internal/hub version because the resource has a
+// single version and no etcd backing, so no version conversion is ever needed.
 package v1alpha1
