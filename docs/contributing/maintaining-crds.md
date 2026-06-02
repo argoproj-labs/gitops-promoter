@@ -17,7 +17,7 @@ Add or update `internal/controller/testdata/<Kind>.yaml` (PascalCase filename ma
 
 Add or update a `### <Kind>` section in [`docs/crd-specs.md`](../crd-specs.md) with a short narrative, then include the example:
 
-```markdown
+````markdown
 ### PromotionStrategy
 
 …description…
@@ -25,7 +25,7 @@ Add or update a `### <Kind>` section in [`docs/crd-specs.md`](../crd-specs.md) w
 ```yaml
 {!internal/controller/testdata/PromotionStrategy.yaml!}
 ```
-```
+````
 
 MkDocs pulls the file in at build time via `markdown_include` (see `mkdocs.yml`). The heading text defines the anchor used by `externalDocs` (Material slugifies to lowercase, for example `### PromotionStrategy` → `#promotionstrategy`).
 
