@@ -1191,7 +1191,6 @@ func hydrateEnvironmentsBatchedTargets(ctx context.Context, repo *promoterv1alph
 
 	g2, gctx2 := errgroup.WithContext(ctx)
 	for _, h := range hydrated {
-		h := h
 		g2.Go(func() error {
 			if err := pushGitNoteWithRetry(gctx2, h.gitPath, h.hydratedSha, h.target.DrySha); err != nil {
 				return fmt.Errorf("failed to push git note for branch %q: %w", h.target.Branch, err)
