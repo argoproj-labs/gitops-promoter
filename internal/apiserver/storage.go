@@ -105,6 +105,7 @@ func (r *REST) Watch(ctx context.Context, options *metainternalversion.ListOptio
 	namespace := genericapirequest.NamespaceValue(ctx)
 
 	sendInitialEvents := options != nil && options.SendInitialEvents != nil && *options.SendInitialEvents
+	allowWatchBookmarks := options != nil && options.AllowWatchBookmarks
 	sendInitial := sendInitialEvents || options == nil || options.ResourceVersion == "" || options.ResourceVersion == "0"
 
 	var name string
@@ -114,7 +115,12 @@ func (r *REST) Watch(ctx context.Context, options *metainternalversion.ListOptio
 		}
 	}
 
-	return r.provider.Watch(ctx, namespace, name, sendInitial, sendInitialEvents)
+	// Only emit the terminating initial-events-end bookmark for a genuine watch-list
+	// request, i.e. SendInitialEvents AND AllowWatchBookmarks. This mirrors the
+	// apiserver's own isListWatchRequest gate: the watch handler installs its
+	// watchlist-complete hook only for that combination, and an annotated bookmark on
+	// any other request makes the handler invoke a nil hook and panic.
+	return r.provider.Watch(ctx, namespace, name, sendInitial, sendInitialEvents && allowWatchBookmarks)
 }
 
 // ConvertToTable converts objects to a table for kubectl output.

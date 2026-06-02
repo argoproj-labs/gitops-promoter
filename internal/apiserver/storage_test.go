@@ -114,6 +114,23 @@ var _ = Describe("REST storage", func() {
 			Expect(deltaObj.Name).To(Equal(testPSName))
 		})
 
+		It("does not emit the initial-events bookmark without AllowWatchBookmarks", func() {
+			ctx := nsContext()
+			sendInitialEvents := true
+			// SendInitialEvents without AllowWatchBookmarks is NOT a watch-list request
+			// (apiserver isListWatchRequest), so no terminating bookmark must be sent.
+			w, err := store.Watch(ctx, &metainternalversion.ListOptions{SendInitialEvents: &sendInitialEvents})
+			Expect(err).NotTo(HaveOccurred())
+			defer w.Stop()
+
+			var added watch.Event
+			Eventually(w.ResultChan()).Should(Receive(&added))
+			Expect(added.Type).To(Equal(watch.Added))
+
+			// No bookmark (or anything else) should follow the snapshot.
+			Consistently(w.ResultChan(), 200*time.Millisecond).ShouldNot(Receive())
+		})
+
 		It("skips the snapshot when a resourceVersion is supplied", func() {
 			ctx := nsContext()
 			w, err := store.Watch(ctx, &metainternalversion.ListOptions{ResourceVersion: "5"})
@@ -128,6 +145,7 @@ var _ = Describe("REST storage", func() {
 			sendInitialEvents := true
 			w, err := store.Watch(ctx, &metainternalversion.ListOptions{
 				SendInitialEvents:    &sendInitialEvents,
+				AllowWatchBookmarks:  true,
 				ResourceVersionMatch: metav1.ResourceVersionMatchNotOlderThan,
 			})
 			Expect(err).NotTo(HaveOccurred())
