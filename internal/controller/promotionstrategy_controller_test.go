@@ -1463,6 +1463,22 @@ var _ = Describe("PromotionStrategy Controller", func() {
 		})
 
 		It("should not cross-contaminate proposed note dry SHAs while git notes propagate", func() {
+			// This spec is about git-note loading and cross-contamination during the
+			// propagation window — not promotion. Disable AutoMerge for both apps so the
+			// proposed branches are not promoted/rewritten: under AutoMerge, path-scoped
+			// conflict resolution rewrites a proposed branch to a merge commit that has no
+			// git note, and setCommitMetadata then (correctly) clears Status.Proposed.Note.
+			// That clearing would make Proposed.Note legitimately nil and defeat a positive
+			// "note loaded and carries its own dry SHA" assertion. With AutoMerge off and an
+			// empty bootstrap active branch (no root hydrator.metadata to conflict with), the
+			// notes load and persist, so we can assert them deterministically.
+			By("Disabling AutoMerge for both apps so proposed notes persist")
+			for _, ps := range []*promoterv1alpha1.PromotionStrategy{&promotionStrategyOne, &promotionStrategyTwo} {
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: ps.Name, Namespace: ps.Namespace}, ps)).To(Succeed())
+				ps.Spec.Environments[0].AutoMerge = ptr.To(false)
+				Expect(k8sClient.Update(ctx, ps)).To(Succeed())
+			}
+
 			gitPath, err := cloneTestRepo(ctx, gitRepo)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -1491,22 +1507,37 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				},
 			}, "hydrate for note race", 2*time.Second)).To(Succeed())
 
-			// Nudge both CTPs every interval so the controller runs FetchNotes and the
-			// non-contamination assertion actually observes loaded notes (rather than
-			// passing trivially on nil). enqueueCTP is the same in-process trigger
-			// PromotionStrategy.enqueueOutOfSyncCTPs uses in production for note sync.
-			Consistently(func(g Gomega) {
+			// SCMs don't emit webhooks for git notes, so drive reconciliation in-process
+			// via enqueueCTP (the same trigger PromotionStrategy.enqueueOutOfSyncCTPs uses).
+			nudge := func() {
 				enqueueCTP(promotionStrategyOne.Namespace, utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategyOne.Name, testBranchDevelopment)))
 				enqueueCTP(promotionStrategyTwo.Namespace, utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategyTwo.Name, testBranchDevelopment)))
+			}
 
+			// First PROVE both notes actually load and carry their OWN app's dry SHA. This
+			// guards against a false positive: if we only checked "note != sibling's dry SHA"
+			// while the note could remain nil, the spec would pass trivially and hide a
+			// regression in note loading / reconcile nudging.
+			Eventually(func(g Gomega) {
+				nudge()
 				ctpOne := getCTP(g, &promotionStrategyOne)
 				ctpTwo := getCTP(g, &promotionStrategyTwo)
-				if ctpOne.Status.Proposed.Note != nil {
-					g.Expect(ctpOne.Status.Proposed.Note.DrySha).NotTo(Equal(dryShaTwo))
-				}
-				if ctpTwo.Status.Proposed.Note != nil {
-					g.Expect(ctpTwo.Status.Proposed.Note.DrySha).NotTo(Equal(dryShaOne))
-				}
+				g.Expect(ctpOne.Status.Proposed.Note).NotTo(BeNil(), "app-one proposed note should load")
+				g.Expect(ctpTwo.Status.Proposed.Note).NotTo(BeNil(), "app-two proposed note should load")
+				g.Expect(ctpOne.Status.Proposed.Note.DrySha).To(Equal(dryShaOne), "app-one note must carry its own dry SHA")
+				g.Expect(ctpTwo.Status.Proposed.Note.DrySha).To(Equal(dryShaTwo), "app-two note must carry its own dry SHA")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			// Then PROVE the notes stay correct and never cross-contaminate as both CTPs keep
+			// reconciling on the shared active branch.
+			Consistently(func(g Gomega) {
+				nudge()
+				ctpOne := getCTP(g, &promotionStrategyOne)
+				ctpTwo := getCTP(g, &promotionStrategyTwo)
+				g.Expect(ctpOne.Status.Proposed.Note).NotTo(BeNil())
+				g.Expect(ctpOne.Status.Proposed.Note.DrySha).To(Equal(dryShaOne), "app-one note must not adopt app-two's dry SHA")
+				g.Expect(ctpTwo.Status.Proposed.Note).NotTo(BeNil())
+				g.Expect(ctpTwo.Status.Proposed.Note.DrySha).To(Equal(dryShaTwo), "app-two note must not adopt app-one's dry SHA")
 			}, time.Second*3, time.Millisecond*250).Should(Succeed())
 
 			_ = os.RemoveAll(gitPath)
@@ -1586,6 +1617,88 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			_ = os.RemoveAll(gitPath)
+		})
+
+		It("should keep an unchanged app at steady state while the other app receives a change", func() {
+			activeRef := "origin/" + testBranchDevelopment
+			ctpOneName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategyOne.Name, testBranchDevelopment))
+
+			gitPath, err := cloneTestRepo(ctx, gitRepo)
+			Expect(err).NotTo(HaveOccurred())
+			defer func() { _ = os.RemoveAll(gitPath) }()
+
+			By("Establishing a baseline: both apps hydrate and promote onto the shared active branch")
+			dryShaOne, err := makeDryCommit(ctx, gitPath, "dry app-one baseline")
+			Expect(err).NotTo(HaveOccurred())
+			dryShaTwo, err := makeDryCommit(ctx, gitPath, "dry app-two baseline")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hydrateEnvironmentsBatchedTargets(ctx, gitRepo, []BatchedHydrationTarget{
+				{Branch: path.Join(testBranchDevelopmentNext, activePathOne), ActivePath: activePathOne, BootstrapBranch: testBranchDevelopment, DrySha: dryShaOne},
+				{Branch: path.Join(testBranchDevelopmentNext, activePathTwo), ActivePath: activePathTwo, BootstrapBranch: testBranchDevelopment, DrySha: dryShaTwo},
+			}, "hydrate baseline for steady-state test", 0)).To(Succeed())
+
+			var appOneBaselineManifest string
+			Eventually(func(g Gomega) {
+				ctpOne := getCTP(g, &promotionStrategyOne)
+				ctpTwo := getCTP(g, &promotionStrategyTwo)
+				enqueueCTP(ctpOne.Namespace, ctpOne.Name)
+				enqueueCTP(ctpTwo.Namespace, ctpTwo.Name)
+				g.Expect(ctpOne.Status.Active.Dry.Sha).To(Equal(dryShaOne))
+				g.Expect(ctpTwo.Status.Active.Dry.Sha).To(Equal(dryShaTwo))
+
+				_, readErr := runGitCmd(ctx, gitPath, "fetch", "origin", testBranchDevelopment)
+				g.Expect(readErr).NotTo(HaveOccurred())
+				manifestOne, readErr := gitShowPathAtRef(ctx, gitPath, activeRef, path.Join(activePathOne, "manifests-fake.yaml"))
+				g.Expect(readErr).NotTo(HaveOccurred())
+				g.Expect(manifestOne).To(ContainSubstring(dryShaOne))
+				appOneBaselineManifest = manifestOne
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Pushing a change for app-two ONLY (app-one receives no new hydration)")
+			dryShaTwoNext, err := makeDryCommit(ctx, gitPath, "dry app-two follow-up change")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dryShaTwoNext).NotTo(Equal(dryShaTwo))
+			Expect(hydrateEnvironmentsBatchedTargets(ctx, gitRepo, []BatchedHydrationTarget{
+				{Branch: path.Join(testBranchDevelopmentNext, activePathTwo), ActivePath: activePathTwo, BootstrapBranch: testBranchDevelopment, DrySha: dryShaTwoNext},
+			}, "hydrate app-two follow-up", 0)).To(Succeed())
+
+			By("Verifying app-two promotes the new change like any app would")
+			Eventually(func(g Gomega) {
+				ctpTwo := getCTP(g, &promotionStrategyTwo)
+				enqueueCTP(ctpTwo.Namespace, ctpTwo.Name)
+				g.Expect(ctpTwo.Status.Active.Dry.Sha).To(Equal(dryShaTwoNext), "app-two should promote its new change")
+
+				_, readErr := runGitCmd(ctx, gitPath, "fetch", "origin", testBranchDevelopment)
+				g.Expect(readErr).NotTo(HaveOccurred())
+				manifestTwo, readErr := gitShowPathAtRef(ctx, gitPath, activeRef, path.Join(activePathTwo, "manifests-fake.yaml"))
+				g.Expect(readErr).NotTo(HaveOccurred())
+				g.Expect(manifestTwo).To(ContainSubstring(dryShaTwoNext))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying app-one sits at steady state: no promotion, no new proposed change, no open PR, content untouched")
+			appOnePRName := utils.KubeSafeUniqueName(utils.GetPullRequestName(
+				gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name,
+				path.Join(testBranchDevelopmentNext, activePathOne), testBranchDevelopment))
+			Consistently(func(g Gomega) {
+				// Keep app-one reconciling; a well-behaved unchanged app must stay put even when nudged.
+				enqueueCTP(promotionStrategyOne.Namespace, ctpOneName)
+
+				ctpOne := getCTP(g, &promotionStrategyOne)
+				g.Expect(ctpOne.Status.Active.Dry.Sha).To(Equal(dryShaOne), "app-one active dry sha must not move")
+				g.Expect(ctpOne.Status.Proposed.Dry.Sha).To(Equal(dryShaOne), "app-one must not acquire a new proposed change")
+
+				// No open promotion PR should exist for app-one (it has nothing to promote).
+				var pr promoterv1alpha1.PullRequest
+				prErr := k8sClient.Get(ctx, types.NamespacedName{Name: appOnePRName, Namespace: promotionStrategyOne.Namespace}, &pr)
+				g.Expect(errors.IsNotFound(prErr)).To(BeTrue(), "app-one should have no open promotion PR")
+
+				// app-one's content on the shared active branch is byte-for-byte preserved.
+				_, readErr := runGitCmd(ctx, gitPath, "fetch", "origin", testBranchDevelopment)
+				g.Expect(readErr).NotTo(HaveOccurred())
+				manifestOne, readErr := gitShowPathAtRef(ctx, gitPath, activeRef, path.Join(activePathOne, "manifests-fake.yaml"))
+				g.Expect(readErr).NotTo(HaveOccurred())
+				g.Expect(manifestOne).To(Equal(appOneBaselineManifest), "app-one manifest on active must be unchanged")
+			}, time.Second*5, time.Second*1).Should(Succeed())
 		})
 	})
 
