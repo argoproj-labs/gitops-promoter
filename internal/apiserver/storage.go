@@ -27,7 +27,7 @@ import (
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/rest"
 
-	dashboardv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/dashboard/v1alpha1"
+	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
 )
 
 // REST is a hand-rolled, read-only rest.Storage for PromotionStrategyDetails. The
@@ -53,13 +53,13 @@ var (
 func NewREST(provider *BundleProvider) *REST {
 	return &REST{
 		provider:       provider,
-		tableConvertor: rest.NewDefaultTableConvertor(dashboardv1alpha1.Resource("promotionstrategydetails")),
+		tableConvertor: rest.NewDefaultTableConvertor(viewv1alpha1.Resource("promotionstrategydetails")),
 	}
 }
 
 // New returns a new (empty) PromotionStrategyDetails.
 func (r *REST) New() runtime.Object {
-	return &dashboardv1alpha1.PromotionStrategyDetails{}
+	return &viewv1alpha1.PromotionStrategyDetails{}
 }
 
 // Destroy releases resources; nothing to do for a virtual resource.
@@ -67,7 +67,7 @@ func (r *REST) Destroy() {}
 
 // NewList returns a new (empty) PromotionStrategyDetailsList.
 func (r *REST) NewList() runtime.Object {
-	return &dashboardv1alpha1.PromotionStrategyDetailsList{}
+	return &viewv1alpha1.PromotionStrategyDetailsList{}
 }
 
 // NamespaceScoped reports that PromotionStrategyDetails is namespaced.

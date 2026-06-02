@@ -18,4 +18,4 @@ patches:
       group: apiregistration.k8s.io
       version: v1
       kind: APIService
-      name: v1alpha1.dashboard.promoter.argoproj.io
+      name: v1alpha1.view.promoter.argoproj.io

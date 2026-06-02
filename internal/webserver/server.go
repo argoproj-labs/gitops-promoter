@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	dashboardv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/dashboard/v1alpha1"
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
 	webserverlogr "github.com/argoproj-labs/gitops-promoter/internal/webserver/logr"
 	"github.com/argoproj-labs/gitops-promoter/ui/web"
 	"github.com/gin-contrib/gzip"
@@ -129,22 +129,22 @@ func (ws *WebServer) sendDeleteEvent(e client.Object) {
 func (ws *WebServer) SetupWithManager(mgr ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(mgr).
 		Named("webServer").
-		Watches(&dashboardv1alpha1.PromotionStrategyDetails{}, handler.Funcs{
+		Watches(&viewv1alpha1.PromotionStrategyDetails{}, handler.Funcs{
 			CreateFunc: func(ctx context.Context, e event.TypedCreateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if bundle, ok := e.Object.(*dashboardv1alpha1.PromotionStrategyDetails); ok {
-					bundle.SetGroupVersionKind(dashboardv1alpha1.GroupVersion.WithKind(promotionStrategyDetailsKind))
+				if bundle, ok := e.Object.(*viewv1alpha1.PromotionStrategyDetails); ok {
+					bundle.SetGroupVersionKind(viewv1alpha1.GroupVersion.WithKind(promotionStrategyDetailsKind))
 					ws.sendEvent(bundle)
 				}
 			},
 			UpdateFunc: func(ctx context.Context, e event.TypedUpdateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if bundle, ok := e.ObjectNew.(*dashboardv1alpha1.PromotionStrategyDetails); ok {
-					bundle.SetGroupVersionKind(dashboardv1alpha1.GroupVersion.WithKind(promotionStrategyDetailsKind))
+				if bundle, ok := e.ObjectNew.(*viewv1alpha1.PromotionStrategyDetails); ok {
+					bundle.SetGroupVersionKind(viewv1alpha1.GroupVersion.WithKind(promotionStrategyDetailsKind))
 					ws.sendEvent(bundle)
 				}
 			},
 			DeleteFunc: func(ctx context.Context, e event.TypedDeleteEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if bundle, ok := e.Object.(*dashboardv1alpha1.PromotionStrategyDetails); ok {
-					bundle.SetGroupVersionKind(dashboardv1alpha1.GroupVersion.WithKind(promotionStrategyDetailsKind))
+				if bundle, ok := e.Object.(*viewv1alpha1.PromotionStrategyDetails); ok {
+					bundle.SetGroupVersionKind(viewv1alpha1.GroupVersion.WithKind(promotionStrategyDetailsKind))
 					ws.sendDeleteEvent(bundle)
 				}
 			},
@@ -302,7 +302,7 @@ func (ws *WebServer) httpList(c *gin.Context) {
 
 	switch kind {
 	case "promotionstrategydetails":
-		bundleList := &dashboardv1alpha1.PromotionStrategyDetailsList{}
+		bundleList := &viewv1alpha1.PromotionStrategyDetailsList{}
 		err := ws.List(c, bundleList, listOptions)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, err.Error())

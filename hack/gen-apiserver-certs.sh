@@ -12,7 +12,7 @@
 #   NAMESPACE      target namespace (default: promoter-system)
 #   SERVICE        apiserver service name (default: promoter-apiserver)
 #   SECRET         serving-cert secret name (default: promoter-apiserver-serving-cert)
-#   APISERVICE     APIService name (default: v1alpha1.dashboard.promoter.argoproj.io)
+#   APISERVICE     APIService name (default: v1alpha1.view.promoter.argoproj.io)
 #
 # Requires: openssl, kubectl.
 set -euo pipefail
@@ -20,7 +20,7 @@ set -euo pipefail
 NAMESPACE="${1:-${NAMESPACE:-promoter-system}}"
 SERVICE="${SERVICE:-promoter-apiserver}"
 SECRET="${SECRET:-promoter-apiserver-serving-cert}"
-APISERVICE="${APISERVICE:-v1alpha1.dashboard.promoter.argoproj.io}"
+APISERVICE="${APISERVICE:-v1alpha1.view.promoter.argoproj.io}"
 
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "${WORKDIR}"' EXIT

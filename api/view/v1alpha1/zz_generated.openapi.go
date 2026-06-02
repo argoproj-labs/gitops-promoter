@@ -35,8 +35,6 @@ import (
 
 func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenAPIDefinition {
 	return map[string]common.OpenAPIDefinition{
-		PromotionStrategyDetails{}.OpenAPIModelName():                                         schema_gitops_promoter_api_dashboard_v1alpha1_PromotionStrategyDetails(ref),
-		PromotionStrategyDetailsList{}.OpenAPIModelName():                                     schema_gitops_promoter_api_dashboard_v1alpha1_PromotionStrategyDetailsList(ref),
 		apiv1alpha1.ApplicationsSelected{}.OpenAPIModelName():                                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_ApplicationsSelected(ref),
 		apiv1alpha1.ArgoCDCommitStatus{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatus(ref),
 		apiv1alpha1.ArgoCDCommitStatusConfiguration{}.OpenAPIModelName():                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusConfiguration(ref),
@@ -155,6 +153,8 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.WebRequestCommitStatusStatus{}.OpenAPIModelName():                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusStatus(ref),
 		apiv1alpha1.WhenWithOutputSpec{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_WhenWithOutputSpec(ref),
 		apiv1alpha1.WorkQueue{}.OpenAPIModelName():                                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_WorkQueue(ref),
+		PromotionStrategyDetails{}.OpenAPIModelName():                                         schema_gitops_promoter_api_view_v1alpha1_PromotionStrategyDetails(ref),
+		PromotionStrategyDetailsList{}.OpenAPIModelName():                                     schema_gitops_promoter_api_view_v1alpha1_PromotionStrategyDetailsList(ref),
 		v1.AWSElasticBlockStoreVolumeSource{}.OpenAPIModelName():                              schema_k8sio_api_core_v1_AWSElasticBlockStoreVolumeSource(ref),
 		v1.Affinity{}.OpenAPIModelName():                                                      schema_k8sio_api_core_v1_Affinity(ref),
 		v1.AppArmorProfile{}.OpenAPIModelName():                                               schema_k8sio_api_core_v1_AppArmorProfile(ref),
@@ -478,214 +478,6 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		runtime.Unknown{}.OpenAPIModelName():                                                  schema_k8sio_apimachinery_pkg_runtime_Unknown(ref),
 		intstr.IntOrString{}.OpenAPIModelName():                                               schema_apimachinery_pkg_util_intstr_IntOrString(ref),
 		version.Info{}.OpenAPIModelName():                                                     schema_k8sio_apimachinery_pkg_version_Info(ref),
-	}
-}
-
-func schema_gitops_promoter_api_dashboard_v1alpha1_PromotionStrategyDetails(ref common.ReferenceCallback) common.OpenAPIDefinition {
-	return common.OpenAPIDefinition{
-		Schema: spec.Schema{
-			SchemaProps: spec.SchemaProps{
-				Description: "PromotionStrategyDetails is a read-only, server-computed bundle that joins a PromotionStrategy with all of its related resources. It is served by the dashboard aggregation layer (an extension apiserver) and is not persisted in etcd. The name of a PromotionStrategyDetails always matches the name of the PromotionStrategy it describes (1:1 mapping within a namespace).\n\nSecrets are never included in the bundle.",
-				Type:        []string{"object"},
-				Properties: map[string]spec.Schema{
-					"kind": {
-						SchemaProps: spec.SchemaProps{
-							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
-							Type:        []string{"string"},
-							Format:      "",
-						},
-					},
-					"apiVersion": {
-						SchemaProps: spec.SchemaProps{
-							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
-							Type:        []string{"string"},
-							Format:      "",
-						},
-					},
-					"metadata": {
-						SchemaProps: spec.SchemaProps{
-							Default: map[string]interface{}{},
-							Ref:     ref(metav1.ObjectMeta{}.OpenAPIModelName()),
-						},
-					},
-					"promotionStrategy": {
-						SchemaProps: spec.SchemaProps{
-							Description: "PromotionStrategy is the source PromotionStrategy this bundle describes.",
-							Default:     map[string]interface{}{},
-							Ref:         ref(apiv1alpha1.PromotionStrategy{}.OpenAPIModelName()),
-						},
-					},
-					"changeTransferPolicies": {
-						SchemaProps: spec.SchemaProps{
-							Description: "ChangeTransferPolicies are the CTPs owned by the PromotionStrategy (selected by the promoter.argoproj.io/promotion-strategy label).",
-							Type:        []string{"array"},
-							Items: &spec.SchemaOrArray{
-								Schema: &spec.Schema{
-									SchemaProps: spec.SchemaProps{
-										Default: map[string]interface{}{},
-										Ref:     ref(apiv1alpha1.ChangeTransferPolicy{}.OpenAPIModelName()),
-									},
-								},
-							},
-						},
-					},
-					"pullRequests": {
-						SchemaProps: spec.SchemaProps{
-							Description: "PullRequests are the PullRequests associated with the PromotionStrategy (selected by the promoter.argoproj.io/promotion-strategy label).",
-							Type:        []string{"array"},
-							Items: &spec.SchemaOrArray{
-								Schema: &spec.Schema{
-									SchemaProps: spec.SchemaProps{
-										Default: map[string]interface{}{},
-										Ref:     ref(apiv1alpha1.PullRequest{}.OpenAPIModelName()),
-									},
-								},
-							},
-						},
-					},
-					"commitStatuses": {
-						SchemaProps: spec.SchemaProps{
-							Description: "CommitStatuses are the base CommitStatus resources associated with the PromotionStrategy (selected by the promoter.argoproj.io/promotion-strategy label).",
-							Type:        []string{"array"},
-							Items: &spec.SchemaOrArray{
-								Schema: &spec.Schema{
-									SchemaProps: spec.SchemaProps{
-										Default: map[string]interface{}{},
-										Ref:     ref(apiv1alpha1.CommitStatus{}.OpenAPIModelName()),
-									},
-								},
-							},
-						},
-					},
-					"argoCDCommitStatuses": {
-						SchemaProps: spec.SchemaProps{
-							Description: "ArgoCDCommitStatuses are the ArgoCDCommitStatus managers that reference the PromotionStrategy.",
-							Type:        []string{"array"},
-							Items: &spec.SchemaOrArray{
-								Schema: &spec.Schema{
-									SchemaProps: spec.SchemaProps{
-										Default: map[string]interface{}{},
-										Ref:     ref(apiv1alpha1.ArgoCDCommitStatus{}.OpenAPIModelName()),
-									},
-								},
-							},
-						},
-					},
-					"gitCommitStatuses": {
-						SchemaProps: spec.SchemaProps{
-							Description: "GitCommitStatuses are the GitCommitStatus managers that reference the PromotionStrategy.",
-							Type:        []string{"array"},
-							Items: &spec.SchemaOrArray{
-								Schema: &spec.Schema{
-									SchemaProps: spec.SchemaProps{
-										Default: map[string]interface{}{},
-										Ref:     ref(apiv1alpha1.GitCommitStatus{}.OpenAPIModelName()),
-									},
-								},
-							},
-						},
-					},
-					"timedCommitStatuses": {
-						SchemaProps: spec.SchemaProps{
-							Description: "TimedCommitStatuses are the TimedCommitStatus managers that reference the PromotionStrategy.",
-							Type:        []string{"array"},
-							Items: &spec.SchemaOrArray{
-								Schema: &spec.Schema{
-									SchemaProps: spec.SchemaProps{
-										Default: map[string]interface{}{},
-										Ref:     ref(apiv1alpha1.TimedCommitStatus{}.OpenAPIModelName()),
-									},
-								},
-							},
-						},
-					},
-					"webRequestCommitStatuses": {
-						SchemaProps: spec.SchemaProps{
-							Description: "WebRequestCommitStatuses are the WebRequestCommitStatus managers that reference the PromotionStrategy.",
-							Type:        []string{"array"},
-							Items: &spec.SchemaOrArray{
-								Schema: &spec.Schema{
-									SchemaProps: spec.SchemaProps{
-										Default: map[string]interface{}{},
-										Ref:     ref(apiv1alpha1.WebRequestCommitStatus{}.OpenAPIModelName()),
-									},
-								},
-							},
-						},
-					},
-					"gitRepository": {
-						SchemaProps: spec.SchemaProps{
-							Description: "GitRepository is the GitRepository referenced by the PromotionStrategy, if resolvable.",
-							Ref:         ref(apiv1alpha1.GitRepository{}.OpenAPIModelName()),
-						},
-					},
-					"scmProvider": {
-						SchemaProps: spec.SchemaProps{
-							Description: "ScmProvider is the namespaced ScmProvider referenced by the GitRepository, if applicable. The credentials Secret referenced by the provider is never resolved or included.",
-							Ref:         ref(apiv1alpha1.ScmProvider{}.OpenAPIModelName()),
-						},
-					},
-					"clusterScmProvider": {
-						SchemaProps: spec.SchemaProps{
-							Description: "ClusterScmProvider is the cluster-scoped ScmProvider referenced by the GitRepository, if applicable. The credentials Secret referenced by the provider is never resolved or included.",
-							Ref:         ref(apiv1alpha1.ClusterScmProvider{}.OpenAPIModelName()),
-						},
-					},
-				},
-				Required: []string{"promotionStrategy"},
-			},
-		},
-		Dependencies: []string{
-			apiv1alpha1.ArgoCDCommitStatus{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicy{}.OpenAPIModelName(), apiv1alpha1.ClusterScmProvider{}.OpenAPIModelName(), apiv1alpha1.CommitStatus{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatus{}.OpenAPIModelName(), apiv1alpha1.GitRepository{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategy{}.OpenAPIModelName(), apiv1alpha1.PullRequest{}.OpenAPIModelName(), apiv1alpha1.ScmProvider{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatus{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
-	}
-}
-
-func schema_gitops_promoter_api_dashboard_v1alpha1_PromotionStrategyDetailsList(ref common.ReferenceCallback) common.OpenAPIDefinition {
-	return common.OpenAPIDefinition{
-		Schema: spec.Schema{
-			SchemaProps: spec.SchemaProps{
-				Description: "PromotionStrategyDetailsList contains a list of PromotionStrategyDetails.",
-				Type:        []string{"object"},
-				Properties: map[string]spec.Schema{
-					"kind": {
-						SchemaProps: spec.SchemaProps{
-							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
-							Type:        []string{"string"},
-							Format:      "",
-						},
-					},
-					"apiVersion": {
-						SchemaProps: spec.SchemaProps{
-							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
-							Type:        []string{"string"},
-							Format:      "",
-						},
-					},
-					"metadata": {
-						SchemaProps: spec.SchemaProps{
-							Default: map[string]interface{}{},
-							Ref:     ref(metav1.ListMeta{}.OpenAPIModelName()),
-						},
-					},
-					"items": {
-						SchemaProps: spec.SchemaProps{
-							Type: []string{"array"},
-							Items: &spec.SchemaOrArray{
-								Schema: &spec.Schema{
-									SchemaProps: spec.SchemaProps{
-										Default: map[string]interface{}{},
-										Ref:     ref(PromotionStrategyDetails{}.OpenAPIModelName()),
-									},
-								},
-							},
-						},
-					},
-				},
-				Required: []string{"items"},
-			},
-		},
-		Dependencies: []string{
-			PromotionStrategyDetails{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
 	}
 }
 
@@ -5817,6 +5609,214 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WorkQueue(ref common.Refe
 		},
 		Dependencies: []string{
 			apiv1alpha1.RateLimiter{}.OpenAPIModelName(), metav1.Duration{}.OpenAPIModelName()},
+	}
+}
+
+func schema_gitops_promoter_api_view_v1alpha1_PromotionStrategyDetails(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "PromotionStrategyDetails is a read-only, server-computed bundle that joins a PromotionStrategy with all of its related resources. It is served by the view aggregation layer (an extension apiserver) and is not persisted in etcd. The name of a PromotionStrategyDetails always matches the name of the PromotionStrategy it describes (1:1 mapping within a namespace).\n\nSecrets are never included in the bundle.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref(metav1.ObjectMeta{}.OpenAPIModelName()),
+						},
+					},
+					"promotionStrategy": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PromotionStrategy is the source PromotionStrategy this bundle describes.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.PromotionStrategy{}.OpenAPIModelName()),
+						},
+					},
+					"changeTransferPolicies": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ChangeTransferPolicies are the CTPs owned by the PromotionStrategy (selected by the promoter.argoproj.io/promotion-strategy label).",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref(apiv1alpha1.ChangeTransferPolicy{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+					"pullRequests": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PullRequests are the PullRequests associated with the PromotionStrategy (selected by the promoter.argoproj.io/promotion-strategy label).",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref(apiv1alpha1.PullRequest{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+					"commitStatuses": {
+						SchemaProps: spec.SchemaProps{
+							Description: "CommitStatuses are the base CommitStatus resources associated with the PromotionStrategy (selected by the promoter.argoproj.io/promotion-strategy label).",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref(apiv1alpha1.CommitStatus{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+					"argoCDCommitStatuses": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ArgoCDCommitStatuses are the ArgoCDCommitStatus managers that reference the PromotionStrategy.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref(apiv1alpha1.ArgoCDCommitStatus{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+					"gitCommitStatuses": {
+						SchemaProps: spec.SchemaProps{
+							Description: "GitCommitStatuses are the GitCommitStatus managers that reference the PromotionStrategy.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref(apiv1alpha1.GitCommitStatus{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+					"timedCommitStatuses": {
+						SchemaProps: spec.SchemaProps{
+							Description: "TimedCommitStatuses are the TimedCommitStatus managers that reference the PromotionStrategy.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref(apiv1alpha1.TimedCommitStatus{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+					"webRequestCommitStatuses": {
+						SchemaProps: spec.SchemaProps{
+							Description: "WebRequestCommitStatuses are the WebRequestCommitStatus managers that reference the PromotionStrategy.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref(apiv1alpha1.WebRequestCommitStatus{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+					"gitRepository": {
+						SchemaProps: spec.SchemaProps{
+							Description: "GitRepository is the GitRepository referenced by the PromotionStrategy, if resolvable.",
+							Ref:         ref(apiv1alpha1.GitRepository{}.OpenAPIModelName()),
+						},
+					},
+					"scmProvider": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ScmProvider is the namespaced ScmProvider referenced by the GitRepository, if applicable. The credentials Secret referenced by the provider is never resolved or included.",
+							Ref:         ref(apiv1alpha1.ScmProvider{}.OpenAPIModelName()),
+						},
+					},
+					"clusterScmProvider": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ClusterScmProvider is the cluster-scoped ScmProvider referenced by the GitRepository, if applicable. The credentials Secret referenced by the provider is never resolved or included.",
+							Ref:         ref(apiv1alpha1.ClusterScmProvider{}.OpenAPIModelName()),
+						},
+					},
+				},
+				Required: []string{"promotionStrategy"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.ArgoCDCommitStatus{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicy{}.OpenAPIModelName(), apiv1alpha1.ClusterScmProvider{}.OpenAPIModelName(), apiv1alpha1.CommitStatus{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatus{}.OpenAPIModelName(), apiv1alpha1.GitRepository{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategy{}.OpenAPIModelName(), apiv1alpha1.PullRequest{}.OpenAPIModelName(), apiv1alpha1.ScmProvider{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatus{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
+	}
+}
+
+func schema_gitops_promoter_api_view_v1alpha1_PromotionStrategyDetailsList(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "PromotionStrategyDetailsList contains a list of PromotionStrategyDetails.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref(metav1.ListMeta{}.OpenAPIModelName()),
+						},
+					},
+					"items": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref(PromotionStrategyDetails{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"items"},
+			},
+		},
+		Dependencies: []string{
+			PromotionStrategyDetails{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
 	}
 }
 

@@ -70,7 +70,7 @@ help: ## Display this help.
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	$(CONTROLLER_GEN) rbac:roleName=manager-role webhook paths="./..."
 	# CRD generation is scoped to the packages that actually define CRDs. The
-	# dashboard aggregation API (api/dashboard/...) is served by an extension
+	# view aggregation API (api/view/...) is served by an extension
 	# apiserver, not as CRDs; including it would make controller-gen's CRD generator
 	# treat those TypeMeta/ObjectMeta types as Kinds and fail.
 	$(CONTROLLER_GEN) crd paths="./api/v1alpha1/..." paths="./internal/types/argocd/..." output:crd:artifacts:config=config/crd/bases
@@ -86,9 +86,9 @@ generate-extension-icon-styles: ## Generate Argo CD extension icon styles from l
 	./hack/extension-icon-styles.sh
 
 .PHONY: generate-all
-generate-all: generate generate-apiserver generate-extension-icon-styles ## Run all code generation used in CI (controller-gen, dashboard apiserver codegen, extension icon styles). For mocks, run make mockery-gen separately.
+generate-all: generate generate-apiserver generate-extension-icon-styles ## Run all code generation used in CI (controller-gen, view apiserver codegen, extension icon styles). For mocks, run make mockery-gen separately.
 
-# Code generation for the dashboard aggregation API (api/dashboard/...).
+# Code generation for the view aggregation API (api/view/...).
 #
 # These are aggregated-apiserver types (NOT CRDs), so they are owned entirely by the
 # k8s code-generators here, never by controller-gen:
@@ -98,24 +98,24 @@ generate-all: generate generate-apiserver generate-extension-icon-styles ## Run 
 # is no internal/hub version and no conversion-gen step. The package carries no
 # kubebuilder markers, so `make generate` (controller-gen) and `make manifests` skip
 # it and never emit a CRD for this group. Re-run this target after changing any type
-# in api/dashboard/...; the output is committed.
+# in api/view/...; the output is committed.
 .PHONY: generate-apiserver
-generate-apiserver: ## Generate deepcopy/openapi for the dashboard aggregation API (api/dashboard/...).
+generate-apiserver: ## Generate deepcopy/openapi for the view aggregation API (api/view/...).
 	go tool deepcopy-gen \
 		--output-file zz_generated.deepcopy.go \
 		--go-header-file hack/boilerplate.go.txt \
-		./api/dashboard/v1alpha1
+		./api/view/v1alpha1
 	# The bundle embeds the promoter v1alpha1 types, so openapi-gen runs over both the
-	# dashboard and promoter packages plus the apimachinery/core/apiextensions deps the
+	# view and promoter packages plus the apimachinery/core/apiextensions deps the
 	# promoter types reference. --output-model-name-file generates OpenAPIModelName()
 	# accessors so the served model names are dot-separated (e.g.
-	# io.argoproj.promoter.v1alpha1.* and io.argoproj.promoter.dashboard.v1alpha1.*)
+	# io.argoproj.promoter.v1alpha1.* and io.argoproj.promoter.view.v1alpha1.*)
 	# rather than the Go import path; slash-containing names break strict OpenAPI v2
 	# consumers (e.g. Argo CD). The k8s.io dependency packages already ship their own
 	# model names, so they are marked --readonly-pkg (don't regenerate into the cache).
 	go tool openapi-gen \
-		--output-dir ./api/dashboard/v1alpha1 \
-		--output-pkg github.com/argoproj-labs/gitops-promoter/api/dashboard/v1alpha1 \
+		--output-dir ./api/view/v1alpha1 \
+		--output-pkg github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1 \
 		--output-file zz_generated.openapi.go \
 		--output-model-name-file zz_generated.model_name.go \
 		--go-header-file hack/boilerplate.go.txt \
@@ -126,7 +126,7 @@ generate-apiserver: ## Generate deepcopy/openapi for the dashboard aggregation A
 		--readonly-pkg k8s.io/apimachinery/pkg/version \
 		--readonly-pkg k8s.io/apimachinery/pkg/api/resource \
 		--readonly-pkg k8s.io/apimachinery/pkg/util/intstr \
-		./api/dashboard/v1alpha1 ./api/v1alpha1 \
+		./api/view/v1alpha1 ./api/v1alpha1 \
 		k8s.io/api/core/v1 \
 		k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1 \
 		k8s.io/apimachinery/pkg/apis/meta/v1 k8s.io/apimachinery/pkg/runtime k8s.io/apimachinery/pkg/version \

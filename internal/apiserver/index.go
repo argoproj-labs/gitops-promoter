@@ -34,8 +34,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	dashboardv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/dashboard/v1alpha1"
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
 )
 
 var log = ctrl.Log.WithName("dashboard-apiserver")
@@ -171,7 +171,7 @@ func (p *BundleProvider) reconcileKey(ctx context.Context, key types.NamespacedN
 		delete(p.known, key)
 		p.mu.Unlock()
 		if wasKnown {
-			tombstone := &dashboardv1alpha1.PromotionStrategyDetails{
+			tombstone := &viewv1alpha1.PromotionStrategyDetails{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:            key.Name,
 					Namespace:       key.Namespace,
@@ -299,13 +299,13 @@ func (p *BundleProvider) promotionStrategiesForScmProvider(ctx context.Context, 
 }
 
 // Get builds the bundle for a single PromotionStrategy.
-func (p *BundleProvider) Get(ctx context.Context, namespace, name string) (*dashboardv1alpha1.PromotionStrategyDetails, error) {
+func (p *BundleProvider) Get(ctx context.Context, namespace, name string) (*viewv1alpha1.PromotionStrategyDetails, error) {
 	return buildBundle(ctx, p.reader, namespace, name, p.currentResourceVersion())
 }
 
 // List builds bundles for all PromotionStrategies in the given namespace (all
 // namespaces when namespace is empty).
-func (p *BundleProvider) List(ctx context.Context, namespace string) (*dashboardv1alpha1.PromotionStrategyDetailsList, error) {
+func (p *BundleProvider) List(ctx context.Context, namespace string) (*viewv1alpha1.PromotionStrategyDetailsList, error) {
 	psList := &promoterv1alpha1.PromotionStrategyList{}
 	var listOpts []client.ListOption
 	if namespace != "" {
@@ -316,7 +316,7 @@ func (p *BundleProvider) List(ctx context.Context, namespace string) (*dashboard
 	}
 
 	rv := p.currentResourceVersion()
-	out := &dashboardv1alpha1.PromotionStrategyDetailsList{
+	out := &viewv1alpha1.PromotionStrategyDetailsList{
 		ListMeta: metav1.ListMeta{ResourceVersion: rv},
 	}
 	for i := range psList.Items {
@@ -371,7 +371,7 @@ func (p *BundleProvider) Watch(ctx context.Context, namespace, name string, send
 		}
 
 		if sendInitialEventsBookmark {
-			bookmark := &dashboardv1alpha1.PromotionStrategyDetails{}
+			bookmark := &viewv1alpha1.PromotionStrategyDetails{}
 			bookmark.SetResourceVersion(list.ResourceVersion)
 			bookmark.SetAnnotations(map[string]string{metav1.InitialEventsAnnotationKey: "true"})
 			select {

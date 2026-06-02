@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package install registers the dashboard aggregation API (the single v1alpha1
+// Package install registers the view aggregation API (the single v1alpha1
 // version) into a scheme.
 package install
 
@@ -22,13 +22,13 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 
-	dashboardv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/dashboard/v1alpha1"
+	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
 )
 
-// Install registers the dashboard API group (v1alpha1) into the given scheme.
+// Install registers the view API group (v1alpha1) into the given scheme.
 // The resource has a single version and no etcd backing, so there is no internal
 // version or conversion to register.
 func Install(scheme *runtime.Scheme) {
-	utilruntime.Must(dashboardv1alpha1.AddToScheme(scheme))
-	utilruntime.Must(scheme.SetVersionPriority(dashboardv1alpha1.SchemeGroupVersion))
+	utilruntime.Must(viewv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(scheme.SetVersionPriority(viewv1alpha1.SchemeGroupVersion))
 }

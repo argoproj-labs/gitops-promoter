@@ -29,7 +29,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
 
-	dashboardv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/dashboard/v1alpha1"
+	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/cmd/demo"
 	"github.com/argoproj-labs/gitops-promoter/internal/apiserver"
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
@@ -403,7 +403,7 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 
 			// Register the dashboard aggregation type so the manager cache can watch
 			// the server-computed PromotionStrategyDetails bundle.
-			if err := dashboardv1alpha1.AddToScheme(mgr.GetScheme()); err != nil {
+			if err := viewv1alpha1.AddToScheme(mgr.GetScheme()); err != nil {
 				return fmt.Errorf("failed to register dashboard scheme: %w", err)
 			}
 

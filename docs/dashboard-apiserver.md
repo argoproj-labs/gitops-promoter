@@ -4,7 +4,7 @@ The dashboard is backed by a Kubernetes **aggregation layer**: an extension
 apiserver that serves a single, read-only, server-computed resource that bundles a
 `PromotionStrategy` together with everything related to it.
 
-- **Group / Version / Kind:** `dashboard.promoter.argoproj.io/v1alpha1`, `PromotionStrategyDetails`
+- **Group / Version / Kind:** `view.promoter.argoproj.io/v1alpha1`, `PromotionStrategyDetails`
 - **Scope:** namespaced; the name of a `PromotionStrategyDetails` always equals the
   name of the `PromotionStrategy` it describes (1:1 mapping).
 - **Backing store:** none. The resource is *virtual* - it is computed on demand from
@@ -35,7 +35,7 @@ kube-aggregator proxy.
 | --- | --- |
 | `Deployment promoter-apiserver` | runs `gitops-promoter apiserver --secure-port=6443 ...` |
 | `Service promoter-apiserver` | `443 -> 6443` |
-| `APIService v1alpha1.dashboard.promoter.argoproj.io` | registers the group with the kube-aggregator |
+| `APIService v1alpha1.view.promoter.argoproj.io` | registers the group with the kube-aggregator |
 | `ServiceAccount promoter-apiserver` + RBAC | read all promoter CRDs; `system:auth-delegator`; `extension-apiserver-authentication-reader` in `kube-system` |
 
 The base is intentionally **not** folded into `config/default`: the default overlay's
@@ -91,7 +91,7 @@ openssl x509 -req -in tls.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out tls.
 # 3. Secret
 kubectl -n promoter-system create secret tls promoter-apiserver-serving-cert --cert tls.crt --key tls.key
 # 4. caBundle
-kubectl patch apiservice v1alpha1.dashboard.promoter.argoproj.io --type merge \
+kubectl patch apiservice v1alpha1.view.promoter.argoproj.io --type merge \
   -p "{\"spec\":{\"caBundle\":\"$(base64 < ca.crt | tr -d '\n')\"}}"
 ```
 
@@ -126,7 +126,7 @@ This sets `insecureSkipTLSVerify: true` on the `APIService`. **Not production-sa
 
 ```bash
 kubectl api-resources | grep promotionstrategydetails
-kubectl get apiservice v1alpha1.dashboard.promoter.argoproj.io   # should report Available=True
+kubectl get apiservice v1alpha1.view.promoter.argoproj.io   # should report Available=True
 kubectl get promotionstrategydetails -A
 kubectl get promotionstrategydetails <name> -n <ns> -o yaml       # bundle, no secrets
 kubectl get promotionstrategydetails -A --watch                   # mutate a child; observe MODIFIED

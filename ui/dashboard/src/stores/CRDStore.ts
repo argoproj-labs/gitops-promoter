@@ -33,7 +33,7 @@ function environmentsFromCTPs(ps: PromotionStrategy, ctps: ChangeTransferPolicy[
 }
 
 // The dashboard consumes a single, server-computed PromotionStrategyDetails bundle
-// (group dashboard.promoter.argoproj.io) instead of four raw CRD streams. The bundle
+// (group view.promoter.argoproj.io) instead of four raw CRD streams. The bundle
 // embeds the PromotionStrategy (metadata + spec only) plus its ChangeTransferPolicies;
 // we rebuild status.environments from those CTPs so the existing enrichment/components
 // keep working.

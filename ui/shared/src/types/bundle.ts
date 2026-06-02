@@ -29,7 +29,7 @@ export interface ChangeTransferPolicy {
 
 /**
  * PromotionStrategyBundle is the JSON shape of the aggregated
- * dashboard.promoter.argoproj.io/v1alpha1 PromotionStrategyDetails resource. It
+ * view.promoter.argoproj.io/v1alpha1 PromotionStrategyDetails resource. It
  * joins a PromotionStrategy with everything related to it, pre-computed by the
  * server so the UI does not need to stitch resources together client-side.
  *

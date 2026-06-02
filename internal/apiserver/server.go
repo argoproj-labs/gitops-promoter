@@ -22,7 +22,7 @@ import (
 	"k8s.io/apiserver/pkg/registry/rest"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 
-	dashboardv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/dashboard/v1alpha1"
+	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
 )
 
 // ExtraConfig holds dashboard-specific apiserver configuration.
@@ -76,7 +76,7 @@ func (c CompletedConfig) New() (*PromoterAPIServer, error) {
 		Provider:         c.ExtraConfig.Provider,
 	}
 
-	apiGroupInfo := genericapiserver.NewDefaultAPIGroupInfo(dashboardv1alpha1.GroupName, Scheme, ParameterCodec, Codecs)
+	apiGroupInfo := genericapiserver.NewDefaultAPIGroupInfo(viewv1alpha1.GroupName, Scheme, ParameterCodec, Codecs)
 
 	store := NewREST(c.ExtraConfig.Provider)
 	v1alpha1storage := map[string]rest.Storage{

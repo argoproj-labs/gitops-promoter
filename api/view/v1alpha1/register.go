@@ -22,8 +22,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// GroupName is the API group for the dashboard aggregation layer.
-const GroupName = "dashboard.promoter.argoproj.io"
+// GroupName is the API group for the read-only view aggregation layer.
+const GroupName = "view.promoter.argoproj.io"
 
 // SchemeGroupVersion is the group version used to register these objects.
 var SchemeGroupVersion = schema.GroupVersion{Group: GroupName, Version: "v1alpha1"}

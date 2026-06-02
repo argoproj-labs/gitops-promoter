@@ -104,7 +104,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
 rules:
   - apiGroups:
-      - dashboard.promoter.argoproj.io
+      - view.promoter.argoproj.io
     resources:
       - promotionstrategydetails
     verbs:

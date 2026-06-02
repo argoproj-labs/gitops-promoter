@@ -30,7 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 
-	dashboardv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/dashboard/v1alpha1"
+	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
 )
 
 func newTestStore() *REST {
@@ -55,7 +55,7 @@ var _ = Describe("REST storage", func() {
 			ctx := nsContext()
 			obj, err := store.Get(ctx, testPSName, &metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
-			bundle, ok := obj.(*dashboardv1alpha1.PromotionStrategyDetails)
+			bundle, ok := obj.(*viewv1alpha1.PromotionStrategyDetails)
 			Expect(ok).To(BeTrue())
 			Expect(bundle.Name).To(Equal(testPSName))
 		})
@@ -73,7 +73,7 @@ var _ = Describe("REST storage", func() {
 			ctx := nsContext()
 			obj, err := store.List(ctx, &metainternalversion.ListOptions{})
 			Expect(err).NotTo(HaveOccurred())
-			list, ok := obj.(*dashboardv1alpha1.PromotionStrategyDetailsList)
+			list, ok := obj.(*viewv1alpha1.PromotionStrategyDetailsList)
 			Expect(ok).To(BeTrue())
 			Expect(list.Items).To(HaveLen(1))
 			Expect(list.Items[0].Name).To(Equal(testPSName))
@@ -83,7 +83,7 @@ var _ = Describe("REST storage", func() {
 			otherCtx := genericapirequest.WithNamespace(context.Background(), "different-namespace")
 			obj, err := store.List(otherCtx, &metainternalversion.ListOptions{})
 			Expect(err).NotTo(HaveOccurred())
-			list, ok := obj.(*dashboardv1alpha1.PromotionStrategyDetailsList)
+			list, ok := obj.(*viewv1alpha1.PromotionStrategyDetailsList)
 			Expect(ok).To(BeTrue())
 			Expect(list.Items).To(BeEmpty())
 		})
@@ -99,7 +99,7 @@ var _ = Describe("REST storage", func() {
 			var ev watch.Event
 			Eventually(w.ResultChan()).Should(Receive(&ev))
 			Expect(ev.Type).To(Equal(watch.Added))
-			snap, ok := ev.Object.(*dashboardv1alpha1.PromotionStrategyDetails)
+			snap, ok := ev.Object.(*viewv1alpha1.PromotionStrategyDetails)
 			Expect(ok).To(BeTrue())
 			Expect(snap.Name).To(Equal(testPSName))
 
@@ -109,7 +109,7 @@ var _ = Describe("REST storage", func() {
 			var delta watch.Event
 			Eventually(w.ResultChan()).Should(Receive(&delta))
 			Expect([]watch.EventType{watch.Added, watch.Modified}).To(ContainElement(delta.Type))
-			deltaObj, ok := delta.Object.(*dashboardv1alpha1.PromotionStrategyDetails)
+			deltaObj, ok := delta.Object.(*viewv1alpha1.PromotionStrategyDetails)
 			Expect(ok).To(BeTrue())
 			Expect(deltaObj.Name).To(Equal(testPSName))
 		})

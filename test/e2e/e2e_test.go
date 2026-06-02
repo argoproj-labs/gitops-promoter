@@ -153,7 +153,7 @@ var _ = Describe("controller", Ordered, func() {
 			By("waiting for the APIService to become Available")
 			verifyAPIServiceAvailable := func() error {
 				cmd = exec.Command("kubectl", "get", "apiservice",
-					"v1alpha1.dashboard.promoter.argoproj.io",
+					"v1alpha1.view.promoter.argoproj.io",
 					"-o", "jsonpath={.status.conditions[?(@.type=='Available')].status}",
 				)
 				out, err := utils.Run(cmd)

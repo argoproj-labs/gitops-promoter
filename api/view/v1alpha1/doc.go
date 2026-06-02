@@ -16,11 +16,11 @@ limitations under the License.
 
 // +k8s:deepcopy-gen=package
 // +k8s:openapi-gen=true
-// +k8s:openapi-model-package=io.argoproj.promoter.dashboard.v1alpha1
+// +k8s:openapi-model-package=io.argoproj.promoter.view.v1alpha1
 //
 // The +k8s:openapi-model-package tag makes openapi-gen emit OpenAPIModelName()
 // accessors (zz_generated.model_name.go) returning dot-separated, slash-free OpenAPI
-// model names (e.g. io.argoproj.promoter.dashboard.v1alpha1.PromotionStrategyDetails).
+// model names (e.g. io.argoproj.promoter.view.v1alpha1.PromotionStrategyDetails).
 // Without it the model names default to the Go import path (with slashes), which
 // produces $refs that JSON-pointer-escape the slashes (~1) and fail to resolve in
 // strict OpenAPI v2 consumers like Argo CD's gnostic parser.
@@ -31,7 +31,7 @@ limitations under the License.
 // (no +groupName, +kubebuilder:object:*), so controller-gen (`make generate` /
 // `make manifests`) skips this group entirely and never tries to emit a CRD for it.
 
-// Package v1alpha1 contains the API types for the dashboard aggregation layer.
+// Package v1alpha1 contains the API types for the view aggregation layer.
 // PromotionStrategyDetails is a read-only, server-computed bundle that joins a
 // PromotionStrategy with all of its related resources. It is the single served
 // version and is also the type the extension apiserver builds and stores in

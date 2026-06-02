@@ -27,7 +27,7 @@ import (
 	genericoptions "k8s.io/apiserver/pkg/server/options"
 	utilcompatibility "k8s.io/apiserver/pkg/util/compatibility"
 
-	dashboardv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/dashboard/v1alpha1"
+	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
 )
 
 // Options holds the configuration for the dashboard extension apiserver. It wraps
@@ -42,7 +42,7 @@ func NewOptions() *Options {
 	o := &Options{
 		RecommendedOptions: genericoptions.NewRecommendedOptions(
 			"",
-			Codecs.LegacyCodec(dashboardv1alpha1.SchemeGroupVersion),
+			Codecs.LegacyCodec(viewv1alpha1.SchemeGroupVersion),
 		),
 	}
 	// Virtual resource: nothing is persisted, so there is no etcd backend.
@@ -99,10 +99,10 @@ func (o *Options) Config(provider *BundleProvider) (*Config, error) {
 	// Wire the generated OpenAPI definitions (zz_generated.openapi.go). InstallAPIGroup
 	// requires both the v2 and v3 OpenAPI configs to be non-nil.
 	namer := openapinamer.NewDefinitionNamer(Scheme)
-	serverConfig.OpenAPIConfig = genericapiserver.DefaultOpenAPIConfig(dashboardv1alpha1.GetOpenAPIDefinitions, namer)
+	serverConfig.OpenAPIConfig = genericapiserver.DefaultOpenAPIConfig(viewv1alpha1.GetOpenAPIDefinitions, namer)
 	serverConfig.OpenAPIConfig.Info.Title = "gitops-promoter-dashboard"
 	serverConfig.OpenAPIConfig.Info.Version = "v1alpha1"
-	serverConfig.OpenAPIV3Config = genericapiserver.DefaultOpenAPIV3Config(dashboardv1alpha1.GetOpenAPIDefinitions, namer)
+	serverConfig.OpenAPIV3Config = genericapiserver.DefaultOpenAPIV3Config(viewv1alpha1.GetOpenAPIDefinitions, namer)
 	serverConfig.OpenAPIV3Config.Info.Title = "gitops-promoter-dashboard"
 	serverConfig.OpenAPIV3Config.Info.Version = "v1alpha1"
 

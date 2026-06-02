@@ -22,10 +22,10 @@ package v1alpha1
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
 func (in PromotionStrategyDetails) OpenAPIModelName() string {
-	return "io.argoproj.promoter.dashboard.v1alpha1.PromotionStrategyDetails"
+	return "io.argoproj.promoter.view.v1alpha1.PromotionStrategyDetails"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
 func (in PromotionStrategyDetailsList) OpenAPIModelName() string {
-	return "io.argoproj.promoter.dashboard.v1alpha1.PromotionStrategyDetailsList"
+	return "io.argoproj.promoter.view.v1alpha1.PromotionStrategyDetailsList"
 }

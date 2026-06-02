@@ -548,7 +548,7 @@ scripted/manual cert steps and cert rotation.
 Confirm the API registered and is healthy before launching the UI:
 
 ```bash
-kubectl get apiservice v1alpha1.dashboard.promoter.argoproj.io   # AVAILABLE should be True
+kubectl get apiservice v1alpha1.view.promoter.argoproj.io   # AVAILABLE should be True
 kubectl get promotionstrategydetails -A
 ```
 

@@ -26,7 +26,7 @@ import (
 
 // PromotionStrategyDetails is a read-only, server-computed bundle that joins a
 // PromotionStrategy with all of its related resources. It is served by the
-// dashboard aggregation layer (an extension apiserver) and is not persisted in
+// view aggregation layer (an extension apiserver) and is not persisted in
 // etcd. The name of a PromotionStrategyDetails always matches the name of the
 // PromotionStrategy it describes (1:1 mapping within a namespace).
 //

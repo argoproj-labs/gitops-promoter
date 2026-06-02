@@ -24,8 +24,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	dashboardv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/dashboard/v1alpha1"
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
 )
 
 // lastAppliedAnnotation is stripped from every object included in a bundle.
@@ -36,11 +36,11 @@ const lastAppliedAnnotation = "kubectl.kubernetes.io/last-applied-configuration"
 // resource) when the PromotionStrategy does not exist. Secrets are never read.
 //
 // The returned bundle has its ResourceVersion set to the provided value.
-func buildBundle(ctx context.Context, reader client.Reader, namespace, name, resourceVersion string) (*dashboardv1alpha1.PromotionStrategyDetails, error) {
+func buildBundle(ctx context.Context, reader client.Reader, namespace, name, resourceVersion string) (*viewv1alpha1.PromotionStrategyDetails, error) {
 	ps := &promoterv1alpha1.PromotionStrategy{}
 	if err := reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, ps); err != nil {
 		if apierrors.IsNotFound(err) {
-			return nil, apierrors.NewNotFound(dashboardv1alpha1.Resource("promotionstrategydetails"), name)
+			return nil, apierrors.NewNotFound(viewv1alpha1.Resource("promotionstrategydetails"), name)
 		}
 		return nil, fmt.Errorf("failed to get PromotionStrategy %s/%s: %w", namespace, name, err)
 	}
@@ -52,7 +52,7 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 	// reconstruct per-environment state from the CTPs.
 	ps.Status = promoterv1alpha1.PromotionStrategyStatus{}
 
-	bundle := &dashboardv1alpha1.PromotionStrategyDetails{
+	bundle := &viewv1alpha1.PromotionStrategyDetails{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              name,
 			Namespace:         namespace,
@@ -146,7 +146,7 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 // attachGitConfig resolves the PromotionStrategy's GitRepository and its
 // (Cluster)ScmProvider and attaches them to the bundle. Missing resources are not
 // an error (the bundle simply omits them). Secrets are never read.
-func attachGitConfig(ctx context.Context, reader client.Reader, namespace string, ps *promoterv1alpha1.PromotionStrategy, bundle *dashboardv1alpha1.PromotionStrategyDetails) error {
+func attachGitConfig(ctx context.Context, reader client.Reader, namespace string, ps *promoterv1alpha1.PromotionStrategy, bundle *viewv1alpha1.PromotionStrategyDetails) error {
 	repoName := ps.Spec.RepositoryReference.Name
 	if repoName == "" {
 		return nil
@@ -167,7 +167,7 @@ func attachGitConfig(ctx context.Context, reader client.Reader, namespace string
 
 // attachScmProvider resolves the GitRepository's ScmProviderRef and attaches the
 // referenced (Cluster)ScmProvider to the bundle. Secrets are never resolved.
-func attachScmProvider(ctx context.Context, reader client.Reader, namespace string, gitRepo *promoterv1alpha1.GitRepository, bundle *dashboardv1alpha1.PromotionStrategyDetails) error {
+func attachScmProvider(ctx context.Context, reader client.Reader, namespace string, gitRepo *promoterv1alpha1.GitRepository, bundle *viewv1alpha1.PromotionStrategyDetails) error {
 	ref := gitRepo.Spec.ScmProviderRef
 	switch ref.Kind {
 	case "ClusterScmProvider":

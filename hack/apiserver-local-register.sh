@@ -32,7 +32,7 @@ PORT="${PORT:-6443}"
 SRCROOT="$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd -P)"
 DIR="${SRCROOT}/config/apiserver/local-host"
 
-APISERVICE_NAME="v1alpha1.dashboard.promoter.argoproj.io"
+APISERVICE_NAME="v1alpha1.view.promoter.argoproj.io"
 SERVICE_NAME="promoter-apiserver-local"
 ENDPOINTSLICE_NAME="promoter-apiserver-local-1"
 

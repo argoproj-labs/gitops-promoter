@@ -37,7 +37,7 @@ import (
 
 // promotionStrategyDetailsGVR is the served resource the dynamic client targets.
 var promotionStrategyDetailsGVR = schema.GroupVersionResource{
-	Group:    "dashboard.promoter.argoproj.io",
+	Group:    "view.promoter.argoproj.io",
 	Version:  "v1alpha1",
 	Resource: "promotionstrategydetails",
 }
