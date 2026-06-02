@@ -18,6 +18,7 @@ package apiserver
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"time"
 
@@ -43,10 +44,12 @@ var promotionStrategyDetailsGVR = schema.GroupVersionResource{
 
 // freeLocalPort asks the OS for an unused TCP port on the loopback interface.
 func freeLocalPort() int {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+	l, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
 	Expect(err).NotTo(HaveOccurred())
 	defer func() { _ = l.Close() }()
-	return l.Addr().(*net.TCPAddr).Port
+	addr, ok := l.Addr().(*net.TCPAddr)
+	Expect(ok).To(BeTrue())
+	return addr.Port
 }
 
 // startInProcessAPIServer boots the real extension apiserver (secure serving with
@@ -106,7 +109,10 @@ var _ = Describe("APIServer integration (in-process server + dynamic client)", O
 		Eventually(func() error {
 			_, listErr := dyn.Resource(promotionStrategyDetailsGVR).Namespace(testNamespace).
 				List(context.Background(), metav1.ListOptions{})
-			return listErr
+			if listErr != nil {
+				return fmt.Errorf("list promotionstrategydetails: %w", listErr)
+			}
+			return nil
 		}, 30*time.Second, 200*time.Millisecond).Should(Succeed())
 	})
 
