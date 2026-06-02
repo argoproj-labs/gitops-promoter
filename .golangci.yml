@@ -47,6 +47,8 @@ linters:
   settings:
     copyloopvar:
       check-alias: true
+    goconst:
+      ignore-tests: true
     gocritic:
       disabled-checks:
         - assignOp
