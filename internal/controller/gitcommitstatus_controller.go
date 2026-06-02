@@ -61,10 +61,6 @@ type GitCommitStatusReconciler struct {
 	// EnqueueCTP is a function to enqueue CTP reconcile requests without modifying the CTP object.
 	EnqueueCTP CTPEnqueueFunc
 
-	// InstanceID, when non-empty, scopes this reconciler to resources carrying
-	// the matching promoter.argoproj.io/instance-id label. Empty reconciles all.
-	InstanceID string
-
 	// expressionCache caches compiled expressions to avoid recompilation on every reconciliation
 	// Key: expression string, Value: compiled *vm.Program
 	expressionCache sync.Map
@@ -153,14 +149,19 @@ func (r *GitCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ct
 		return fmt.Errorf("failed to get GitCommitStatus max concurrent reconciles: %w", err)
 	}
 
+	instanceID, err := r.SettingsMgr.GetInstanceIDDirect(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get InstanceID from ControllerConfiguration: %w", err)
+	}
+
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.GitCommitStatus{}, builder.WithPredicates(predicate.And(
 			predicate.GenerationChangedPredicate{},
-			promoterpredicate.InstanceID(r.InstanceID),
+			promoterpredicate.InstanceID(instanceID),
 		))).
 		Watches(&promoterv1alpha1.PromotionStrategy{},
 			r.enqueueGitCommitStatusForPromotionStrategy(),
-			builder.WithPredicates(promoterpredicate.InstanceID(r.InstanceID)),
+			builder.WithPredicates(promoterpredicate.InstanceID(instanceID)),
 		).
 		Named("gitcommitstatus").
 		WithOptions(controller.Options{

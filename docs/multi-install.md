@@ -5,12 +5,12 @@ to a distinct subset of resources. This is useful when you want to partition rec
 release cadence, or another logical grouping — without each install racing to reconcile every PromotionStrategy on the
 cluster.
 
-The mechanism is a single label-key contract: each Promoter install runs with an `--instance-id` flag (or the
-`GITOPS_PROMOTER_INSTANCE_ID` environment variable) and only reconciles resources carrying a matching
-`promoter.argoproj.io/instance-id` label.
+The mechanism is a single label-key contract: each Promoter install is configured with an `instanceID` value on its
+`ControllerConfiguration` resource and only reconciles resources carrying a matching `promoter.argoproj.io/instance-id`
+label.
 
-When `--instance-id` is unset (the default), the controller reconciles every resource in scope — exactly as it does for
-a single-install deployment. No existing setup needs to change.
+When `instanceID` is left as the empty string (the default), the controller reconciles every resource in scope — exactly
+as it does for a single-install deployment. No existing setup needs to change.
 
 **Important**: This is distinct from [namespace-based tenancy](multi-tenancy.md), which isolates resources between teams
 sharing a single Promoter install. Multi-install runs multiple Promoter controllers side-by-side and partitions across
@@ -31,8 +31,9 @@ simpler to operate.
 
 ## How it works
 
-Each Promoter reconciler watches CRs across the cluster. With `--instance-id=A` set on a controller, every reconciler
-runs the incoming watch event through a label-selector predicate before queuing the reconcile:
+Each Promoter reconciler watches CRs across the cluster. With `instanceID: A` set on the install's
+`ControllerConfiguration`, every reconciler runs the incoming watch event through a label-selector predicate before
+queuing the reconcile:
 
 * If the event's resource has the label `promoter.argoproj.io/instance-id=A`, the event is admitted.
 * Otherwise, the event is dropped before any work is queued.
@@ -45,41 +46,27 @@ This applies uniformly to:
 * Resources created by the reconciler — child resources automatically inherit the label from their parent, so the
   partitioning is preserved at every level of the resource graph
 
-When `--instance-id` is unset or empty, the predicate is a pass-through: every event is admitted, exactly as in a
+When `instanceID` is the empty string, the predicate is a pass-through: every event is admitted, exactly as in a
 single-install deployment.
 
 ## Configuring a Promoter install
 
-Set the instance ID either via flag or environment variable. Both forms are equivalent; pick whichever fits your
-deployment tooling.
-
-Flag form:
+Each Promoter install ships with exactly one `ControllerConfiguration` resource named
+`promoter-controller-configuration` in the install's namespace. Set the `instanceID` field on that resource:
 
 ```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ControllerConfiguration
+metadata:
+  name: promoter-controller-configuration
+  namespace: promoter-install-a
 spec:
-  template:
-    spec:
-      containers:
-        - name: controller
-          args:
-            - controller
-            - --instance-id=A
+  instanceID: A
+  # ...other controller configuration fields
 ```
 
-Environment variable form:
-
-```yaml
-spec:
-  template:
-    spec:
-      containers:
-        - name: controller
-          args:
-            - controller
-          env:
-            - name: GITOPS_PROMOTER_INSTANCE_ID
-              value: A
-```
+The controller reads `instanceID` once during startup. If you change the value, restart the controller for the new value
+to take effect.
 
 Each install runs its own webhook receiver on its own Service, so SCM webhooks routed per install only enqueue work for
 their own resources.
@@ -107,11 +94,13 @@ The same label key is used on:
 * `GitRepository`
 * `CommitStatus` and its sub-variants (`GitCommitStatus`, `WebRequestCommitStatus`, `TimedCommitStatus`,
   `ArgoCDCommitStatus`)
-* `ControllerConfiguration`
 
 You only need to apply the label on resources you create directly. Resources created by Promoter reconcilers
 (`ChangeTransferPolicy`, `PullRequest`, child `CommitStatus` resources) automatically inherit the label from their
 parent on creation, so partitioning is preserved as the resource graph grows.
+
+Note: `ControllerConfiguration` is the source of truth for its install's `instanceID` — do not label it. The controller
+fetches its own configuration by name and namespace, not by label selector.
 
 ## ClusterScmProvider in multi-install setups
 
@@ -152,17 +141,17 @@ For most multi-install deployments, namespaced `ScmProvider` is the simpler choi
 
 ## Backwards compatibility
 
-A controller started without `--instance-id` (or with an empty value) reconciles every resource in scope, regardless of
-label. This applies at every gate the feature adds — the controller predicate, the label propagation to child resources,
-the webhook receiver's lookup, and the in-process notification between reconcilers all short-circuit to "no filter" when
-the instance ID is empty.
+A controller whose `ControllerConfiguration` has `instanceID: ""` (the default) reconciles every resource in scope,
+regardless of label. This applies at every gate the feature adds — the controller predicate, the label propagation to
+child resources, the webhook receiver's lookup, and the in-process notification between reconcilers all short-circuit to
+"no filter" when the instance ID is empty.
 
 This means:
 
 * Upgrading to a Promoter version with this feature does not require any change to existing single-install deployments.
-* If you choose to keep one install running without `--instance-id` alongside others, that install will reconcile every
-  resource on the cluster — including resources labeled for the other installs. This is usually not what you want;
-  prefer setting `--instance-id` on every install in a multi-install setup.
+* If you choose to keep one install with `instanceID: ""` alongside others, that install will reconcile every resource
+  on the cluster — including resources labeled for the other installs. This is usually not what you want; prefer setting
+  a non-empty `instanceID` on every install in a multi-install setup.
 
 ## Migrating an existing single install to multi-install
 
@@ -171,9 +160,11 @@ If you already have a single Promoter install reconciling a set of resources and
 1. Add the `promoter.argoproj.io/instance-id` label to each `PromotionStrategy`, `ScmProvider`, `GitRepository`, and
    top-level `CommitStatus` resource you want partitioned. Children inherit the label on their next reconcile, so they
    do not need to be labeled manually.
-2. Deploy the additional Promoter installs in separate namespaces, each with its own `--instance-id` value.
-3. Either set `--instance-id` on the original install to scope it to its remaining subset, or take it down.
+2. Deploy the additional Promoter installs in separate namespaces, each with its own `ControllerConfiguration` and
+   `instanceID` value.
+3. Either set a non-empty `instanceID` on the original install's `ControllerConfiguration` to scope it to its remaining
+   subset (and restart its controller), or take the install down.
 
-**Important**: Once an install has a non-empty `--instance-id`, resources without the matching label become invisible to
-that install. If you set `--instance-id` on an existing install before labeling its resources, those resources will stop
-reconciling. Label first, then set `--instance-id`.
+**Important**: Once an install has a non-empty `instanceID`, resources without the matching label become invisible to
+that install. If you set `instanceID` on an existing install before labeling its resources, those resources will stop
+reconciling on the next controller restart. Label first, then set `instanceID` and restart.

@@ -28,7 +28,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	promoterpredicate "github.com/argoproj-labs/gitops-promoter/internal/predicate"
 )
 
 // ControllerConfigurationReconciler reconciles a ControllerConfiguration object
@@ -36,9 +35,6 @@ import (
 type ControllerConfigurationReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
-	// InstanceID, when non-empty, scopes this reconciler to resources carrying
-	// the matching promoter.argoproj.io/instance-id label. Empty reconciles all.
-	InstanceID string
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=controllerconfigurations,verbs=get;list;watch;create;update;patch;delete
@@ -63,12 +59,16 @@ func (r *ControllerConfigurationReconciler) Reconcile(ctx context.Context, req c
 }
 
 // SetupWithManager sets up the controller with the Manager.
+//
+// ControllerConfiguration intentionally does NOT chain the InstanceID predicate.
+// Per the ARGO-3085 design, ControllerConfiguration is the source of truth for
+// this install's instance-id value (via spec.instanceID); filtering it by that
+// same value would be circular. The install discovers its own
+// ControllerConfiguration by namespace + hard-coded name instead, and the
+// instance-id label predicate is applied to every OTHER reconciled CR type.
 func (r *ControllerConfigurationReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.ControllerConfiguration{}, builder.WithPredicates(predicate.And(
-			predicate.GenerationChangedPredicate{},
-			promoterpredicate.InstanceID(r.InstanceID),
-		))).
+		For(&promoterv1alpha1.ControllerConfiguration{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Named("controllerconfiguration").
 		Complete(r)
 	if err != nil {

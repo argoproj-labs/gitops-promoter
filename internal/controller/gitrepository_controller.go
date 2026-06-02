@@ -33,6 +33,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	promoterpredicate "github.com/argoproj-labs/gitops-promoter/internal/predicate"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -41,11 +42,9 @@ import (
 // GitRepositoryReconciler reconciles a GitRepository object
 type GitRepositoryReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	Recorder events.EventRecorder
-	// InstanceID, when non-empty, scopes this reconciler to resources carrying
-	// the matching promoter.argoproj.io/instance-id label. Empty reconciles all.
-	InstanceID string
+	Scheme      *runtime.Scheme
+	Recorder    events.EventRecorder
+	SettingsMgr *settings.Manager
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=gitrepositories,verbs=get;list;watch;create;update;patch;delete
@@ -84,10 +83,15 @@ func (r *GitRepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *GitRepositoryReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
-	err := ctrl.NewControllerManagedBy(mgr).
+	instanceID, err := r.SettingsMgr.GetInstanceIDDirect(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get InstanceID from ControllerConfiguration: %w", err)
+	}
+
+	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.GitRepository{}, builder.WithPredicates(predicate.And(
 			predicate.GenerationChangedPredicate{},
-			promoterpredicate.InstanceID(r.InstanceID),
+			promoterpredicate.InstanceID(instanceID),
 		))).
 		Complete(r)
 	if err != nil {

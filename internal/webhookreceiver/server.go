@@ -11,6 +11,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 
 	"github.com/tidwall/gjson"
 
@@ -41,27 +42,40 @@ type EnqueueFunc func(namespace, name string)
 
 // WebhookReceiver is a server that listens for webhooks and triggers reconciles of ChangeTransferPolicies.
 type WebhookReceiver struct {
-	mgr        controllerruntime.Manager
-	k8sClient  client.Client
-	enqueueCTP EnqueueFunc
-	// InstanceID, when non-empty, scopes ChangeTransferPolicy lookups to those
-	// carrying the matching promoter.argoproj.io/instance-id label. Empty
-	// means consider every CTP (backwards-compat).
-	InstanceID string
+	mgr         controllerruntime.Manager
+	k8sClient   client.Client
+	enqueueCTP  EnqueueFunc
+	settingsMgr *settings.Manager
+	// instanceID is populated in Start() from the ControllerConfiguration's
+	// spec.instanceID field. When non-empty, ChangeTransferPolicy lookups are
+	// scoped to those carrying the matching promoter.argoproj.io/instance-id
+	// label. Empty means consider every CTP (backwards-compat).
+	instanceID string
 }
 
 // NewWebhookReceiver creates a new instance of WebhookReceiver.
-func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP EnqueueFunc, instanceID string) WebhookReceiver {
+//
+// The InstanceID is not fetched here; it is resolved in Start(), which receives a
+// context and uses the SettingsMgr to read it from the ControllerConfiguration via
+// the direct (non-cached) API client. This matches the reconciler pattern where
+// ControllerConfiguration values are read at SetupWithManager time.
+func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP EnqueueFunc, settingsMgr *settings.Manager) WebhookReceiver {
 	return WebhookReceiver{
-		mgr:        mgr,
-		k8sClient:  mgr.GetClient(),
-		enqueueCTP: enqueueCTP,
-		InstanceID: instanceID,
+		mgr:         mgr,
+		k8sClient:   mgr.GetClient(),
+		enqueueCTP:  enqueueCTP,
+		settingsMgr: settingsMgr,
 	}
 }
 
 // Start starts the webhook receiver server on the given address.
 func (wr *WebhookReceiver) Start(ctx context.Context, addr string) error {
+	instanceID, err := wr.settingsMgr.GetInstanceIDDirect(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get InstanceID from ControllerConfiguration: %w", err)
+	}
+	wr.instanceID = instanceID
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", wr.postRoot)
 
@@ -262,8 +276,8 @@ func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provide
 	}
 
 	var labelSelector labels.Selector
-	if wr.InstanceID != "" {
-		labelSelector = labels.SelectorFromSet(labels.Set{promoterv1alpha1.InstanceIDLabel: wr.InstanceID})
+	if wr.instanceID != "" {
+		labelSelector = labels.SelectorFromSet(labels.Set{promoterv1alpha1.InstanceIDLabel: wr.instanceID})
 	}
 
 	err := wr.k8sClient.List(ctx, &ctpLists, &client.ListOptions{

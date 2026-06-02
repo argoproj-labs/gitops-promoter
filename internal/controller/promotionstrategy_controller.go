@@ -67,10 +67,6 @@ type PromotionStrategyReconciler struct {
 	// Key is client.ObjectKey of the CTP. Protected by enqueueStateMutex.
 	enqueueStates map[client.ObjectKey]*ctpEnqueueState
 
-	// InstanceID, when non-empty, scopes this reconciler to resources carrying
-	// the matching promoter.argoproj.io/instance-id label. Empty reconciles all.
-	InstanceID string
-
 	enqueueStateMutex sync.Mutex
 }
 
@@ -182,10 +178,15 @@ func (r *PromotionStrategyReconciler) SetupWithManager(ctx context.Context, mgr 
 		return fmt.Errorf("failed to get PromotionStrategy max concurrent reconciles: %w", err)
 	}
 
+	instanceID, err := r.SettingsMgr.GetInstanceIDDirect(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get InstanceID from ControllerConfiguration: %w", err)
+	}
+
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.PromotionStrategy{}, builder.WithPredicates(predicate.And(
 			predicate.GenerationChangedPredicate{},
-			promoterpredicate.InstanceID(r.InstanceID),
+			promoterpredicate.InstanceID(instanceID),
 		))).
 		Owns(&promoterv1alpha1.ChangeTransferPolicy{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).

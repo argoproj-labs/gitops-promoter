@@ -74,9 +74,6 @@ type WebRequestCommitStatusReconciler struct {
 	// state, causing trigger expressions to re-fire HTTP side effects against stale
 	// inputs.
 	rvTracker *utils.ResourceVersionTracker
-	// InstanceID, when non-empty, scopes this reconciler to resources carrying
-	// the matching promoter.argoproj.io/instance-id label. Empty reconciles all.
-	InstanceID string
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=webrequestcommitstatuses,verbs=get;list;watch;create;update;patch;delete
@@ -230,14 +227,19 @@ func (r *WebRequestCommitStatusReconciler) SetupWithManager(ctx context.Context,
 		return fmt.Errorf("failed to get WebRequestCommitStatus max concurrent reconciles: %w", err)
 	}
 
+	instanceID, err := r.SettingsMgr.GetInstanceIDDirect(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get InstanceID from ControllerConfiguration: %w", err)
+	}
+
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.WebRequestCommitStatus{}, builder.WithPredicates(predicate.And(
 			predicate.GenerationChangedPredicate{},
-			promoterpredicate.InstanceID(r.InstanceID),
+			promoterpredicate.InstanceID(instanceID),
 		))).
 		Watches(&promoterv1alpha1.PromotionStrategy{},
 			r.enqueueWebRequestCommitStatusForPromotionStrategy(),
-			builder.WithPredicates(promoterpredicate.InstanceID(r.InstanceID)),
+			builder.WithPredicates(promoterpredicate.InstanceID(instanceID)),
 		).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Named("webrequestcommitstatus").

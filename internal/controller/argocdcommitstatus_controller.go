@@ -73,16 +73,11 @@ const lastTransitionTimeThreshold = 5 * time.Second
 
 // ArgoCDCommitStatusReconciler reconciles a ArgoCDCommitStatus object
 type ArgoCDCommitStatusReconciler struct {
-	Manager            mcmanager.Manager
-	Recorder           events.EventRecorder
-	localClient        client.Client
-	SettingsMgr        *settings.Manager
-	KubeConfigProvider *kubeconfig.Provider
-	// InstanceID, when non-empty, scopes this reconciler to local
-	// ArgoCDCommitStatus resources carrying the matching
-	// promoter.argoproj.io/instance-id label. Remote-cluster Application
-	// watches remain unfiltered (option-b in the ARGO-3085 design).
-	InstanceID             string
+	Manager                mcmanager.Manager
+	Recorder               events.EventRecorder
+	localClient            client.Client
+	SettingsMgr            *settings.Manager
+	KubeConfigProvider     *kubeconfig.Provider
 	watchLocalApplications bool
 }
 
@@ -539,7 +534,12 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 
 	r.watchLocalApplications = watchLocalApplications
 
-	instanceIDPredicate := promoterpredicate.InstanceID(r.InstanceID)
+	instanceID, err := r.SettingsMgr.GetInstanceIDDirect(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get InstanceID from ControllerConfiguration: %w", err)
+	}
+
+	instanceIDPredicate := promoterpredicate.InstanceID(instanceID)
 
 	err = mcbuilder.ControllerManagedBy(mcMgr).
 		For(&promoterv1alpha1.ArgoCDCommitStatus{},

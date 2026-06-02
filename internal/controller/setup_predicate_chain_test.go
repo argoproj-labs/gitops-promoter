@@ -61,7 +61,6 @@ var simpleReconcilers = []expectedWiring{
 	{file: "promotionstrategy_controller.go", forCRD: crdPromotionStrategy},
 	{file: "scmprovider_controller.go", forCRD: "ScmProvider"},
 	{file: "gitrepository_controller.go", forCRD: "GitRepository"},
-	{file: "controllerconfiguration_controller.go", forCRD: "ControllerConfiguration"},
 	{file: "clusterscmprovider_controller.go", forCRD: "ClusterScmProvider"},
 	{
 		file:                  "timedcommitstatus_controller.go",
@@ -102,8 +101,8 @@ func TestChangeTransferPolicyWiring(t *testing.T) {
 	// CTP also enforces the filter at the channel-sender side because
 	// WatchesRawSource(Channel) bypasses controller-runtime predicates.
 	src := loadControllerSource(t, wiring.file)
-	if !strings.Contains(src, "r.InstanceID != \"\"") {
-		t.Error("changetransferpolicy_controller.go: expected sender-side instance-id gate `r.InstanceID != \"\"` inside enqueueFunc; not found. Without it WatchesRawSource(Channel) events leak across instances.")
+	if !strings.Contains(src, "instanceID != \"\"") {
+		t.Error("changetransferpolicy_controller.go: expected sender-side instance-id gate `instanceID != \"\"` inside enqueueFunc (captured from SetupWithManager via settingsMgr.GetInstanceIDDirect); not found. Without it WatchesRawSource(Channel) events leak across instances.")
 	}
 	if !strings.Contains(src, "promoterv1alpha1.InstanceIDLabel") {
 		t.Error("changetransferpolicy_controller.go: expected reference to promoterv1alpha1.InstanceIDLabel inside enqueueFunc; not found.")
@@ -120,6 +119,22 @@ func TestArgoCDCommitStatusOptionB(t *testing.T) {
 		watchesWithoutInstanceID: []string{"Application"},
 	}
 	assertReconcilerWiring(t, wiring)
+}
+
+// TestControllerConfigurationNotFilteredByInstanceID asserts that the
+// ControllerConfiguration reconciler does NOT chain the InstanceID predicate.
+// Per the ARGO-3085 design, ControllerConfiguration is the source of truth for
+// this install's instance-id value (via spec.instanceID); filtering it by that
+// same value would be circular. The install discovers its own
+// ControllerConfiguration by namespace + hard-coded name instead. This test
+// catches future regressions where someone "fixes the inconsistency" by adding
+// the predicate to this reconciler.
+func TestControllerConfigurationNotFilteredByInstanceID(t *testing.T) {
+	t.Parallel()
+	src := loadControllerSource(t, "controllerconfiguration_controller.go")
+	if strings.Contains(src, "promoterpredicate.InstanceID") {
+		t.Error("controllerconfiguration_controller.go: SetupWithManager must NOT chain the InstanceID predicate. ControllerConfiguration is the source of truth for the instance-id value (via spec.instanceID); filtering it by that same value would be circular.")
+	}
 }
 
 // assertReconcilerWiring parses the controller file and verifies, via AST

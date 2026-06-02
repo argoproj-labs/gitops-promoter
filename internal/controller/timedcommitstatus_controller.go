@@ -52,9 +52,6 @@ type TimedCommitStatusReconciler struct {
 	Recorder    events.EventRecorder
 	SettingsMgr *settings.Manager
 	EnqueueCTP  CTPEnqueueFunc
-	// InstanceID, when non-empty, scopes this reconciler to resources carrying
-	// the matching promoter.argoproj.io/instance-id label. Empty reconciles all.
-	InstanceID string
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=timedcommitstatuses,verbs=get;list;watch;create;update;patch;delete
@@ -150,14 +147,19 @@ func (r *TimedCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr 
 		return fmt.Errorf("failed to get TimedCommitStatus max concurrent reconciles: %w", err)
 	}
 
+	instanceID, err := r.SettingsMgr.GetInstanceIDDirect(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get InstanceID from ControllerConfiguration: %w", err)
+	}
+
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.TimedCommitStatus{}, builder.WithPredicates(predicate.And(
 			predicate.GenerationChangedPredicate{},
-			promoterpredicate.InstanceID(r.InstanceID),
+			promoterpredicate.InstanceID(instanceID),
 		))).
 		Watches(&promoterv1alpha1.PromotionStrategy{},
 			r.enqueueTimedCommitStatusForPromotionStrategy(),
-			builder.WithPredicates(promoterpredicate.InstanceID(r.InstanceID)),
+			builder.WithPredicates(promoterpredicate.InstanceID(instanceID)),
 		).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Complete(r)

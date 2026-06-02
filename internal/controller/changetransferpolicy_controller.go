@@ -74,10 +74,6 @@ type ChangeTransferPolicyReconciler struct {
 	// enqueueFunc is set during SetupWithManager and can be retrieved via GetEnqueueFunc.
 	// It allows other controllers to enqueue CTP reconcile requests.
 	enqueueFunc CTPEnqueueFunc
-
-	// InstanceID, when non-empty, scopes this reconciler to resources carrying
-	// the matching promoter.argoproj.io/instance-id label. Empty reconciles all.
-	InstanceID string
 }
 
 // GetEnqueueFunc returns a function that can be used to enqueue CTP reconcile requests.
@@ -489,6 +485,11 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 		return fmt.Errorf("failed to get ChangeTransferPolicy max concurrent reconciles: %w", err)
 	}
 
+	instanceID, err := r.SettingsMgr.GetInstanceIDDirect(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get InstanceID from ControllerConfiguration: %w", err)
+	}
+
 	// Create a channel for external enqueue requests. This allows other controllers
 	// to trigger CTP reconciliation without modifying the CTP object.
 	// The channel uses GenericEvent with a minimal CTP object containing just the namespace/name.
@@ -499,14 +500,15 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 	// Store the enqueue function so it can be retrieved by other controllers.
 	// This is a blocking send - callers will wait if the channel buffer is full.
 	//
-	// When --instance-id is set, the closure does a cache-backed Get on the CTP and
-	// drops the enqueue if the CTP's instance-id label does not match. Predicates
-	// passed to WatchesRawSource via builder.WithPredicates do NOT apply to channel
-	// events in controller-runtime, so this sender-side filter is the only place to
-	// scope cross-instance enqueues coming from PromotionStrategy, CommitStatus,
-	// GitCommitStatus, WebRequestCommitStatus reconcilers and the webhook receiver.
+	// When this install's instanceID (from ControllerConfiguration) is non-empty,
+	// the closure does a cache-backed Get on the CTP and drops the enqueue if the
+	// CTP's instance-id label does not match. Predicates passed to WatchesRawSource
+	// via builder.WithPredicates do NOT apply to channel events in controller-runtime,
+	// so this sender-side filter is the only place to scope cross-instance enqueues
+	// coming from PromotionStrategy, CommitStatus, GitCommitStatus,
+	// WebRequestCommitStatus reconcilers and the webhook receiver.
 	r.enqueueFunc = func(namespace, name string) {
-		if r.InstanceID != "" {
+		if instanceID != "" {
 			var existing promoterv1alpha1.ChangeTransferPolicy
 			err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, &existing)
 			if err != nil {
@@ -518,10 +520,10 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 				// silently dropping. Reconcile will short-circuit if the label is wrong.
 				log.FromContext(ctx).V(4).Info("instance-id filter could not fetch CTP, forwarding enqueue",
 					"namespace", namespace, "name", name, "err", err)
-			} else if existing.GetLabels()[promoterv1alpha1.InstanceIDLabel] != r.InstanceID {
+			} else if existing.GetLabels()[promoterv1alpha1.InstanceIDLabel] != instanceID {
 				log.FromContext(ctx).V(4).Info("dropping CTP enqueue for foreign instance-id",
 					"namespace", namespace, "name", name,
-					"want", r.InstanceID,
+					"want", instanceID,
 					"got", existing.GetLabels()[promoterv1alpha1.InstanceIDLabel])
 				return
 			}
@@ -551,7 +553,7 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 					// TODO: use a custom predicate to only trigger on the specific annotation change.
 					predicate.AnnotationChangedPredicate{},
 				),
-				promoterpredicate.InstanceID(r.InstanceID),
+				promoterpredicate.InstanceID(instanceID),
 			))).
 		// This controller intentionally doesn't have a .Owns for CommitStatuses. Every reconcile of a CommitStatus
 		// checks whether it needs to update a related ChangeTransferPolicy by setting an annotation. Avoiding .Owns
