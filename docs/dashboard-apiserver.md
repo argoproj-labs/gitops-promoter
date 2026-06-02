@@ -16,9 +16,11 @@ Each bundle contains the `PromotionStrategy`, its `ChangeTransferPolicy`,
 `WebRequestCommitStatus`), and the git config (`GitRepository` plus its
 `ScmProvider` or `ClusterScmProvider`).
 
-!!! warning "Secrets are never included"
-    The bundle resolves the SCM provider but **never** reads or includes the
-    credentials `Secret` it references.
+> [!WARNING]
+> *Secrets are never included*
+>
+> The bundle resolves the SCM provider but **never** reads or includes the
+> credentials `Secret` it references.
 
 The dashboard process watches `PromotionStrategyDetails` and forwards each bundle to
 the browser over Server-Sent Events (SSE). SSE does not flow through the
