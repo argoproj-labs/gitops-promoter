@@ -1355,6 +1355,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicySpec(
 							Format:      "",
 						},
 					},
+					"activePath": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ActivePath is an optional repository subpath for this policy's active state. When set, hydrator metadata is read from <activePath>/hydrator.metadata.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 					"autoMerge": {
 						SchemaProps: spec.SchemaProps{
 							Type:   []string{"boolean"},
@@ -2337,6 +2344,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_Environment(ref common.Re
 									},
 								},
 							},
+						},
+					},
+					"activePath": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ActivePath optionally overrides the strategy-level activePath for this environment. When set, this environment's CTP uses this path instead of spec.activePath.",
+							Type:        []string{"string"},
+							Format:      "",
 						},
 					},
 				},
@@ -3853,6 +3867,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategySpec(ref
 									},
 								},
 							},
+						},
+					},
+					"activePath": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ActivePath is the default repository subpath for this strategy's active state. When set, proposed branches are created as <environment-branch>-next/<activePath>. Individual environments can override this value via their own activePath field.",
+							Type:        []string{"string"},
+							Format:      "",
 						},
 					},
 				},
