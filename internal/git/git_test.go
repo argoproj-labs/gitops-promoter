@@ -568,10 +568,10 @@ var _ = Describe("ActivePath support", func() {
 		// <activePath>/hydrator.metadata from the active branch, which legitimately does
 		// not exist until that app's first promotion. When the clone's working tree
 		// already holds that path (e.g. left by a prior checkout of the proposed branch
-		// during conflict resolution), `git show origin/<active>:<path>` fails with
-		// "fatal: path '...' exists on disk, but not in '<ref>'" rather than
-		// "...does not exist...". That variant must be treated as "no metadata yet", not
-		// a hard error, or the CTP can never compute status and never promotes.
+		// during conflict resolution), a worktree-sensitive read like `git show origin/<active>:<path>`
+		// fails instead of reporting a clean absence. GetBranchShas must determine presence from the
+		// ref's tree alone (not the worktree) and treat a genuinely-absent path as "no metadata yet",
+		// not a hard error, or the CTP can never compute status and never promotes.
 		Expect(os.MkdirAll(filepath.Join(workDir, "apps", "app-one"), 0o755)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-one", "config.yaml"), []byte("version: active\n"), 0o644)).To(Succeed())
 		// Active branch intentionally has NO apps/app-one/hydrator.metadata.
@@ -588,8 +588,8 @@ var _ = Describe("ActivePath support", func() {
 		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
 		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
 
-		// Place the path in the clone's working tree so git emits the
-		// "exists on disk, but not in '<ref>'" phrasing instead of "does not exist".
+		// Place the path in the clone's working tree to prove the read is worktree-independent:
+		// a worktree-only copy must not be mistaken for metadata on the ref.
 		clonePath := g.ClonePath()
 		Expect(os.MkdirAll(filepath.Join(clonePath, "apps", "app-one"), 0o755)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(clonePath, "apps", "app-one", "hydrator.metadata"), []byte(`{"drySha":"worktree-only"}`), 0o644)).To(Succeed())
