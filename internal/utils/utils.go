@@ -74,14 +74,14 @@ func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Clien
 	return provider, nil
 }
 
-// GetGitRepositoryFromObjectKey returns the GitRepository object from the repository reference
+// GetGitRepositoryFromObjectKey returns the GitRepository for objectKey.
+//
+//nolint:wrapcheck // trivial client.Get wrapper; callers add context
 func GetGitRepositoryFromObjectKey(ctx context.Context, k8sClient client.Client, objectKey client.ObjectKey) (*promoterv1alpha1.GitRepository, error) {
 	var gitRepo promoterv1alpha1.GitRepository
-	err := k8sClient.Get(ctx, objectKey, &gitRepo)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
+	if err := k8sClient.Get(ctx, objectKey, &gitRepo); err != nil {
+		return nil, err
 	}
-
 	return &gitRepo, nil
 }
 
@@ -140,7 +140,7 @@ func GetScmProviderSecretAndGitRepositoryFromRepositoryReference(ctx context.Con
 	}
 	scmProvider, secret, err := getScmProviderAndSecretFromGitRepository(ctx, k8sClient, controllerNamespace, gitRepo, obj)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, err //nolint:wrapcheck // err is already contextualized by getScmProviderAndSecretFromGitRepository
 	}
 	return scmProvider, secret, gitRepo, nil
 }
