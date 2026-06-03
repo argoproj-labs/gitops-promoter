@@ -36,7 +36,10 @@ func Run(ctx context.Context, restConfig *clientrest.Config, opts *Options) erro
 		return err
 	}
 
-	readCache, err := cache.New(restConfig, cache.Options{Scheme: utils.GetScheme()})
+	readCache, err := cache.New(restConfig, cache.Options{
+		Scheme:           utils.GetScheme(),
+		DefaultTransform: cacheTransform(),
+	})
 	if err != nil {
 		return fmt.Errorf("failed to create read cache: %w", err)
 	}

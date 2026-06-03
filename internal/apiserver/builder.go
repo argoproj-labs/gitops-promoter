@@ -28,9 +28,6 @@ import (
 	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
 )
 
-// lastAppliedAnnotation is stripped from every object included in a bundle.
-const lastAppliedAnnotation = "kubectl.kubernetes.io/last-applied-configuration"
-
 // buildBundle assembles the PromotionStrategyDetails for the named PromotionStrategy
 // from the given reader. It returns a NotFound error (scoped to the dashboard
 // resource) when the PromotionStrategy does not exist. Secrets are never read.
@@ -44,8 +41,6 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 		}
 		return nil, fmt.Errorf("failed to get PromotionStrategy %s/%s: %w", namespace, name, err)
 	}
-	sanitize(ps)
-
 	// The PromotionStrategy's status is a per-environment aggregation of the
 	// ChangeTransferPolicy statuses, which are already embedded in the bundle
 	// (.changeTransferPolicies). Drop it to avoid duplicating that data; consumers
@@ -71,19 +66,19 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 	if err := reader.List(ctx, ctpList, client.InNamespace(namespace), psLabel); err != nil {
 		return nil, fmt.Errorf("failed to list ChangeTransferPolicies: %w", err)
 	}
-	bundle.ChangeTransferPolicies = sanitizeSlice(ctpList.Items)
+	bundle.ChangeTransferPolicies = nilIfEmpty(ctpList.Items)
 
 	prList := &promoterv1alpha1.PullRequestList{}
 	if err := reader.List(ctx, prList, client.InNamespace(namespace), psLabel); err != nil {
 		return nil, fmt.Errorf("failed to list PullRequests: %w", err)
 	}
-	bundle.PullRequests = sanitizeSlice(prList.Items)
+	bundle.PullRequests = nilIfEmpty(prList.Items)
 
 	csList := &promoterv1alpha1.CommitStatusList{}
 	if err := reader.List(ctx, csList, client.InNamespace(namespace), psLabel); err != nil {
 		return nil, fmt.Errorf("failed to list CommitStatuses: %w", err)
 	}
-	bundle.CommitStatuses = sanitizeSlice(csList.Items)
+	bundle.CommitStatuses = nilIfEmpty(csList.Items)
 
 	// Commit-status managers reference the PS by spec.promotionStrategyRef.name.
 	argocdList := &promoterv1alpha1.ArgoCDCommitStatusList{}
@@ -92,9 +87,7 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 	}
 	for i := range argocdList.Items {
 		if argocdList.Items[i].Spec.PromotionStrategyRef.Name == name {
-			item := argocdList.Items[i]
-			sanitize(&item)
-			bundle.ArgoCDCommitStatuses = append(bundle.ArgoCDCommitStatuses, item)
+			bundle.ArgoCDCommitStatuses = append(bundle.ArgoCDCommitStatuses, argocdList.Items[i])
 		}
 	}
 
@@ -104,9 +97,7 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 	}
 	for i := range gitCSList.Items {
 		if gitCSList.Items[i].Spec.PromotionStrategyRef.Name == name {
-			item := gitCSList.Items[i]
-			sanitize(&item)
-			bundle.GitCommitStatuses = append(bundle.GitCommitStatuses, item)
+			bundle.GitCommitStatuses = append(bundle.GitCommitStatuses, gitCSList.Items[i])
 		}
 	}
 
@@ -116,9 +107,7 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 	}
 	for i := range timedCSList.Items {
 		if timedCSList.Items[i].Spec.PromotionStrategyRef.Name == name {
-			item := timedCSList.Items[i]
-			sanitize(&item)
-			bundle.TimedCommitStatuses = append(bundle.TimedCommitStatuses, item)
+			bundle.TimedCommitStatuses = append(bundle.TimedCommitStatuses, timedCSList.Items[i])
 		}
 	}
 
@@ -128,9 +117,7 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 	}
 	for i := range webReqCSList.Items {
 		if webReqCSList.Items[i].Spec.PromotionStrategyRef.Name == name {
-			item := webReqCSList.Items[i]
-			sanitize(&item)
-			bundle.WebRequestCommitStatuses = append(bundle.WebRequestCommitStatuses, item)
+			bundle.WebRequestCommitStatuses = append(bundle.WebRequestCommitStatuses, webReqCSList.Items[i])
 		}
 	}
 
@@ -160,7 +147,6 @@ func attachGitConfig(ctx context.Context, reader client.Reader, namespace string
 		return fmt.Errorf("failed to get GitRepository %s/%s: %w", namespace, repoName, err)
 	}
 
-	sanitize(gitRepo)
 	bundle.GitRepository = gitRepo
 	return attachScmProvider(ctx, reader, namespace, gitRepo, bundle)
 }
@@ -178,7 +164,6 @@ func attachScmProvider(ctx context.Context, reader client.Reader, namespace stri
 			}
 			return fmt.Errorf("failed to get ClusterScmProvider %s: %w", ref.Name, err)
 		}
-		sanitize(provider)
 		bundle.ClusterScmProvider = provider
 	default: // "ScmProvider" (also the kubebuilder default)
 		provider := &promoterv1alpha1.ScmProvider{}
@@ -188,33 +173,15 @@ func attachScmProvider(ctx context.Context, reader client.Reader, namespace stri
 			}
 			return fmt.Errorf("failed to get ScmProvider %s/%s: %w", namespace, ref.Name, err)
 		}
-		sanitize(provider)
 		bundle.ScmProvider = provider
 	}
 	return nil
 }
 
-// sanitize strips managedFields and the last-applied-configuration annotation so
-// bundles stay small and free of noisy server-side-apply metadata.
-func sanitize(obj client.Object) {
-	obj.SetManagedFields(nil)
-	annotations := obj.GetAnnotations()
-	if annotations != nil {
-		delete(annotations, lastAppliedAnnotation)
-		obj.SetAnnotations(annotations)
-	}
-}
-
-// sanitizeSlice sanitizes each element of a slice in place and returns it (nil when empty).
-func sanitizeSlice[T any, PT interface {
-	client.Object
-	*T
-}](items []T) []T {
+// nilIfEmpty returns nil for an empty slice so bundle JSON omits empty arrays.
+func nilIfEmpty[T any](items []T) []T {
 	if len(items) == 0 {
 		return nil
-	}
-	for i := range items {
-		sanitize(PT(&items[i]))
 	}
 	return items
 }

@@ -165,11 +165,6 @@ var _ = Describe("BuildBundle", func() {
 		Expect(bundle.ScmProvider.Spec.SecretRef.Name).To(Equal("my-secret"))
 		Expect(bundle.ClusterScmProvider).To(BeNil())
 
-		By("stripping managedFields and the last-applied annotation")
-		Expect(bundle.PromotionStrategy.ManagedFields).To(BeNil())
-		Expect(bundle.PromotionStrategy.Annotations).NotTo(HaveKey(lastAppliedAnnotation))
-		Expect(bundle.PromotionStrategy.Annotations).To(HaveKeyWithValue("keep-me", "yes"))
-
 		By("dropping the PromotionStrategy status (reconstructed from CTPs by consumers)")
 		Expect(bundle.PromotionStrategy.Status.Environments).To(BeEmpty())
 
@@ -178,6 +173,29 @@ var _ = Describe("BuildBundle", func() {
 		raw, err := json.Marshal(bundle)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(raw)).NotTo(ContainSubstring(testSecretVal))
+	})
+
+	It("serves sanitized objects when read through the cache transform", func() {
+		// The fake reader does not run the cache's DefaultTransform, so mimic the
+		// real read path (run.go wires cacheTransform() as DefaultTransform) by
+		// passing each seeded object through the transform before it is cached.
+		// This is the end-to-end guarantee builder.go no longer provides itself.
+		transform := cacheTransform()
+		seeded := seedObjects()
+		for _, obj := range seeded {
+			// The transform mutates in place and returns the same object.
+			_, err := transform(obj)
+			Expect(err).NotTo(HaveOccurred())
+		}
+		reader := newFakeReader(seeded...)
+
+		bundle, err := buildBundle(context.Background(), reader, testNamespace, testPSName, "42")
+		Expect(err).NotTo(HaveOccurred())
+
+		By("stripping managedFields and the last-applied annotation while preserving others")
+		Expect(bundle.PromotionStrategy.ManagedFields).To(BeNil())
+		Expect(bundle.PromotionStrategy.Annotations).NotTo(HaveKey(lastAppliedAnnotation))
+		Expect(bundle.PromotionStrategy.Annotations).To(HaveKeyWithValue("keep-me", "yes"))
 	})
 
 	It("returns NotFound when the PromotionStrategy is missing", func() {

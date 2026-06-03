@@ -52,7 +52,7 @@ image-pinned **combined** bundles that contain the controller *and* this apiserv
 file — `install-with-dashboard-cert-manager.yaml` (cert-manager issues and rotates the
 serving cert) and `install-with-dashboard-byo-cert.yaml` (no cert-manager; you supply the
 serving cert + `caBundle`). Apply one of these instead of the plain `install.yaml`. See the
-[Getting Started](getting-started.md#install-the-dashboard-aggregation-api) guide. They are
+[Getting Started](getting-started.md#install-the-dashboard-api) guide. They are
 built from the `config/apiserver/release-combined-cert-manager` and
 `config/apiserver/release-combined-byo-cert` overlays respectively, which union
 `config/default` with a cert overlay (no extra namespace transformer, so the `kube-system`

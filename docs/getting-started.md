@@ -498,22 +498,11 @@ spec:
 
 GitOps Promoter comes with a web UI that you can use to visualize the state of your PromotionStrategy resources.
 
-The UI does not talk to the four raw CRDs directly. Instead it watches a single,
-server-computed resource — `PromotionStrategyDetails` — that bundles a `PromotionStrategy`
-together with everything related to it (its `ChangeTransferPolicy`, `PullRequest`,
-`CommitStatus`, the commit-status managers, and the git config). That resource is served
-by a Kubernetes **aggregation layer** (an extension apiserver), so you must install the
-aggregation API into your cluster before the dashboard can load any data.
+The UI is backed by the `PromotionStrategyDetails` resource. This resource is backed by a Kubernetes APIService and requires a certificate to be set up. This step is safe to skip if you are not going to use the dashboard.
 
-### Install the dashboard aggregation API
+### Install the dashboard API
 
-The aggregation apiserver is **not** part of the plain `install.yaml` (it needs a TLS serving
-cert, and the `caBundle` must match it). Instead, each release publishes a **combined bundle**
-that contains the controller *and* the dashboard apiserver in a single file — so installing
-with the dashboard is one `kubectl apply`. Two variants are published; pick the one that
-matches how you want to manage the serving cert. Use one of these **instead of** the plain
-`install.yaml` from [Installation](#installation) above (each combined bundle already includes
-the controller).
+The `PromotionStrategyDetails` APIService does not come with the default install.yaml. Use one of the following bundles to set it up for your environment.
 
 /// tab | cert-manager
 
