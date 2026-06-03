@@ -80,6 +80,13 @@ generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and
 generate-extension-icon-styles: ## Generate Argo CD extension icon styles from logo SVGs.
 	./hack/extension-icon-styles.sh
 
+# Generates hack/celcost/report.md, embedded into docs/contributing/writing-cel-rules.md
+# via markdown_include. celcost is its own Go module (hack/celcost/go.mod) so its
+# CEL/apiserver dependencies stay out of the root module, hence the cd + go run .
+.PHONY: cel-cost-report
+cel-cost-report: ## Estimate CRD CEL validation costs vs apiserver limits and write the docs report.
+	cd hack/celcost && go run . -o report.md ../../config/crd/bases
+
 .PHONY: generate-all
 generate-all: generate generate-extension-icon-styles ## Run all code generation used in CI (controller-gen, extension icon styles). For mocks, run make mockery-gen separately.
 
@@ -273,7 +280,7 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 	rm Dockerfile.cross
 
 .PHONY: build-installer
-build-installer: manifests generate-all kustomize ## Generate a consolidated YAML with CRDs and deployment.
+build-installer: manifests generate-all cel-cost-report kustomize ## Generate CRDs, applyconfiguration, CEL cost report, and dist/install.yaml.
 	mkdir -p dist
 	# cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default > dist/install.yaml

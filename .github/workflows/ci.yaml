@@ -140,7 +140,7 @@ jobs:
         run: |
           make build-installer
           if ! git diff --exit-code; then
-            echo "::error ::Generated files are out of date. Run 'make build-installer' and commit the changes (CRDs, applyconfiguration, deepcopy, extension icon styles, dist/install.yaml)."
+            echo "::error ::Generated files are out of date. Run 'make build-installer' and commit the changes (CRDs, applyconfiguration, deepcopy, extension icon styles, hack/celcost/report.md, dist/install.yaml)."
             exit 1
           fi
   nilaway:
