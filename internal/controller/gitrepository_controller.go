@@ -89,9 +89,8 @@ func (r *GitRepositoryReconciler) SetupWithManager(ctx context.Context, mgr ctrl
 		Watches(
 			&promoterv1alpha1.PullRequest{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueGitRepositoryForPullRequest),
-			builder.WithPredicates(predicate.Funcs{
-				DeleteFunc: func(e event.DeleteEvent) bool { return true },
-			}),
+			// Delete fires once the PullRequest leaves the informer cache (fully removed from the API).
+			builder.WithPredicates(predicate.Funcs{DeleteFunc: func(event.DeleteEvent) bool { return true }}),
 		).
 		Complete(r)
 	if err != nil {

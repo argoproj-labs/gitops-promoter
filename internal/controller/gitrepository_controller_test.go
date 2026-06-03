@@ -148,6 +148,7 @@ var _ = Describe("GitRepository Controller", func() {
 			Eventually(func(g Gomega) {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 				g.Expect(pullRequest.DeletionTimestamp).ToNot(BeNil())
+				g.Expect(pullRequest.Finalizers).NotTo(ContainElement(promoterv1alpha1.PullRequestFinalizer))
 				g.Expect(pullRequest.Finalizers).To(ContainElement(blockingFinalizer))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
@@ -155,38 +156,40 @@ var _ = Describe("GitRepository Controller", func() {
 		AfterEach(func() {
 			var pr promoterv1alpha1.PullRequest
 			if err := k8sClient.Get(ctx, typeNamespacedName, &pr); err != nil {
-				return
-			}
-			if pr.DeletionTimestamp == nil {
-				return
-			}
-			var kept []string
-			for _, f := range pr.Finalizers {
-				if f != blockingFinalizer {
-					kept = append(kept, f)
+				if errors.IsNotFound(err) {
+					return
 				}
+				return
 			}
-			if len(kept) != len(pr.Finalizers) {
-				base := pr.DeepCopy()
-				pr.Finalizers = kept
-				_ = k8sClient.Patch(ctx, &pr, client.MergeFrom(base))
+			if pr.DeletionTimestamp != nil {
+				var kept []string
+				for _, f := range pr.Finalizers {
+					if f != blockingFinalizer {
+						kept = append(kept, f)
+					}
+				}
+				if len(kept) != len(pr.Finalizers) {
+					base := pr.DeepCopy()
+					pr.Finalizers = kept
+					_ = k8sClient.Patch(ctx, &pr, client.MergeFrom(base))
+				}
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, typeNamespacedName, &pr)
+					g.Expect(errors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
 			}
 
+			_ = client.IgnoreNotFound(k8sClient.Delete(ctx, gitRepo))
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, typeNamespacedName, &pr)
+				err := k8sClient.Get(ctx, typeNamespacedName, gitRepo)
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			var repo promoterv1alpha1.GitRepository
-			if err := k8sClient.Get(ctx, typeNamespacedName, &repo); err != nil {
-				return
-			}
-			if repo.DeletionTimestamp != nil {
-				_ = k8sClient.Delete(ctx, &repo)
-			}
+			_ = client.IgnoreNotFound(k8sClient.Delete(ctx, scmProvider))
+			_ = client.IgnoreNotFound(k8sClient.Delete(ctx, scmSecret))
 		})
 
-		It("should not delete the GitRepository while the PullRequest object still exists", func() {
+		It("should block GitRepository deletion until the PullRequest is gone, then finish deleting", func() {
 			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
 
 			Eventually(func(g Gomega) {
@@ -205,6 +208,31 @@ var _ = Describe("GitRepository Controller", func() {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 				g.Expect(pullRequest.DeletionTimestamp).ToNot(BeNil())
 			}, 5*time.Second, 200*time.Millisecond).Should(Succeed())
+
+			By("Removing the blocking finalizer so the PullRequest object can leave the API")
+			Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+			base := pullRequest.DeepCopy()
+			var kept []string
+			for _, f := range pullRequest.Finalizers {
+				if f != blockingFinalizer {
+					kept = append(kept, f)
+				}
+			}
+			pullRequest.Finalizers = kept
+			Expect(k8sClient.Patch(ctx, pullRequest, client.MergeFrom(base))).To(Succeed())
+
+			By("Verifying the PullRequest is fully removed, not only marked for deletion")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying the GitRepository deletion completes after the PullRequest object is gone")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, gitRepo)
+				g.Expect(errors.IsNotFound(err)).To(BeTrue(),
+					"GitRepository should be deleted after the last referencing PullRequest is removed from the API")
+			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
 })
