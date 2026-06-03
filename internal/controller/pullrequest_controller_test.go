@@ -33,9 +33,11 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 //go:embed testdata/PullRequest.yaml
@@ -829,6 +831,61 @@ var _ = Describe("PullRequest Controller", func() {
 					g.Expect(ctp.Status.PullRequest.State).To(BeEmpty(), "State should be empty when externally merged/closed (we don't know if merged or closed)")
 				}, constants.EventuallyTimeout).Should(Succeed())
 			}
+		})
+	})
+
+	Context("When a PullRequest is deleted after its GitRepository is gone", func() {
+		var ctx context.Context
+		var name string
+		var scmSecret *v1.Secret
+		var scmProvider *promoterv1alpha1.ScmProvider
+		var gitRepo *promoterv1alpha1.GitRepository
+		var pullRequest *promoterv1alpha1.PullRequest
+		var typeNamespacedName types.NamespacedName
+
+		BeforeEach(func() {
+			ctx = context.Background()
+
+			By("Creating test resources")
+			name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "deleted-gitrepo")
+
+			typeNamespacedName = types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
+
+			By("Waiting for PullRequest to be open and have a finalizer")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				g.Expect(pullRequest.Status.ID).ToNot(BeEmpty())
+				g.Expect(controllerutil.ContainsFinalizer(pullRequest, promoterv1alpha1.PullRequestFinalizer)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should remove the finalizer and allow deletion even when the GitRepository no longer exists", func() {
+			By("Deleting the GitRepository while the PullRequest still exists")
+			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, gitRepo)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Deleting the PullRequest")
+			Expect(k8sClient.Delete(ctx, pullRequest)).To(Succeed())
+
+			By("Verifying the PullRequest is eventually deleted despite the missing GitRepository")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
 })

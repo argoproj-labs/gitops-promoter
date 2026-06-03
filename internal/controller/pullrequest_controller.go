@@ -40,7 +40,7 @@ import (
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -53,6 +53,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
+
+// isNotFoundError returns true if the error chain contains a Kubernetes not-found error.
+func isNotFoundError(err error) bool {
+	return k8serrors.IsNotFound(err)
+}
 
 // PullRequestReconciler reconciles a PullRequest object
 type PullRequestReconciler struct {
@@ -81,7 +86,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	defer utils.HandleReconciliationResult(ctx, startTime, &pr, r.Client, r.Recorder, &err)
 
 	if err := r.Get(ctx, req.NamespacedName, &pr); err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			logger.Info("PullRequest not found", "namespace", req.Namespace, "name", req.Name)
 			return ctrl.Result{}, nil
 		}
@@ -98,6 +103,21 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	provider, err := r.getPullRequestProvider(ctx, pr)
 	if err != nil {
+		// If the PullRequest is being deleted and the provider cannot be resolved because a
+		// referenced resource (e.g. GitRepository) no longer exists, we cannot close the PR
+		// on the SCM but we must still remove the finalizer to unblock garbage collection.
+		// Leaving the finalizer in place would cause the PullRequest to remain stuck in
+		// Terminating state indefinitely, blocking the PromotionStrategy reconciliation.
+		if !pr.DeletionTimestamp.IsZero() && isNotFoundError(err) {
+			logger.Info("PullRequest is being deleted but provider cannot be resolved due to missing dependency; removing finalizer without closing SCM PR", "error", err)
+			if controllerutil.ContainsFinalizer(&pr, promoterv1alpha1.PullRequestFinalizer) {
+				controllerutil.RemoveFinalizer(&pr, promoterv1alpha1.PullRequestFinalizer)
+				if updateErr := r.Update(ctx, &pr); updateErr != nil {
+					return ctrl.Result{}, fmt.Errorf("failed to remove finalizer after missing dependency: %w", updateErr)
+				}
+			}
+			return ctrl.Result{}, nil
+		}
 		return ctrl.Result{}, fmt.Errorf("failed to get PullRequest provider: %w", err)
 	}
 
@@ -195,7 +215,7 @@ func (r *PullRequestReconciler) cleanupTerminalStates(ctx context.Context, pr *p
 	} else {
 		logger.Info("Cleaning up closed and merged pull request", "pullRequestID", pr.Status.ID)
 	}
-	if err := r.Delete(ctx, pr); err != nil && !errors.IsNotFound(err) {
+	if err := r.Delete(ctx, pr); err != nil && !k8serrors.IsNotFound(err) {
 		logger.Error(err, "Failed to delete PullRequest")
 		return false, fmt.Errorf("failed to delete PullRequest: %w", err)
 	}
