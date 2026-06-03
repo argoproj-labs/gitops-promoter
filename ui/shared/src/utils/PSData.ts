@@ -79,8 +79,7 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
   const promotionStatus = getEnvironmentStatus(environment);
 
   // Use PR data from selected history entry
-  const selectedHistoryEntry = history[index] ?? history[0];
-  const entryPr = selectedHistoryEntry.pullRequest;
+  const entryPr = history[index]?.pullRequest ?? history[0]?.pullRequest;
   const historyWithPr = entryPr?.id ? entryPr : null;
 
   // For the live active badge, fall back to environment.pullRequest when state is merged
@@ -94,9 +93,10 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
   // Resolve merge time: prefer prMergeTime, fall back to hydrated commitTime
   let historyMergeTimeAgo: RelativeTimeAgo | null = null;
   if (index > 0) {
-    const entry = history[index];
     const mergeTimeStr =
-      entry.pullRequest?.prMergeTime || entry.active?.hydrated?.commitTime || null;
+      history[index]?.pullRequest?.prMergeTime ||
+      history[index]?.active?.hydrated?.commitTime ||
+      null;
     historyMergeTimeAgo = mergeTimeStr ? timeAgo(mergeTimeStr) : null;
   }
 
