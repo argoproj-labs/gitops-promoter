@@ -6,3 +6,4 @@ coverage/
 *.min.js
 *.d.ts
 shared/src/types/generated/
+**/tsconfig.eslint.json

@@ -22,10 +22,16 @@ export type Environment = PromotionStrategyStatus['environments'][number];
 
 export type History = NonNullable<Environment['history']>[number];
 
-/** Commit metadata on a branch (`active.dry`, `proposed.dry`, etc.). */
+/**
+ * Commit metadata on a branch (`active.dry`, `proposed.dry`, etc.).
+ * `commitTime` — when the commit was made (dry/hydrated). RFC 3339 from CRD `commitTime` (`metav1.Time`).
+ */
 export type Commit = NonNullable<Environment['active']['dry']>;
 
-/** Reference commit embedded in `Commit.references`. */
+/**
+ * Reference commit embedded in `Commit.references`.
+ * `date` — reference commit timestamp. RFC 3339 from CRD (`git show -s --format=%aI`).
+ */
 export type ReferenceCommit = NonNullable<
   NonNullable<NonNullable<Commit['references']>[number]>['commit']
 > & {
@@ -41,7 +47,10 @@ export type BranchCommitStatus = NonNullable<
 /** @deprecated Use {@link BranchCommitStatus}. */
 export type CommitStatus = BranchCommitStatus;
 
-/** Pull request state embedded in environment status (not the `PullRequest` CRD). */
+/**
+ * Pull request state embedded in environment status (not the `PullRequest` CRD).
+ * `prMergeTime` — when the promotion PR was merged. RFC 3339 from CRD (`metav1.Time`).
+ */
 export type EnvironmentPullRequest = NonNullable<Environment['pullRequest']>;
 
 /** @deprecated Use {@link EnvironmentPullRequest}. */

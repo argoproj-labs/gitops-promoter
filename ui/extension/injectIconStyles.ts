@@ -7,6 +7,8 @@
 import { ICON_STYLES } from './iconStyles.generated';
 
 export function injectIconStyles(): void {
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- no-op outside browser contexts
+  if (typeof document === 'undefined' || !document.head) return;
   const style = document.createElement('style');
   style.textContent = ICON_STYLES;
   style.setAttribute('data-gitops-promoter-extension', 'icon');

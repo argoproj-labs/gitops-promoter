@@ -1,5 +1,6 @@
 import type { PromotionStrategy } from './promotion';
 
+// Extension API types
 export interface ResourceExtensionProps {
   application: {
     metadata: {
