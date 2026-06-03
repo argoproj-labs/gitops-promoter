@@ -201,13 +201,26 @@ func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch, activ
 	shas.Hydrated = strings.TrimSpace(stdout)
 	logger.V(4).Info("Got hydrated branch sha", "branch", branch, "sha", shas.Hydrated)
 
-	// Get the metadata file contents directly from the remote branch
-	metadataFileStdout, stderr, err := g.runCmd(ctx, gitPath, "show", "origin/"+branch+":"+buildHydratorMetadataPath(activePath))
+	// Determine whether <activePath>/hydrator.metadata exists on the ref using ls-tree, which reads
+	// the tree object and never consults the worktree. The metadata file legitimately may not exist
+	// on this ref yet — most commonly with activePath, where <activePath>/hydrator.metadata only
+	// appears on the active branch after that app's first promotion. We must not treat that normal
+	// pre-promotion state as a reconcile error.
+	metaPath := buildHydratorMetadataPath(activePath)
+	lsTreeStdout, stderr, err := g.runCmd(ctx, gitPath, "ls-tree", "origin/"+branch, ":(literal)"+metaPath)
 	if err != nil {
-		if strings.Contains(stderr, "does not exist") || strings.Contains(stderr, "Path not in") {
-			logger.Info("hydrator.metadata file not found", "branch", branch)
-			return shas, nil
-		}
+		logger.Error(err, "could not list metadata file", "gitError", stderr)
+		return BranchShas{}, fmt.Errorf("failed to list hydrator.metadata on branch %q: %w", branch, err)
+	}
+	if strings.TrimSpace(lsTreeStdout) == "" {
+		logger.Info("hydrator.metadata file not found", "branch", branch, "activePath", activePath)
+		return shas, nil
+	}
+
+	// Get the metadata file contents directly from the remote branch. The path is known to exist on
+	// the ref at this point, so this only fails on a genuine git error.
+	metadataFileStdout, stderr, err := g.runCmd(ctx, gitPath, "show", "origin/"+branch+":"+metaPath)
+	if err != nil {
 		logger.Error(err, "could not get metadata file", "gitError", stderr)
 		return BranchShas{}, fmt.Errorf("failed to read hydrator.metadata from branch %q: %w", branch, err)
 	}

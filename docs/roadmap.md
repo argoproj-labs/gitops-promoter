@@ -6,10 +6,6 @@
 
 - **DAG-style promotion strategies** — Model promotion flows beyond a linear environment chain, including environment dependencies and parallel branch targets within a step ([#1364](https://github.com/argoproj-labs/gitops-promoter/issues/1364)).
 
-### Monorepo and branch management
-
-- **[Shared active branch across PromotionStrategies](https://github.com/argoproj-labs/gitops-promoter/issues/1336)** — Use one live branch per environment when multiple promotion pipelines share the same monorepo branches.
-
 ### Commit status and gating
 
 - **Deployment window gates** — Gate promotions on allowed time-of-day or calendar windows.
