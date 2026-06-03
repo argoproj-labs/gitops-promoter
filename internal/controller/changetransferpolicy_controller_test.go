@@ -658,6 +658,59 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
+		It("should remove CTP finalizer from PR when PR is externally merged/closed but CTP status is stale", func() {
+				By("Adding a pending commit")
+				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
+
+				By("Waiting for PR to be created and open")
+				var createdPR promoterv1alpha1.PullRequest
+				Eventually(func(g Gomega) {
+					typeNamespacedNamePR := types.NamespacedName{
+						Name:      utils.KubeSafeUniqueName(ctx, prName),
+						Namespace: "default",
+					}
+					err := k8sClient.Get(ctx, typeNamespacedNamePR, &createdPR)
+					g.Expect(err).To(Succeed())
+					g.Expect(createdPR.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+					g.Expect(createdPR.Status.ID).ToNot(BeEmpty())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Simulating the race: set ExternallyMergedOrClosed=true and State='' on PR without waiting for CTP to sync")
+				// This simulates the scenario where the PR controller sets ExternallyMergedOrClosed=true
+				// (clearing State to "") but the CTP has not yet reconciled to copy the new status.
+				// The CTP status still shows State="open", ExternallyMergedOrClosed=nil.
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      createdPR.Name,
+						Namespace: createdPR.Namespace,
+					}, &createdPR)
+					g.Expect(err).To(Succeed())
+					createdPR.Status.ExternallyMergedOrClosed = ptr.To(true)
+					createdPR.Status.State = "" // intentionally cleared — we don't know merged vs closed
+					err = k8sClient.Status().Update(ctx, &createdPR)
+					g.Expect(err).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Deleting the PR immediately, before CTP has synced the new status")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      createdPR.Name,
+						Namespace: createdPR.Namespace,
+					}, &createdPR)
+					g.Expect(err).To(Succeed())
+					err = k8sClient.Delete(ctx, &createdPR)
+					g.Expect(err).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Verifying the PR is eventually deleted even though CTP status was stale when deletion started")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      createdPR.Name,
+						Namespace: createdPR.Namespace,
+					}, &createdPR)
+					g.Expect(errors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
 		})
 	})
 })
