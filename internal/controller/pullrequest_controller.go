@@ -354,14 +354,11 @@ func (r *PullRequestReconciler) SetupWithManager(ctx context.Context, mgr ctrl.M
 }
 
 func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr promoterv1alpha1.PullRequest) (scms.PullRequestProvider, error) {
-	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), pr.Spec.RepositoryReference, &pr)
+	scmProvider, secret, gitRepository, err := utils.GetScmProviderSecretAndGitRepositoryFromRepositoryReference(
+		ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), pr.Spec.RepositoryReference, &pr,
+	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get ScmProvider and secret: %w", err)
-	}
-
-	gitRepository, err := utils.GetGitRepositoryFromObjectKey(ctx, r.Client, client.ObjectKey{Namespace: pr.Namespace, Name: pr.Spec.RepositoryReference.Name})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
+		return nil, fmt.Errorf("failed to get PullRequest provider: %w", err)
 	}
 
 	switch {
