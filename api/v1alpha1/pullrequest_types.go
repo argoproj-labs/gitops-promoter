@@ -40,6 +40,7 @@ type PullRequestSpec struct {
 	// Must not start with '-', contain ':', or contain '..'.
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=100
 	// +kubebuilder:validation:XValidation:rule="!self.startsWith('-')",message="branch must not start with '-'"
 	// +kubebuilder:validation:XValidation:rule="!self.contains(':')",message="branch must not contain ':'"
@@ -49,6 +50,7 @@ type PullRequestSpec struct {
 	// Must not start with '-', contain ':', or contain '..'.
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=100
 	// +kubebuilder:validation:XValidation:rule="!self.startsWith('-')",message="branch must not start with '-'"
 	// +kubebuilder:validation:XValidation:rule="!self.contains(':')",message="branch must not contain ':'"
