@@ -207,7 +207,7 @@ func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch, activ
 	// appears on the active branch after that app's first promotion. We must not treat that normal
 	// pre-promotion state as a reconcile error.
 	metaPath := buildHydratorMetadataPath(activePath)
-	lsTreeStdout, stderr, err := g.runCmd(ctx, gitPath, "ls-tree", "origin/"+branch, "--", metaPath)
+	lsTreeStdout, stderr, err := g.runCmd(ctx, gitPath, "ls-tree", "origin/"+branch, ":(literal)"+metaPath)
 	if err != nil {
 		logger.Error(err, "could not list metadata file", "gitError", stderr)
 		return BranchShas{}, fmt.Errorf("failed to list hydrator.metadata on branch %q: %w", branch, err)
