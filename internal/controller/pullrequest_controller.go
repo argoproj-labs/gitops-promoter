@@ -358,7 +358,7 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 		ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), pr.Spec.RepositoryReference, &pr,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get PullRequest provider: %w", err)
+		return nil, err //nolint:wrapcheck // Reconcile adds "failed to get PullRequest provider"
 	}
 
 	switch {

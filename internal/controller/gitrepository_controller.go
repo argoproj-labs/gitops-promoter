@@ -132,7 +132,7 @@ func (r *GitRepositoryReconciler) handleFinalizer(ctx context.Context, gitRepo *
 	)
 }
 
-func (r *GitRepositoryReconciler) enqueueGitRepositoryForPullRequest(ctx context.Context, obj client.Object) []reconcile.Request {
+func (r *GitRepositoryReconciler) enqueueGitRepositoryForPullRequest(_ context.Context, obj client.Object) []reconcile.Request {
 	pr, ok := obj.(*promoterv1alpha1.PullRequest)
 	if !ok {
 		return nil
