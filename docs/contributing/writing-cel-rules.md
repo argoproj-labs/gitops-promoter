@@ -45,14 +45,16 @@ cheap-looking rule placed deep inside repeated `status` lists can dominate the b
 Estimate the cost of the current CRDs at any time:
 
 ```bash
+make build-installer   # regenerates CRDs and the report
+# or, if CRDs are already up to date:
 make cel-cost-report
 ```
 
 This runs [`hack/celcost`](https://github.com/argoproj-labs/gitops-promoter/tree/main/hack/celcost),
 which reproduces the apiserver's budget calculation against `config/crd/bases` and writes the report
 embedded below to `hack/celcost/report.md`. CI fails if that file is out of date, so after any change
-that alters the CRDs (new fields, new rules, changed `MaxItems`, etc.) run `make build-installer`
-**and** `make cel-cost-report`, then commit both.
+that alters the CRDs (new fields, new rules, changed `MaxItems`, etc.) run **`make build-installer`**
+and commit the full diff.
 
 > [!NOTE]
 > The estimate is the library's stricter, create-time, version-portable cost. A given kube-apiserver

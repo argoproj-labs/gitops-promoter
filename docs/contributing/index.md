@@ -9,7 +9,7 @@ Thanks for helping improve GitOps Promoter. The project is still young; we keep 
 3. **Make focused changes** — one logical change per PR when possible.
 4. **Run checks** that match what you changed:
     - **Go only** (no CRD, webhook, or generated install / apply-config churn): `go mod tidy`, `make lint`, `make test-parallel`, `make fuzz-replay` (replay seeds (`f.Add`) + corpus (`testdata/fuzz`); same as CI).
-    - **APIs, CRDs, webhooks, or bundled install YAML** (anything `make build-installer` regenerates—`config/`, `dist/install.yaml`, deepcopy/applyconfiguration, extension icon output): **`make build-installer`**, then **`make cel-cost-report`** (refreshes `hack/celcost/report.md`; see [Writing CEL Validation Rules](writing-cel-rules.md)), commit the full diff, then `go mod tidy`, `make lint`, `make test-parallel`.
+    - **APIs, CRDs, webhooks, or bundled install YAML** (anything `make build-installer` regenerates—`config/`, `dist/install.yaml`, deepcopy/applyconfiguration, extension icon output, `hack/celcost/report.md`): **`make build-installer`**, commit the full diff, then `go mod tidy`, `make lint`, `make test-parallel`.
     - **SCM interfaces** (`internal/scms/`): **`make mockery-gen`**, commit `internal/scms/mock/` (CI checks this separately from `build-installer`).
     - **`ui/`**: `make lint-ui`, `make test-unit-test-extension`, `make test-ui-test-dashboard`.
     - **`docs/`** (this site): `make lint-docs`.
