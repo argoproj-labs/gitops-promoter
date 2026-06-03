@@ -87,6 +87,12 @@ generate-extension-icon-styles: ## Generate Argo CD extension icon styles from l
 cel-cost-report: ## Estimate CRD CEL validation costs vs apiserver limits and write the docs report.
 	cd hack/celcost && go run . -o report.md ../../config/crd/bases
 
+.PHONY: generate-ui-types
+generate-ui-types: ## Generate TypeScript types from CRD OpenAPI schemas (requires committed config/crd/bases).
+	cd hack/crd2ts && go run . -crds ../../config/crd/bases -o dist/crds.openapi.json
+	cd ui/codegen && npm ci && npm run generate
+	cd ui/shared && npm ci
+
 .PHONY: generate-all
 generate-all: generate generate-extension-icon-styles ## Run all code generation used in CI (controller-gen, extension icon styles). For mocks, run make mockery-gen separately.
 
@@ -185,11 +191,13 @@ build: manifests generate fmt vet ## Build manager binary.
 
 .PHONY: build-dashboard
 build-dashboard: ## Build dashboard UI and embed it.
+	cd ui/shared && npm install
 	cd ui/components-lib && npm install
 	cd ui/dashboard && npm install && npm run build:embed
 
 .PHONY: build-extension
 build-extension: ## Build ArgoCD extension.
+	cd ui/shared && npm install
 	cd ui/components-lib && npm install
 	cd ui/extension && npm install && npm run build
 
@@ -234,7 +242,7 @@ test-unit-test-extension: ## Run extension unit tests (with coverage)
 .PHONY: lint-components-lib
 lint-components-lib: ## Run components-lib type-check and format checks (includes shared/)
 	cd ui/components-lib && npm run type-check && npm run format:check
-	cd ui/components-lib && npx prettier --check '../shared/**/*.{ts,tsx}'
+	cd ui/components-lib && npx prettier --check '../shared/**/*.{ts,tsx}' --ignore-path ../.prettierignore
 
 .PHONY: lint-ui
 lint-ui: lint-dashboard lint-extension lint-components-lib ## Run all UI checks

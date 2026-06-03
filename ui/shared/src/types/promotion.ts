@@ -1,3 +1,5 @@
+import type { PromotionStrategy as PromotionStrategyCRD } from './crds';
+
 /**
  * RFC 3339 timestamp from the API (Kubernetes `metav1.Time` JSON, or git `%aI` on reference commits).
  * @see https://datatracker.ietf.org/doc/html/rfc3339
@@ -10,104 +12,40 @@ export type Rfc3339DateTime = string;
 /** Pre-computed relative time for display (e.g. `"3 hours ago"`). Not a parseable timestamp. */
 export type RelativeTimeAgo = string;
 
-export interface CommitStatus {
-  key: string;
-  phase: string;
+/** Full PromotionStrategy CRD object (generated from OpenAPI). */
+export type PromotionStrategy = PromotionStrategyCRD;
+
+type PromotionStrategyStatus = NonNullable<PromotionStrategy['status']>;
+
+/** Observed environment status (`status.environments[]`), not spec `Environment`. */
+export type Environment = PromotionStrategyStatus['environments'][number];
+
+export type History = NonNullable<Environment['history']>[number];
+
+/** Commit metadata on a branch (`active.dry`, `proposed.dry`, etc.). */
+export type Commit = NonNullable<Environment['active']['dry']>;
+
+/** Reference commit embedded in `Commit.references`. */
+export type ReferenceCommit = NonNullable<
+  NonNullable<NonNullable<Commit['references']>[number]>['commit']
+> & {
+  /** Set by enrichment (`PSData`); not present on the CRD. */
   url?: string;
-  description?: string;
-}
+};
 
-export interface Commit {
-  sha?: string;
-  author?: string;
-  subject?: string;
-  body?: string;
-  /** When the commit was made (dry/hydrated). RFC 3339 from CRD `commitTime` (`metav1.Time`). */
-  commitTime?: Rfc3339DateTime | null;
-  repoURL?: string;
-  references?: Array<{
-    commit: ReferenceCommit;
-  }>;
-}
+/** Observed commit status on a branch (not the `CommitStatus` CRD resource). */
+export type BranchCommitStatus = NonNullable<
+  NonNullable<Environment['active']['commitStatuses']>[number]
+>;
 
-export interface ReferenceCommit {
-  sha?: string;
-  author?: string;
-  subject?: string;
-  body?: string;
-  /** Reference commit timestamp. RFC 3339 from CRD (`git show -s --format=%aI`). */
-  date?: Rfc3339DateTime;
-  url?: string;
-  repoURL?: string;
-}
+/** @deprecated Use {@link BranchCommitStatus}. */
+export type CommitStatus = BranchCommitStatus;
 
-export interface PullRequest {
-  id: string;
-  url?: string;
-  /** When the promotion PR was merged. RFC 3339 from CRD (`metav1.Time`). */
-  prMergeTime?: Rfc3339DateTime;
-  state?: string;
-  externallyMergedOrClosed?: boolean;
-}
+/** Pull request state embedded in environment status (not the `PullRequest` CRD). */
+export type EnvironmentPullRequest = NonNullable<Environment['pullRequest']>;
 
-export interface History {
-  active: {
-    dry?: Commit;
-    hydrated?: Commit;
-    commitStatuses?: CommitStatus[];
-  };
-  proposed: {
-    hydrated?: Commit;
-    commitStatuses?: CommitStatus[];
-  };
-  pullRequest?: PullRequest;
-}
-
-export interface Environment {
-  branch: string;
-  active: {
-    dry?: Commit;
-    hydrated?: Commit;
-    commitStatuses?: CommitStatus[];
-  };
-  proposed: {
-    dry?: Commit;
-    hydrated?: Commit;
-    commitStatuses?: CommitStatus[];
-  };
-  pullRequest?: PullRequest;
-  history?: History[];
-}
-
-export interface PromotionStrategy {
-  kind: string;
-  apiVersion: string;
-  metadata: {
-    name: string;
-    namespace: string;
-    uid: string;
-    resourceVersion: string;
-    generation: number;
-    creationTimestamp: Rfc3339DateTime;
-    labels?: Record<string, string>;
-    annotations?: Record<string, string>;
-  };
-  spec: {
-    gitRepositoryRef: {
-      name: string;
-      namespace?: string;
-    };
-    activeCommitStatuses?: { key: string }[] | null;
-    proposedCommitStatuses?: { key: string }[] | null;
-    environments: {
-      branch: string;
-      autoMerge?: boolean;
-      activeCommitStatuses?: { key: string }[] | null;
-      proposedCommitStatuses?: { key: string }[] | null;
-    }[];
-  };
-  status?: { environments?: Environment[] };
-}
+/** @deprecated Use {@link EnvironmentPullRequest}. */
+export type PullRequest = EnvironmentPullRequest;
 
 export interface Check {
   name: string;

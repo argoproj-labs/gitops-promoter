@@ -1,7 +1,7 @@
 import { getCommitUrl, extractNameOnly, extractBodyPreTrailer, timeAgo } from './util';
 import { getEnvironmentStatus, getHealthStatus } from './getStatus';
 import type {
-  CommitStatus,
+  BranchCommitStatus,
   Commit,
   Environment,
   PromotionStrategy,
@@ -12,8 +12,8 @@ import type {
   RelativeTimeAgo,
 } from '../types/promotion';
 
-function getChecks(commitStatuses: CommitStatus[]): Check[] {
-  return commitStatuses.map((cs: CommitStatus) => ({
+function getChecks(commitStatuses: BranchCommitStatus[]): Check[] {
+  return commitStatuses.map((cs: BranchCommitStatus) => ({
     name: cs.key,
     status: cs.phase || 'unknown',
     description: cs.description,

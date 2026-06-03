@@ -9,9 +9,9 @@ Thanks for helping improve GitOps Promoter. The project is still young; we keep 
 3. **Make focused changes** — one logical change per PR when possible.
 4. **Run checks** that match what you changed:
     - **Go only** (no CRD, webhook, or generated install / apply-config churn): `go mod tidy`, `make lint`, `make test-parallel`, `make fuzz-replay` (replay seeds (`f.Add`) + corpus (`testdata/fuzz`); same as CI).
-    - **APIs, CRDs, webhooks, or bundled install YAML** (anything `make build-installer` regenerates—`config/`, `dist/install.yaml`, deepcopy/applyconfiguration, extension icon output, `hack/celcost/report.md`): **`make build-installer`**, commit the full diff, then `go mod tidy`, `make lint`, `make test-parallel`.
+    - **APIs, CRDs, webhooks, or bundled install YAML** (anything `make build-installer` regenerates—`config/`, `dist/install.yaml`, deepcopy/applyconfiguration, extension icon output, `hack/celcost/report.md`): **`make build-installer`**, then **`make generate-ui-types`** when UI types should track the CRDs, commit the full diff, then `go mod tidy`, `make lint`, `make test-parallel`.
     - **SCM interfaces** (`internal/scms/`): **`make mockery-gen`**, commit `internal/scms/mock/` (CI checks this separately from `build-installer`).
-    - **`ui/`**: `make lint-ui`, `make test-unit-test-extension`, `make test-ui-test-dashboard`.
+    - **`ui/`**: `make lint-ui`, `make test-unit-test-extension`, `make test-ui-test-dashboard`. After CRD/API changes, also **`make generate-ui-types`** and commit `ui/shared/src/types/generated/crds.gen.ts` (see [UI TypeScript types from CRDs](ui-types.md)).
     - **`docs/`** (this site): `make lint-docs`.
     - CI also runs **Nilaway** and **spell checking**; use **`make nilaway-no-test`** locally if you want parity before pushing.
 5. **Open a pull request from your fork** into `main` on `argoproj-labs/gitops-promoter`, with a short title and enough context for reviewers (what changed, why). Use `Fixes #123` / `Closes #123` when it applies. Every commit must be **DCO sign-off** (see below).

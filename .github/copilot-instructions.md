@@ -46,6 +46,7 @@ make build-extension   # Build Argo CD extension
 make lint-dashboard    # Lint dashboard
 make lint-extension    # Lint extension
 make lint-ui           # Lint all UI components
+make generate-ui-types # Regenerate CRD TypeScript types (after make manifests)
 
 # Running locally
 make run               # Run controller locally

@@ -34,12 +34,12 @@ export const PromotionStrategyTile = ({
     >
       <div className="ps-tile__header">
         <FaGitAlt className="ps-tile__icon" />
-        <span className="ps-tile__name">{ps.metadata?.name || 'Unknown'}</span>
+        <span className="ps-tile__name">{ps.metadata.name}</span>
       </div>
 
       <div className="ps-tile__row">
         <span className="ps-tile__label">Repository:</span>{' '}
-        <span className="ps-tile__info">{ps.spec.gitRepositoryRef.name}</span>
+        <span className="ps-tile__info">{ps.spec?.gitRepositoryRef?.name ?? '—'}</span>
       </div>
       <div className="ps-tile__row">
         <span className="ps-tile__label">Promoted:</span>{' '}
@@ -61,7 +61,7 @@ export const PromotionStrategyTile = ({
               <span className="ps-tile__env-branch">
                 {env.branch}
                 <span className="ps-tile__env-automerge" style={{ marginLeft: 8 }}>
-                  (autoMerge: {ps.spec.environments?.[idx]?.autoMerge ? 'true' : 'false'})
+                  (autoMerge: {ps.spec?.environments?.[idx]?.autoMerge ? 'true' : 'false'})
                 </span>
               </span>
               <span className="ps-tile__env-status">
