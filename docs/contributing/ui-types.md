@@ -36,7 +36,7 @@ CI runs `make generate-ui-types` in the **Check Codegen** job and fails if the g
 
 `hack/crd2ts` adds `required: [apiVersion, kind, metadata]` on each CRD root schema before TypeScript codegen so identity fields are not optional. Fields such as `spec` are required in generated types when the Go type omits `omitempty` and `make manifests` emits them in the CRD `required` list.
 
-`metadata` is still an empty `type: object` in CRD YAML (Kubernetes convention). [`crds.ts`](../../ui/shared/src/types/crds.ts) replaces it with `KubernetesObjectMeta` (`V1ObjectMeta` plus required `name` and `namespace` for namespaced kinds).
+`metadata` is still an empty `type: object` in CRD YAML (Kubernetes convention). `ui/shared/src/types/crds.ts` replaces it with `KubernetesObjectMeta` (`V1ObjectMeta` plus required `name` and `namespace` for namespaced kinds).
 
 ## View types vs CRD types
 
@@ -51,7 +51,7 @@ Aliases in `promotion.ts` avoid name clashes with CRD kinds:
 - `BranchCommitStatus` — inline branch status (not the `CommitStatus` CRD)
 - `EnvironmentPullRequest` — embedded PR state (not the `PullRequest` CRD)
 
-Use `CommitStatusResource` and `PullRequestResource` from `crds.ts` when typing those CRD resources.
+Use `CommitStatusResource` and `PullRequestResource` from `ui/shared/src/types/crds.ts` when typing those CRD resources.
 
 ## Linting
 
