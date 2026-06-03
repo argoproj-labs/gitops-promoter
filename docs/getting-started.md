@@ -530,10 +530,6 @@ scripted/manual cert steps and cert rotation.
 
 ///
 
-> [!NOTE]
-> The combined bundles are published starting with the first release that ships the dashboard
-> aggregation API; on older releases only the plain `install.yaml` exists.
-
 Confirm the API registered and is healthy before launching the UI:
 
 ```bash
