@@ -19,6 +19,7 @@ package apiserver
 import (
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/spf13/pflag"
 	"k8s.io/apiserver/pkg/admission"
@@ -109,6 +110,14 @@ func (o *Options) Config(provider *BundleProvider) (*Config, error) {
 	if err := o.RecommendedOptions.ApplyTo(serverConfig); err != nil {
 		return nil, fmt.Errorf("error applying recommended options: %w", err)
 	}
+
+	// Actively terminate in-flight watches during graceful shutdown. Without a
+	// positive grace period (the default is 0), genericapiserver neither waits for
+	// nor cancels active watch requests, so a single long-running watch/SSE
+	// connection (e.g. an open dashboard) keeps http.Server.Shutdown blocked until
+	// the full ShutdownTimeout (60s) elapses and the process exits non-zero. A
+	// small grace period lets a single Ctrl-C shut the server down promptly.
+	serverConfig.ShutdownWatchTerminationGracePeriod = 5 * time.Second
 
 	config := &Config{
 		GenericConfig: serverConfig,
