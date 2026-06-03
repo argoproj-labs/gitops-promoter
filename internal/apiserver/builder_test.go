@@ -174,10 +174,8 @@ var _ = Describe("BuildBundle", func() {
 		Expect(bundle.PromotionStrategy.Status.Environments).To(BeEmpty())
 
 		By("never leaking the Secret value into the serialized bundle")
-		// bundle is the internal ("hub") type, which intentionally carries no JSON
-		// tags; marshaling it is fine for this leak check (field names differ from the
-		// served representation but any leaked secret value would still be present).
-		raw, err := json.Marshal(bundle) //nolint:musttag // internal hub type has no JSON tags by design
+		// Marshal the served view type; any leaked secret value would appear in the JSON.
+		raw, err := json.Marshal(bundle)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(raw)).NotTo(ContainSubstring(testSecretVal))
 	})

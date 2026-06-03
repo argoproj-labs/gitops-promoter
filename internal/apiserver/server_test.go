@@ -124,7 +124,7 @@ func startInProcessAPIServerWithDone(provider *BundleProvider) (cfgCancel contex
 	Eventually(func() error {
 		_, listErr := dyn.Resource(promotionStrategyDetailsGVR).Namespace(testNamespace).
 			List(context.Background(), metav1.ListOptions{})
-		return listErr
+		return fmt.Errorf("list promotionstrategydetails: %w", listErr)
 	}, 30*time.Second, 200*time.Millisecond).Should(Succeed())
 
 	return cancel, doneCh, dyn
