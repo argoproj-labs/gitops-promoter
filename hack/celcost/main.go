@@ -1,8 +1,8 @@
 // Command celcost estimates the static CEL validation cost of the project's CRDs,
 // reproducing the kube-apiserver's budget check (k8s.io/apiextensions-apiserver),
 // and prints a Markdown report: one table per resource+version with a row per CEL
-// rule (and messageExpression) plus a per-schema total row, flagging anything that
-// exceeds the per-rule or per-schema limits.
+// rule (and messageExpression) plus a per-schema total row, to help spot rules that
+// approach or exceed the per-rule or per-schema limits.
 //
 // The estimate matches what apiextensions-apiserver's ValidateCustomResourceDefinition
 // computes:
