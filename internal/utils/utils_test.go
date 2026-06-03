@@ -3,6 +3,7 @@ package utils_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -649,4 +650,45 @@ var _ = Describe("EnqueueChangeTransferPolicies", func() {
 		expected := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName("my-strategy", "main"))
 		Expect(capturedName).To(Equal(expected))
 	})
+})
+
+var _ = Describe("API error helpers", func() {
+	It("extracts the innermost NotFound StatusDetails from a wrapped client error", func() {
+		inner := apierrors.NewNotFound(
+			schema.GroupResource{Group: "promoter.argoproj.io", Resource: "scmproviders"},
+			"my-scm",
+		)
+		err := fmt.Errorf("failed to get ScmProvider and secret: %w", fmt.Errorf("failed to get ScmProvider: %w", inner))
+
+		details, isNotFound := utils.NotFoundInErrorChain(err)
+		Expect(isNotFound).To(BeTrue())
+		Expect(details).To(Equal(&metav1.StatusDetails{
+			Group: "promoter.argoproj.io",
+			Kind:  "scmproviders",
+			Name:  "my-scm",
+		}))
+	})
+
+	It("reports NotFound without resource details", func() {
+		err := fmt.Errorf("wrap: %w", &apierrors.StatusError{
+			ErrStatus: metav1.Status{
+				Status:  metav1.StatusFailure,
+				Code:    404,
+				Reason:  metav1.StatusReasonNotFound,
+				Message: "not found",
+			},
+		})
+
+		details, isNotFound := utils.NotFoundInErrorChain(err)
+		Expect(isNotFound).To(BeTrue())
+		Expect(details).To(BeNil())
+	})
+
+	It("returns false for non-NotFound errors", func() {
+		err := fmt.Errorf("connection refused")
+		details, isNotFound := utils.NotFoundInErrorChain(err)
+		Expect(isNotFound).To(BeFalse())
+		Expect(details).To(BeNil())
+	})
+
 })

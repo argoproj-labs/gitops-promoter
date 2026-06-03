@@ -55,9 +55,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
-const gitRepositoryDeletedDuringTerminationMsg = "this PullRequest's GitRepository has been deleted, so it cannot ensure that the corresponding SCM pull request is closed - " +
-	"either restore the GitRepository or remove the " + promoterv1alpha1.PullRequestFinalizer + " finalizer and manually close the pull request if it is not already closed"
-
 // PullRequestReconciler reconciles a PullRequest object
 type PullRequestReconciler struct {
 	client.Client
@@ -102,12 +99,10 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	provider, err := r.getPullRequestProvider(ctx, pr)
 	if err != nil {
-		if !pr.DeletionTimestamp.IsZero() && k8serrors.IsNotFound(err) {
-			logger.Error(err, gitRepositoryDeletedDuringTerminationMsg,
-				"pullRequest", client.ObjectKeyFromObject(&pr).String(),
-				"gitRepository", pr.Spec.RepositoryReference.Name,
-			)
-			return ctrl.Result{}, fmt.Errorf("%s: %w", gitRepositoryDeletedDuringTerminationMsg, err)
+		if !pr.DeletionTimestamp.IsZero() {
+			if blockedErr := deletionBlockedByMissingDependencyError(err); blockedErr != nil {
+				return ctrl.Result{}, blockedErr
+			}
 		}
 		return ctrl.Result{}, fmt.Errorf("failed to get PullRequest provider: %w", err)
 	}
@@ -495,6 +490,37 @@ func (t trailers) String() string {
 		fmt.Fprintf(&result, "%s: %s\n", k, t[k])
 	}
 	return result.String()
+}
+
+// deletionBlockedByMissingDependencyError returns an operator-facing error when provider resolution
+// fails during PullRequest deletion because a dependency is missing. Nil means err is not that case.
+func deletionBlockedByMissingDependencyError(err error) error {
+	details, isNotFound := utils.NotFoundInErrorChain(err)
+	if !isNotFound {
+		return nil
+	}
+
+	var msg string
+	if details == nil {
+		msg = fmt.Sprintf(
+			"this PullRequest cannot close its SCM pull request because a required dependency was not found - "+
+				"either restore the missing resource or remove the %s finalizer from this PullRequest and manually close the SCM pull request if it is not already closed",
+			promoterv1alpha1.PullRequestFinalizer,
+		)
+	} else {
+		typeRef := details.Kind
+		if details.Group != "" {
+			typeRef = details.Group + "/" + details.Kind
+		}
+		msg = fmt.Sprintf(
+			"this PullRequest cannot close its SCM pull request because %s %q is missing - "+
+				"either restore that resource or remove the %s finalizer from this PullRequest and manually close the SCM pull request if it is not already closed",
+			typeRef,
+			details.Name,
+			promoterv1alpha1.PullRequestFinalizer,
+		)
+	}
+	return fmt.Errorf("%s: %w", msg, err)
 }
 
 func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
