@@ -15,7 +15,7 @@ import type {
 function getChecks(commitStatuses: BranchCommitStatus[]): Check[] {
   return commitStatuses.map((cs: BranchCommitStatus) => ({
     name: cs.key,
-    status: cs.phase || 'unknown',
+    status: cs.phase,
     description: cs.description,
     url: cs.url,
   }));
@@ -79,14 +79,14 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
   const promotionStatus = getEnvironmentStatus(environment);
 
   // Use PR data from selected history entry
-  const selectedHistoryEntry = history[index] || history[0];
-  const entryPr = selectedHistoryEntry?.pullRequest;
+  const selectedHistoryEntry = history[index] ?? history[0];
+  const entryPr = selectedHistoryEntry.pullRequest;
   const historyWithPr = entryPr?.id ? entryPr : null;
 
   // For the live active badge, fall back to environment.pullRequest when state is merged
   // and history[0] has no PR data (e.g. externally merged PRs)
   const mergedEnvPr =
-    pullRequest?.id && (pullRequest?.state === 'merged' || pullRequest?.externallyMergedOrClosed)
+    pullRequest?.id && (pullRequest.state === 'merged' || pullRequest.externallyMergedOrClosed)
       ? pullRequest
       : null;
   const activePr = historyWithPr ?? mergedEnvPr;
@@ -96,7 +96,7 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
   if (index > 0) {
     const entry = history[index];
     const mergeTimeStr =
-      entry?.pullRequest?.prMergeTime || entry?.active?.hydrated?.commitTime || null;
+      entry.pullRequest?.prMergeTime || entry.active?.hydrated?.commitTime || null;
     historyMergeTimeAgo = mergeTimeStr ? timeAgo(mergeTimeStr) : null;
   }
 
@@ -159,7 +159,7 @@ export function enrichFromCRD(
   ps: PromotionStrategy,
   historyIndex: number = 0,
 ): EnrichedEnvDetails[] {
-  if (!ps?.status?.environments) {
+  if (!ps.status?.environments) {
     return [];
   }
 
@@ -173,9 +173,6 @@ export function enrichFromEnvironments(
   environments: Environment[],
   historyIndex: number = 0,
 ): EnrichedEnvDetails[] {
-  if (!environments) {
-    return [];
-  }
   return environments.map((environment: Environment) => getEnvDetails(environment, historyIndex));
 }
 

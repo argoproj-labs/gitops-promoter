@@ -201,7 +201,7 @@ type PromotionStrategy struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   PromotionStrategySpec   `json:"spec,omitempty"`
+	Spec   PromotionStrategySpec   `json:"spec"`
 	Status PromotionStrategyStatus `json:"status,omitempty"`
 }
 

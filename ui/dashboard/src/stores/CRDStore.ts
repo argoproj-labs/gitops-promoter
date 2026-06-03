@@ -55,8 +55,8 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
           set((state) => {
             const idx = state.items.findIndex(
               (item: T) =>
-                item.metadata?.name === updated.metadata?.name &&
-                item.metadata?.namespace === updated.metadata?.namespace,
+                item.metadata.name === updated.metadata.name &&
+                item.metadata.namespace === updated.metadata.namespace,
             );
             let newItems: T[];
             if (idx >= 0) {

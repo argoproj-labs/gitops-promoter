@@ -107,6 +107,7 @@ func extractCRDSchema(path string) (kind string, schema map[string]any, err erro
 
 // postProcessRootSchema marks standard Kubernetes resource identity fields as required
 // in OpenAPI so generated TypeScript treats them as non-optional (apiVersion, kind, metadata).
+// Other fields (e.g. spec) come from controller-gen required lists when Go omitempty is omitted.
 func postProcessRootSchema(schema map[string]any) {
 	rootRequired := []string{"apiVersion", "kind", "metadata"}
 	existing, _ := schema["required"].([]any)

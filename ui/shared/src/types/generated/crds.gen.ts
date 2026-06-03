@@ -2766,7 +2766,7 @@ export type components = {
             kind: string;
             metadata: Record<string, never>;
             /** @description PromotionStrategySpec defines the desired state of PromotionStrategy */
-            spec?: {
+            spec: {
                 /**
                  * @description ActiveCommitStatuses are commit statuses describing an actively running dry commit. If an active commit status
                  *     is failing for an environment, subsequent environments will not deploy the failing commit.

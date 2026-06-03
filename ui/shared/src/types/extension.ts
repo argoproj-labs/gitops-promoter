@@ -57,17 +57,6 @@ export interface Services {
   applications: ApplicationsService;
 }
 
-// Extension API types
-export interface ResourceExtensionProps {
-  application: {
-    metadata: {
-      name: string;
-      namespace: string;
-    };
-  };
-  resource: PromotionStrategy;
-}
-
 export interface StatusPanelProps {
   application: {
     metadata: {

@@ -67,7 +67,7 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
     const appName = application.metadata.name;
     const appNamespace = application.metadata.namespace;
 
-    const strategyNodes = (tree.nodes || []).filter(
+    const strategyNodes = tree.nodes.filter(
       (node) => node.group === GROUP && node.kind === KIND,
     );
 

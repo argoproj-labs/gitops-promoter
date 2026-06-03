@@ -7,7 +7,6 @@
 import { ICON_STYLES } from './iconStyles.generated';
 
 export function injectIconStyles(): void {
-  if (typeof document === 'undefined' || !document.head) return;
   const style = document.createElement('style');
   style.textContent = ICON_STYLES;
   style.setAttribute('data-gitops-promoter-extension', 'icon');
