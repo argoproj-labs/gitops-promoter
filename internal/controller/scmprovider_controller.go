@@ -24,12 +24,16 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
@@ -88,6 +92,16 @@ func (r *ScmProviderReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 func (r *ScmProviderReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.ScmProvider{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		Watches(
+			&promoterv1alpha1.GitRepository{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueScmProviderForGitRepository),
+			builder.WithPredicates(predicate.Funcs{
+				CreateFunc:  func(event.CreateEvent) bool { return false },
+				UpdateFunc:  func(event.UpdateEvent) bool { return false },
+				DeleteFunc:  func(event.DeleteEvent) bool { return true },
+				GenericFunc: func(event.GenericEvent) bool { return false },
+			}),
+		).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
@@ -105,10 +119,6 @@ func (r *ScmProviderReconciler) handleFinalizer(ctx context.Context, scmProvider
 
 		var dependentRepos []string
 		for _, gitRepo := range gitRepos.Items {
-			// Skip GitRepositories that are also being deleted (allows cascade deletion)
-			if !gitRepo.DeletionTimestamp.IsZero() {
-				continue
-			}
 			if gitRepo.Spec.ScmProviderRef.Name == scmProvider.Name &&
 				gitRepo.Spec.ScmProviderRef.Kind == promoterv1alpha1.ScmProviderKind {
 				dependentRepos = append(dependentRepos, gitRepo.Name)
@@ -183,4 +193,20 @@ func (r *ScmProviderReconciler) removeSecretFinalizer(ctx context.Context, scmPr
 		promoterv1alpha1.ScmProviderSecretFinalizer,
 		checkOtherProviders,
 	)
+}
+
+func (r *ScmProviderReconciler) enqueueScmProviderForGitRepository(_ context.Context, obj client.Object) []reconcile.Request {
+	gitRepo, ok := obj.(*promoterv1alpha1.GitRepository)
+	if !ok || gitRepo.Spec.ScmProviderRef.Name == "" {
+		return nil
+	}
+	if gitRepo.Spec.ScmProviderRef.Kind != promoterv1alpha1.ScmProviderKind {
+		return nil
+	}
+	return []reconcile.Request{{
+		NamespacedName: types.NamespacedName{
+			Namespace: gitRepo.Namespace,
+			Name:      gitRepo.Spec.ScmProviderRef.Name,
+		},
+	}}
 }
