@@ -155,13 +155,7 @@ var _ = Describe("GitRepository Controller", func() {
 
 		AfterEach(func() {
 			var pr promoterv1alpha1.PullRequest
-			if err := k8sClient.Get(ctx, typeNamespacedName, &pr); err != nil {
-				if errors.IsNotFound(err) {
-					return
-				}
-				return
-			}
-			if pr.DeletionTimestamp != nil {
+			if err := k8sClient.Get(ctx, typeNamespacedName, &pr); err == nil && pr.DeletionTimestamp != nil {
 				var kept []string
 				for _, f := range pr.Finalizers {
 					if f != blockingFinalizer {

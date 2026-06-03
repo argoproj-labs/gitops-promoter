@@ -1051,6 +1051,7 @@ var _ = Describe("PullRequest Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 			}
 
+			_ = client.IgnoreNotFound(k8sClient.Delete(ctx, gitRepo))
 			_ = client.IgnoreNotFound(k8sClient.Delete(ctx, scmProvider))
 			_ = client.IgnoreNotFound(k8sClient.Delete(ctx, scmSecret))
 		})
@@ -1082,11 +1083,12 @@ var _ = Describe("PullRequest Controller", func() {
 				g.Expect(pullRequest.DeletionTimestamp).ToNot(BeNil())
 				g.Expect(pullRequest.Finalizers).To(ContainElement(promoterv1alpha1.PullRequestFinalizer))
 
-				g.Expect(pullRequest.Status.Conditions).ToNot(BeEmpty())
-				g.Expect(meta.IsStatusConditionFalse(pullRequest.Status.Conditions, string(conditions.Ready))).To(BeTrue())
-				g.Expect(pullRequest.Status.Conditions[0].Reason).To(Equal(string(conditions.ReconciliationError)))
+				ready := meta.FindStatusCondition(pullRequest.Status.Conditions, string(conditions.Ready))
+				g.Expect(ready).NotTo(BeNil())
+				g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(ready.Reason).To(Equal(string(conditions.ReconciliationError)))
 
-				msg := pullRequest.Status.Conditions[0].Message
+				msg := ready.Message
 				g.Expect(msg).To(ContainSubstring("Reconciliation failed"))
 				g.Expect(msg).To(ContainSubstring("cannot close its SCM pull request"))
 				g.Expect(msg).To(ContainSubstring("promoter.argoproj.io/GitRepository"))

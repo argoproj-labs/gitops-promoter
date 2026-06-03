@@ -8,8 +8,9 @@ import (
 )
 
 // NotFoundInErrorChain walks err and reports whether any link is NotFound, and Status.Details from
-// the innermost NotFound StatusError that includes kind and name. Details.Kind is the API Kind
-// (for example GitRepository) as returned by the API server and client.
+// the innermost NotFound StatusError that includes type and name. Status.Details.Kind is the API
+// Kind (for example GitRepository) when returned by the API server or client, and the resource
+// plural (for example scmproviders) when constructed by api/errors.NewNotFound.
 func NotFoundInErrorChain(err error) (details *metav1.StatusDetails, isNotFound bool) {
 	for unwrapped := err; unwrapped != nil; unwrapped = errors.Unwrap(unwrapped) {
 		if !k8serrors.IsNotFound(unwrapped) {
