@@ -173,9 +173,16 @@ func (ws *WebServer) StartDashboard(ctx context.Context, addr string) error {
 	router.Use(webserverlogr.Ginlogr(logger, time.RFC3339, true))
 	router.Use(webserverlogr.RecoveryWithLogr(logger, time.RFC3339, true, true))
 
-	router.GET("/watch", WatchHeadersMiddleware(), ws.Event.serveHTTP(), ws.httpWatch)
-
+	// gzip is registered before the routes so it also covers the /watch SSE stream.
+	// The bundles streamed over /watch are large, repetitive JSON, so compression is a
+	// clear bandwidth win. gin-contrib/gzip's writer flushes the underlying gzip.Writer
+	// on Flush(), so the per-event c.Writer.Flush() in httpWatch still delivers events in
+	// real time. No minLength is set: a non-zero minLength buffers sub-threshold frames in
+	// a pre-compression buffer that Flush() does not drain, which would stall small SSE
+	// events until a later larger one arrives.
 	router.Use(gzip.Gzip(gzip.DefaultCompression))
+
+	router.GET("/watch", WatchHeadersMiddleware(), ws.Event.serveHTTP(), ws.httpWatch)
 	router.GET("/list", ws.httpList)
 
 	router.GET("/healthz", func(c *gin.Context) {
