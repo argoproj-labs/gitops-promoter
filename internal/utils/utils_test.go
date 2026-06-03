@@ -685,10 +685,9 @@ var _ = Describe("API error helpers", func() {
 	})
 
 	It("returns false for non-NotFound errors", func() {
-		err := fmt.Errorf("connection refused")
+		err := errors.New("connection refused")
 		details, isNotFound := utils.NotFoundInErrorChain(err)
 		Expect(isNotFound).To(BeFalse())
 		Expect(details).To(BeNil())
 	})
-
 })
