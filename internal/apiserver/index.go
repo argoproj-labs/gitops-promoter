@@ -231,11 +231,11 @@ func (p *BundleProvider) mapObjectToPromotionStrategies(ctx context.Context, obj
 	case *promoterv1alpha1.WebRequestCommitStatus:
 		return keyFromRef(o.Namespace, o.Spec.PromotionStrategyRef.Name)
 	case *promoterv1alpha1.GitRepository:
-		return p.promotionStrategiesForRepo(ctx, o.Namespace, o.Name)
+		return p.keysReferencingGitRepository(ctx, o.Namespace, o.Name)
 	case *promoterv1alpha1.ScmProvider:
-		return p.promotionStrategiesForScmProvider(ctx, "ScmProvider", o.Namespace, o.Name)
+		return p.keysReferencingScmProvider(ctx, "ScmProvider", o.Namespace, o.Name)
 	case *promoterv1alpha1.ClusterScmProvider:
-		return p.promotionStrategiesForScmProvider(ctx, "ClusterScmProvider", "", o.Name)
+		return p.keysReferencingScmProvider(ctx, "ClusterScmProvider", "", o.Name)
 	default:
 		return nil
 	}
@@ -258,9 +258,9 @@ func keyFromRef(namespace, name string) []types.NamespacedName {
 	return []types.NamespacedName{{Namespace: namespace, Name: name}}
 }
 
-// promotionStrategiesForRepo returns the PS keys in a namespace that reference the
-// given GitRepository.
-func (p *BundleProvider) promotionStrategiesForRepo(ctx context.Context, namespace, repoName string) []types.NamespacedName {
+// keysReferencingGitRepository returns PromotionStrategy keys in a namespace whose
+// repositoryReference points at the given GitRepository.
+func (p *BundleProvider) keysReferencingGitRepository(ctx context.Context, namespace, repoName string) []types.NamespacedName {
 	psList := &promoterv1alpha1.PromotionStrategyList{}
 	if err := p.reader.List(ctx, psList, client.InNamespace(namespace)); err != nil {
 		log.Error(err, "failed to list PromotionStrategies for GitRepository mapping", "namespace", namespace)
@@ -275,24 +275,25 @@ func (p *BundleProvider) promotionStrategiesForRepo(ctx context.Context, namespa
 	return keys
 }
 
-// promotionStrategiesForScmProvider finds GitRepositories referencing the provider
-// (a ClusterScmProvider fans out across all namespaces) and maps them to PS keys.
-func (p *BundleProvider) promotionStrategiesForScmProvider(ctx context.Context, kind, namespace, name string) []types.NamespacedName {
+// keysReferencingScmProvider returns PromotionStrategy keys for GitRepositories
+// that use the given ScmProvider or ClusterScmProvider (cluster-scoped providers
+// fan out across all namespaces).
+func (p *BundleProvider) keysReferencingScmProvider(ctx context.Context, providerKind, providerNamespace, providerName string) []types.NamespacedName {
 	repoList := &promoterv1alpha1.GitRepositoryList{}
 	var listOpts []client.ListOption
-	if kind == "ScmProvider" {
-		listOpts = append(listOpts, client.InNamespace(namespace))
+	if providerKind == "ScmProvider" {
+		listOpts = append(listOpts, client.InNamespace(providerNamespace))
 	}
 	if err := p.reader.List(ctx, repoList, listOpts...); err != nil {
-		log.Error(err, "failed to list GitRepositories for ScmProvider mapping", "kind", kind, "name", name)
+		log.Error(err, "failed to list GitRepositories for ScmProvider mapping", "kind", providerKind, "name", providerName)
 		return nil
 	}
 
 	var keys []types.NamespacedName
 	for i := range repoList.Items {
 		repo := &repoList.Items[i]
-		if repo.Spec.ScmProviderRef.Kind == kind && repo.Spec.ScmProviderRef.Name == name {
-			keys = append(keys, p.promotionStrategiesForRepo(ctx, repo.Namespace, repo.Name)...)
+		if repo.Spec.ScmProviderRef.Kind == providerKind && repo.Spec.ScmProviderRef.Name == providerName {
+			keys = append(keys, p.keysReferencingGitRepository(ctx, repo.Namespace, repo.Name)...)
 		}
 	}
 	return keys
