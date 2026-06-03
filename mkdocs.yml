@@ -66,6 +66,7 @@ nav:
           - Simulator: commit-status-controllers/web-request-simulator.md
       - Development Best Practices: commit-status-controllers/development-best-practices.md
   - Multi-Tenancy: multi-tenancy.md
+  - Multi-Install Deployments: multi-install.md
   - Monitoring:
       - Overview: monitoring/index.md
       - Events: monitoring/events.md

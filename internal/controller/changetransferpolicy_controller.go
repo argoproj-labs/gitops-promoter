@@ -31,6 +31,7 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/gitauth"
+	promoterpredicate "github.com/argoproj-labs/gitops-promoter/internal/predicate"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
@@ -66,8 +67,8 @@ type CTPEnqueueFunc func(namespace, name string)
 // ChangeTransferPolicyReconciler reconciles a ChangeTransferPolicy object
 type ChangeTransferPolicyReconciler struct {
 	client.Client
-	Scheme      *runtime.Scheme
 	Recorder    events.EventRecorder
+	Scheme      *runtime.Scheme
 	SettingsMgr *settings.Manager
 
 	// enqueueFunc is set during SetupWithManager and can be retrieved via GetEnqueueFunc.
@@ -483,6 +484,11 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 		return fmt.Errorf("failed to get ChangeTransferPolicy max concurrent reconciles: %w", err)
 	}
 
+	instanceID, err := r.SettingsMgr.GetInstanceIDDirect(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get InstanceID from ControllerConfiguration: %w", err)
+	}
+
 	// Create a channel for external enqueue requests. This allows other controllers
 	// to trigger CTP reconciliation without modifying the CTP object.
 	// The channel uses GenericEvent with a minimal CTP object containing just the namespace/name.
@@ -492,7 +498,36 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 
 	// Store the enqueue function so it can be retrieved by other controllers.
 	// This is a blocking send - callers will wait if the channel buffer is full.
+	//
+	// When this install's instanceID (from ControllerConfiguration) is non-empty,
+	// the closure does a cache-backed Get on the CTP and drops the enqueue if the
+	// CTP's instance-id label does not match. Predicates passed to WatchesRawSource
+	// via builder.WithPredicates do NOT apply to channel events in controller-runtime,
+	// so this sender-side filter is the only place to scope cross-instance enqueues
+	// coming from PromotionStrategy, CommitStatus, GitCommitStatus,
+	// WebRequestCommitStatus reconcilers and the webhook receiver.
 	r.enqueueFunc = func(namespace, name string) {
+		if instanceID != "" {
+			var existing promoterv1alpha1.ChangeTransferPolicy
+			err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, &existing)
+			if err != nil {
+				if k8s_errors.IsNotFound(err) {
+					// CTP was deleted between the caller's decision and this send. Drop silently.
+					return
+				}
+				// Transient cache error — log and proceed without filtering rather than
+				// silently dropping. Reconcile will short-circuit if the label is wrong.
+				log.FromContext(ctx).V(4).Info("instance-id filter could not fetch CTP, forwarding enqueue",
+					"namespace", namespace, "name", name, "err", err)
+			} else if existing.GetLabels()[promoterv1alpha1.InstanceIDLabel] != instanceID {
+				log.FromContext(ctx).V(4).Info("dropping CTP enqueue for foreign instance-id",
+					"namespace", namespace, "name", name,
+					"want", instanceID,
+					"got", existing.GetLabels()[promoterv1alpha1.InstanceIDLabel])
+				return
+			}
+		}
+
 		ctp := &promoterv1alpha1.ChangeTransferPolicy{}
 		ctp.SetNamespace(namespace)
 		ctp.SetName(name)
@@ -510,11 +545,14 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.ChangeTransferPolicy{},
-			builder.WithPredicates(predicate.Or(
-				predicate.GenerationChangedPredicate{},
-				// Webhooks trigger reconciliations by bumping an annotation.
-				// TODO: use a custom predicate to only trigger on the specific annotation change.
-				predicate.AnnotationChangedPredicate{},
+			builder.WithPredicates(predicate.And(
+				predicate.Or(
+					predicate.GenerationChangedPredicate{},
+					// Webhooks trigger reconciliations by bumping an annotation.
+					// TODO: use a custom predicate to only trigger on the specific annotation change.
+					predicate.AnnotationChangedPredicate{},
+				),
+				promoterpredicate.InstanceID(instanceID),
 			))).
 		// This controller intentionally doesn't have a .Owns for CommitStatuses. Every reconcile of a CommitStatus
 		// checks whether it needs to update a related ChangeTransferPolicy by setting an annotation. Avoiding .Owns
@@ -522,6 +560,8 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 		Owns(&promoterv1alpha1.PullRequest{}).
 		// Watch for external enqueue requests from other controllers (e.g., PromotionStrategy).
 		// The handler.EnqueueRequestForObject extracts the namespace/name from the GenericEvent.
+		// Predicates here would NOT affect channel events; the instance-id filter for this
+		// raw-source watch is applied at the sender inside r.enqueueFunc above.
 		WatchesRawSource(source.Channel(externalEnqueueChan, &handler.EnqueueRequestForObject{})).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Complete(r)
@@ -1142,12 +1182,14 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 	}
 
 	// Build the apply configuration
+	prLabels := map[string]string{
+		promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
+		promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
+		promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
+	}
+	prLabels = utils.CopyInstanceIDLabelToMap(ctp, prLabels)
 	prApply := acv1alpha1.PullRequest(prName, ctp.Namespace).
-		WithLabels(map[string]string{
-			promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
-			promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
-			promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
-		}).
+		WithLabels(prLabels).
 		WithOwnerReferences(acmetav1.OwnerReference().
 			WithAPIVersion(gvk.GroupVersion().String()).
 			WithKind(gvk.Kind).

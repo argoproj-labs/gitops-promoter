@@ -26,6 +26,11 @@ const ArgoCDCommitStatusDefaultKey = "argocd-health"
 // TimedCommitStatusDefaultKey is the default commit status key for TimedCommitStatus when spec.key is omitted.
 const TimedCommitStatusDefaultKey = "timer"
 
+// InstanceIDLabel partitions resources between multiple controller installs sharing an API server.
+// When the controller is started with --instance-id, it reconciles only resources carrying this label
+// with the matching value. Empty/unset on the controller side means reconcile everything (backwards-compat).
+const InstanceIDLabel = "promoter.argoproj.io/instance-id"
+
 // PreviousEnvironmentCommitStatusKey the commit status key name used to indicate the previous environment health
 const PreviousEnvironmentCommitStatusKey = "promoter-previous-environment"
 

@@ -59,6 +59,13 @@ func (r *ControllerConfigurationReconciler) Reconcile(ctx context.Context, req c
 }
 
 // SetupWithManager sets up the controller with the Manager.
+//
+// ControllerConfiguration intentionally does NOT chain the InstanceID predicate.
+// Per the ARGO-3085 design, ControllerConfiguration is the source of truth for
+// this install's instance-id value (via spec.instanceID); filtering it by that
+// same value would be circular. The install discovers its own
+// ControllerConfiguration by namespace + hard-coded name instead, and the
+// instance-id label predicate is applied to every OTHER reconciled CR type.
 func (r *ControllerConfigurationReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.ControllerConfiguration{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).

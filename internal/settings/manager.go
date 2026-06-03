@@ -147,6 +147,27 @@ func (m *Manager) GetArgoCDCommitStatusControllersWatchLocalApplicationsDirect(c
 	return config.Spec.ArgoCDCommitStatus.WatchLocalApplications, nil
 }
 
+// GetInstanceIDDirect retrieves the InstanceID setting from the ControllerConfiguration
+// using a non-cached read.
+//
+// This function bypasses the cache and reads directly from the API server, making it safe to call
+// during process startup before the manager cache has started. The returned value is used to
+// scope every reconciler's predicate to resources carrying the matching
+// promoter.argoproj.io/instance-id label. An empty string preserves the legacy
+// "reconcile everything" behavior for single-install deployments.
+//
+// Parameters:
+//   - ctx: Context for the request, used for cancellation and deadlines
+//
+// Returns the configured InstanceID value, or an error if the configuration cannot be retrieved.
+func (m *Manager) GetInstanceIDDirect(ctx context.Context) (string, error) {
+	config, err := m.getControllerConfigurationDirect(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to get controller configuration: %w", err)
+	}
+	return config.Spec.InstanceID, nil
+}
+
 // GetPullRequestControllersTemplate retrieves the PullRequest template configuration.
 //
 // This function fetches the ControllerConfiguration resource from the cluster and extracts

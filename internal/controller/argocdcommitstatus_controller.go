@@ -41,6 +41,7 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/gitauth"
+	promoterpredicate "github.com/argoproj-labs/gitops-promoter/internal/predicate"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
@@ -74,9 +75,9 @@ const lastTransitionTimeThreshold = 5 * time.Second
 type ArgoCDCommitStatusReconciler struct {
 	Manager                mcmanager.Manager
 	Recorder               events.EventRecorder
+	localClient            client.Client
 	SettingsMgr            *settings.Manager
 	KubeConfigProvider     *kubeconfig.Provider
-	localClient            client.Client
 	watchLocalApplications bool
 }
 
@@ -533,11 +534,18 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 
 	r.watchLocalApplications = watchLocalApplications
 
+	instanceID, err := r.SettingsMgr.GetInstanceIDDirect(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get InstanceID from ControllerConfiguration: %w", err)
+	}
+
+	instanceIDPredicate := promoterpredicate.InstanceID(instanceID)
+
 	err = mcbuilder.ControllerManagedBy(mcMgr).
 		For(&promoterv1alpha1.ArgoCDCommitStatus{},
 			mcbuilder.WithEngageWithLocalCluster(true),
 			mcbuilder.WithEngageWithProviderClusters(false),
-			mcbuilder.WithPredicates(predicate.GenerationChangedPredicate{}),
+			mcbuilder.WithPredicates(predicate.And(predicate.GenerationChangedPredicate{}, instanceIDPredicate)),
 		).
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: maxConcurrentReconciles,
@@ -551,7 +559,7 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 		Watches(&promoterv1alpha1.PromotionStrategy{}, enqueueArgoCDCommitStatusForPromotionStrategy(mcMgr),
 			mcbuilder.WithEngageWithLocalCluster(true),
 			mcbuilder.WithEngageWithProviderClusters(false),
-			mcbuilder.WithPredicates(promotionStrategyCreatePredicate)).
+			mcbuilder.WithPredicates(predicate.And(promotionStrategyCreatePredicate, instanceIDPredicate))).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
@@ -720,9 +728,14 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 		commitStatusSpec = commitStatusSpec.WithUrl(renderedURL)
 	}
 
-	// Build the apply configuration
+	// Build the apply configuration. Compose main's standard-labels helper with
+	// our instance-id propagation (ARGO-3085).
+	commitStatusLabels := utils.CopyInstanceIDLabelToMap(
+		&argoCDCommitStatus,
+		utils.CommitStatusStandardLabels(&argoCDCommitStatus, targetBranch, key),
+	)
 	commitStatusApply := acv1alpha1.CommitStatus(resourceName, argoCDCommitStatus.Namespace).
-		WithLabels(utils.CommitStatusStandardLabels(&argoCDCommitStatus, targetBranch, key)).
+		WithLabels(commitStatusLabels).
 		WithOwnerReferences(acmetav1.OwnerReference().
 			WithAPIVersion(gvk.GroupVersion().String()).
 			WithKind(gvk.Kind).
