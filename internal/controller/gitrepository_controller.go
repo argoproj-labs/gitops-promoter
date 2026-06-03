@@ -90,7 +90,12 @@ func (r *GitRepositoryReconciler) SetupWithManager(ctx context.Context, mgr ctrl
 			&promoterv1alpha1.PullRequest{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueGitRepositoryForPullRequest),
 			// Delete fires once the PullRequest leaves the informer cache (fully removed from the API).
-			builder.WithPredicates(predicate.Funcs{DeleteFunc: func(event.DeleteEvent) bool { return true }}),
+			builder.WithPredicates(predicate.Funcs{
+				CreateFunc:  func(event.CreateEvent) bool { return false },
+				UpdateFunc:  func(event.UpdateEvent) bool { return false },
+				DeleteFunc:  func(event.DeleteEvent) bool { return true },
+				GenericFunc: func(event.GenericEvent) bool { return false },
+			}),
 		).
 		Complete(r)
 	if err != nil {
