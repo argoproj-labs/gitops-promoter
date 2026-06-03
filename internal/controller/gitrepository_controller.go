@@ -24,12 +24,16 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
@@ -82,6 +86,13 @@ func (r *GitRepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 func (r *GitRepositoryReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.GitRepository{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		Watches(
+			&promoterv1alpha1.PullRequest{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueGitRepositoryForPullRequest),
+			builder.WithPredicates(predicate.Funcs{
+				DeleteFunc: func(e event.DeleteEvent) bool { return true },
+			}),
+		).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
@@ -99,10 +110,6 @@ func (r *GitRepositoryReconciler) handleFinalizer(ctx context.Context, gitRepo *
 
 		var dependentPRs []string
 		for _, pr := range pullRequests.Items {
-			// Skip PullRequests that are also being deleted (allows cascade deletion)
-			if !pr.DeletionTimestamp.IsZero() {
-				continue
-			}
 			if pr.Spec.RepositoryReference.Name == gitRepo.Name {
 				dependentPRs = append(dependentPRs, pr.Name)
 			}
@@ -119,4 +126,21 @@ func (r *GitRepositoryReconciler) handleFinalizer(ctx context.Context, gitRepo *
 		"GitRepository",
 		checkDependencies,
 	)
+}
+
+func (r *GitRepositoryReconciler) enqueueGitRepositoryForPullRequest(ctx context.Context, obj client.Object) []reconcile.Request {
+	pr, ok := obj.(*promoterv1alpha1.PullRequest)
+	if !ok {
+		return nil
+	}
+	repoName := pr.Spec.RepositoryReference.Name
+	if repoName == "" {
+		return nil
+	}
+	return []reconcile.Request{{
+		NamespacedName: types.NamespacedName{
+			Namespace: pr.GetNamespace(),
+			Name:      repoName,
+		},
+	}}
 }

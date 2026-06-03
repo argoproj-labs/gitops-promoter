@@ -55,10 +55,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
-// isNotFoundError returns true if the error chain contains a Kubernetes not-found error.
-func isNotFoundError(err error) bool {
-	return k8serrors.IsNotFound(err)
-}
+const gitRepositoryDeletedDuringTerminationMsg = "this PullRequest's GitRepository has been deleted, so it cannot ensure that the corresponding SCM pull request is closed - " +
+	"either restore the GitRepository or remove the " + promoterv1alpha1.PullRequestFinalizer + " finalizer and manually close the pull request if it is not already closed"
 
 // PullRequestReconciler reconciles a PullRequest object
 type PullRequestReconciler struct {
@@ -104,20 +102,12 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	provider, err := r.getPullRequestProvider(ctx, pr)
 	if err != nil {
-		// If the PullRequest is being deleted and the provider cannot be resolved because a
-		// referenced resource (e.g. GitRepository) no longer exists, we cannot close the PR
-		// on the SCM but we must still remove the finalizer to unblock garbage collection.
-		// Leaving the finalizer in place would cause the PullRequest to remain stuck in
-		// Terminating state indefinitely, blocking the PromotionStrategy reconciliation.
-		if !pr.DeletionTimestamp.IsZero() && isNotFoundError(err) {
-			logger.Info("PullRequest is being deleted but provider cannot be resolved due to missing dependency; removing finalizer without closing SCM PR", "error", err)
-			if controllerutil.ContainsFinalizer(&pr, promoterv1alpha1.PullRequestFinalizer) {
-				controllerutil.RemoveFinalizer(&pr, promoterv1alpha1.PullRequestFinalizer)
-				if updateErr := r.Update(ctx, &pr); updateErr != nil {
-					return ctrl.Result{}, fmt.Errorf("failed to remove finalizer after missing dependency: %w", updateErr)
-				}
-			}
-			return ctrl.Result{}, nil
+		if !pr.DeletionTimestamp.IsZero() && k8serrors.IsNotFound(err) {
+			logger.Error(err, gitRepositoryDeletedDuringTerminationMsg,
+				"pullRequest", client.ObjectKeyFromObject(&pr).String(),
+				"gitRepository", pr.Spec.RepositoryReference.Name,
+			)
+			return ctrl.Result{}, fmt.Errorf("%s: %w", gitRepositoryDeletedDuringTerminationMsg, err)
 		}
 		return ctrl.Result{}, fmt.Errorf("failed to get PullRequest provider: %w", err)
 	}

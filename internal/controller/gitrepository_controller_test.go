@@ -19,13 +19,15 @@ package controller
 import (
 	"context"
 	_ "embed"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -95,6 +97,114 @@ var _ = Describe("GitRepository Controller", func() {
 				// Verify that the controller has added the finalizer
 				g.Expect(gitrepository.Finalizers).To(ContainElement(promoterv1alpha1.GitRepositoryFinalizer))
 			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	Context("When a referencing PullRequest is terminating but not yet removed", func() {
+		const blockingFinalizer = "promoter.argoproj.io/test-will-not-remove"
+
+		var ctx context.Context
+		var name string
+		var scmSecret *v1.Secret
+		var scmProvider *promoterv1alpha1.ScmProvider
+		var gitRepo *promoterv1alpha1.GitRepository
+		var pullRequest *promoterv1alpha1.PullRequest
+		var typeNamespacedName types.NamespacedName
+
+		BeforeEach(func() {
+			ctx = context.Background()
+
+			name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "gitrepo-terminating-pr-race")
+
+			typeNamespacedName = types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				g.Expect(pullRequest.Status.ID).ToNot(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, gitRepo)).To(Succeed())
+				g.Expect(gitRepo.Finalizers).To(ContainElement(promoterv1alpha1.GitRepositoryFinalizer))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Adding a bogus finalizer so the PullRequest keeps a deletionTimestamp without leaving the API")
+			Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+			base := pullRequest.DeepCopy()
+			pullRequest.Finalizers = append(pullRequest.Finalizers, blockingFinalizer)
+			Expect(k8sClient.Patch(ctx, pullRequest, client.MergeFrom(base))).To(Succeed())
+
+			Expect(k8sClient.Delete(ctx, pullRequest)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.DeletionTimestamp).ToNot(BeNil())
+				g.Expect(pullRequest.Finalizers).To(ContainElement(blockingFinalizer))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		AfterEach(func() {
+			var pr promoterv1alpha1.PullRequest
+			if err := k8sClient.Get(ctx, typeNamespacedName, &pr); err != nil {
+				return
+			}
+			if pr.DeletionTimestamp == nil {
+				return
+			}
+			var kept []string
+			for _, f := range pr.Finalizers {
+				if f != blockingFinalizer {
+					kept = append(kept, f)
+				}
+			}
+			if len(kept) != len(pr.Finalizers) {
+				base := pr.DeepCopy()
+				pr.Finalizers = kept
+				_ = k8sClient.Patch(ctx, &pr, client.MergeFrom(base))
+			}
+
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, &pr)
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			var repo promoterv1alpha1.GitRepository
+			if err := k8sClient.Get(ctx, typeNamespacedName, &repo); err != nil {
+				return
+			}
+			if repo.DeletionTimestamp != nil {
+				_ = k8sClient.Delete(ctx, &repo)
+			}
+		})
+
+		It("should not delete the GitRepository while the PullRequest object still exists", func() {
+			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, gitRepo)).To(Succeed())
+				g.Expect(gitRepo.DeletionTimestamp).ToNot(BeNil())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Reproducing the race: GitRepository must not disappear while a terminating PullRequest remains in etcd")
+			Consistently(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, gitRepo)
+				g.Expect(err).ToNot(HaveOccurred(),
+					"GitRepository was deleted while a referencing PullRequest still exists (deletionTimestamp carveout bug)")
+				g.Expect(gitRepo.Finalizers).To(ContainElement(promoterv1alpha1.GitRepositoryFinalizer),
+					"GitRepository finalizer should remain until all referencing PullRequests are gone")
+
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.DeletionTimestamp).ToNot(BeNil())
+			}, 5*time.Second, 200*time.Millisecond).Should(Succeed())
 		})
 	})
 })
