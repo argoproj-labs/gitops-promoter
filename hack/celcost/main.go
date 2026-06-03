@@ -19,7 +19,10 @@
 // "Writing CEL Validation Rules" contributor page; regenerate it with
 // `make cel-cost-report`.
 //
-// Usage: go run ./hack/celcost [-o report.md] [config/crd/bases ...]
+// celcost is its own Go module so its CEL/apiserver dependency tree stays out of
+// the root module; run it from this directory (or via `make cel-cost-report`).
+//
+// Usage (from hack/celcost): go run . [-o report.md] [path/to/config/crd/bases ...]
 package main
 
 import (
