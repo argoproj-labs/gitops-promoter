@@ -189,17 +189,24 @@ nilaway-no-test: nilaway ## Run nilaway to remove nil checks from the code
 build: manifests generate fmt vet ## Build manager binary.
 	go build -o bin/manager cmd/main.go
 
-.PHONY: build-dashboard
-build-dashboard: ## Build dashboard UI and embed it.
+.PHONY: install-ui-deps
+install-ui-deps: ## Install shared UI workspace dependencies (ui/shared, ui/components-lib).
 	cd ui/shared && npm install
 	cd ui/components-lib && npm install
+
+.PHONY: build-dashboard-ui
+build-dashboard-ui: ## Build dashboard UI and embed it (requires install-ui-deps).
 	cd ui/dashboard && npm install && npm run build:embed
 
-.PHONY: build-extension
-build-extension: ## Build ArgoCD extension.
-	cd ui/shared && npm install
-	cd ui/components-lib && npm install
+.PHONY: build-dashboard
+build-dashboard: install-ui-deps build-dashboard-ui ## Install UI deps and build dashboard.
+
+.PHONY: build-extension-ui
+build-extension-ui: ## Build ArgoCD extension (requires install-ui-deps).
 	cd ui/extension && npm install && npm run build
+
+.PHONY: build-extension
+build-extension: install-ui-deps build-extension-ui ## Install UI deps and build extension.
 
 .PHONY: install-extension-local
 install-extension-local: ## Install ArgoCD extension to /tmp/extensions/promoter directory.
