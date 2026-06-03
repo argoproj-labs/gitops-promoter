@@ -80,6 +80,12 @@ generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and
 generate-extension-icon-styles: ## Generate Argo CD extension icon styles from logo SVGs.
 	./hack/extension-icon-styles.sh
 
+# Docs data file embedded into docs/contributing/writing-cel-rules.md via markdown_include.
+CEL_COST_REPORT ?= hack/celcost/report.md
+.PHONY: cel-cost-report
+cel-cost-report: ## Estimate CRD CEL validation costs vs apiserver limits and write the docs report.
+	go run ./hack/celcost -o $(CEL_COST_REPORT) config/crd/bases
+
 .PHONY: generate-all
 generate-all: generate generate-extension-icon-styles ## Run all code generation used in CI (controller-gen, extension icon styles). For mocks, run make mockery-gen separately.
 

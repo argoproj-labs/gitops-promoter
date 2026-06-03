@@ -11,7 +11,7 @@ Every pull request runs the [`test` workflow](https://github.com/argoproj-labs/g
 - **Fuzz replay** — replays seeds and corpus without exploratory fuzzing
 - **UI checks** — type-checking, linting, formatting, and `npm audit` for the dashboard, extension, and components-lib packages
 - **Docs lint** — builds the MkDocs documentation and fails on any warning
-- **Codegen verification** — ensures `go.sum`, mockery output (`internal/scms/mock/`), and `make build-installer` output (CRDs, `applyconfiguration/`, deepcopy, extension icon styles, `dist/install.yaml`) are up to date
+- **Codegen verification** — ensures `go.sum`, mockery output (`internal/scms/mock/`), `make build-installer` output (CRDs, `applyconfiguration/`, deepcopy, extension icon styles, `dist/install.yaml`), and the CEL cost report (`hack/celcost/report.md`, via `make cel-cost-report`) are up to date
 - **Nilaway static analysis** — nil-safety analysis on non-test Go code
 - **Spell checking**
 - **GitHub Actions security analysis** — [zizmor](https://github.com/zizmorcore/zizmor) checks all workflow files for security issues

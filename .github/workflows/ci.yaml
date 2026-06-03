@@ -143,6 +143,13 @@ jobs:
             echo "::error ::Generated files are out of date. Run 'make build-installer' and commit the changes (CRDs, applyconfiguration, deepcopy, extension icon styles, dist/install.yaml)."
             exit 1
           fi
+      - name: make cel-cost-report
+        run: |
+          make cel-cost-report
+          if ! git diff --exit-code -- hack/celcost/report.md; then
+            echo "::error file=hack/celcost/report.md::CEL cost report is out of date. Run 'make cel-cost-report' and commit hack/celcost/report.md."
+            exit 1
+          fi
   nilaway:
     name: Nilaway Static Analysis
     runs-on: ubuntu-latest
