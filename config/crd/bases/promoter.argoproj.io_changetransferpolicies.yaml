@@ -57,9 +57,19 @@ spec:
             description: ChangeTransferPolicySpec defines the desired state of ChangeTransferPolicy
             properties:
               activeBranch:
-                description: ActiveBranch staging hydrated branch
+                description: |-
+                  ActiveBranch staging hydrated branch
+                  Must not start with '-', contain ':', or contain '..'.
+                maxLength: 100
                 minLength: 1
                 type: string
+                x-kubernetes-validations:
+                - message: branch must not start with '-'
+                  rule: '!self.startsWith(''-'')'
+                - message: branch must not contain ':'
+                  rule: '!self.contains('':'')'
+                - message: branch must not contain '..'
+                  rule: '!self.contains(''..'')'
               activeCommitStatuses:
                 description: ActiveCommitStatuses lists the statuses to be monitored
                   on the active branch
@@ -101,9 +111,19 @@ spec:
                 - name
                 type: object
               proposedBranch:
-                description: ProposedBranch staging hydrated branch
+                description: |-
+                  ProposedBranch staging hydrated branch
+                  Must not start with '-', contain ':', or contain '..'.
+                maxLength: 100
                 minLength: 1
                 type: string
+                x-kubernetes-validations:
+                - message: branch must not start with '-'
+                  rule: '!self.startsWith(''-'')'
+                - message: branch must not contain ':'
+                  rule: '!self.contains('':'')'
+                - message: branch must not contain '..'
+                  rule: '!self.contains(''..'')'
               proposedCommitStatuses:
                 description: ProposedCommitStatuses lists the statuses to be monitored
                   on the proposed branch

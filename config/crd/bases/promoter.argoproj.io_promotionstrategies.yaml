@@ -116,10 +116,19 @@ spec:
                         If false, the dry commit will be proposed but not merged.
                       type: boolean
                     branch:
-                      description: Branch is the name of the active branch for the
-                        environment.
+                      description: |-
+                        Branch is the name of the active branch for the environment.
+                        Must not start with '-', contain ':', or contain '..'.
+                      maxLength: 100
                       minLength: 1
                       type: string
+                      x-kubernetes-validations:
+                      - message: branch must not start with '-'
+                        rule: '!self.startsWith(''-'')'
+                      - message: branch must not contain ':'
+                        rule: '!self.contains('':'')'
+                      - message: branch must not contain '..'
+                        rule: '!self.contains(''..'')'
                     proposedCommitStatuses:
                       description: |-
                         ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running
@@ -147,6 +156,7 @@ spec:
                   required:
                   - branch
                   type: object
+                maxItems: 1000
                 minItems: 1
                 type: array
                 x-kubernetes-list-map-keys:

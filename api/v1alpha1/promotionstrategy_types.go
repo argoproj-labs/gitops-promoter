@@ -56,6 +56,7 @@ type PromotionStrategySpec struct {
 
 	// Environments is the sequence of environments that a dry commit will be promoted through.
 	// +kubebuilder:validation:MinItems:=1
+	// +kubebuilder:validation:MaxItems:=1000
 	// +listType:=map
 	// +listMapKey=branch
 	Environments []Environment `json:"environments"`
@@ -71,8 +72,13 @@ type PromotionStrategySpec struct {
 // Environment defines a single environment in the promotion sequence.
 type Environment struct {
 	// Branch is the name of the active branch for the environment.
+	// Must not start with '-', contain ':', or contain '..'.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=100
+	// +kubebuilder:validation:XValidation:rule="!self.startsWith('-')",message="branch must not start with '-'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains(':')",message="branch must not contain ':'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains('..')",message="branch must not contain '..'"
 	Branch string `json:"branch"`
 	// AutoMerge determines whether the dry commit should be automatically merged into the next branch in the sequence.
 	// If false, the dry commit will be proposed but not merged.
