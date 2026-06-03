@@ -43,7 +43,8 @@ var _ = Describe("cacheTransform", func() {
 		out, err := cacheTransform()(ps)
 		Expect(err).NotTo(HaveOccurred())
 
-		transformed := out.(*promoterv1alpha1.PromotionStrategy)
+		transformed, ok := out.(*promoterv1alpha1.PromotionStrategy)
+		Expect(ok).To(BeTrue())
 		Expect(transformed.ManagedFields).To(BeNil())
 		Expect(transformed.Annotations).NotTo(HaveKey(lastAppliedAnnotation))
 		Expect(transformed.Annotations).To(HaveKeyWithValue("keep-me", "yes"))
