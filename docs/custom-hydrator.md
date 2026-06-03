@@ -46,8 +46,10 @@ as `<active-branch>-next/<activePath>`.
 Each hydrated commit **must** include a `hydrator.metadata` file. This JSON file tells GitOps Promoter which DRY
 commit was used to produce the hydrated content.
 
-- Default mode (no `activePath`): put `hydrator.metadata` at repository root.
+- Default mode (no `activePath`): put `hydrator.metadata` at the repository root.
 - Shared-active-branch mode (`activePath` set): put `hydrator.metadata` at `<activePath>/hydrator.metadata`.
+  GitOps Promoter reads only that path; a repository-root `hydrator.metadata` is optional and is not used for
+  promotion.
 
 #### Required Fields
 
@@ -109,6 +111,10 @@ If you use `activePath` to share one active branch across multiple applications,
 
 1. Update only files for the current app path.
 2. Do not delete or rewrite other applications' directories on the same branch.
+
+> [!NOTE]
+> Multiple `PromotionStrategy` resources on the same active branch must follow the constraints in
+> [repository structure](repository-structure.md#constraints-when-multiple-promotionstrategies-share-an-active-branch).
 
 This ensures independent PromotionStrategies can safely share the same active branch.
 

@@ -563,7 +563,44 @@ var _ = Describe("ActivePath support", func() {
 		Expect(metadata.Sha).To(Equal("app-sha"))
 	})
 
-	It("keeps proposed changes only in activePath during conflict resolution", func() {
+	It("treats a missing activePath hydrator.metadata as empty even when the path exists in the worktree", func() {
+		// Regression for the activePath convergence bug: GetBranchShas reads
+		// <activePath>/hydrator.metadata from the active branch, which legitimately does
+		// not exist until that app's first promotion. When the clone's working tree
+		// already holds that path (e.g. left by a prior checkout of the proposed branch
+		// during conflict resolution), a worktree-sensitive read like `git show origin/<active>:<path>`
+		// fails instead of reporting a clean absence. GetBranchShas must determine presence from the
+		// ref's tree alone (not the worktree) and treat a genuinely-absent path as "no metadata yet",
+		// not a hard error, or the CTP can never compute status and never promotes.
+		Expect(os.MkdirAll(filepath.Join(workDir, "apps", "app-one"), 0o755)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-one", "config.yaml"), []byte("version: active\n"), 0o644)).To(Succeed())
+		// Active branch intentionally has NO apps/app-one/hydrator.metadata.
+		_, err := runGitCmd(workDir, "add", "-A")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", "active without app-one metadata")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "branch", "-M", "active")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "-u", "origin", "active")
+		Expect(err).NotTo(HaveOccurred())
+
+		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
+		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
+		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
+
+		// Place the path in the clone's working tree to prove the read is worktree-independent:
+		// a worktree-only copy must not be mistaken for metadata on the ref.
+		clonePath := g.ClonePath()
+		Expect(os.MkdirAll(filepath.Join(clonePath, "apps", "app-one"), 0o755)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(clonePath, "apps", "app-one", "hydrator.metadata"), []byte(`{"drySha":"worktree-only"}`), 0o644)).To(Succeed())
+
+		shas, err := g.GetBranchShas(GinkgoT().Context(), "active", "apps/app-one")
+		Expect(err).NotTo(HaveOccurred(), "missing activePath metadata on the ref must not be a hard error")
+		Expect(shas.Dry).To(BeEmpty(), "worktree-only metadata must not be mistaken for ref metadata")
+		Expect(shas.Hydrated).NotTo(BeEmpty(), "the hydrated SHA still resolves from the ref")
+	})
+
+	It("path-scoped merge: proposed wins inside activePath, active wins outside on conflict", func() {
 		base := map[string]string{
 			"apps/app-one/config.yaml": "version: base\n",
 			"apps/app-two/config.yaml": "version: base\n",
@@ -589,6 +626,7 @@ var _ = Describe("ActivePath support", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-one", "config.yaml"), []byte("version: proposed\n"), 0o644)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-two", "config.yaml"), []byte("version: proposed\n"), 0o644)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"proposed-root"}`), 0o644)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-one", "hydrator.metadata"), []byte(`{"drySha":"proposed"}`), 0o644)).To(Succeed())
 		_, err = runGitCmd(workDir, "add", "-A")
 		Expect(err).NotTo(HaveOccurred())
@@ -599,6 +637,7 @@ var _ = Describe("ActivePath support", func() {
 
 		_, err = runGitCmd(workDir, "checkout", "active")
 		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"active-root"}`), 0o644)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-one", "config.yaml"), []byte("version: active\n"), 0o644)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-two", "config.yaml"), []byte("version: active\n"), 0o644)).To(Succeed())
 		_, err = runGitCmd(workDir, "add", "-A")
@@ -624,11 +663,22 @@ var _ = Describe("ActivePath support", func() {
 
 		appOneContent, err := os.ReadFile(filepath.Join(workDir, "apps", "app-one", "config.yaml"))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(strings.TrimSpace(string(appOneContent))).To(Equal("version: proposed"), "app-one should keep proposed content")
+		Expect(strings.TrimSpace(string(appOneContent))).To(Equal("version: proposed"),
+			"inside activePath, proposed wins")
 
 		appTwoContent, err := os.ReadFile(filepath.Join(workDir, "apps", "app-two", "config.yaml"))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(strings.TrimSpace(string(appTwoContent))).To(Equal("version: active"), "app-two should use active content")
+		Expect(strings.TrimSpace(string(appTwoContent))).To(Equal("version: active"),
+			"outside activePath, active wins on conflict")
+
+		rootMetadata, err := os.ReadFile(filepath.Join(workDir, "hydrator.metadata"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(strings.TrimSpace(string(rootMetadata))).To(ContainSubstring("active-root"),
+			"root hydrator.metadata is no longer special-cased: outside activePath, active wins on conflict")
+
+		hasConflict, err := g.HasConflict(GinkgoT().Context(), "proposed-app-one-next", "active")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(hasConflict).To(BeFalse(), "resolved proposed branch should merge cleanly into active for SCM")
 	})
 
 	It("removes files deleted in the proposed branch from activePath during conflict resolution", func() {
