@@ -51,7 +51,8 @@ For installs without a checkout of this repo, each release also publishes two fl
 image-pinned **combined** bundles that contain the controller *and* this apiserver in one
 file — `install-with-dashboard-cert-manager.yaml` (cert-manager issues and rotates the
 serving cert) and `install-with-dashboard-byo-cert.yaml` (no cert-manager; you supply the
-serving cert + `caBundle`). Apply one of these instead of the plain `install.yaml`. See the
+serving cert + `caBundle`). These are the preferred install — apply one of them instead of the
+controller-only `install-without-ui.yaml`. See the
 [Getting Started](getting-started.md#install-the-dashboard-api) guide. They are
 built from the `config/apiserver/release-combined-cert-manager` and
 `config/apiserver/release-combined-byo-cert` overlays respectively, which union

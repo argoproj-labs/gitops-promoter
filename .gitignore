@@ -32,7 +32,7 @@ go.work.sum
 # Github Certificates
 *.pem
 secret.yaml
-install.yaml
+install-without-ui.yaml
 install-with-dashboard-cert-manager.yaml
 install-with-dashboard-byo-cert.yaml
 

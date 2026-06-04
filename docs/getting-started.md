@@ -11,11 +11,45 @@ GitHub, GitHub Enterprise, GitLab, Forgejo (including Codeberg), Gitea, Bitbucke
 
 ## Installation
 
-To install GitOps Promoter, you can use the following command:
+GitOps Promoter publishes several install bundles per release. The **preferred** method
+installs the controller together with the dashboard aggregation API and uses
+[cert-manager](https://cert-manager.io/) to issue and rotate the apiserver serving cert
+automatically — a single apply with nothing else to set up.
+
+/// tab | cert-manager (recommended)
+
+Requires [cert-manager](https://cert-manager.io/) in the cluster. Installs the controller and
+the dashboard API in one apply; cert-manager issues and rotates the serving cert (and keeps the
+`caBundle` injected) automatically:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.31.0/install.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.31.0/install-with-dashboard-cert-manager.yaml
 ```
+
+///
+
+/// tab | Bring your own cert
+
+Installs the controller and the dashboard API without a cert-manager dependency. After applying,
+supply the `promoter-apiserver-serving-cert` Secret and patch the `APIService` `caBundle` yourself
+(see [Dashboard Aggregation API](dashboard-apiserver.md#serving-certs)):
+
+```bash
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.31.0/install-with-dashboard-byo-cert.yaml
+```
+
+///
+
+/// tab | Without the UI
+
+Installs only the controller, without the dashboard aggregation API. Choose this if you don't
+need the web UI:
+
+```bash
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.31.0/install-without-ui.yaml
+```
+
+///
 
 Alternatively, you can install GitOps Promoter using Helm. See the [ArtifactHub page](https://artifacthub.io/packages/helm/gitops-promoter/gitops-promoter) for instructions.
 
@@ -502,7 +536,11 @@ The UI is backed by the `PromotionStrategyDetails` resource. This resource is ba
 
 ### Install the dashboard API
 
-The `PromotionStrategyDetails` APIService does not come with the default install.yaml. Use one of the following bundles to set it up for your environment.
+If you installed one of the `install-with-dashboard-*` bundles above, the
+`PromotionStrategyDetails` APIService is already present — skip to [Launch the UI](#launch-the-ui).
+
+If you installed the `install-without-ui.yaml` bundle, the APIService is not included. Use one of
+the following bundles to set it up for your environment.
 
 /// tab | cert-manager
 

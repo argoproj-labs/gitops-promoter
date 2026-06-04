@@ -76,7 +76,7 @@ docker_manifests:
 
 checksum:
   extra_files:
-    - glob: ./install.yaml
+    - glob: ./install-without-ui.yaml
     - glob: ./install-with-dashboard-cert-manager.yaml
     - glob: ./install-with-dashboard-byo-cert.yaml
 
@@ -129,7 +129,7 @@ release:
   prerelease: auto
   draft: true
   extra_files:
-    - glob: ./install.yaml
+    - glob: ./install-without-ui.yaml
     - glob: ./install-with-dashboard-cert-manager.yaml
     - glob: ./install-with-dashboard-byo-cert.yaml
   header: |

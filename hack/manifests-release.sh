@@ -20,9 +20,12 @@ IMAGE_NAMESPACE="${IMAGE_NAMESPACE:-quay.io/argoprojlabs/gitops-promoter}"
 IMAGE_FQN="$IMAGE_NAMESPACE:$IMAGE_TAG"
 
 $KUSTOMIZE version
+# Controller-only bundle (no dashboard aggregation apiserver / UI). Named "without-ui" to make
+# the missing UI explicit; the preferred install is one of the install-with-dashboard-* bundles
+# below. See docs/getting-started.md and docs/dashboard-apiserver.md.
 cd "${SRCROOT}/config/release" && $KUSTOMIZE edit set image "quay.io/argoprojlabs/gitops-promoter=${IMAGE_FQN}"
-echo "${AUTOGENMSG}" > "${SRCROOT}/install.yaml"
-$KUSTOMIZE build "${SRCROOT}/config/release" >> "${SRCROOT}/install.yaml"
+echo "${AUTOGENMSG}" > "${SRCROOT}/install-without-ui.yaml"
+$KUSTOMIZE build "${SRCROOT}/config/release" >> "${SRCROOT}/install-without-ui.yaml"
 
 # Combined bundles: the controller PLUS the dashboard aggregation apiserver in a single
 # file, so installing the dashboard is one `kubectl apply`. We ship two variants so users
