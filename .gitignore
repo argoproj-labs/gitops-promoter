@@ -32,9 +32,12 @@ go.work.sum
 # Github Certificates
 *.pem
 secret.yaml
-install-without-ui.yaml
-install-with-dashboard-cert-manager.yaml
-install-with-dashboard-byo-cert.yaml
+# Release bundles written to the repo root by `make manifests-release` (uploaded as
+# GitHub release assets). Anchored to root so the committed copies under dist/ — produced
+# by `make build-installer` — stay tracked.
+/install-without-ui.yaml
+/install-with-dashboard-cert-manager.yaml
+/install-with-dashboard-byo-cert.yaml
 
 junit.xml
 
@@ -47,8 +50,9 @@ venv
 
 node_modules/
 
-# TypeScript
-dist/
+# TypeScript (UI build outputs live under ui/; the repo-root dist/ holds the
+# committed, generated install bundles and must stay tracked)
+ui/**/dist/
 build/
 out/
 *.tsbuildinfo

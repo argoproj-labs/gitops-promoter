@@ -70,7 +70,7 @@ If the type is reconciled and has status SSA behavior, also follow [Maintaining 
 
 After Go type and marker changes:
 
-1. **`make build-installer`** — CRD bases, deepcopy, applyconfiguration, extension icon styles, `dist/install.yaml`.
+1. **`make build-installer`** — CRD bases, deepcopy, applyconfiguration, extension icon styles, and the `dist/` install bundles.
 2. **`go mod tidy`** if module deps changed.
 3. **`make test-parallel`** — includes the strict unmarshal tests above.
 4. **`make lint-docs`** if you edited `docs/`.

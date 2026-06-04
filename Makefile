@@ -369,14 +369,12 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 	rm Dockerfile.cross
 
 .PHONY: build-installer
-build-installer: manifests generate-all cel-cost-report kustomize ## Generate CRDs, applyconfiguration, CEL cost report, and dist/install.yaml.
-	mkdir -p dist
-	# cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/default > dist/install.yaml
+build-installer: manifests generate-all cel-cost-report kustomize ## Generate CRDs, applyconfiguration, CEL cost report, and the committed dist/ install bundles.
+	./hack/manifests-release.sh $(KUSTOMIZE) $(CURDIR)/dist
 
 .PHONY: manifests-release
-manifests-release: generate manifests kustomize ## Generate the consolidated install.yaml with the release tag.
-	./hack/manifests-release.sh $(KUSTOMIZE) $(IMAGE_TAG)
+manifests-release: generate manifests kustomize ## Generate the consolidated install bundles at the repo root, pinned to the release tag.
+	./hack/manifests-release.sh $(KUSTOMIZE) $(CURDIR) $(IMAGE_TAG)
 
 ##@ Deployment
 
