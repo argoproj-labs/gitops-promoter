@@ -20,13 +20,30 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
 )
+
+// detailsUIDNamespace is a fixed UUID namespace used to derive deterministic UIDs
+// for the virtual PromotionStrategyDetails resource. It is an arbitrary, stable
+// constant; its only purpose is to seed the UUIDv5 derivation below.
+var detailsUIDNamespace = uuid.MustParse("6f0c3b9e-1c2d-4f7a-9b5e-2a1d3c4e5f60")
+
+// detailsUID derives the UID for a PromotionStrategyDetails object from its backing
+// PromotionStrategy's UID. The details resource is a distinct virtual object, not
+// the PromotionStrategy itself, so it must carry its own UID rather than reusing
+// ps.UID (which would make the two indistinguishable to clients and caches). The
+// UID is derived deterministically so repeated reads of the same PromotionStrategy
+// yield a stable identity for watch/cache consumers.
+func detailsUID(psUID types.UID) types.UID {
+	return types.UID(uuid.NewSHA1(detailsUIDNamespace, []byte(psUID)).String())
+}
 
 // buildBundle assembles the PromotionStrategyDetails for the named PromotionStrategy
 // from the given reader. It returns a NotFound error (scoped to the dashboard
@@ -51,10 +68,16 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              name,
 			Namespace:         namespace,
-			UID:               ps.UID,
+			UID:               detailsUID(ps.UID),
 			ResourceVersion:   resourceVersion,
 			CreationTimestamp: ps.CreationTimestamp,
 			Labels:            ps.Labels,
+			OwnerReferences: []metav1.OwnerReference{{
+				APIVersion: promoterv1alpha1.SchemeGroupVersion.String(),
+				Kind:       "PromotionStrategy",
+				Name:       ps.Name,
+				UID:        ps.UID,
+			}},
 		},
 		PromotionStrategy: *ps,
 	}

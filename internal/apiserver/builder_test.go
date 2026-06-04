@@ -24,7 +24,8 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -35,6 +36,7 @@ import (
 const (
 	testNamespace = "test-ns"
 	testPSName    = "my-ps"
+	testPSUID     = types.UID("11111111-1111-1111-1111-111111111111")
 	testSecretVal = "SUPER-SECRET-TOKEN"
 )
 
@@ -60,6 +62,7 @@ func seedObjects() []client.Object {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      testPSName,
 			Namespace: testNamespace,
+			UID:       testPSUID,
 			ManagedFields: []metav1.ManagedFieldsEntry{
 				{Manager: "controller", Operation: metav1.ManagedFieldsOperationUpdate, APIVersion: "promoter.argoproj.io/v1alpha1", FieldsType: "FieldsV1"},
 			},
@@ -144,6 +147,18 @@ var _ = Describe("BuildBundle", func() {
 		Expect(bundle.Namespace).To(Equal(testNamespace))
 		Expect(bundle.ResourceVersion).To(Equal("42"))
 		Expect(bundle.PromotionStrategy.Name).To(Equal(testPSName))
+
+		By("assigning the details object its own UID, distinct from the PromotionStrategy")
+		Expect(bundle.UID).NotTo(BeEmpty())
+		Expect(bundle.UID).NotTo(Equal(testPSUID))
+		Expect(bundle.UID).To(Equal(detailsUID(testPSUID)), "details UID must be deterministic")
+
+		By("setting an owner reference to the source PromotionStrategy")
+		Expect(bundle.OwnerReferences).To(HaveLen(1))
+		Expect(bundle.OwnerReferences[0].APIVersion).To(Equal("promoter.argoproj.io/v1alpha1"))
+		Expect(bundle.OwnerReferences[0].Kind).To(Equal("PromotionStrategy"))
+		Expect(bundle.OwnerReferences[0].Name).To(Equal(testPSName))
+		Expect(bundle.OwnerReferences[0].UID).To(Equal(testPSUID))
 
 		By("selecting label-owned children")
 		Expect(bundle.ChangeTransferPolicies).To(HaveLen(1))
