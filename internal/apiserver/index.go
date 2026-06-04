@@ -355,16 +355,37 @@ func (p *BundleProvider) Watch(ctx context.Context, namespace, name string, send
 	p.mu.Unlock()
 
 	if sendInitial {
-		list, err := p.List(ctx, namespace)
-		if err != nil {
-			w.Stop()
-			return nil, err
-		}
-		for i := range list.Items {
-			item := list.Items[i]
-			if name != "" && item.Name != name {
-				continue
+		var items []viewv1alpha1.PromotionStrategyDetails
+		var resourceVersion string
+		if name != "" {
+			// A name filter resolves to exactly one bundle, so Get it directly
+			// instead of listing (and building) every PromotionStrategy in the
+			// namespace just to discard all but one.
+			bundle, err := p.Get(ctx, namespace, name)
+			if err != nil {
+				if !apierrors.IsNotFound(err) {
+					w.Stop()
+					return nil, err
+				}
+				// Not found yet: send no initial ADDED event, but still surface
+				// a resource version so the reflector can begin watching.
+				resourceVersion = p.currentResourceVersion()
+			} else {
+				items = []viewv1alpha1.PromotionStrategyDetails{*bundle}
+				resourceVersion = bundle.ResourceVersion
 			}
+		} else {
+			list, err := p.List(ctx, namespace)
+			if err != nil {
+				w.Stop()
+				return nil, err
+			}
+			items = list.Items
+			resourceVersion = list.ResourceVersion
+		}
+
+		for i := range items {
+ com			item := items[i]
 			select {
 			case w.result <- watch.Event{Type: watch.Added, Object: &item}:
 			default:
@@ -373,7 +394,7 @@ func (p *BundleProvider) Watch(ctx context.Context, namespace, name string, send
 
 		if sendInitialEventsBookmark {
 			bookmark := &viewv1alpha1.PromotionStrategyDetails{}
-			bookmark.SetResourceVersion(list.ResourceVersion)
+			bookmark.SetResourceVersion(resourceVersion)
 			bookmark.SetAnnotations(map[string]string{metav1.InitialEventsAnnotationKey: "true"})
 			select {
 			case w.result <- watch.Event{Type: watch.Bookmark, Object: bookmark}:
