@@ -18,7 +18,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98 # pin@v4
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # pin@v4
       - name: Set up Go
         uses: actions/setup-go@4aaadf42668403795cdfdb15b1c4250e9fed12b9 # pin@v5
         with:
@@ -116,7 +116,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98 # pin@v4
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # pin@v4
       - name: Set up Go
         uses: actions/setup-go@4aaadf42668403795cdfdb15b1c4250e9fed12b9 # pin@v5
         with:
@@ -140,7 +140,7 @@ jobs:
         run: |
           make build-installer
           if ! git diff --exit-code; then
-            echo "::error ::Generated files are out of date. Run 'make build-installer' and commit the changes (CRDs, applyconfiguration, deepcopy, extension icon styles, dist/install.yaml)."
+            echo "::error ::Generated files are out of date. Run 'make build-installer' and commit the changes (CRDs, applyconfiguration, deepcopy, extension icon styles, hack/celcost/report.md, dist/install.yaml)."
             exit 1
           fi
   nilaway:
@@ -149,7 +149,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98 # pin@v4
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # pin@v4
       - name: Set up Go
         uses: actions/setup-go@4aaadf42668403795cdfdb15b1c4250e9fed12b9 # pin@v5
         with:
@@ -162,7 +162,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98 # pin@v4
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # pin@v4
       - name: Set up Go
         uses: actions/setup-go@4aaadf42668403795cdfdb15b1c4250e9fed12b9 # pin@v5
         with:
