@@ -29,6 +29,7 @@ import (
 // ClusterScmProviderKind is the kind of the ClusterScmProvider resource.
 var ClusterScmProviderKind = reflect.TypeOf(ClusterScmProvider{}).Name()
 
+// +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#clusterscmprovider",description="CRD reference (examples and behavior)"
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster
