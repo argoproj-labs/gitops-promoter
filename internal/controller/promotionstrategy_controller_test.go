@@ -1474,9 +1474,12 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			// notes load and persist, so we can assert them deterministically.
 			By("Disabling AutoMerge for both apps so proposed notes persist")
 			for _, ps := range []*promoterv1alpha1.PromotionStrategy{&promotionStrategyOne, &promotionStrategyTwo} {
-				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: ps.Name, Namespace: ps.Namespace}, ps)).To(Succeed())
-				ps.Spec.Environments[0].AutoMerge = ptr.To(false)
-				Expect(k8sClient.Update(ctx, ps)).To(Succeed())
+				Eventually(func(g Gomega) {
+					var latest promoterv1alpha1.PromotionStrategy
+					g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: ps.Name, Namespace: ps.Namespace}, &latest)).To(Succeed())
+					latest.Spec.Environments[0].AutoMerge = ptr.To(false)
+					g.Expect(k8sClient.Update(ctx, &latest)).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
 			}
 
 			gitPath, err := cloneTestRepo(ctx, gitRepo)
