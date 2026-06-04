@@ -715,15 +715,15 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
-		It("should remove CTP finalizer from PR when PR is externally merged/closed but CTP status is stale", func() {
+			It("should remove CTP finalizer from PR when PR is externally merged/closed but CTP status is stale", func() {
 				By("Adding a pending commit")
-				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
+				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 
 				By("Waiting for PR to be created and open")
 				var createdPR promoterv1alpha1.PullRequest
 				Eventually(func(g Gomega) {
 					typeNamespacedNamePR := types.NamespacedName{
-						Name:      utils.KubeSafeUniqueName(ctx, prName),
+						Name:      utils.KubeSafeUniqueName(prName),
 						Namespace: "default",
 					}
 					err := k8sClient.Get(ctx, typeNamespacedNamePR, &createdPR)
