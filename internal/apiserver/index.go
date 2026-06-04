@@ -47,11 +47,17 @@ const debounceInterval = 250 * time.Millisecond
 // controller-runtime cache, and fans out watch events to registered watchers when
 // any related resource changes.
 type BundleProvider struct {
-	cache    cache.Cache
-	reader   client.Reader
-	queue    workqueue.TypedRateLimitingInterface[types.NamespacedName]
+	cache  cache.Cache
+	reader client.Reader
+	queue  workqueue.TypedRateLimitingInterface[types.NamespacedName]
+	// watchers holds the registered watch streams keyed by a unique id (assigned
+	// from nextID), so broadcast can fan events out to matching watchers and a
+	// watcher can be removed when its stream stops.
 	watchers map[int]*bundleWatcher
-	known    map[types.NamespacedName]bool
+	// known tracks PromotionStrategy keys that have already emitted an ADDED event,
+	// so reconcileKey can distinguish ADDED from MODIFIED and only emit a DELETED
+	// tombstone for keys it previously surfaced.
+	known map[types.NamespacedName]bool
 
 	mu     sync.RWMutex
 	rv     atomic.Uint64
