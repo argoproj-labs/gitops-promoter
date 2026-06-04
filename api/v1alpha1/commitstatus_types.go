@@ -111,6 +111,7 @@ func (cs *CommitStatus) SetObservedGeneration(generation int64) {
 }
 
 // +kubebuilder:ac:generate=true
+// +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#commitstatus",description="CRD reference (examples and behavior)"
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 

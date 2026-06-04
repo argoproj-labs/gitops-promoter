@@ -72,9 +72,16 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 	# Move the Application CRD to the test dir. We don't need it in the promoter config, but we need it for e2e tests.
 	mv config/crd/bases/argoproj.io_applications.yaml test/external_crds/
 
+# controller-gen v0.21+ emits applyconfiguration types that import applyconfiguration/internal
+# (for Extract* helpers). On the first pass after an output-format change, controller-gen
+# can rewrite those files and then fail in the same process because go/packages loaded the
+# import graph before the rewrite ("no such package located"). A second pass loads the
+# updated files and succeeds. Steady-state runs succeed on both passes; the first || true
+# only masks that one-shot migration failure.
 .PHONY: generate
-generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
-	$(CONTROLLER_GEN) applyconfiguration:headerFile="hack/boilerplate.go.txt" object:headerFile="hack/boilerplate.go.txt" paths="./..."
+generate: controller-gen ## Generate DeepCopy and applyconfiguration code (controller-gen object + applyconfiguration).
+	@$(CONTROLLER_GEN) applyconfiguration:headerFile="hack/boilerplate.go.txt" object:headerFile="hack/boilerplate.go.txt" paths="./..." || true
+	@$(CONTROLLER_GEN) applyconfiguration:headerFile="hack/boilerplate.go.txt" object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
 .PHONY: generate-extension-icon-styles
 generate-extension-icon-styles: ## Generate Argo CD extension icon styles from logo SVGs.
@@ -333,7 +340,7 @@ GORELEASER ?= $(LOCALBIN)/goreleaser-$(GORELEASER_VERSION)
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.8.1
-CONTROLLER_TOOLS_VERSION ?= v0.20.1
+CONTROLLER_TOOLS_VERSION ?= v0.21.0
 ENVTEST_VERSION ?= release-0.24
 GOLANGCI_LINT_VERSION ?= v2.12.2
 DEADCODE_VERSION ?= v0.45.0

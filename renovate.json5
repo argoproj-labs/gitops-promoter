@@ -218,9 +218,7 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
-          'go mod tidy',
-          'make manifests',
-          'make generate',
+          'make build-installer',
         ],
         installTools: {
           golang: {},
@@ -228,9 +226,9 @@
         fileFilters: [
           'config/**',
           'test/**',
+          'applyconfiguration/**',
+          'dist/**',
           '**/*.go',
-          'go.mod',
-          'go.sum',
         ],
         executionMode: 'branch',
       },
