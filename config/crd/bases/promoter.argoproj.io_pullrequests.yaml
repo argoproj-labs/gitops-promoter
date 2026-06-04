@@ -238,6 +238,8 @@ spec:
                 x-kubernetes-validations:
                 - message: must be a valid URL
                   rule: self == '' || isURL(self)
+            required:
+            - state
             type: object
         type: object
         x-kubernetes-validations:

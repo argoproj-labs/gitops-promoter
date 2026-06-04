@@ -29,7 +29,8 @@ import (
 type PullRequestCommonStatusApplyConfiguration struct {
 	// ID is the unique identifier of the pull request, set by the SCM.
 	ID *string `json:"id,omitempty"`
-	// State is the state of the pull request.
+	// State is the state of the pull request. When ExternallyMergedOrClosed is true, State is
+	// empty ("") because we cannot tell merge vs. close from the provider.
 	State *apiv1alpha1.PullRequestState `json:"state,omitempty"`
 	// PRCreationTime is the time when the pull request was created.
 	PRCreationTime *v1.Time `json:"prCreationTime,omitempty"`

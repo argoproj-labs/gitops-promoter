@@ -854,52 +854,23 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 		return nil
 	}
 
-	// When a PR is externally merged or closed, the PR controller sets ExternallyMergedOrClosed=true
-	// and clears State to "" before deleting the PullRequest CRD. If the CTP status has not yet been
-	// updated (e.g. because the PR controller restarted before persisting the status, or because the
-	// CTP reconcile cycle that copies PR status has not completed yet), the CTP status may still show
-	// the old State ("open") while the PR status shows State="". In this case the standard statusMatches
-	// check would block finalizer removal indefinitely, leaving the PullRequest stuck in Terminating.
-	//
-	// When ExternallyMergedOrClosed=true on the PR, the important invariant is that the CTP has
-	// recorded the ExternallyMergedOrClosed flag — the State field is not meaningful (it is intentionally
-	// cleared to "" because we don't know whether the PR was merged or closed externally). We therefore
-	// skip the State comparison and only require that ExternallyMergedOrClosed is synced.
-	prExternallyMergedOrClosed := livePR.Status.ExternallyMergedOrClosed != nil && *livePR.Status.ExternallyMergedOrClosed
+	if ctp.Status.PullRequest == nil {
+		logger.V(4).Info("PR being deleted but CTP has no PR status, cannot remove finalizer yet")
+		return nil
+	}
 
-	if prExternallyMergedOrClosed {
-		// For externally merged/closed PRs: only require that ExternallyMergedOrClosed is synced to CTP.
-		// State is intentionally "" on the PR and may still be stale on the CTP — that is acceptable.
-		ctpExternallyMergedOrClosed := ctp.Status.PullRequest != nil &&
-			ctp.Status.PullRequest.ExternallyMergedOrClosed != nil &&
-			*ctp.Status.PullRequest.ExternallyMergedOrClosed
-		if !ctpExternallyMergedOrClosed {
-			logger.V(4).Info("PR externally merged/closed but CTP ExternallyMergedOrClosed not yet synced, cannot remove finalizer yet",
-				"prID", livePR.Status.ID,
-				"ctpExternallyMergedOrClosed", ctp.Status.PullRequest.ExternallyMergedOrClosed)
-			return nil
-		}
-	} else {
-		// For PRs in a normal terminal state: require full status match before removing the finalizer.
-		if ctp.Status.PullRequest == nil {
-			logger.V(4).Info("PR being deleted but CTP has no PR status, cannot remove finalizer yet")
-			return nil
-		}
-
-		statusMatches := ctp.Status.PullRequest.ID == livePR.Status.ID &&
-			ctp.Status.PullRequest.State == livePR.Status.State &&
-			boolPtrEqual(ctp.Status.PullRequest.ExternallyMergedOrClosed, livePR.Status.ExternallyMergedOrClosed)
-
-		if !statusMatches {
-			logger.V(4).Info("PR being deleted but CTP status doesn't match PR status, cannot remove finalizer yet",
-				"ctpPRID", ctp.Status.PullRequest.ID,
-				"prID", livePR.Status.ID,
-				"ctpPRState", ctp.Status.PullRequest.State,
-				"prState", livePR.Status.State,
-				"ctpExternallyMergedOrClosed", ctp.Status.PullRequest.ExternallyMergedOrClosed,
-				"prExternallyMergedOrClosed", livePR.Status.ExternallyMergedOrClosed)
-			return nil
-		}
+	statusMatches := ctp.Status.PullRequest.ID == livePR.Status.ID &&
+		ctp.Status.PullRequest.State == livePR.Status.State &&
+		boolPtrEqual(ctp.Status.PullRequest.ExternallyMergedOrClosed, livePR.Status.ExternallyMergedOrClosed)
+	if !statusMatches {
+		logger.V(4).Info("PR being deleted but CTP status doesn't match PR status, cannot remove finalizer yet",
+			"ctpPRID", ctp.Status.PullRequest.ID,
+			"prID", livePR.Status.ID,
+			"ctpPRState", ctp.Status.PullRequest.State,
+			"prState", livePR.Status.State,
+			"ctpExternallyMergedOrClosed", ctp.Status.PullRequest.ExternallyMergedOrClosed,
+			"prExternallyMergedOrClosed", livePR.Status.ExternallyMergedOrClosed)
+		return nil
 	}
 
 	logger.Info("Removing CTP finalizer from PR - status already synced",

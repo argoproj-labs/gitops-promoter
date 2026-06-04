@@ -195,6 +195,10 @@ func clusterScmProviderStatusApply(o *promoterv1alpha1.ClusterScmProvider, condi
 // jsonRoundTrip copies all JSON-tagged fields from src into dst by marshaling src and
 // unmarshaling into dst. This works for status types whose apply configuration mirrors
 // the original type's JSON shape (which is true for all generated apply configs).
+//
+// api/v1alpha1 value fields that must persist the zero value (e.g. empty string) need
+// json tags without omitempty. Generated applyconfiguration pointer fields use
+// omitempty, which only omits nil pointers—not non-nil pointers to the zero value.
 func jsonRoundTrip(src, dst any) error {
 	data, err := json.Marshal(src)
 	if err != nil {
