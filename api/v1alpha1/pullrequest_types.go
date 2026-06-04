@@ -85,6 +85,7 @@ type PullRequestStatus struct {
 	// ID the id of the pull request
 	ID string `json:"id,omitempty"`
 	// State of the merge request closed/merged/open
+	// +optional
 	// +kubebuilder:validation:Enum="";closed;merged;open
 	State PullRequestState `json:"state"`
 	// PRCreationTime the time the PR was created

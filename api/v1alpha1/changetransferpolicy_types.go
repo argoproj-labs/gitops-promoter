@@ -219,6 +219,7 @@ type PullRequestCommonStatus struct {
 	ID string `json:"id,omitempty"`
 	// State is the state of the pull request. When ExternallyMergedOrClosed is true, State is
 	// empty ("") because we cannot tell merge vs. close from the provider.
+	// +optional
 	// +kubebuilder:validation:Enum="";closed;merged;open
 	State PullRequestState `json:"state"`
 	// PRCreationTime is the time when the pull request was created.
