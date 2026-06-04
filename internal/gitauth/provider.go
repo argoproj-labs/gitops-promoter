@@ -62,11 +62,19 @@ func CreateGitOperationsProvider(
 
 	case scmProvider.GetSpec().Forgejo != nil:
 		logger.V(4).Info("Creating Forgejo git authentication provider")
-		return forgejo.NewForgejoGitAuthenticationProvider(scmProvider, secret), nil
+		provider, err := forgejo.NewForgejoGitAuthenticationProvider(scmProvider, secret)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create Forgejo Auth Provider: %w", err)
+		}
+		return provider, nil
 
 	case scmProvider.GetSpec().Gitea != nil:
 		logger.V(4).Info("Creating Gitea git authentication provider")
-		return gitea.NewGiteaGitAuthenticationProvider(scmProvider, secret), nil
+		provider, err := gitea.NewGiteaGitAuthenticationProvider(scmProvider, secret)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create Gitea Auth Provider: %w", err)
+		}
+		return provider, nil
 
 	case scmProvider.GetSpec().BitbucketCloud != nil:
 		logger.V(4).Info("Creating Bitbucket Cloud git authentication provider")

@@ -13,11 +13,18 @@ const PromotionStrategyLabel = "promoter.argoproj.io/promotion-strategy"
 // EnvironmentLabel the environment branch for the proposed commit
 const EnvironmentLabel = "promoter.argoproj.io/environment"
 
+// CommitStatusGateLabelPrefix is the prefix for parent-gate label keys on CommitStatus resources
+// (for example promoter.argoproj.io/timed-commit-status for TimedCommitStatus).
+const CommitStatusGateLabelPrefix = "promoter.argoproj.io/"
+
 // ChangeTransferPolicyLabel the change transfer policy which the proposed commit is associated with.
 const ChangeTransferPolicyLabel = "promoter.argoproj.io/change-transfer-policy"
 
-// TimedCommitStatusLabel the timed commit status which the commit status is associated with.
-const TimedCommitStatusLabel = "promoter.argoproj.io/timed-commit-status"
+// ArgoCDCommitStatusDefaultKey is the default commit status key for ArgoCDCommitStatus when spec.key is omitted.
+const ArgoCDCommitStatusDefaultKey = "argocd-health"
+
+// TimedCommitStatusDefaultKey is the default commit status key for TimedCommitStatus when spec.key is omitted.
+const TimedCommitStatusDefaultKey = "timer"
 
 // PreviousEnvironmentCommitStatusKey the commit status key name used to indicate the previous environment health
 const PreviousEnvironmentCommitStatusKey = "promoter-previous-environment"
@@ -32,6 +39,11 @@ const PullRequestFinalizer = "pullrequest.promoter.argoproj.io/finalizer"
 
 // ChangeTransferPolicyPullRequestFinalizer prevents deletion of PullRequest until ChangeTransferPolicy copies its status
 const ChangeTransferPolicyPullRequestFinalizer = "changetransferpolicy.promoter.argoproj.io/pullrequest-finalizer"
+
+// ChangeTransferPolicyPullRequestCleanupFinalizer is set on ChangeTransferPolicy while PullRequests may carry
+// ChangeTransferPolicyPullRequestFinalizer. On ChangeTransferPolicy deletion, the controller removes the PR finalizers
+// and clears this finalizer so the policy can finish deleting without waiting for per-PR status propagation.
+const ChangeTransferPolicyPullRequestCleanupFinalizer = "changetransferpolicy.promoter.argoproj.io/finalizer"
 
 // GitRepositoryFinalizer prevents deletion of GitRepository while PullRequests reference it
 const GitRepositoryFinalizer = "gitrepository.promoter.argoproj.io/finalizer"

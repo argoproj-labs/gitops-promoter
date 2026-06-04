@@ -13,7 +13,8 @@ A counter of git clone operations.
 Labels:
 
 * `git_repository`: The name of the GitRepository resource associated with the operation.
-* `scm_provider`: The name of the ScmProvider resource associated with the operation.
+* `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
+* `scm_provider_kind`: The kind of that reference: `ScmProvider` (namespaced) or `ClusterScmProvider` (cluster-scoped).
 * `operation`: The type of git operation (clone, fetch, pull, push, ls-remote).
 * `result`: Whether the operation succeeded (success, failure).
 
@@ -24,7 +25,8 @@ A histogram of the duration of git clone operations.
 Labels:
 
 * `git_repository`: The name of the GitRepository resource associated with the operation.
-* `scm_provider`: The name of the ScmProvider resource associated with the operation.
+* `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
+* `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
 * `operation`: The type of git operation (clone, fetch, pull, push, ls-remote).
 * `result`: Whether the operation succeeded (success, failure).
 
@@ -35,7 +37,8 @@ A counter of SCM API calls.
 Labels:
 
 * `git_repository`: The name of the GitRepository resource associated with the operation.
-* `scm_provider`: The name of the ScmProvider resource associated with the operation.
+* `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
+* `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
 * `api`: The SCM API being called (CommitStatus, PullRequest)
 * `operation`: The type of SCM operation.
   * For CommitStatus, this is always create.
@@ -49,31 +52,57 @@ A histogram of the duration of SCM API calls.
 Labels:
 
 * `git_repository`: The name of the GitRepository resource associated with the operation.
+* `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
+* `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
 * `api`: The SCM API being called (CommitStatus, PullRequest)
 * `operation`: The type of SCM operation.
   * For CommitStatus, this is always create.
   * For PullRequest, this is create, update, merge, close, or list.
 * `response_code`: The HTTP response code.
 
+## webrequest_commit_status_http_requests_total
+
+A counter of completed outbound HTTP round-trips from `WebRequestCommitStatus` reconciliation. It increments once after `http.Client.Do` succeeds. There is no increment when `Do` fails, the response is nil, the body read fails, or reconciliation fails before `Do` (for example during template rendering or authentication setup).
+
+Labels:
+
+* `namespace`: Namespace of the `WebRequestCommitStatus` resource.
+* `name`: Name of the `WebRequestCommitStatus` resource.
+* `response_code`: The HTTP status code on the response (for example `200`, `404`, `500`).
+
+Each distinct combination of labels is its own Prometheus time series. Clusters with very many `WebRequestCommitStatus` objects or many different status codes should expect proportionally more series.
+
+## webrequest_commit_status_http_request_duration_seconds
+
+A histogram of elapsed time from `http.Client.Do` through finishing `io.ReadAll` on the response body, for the same successful round-trips counted by `webrequest_commit_status_http_requests_total`.
+
+Labels:
+
+* `namespace`: Namespace of the `WebRequestCommitStatus` resource.
+* `name`: Name of the `WebRequestCommitStatus` resource.
+* `response_code`: Same semantics as for `webrequest_commit_status_http_requests_total`.
+
 ## scm_calls_rate_limit_limit
 
-A counter for the rate limit of SCM API calls.
+A gauge for the rate limit of SCM API calls.
 
 This metric is currently only produced for GitHub.
 
 Labels:
 
-* `scm_provider`: The name of the ScmProvider resource associated with the operation.
+* `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
+* `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
 
 ## scm_calls_rate_limit_remaining
 
-A counter for the remaining rate limit of SCM API calls.
+A gauge for the remaining rate limit of SCM API calls.
 
 This metric is currently only produced for GitHub.
 
 Labels:
 
-* `scm_provider`: The name of the ScmProvider resource associated with the operation.
+* `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
+* `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
 
 ## scm_calls_rate_limit_reset_remaining_seconds
 
@@ -83,7 +112,8 @@ This metric is currently only produced for GitHub.
 
 Labels:
 
-* `scm_provider`: The name of the ScmProvider resource associated with the operation.
+* `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
+* `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
 
 ## webhook_processing_duration_seconds
 
@@ -115,3 +145,16 @@ Labels:
 A counter for the number of times the ArgoCD application watch event handler is called. This metric increments each time the controller processes an Argo CD application event.
 
 No labels.
+
+## promoter_kubernetes_resources
+
+A gauge of how many `promoter.argoproj.io` custom resources currently exist in the **local** Kubernetes cluster, broken out by API kind and readiness (for example `PromotionStrategy`, `GitRepository`).
+
+The controller refreshes this metric on a fixed interval (30 seconds) by reading from the controller informer stores (no per-tick API list calls). It does **not** count resources on remote clusters that are reconciled only through multicluster configuration.
+
+If reading from the informer store fails for a kind, that kind's gauge is set to `0` for all readiness values and an error is logged.
+
+Labels:
+
+* `kind`: Kubernetes API kind of the custom resource (matches the thirteen root CRDs reconciled by GitOps Promoter, such as `ArgoCDCommitStatus`, `ChangeTransferPolicy`, `ClusterScmProvider`, `CommitStatus`, `ControllerConfiguration`, `GitCommitStatus`, `GitRepository`, `PromotionStrategy`, `PullRequest`, `RevertCommit`, `ScmProvider`, `TimedCommitStatus`, `WebRequestCommitStatus`).
+* `readiness`: Status of the `Ready` condition on the resource. One of `True`, `False`, `Unknown`, or `""` (empty string, when the `Ready` condition is not present on the resource).

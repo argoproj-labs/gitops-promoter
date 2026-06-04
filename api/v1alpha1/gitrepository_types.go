@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -48,7 +49,7 @@ type ScmProviderObjectReference struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=253
-	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$`
 	Name string `json:"name"`
 }
 
@@ -56,6 +57,13 @@ type ScmProviderObjectReference struct {
 type GitRepositoryStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+
+	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
+	// Because status is written via Server-Side Apply with ForceOwnership (which has no
+	// optimistic-concurrency check), this field is the canonical way to detect stale
+	// status writes: compare status.observedGeneration with metadata.generation.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
 	// Conditions Represents the observations of the current state.
 	// +patchMergeKey=type
@@ -85,6 +93,11 @@ func (gr *GitRepository) GetConditions() *[]metav1.Condition {
 	return &gr.Status.Conditions
 }
 
+// SetObservedGeneration records the object generation that produced the current status.
+func (gr *GitRepository) SetObservedGeneration(generation int64) {
+	gr.Status.ObservedGeneration = generation
+}
+
 //+kubebuilder:object:root=true
 
 // GitRepositoryList contains a list of GitRepository
@@ -95,5 +108,8 @@ type GitRepositoryList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&GitRepository{}, &GitRepositoryList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &GitRepository{}, &GitRepositoryList{})
+		return nil
+	})
 }

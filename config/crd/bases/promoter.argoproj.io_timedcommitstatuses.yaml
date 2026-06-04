@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: timedcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -66,6 +66,16 @@ spec:
                   - duration
                   type: object
                 type: array
+              key:
+                default: timer
+                description: |-
+                  Key is the gate name referenced in the PromotionStrategy's activeCommitStatuses or
+                  proposedCommitStatuses. When omitted, the CRD default is timer. Set Key explicitly, even if you use the CRD default.
+                  Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                type: string
               promotionStrategyRef:
                 description: PromotionStrategyRef is a reference to the promotion
                   strategy that this timed commit status applies to.
@@ -74,7 +84,7 @@ spec:
                     description: Name is the name of the object to refer to.
                     maxLength: 253
                     minLength: 1
-                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
                     type: string
                 required:
                 - name
@@ -200,6 +210,14 @@ spec:
                 x-kubernetes-list-map-keys:
                 - branch
                 x-kubernetes-list-type: map
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the .metadata.generation that this status was reconciled from.
+                  Because status is written via Server-Side Apply with ForceOwnership (which has no
+                  optimistic-concurrency check), this field is the canonical way to detect stale
+                  status writes: compare status.observedGeneration with metadata.generation.
+                format: int64
+                type: integer
             type: object
         required:
         - spec

@@ -11,10 +11,9 @@ export const PromotionStrategyDetailsView: React.FC<PromotionStrategyDetailsView
 }) => {
   if (!strategy) return <div>No strategy found</div>;
 
-
   //Pass raw data
   const environments = strategy.status?.environments || [];
   return <Card environments={environments} />;
 };
 
-export default PromotionStrategyDetailsView; 
+export default PromotionStrategyDetailsView;

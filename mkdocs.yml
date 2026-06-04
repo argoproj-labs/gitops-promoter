@@ -1,15 +1,17 @@
 site_name: GitOps Promoter - A GitOps First Environment Promotion Tool
 repo_url: https://github.com/argoproj-labs/gitops-promoter
-site_url: https://argo-gitops-promoter.readthedocs.io/
+site_url: https://gitops-promoter.readthedocs.io/
 theme:
   font:
     text: Work Sans
-  logo: assets/logo.png
+  logo: assets/logo/icon/secondary.png
+  favicon: assets/logo/favicon.png
   name: material
   features:
     - content.code.copy
   palette:
-    - primary: teal
+    - primary: custom
+      accent: custom
       scheme: default
       toggle:
         icon: material/toggle-switch-off-outline
@@ -18,16 +20,41 @@ theme:
       toggle:
         icon: material/toggle-switch
         name: Switch to light mode
+extra_css:
+  - stylesheets/extra.css
 markdown_extensions:
   - markdown_include.include
   - codehilite:
       css_class: highlight
   - admonition
   - pymdownx.superfences
+  # Fenced tab blocks (/// tab | … ///) avoid indented-tab syntax that GitHub renders as code blocks.
+  - pymdownx.blocks.tab:
+      alternate_style: true
+      # Tab label slugs for anchors (e.g. #github); tab bodies intentionally omit headings (see getting-started.md).
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        args: []
+        kwds:
+          case: lower
 nav:
   - Overview: index.md
+  - Roadmap: roadmap.md
   - Getting Started: getting-started.md
+  - Contributing:
+      - Overview: contributing/index.md
+      - Adding an SCM Provider: contributing/adding-an-scm-provider.md
+      - Writing CEL Validation Rules: contributing/writing-cel-rules.md
+      - Continuous Integration: contributing/ci.md
+      - Cutting a Release: contributing/cutting-a-release.md
+      - Using Finalizers: contributing/using-finalizers.md
+      - Maintaining Resource Status: contributing/updating-status.md
+  - Security: security.md
+  - Debugging:
+      - Overview: debugging/index.md
+      - Finalizers: debugging/finalizers.md
+      - Labels: debugging/labels.md
   - Architecture: architecture.md
+  - Repository Structure: repository-structure.md
   - Custom Hydrator: custom-hydrator.md
   - CRD Specs: crd-specs.md
   - Gating Promotions: gating-promotions.md
@@ -35,6 +62,9 @@ nav:
       - Argo CD: commit-status-controllers/argocd.md
       - Git Commit: commit-status-controllers/git-commit.md
       - Timed: commit-status-controllers/timed.md
+      - Web Request:
+          - Overview: commit-status-controllers/web-request.md
+          - Simulator: commit-status-controllers/web-request-simulator.md
       - Development Best Practices: commit-status-controllers/development-best-practices.md
   - Multi-Tenancy: multi-tenancy.md
   - Monitoring:
@@ -46,7 +76,9 @@ nav:
   - FAQs: faqs.md
   - Tutorials:
       - Argo CD Apps: tutorial-argocd-apps.md
-  - Argo CD Integrations: argocd-integrations.md
+  - Argo CD Integrations:
+      - Overview: argocd-integrations/index.md
+      - Extension Development: argocd-integrations/development.md
 plugins:
   - gh-admonitions
   - redirects:

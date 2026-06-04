@@ -1,6 +1,11 @@
-# GitOps Promoter ArgoCD Extension
+# GitOps Promoter Argo CD Extension
+
+## App view icon
+
+The extension injects the GitOps Promoter logo as the app view tab icon via a `<style>` tag when it loads. No extra configuration is needed.
 
 ## Prerequisites
+
 - Node.js
 - npm
 - Argo CD v3.3 (earlier versions will work but may be buggy)
@@ -8,11 +13,13 @@
 ## Build the Extension
 
 ### Option 1: Build as part of the main project (Recommended)
+
 ```bash
 make build-extension
 ```
 
 ### Option 2: Build standalone
+
 ```bash
 cd ui/extension
 npm install
@@ -39,6 +46,7 @@ kubectl rollout restart deployment/argocd-server -n argocd
 ```
 
 ### Installing from Release Asset:
+
 ```bash
 # Download the extension
 wget https://github.com/argoproj-labs/gitops-promoter/releases/latest/download/gitops-promoter-argocd-extension.tar.gz
@@ -56,11 +64,12 @@ kubectl rollout restart deployment/argocd-server -n argocd
 For detailed deployment instructions, see the [ArgoCD Extension Documentation](https://argo-cd.readthedocs.io/en/stable/developer-guide/extensions/ui-extensions/).
 
 ## Development
+
 For local development, you can run:
+
 ```bash
 cd ui/extension
 npm run dev
 ```
 
 **Note**: The extension is NOT embedded in the main Docker container.
-

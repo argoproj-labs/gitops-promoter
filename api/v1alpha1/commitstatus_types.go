@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -71,6 +72,13 @@ type CommitStatusStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
+	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
+	// Because status is written via Server-Side Apply with ForceOwnership (which has no
+	// optimistic-concurrency check), this field is the canonical way to detect stale
+	// status writes: compare status.observedGeneration with metadata.generation.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// Id is the unique identifier of the commit status, set by the SCM
 	Id string `json:"id,omitempty"`
 	// Sha is the commit SHA that the status is set on.
@@ -95,6 +103,11 @@ type CommitStatusStatus struct {
 // GetConditions returns the conditions of the CommitStatus
 func (cs *CommitStatus) GetConditions() *[]metav1.Condition {
 	return &cs.Status.Conditions
+}
+
+// SetObservedGeneration records the object generation that produced the current status.
+func (cs *CommitStatus) SetObservedGeneration(generation int64) {
+	cs.Status.ObservedGeneration = generation
 }
 
 // +kubebuilder:ac:generate=true
@@ -125,7 +138,10 @@ type CommitStatusList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&CommitStatus{}, &CommitStatusList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &CommitStatus{}, &CommitStatusList{})
+		return nil
+	})
 }
 
 // CommitStatusPhase represents the phase of a commit status.

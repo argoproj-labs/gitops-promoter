@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -64,6 +65,11 @@ type ControllerConfigurationSpec struct {
 	// including WorkQueue settings that control reconciliation behavior.
 	// +required
 	GitCommitStatus GitCommitStatusConfiguration `json:"gitCommitStatus"`
+
+	// WebRequestCommitStatus contains the configuration for the WebRequestCommitStatus controller,
+	// including WorkQueue settings that control reconciliation behavior.
+	// +required
+	WebRequestCommitStatus WebRequestCommitStatusConfiguration `json:"webRequestCommitStatus"`
 }
 
 // PromotionStrategyConfiguration defines the configuration for the PromotionStrategy controller.
@@ -151,6 +157,17 @@ type TimedCommitStatusConfiguration struct {
 // requests, including requeue intervals, concurrency limits, and rate limiting behavior.
 type GitCommitStatusConfiguration struct {
 	// WorkQueue contains the work queue configuration for the GitCommitStatus controller.
+	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+	// +required
+	WorkQueue WorkQueue `json:"workQueue"`
+}
+
+// WebRequestCommitStatusConfiguration defines the configuration for the WebRequestCommitStatus controller.
+//
+// This configuration controls how the WebRequestCommitStatus controller processes reconciliation
+// requests, including requeue intervals, concurrency limits, and rate limiting behavior.
+type WebRequestCommitStatusConfiguration struct {
+	// WorkQueue contains the work queue configuration for the WebRequestCommitStatus controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
 	WorkQueue WorkQueue `json:"workQueue"`
@@ -307,8 +324,11 @@ type Bucket struct {
 // PullRequestTemplate defines the template configuration for generating pull requests.
 //
 // Templates use Go template syntax and have access to Sprig functions for flexible string
-// manipulation and formatting. The template receives context about the promotion being performed,
-// which can be used to generate informative titles and descriptions.
+// manipulation and formatting.
+//
+// Template data available when rendering (used by the ChangeTransferPolicy controller when creating/updating PRs):
+//   - .ChangeTransferPolicy – the ChangeTransferPolicy for the managing this PullRequest
+//   - .PromotionStrategy – the PromotionStrategy for the CTP
 type PullRequestTemplate struct {
 	// Title is the template used to generate the title of the pull request.
 	// Uses Go template syntax with Sprig functions available for string manipulation.
@@ -351,5 +371,8 @@ type ControllerConfigurationList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&ControllerConfiguration{}, &ControllerConfigurationList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &ControllerConfiguration{}, &ControllerConfigurationList{})
+		return nil
+	})
 }

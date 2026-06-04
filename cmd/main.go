@@ -31,6 +31,7 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/cmd/demo"
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
+	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
 
@@ -165,9 +166,10 @@ func runController(
 	mcMgr, err := mcmanager.New(ctrl.GetConfigOrDie(), provider, ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
-			BindAddress:   metricsAddr,
-			SecureServing: secureMetrics,
-			TLSOpts:       tlsOpts,
+			BindAddress:    metricsAddr,
+			SecureServing:  secureMetrics,
+			TLSOpts:        tlsOpts,
+			FilterProvider: metrics.ScrapeLogFilterProvider(),
 		},
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
@@ -194,6 +196,10 @@ func runController(
 	}
 
 	localManager := mcMgr.GetLocalManager()
+
+	if err := localManager.Add(metrics.NewResourceCountRunnable(localManager.GetCache())); err != nil {
+		panic(fmt.Errorf("unable to add resource count metrics runnable: %w", err))
+	}
 
 	settingsMgr := settings.NewManager(localManager.GetClient(), localManager.GetAPIReader(), settings.ManagerConfig{
 		ControllerNamespace: controllerNamespace,
@@ -304,6 +310,16 @@ func runController(
 		setupLog.Error(err, "unable to create controller", "controller", "GitCommitStatus")
 		panic(fmt.Errorf("unable to create GitCommitStatus controller: %w", err))
 	}
+	if err := (&controller.WebRequestCommitStatusReconciler{
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorder("WebRequestCommitStatus"),
+		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "WebRequestCommitStatus")
+		panic(fmt.Errorf("unable to create WebRequestCommitStatus controller: %w", err))
+	}
 	//+kubebuilder:scaffold:builder
 
 	if err := localManager.AddHealthzCheck("healthz", healthz.Ping); err != nil {
@@ -332,7 +348,8 @@ func runController(
 	})
 
 	g.Go(func() error {
-		if err := ignoreCanceled(whr.Start(processSignalsCtx, fmt.Sprintf(":%d", constants.WebhookReceiverPort))); err != nil { //nolint:lll
+		//nolint:lll // long line due to function call with multiple parameters
+		if err := ignoreCanceled(whr.Start(processSignalsCtx, fmt.Sprintf(":%d", constants.WebhookReceiverPort))); err != nil {
 			setupLog.Error(err, "unable to start webhook receiver")
 			return err
 		}
@@ -374,7 +391,8 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 			mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
 				Scheme: scheme,
 				Metrics: metricsserver.Options{
-					BindAddress: ":9082",
+					BindAddress:    ":9082",
+					FilterProvider: metrics.ScrapeLogFilterProvider(),
 				},
 			})
 			if err != nil {
@@ -414,6 +432,7 @@ func newCommand() *cobra.Command {
 
 	opts := zap.Options{
 		Development: true,
+		Level:       zapcore.InfoLevel, // default to info; use --zap-log-level=debug or =5 for verbose
 		TimeEncoder: zapcore.RFC3339NanoTimeEncoder,
 	}
 

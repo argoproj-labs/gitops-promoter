@@ -152,8 +152,9 @@ GitOps Promoter provides several built-in controllers that automatically create 
 The [ArgoCDCommitStatus](commit-status-controllers/argocd.md) controller monitors Argo CD Applications and creates CommitStatus resources based on application health. This enables gating promotions based on whether applications are healthy in their current environment.
 
 Key features:
+
 - Monitors Argo CD Applications with specific labels
-- Creates CommitStatus resources with key `argocd-health`
+- `spec.key` (default `argocd-health` when omitted; set explicitly, including the default value)
 - Reports application health status (Healthy, Progressing, Degraded, etc.)
 
 ### Time-Based Gating
@@ -161,12 +162,28 @@ Key features:
 The [TimedCommitStatus](commit-status-controllers/timed.md) controller implements "soak time" or "bake time" requirements, ensuring changes run in lower environments for a minimum duration before being promoted.
 
 Key features:
+
 - Monitors how long commits have been running in each environment
-- Creates CommitStatus resources with key `timer`
+- `spec.key` (default `timer` when omitted; set explicitly, including the default value)
 - Reports pending until the required duration is met
 - Prevents promotions when there are pending changes in lower environments
+
+### Web Request (HTTP) Validation
+
+The [WebRequestCommitStatus](commit-status-controllers/web-request.md) controller gates promotions on external HTTP/HTTPS APIs. It calls configurable endpoints, evaluates the response with expressions, and creates CommitStatus resources so the SCM shows success or pending.
+
+Key features:
+
+- **Polling or trigger mode:** Poll at an interval or only when a trigger expression fires (e.g. when SHA changes)
+- **Validation expression:** Uses the [expr](https://github.com/expr-lang/expr) language; `true` means validation passed (CommitStatus phase success), `false` means pending
+- **Optional response expression:** Extract a subset of the HTTP response into `ResponseOutput` for use in the next trigger evaluation and in description/URL templates
+- **TriggerOutput:** Trigger when.output expression can return extra fields that are stored and available on the next run and in templates
+- **SuccessOutput:** Success when.output expression can return extra fields that are stored and available on the next run in trigger, success expressions, and templates
+- **Shared expr (`when.variables`):** Optional map expression whose result is available as **`Variables`** to `when.expression` and `when.output.expression` on the same `when` block (trigger and success); see [Web Request Commit Status](commit-status-controllers/web-request.md#shared-trigger-and-success-expr-whenvariables)
+- **Templated URL, headers, body:** Go templates with `Branch`, `Phase`, `PromotionStrategy`, `WebRequestCommitStatus`, `TriggerOutput`, `ResponseOutput`, `SuccessOutput`, namespace metadata, etc.
+- **Authentication:** Basic, Bearer, OAuth2, or mutual TLS via Secrets
+- **reportOn:** Report on the proposed commit (default) or the active (deployed) commit
 
 ### Custom Controllers
 
 You can also create your own controllers that manage CommitStatus resources. Any system that can create Kubernetes resources can participate in the gating logic by creating CommitStatus resources with the appropriate SHAs and phases.
-

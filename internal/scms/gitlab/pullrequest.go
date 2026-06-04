@@ -64,7 +64,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, desc strin
 		options,
 	)
 	if resp != nil {
-		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
+		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
 		return "", err //nolint:wrapcheck // Error wrapping handled at top level
@@ -111,7 +111,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 		gitlab.WithContext(ctx),
 	)
 	if resp != nil {
-		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationUpdate, resp.StatusCode, time.Since(start), nil)
+		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationUpdate, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
 		return fmt.Errorf("failed to update merge request: %w", err)
@@ -157,7 +157,7 @@ func (pr *PullRequest) Close(ctx context.Context, prObj v1alpha1.PullRequest) er
 		gitlab.WithContext(ctx),
 	)
 	if resp != nil {
-		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationClose, resp.StatusCode, time.Since(start), nil)
+		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationClose, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
 		return fmt.Errorf("failed to close merge request: %w", err)
@@ -210,7 +210,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) er
 		gitlab.WithContext(ctx),
 	)
 	if resp != nil {
-		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, resp.StatusCode, time.Since(start), nil)
+		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
 		return err //nolint:wrapcheck // Error wrapping handled at top level
@@ -240,21 +240,21 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 		return false, "", time.Time{}, fmt.Errorf("failed to get repo: %w", err)
 	}
 
-	options := &gitlab.ListMergeRequestsOptions{
+	options := &gitlab.ListProjectMergeRequestsOptions{
 		SourceBranch: gitlab.Ptr(pullRequest.Spec.SourceBranch),
 		TargetBranch: gitlab.Ptr(pullRequest.Spec.TargetBranch),
 		State:        gitlab.Ptr("opened"),
 	}
 
 	start := time.Now()
-	mrs, resp, err := pr.client.MergeRequests.ListMergeRequests(options)
+	mrs, resp, err := pr.client.MergeRequests.ListProjectMergeRequests(repo.Spec.GitLab.ProjectID, options)
 	if resp == nil {
 		statusCode := -1
-		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
+		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
 		logger.V(4).Info("gitlab response status", "status", "nil response")
 		return false, "", time.Time{}, errors.New("received nil response from GitLab API")
 	}
-	metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, resp.StatusCode, time.Since(start), nil)
+	metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, resp.StatusCode, time.Since(start), nil)
 	if err != nil {
 		return false, "", time.Time{}, fmt.Errorf("failed to list pull requests: %w", err)
 	}

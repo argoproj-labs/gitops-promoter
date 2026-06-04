@@ -4,7 +4,6 @@ import { getHealthStatus } from '@shared/utils/getStatus';
 import type { History, CommitStatus } from '@shared/types/promotion';
 import './HistoryNavigation.scss';
 
-
 interface HistoryNavigationProps {
   history: History[];
   currentIndex: number;
@@ -14,19 +13,16 @@ interface HistoryNavigationProps {
 const HistoryNavigation: React.FC<HistoryNavigationProps> = ({
   history,
   currentIndex,
-  onHistorySelect
+  onHistorySelect,
 }) => {
-
-
   const getStatusColor = (commitStatuses: CommitStatus[] = []) => {
-    const checks = commitStatuses.map(cs => ({
+    const checks = commitStatuses.map((cs) => ({
       name: cs.key,
       status: cs.phase || 'unknown',
       description: cs.description,
-      url: cs.url
+      url: cs.url,
     }));
 
-    
     const status = getHealthStatus(checks);
     switch (status) {
       case 'success':
@@ -41,8 +37,8 @@ const HistoryNavigation: React.FC<HistoryNavigationProps> = ({
   };
 
   // Get current status from the first history entry or default to unknown
-  const currentStatusColor = history.length > 0 ? 
-    getStatusColor(history[0]?.active?.commitStatuses) : 'unknown';
+  const currentStatusColor =
+    history.length > 0 ? getStatusColor(history[0]?.active?.commitStatuses) : 'unknown';
 
   // Calculate position indicator
   const totalItems = history.length;
@@ -50,8 +46,6 @@ const HistoryNavigation: React.FC<HistoryNavigationProps> = ({
 
   return (
     <div className="history-navigation">
-
-
       {/* Current entry history @ 0*/}
       <button
         className={`history-item current-item ${currentIndex === 0 ? 'active' : ''}`}
@@ -60,7 +54,7 @@ const HistoryNavigation: React.FC<HistoryNavigationProps> = ({
       >
         <span className={`history-item-inner ${currentStatusColor}`} />
       </button>
-      
+
       {/* History */}
       {history.slice(1).map((entry, index) => {
         const isActive = index + 1 === currentIndex;
@@ -68,7 +62,7 @@ const HistoryNavigation: React.FC<HistoryNavigationProps> = ({
         const timeAgoText = date ? timeAgo(date) : '';
         const formattedDate = date ? new Date(date).toLocaleDateString() : '';
         const statusColor = getStatusColor(entry.active?.commitStatuses);
-        
+
         return (
           <button
             key={index}
@@ -80,11 +74,9 @@ const HistoryNavigation: React.FC<HistoryNavigationProps> = ({
           </button>
         );
       })}
-      
+
       {/* Position indicator */}
-      <div className="history-position">
-        {positionText}
-      </div>
+      <div className="history-position">{positionText}</div>
     </div>
   );
 };

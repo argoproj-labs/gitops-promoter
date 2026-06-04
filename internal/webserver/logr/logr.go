@@ -80,8 +80,7 @@ func RecoveryWithLogr(logger logr.Logger, timeFormat string, utc, stack bool) gi
 			// condition that warrants a panic stack trace.
 			var brokenPipe bool
 			if ne, ok := err.(*net.OpError); ok {
-				var se *os.SyscallError
-				if errors.As(ne.Err, &se) {
+				if se, ok := errors.AsType[*os.SyscallError](ne.Err); ok {
 					if strings.Contains(strings.ToLower(se.Error()), "broken pipe") ||
 						strings.Contains(strings.ToLower(se.Error()), "connection reset by peer") {
 						brokenPipe = true
@@ -98,12 +97,12 @@ func RecoveryWithLogr(logger logr.Logger, timeFormat string, utc, stack bool) gi
 
 			switch {
 			case brokenPipe:
-				logger.Error(err.(*os.SyscallError), c.Request.URL.Path, //nolint: forcetypeassert
+				logger.Error(err.(*os.SyscallError), c.Request.URL.Path, //nolint:forcetypeassert // brokenPipe check guarantees SyscallError type
 					"time", time.Format(timeFormat),
 					"request", string(httpRequest),
 				)
 				// If the connection is dead, we can't write a status to it.
-				c.Error(e) //nolint: errcheck
+				c.Error(e) //nolint:errcheck // connection is dead, can't handle error
 				c.Abort()
 				return
 			case stack:

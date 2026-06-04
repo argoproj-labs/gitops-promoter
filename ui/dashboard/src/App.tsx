@@ -15,7 +15,10 @@ function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/promotion-strategies" replace />} />
         <Route path="/promotion-strategies" element={<DashboardPage />} />
-        <Route path="/promotion-strategies/:namespace/:name" element={<PromotionStrategyPageWithNamespace />} />
+        <Route
+          path="/promotion-strategies/:namespace/:name"
+          element={<PromotionStrategyPageWithNamespace />}
+        />
       </Routes>
     </BrowserRouter>
   );

@@ -1,0 +1,51 @@
+/*
+ * GitOps Promoter docs – theme aligned with logo palette.
+ * Brand colors from docs/assets/logo (primary SVG); variations via color-mix().
+ */
+
+:root {
+  --color-navy: #00254a;
+  --color-orange: #ff7e56;
+}
+
+/* -------------------------------------------------------------------------
+   Light mode (default)
+   ------------------------------------------------------------------------- */
+[data-md-color-scheme="default"] {
+  /* Primary: navy – header, sidebar */
+  --md-primary-fg-color: var(--color-navy);
+  --md-primary-fg-color--light: color-mix(in srgb, var(--color-navy) 65%, white);
+  --md-primary-fg-color--dark: color-mix(in srgb, var(--color-navy) 85%, black);
+  --md-primary-bg-color: #ffffff;
+  --md-primary-bg-color--light: rgba(255, 255, 255, 0.7);
+
+  /* Accent: orange – link hover, buttons, focus (slightly darker for contrast on white) */
+  --md-accent-fg-color: color-mix(in srgb, var(--color-orange) 75%, var(--color-navy));
+  --md-accent-fg-color--transparent: color-mix(in srgb, var(--color-orange) 10%, transparent);
+  --md-accent-bg-color: #ffffff;
+  --md-accent-bg-color--light: rgba(255, 255, 255, 0.7);
+
+  /* Link color: lighter navy */
+  --md-typeset-a-color: color-mix(in srgb, var(--color-navy) 65%, white);
+}
+
+/* -------------------------------------------------------------------------
+   Dark mode (slate)
+   ------------------------------------------------------------------------- */
+[data-md-color-scheme="slate"] {
+  /* Primary: navy (slightly lifted so header is visible on dark) */
+  --md-primary-fg-color: color-mix(in srgb, var(--color-navy) 85%, white);
+  --md-primary-fg-color--light: color-mix(in srgb, var(--color-navy) 65%, white);
+  --md-primary-fg-color--dark: color-mix(in srgb, var(--color-navy) 90%, black);
+  --md-primary-bg-color: #ffffff;
+  --md-primary-bg-color--light: rgba(255, 255, 255, 0.7);
+
+  /* Accent: orange as in logo */
+  --md-accent-fg-color: var(--color-orange);
+  --md-accent-fg-color--transparent: color-mix(in srgb, var(--color-orange) 15%, transparent);
+  --md-accent-bg-color: #ffffff;
+  --md-accent-bg-color--light: rgba(255, 255, 255, 0.7);
+
+  /* Links: light navy tint for readability on dark */
+  --md-typeset-a-color: color-mix(in srgb, var(--color-navy) 35%, white);
+}

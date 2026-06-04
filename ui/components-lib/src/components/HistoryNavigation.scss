@@ -30,10 +30,10 @@
   justify-content: center;
   transition: transform 0.2s ease;
   position: relative;
-  
+
   &:hover {
     transform: scale(1.2);
-    
+
     &::after {
       content: attr(title);
       position: absolute;
@@ -50,7 +50,7 @@
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
       pointer-events: none;
     }
-    
+
     &::before {
       content: '';
       position: absolute;
@@ -63,7 +63,7 @@
       pointer-events: none;
     }
   }
-  
+
   &.active .history-item-inner {
     background: white;
     border: 2px solid $argo-running;
@@ -78,11 +78,19 @@
   background: $argo-color-gray-4;
   border: 2px solid transparent;
   transition: all 0.2s ease;
-  
-  &.success { background: $argo-success; }
-  &.failure { background: $argo-failed; }
-  &.pending { background: $argo-running; }
-  &.unknown { background: $argo-color-gray-4; }
+
+  &.success {
+    background: $argo-success;
+  }
+  &.failure {
+    background: $argo-failed;
+  }
+  &.pending {
+    background: $argo-running;
+  }
+  &.unknown {
+    background: $argo-color-gray-4;
+  }
 }
 
 .history-position {

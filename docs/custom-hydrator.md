@@ -33,10 +33,23 @@ the environment's active branch name with a `-next` suffix.
 
 > **Important**: The `-next` suffix convention is hard-coded in GitOps Promoter and cannot be changed.
 
+When using the monorepo shared-active-branch pattern (`PromotionStrategy.spec.activePath`), proposed branches are built
+as `<active-branch>-next/<activePath>`.
+
+| Active Branch | Active Path | Proposed Branch |
+|---------------|-------------|-----------------|
+| `environment/development` | `app-a` | `environment/development-next/app-a` |
+| `environment/staging` | `app-a` | `environment/staging-next/app-a` |
+
 ### 3. Include `hydrator.metadata` File
 
-Each hydrated commit **must** include a `hydrator.metadata` file at the root of the repository. This JSON file tells
-GitOps Promoter which DRY commit was used to produce the hydrated content.
+Each hydrated commit **must** include a `hydrator.metadata` file. This JSON file tells GitOps Promoter which DRY
+commit was used to produce the hydrated content.
+
+- Default mode (no `activePath`): put `hydrator.metadata` at the repository root.
+- Shared-active-branch mode (`activePath` set): put `hydrator.metadata` at `<activePath>/hydrator.metadata`.
+  GitOps Promoter reads only that path; a repository-root `hydrator.metadata` is optional and is not used for
+  promotion.
 
 #### Required Fields
 
@@ -91,6 +104,19 @@ To avoid unnecessary commits when manifests haven't changed, your hydrator shoul
 is identical to what's already on the proposed branch. If nothing has changed, don't push a new commit.
 
 This prevents GitOps Promoter from creating Pull Requests for changes that have no effect.
+
+### 5. Preserve Other Application Directories (Shared Active Branch Mode)
+
+If you use `activePath` to share one active branch across multiple applications, hydration must be path-scoped:
+
+1. Update only files for the current app path.
+2. Do not delete or rewrite other applications' directories on the same branch.
+
+> [!NOTE]
+> Multiple `PromotionStrategy` resources on the same active branch must follow the constraints in
+> [repository structure](repository-structure.md#constraints-when-multiple-promotionstrategies-share-an-active-branch).
+
+This ensures independent PromotionStrategies can safely share the same active branch.
 
 ## Example Implementations
 
@@ -208,12 +234,29 @@ git fetch origin ${PROPOSED_BRANCH} 2>/dev/null || {
 }
 BRANCH_EXISTS=${BRANCH_EXISTS:-true}
 
+push_note_with_retry() {
+  local commit_sha=$1
+  local note_content="{\"drySha\": \"${DRY_SHA}\"}"
+
+  for attempt in 1 2 3 4 5 6 7 8; do
+    git fetch origin +${NOTES_REF}:${NOTES_REF} 2>/dev/null || true
+    git notes --ref=${NOTES_REF} add -f -m "${note_content}" ${commit_sha}
+    if git push origin ${NOTES_REF}; then
+      return 0
+    fi
+    sleep 0.1
+  done
+
+  echo "Failed to push git note after retries" >&2
+  return 1
+}
+
 if [ "${BRANCH_EXISTS}" = "true" ]; then
   # Get the current hydrated commit SHA
   HYDRATED_SHA=$(git rev-parse origin/${PROPOSED_BRANCH})
   
   # Fetch and check the git note - if drySha matches, we can skip entirely
-  git fetch origin ${NOTES_REF}:${NOTES_REF} 2>/dev/null || true
+  git fetch origin +${NOTES_REF}:${NOTES_REF} 2>/dev/null || true
   EXISTING_NOTE=$(git notes --ref=${NOTES_REF} show ${HYDRATED_SHA} 2>/dev/null || echo "{}")
   EXISTING_DRY_SHA=$(echo "${EXISTING_NOTE}" | jq -r '.drySha // ""')
   
@@ -247,8 +290,7 @@ if [ "${BRANCH_EXISTS}" = "true" ] && diff -q ${NEW_MANIFESTS} ${CURRENT_MANIFES
   #
   echo "No manifest changes for ${ENV}, updating git note only"
   
-  git notes --ref=${NOTES_REF} add -f -m "{\"drySha\": \"${DRY_SHA}\"}" ${HYDRATED_SHA}
-  git push origin ${NOTES_REF}
+  push_note_with_retry ${HYDRATED_SHA}
   
   echo "Updated git note on ${HYDRATED_SHA} with drySha ${DRY_SHA}"
 else
@@ -283,12 +325,10 @@ EOF
   git commit -m "Hydrate ${ENV} from ${DRY_SHA:0:7}"
   
   HYDRATED_SHA=$(git rev-parse HEAD)
-  
-  # Add git note to the new commit
-  git notes --ref=${NOTES_REF} add -f -m "{\"drySha\": \"${DRY_SHA}\"}" ${HYDRATED_SHA}
-  
-  # Push branch and notes together
-  git push origin ${PROPOSED_BRANCH} ${NOTES_REF}
+
+  # Push branch, then update notes ref with retry for concurrent writers
+  git push origin ${PROPOSED_BRANCH}
+  push_note_with_retry ${HYDRATED_SHA}
   
   echo "Created hydrated commit ${HYDRATED_SHA}"
 fi
@@ -314,4 +354,3 @@ Promoter.
 2. **Atomic Commits**: Each hydrated commit should represent a complete, valid state. Don't push partial changes.
 
 3. **Meaningful Commit Messages**: Include the DRY SHA in your hydrated commit messages for traceability.
-

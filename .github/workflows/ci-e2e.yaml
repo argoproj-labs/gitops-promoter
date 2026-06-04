@@ -27,18 +27,18 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@4aaadf42668403795cdfdb15b1c4250e9fed12b9 # pin@v5
         with:
-          go-version: '1.25'
+          go-version: '1.26.4'
           # see https://github.com/actions/setup-go?tab=readme-ov-file#caching-dependency-files-and-build-outputs
           cache-dependency-path: |
             go.sum
       - name: Create k8s Kind Cluster
-        uses: helm/kind-action@a1b0e391336a6ee6713a0583f8c6240d70863de3 # v1.12.0
+        uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
         with:
           cluster_name: kind
-          version: v0.30.0
+          version: v0.32.0
           node_image: kindest/node:v${{ matrix.kubernetes-minor-version }}
           kubectl_version: v${{ matrix.kubernetes-minor-version }}
       - name: Checkout Repo
-        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98 # pin@v4
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # pin@v4
       - name: Run E2E-Tests
         run: make test-e2e

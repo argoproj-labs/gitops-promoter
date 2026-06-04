@@ -1,4 +1,4 @@
-FROM golang:1.25
+FROM golang:1.26.4@sha256:b4f9f8a927c6e8f24da1b653f0c7ca86fd1677fe371b03f69fd416166b527268
 
 WORKDIR /
 

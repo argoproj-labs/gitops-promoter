@@ -1,7 +1,6 @@
-# Based on: https://github.com/argoproj-labs/gitops-promoter/blob/main/.goreleaser.yaml
-# This file must be kept in sync with .gorleaser-latest.yaml except for release section
+# This file must be kept in sync with .goreleaser-latest.yaml except for release section
 # The lines below are called `modelines`. See `:help modeline`
-# yaml-language-server: $schema=https://raw.githubusercontent.com/goreleaser/goreleaser/v2.3.2/www/docs/static/schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/goreleaser/goreleaser/v2.13.2/www/docs/static/schema.json
 # vim: set ts=2 sw=2 tw=0 fo=cnqoj
 
 project_name: gitops-promoter
@@ -52,6 +51,7 @@ dockers:
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--platform=linux/amd64"
+      - "--provenance=false"
   - image_templates:
       - quay.io/argoprojlabs/gitops-promoter:{{ .Tag }}-arm64
     dockerfile: release.Dockerfile
@@ -67,11 +67,39 @@ dockers:
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--platform=linux/arm64"
+      - "--provenance=false"
 docker_manifests:
   - name_template: "quay.io/argoprojlabs/gitops-promoter:{{ .Tag }}"
     image_templates:
       - "quay.io/argoprojlabs/gitops-promoter:{{ .Tag }}-amd64"
       - "quay.io/argoprojlabs/gitops-promoter:{{ .Tag }}-arm64"
+
+checksum:
+  extra_files:
+    - glob: ./install.yaml
+
+sboms:
+  - artifacts: archive
+
+signs:
+  - cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+    output: true
+
+docker_signs:
+  - cmd: cosign
+    args:
+      - sign
+      - "${artifact}"
+      - "--yes"
+    artifacts: all
+    output: true
 
 archives:
   - id: binary
@@ -101,14 +129,56 @@ release:
   extra_files:
     - glob: ./install.yaml
   header: |
-    ## gitops-promoter
-    {{ .Date }}
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/argoproj-labs/gitops-promoter/b0d68761a0f8103ea83f84b5faa382cebcd0ebd4/docs/assets/logo/stacked/secondary.svg">
+      <img src="https://raw.githubusercontent.com/argoproj-labs/gitops-promoter/b0d68761a0f8103ea83f84b5faa382cebcd0ebd4/docs/assets/logo/stacked/primary.svg" alt="GitOps Promoter" width="400">
+    </picture>
+    
+    ---
+    
+    If you're using GitOps Promoter, please add yourself to [USERS.md](https://github.com/argoproj-labs/gitops-promoter/blob/main/USERS.md)!
 
-    ### Container images
-
-    - quay.io/argoprojlabs/gitops-promoter:{{ .Tag }}
+    If you're evaluating GitOps Promoter, we'd love to hear from you — please [open a discussion](https://github.com/argoproj-labs/gitops-promoter/discussions) to share your feedback.
+    
+    ---
 
   footer: |
+    ### Verifying this release (Sigstore / cosign)
+
+    **Container image** (for tag `{{ .Tag }}`):
+
+    ```bash
+    cosign verify \
+      --certificate-identity 'https://github.com/argoproj-labs/gitops-promoter/.github/workflows/release.yaml@refs/tags/{{ .Tag }}' \
+      --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+      quay.io/argoprojlabs/gitops-promoter:{{ .Tag }}
+    ```
+
+    **`latest` images** on Quay are signed from [release-latest.yaml](https://github.com/argoproj-labs/gitops-promoter/blob/main/.github/workflows/release-latest.yaml) on `main`:
+
+    ```bash
+    cosign verify \
+      --certificate-identity 'https://github.com/argoproj-labs/gitops-promoter/.github/workflows/release-latest.yaml@refs/heads/main' \
+      --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+      quay.io/argoprojlabs/gitops-promoter:latest
+    ```
+
+    **Checksums file**: The checksums file is signed with Sigstore. Download `gitops-promoter_{{ .Version }}_checksums.txt` and its `.sigstore.json` bundle, then verify:
+
+    ```bash
+    cosign verify-blob \
+      --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+      --certificate-identity 'https://github.com/argoproj-labs/gitops-promoter/.github/workflows/release.yaml@refs/tags/{{ .Tag }}' \
+      --bundle gitops-promoter_{{ .Version }}_checksums.txt.sigstore.json \
+      gitops-promoter_{{ .Version }}_checksums.txt
+    ```
+
+    Then verify any downloaded artifact against the checksums file:
+
+    ```bash
+    sha256sum -c gitops-promoter_{{ .Version }}_checksums.txt --ignore-missing
+    ```
+
     **Full Changelog**: https://github.com/argoproj-labs/gitops-promoter/compare/{{ .PreviousTag }}...{{ .Tag }}
 
 changelog:

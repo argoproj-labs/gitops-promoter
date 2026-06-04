@@ -9,26 +9,30 @@ on:
         type: string
 
 permissions:
-  contents: write  # for creating PRs and pushing changes
-  pull-requests: write  # for opening PRs
+  contents: read
 
 jobs:
   bump-docs:
+    permissions:
+      contents: write
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Set up Git
         run: |
-          git config user.name "${{ github.actor }}"
-          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git config user.name "${GITHUB_ACTOR}"
+          git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
       - name: Bump manifest versions in docs
         run: |
           chmod +x hack/bump-docs-manifests.sh
-          ./hack/bump-docs-manifests.sh ${{ github.event.inputs.new_version }}
-          git add docs/getting-started.md docs/tutorial-argocd-apps.md docs/argocd-integrations.md
+          ./hack/bump-docs-manifests.sh ${GITHUB_EVENT_INPUTS_NEW_VERSION}
+          git add docs/getting-started.md docs/tutorial-argocd-apps.md docs/argocd-integrations/index.md
+        env:
+          GITHUB_EVENT_INPUTS_NEW_VERSION: ${{ github.event.inputs.new_version }}
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0 # v8.1.0
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
           commit-message: "docs: bump manifest versions to v${{ github.event.inputs.new_version }}"
           title: "docs: bump manifest versions to v${{ github.event.inputs.new_version }}"

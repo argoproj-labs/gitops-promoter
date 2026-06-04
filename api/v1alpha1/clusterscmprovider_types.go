@@ -20,6 +20,7 @@ import (
 	"reflect"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -47,6 +48,11 @@ func (s *ClusterScmProvider) GetConditions() *[]metav1.Condition {
 	return &s.Status.Conditions
 }
 
+// SetObservedGeneration records the object generation that produced the current status.
+func (s *ClusterScmProvider) SetObservedGeneration(generation int64) {
+	s.Status.ObservedGeneration = generation
+}
+
 // +kubebuilder:object:root=true
 
 // ClusterScmProviderList contains a list of ClusterScmProvider.
@@ -57,7 +63,10 @@ type ClusterScmProviderList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&ClusterScmProvider{}, &ClusterScmProviderList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &ClusterScmProvider{}, &ClusterScmProviderList{})
+		return nil
+	})
 }
 
 // +kubebuilder:object:root:false

@@ -193,8 +193,7 @@ func (cs *CommitStatus) updateCheckRun(ctx context.Context, commitStatus *promot
 		// Check if the error is a 404 (check run not found)
 		// This can happen when a CommitStatus was created using the legacy Commit Status API
 		// instead of the Checks API, resulting in an invalid check run ID
-		var ghErr *github.ErrorResponse
-		if errors.As(err, &ghErr) && ghErr.Response != nil && ghErr.Response.StatusCode == http.StatusNotFound {
+		if ghErr, ok := errors.AsType[*github.ErrorResponse](err); ok && ghErr.Response != nil && ghErr.Response.StatusCode == http.StatusNotFound {
 			logger := log.FromContext(ctx)
 			logger.Info("Check run not found (404), falling back to create operation", "checkRunId", commitStatus.Status.Id)
 			// Fall back to creating a new check run
@@ -221,7 +220,7 @@ func (cs *CommitStatus) handleCheckRunResponse(
 	// Record metrics and log rate limit info if response is available
 	if response != nil {
 		duration := time.Since(startTime)
-		metrics.RecordSCMCall(gitRepo, metrics.SCMAPICommitStatus, operation, response.StatusCode, duration, getRateLimitMetrics(response.Rate))
+		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPICommitStatus, operation, response.StatusCode, duration, getRateLimitMetrics(response.Rate))
 
 		logger.Info("github rate limit",
 			"limit", response.Rate.Limit,

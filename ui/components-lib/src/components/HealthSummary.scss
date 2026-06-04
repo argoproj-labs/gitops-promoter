@@ -22,17 +22,17 @@
   transition: all 0.2s ease;
   border: 1px solid transparent;
   user-select: none;
-  
+
   &:hover {
     color: $argo-color-gray-6;
     background: rgba(108, 117, 125, 0.05);
     border-color: rgba(108, 117, 125, 0.2);
   }
-  
+
   &:active {
     background: rgba(108, 117, 125, 0.1);
   }
-  
+
   svg {
     width: 14px;
     height: 14px;
@@ -50,7 +50,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  
+
   svg {
     width: 16px;
     height: 16px;
@@ -75,7 +75,7 @@
   font-size: 12px;
   font-family: 'Heebo', sans-serif;
   cursor: default;
-  
+
   svg {
     width: 12px;
     height: 12px;
@@ -110,6 +110,31 @@
   min-width: 0;
 }
 
+.health-subheading {
+  font-size: 11px;
+  font-weight: 600;
+  color: $argo-color-gray-6;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 6px;
+  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.health-subheading-info {
+  display: inline-flex;
+  align-items: center;
+  color: $argo-color-gray-5;
+  cursor: default;
+
+  svg {
+    width: 11px;
+    height: 11px;
+  }
+}
+
 .health-check-link {
   color: $argo-color-gray-6;
   text-decoration: none;
@@ -118,7 +143,7 @@
   border-radius: 3px;
   background: rgba(108, 117, 125, 0.08);
   transition: all 0.2s ease;
-  
+
   &:hover {
     background: rgba(108, 117, 125, 0.15);
     text-decoration: underline;

@@ -1,6 +1,6 @@
-import React from "react";
-import Card from "@components-lib/components/Card";
-import { ResourceExtensionProps } from "@shared/types/extension";
+import React from 'react';
+import Card from '@components-lib/components/Card';
+import { ResourceExtensionProps } from '@shared/types/extension';
 
 // Argo CD extension component
 

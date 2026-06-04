@@ -18,9 +18,11 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 // GetScmProviderFromGitRepository retrieves the ScmProvider from the GitRepository reference.
@@ -72,25 +74,21 @@ func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Clien
 	return provider, nil
 }
 
-// GetGitRepositoryFromObjectKey returns the GitRepository object from the repository reference
+// GetGitRepositoryFromObjectKey returns the GitRepository for objectKey.
+//
+//nolint:wrapcheck // trivial client.Get wrapper; callers add context
 func GetGitRepositoryFromObjectKey(ctx context.Context, k8sClient client.Client, objectKey client.ObjectKey) (*promoterv1alpha1.GitRepository, error) {
 	var gitRepo promoterv1alpha1.GitRepository
-	err := k8sClient.Get(ctx, objectKey, &gitRepo)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
+	if err := k8sClient.Get(ctx, objectKey, &gitRepo); err != nil {
+		return nil, err
 	}
-
 	return &gitRepo, nil
 }
 
-// GetScmProviderAndSecretFromRepositoryReference retrieves the ScmProvider and its associated Secret from a GitRepository reference.
-func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClient client.Client, controllerNamespace string, repositoryRef promoterv1alpha1.ObjectReference, obj metav1.Object) (promoterv1alpha1.GenericScmProvider, *v1.Secret, error) {
+// getScmProviderAndSecretFromGitRepository returns the ScmProvider and Secret for the given GitRepository.
+// Used by GetScmProviderAndSecretFromRepositoryReference and GetScmProviderSecretAndGitRepositoryFromRepositoryReference.
+func getScmProviderAndSecretFromGitRepository(ctx context.Context, k8sClient client.Client, controllerNamespace string, gitRepo *promoterv1alpha1.GitRepository, obj metav1.Object) (promoterv1alpha1.GenericScmProvider, *v1.Secret, error) {
 	logger := log.FromContext(ctx)
-	gitRepo, err := GetGitRepositoryFromObjectKey(ctx, k8sClient, client.ObjectKey{Namespace: obj.GetNamespace(), Name: repositoryRef.Name})
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get GitRepository: %w", err)
-	}
-
 	scmProvider, err := GetScmProviderFromGitRepository(ctx, k8sClient, gitRepo, obj)
 	if err != nil {
 		return nil, nil, err
@@ -123,6 +121,30 @@ func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClie
 	return scmProvider, &secret, nil
 }
 
+// GetScmProviderAndSecretFromRepositoryReference retrieves the ScmProvider and its associated Secret from a GitRepository reference.
+func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClient client.Client, controllerNamespace string, repositoryRef promoterv1alpha1.ObjectReference, obj metav1.Object) (promoterv1alpha1.GenericScmProvider, *v1.Secret, error) {
+	gitRepo, err := GetGitRepositoryFromObjectKey(ctx, k8sClient, client.ObjectKey{Namespace: obj.GetNamespace(), Name: repositoryRef.Name})
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+	return getScmProviderAndSecretFromGitRepository(ctx, k8sClient, controllerNamespace, gitRepo, obj)
+}
+
+// GetScmProviderSecretAndGitRepositoryFromRepositoryReference retrieves the ScmProvider, its Secret, and the GitRepository
+// from a repository reference in a single GitRepository GET. Use when the GitRepository is also needed (e.g. scm
+// that requires repo owner for GitHub installation resolution).
+func GetScmProviderSecretAndGitRepositoryFromRepositoryReference(ctx context.Context, k8sClient client.Client, controllerNamespace string, repositoryRef promoterv1alpha1.ObjectReference, obj metav1.Object) (promoterv1alpha1.GenericScmProvider, *v1.Secret, *promoterv1alpha1.GitRepository, error) {
+	gitRepo, err := GetGitRepositoryFromObjectKey(ctx, k8sClient, client.ObjectKey{Namespace: obj.GetNamespace(), Name: repositoryRef.Name})
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+	scmProvider, secret, err := getScmProviderAndSecretFromGitRepository(ctx, k8sClient, controllerNamespace, gitRepo, obj)
+	if err != nil {
+		return nil, nil, nil, err //nolint:wrapcheck // err is already contextualized by getScmProviderAndSecretFromGitRepository
+	}
+	return scmProvider, secret, gitRepo, nil
+}
+
 // TruncateString truncates a string to a specified length. If the length is less than or equal to 0, it returns an
 // empty string.
 func TruncateString(str string, length int) string {
@@ -142,15 +164,18 @@ func TruncateString(str string, length int) string {
 }
 
 // TruncateStringFromBeginning truncates from front of string. For example, if the string is "abcdefg" and length is 3,
-// it will return "efg".
+// it will return "efg". Truncation is by rune so the result is always valid UTF-8.
 func TruncateStringFromBeginning(str string, length int) string {
 	if length <= 0 {
 		return ""
 	}
-	if len(str) <= length {
-		return str
+	runes := []rune(str)
+	if len(runes) <= length {
+		// Return string(runes), not str: decoding replaces invalid UTF-8 with U+FFFD; the
+		// original bytes may not be valid UTF-8 (e.g. a lone continuation byte).
+		return string(runes)
 	}
-	return str[len(str)-length:]
+	return string(runes[len(runes)-length:])
 }
 
 var m1 = regexp.MustCompile("[^a-zA-Z0-9]+")
@@ -166,23 +191,69 @@ func GetChangeTransferPolicyName(promotionStrategyName, environmentBranch string
 	return fmt.Sprintf("%s-%s", promotionStrategyName, environmentBranch)
 }
 
-// KubeSafeUniqueName Creates a safe name by replacing all non-alphanumeric characters with a hyphen and truncating to a max of 255 characters, then appending a hash of the name.
-func KubeSafeUniqueName(ctx context.Context, name string) string {
-	name = m1.ReplaceAllString(name, "-")
-	name = strings.ToLower(name)
+// EnqueueChangeTransferPolicies triggers reconciliation of the ChangeTransferPolicies for each
+// environment branch in transitionedBranches. enqueueCTP may be nil (it is nil-checked before
+// calling). logReason describes why the transition occurred and is included in the log message
+// (e.g. "validation transition", "time gate transition").
+func EnqueueChangeTransferPolicies(
+	ctx context.Context,
+	enqueueCTP func(namespace, name string),
+	ps *promoterv1alpha1.PromotionStrategy,
+	transitionedBranches []string,
+	logReason string,
+) {
+	logger := log.FromContext(ctx)
 
+	for _, envBranch := range transitionedBranches {
+		ctpName := KubeSafeUniqueName(GetChangeTransferPolicyName(ps.Name, envBranch))
+
+		if enqueueCTP == nil {
+			logger.Info("Skipping ChangeTransferPolicy reconciliation enqueue because enqueue function is nil",
+				"changeTransferPolicy", ctpName,
+				"branch", envBranch,
+				"reason", logReason)
+			continue
+		}
+
+		logger.Info("Triggering ChangeTransferPolicy reconciliation",
+			"changeTransferPolicy", ctpName,
+			"branch", envBranch,
+			"reason", logReason)
+
+		enqueueCTP(ps.Namespace, ctpName)
+	}
+}
+
+// KubeSafeUniqueName returns a DNS-1123 subdomain-safe unique name: lowercase, non-alphanumerics become '-',
+// then a rune budget is reserved for "-"+FNV hash (hash of the full sanitized string) under DNS1123 max length.
+//
+// When trimming and truncation leave no usable stem (for example input that is only spaces or punctuation, so
+// sanitization is all hyphens), the stem falls back to "x" so the result is still "x-<hash>" instead of "-<hash>",
+// which would violate DNS1123 (names must start and end with an alphanumeric character). The same fallback
+// applies if the stem would end up empty after TruncateString + TrimRight.
+func KubeSafeUniqueName(name string) string {
+	s := strings.ToLower(m1.ReplaceAllString(name, "-"))
 	h := fnv.New32a()
-	_, err := h.Write([]byte(name))
-	if err != nil {
-		log.FromContext(ctx).Error(err, "Failed to write to hash")
+	if _, err := h.Write([]byte(s)); err != nil {
+		// hash.Hash.Write is documented to never return an error; this panic should never be reached.
+		panic(fmt.Sprintf("KubeSafeUniqueName: unexpected error writing to FNV hash: %v", err))
 	}
 	hash := strconv.FormatUint(uint64(h.Sum32()), 16)
-
-	if name[len(name)-1] == '-' {
-		name = name[:len(name)-1]
+	limit := validation.DNS1123SubdomainMaxLength
+	if len(hash)+1 > limit {
+		return TruncateString(hash, limit)
 	}
-	name = name + "-" + hash
-	return TruncateString(name, 255-len(hash)-1)
+	budget := limit - len(hash) - 1 // runes for stem before the final "-<hash>"
+	stem := strings.Trim(s, "-")
+	if stem == "" {
+		stem = "x"
+	}
+	stem = TruncateString(stem, budget)
+	stem = strings.TrimRight(stem, "-")
+	if stem == "" {
+		stem = "x"
+	}
+	return stem + "-" + hash
 }
 
 // KubeSafeLabel Creates a safe label buy truncating from the beginning of 'name' to a max of 63 characters, if the name starts with a hyphen it will be removed.
@@ -193,7 +264,7 @@ func KubeSafeLabel(name string) string {
 	}
 	name = m1.ReplaceAllString(name, "-")
 	name = TruncateStringFromBeginning(name, 63)
-	if name[0] == '-' {
+	for len(name) > 0 && name[0] == '-' {
 		name = name[1:]
 	}
 	return name
@@ -243,19 +314,47 @@ func AreCommitStatusesPassing(commitStatuses []promoterv1alpha1.ChangeRequestPol
 	return true
 }
 
-// StatusConditionUpdater defines the interface for objects that can have their status conditions updated
+// StatusConditionUpdater defines the interface for objects that can have their status conditions updated.
+// Implementers must also expose SetObservedGeneration so the generic reconciliation helper can stamp
+// status.observedGeneration before the SSA status patch. This is the primary mechanism for detecting
+// stale status writes: SSA with ForceOwnership performs no optimistic-concurrency check, so a stale
+// cached reconcile could otherwise silently overwrite a newer status. Consumers should compare
+// status.observedGeneration with metadata.generation.
 type StatusConditionUpdater interface {
 	client.Object
 	GetConditions() *[]metav1.Condition
+	SetObservedGeneration(generation int64)
 }
 
 // HandleReconciliationResult handles reconciliation results for any object with status conditions.
+// It applies the object's status subresource via Server-Side Apply under the provided
+// fieldOwner with ForceOwnership. If the full-status apply is rejected (e.g. by an
+// OpenAPI schema or CEL validation rule on some status field), a second SSA patch that
+// populates only status.conditions is attempted under a DISTINCT fallback FieldOwner
+// (fieldOwner + "-fallback"). Using a separate owner is deliberate: SSA deletes fields
+// that a manager previously owned but dropped from a new apply body, so reusing the
+// main fieldOwner for a conditions-only patch would wipe every other status field
+// (status.proposed, status.active, status.history, ...). The fallback owner only ever
+// declares status.conditions, so the main owner's fields stay untouched. On the next
+// successful full reconcile the main owner reclaims conditions via ForceOwnership.
+//
+// The fallback patch also deliberately OMITS status.observedGeneration. The stored
+// top-level value stays pinned to the last successful full apply so consumers can
+// detect that the persisted status body is stale; the Ready condition's own
+// ObservedGeneration field records the generation the controller attempted to
+// reconcile, so users still see which generation produced the failure message.
+//
+// If result is non-nil and this function sets an error (e.g. status apply failed), it
+// clears any Requeue/RequeueAfter in *result so the caller does not return both a
+// requeue and an error.
 func HandleReconciliationResult(
 	ctx context.Context,
 	startTime time.Time,
 	obj StatusConditionUpdater,
-	client client.Client,
+	c client.Client,
 	recorder events.EventRecorder,
+	fieldOwner string,
+	result *reconcile.Result,
 	err *error,
 ) {
 	// Recover from any panic and convert it to an error.
@@ -265,6 +364,9 @@ func HandleReconciliationResult(
 		logger := log.FromContext(ctx)
 		logger.Error(nil, "recovered from panic in reconciliation", "panic", r, "trace", string(debug.Stack()))
 		*err = fmt.Errorf("panic in reconciliation: %v", r)
+		if result != nil {
+			*result = reconcile.Result{}
+		}
 	}
 
 	logger := log.FromContext(ctx)
@@ -276,13 +378,12 @@ func HandleReconciliationResult(
 		return
 	}
 
-	// If the deletion timestamp is set on the object, bail out early.
-	if !obj.GetDeletionTimestamp().IsZero() {
-		logger.V(4).Info("resource deleted, skipping handling of the reconciliation result")
-		return
-	}
-
 	conditions := obj.GetConditions() // GetConditions() is guaranteed to be non-nil for our CRDs.
+	// Controllers are expected to call meta.RemoveStatusCondition(..., "Ready") at the
+	// top of Reconcile so stale conditions from a previous reconcile don't bleed into
+	// this one. If FindStatusCondition still returns non-nil here, the reconciler
+	// deliberately set a Ready state during this reconcile (e.g. via
+	// InheritNotReadyConditionFromObjects) and we preserve it.
 	readyCondition := meta.FindStatusCondition(*conditions, string(promoterConditions.Ready))
 	if readyCondition == nil {
 		// If the condition hasn't already been set by the caller, assume success.
@@ -306,7 +407,9 @@ func HandleReconciliationResult(
 		}
 		recorder.Eventf(obj, nil, eventType, readyCondition.Reason, "Reconciling", readyCondition.Message)
 	} else {
-		// Error case: set Ready condition to False
+		// Error case: set Ready condition to False. Conflict errors from Update calls
+		// elsewhere in the reconcile flow are expected and transient, so don't spam events
+		// for those; the retry will emit the event if the condition persists.
 		if !k8serrors.IsConflict(*err) {
 			recorder.Eventf(obj, nil, "Warning", string(promoterConditions.ReconciliationError), "Reconciling", "Reconciliation failed: %v", *err)
 		}
@@ -319,14 +422,123 @@ func HandleReconciliationResult(
 		})
 	}
 
-	// Single status update. This is the only place Status().Update() is called for reconciled resources.
-	if updateErr := client.Status().Update(ctx, obj); updateErr != nil {
+	// Stamp status.observedGeneration before building the apply configuration so the SSA
+	// patch records which spec generation produced this status. SSA with ForceOwnership
+	// has no optimistic-concurrency guard, so observedGeneration is the only signal a
+	// consumer can use to tell whether a status reflects the current spec.
+	obj.SetObservedGeneration(obj.GetGeneration())
+
+	// Build the full status apply configuration and SSA-patch the status subresource.
+	// This function should be the only place status is written for reconciled resources.
+	fullCfg, buildErr := statusApplyConfig(obj, false)
+	if buildErr != nil {
 		if *err == nil {
-			*err = fmt.Errorf("failed to update status: %w", updateErr)
+			*err = fmt.Errorf("failed to build status apply configuration: %w", buildErr)
 		} else {
 			//nolint:errorlint // The initial error is intentionally quoted instead of wrapped for clarity.
-			*err = fmt.Errorf("failed to update status with error condition with error %q: %w", *err, updateErr)
+			*err = fmt.Errorf("failed to build status apply configuration with error %q: %w", *err, buildErr)
 		}
+		if result != nil {
+			*result = reconcile.Result{}
+		}
+		return
+	}
+
+	patchErr := c.Status().Patch(ctx, obj, ApplyPatch{ApplyConfig: fullCfg},
+		client.FieldOwner(fieldOwner), client.ForceOwnership)
+	if patchErr == nil {
+		return
+	}
+
+	// Object was deleted concurrently; nothing to write.
+	if k8serrors.IsNotFound(patchErr) {
+		logger.V(4).Info("status apply skipped, object no longer exists", "error", patchErr)
+		return
+	}
+
+	// Full status apply failed. Try a fallback that applies only status.conditions so the
+	// Ready condition explaining the failure still lands on the object. SSA on /status is
+	// atomic, so a validation rejection (OpenAPI or CEL) on any other status field loses
+	// the Ready condition we just set in memory.
+	//
+	// The fallback uses a DISTINCT FieldOwner so it only claims ownership of
+	// status.conditions. Under SSA, when a manager re-applies and drops fields it
+	// previously owned, those fields are deleted from the live object unless another
+	// manager owns them. If we used the same FieldOwner here, this conditions-only patch
+	// would wipe status.proposed, status.active, status.history, etc. — a severe UX
+	// regression. Using a separate owner leaves those fields untouched under the main
+	// owner until the next successful full apply reclaims conditions via ForceOwnership.
+	//
+	// Also note: this patch deliberately does NOT include status.observedGeneration.
+	// Keeping the stored top-level observedGeneration pinned to the last successful
+	// reconcile is the canonical "status is stale" signal; the Ready condition's own
+	// ObservedGeneration field records the generation that was attempted.
+	fallbackFieldOwner := fieldOwner + "-fallback"
+	logger.V(4).Info("full status apply failed, attempting conditions-only apply",
+		"error", patchErr, "fallbackFieldOwner", fallbackFieldOwner)
+
+	// Rewrite the in-memory Ready condition to describe the apply failure. If the
+	// reconcile already produced an error, we keep that as the primary cause; otherwise
+	// the status apply failure is the cause.
+	fallbackCondition := metav1.Condition{
+		Type:               string(promoterConditions.Ready),
+		Status:             metav1.ConditionFalse,
+		Reason:             string(promoterConditions.ReconciliationError),
+		ObservedGeneration: obj.GetGeneration(),
+	}
+	if *err != nil {
+		fallbackCondition.Message = fmt.Sprintf("Reconciliation failed: %s", *err)
+	} else {
+		fallbackCondition.Message = fmt.Sprintf("Reconciliation succeeded but failed to apply status: %s", patchErr)
+	}
+	meta.SetStatusCondition(conditions, fallbackCondition)
+
+	condCfg, buildErr := statusApplyConfig(obj, true)
+	if buildErr != nil {
+		if *err == nil {
+			*err = fmt.Errorf("failed to apply status (%w), and building conditions-only apply configuration also failed: %w", patchErr, buildErr)
+		} else {
+			//nolint:errorlint // The initial error is intentionally quoted instead of wrapped for clarity.
+			*err = fmt.Errorf("failed to apply status with error condition regarding error %q (%w), and building conditions-only apply configuration also failed: %w", *err, patchErr, buildErr)
+		}
+		if result != nil {
+			*result = reconcile.Result{}
+		}
+		return
+	}
+
+	//nolint:forcetypeassert // Type assertion is guaranteed to succeed for all CRDs in this codebase.
+	fallbackObj := obj.DeepCopyObject().(StatusConditionUpdater)
+	fallbackErr := c.Status().Patch(ctx, fallbackObj, ApplyPatch{ApplyConfig: condCfg},
+		client.FieldOwner(fallbackFieldOwner), client.ForceOwnership)
+	if fallbackErr != nil {
+		if k8serrors.IsNotFound(fallbackErr) {
+			logger.V(4).Info("conditions-only status apply skipped, object no longer exists", "error", fallbackErr)
+			return
+		}
+		// Fallback also failed, report both errors
+		if *err == nil {
+			*err = fmt.Errorf("failed to apply status (original error: %w), and applying only the Ready condition also failed: %w", patchErr, fallbackErr)
+		} else {
+			//nolint:errorlint // The initial error is intentionally quoted instead of wrapped for clarity.
+			*err = fmt.Errorf("failed to apply status with error condition regarding error %q (original status apply error: %w), and applying only the Ready condition also failed: %w", *err, patchErr, fallbackErr)
+		}
+		if result != nil {
+			*result = reconcile.Result{}
+		}
+		return
+	}
+
+	// Fallback succeeded, but report the original status apply failure
+	logger.Info("Successfully applied only the Ready condition after full status apply failed")
+	if *err == nil {
+		*err = fmt.Errorf("failed to apply full status (but applying only the Ready condition succeeded): %w", patchErr)
+	} else {
+		//nolint:errorlint // The initial error is intentionally quoted instead of wrapped for clarity.
+		*err = fmt.Errorf("failed to apply status with error condition regarding error %q (but applying only the Ready condition succeeded): %w", *err, patchErr)
+	}
+	if result != nil {
+		*result = reconcile.Result{}
 	}
 }
 

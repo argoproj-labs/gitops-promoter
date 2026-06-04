@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -58,6 +59,13 @@ type PromotionStrategySpec struct {
 	// +listType:=map
 	// +listMapKey=branch
 	Environments []Environment `json:"environments"`
+
+	// ActivePath is the default repository subpath for this strategy's active state.
+	// When set, proposed branches are created as <environment-branch>-next/<activePath>.
+	// Individual environments can override this value via their own activePath field.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MinLength=1
+	ActivePath string `json:"activePath,omitempty"`
 }
 
 // Environment defines a single environment in the promotion sequence.
@@ -90,6 +98,12 @@ type Environment struct {
 	// +listType:=map
 	// +listMapKey=key
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses,omitempty"`
+
+	// ActivePath optionally overrides the strategy-level activePath for this environment.
+	// When set, this environment's CTP uses this path instead of spec.activePath.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MinLength=1
+	ActivePath string `json:"activePath,omitempty"`
 }
 
 // GetAutoMerge returns the value of the AutoMerge field, defaulting to true if the field is nil.
@@ -111,6 +125,13 @@ type CommitStatusSelector struct {
 
 // PromotionStrategyStatus defines the observed state of PromotionStrategy
 type PromotionStrategyStatus struct {
+	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
+	// Because status is written via Server-Side Apply with ForceOwnership (which has no
+	// optimistic-concurrency check), this field is the canonical way to detect stale
+	// status writes: compare status.observedGeneration with metadata.generation.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// Environments holds the status of each environment in the promotion sequence.
 	// +listType:=map
 	// +listMapKey=branch
@@ -127,6 +148,11 @@ type PromotionStrategyStatus struct {
 // GetConditions returns the conditions of the PromotionStrategy.
 func (ps *PromotionStrategy) GetConditions() *[]metav1.Condition {
 	return &ps.Status.Conditions
+}
+
+// SetObservedGeneration records the object generation that produced the current status.
+func (ps *PromotionStrategy) SetObservedGeneration(generation int64) {
+	ps.Status.ObservedGeneration = generation
 }
 
 // EnvironmentStatus defines the observed state of an environment in a PromotionStrategy.
@@ -189,5 +215,8 @@ type PromotionStrategyList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&PromotionStrategy{}, &PromotionStrategyList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &PromotionStrategy{}, &PromotionStrategyList{})
+		return nil
+	})
 }

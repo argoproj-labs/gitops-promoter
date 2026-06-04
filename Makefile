@@ -1,7 +1,7 @@
 # Image URL to use all building/pushing image targets
 IMG ?= quay.io/argoprojlabs/gitops-promoter:latest
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
-ENVTEST_K8S_VERSION = 1.31.0
+ENVTEST_K8S_VERSION = 1.36.0
 
 CURRENT_DIR=$(shell pwd)
 
@@ -14,6 +14,9 @@ GOBIN=$(shell go env GOPATH)/bin
 else
 GOBIN=$(shell go env GOBIN)
 endif
+# containerbase install-tool (Renovate postUpgradeTasks) symlinks `go` into PATH but
+# not sibling tools like gofmt; GOROOT/bin is the standard place to find them.
+export PATH := $(shell go env GOROOT)/bin:$(PATH)
 
 GIT_TAG:=$(if $(GIT_TAG),$(GIT_TAG),$(shell if [ -z "`git status --porcelain`" ]; then git describe --exact-match --tags HEAD 2>/dev/null; fi))
 
@@ -73,8 +76,22 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) applyconfiguration:headerFile="hack/boilerplate.go.txt" object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
+.PHONY: generate-extension-icon-styles
+generate-extension-icon-styles: ## Generate Argo CD extension icon styles from logo SVGs.
+	./hack/extension-icon-styles.sh
+
+# Generates hack/celcost/report.md, embedded into docs/contributing/writing-cel-rules.md
+# via markdown_include. celcost is its own Go module (hack/celcost/go.mod) so its
+# CEL/apiserver dependencies stay out of the root module, hence the cd + go run .
+.PHONY: cel-cost-report
+cel-cost-report: ## Estimate CRD CEL validation costs vs apiserver limits and write the docs report.
+	cd hack/celcost && go run . -o report.md ../../config/crd/bases
+
+.PHONY: generate-all
+generate-all: generate generate-extension-icon-styles ## Run all code generation used in CI (controller-gen, extension icon styles). For mocks, run make mockery-gen separately.
+
 .PHONY: mockery-gen
-mockery-gen:
+mockery-gen: mockery
 	$(MOCKERY)
 
 .PHONY: fmt
@@ -105,9 +122,52 @@ test-parallel: test-deps ## Run tests in parallel
 test-parallel-repeat3: test-deps ## Run tests in parallel 3 times to check for flakiness --repeat does not count the first run
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GINKGO) -p -procs=4 -r -v -cover -coverprofile=cover.out -coverpkg=./... --junit-report=junit.xml --repeat=2 internal/
 
+##@ Fuzzing
+
+# Packages that define native Go fuzz targets (Fuzz* in fuzz_test.go).
+FUZZ_PACKAGES ?= ./internal/utils
+# Duration per target for `fuzz-explore` (scheduled workflow and local; each Fuzz* runs sequentially within a package).
+FUZZ_TIME ?= 30s
+
+.PHONY: fuzz-replay fuzz-explore
+fuzz-replay: ## Replay seeds (`f.Add`) + corpus (`testdata/fuzz`); regression only (no `-fuzz`).
+	@set -euo pipefail; \
+	for pkg in $(FUZZ_PACKAGES); do \
+	  list=$$(go test $$pkg -list Fuzz); \
+	  fuzzes=$$(echo "$$list" | { grep '^Fuzz' || true; }); \
+	  if [ -z "$$fuzzes" ]; then \
+	    continue; \
+	  fi; \
+	  for fuzz in $$fuzzes; do \
+	    echo "fuzz-replay $$pkg $$fuzz"; \
+	    go test $$pkg -count=1 -run=^$$fuzz$$; \
+	  done; \
+	done
+
+# Bounded exploratory fuzzing: mutates beyond seeds (`f.Add`) + corpus (`testdata/fuzz`) for FUZZ_TIME per target (scheduled workflow uses this variable too).
+fuzz-explore: ## Exploratory fuzzing for FUZZ_TIME per target (default $(FUZZ_TIME); see Makefile).
+	@set -euo pipefail; \
+	for pkg in $(FUZZ_PACKAGES); do \
+	  list=$$(go test $$pkg -list Fuzz); \
+	  fuzzes=$$(echo "$$list" | { grep '^Fuzz' || true; }); \
+	  if [ -z "$$fuzzes" ]; then \
+	    continue; \
+	  fi; \
+	  for fuzz in $$fuzzes; do \
+	    echo "fuzz-explore $$pkg $$fuzz ($(FUZZ_TIME))"; \
+	    go test $$pkg -count=1 -run=^$$fuzz$$ -fuzz=$$fuzz -fuzztime=$(FUZZ_TIME); \
+	  done; \
+	done
+
 .PHONY: lint nilaway-no-test
 lint: golangci-lint ## Run golangci-lint linter & yamllint
 	$(GOLANGCI_LINT) run
+
+.PHONY: deadcode
+deadcode: ## Report unreachable functions in module internals (from cmd entrypoints).
+	$(MAKE) $(DEADCODE)
+	@out=$$($(DEADCODE) -test -filter='$(DEADCODE_FILTER)' ./... 2>&1); \
+	if [ -n "$$out" ]; then echo "$$out"; exit 1; fi
 
 .PHONY: lint-fix
 lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
@@ -160,15 +220,28 @@ run-dashboard: build-dashboard
 
 .PHONY: lint-dashboard
 lint-dashboard: ## Run dashboard type-check, lint and audit checks
-	cd ui/dashboard && npm run type-check && npm run lint && npm audit
+	cd ui/dashboard && npm run type-check && npm run lint && npm run format:check && npm audit --omit=dev
 
 .PHONY: lint-extension
 lint-extension: ## Run extension type-check, lint and audit checks
-	cd ui/extension && npm run type-check && npm run lint && npm audit
+	cd ui/extension && npm run type-check && npm run lint && npm run format:check && npm audit --omit=dev
+
+# LCOV paths: vitest coverage uses istanbul lcov reporter with projectRoot = repo root (see vitest.config).
+.PHONY: test-unit-test-extension
+test-unit-test-extension: ## Run extension unit tests (with coverage)
+	cd ui/extension && npm test
+
+.PHONY: lint-components-lib
+lint-components-lib: ## Run components-lib type-check and format checks (includes shared/)
+	cd ui/components-lib && npm run type-check && npm run format:check
+	cd ui/components-lib && npx prettier --check '../shared/**/*.{ts,tsx}'
 
 .PHONY: lint-ui
-lint-ui: lint-dashboard lint-extension ## Run all UI checks
+lint-ui: lint-dashboard lint-extension lint-components-lib ## Run all UI checks
 
+.PHONY: test-ui-test-dashboard
+test-ui-test-dashboard: ## Run dashboard unit tests (with coverage)
+	cd ui/dashboard && npm test
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
@@ -207,7 +280,7 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 	rm Dockerfile.cross
 
 .PHONY: build-installer
-build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
+build-installer: manifests generate-all cel-cost-report kustomize ## Generate CRDs, applyconfiguration, CEL cost report, and dist/install.yaml.
 	mkdir -p dist
 	# cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default > dist/install.yaml
@@ -252,20 +325,23 @@ KUSTOMIZE ?= $(LOCALBIN)/kustomize-$(KUSTOMIZE_VERSION)
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen-$(CONTROLLER_TOOLS_VERSION)
 ENVTEST ?= $(LOCALBIN)/setup-envtest-$(ENVTEST_VERSION)
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
+DEADCODE = $(LOCALBIN)/deadcode-$(DEADCODE_VERSION)
 MOCKERY = $(LOCALBIN)/mockery-$(MOCKERY_VERSION)
 NILAWAY = $(LOCALBIN)/nilaway-$(NILAWAY_VERSION)
 GINKGO = $(LOCALBIN)/ginkgo-$(GINKGO_VERSION)
 GORELEASER ?= $(LOCALBIN)/goreleaser-$(GORELEASER_VERSION)
 
 ## Tool Versions
-KUSTOMIZE_VERSION ?= v5.3.0
-CONTROLLER_TOOLS_VERSION ?= v0.20.0
-ENVTEST_VERSION ?= release-0.19
-GOLANGCI_LINT_VERSION ?= v2.8.0
-MOCKERY_VERSION ?= v2.42.2
+KUSTOMIZE_VERSION ?= v5.8.1
+CONTROLLER_TOOLS_VERSION ?= v0.20.1
+ENVTEST_VERSION ?= release-0.24
+GOLANGCI_LINT_VERSION ?= v2.12.2
+DEADCODE_VERSION ?= v0.45.0
+DEADCODE_FILTER ?= github.com/argoproj-labs/gitops-promoter/internal
+MOCKERY_VERSION ?= v2.53.6
 NILAWAY_VERSION ?= latest
 GINKGO_VERSION=$(shell go list -m all | grep github.com/onsi/ginkgo/v2 | awk '{print $$2}')
-GORELEASER_VERSION ?= v2.13.2
+GORELEASER_VERSION ?= v2.16.0
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
@@ -291,6 +367,9 @@ golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
 	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,${GOLANGCI_LINT_VERSION})
 
+$(DEADCODE): $(LOCALBIN)
+	$(call go-install-tool,$(DEADCODE),golang.org/x/tools/cmd/deadcode,${DEADCODE_VERSION})
+
 .PHONY: mockery
 mockery:
 	$(call go-install-tool,$(MOCKERY),github.com/vektra/mockery/v2,${MOCKERY_VERSION})
@@ -314,7 +393,7 @@ serve-docs:
 
 .PHONY: lint-docs
 lint-docs:  ## Build docs and fail if there are warnings
-	@mkdocs build 2>&1 | tee mkdocs-lint.log
+	@DISABLE_MKDOCS_2_WARNING=true mkdocs build 2>&1 | tee mkdocs-lint.log
 	@if grep -q 'WARNING' mkdocs-lint.log; then \
 	  echo "MkDocs build produced warnings!"; \
 	  cat mkdocs-lint.log; \

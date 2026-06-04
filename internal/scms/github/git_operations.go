@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"net/http"
 	"sync"
@@ -53,9 +54,9 @@ func NewGithubGitAuthenticationProvider(ctx context.Context, k8sClient client.Cl
 // GetGitHttpsRepoUrl constructs the HTTPS URL for a GitHub repository based on the provided GitRepository object.
 func (gh GitAuthenticationProvider) GetGitHttpsRepoUrl(gitRepository v1alpha1.GitRepository) string {
 	if gh.scmProvider.GetSpec().GitHub != nil && gh.scmProvider.GetSpec().GitHub.Domain != "" {
-		return fmt.Sprintf("https://git@%s/%s/%s.git", gh.scmProvider.GetSpec().GitHub.Domain, gitRepository.Spec.GitHub.Owner, gitRepository.Spec.GitHub.Name)
+		return fmt.Sprintf("https://%s/%s/%s.git", gh.scmProvider.GetSpec().GitHub.Domain, gitRepository.Spec.GitHub.Owner, gitRepository.Spec.GitHub.Name)
 	}
-	return fmt.Sprintf("https://git@github.com/%s/%s.git", gitRepository.Spec.GitHub.Owner, gitRepository.Spec.GitHub.Name)
+	return fmt.Sprintf("https://github.com/%s/%s.git", gitRepository.Spec.GitHub.Owner, gitRepository.Spec.GitHub.Name)
 }
 
 // GetToken retrieves the authentication token for GitHub.
@@ -72,32 +73,64 @@ func (gh GitAuthenticationProvider) GetUser(ctx context.Context) (string, error)
 	return "git", nil
 }
 
-// getInstallationClient creates a new GitHub client with the specified installation ID.
+type clientCacheKey struct {
+	domain           string
+	privKeyHash      [32]byte
+	appID, installID int64
+}
+type clientCacheClients struct {
+	itr *ghinstallation.Transport
+	gh  *github.Client
+}
+
+var (
+	clientCacheMu sync.Mutex
+	clientCache   = make(map[clientCacheKey]clientCacheClients)
+)
+
+func newTransport(domain string, appID, installationID int64, privateKey []byte) (*github.Client, *ghinstallation.Transport, error) {
+	key := clientCacheKey{domain, sha256.Sum256(privateKey), appID, installationID}
+
+	clientCacheMu.Lock()
+	defer clientCacheMu.Unlock()
+
+	if val, ok := clientCache[key]; ok {
+		return val.gh, val.itr, nil
+	}
+
+	tr := http.DefaultTransport
+	itr, err := ghinstallation.New(tr, appID, installationID, privateKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("create github app %d installation %d transport: %w", appID, installationID, err)
+	}
+
+	enterprise, baseURL, uploadURL := getUrls(domain)
+	var client *github.Client
+	if !enterprise {
+		client = github.NewClient(&http.Client{Transport: itr})
+	} else {
+		itr.BaseURL = baseURL
+		client, err = github.NewClient(&http.Client{Transport: itr}).WithEnterpriseURLs(baseURL, uploadURL)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create GitHub enterprise client: %w", err)
+		}
+	}
+
+	clientCache[key] = clientCacheClients{
+		itr: itr,
+		gh:  client,
+	}
+	return client, itr, nil
+}
+
+// getInstallationClient returns a possibly cached GitHub client with the specified installation ID.
 // It also returns a ghinstallation.Transport, which can be used for git requests.
 func getInstallationClient(scmProvider v1alpha1.GenericScmProvider, secret v1.Secret, id int64) (*github.Client, *ghinstallation.Transport, error) {
 	if id <= 0 {
 		return nil, nil, fmt.Errorf("installation ID is required for scmProvider %q", scmProvider.GetName())
 	}
 
-	itr, err := ghinstallation.New(http.DefaultTransport, scmProvider.GetSpec().GitHub.AppID, id, secret.Data[githubAppPrivateKeySecretKey])
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create GitHub installation transport: %w", err)
-	}
-
-	enterprise, baseUrl, uploadUrl := getUrls(scmProvider.GetSpec().GitHub.Domain)
-
-	var client *github.Client
-	if !enterprise {
-		client = github.NewClient(&http.Client{Transport: itr})
-		return client, itr, nil
-	}
-
-	itr.BaseURL = baseUrl
-	client, err = github.NewClient(&http.Client{Transport: itr}).WithEnterpriseURLs(baseUrl, uploadUrl)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create GitHub enterprise client: %w", err)
-	}
-	return client, itr, nil
+	return newTransport(scmProvider.GetSpec().GitHub.Domain, scmProvider.GetSpec().GitHub.AppID, id, secret.Data[githubAppPrivateKeySecretKey])
 }
 
 func getUrls(domain string) (enterprise bool, baseUrl, uploadUrl string) {

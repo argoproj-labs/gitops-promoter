@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import './Modal.scss';
 import { FaTimes } from 'react-icons/fa';
 import TimeAgo from './TimeAgo';
+import type { Rfc3339DateTime } from '@shared/types/promotion';
 
 interface ModalProps {
   isOpen: boolean;
@@ -13,12 +14,16 @@ interface ModalProps {
   subject?: string;
   message?: string;
   proposedSha?: string;
-  commitTime?: string;
+  /** RFC 3339; rendered with `TimeAgo`. */
+  commitTime?: Rfc3339DateTime;
   trailers?: { [key: string]: string };
 }
 
 // Helper to remove Argocd-reference-commit-body from the main message
-function removeTrailerBody(message: string | undefined, trailers: { [key: string]: string } | undefined): string {
+function removeTrailerBody(
+  message: string | undefined,
+  trailers: { [key: string]: string } | undefined,
+): string {
   if (!message || !trailers) return message || '';
   const trailerBody = trailers['Argocd-reference-commit-body'];
   if (!trailerBody) return message;
@@ -35,7 +40,7 @@ const CommitMessageModal: React.FC<ModalProps> = ({
   proposedSha,
   commitTime,
   trailers,
-  children
+  children,
 }) => {
   if (!isOpen) {
     return null;
@@ -54,7 +59,6 @@ const CommitMessageModal: React.FC<ModalProps> = ({
     };
   }, [onClose]);
 
-
   const mainMessage = removeTrailerBody(message, trailers);
 
   const modalContent = (
@@ -69,41 +73,42 @@ const CommitMessageModal: React.FC<ModalProps> = ({
           </button>
         </div>
         <div className="modal-body">
-          {(author || subject || message) ? (
+          {author || subject || message ? (
             <div style={{ maxWidth: 600 }}>
-              {subject && (
-                <div className="modal-commit-subject">{subject}</div>
-              )}
-
+              {subject && <div className="modal-commit-subject">{subject}</div>}
 
               {/* By <author> (authored <time ago>) */}
               {author && commitTime && (
                 <div className="modal-commit-author">
                   <span>
                     by <strong>{author}</strong> (authored{' '}
-                    <span title={commitTime}><TimeAgo date={commitTime} /></span>
+                    <span title={commitTime}>
+                      <TimeAgo date={commitTime} />
+                    </span>
                     )
                   </span>
                 </div>
               )}
-             
-              {mainMessage && (
-                <pre className="modal-commit-message">{mainMessage}</pre>
-              )}
-              {(trailers && Object.keys(trailers).length > 0) && (
+
+              {mainMessage && <pre className="modal-commit-message">{mainMessage}</pre>}
+              {trailers && Object.keys(trailers).length > 0 && (
                 <>
                   <div className="modal-trailer-label">Trailers</div>
                   <div className="modal-trailer-box">
-                    {Object.entries(trailers).map(([key, value]) => (
+                    {Object.entries(trailers).map(([key, value]) =>
                       key === 'Argocd-reference-commit-body' ? (
                         <div key={key}>
                           <div style={{ fontWeight: 600, marginBottom: 4 }}>{key}:</div>
-                          <pre className="modal-commit-message" style={{ margin: 0 }}>{value}</pre>
+                          <pre className="modal-commit-message" style={{ margin: 0 }}>
+                            {value}
+                          </pre>
                         </div>
                       ) : (
-                        <div key={key}><strong>{key}:</strong> {value}</div>
-                      )
-                    ))}
+                        <div key={key}>
+                          <strong>{key}:</strong> {value}
+                        </div>
+                      ),
+                    )}
                   </div>
                 </>
               )}
@@ -119,4 +124,4 @@ const CommitMessageModal: React.FC<ModalProps> = ({
   return ReactDOM.createPortal(modalContent, document.body);
 };
 
-export default CommitMessageModal; 
+export default CommitMessageModal;

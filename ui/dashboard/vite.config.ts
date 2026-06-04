@@ -32,5 +32,8 @@ export default defineConfig({
       '@lib': resolve(__dirname, '../components-lib/src'),
       '@shared': resolve(__dirname, '../shared/src'),
     },
+    // ensure that only one version of React exists in the bundle
+    // otherwise, you might encounter issues with hooks or context not working properly
+    dedupe: ['react', 'react-dom'],
   },
-}); 
+});

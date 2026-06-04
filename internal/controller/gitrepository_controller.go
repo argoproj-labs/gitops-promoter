@@ -22,15 +22,22 @@ import (
 	"time"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
@@ -54,8 +61,8 @@ func (r *GitRepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	startTime := time.Now()
 
 	var gitRepo promoterv1alpha1.GitRepository
-	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &gitRepo, r.Client, r.Recorder, &err)
+	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
+	defer utils.HandleReconciliationResult(ctx, startTime, &gitRepo, r.Client, r.Recorder, constants.GitRepositoryControllerFieldOwner, &result, &err)
 
 	if err := r.Get(ctx, req.NamespacedName, &gitRepo); err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -64,6 +71,9 @@ func (r *GitRepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 		return ctrl.Result{}, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
+
+	// Remove any existing Ready condition. We want to start fresh.
+	meta.RemoveStatusCondition(gitRepo.GetConditions(), string(promoterConditions.Ready))
 
 	if deleted, err := r.handleFinalizer(ctx, &gitRepo); err != nil || deleted {
 		return ctrl.Result{}, err
@@ -76,6 +86,17 @@ func (r *GitRepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 func (r *GitRepositoryReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.GitRepository{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		Watches(
+			&promoterv1alpha1.PullRequest{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueGitRepositoryForPullRequest),
+			// Delete fires once the PullRequest leaves the informer cache (fully removed from the API).
+			builder.WithPredicates(predicate.Funcs{
+				CreateFunc:  func(event.CreateEvent) bool { return false },
+				UpdateFunc:  func(event.UpdateEvent) bool { return false },
+				DeleteFunc:  func(event.DeleteEvent) bool { return true },
+				GenericFunc: func(event.GenericEvent) bool { return false },
+			}),
+		).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
@@ -93,10 +114,6 @@ func (r *GitRepositoryReconciler) handleFinalizer(ctx context.Context, gitRepo *
 
 		var dependentPRs []string
 		for _, pr := range pullRequests.Items {
-			// Skip PullRequests that are also being deleted (allows cascade deletion)
-			if !pr.DeletionTimestamp.IsZero() {
-				continue
-			}
 			if pr.Spec.RepositoryReference.Name == gitRepo.Name {
 				dependentPRs = append(dependentPRs, pr.Name)
 			}
@@ -113,4 +130,21 @@ func (r *GitRepositoryReconciler) handleFinalizer(ctx context.Context, gitRepo *
 		"GitRepository",
 		checkDependencies,
 	)
+}
+
+func (r *GitRepositoryReconciler) enqueueGitRepositoryForPullRequest(_ context.Context, obj client.Object) []reconcile.Request {
+	pr, ok := obj.(*promoterv1alpha1.PullRequest)
+	if !ok {
+		return nil
+	}
+	repoName := pr.Spec.RepositoryReference.Name
+	if repoName == "" {
+		return nil
+	}
+	return []reconcile.Request{{
+		NamespacedName: types.NamespacedName{
+			Namespace: pr.GetNamespace(),
+			Name:      repoName,
+		},
+	}}
 }

@@ -1,4 +1,5 @@
-# This file must be kept in sync with .gorleaser.yaml except for release section
+# This file must be kept in sync with .goreleaser.yaml except for release section.
+# Snapshot builds do not publish images during GoReleaser; cosign signs latest-* and :latest in .github/workflows/release-latest.yaml after docker push.
 # yaml-language-server: $schema=https://raw.githubusercontent.com/goreleaser/goreleaser/v2.13.2/www/docs/static/schema.json
 # vim: set ts=2 sw=2 tw=0 fo=cnqoj
 
@@ -47,6 +48,7 @@ dockers:
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
       - "--label=org.opencontainers.image.version=latest"
       - "--platform=linux/amd64"
+      - "--provenance=false"
   - image_templates:
       - quay.io/argoprojlabs/gitops-promoter:latest-arm64
     dockerfile: release.Dockerfile
@@ -61,12 +63,7 @@ dockers:
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
       - "--label=org.opencontainers.image.version=latest"
       - "--platform=linux/arm64"
-
-docker_manifests:
-  - name_template: "quay.io/argoprojlabs/gitops-promoter:latest"
-    image_templates:
-      - "quay.io/argoprojlabs/gitops-promoter:latest-amd64"
-      - "quay.io/argoprojlabs/gitops-promoter:latest-arm64"
+      - "--provenance=false"
 
 # No archives for latest builds
 archives: []

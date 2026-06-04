@@ -5,10 +5,13 @@ metadata:
 spec:
   gitRepositoryRef:
     name: example-git-repository
-  title:
   targetBranch:
   sourceBranch:
+  title:
   description:
+  commit:
+    # The commit message that will be written for the commit that's made when merging the PR
+    message: "example message"
   # The commit SHA that must be at the head of the source branch for the merge to succeed.
   # This prevents race conditions where a different commit gets merged than intended.
   mergeSha: abc123def456789012345678901234567890abcd
@@ -18,6 +21,7 @@ spec:
   # (which the controller should do automatically as long as there are no errors).
   state:
 status:
+  observedGeneration: 123 # compare with metadata.generation to detect stale status
   conditions:
     # The Ready condition indicates that the resource has been successfully reconciled, when there is an error during
     # reconciliation, the condition will be False with a reason of ReconciliationError. When we successfully reconcile the resource,
@@ -28,6 +32,9 @@ status:
       message: Reconciliation succeeded
       reason: ReconciliationSuccess # ReconciliationSuccess or ReconciliationError
       status: "True" # "True," "False," or "Unknown"
-      # observedGeneration is the generation of the resource that was last reconciled. This is used to track if the
-      # resource has changed since the last reconciliation.
       observedGeneration: 123
+  id: "848"
+  state: open # open, closed, or merged; empty when externallyMergedOrClosed is true
+  url: https://github.com/org/repo/pull/848
+  prCreationTime: 2023-10-01T00:00:00Z
+  # externallyMergedOrClosed: true

@@ -35,13 +35,16 @@ import (
 	"time"
 
 	"go.uber.org/zap/zapcore"
+	"golang.org/x/sync/errgroup"
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/clientcmd/api"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/ptr"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
@@ -107,11 +110,9 @@ func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
 
 	c, _ := GinkgoConfiguration()
-	// c.FocusFiles = []string{
-	// 	"changetransferpolicy_controller_test.go",
-	// 	"pullrequest_controller_test.go",
-	// 	"promotionstrategy_controller_test.go",
-	// }
+	// Narrow iteration without editing specs: run `FOCUS='SubString' make test-parallel` (see Makefile).
+	// Or scope by file (do not commit):
+	// c.FocusFiles = []string{"promotionstrategy_controller_test.go"}
 	// GinkgoWriter.TeeTo(os.Stdout)
 
 	RunSpecs(t, "Controller Suite", c)
@@ -154,7 +155,7 @@ var _ = BeforeSuite(func() {
 		},
 	})
 
-	//nolint:fatcontext
+	//nolint:fatcontext // ctx is intentionally reassigned in test setup
 	ctx, cancel = context.WithCancel(context.Background())
 
 	// Create kubeconfig secret for dev and staging test environments in the local cluster
@@ -179,173 +180,8 @@ var _ = BeforeSuite(func() {
 
 	k8sManager := multiClusterManager.GetLocalManager()
 
-	controllerConfiguration := &promoterv1alpha1.ControllerConfiguration{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "promoter-controller-configuration",
-			Namespace: "default",
-		},
-		Spec: promoterv1alpha1.ControllerConfigurationSpec{
-			PromotionStrategy: promoterv1alpha1.PromotionStrategyConfiguration{
-				WorkQueue: promoterv1alpha1.WorkQueue{
-					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-					MaxConcurrentReconciles: 10,
-					RateLimiter: promoterv1alpha1.RateLimiter{
-						MaxOf: []promoterv1alpha1.RateLimiterTypes{
-							{
-								Bucket: &promoterv1alpha1.Bucket{
-									Qps:    10,
-									Bucket: 100,
-								},
-							},
-							{
-								ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-									BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-									MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-								},
-							},
-						},
-					},
-				},
-			},
-			ChangeTransferPolicy: promoterv1alpha1.ChangeTransferPolicyConfiguration{
-				WorkQueue: promoterv1alpha1.WorkQueue{
-					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-					MaxConcurrentReconciles: 10,
-					RateLimiter: promoterv1alpha1.RateLimiter{
-						MaxOf: []promoterv1alpha1.RateLimiterTypes{
-							{
-								Bucket: &promoterv1alpha1.Bucket{
-									Qps:    10,
-									Bucket: 100,
-								},
-							},
-							{
-								ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-									BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-									MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-								},
-							},
-						},
-					},
-				},
-			},
-			PullRequest: promoterv1alpha1.PullRequestConfiguration{
-				Template: promoterv1alpha1.PullRequestTemplate{
-					Title:       "Promote {{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }} to `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`",
-					Description: "This PR is promoting the environment branch `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}` which is currently on dry sha {{ .ChangeTransferPolicy.Status.Active.Dry.Sha }} to dry sha {{ .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}.",
-				},
-				WorkQueue: promoterv1alpha1.WorkQueue{
-					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-					MaxConcurrentReconciles: 10,
-					RateLimiter: promoterv1alpha1.RateLimiter{
-						MaxOf: []promoterv1alpha1.RateLimiterTypes{
-							{
-								Bucket: &promoterv1alpha1.Bucket{
-									Qps:    10,
-									Bucket: 100,
-								},
-							},
-							{
-								ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-									BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-									MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-								},
-							},
-						},
-					},
-				},
-			},
-			CommitStatus: promoterv1alpha1.CommitStatusConfiguration{
-				WorkQueue: promoterv1alpha1.WorkQueue{
-					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-					MaxConcurrentReconciles: 10,
-					RateLimiter: promoterv1alpha1.RateLimiter{
-						MaxOf: []promoterv1alpha1.RateLimiterTypes{
-							{
-								Bucket: &promoterv1alpha1.Bucket{
-									Qps:    10,
-									Bucket: 100,
-								},
-							},
-							{
-								ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-									BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-									MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-								},
-							},
-						},
-					},
-				},
-			},
-			ArgoCDCommitStatus: promoterv1alpha1.ArgoCDCommitStatusConfiguration{
-				WatchLocalApplications: true,
-				WorkQueue: promoterv1alpha1.WorkQueue{
-					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-					MaxConcurrentReconciles: 10,
-					RateLimiter: promoterv1alpha1.RateLimiter{
-						MaxOf: []promoterv1alpha1.RateLimiterTypes{
-							{
-								Bucket: &promoterv1alpha1.Bucket{
-									Qps:    10,
-									Bucket: 100,
-								},
-							},
-							{
-								ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-									BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-									MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-								},
-							},
-						},
-					},
-				},
-			},
-			TimedCommitStatus: promoterv1alpha1.TimedCommitStatusConfiguration{
-				WorkQueue: promoterv1alpha1.WorkQueue{
-					RequeueDuration:         metav1.Duration{Duration: time.Second * 1},
-					MaxConcurrentReconciles: 10,
-					RateLimiter: promoterv1alpha1.RateLimiter{
-						MaxOf: []promoterv1alpha1.RateLimiterTypes{
-							{
-								Bucket: &promoterv1alpha1.Bucket{
-									Qps:    10,
-									Bucket: 100,
-								},
-							},
-							{
-								ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-									BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-									MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-								},
-							},
-						},
-					},
-				},
-			},
-			GitCommitStatus: promoterv1alpha1.GitCommitStatusConfiguration{
-				WorkQueue: promoterv1alpha1.WorkQueue{
-					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-					MaxConcurrentReconciles: 10,
-					RateLimiter: promoterv1alpha1.RateLimiter{
-						MaxOf: []promoterv1alpha1.RateLimiterTypes{
-							{
-								Bucket: &promoterv1alpha1.Bucket{
-									Qps:    10,
-									Bucket: 100,
-								},
-							},
-							{
-								ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-									BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-									MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
+	controllerConfiguration, err := loadShippedControllerConfigurationForTests("default", settings.ControllerConfigurationName)
+	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient.Create(ctx, controllerConfiguration)).To(Succeed())
 
 	settingsMgr := settings.NewManager(k8sManager.GetClient(), k8sManager.GetAPIReader(), settings.ManagerConfig{
@@ -442,6 +278,15 @@ var _ = BeforeSuite(func() {
 		Client:      k8sManager.GetClient(),
 		Scheme:      k8sManager.GetScheme(),
 		Recorder:    k8sManager.GetEventRecorder("GitCommitStatus"),
+		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+	}).SetupWithManager(ctx, k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&WebRequestCommitStatusReconciler{
+		Client:      k8sManager.GetClient(),
+		Scheme:      k8sManager.GetScheme(),
+		Recorder:    k8sManager.GetEventRecorder("WebRequestCommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(ctx, k8sManager)
@@ -572,7 +417,12 @@ func startGitServer(gitStoragePath string) (string, *http.Server) {
 	return gitServerPortStr, server
 }
 
-func setupInitialTestGitRepoWithoutActiveMetadata(owner string, name string) {
+// testGitRepoCloneURL is the http URL of the fake repository on the in-process test git server (from GitRepository.Spec.Fake).
+func testGitRepoCloneURL(repo *promoterv1alpha1.GitRepository) string {
+	return fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repo.Spec.Fake.Owner, repo.Spec.Fake.Name)
+}
+
+func setupInitialTestGitRepoWithoutActiveMetadata(repo *promoterv1alpha1.GitRepository) {
 	gitPath, err := os.MkdirTemp("", "*")
 	if err != nil {
 		panic("could not make temp dir for repo server")
@@ -584,7 +434,7 @@ func setupInitialTestGitRepoWithoutActiveMetadata(owner string, name string) {
 		}
 	}()
 
-	_, err = runGitCmd(ctx, gitPath, "clone", fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, owner, name), ".")
+	_, err = runGitCmd(ctx, gitPath, "clone", testGitRepoCloneURL(repo), ".")
 	Expect(err).NotTo(HaveOccurred())
 
 	_, err = runGitCmd(ctx, gitPath, "config", "user.name", "testuser")
@@ -638,7 +488,7 @@ func setupInitialTestGitRepoWithoutActiveMetadata(owner string, name string) {
 	}
 }
 
-func setupInitialTestGitRepoOnServer(ctx context.Context, owner string, name string) {
+func setupInitialTestGitRepoOnServer(ctx context.Context, repo *promoterv1alpha1.GitRepository) {
 	gitPath, err := os.MkdirTemp("", "*")
 	if err != nil {
 		panic("could not make temp dir for repo server")
@@ -650,7 +500,7 @@ func setupInitialTestGitRepoOnServer(ctx context.Context, owner string, name str
 		}
 	}()
 
-	_, err = runGitCmd(ctx, gitPath, "clone", fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, owner, name), ".")
+	_, err = runGitCmd(ctx, gitPath, "clone", testGitRepoCloneURL(repo), ".")
 	Expect(err).NotTo(HaveOccurred())
 
 	_, err = runGitCmd(ctx, gitPath, "config", "user.name", "testuser")
@@ -714,8 +564,77 @@ func setupInitialTestGitRepoOnServer(ctx context.Context, owner string, name str
 	GinkgoLogr.Info("Git repository initialized", "path", gitPath)
 }
 
-func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string, dryCommitMessage string, hydratedCommitMessage string) (string, string) {
-	repoURL := fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repoOwner, repoName)
+// setupInitialTestGitRepoForActivePath initializes the fake git server like
+// setupInitialTestGitRepoOnServer but does not create flat *-next environment
+// branches. Those refs would block path-suffixed proposed branches such as
+// environment/development-next/apps/app-one required by activePath promotion.
+func setupInitialTestGitRepoForActivePath(ctx context.Context, repo *promoterv1alpha1.GitRepository) {
+	gitPath, err := os.MkdirTemp("", "*")
+	if err != nil {
+		panic("could not make temp dir for repo server")
+	}
+	defer func() {
+		err := os.RemoveAll(gitPath)
+		if err != nil {
+			fmt.Println(err, "failed to remove temp dir")
+		}
+	}()
+
+	_, err = runGitCmd(ctx, gitPath, "clone", testGitRepoCloneURL(repo), ".")
+	Expect(err).NotTo(HaveOccurred())
+
+	_, err = runGitCmd(ctx, gitPath, "config", "user.name", "testuser")
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(ctx, gitPath, "config", "user.email", "testemail@test.com")
+	Expect(err).NotTo(HaveOccurred())
+
+	f, err := os.Create(path.Join(gitPath, "hydrator.metadata"))
+	Expect(err).NotTo(HaveOccurred())
+	_, err = f.WriteString("{\"drySha\": \"n/a\"}")
+	Expect(err).NotTo(HaveOccurred())
+	err = f.Close()
+	Expect(err).NotTo(HaveOccurred())
+
+	_, err = runGitCmd(ctx, gitPath, "add", "hydrator.metadata")
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(ctx, gitPath, "commit", "-m", "init commit dry side n/a dry sha")
+	Expect(err).NotTo(HaveOccurred())
+
+	defaultBranch, err := runGitCmd(ctx, gitPath, "rev-parse", "--abbrev-ref", "HEAD")
+	Expect(err).NotTo(HaveOccurred())
+	defaultBranch = strings.TrimSpace(defaultBranch)
+
+	sha, err := runGitCmd(ctx, gitPath, "rev-parse", defaultBranch)
+	Expect(err).NotTo(HaveOccurred())
+	f, err = os.Create(path.Join(gitPath, "hydrator.metadata"))
+	Expect(err).NotTo(HaveOccurred())
+	str := fmt.Sprintf("{\"drySha\": \"%s\"}", strings.TrimSpace(sha))
+	_, err = f.WriteString(str)
+	Expect(err).NotTo(HaveOccurred())
+	err = f.Close()
+	Expect(err).NotTo(HaveOccurred())
+
+	_, err = runGitCmd(ctx, gitPath, "add", "hydrator.metadata")
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(ctx, gitPath, "commit", "-m", "second commit with real dry sha")
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(ctx, gitPath, "push")
+	Expect(err).NotTo(HaveOccurred())
+
+	for _, environment := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
+		_, err = runGitCmd(ctx, gitPath, "checkout", "--orphan", environment)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(ctx, gitPath, "commit", "--allow-empty", "-m", "initial empty commit for "+environment)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", environment)
+		Expect(err).NotTo(HaveOccurred())
+		time.Sleep(1 * time.Second)
+	}
+	GinkgoLogr.Info("Git repository initialized for activePath", "path", gitPath)
+}
+
+func makeChangeAndHydrateRepo(gitPath string, repo *promoterv1alpha1.GitRepository, dryCommitMessage string, hydratedCommitMessage string) (string, string) {
+	repoURL := testGitRepoCloneURL(repo)
 	_, err := runGitCmd(ctx, gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", repoURL, ".")
 	Expect(err).NotTo(HaveOccurred())
 
@@ -768,7 +687,8 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 	sha, err := runGitCmd(ctx, gitPath, "rev-parse", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
 	sha = strings.TrimSpace(sha)
-	shortSha, err := runGitCmd(ctx, gitPath, "rev-parse", "--short=7", defaultBranch)
+	// --short=5 aligns with shipped ControllerConfiguration pullRequest.template (trunc 5 on dry SHA).
+	shortSha, err := runGitCmd(ctx, gitPath, "rev-parse", "--short=5", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
 	shortSha = strings.TrimSpace(shortSha)
 
@@ -939,14 +859,14 @@ func sendWebhookForPush(ctx context.Context, sha, branch string) {
 	}
 }
 
-// cloneTestRepo clones the test repo and configures git user. Returns the temp directory path.
-func cloneTestRepo(ctx context.Context, repoName string) (gitPath string, err error) {
+// cloneTestRepo clones the test repo for gitRepo.Spec.Fake and configures git user. Returns the temp directory path.
+func cloneTestRepo(ctx context.Context, repo *promoterv1alpha1.GitRepository) (gitPath string, err error) {
 	gitPath, err = os.MkdirTemp("", "*")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp dir: %w", err)
 	}
 
-	repoURL := fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repoName, repoName)
+	repoURL := testGitRepoCloneURL(repo)
 	_, err = runGitCmd(ctx, gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", repoURL, ".")
 	if err != nil {
 		_ = os.RemoveAll(gitPath)
@@ -1034,29 +954,79 @@ func makeDryCommit(ctx context.Context, gitPath, commitMessage string) (drySha s
 	return drySha, nil
 }
 
-// hydrateEnvironment hydrates a single environment branch with a new commit containing
-// hydrator.metadata and a git note. This simulates what a hydrator does.
-// Returns the hydrated commit SHA.
-func hydrateEnvironment(ctx context.Context, gitPath, branch, drySha, commitMessage string) error {
-	// Fetch latest and checkout the branch
-	_, err := runGitCmd(ctx, gitPath, "fetch", "origin")
+// BatchedHydrationTarget describes one parallel hydrator run in hydrateEnvironmentsBatchedTargets.
+type BatchedHydrationTarget struct {
+	// Branch is the proposed (or environment) branch to push the hydrated commit to.
+	Branch string
+	// ActivePath scopes app manifests under a repository subdirectory. Like the Argo CD
+	// source hydrator, hydration still writes root hydrator.metadata plus
+	// <activePath>/hydrator.metadata when this is set.
+	ActivePath string
+	// BootstrapBranch is the remote branch to base the first commit on when Branch does not
+	// exist on origin yet (typical for activePath proposed branches).
+	BootstrapBranch string
+	// DrySha is the dry commit SHA recorded in hydrator.metadata and the git note.
+	DrySha string
+}
+
+// pushHydratedBranch fetches origin, checks out `branch` from its remote counterpart,
+// writes root hydrator.metadata and manifests-fake.yaml, commits, and pushes.
+func pushHydratedBranch(ctx context.Context, gitPath, branch, drySha, commitMessage string) (beforeSha, hydratedSha string, err error) {
+	return pushHydratedBranchForPath(ctx, gitPath, branch, "", "", drySha, commitMessage)
+}
+
+// writeHydratorMetadataFiles writes hydrator.metadata like the Argo CD source hydrator:
+// always at the repository root, and also at <activePath>/hydrator.metadata when activePath
+// is set. Returns repository-relative paths to pass to git add.
+func writeHydratorMetadataFiles(gitPath, activePath string, metadata []byte) ([]string, error) {
+	paths := make([]string, 0, 2)
+	paths = append(paths, "hydrator.metadata")
+	if err := os.WriteFile(path.Join(gitPath, "hydrator.metadata"), metadata, 0o644); err != nil {
+		return nil, fmt.Errorf("failed to write root hydrator.metadata: %w", err)
+	}
+	if activePath == "" {
+		return paths, nil
+	}
+	if err := os.MkdirAll(path.Join(gitPath, activePath), 0o755); err != nil {
+		return nil, fmt.Errorf("failed to create activePath directory %q: %w", activePath, err)
+	}
+	pathMetadata := path.Join(activePath, "hydrator.metadata")
+	if err := os.WriteFile(path.Join(gitPath, pathMetadata), metadata, 0o644); err != nil {
+		return nil, fmt.Errorf("failed to write %q hydrator.metadata: %w", activePath, err)
+	}
+	paths = append(paths, pathMetadata)
+	return paths, nil
+}
+
+// pushHydratedBranchForPath is like pushHydratedBranch but scopes app manifests under
+// activePath when set. Metadata is written at the repo root and under activePath (when
+// set), matching the Argo CD source hydrator. When the target branch is missing on
+// origin, it is created from bootstrapBranch (for example the shared active branch).
+func pushHydratedBranchForPath(ctx context.Context, gitPath, branch, activePath, bootstrapBranch, drySha, commitMessage string) (beforeSha, hydratedSha string, err error) {
+	_, err = runGitCmd(ctx, gitPath, "fetch", "origin")
 	if err != nil {
-		return fmt.Errorf("failed to fetch: %w", err)
+		return "", "", fmt.Errorf("failed to fetch: %w", err)
 	}
 
-	_, err = runGitCmd(ctx, gitPath, "checkout", "-B", branch, "origin/"+branch)
-	if err != nil {
-		return fmt.Errorf("failed to checkout branch %s: %w", branch, err)
+	checkoutRef := "origin/" + branch
+	if _, revErr := runGitCmd(ctx, gitPath, "rev-parse", checkoutRef); revErr != nil {
+		if bootstrapBranch == "" {
+			return "", "", fmt.Errorf("failed to resolve branch %q: %w", branch, revErr)
+		}
+		checkoutRef = "origin/" + bootstrapBranch
 	}
 
-	// Get the SHA before we make changes - this is the "before" SHA for the webhook
-	beforeSha, err := runGitCmd(ctx, gitPath, "rev-parse", branch)
+	_, err = runGitCmd(ctx, gitPath, "checkout", "-B", branch, checkoutRef)
 	if err != nil {
-		return fmt.Errorf("failed to get before SHA: %w", err)
+		return "", "", fmt.Errorf("failed to checkout branch %s from %s: %w", branch, checkoutRef, err)
+	}
+
+	beforeSha, err = runGitCmd(ctx, gitPath, "rev-parse", branch)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to get before SHA: %w", err)
 	}
 	beforeSha = strings.TrimSpace(beforeSha)
 
-	// Create hydrator.metadata
 	metadata := git.HydratorMetadata{
 		DrySha:  drySha,
 		Author:  "testuser <testmail@test.com>",
@@ -1065,25 +1035,34 @@ func hydrateEnvironment(ctx context.Context, gitPath, branch, drySha, commitMess
 	}
 	m, err := json.MarshalIndent(metadata, "", "\t")
 	if err != nil {
-		return fmt.Errorf("failed to marshal metadata: %w", err)
+		return "", "", fmt.Errorf("failed to marshal metadata: %w", err)
 	}
 
-	metadataPath := path.Join(gitPath, "hydrator.metadata")
-	if err := os.WriteFile(metadataPath, m, 0o644); err != nil {
-		return fmt.Errorf("failed to write hydrator.metadata: %w", err)
-	}
-
-	// Update manifests with unique content
-	manifestContent := fmt.Sprintf("{\"time\": \"%s\"}", time.Now().Format(time.RFC3339Nano))
-	manifestPath := path.Join(gitPath, "manifests-fake.yaml")
-	if err := os.WriteFile(manifestPath, []byte(manifestContent), 0o644); err != nil {
-		return fmt.Errorf("failed to write manifests-fake.yaml: %w", err)
-	}
-
-	// Commit and push
-	_, err = runGitCmd(ctx, gitPath, "add", "-A")
+	metadataPaths, err := writeHydratorMetadataFiles(gitPath, activePath, m)
 	if err != nil {
-		return fmt.Errorf("failed to add files: %w", err)
+		return "", "", err
+	}
+
+	manifestRelPath := "manifests-fake.yaml"
+	if activePath != "" {
+		if err := os.MkdirAll(path.Join(gitPath, activePath), 0o755); err != nil {
+			return "", "", fmt.Errorf("failed to create activePath directory %q: %w", activePath, err)
+		}
+		manifestRelPath = path.Join(activePath, "manifests-fake.yaml")
+	}
+
+	manifestContent := fmt.Sprintf("{\"drySha\": \"%s\", \"time\": \"%s\"}", drySha, time.Now().Format(time.RFC3339Nano))
+	if activePath != "" {
+		manifestContent = fmt.Sprintf("{\"drySha\": \"%s\", \"activePath\": \"%s\", \"time\": \"%s\"}", drySha, activePath, time.Now().Format(time.RFC3339Nano))
+	}
+	if err := os.WriteFile(path.Join(gitPath, manifestRelPath), []byte(manifestContent), 0o644); err != nil {
+		return "", "", fmt.Errorf("failed to write manifests-fake.yaml: %w", err)
+	}
+
+	addArgs := append([]string{"add"}, append(metadataPaths, manifestRelPath)...)
+	_, err = runGitCmd(ctx, gitPath, addArgs...)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to add hydrated files: %w", err)
 	}
 
 	if commitMessage == "" {
@@ -1091,42 +1070,235 @@ func hydrateEnvironment(ctx context.Context, gitPath, branch, drySha, commitMess
 	}
 	_, err = runGitCmd(ctx, gitPath, "commit", "-m", commitMessage)
 	if err != nil {
-		return fmt.Errorf("failed to commit: %w", err)
+		return "", "", fmt.Errorf("failed to commit: %w", err)
 	}
 
 	_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", branch)
 	if err != nil {
-		return fmt.Errorf("failed to push: %w", err)
+		return "", "", fmt.Errorf("failed to push: %w", err)
 	}
 
-	// Get the new hydrated SHA
-	hydratedSha, err := runGitCmd(ctx, gitPath, "rev-parse", branch)
+	hydratedSha, err = runGitCmd(ctx, gitPath, "rev-parse", branch)
 	if err != nil {
-		return fmt.Errorf("failed to get hydrated SHA: %w", err)
+		return "", "", fmt.Errorf("failed to get hydrated SHA: %w", err)
 	}
 	hydratedSha = strings.TrimSpace(hydratedSha)
+	return beforeSha, hydratedSha, nil
+}
 
-	// Add git note
+// gitShowPathAtRef returns the contents of repoRelativePath at the given git revision (e.g. origin/branch).
+func gitShowPathAtRef(ctx context.Context, gitPath, revision, repoRelativePath string) (string, error) {
+	stdout, err := runGitCmd(ctx, gitPath, "show", revision+":"+repoRelativePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to show %q at %q: %w", repoRelativePath, revision, err)
+	}
+	return strings.TrimSpace(stdout), nil
+}
+
+// hydrateEnvironment hydrates a single environment branch with a new commit containing
+// hydrator.metadata and a git note. This simulates what a hydrator does.
+//
+// The note is pushed immediately after the branch and the controller-facing
+// webhook is fired only once the note has landed, so observers never see an
+// in-flight "new branch, stale note" state. Use hydrateEnvironmentsBatched if
+// you want to expose that timing window.
+func hydrateEnvironment(ctx context.Context, gitPath, branch, drySha, commitMessage string) error {
+	beforeSha, hydratedSha, err := pushHydratedBranch(ctx, gitPath, branch, drySha, commitMessage)
+	if err != nil {
+		return err
+	}
+
 	if err := pushGitNote(ctx, gitPath, hydratedSha, drySha); err != nil {
 		return err
 	}
 
-	// Send webhook for the branch
 	sendWebhookForPush(ctx, beforeSha, branch)
-
 	return nil
 }
 
+// hydrateEnvironmentsBatched hydrates each branch in two phases to simulate
+// note-propagation lag observable by the controller:
+//
+//  1. In parallel (one goroutine per branch, each with its own clone): write
+//     the new hydrated commit, push it, and fire the branch-push webhook. The
+//     controller starts reconciling on each new branch but cannot yet read the
+//     note for the new hydrated commit.
+//  2. Sleep for noteDelay so the controller's reconciles in the gap operate on
+//     the (now-stale) Note.DrySha from any previous hydration of the branch.
+//  3. In parallel (reusing each goroutine's phase-1 clone): push the git note
+//     for its new hydrated commit.
+//
+// This shape exposes ordering bugs (e.g. PR #1428 — stale Status.Proposed.Note
+// retained when a new hydrated commit has no note yet) that the per-branch
+// hydrateEnvironment helper masks because it always publishes the note before
+// firing the webhook. The parallelism also models real-world hydrators that
+// run independently per environment, firing their webhooks at roughly the same
+// wall clock time rather than serialized by the test harness.
+//
+// Each goroutine is given its own clone of `repo` because git's working tree
+// cannot safely host multiple concurrent checkouts/commits on the same path.
+//
+// noteDelay = 0 collapses phases 1 and 2 with no artificial pause but still
+// delivers the controller a webhook before the matching note.
+func hydrateEnvironmentsBatched(ctx context.Context, repo *promoterv1alpha1.GitRepository, branches []string, drySha, commitMessage string, noteDelay time.Duration) error {
+	targets := make([]BatchedHydrationTarget, len(branches))
+	for i, branch := range branches {
+		targets[i] = BatchedHydrationTarget{
+			Branch: branch,
+			DrySha: drySha,
+		}
+	}
+	return hydrateEnvironmentsBatchedTargets(ctx, repo, targets, commitMessage, noteDelay)
+}
+
+// hydrateEnvironmentsBatchedTargets hydrates each target in two phases (see hydrateEnvironmentsBatched).
+// Each target may specify its own dry SHA, activePath, and bootstrap branch for first-time proposed refs.
+func hydrateEnvironmentsBatchedTargets(ctx context.Context, repo *promoterv1alpha1.GitRepository, targets []BatchedHydrationTarget, commitMessage string, noteDelay time.Duration) error {
+	type pushed struct {
+		target      BatchedHydrationTarget
+		beforeSha   string
+		hydratedSha string
+		gitPath     string
+	}
+	hydrated := make([]pushed, len(targets))
+
+	g, gctx := errgroup.WithContext(ctx)
+	for i := range targets {
+		target := targets[i]
+		g.Go(func() error {
+			gp, err := cloneTestRepo(gctx, repo)
+			if err != nil {
+				return fmt.Errorf("failed to clone for branch %q: %w", target.Branch, err)
+			}
+			beforeSha, hydratedSha, err := pushHydratedBranchForPath(
+				gctx, gp, target.Branch, target.ActivePath, target.BootstrapBranch, target.DrySha, commitMessage,
+			)
+			if err != nil {
+				return fmt.Errorf("failed to push hydrated branch %q: %w", target.Branch, err)
+			}
+			hydrated[i] = pushed{target: target, beforeSha: beforeSha, hydratedSha: hydratedSha, gitPath: gp}
+			sendWebhookForPush(gctx, beforeSha, target.Branch)
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("failed to push hydrated branches: %w", err)
+	}
+
+	if noteDelay > 0 {
+		time.Sleep(noteDelay)
+	}
+
+	g2, gctx2 := errgroup.WithContext(ctx)
+	for _, h := range hydrated {
+		g2.Go(func() error {
+			if err := pushGitNoteWithRetry(gctx2, h.gitPath, h.hydratedSha, h.target.DrySha); err != nil {
+				return fmt.Errorf("failed to push git note for branch %q: %w", h.target.Branch, err)
+			}
+			// Intentionally NO webhook here. Real SCMs do not emit webhooks when git
+			// notes are pushed (only on ref/branch updates), so faking one would let
+			// tests pass for the wrong reason and mask the controller's real note-sync
+			// behavior. In production a freshly landed note becomes visible in status
+			// only via (a) a later branch-push webhook, (b) PromotionStrategy's
+			// enqueueOutOfSyncCTPs nudge, or (c) the periodic CTP requeue
+			// (changeTransferPolicy.workQueue.requeueDuration, shipped default 5m).
+			// Tests that need a note reflected promptly must nudge reconciliation
+			// in-process via enqueueCTP (the same mechanism enqueueOutOfSyncCTPs uses),
+			// rather than relying on a webhook that an SCM would never send.
+			return nil
+		})
+	}
+	if err := g2.Wait(); err != nil {
+		return fmt.Errorf("failed to push git notes: %w", err)
+	}
+	return nil
+}
+
+// notePushBackoff is the backoff schedule for pushGitNoteWithRetry. 16 steps
+// at ~50-100ms each (50ms base + uniform 0-50ms jitter, no exponential growth)
+// gives roughly a 1s budget — long enough for concurrent hydrators to settle
+// against the gitkit fake remote's ref lock, short enough to surface real
+// failures quickly.
+var notePushBackoff = wait.Backoff{
+	Steps:    16,
+	Duration: 50 * time.Millisecond,
+	Factor:   1.0,
+	Jitter:   1.0,
+}
+
+// pushGitNoteWithRetry wraps pushGitNote with bounded retries on the
+// transient races that occur when multiple concurrent hydrators push to the
+// same notes ref:
+//
+//   - "fetch first" / "non-fast-forward": the local ref is behind because
+//     another writer pushed a competing note first.
+//   - "remote rejected" + "cannot lock ref": the gitkit fake remote serializes
+//     ref updates with a lock and rejects with this message when the lock is
+//     contended.
+//
+// Each retry re-fetches the remote notes ref (inside pushGitNote) before
+// re-adding the note locally, so the local ref converges with whatever the
+// previous winner pushed.
+func pushGitNoteWithRetry(ctx context.Context, gitPath, commitSha, drySha string) error {
+	return retry.OnError(notePushBackoff, isRetryableNotePushError, func() error { //nolint:wrapcheck // OnError returns the last pushGitNote error which is already wrapped
+		return pushGitNote(ctx, gitPath, commitSha, drySha)
+	})
+}
+
+// isRetryableNotePushError returns true for the transient race conditions a
+// concurrent notes-ref push can hit against the test git server. Anything
+// else is treated as fatal so genuine bugs aren't masked by silent retries.
+func isRetryableNotePushError(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "fetch first") ||
+		strings.Contains(msg, "non-fast-forward") ||
+		strings.Contains(msg, "cannot lock ref") ||
+		strings.Contains(msg, "remote rejected")
+}
+
 // pushGitNote adds a git note to a commit and pushes it to origin.
+//
+// `git clone` does not fetch refs/notes/* by default, so a fresh clone will
+// have an empty local notes ref even if the remote already has notes from a
+// previous run. If we just `git notes add` and `git push`, the local ref
+// becomes a brand-new commit chain unrelated to the remote, and the push is
+// rejected ("fetch first" / non-fast-forward). To match what a well-behaved
+// hydrator must do (and what the controller's FetchNotes already does), we
+// force-fetch the notes ref into our local clone before mutating it.
+//
+// pushGitNote does not artificially delay; if you want to simulate
+// note-propagation lag relative to the branch push, sleep in the caller (see
+// hydrateEnvironmentsBatched) instead of inside this helper.
 func pushGitNote(ctx context.Context, gitPath, commitSha, drySha string) error {
+	err := fetchNotesRef(ctx, gitPath)
+	if err != nil {
+		return err
+	}
 	noteContent := fmt.Sprintf(`{"drySha": "%s"}`, drySha)
-	_, err := runGitCmd(ctx, gitPath, "notes", "--ref="+git.HydratorNotesRef, "add", "-f", "-m", noteContent, commitSha)
+	_, err = runGitCmd(ctx, gitPath, "notes", "--ref="+git.HydratorNotesRef, "add", "-f", "-m", noteContent, commitSha)
 	if err != nil {
 		return fmt.Errorf("failed to add git note: %w", err)
 	}
 	_, err = runGitCmd(ctx, gitPath, "push", "origin", git.HydratorNotesRef)
 	if err != nil {
 		return fmt.Errorf("failed to push git notes: %w", err)
+	}
+	return nil
+}
+
+// fetchNotesRef force-fetches the hydrator notes ref from origin into the
+// local clone. It tolerates the case where the remote does not yet have the
+// notes ref (first hydrator run on a brand-new repo).
+func fetchNotesRef(ctx context.Context, gitPath string) error {
+	refspec := "+" + git.HydratorNotesRef + ":" + git.HydratorNotesRef
+	_, err := runGitCmd(ctx, gitPath, "fetch", "origin", refspec)
+	if err != nil {
+		// The remote may simply not have the notes ref yet; that is not an
+		// error for a hydrator that is about to create the first note.
+		if strings.Contains(err.Error(), "couldn't find remote ref") {
+			return nil
+		}
+		return fmt.Errorf("failed to fetch git notes ref: %w", err)
 	}
 	return nil
 }

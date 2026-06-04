@@ -1,9 +1,13 @@
 package gitlab
 
 import (
+	"errors"
+	"net/http"
+
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/go-logr/logr"
 	gitlab "gitlab.com/gitlab-org/api/client-go"
+	corev1 "k8s.io/api/core/v1"
 )
 
 func logGitLabRateLimitsIfAvailable(
@@ -46,4 +50,14 @@ func buildStateToPhase(buildState gitlab.BuildStateValue) v1alpha1.CommitStatusP
 	default:
 		return v1alpha1.CommitPhaseFailure
 	}
+}
+
+// ApplyHTTPAuth applies GitLab authentication to the HTTP request using a PRIVATE-TOKEN header.
+func ApplyHTTPAuth(secret corev1.Secret, req *http.Request) error {
+	token := string(secret.Data["token"])
+	if token == "" {
+		return errors.New("non-empty token required in secret for GitLab SCM auth")
+	}
+	req.Header.Set("Private-Token", token)
+	return nil
 }

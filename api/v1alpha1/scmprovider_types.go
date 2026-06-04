@@ -66,6 +66,13 @@ type ScmProviderStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
+	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
+	// Because status is written via Server-Side Apply with ForceOwnership (which has no
+	// optimistic-concurrency check), this field is the canonical way to detect stale
+	// status writes: compare status.observedGeneration with metadata.generation.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// Conditions Represents the observations of the current state.
 	// +patchMergeKey=type
 	// +patchStrategy=merge
@@ -93,6 +100,11 @@ func (s *ScmProvider) GetConditions() *[]metav1.Condition {
 	return &s.Status.Conditions
 }
 
+// SetObservedGeneration records the object generation that produced the current status.
+func (s *ScmProvider) SetObservedGeneration(generation int64) {
+	s.Status.ObservedGeneration = generation
+}
+
 //+kubebuilder:object:root=true
 
 // ScmProviderList contains a list of ScmProvider
@@ -103,7 +115,10 @@ type ScmProviderList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&ScmProvider{}, &ScmProviderList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &ScmProvider{}, &ScmProviderList{})
+		return nil
+	})
 }
 
 // +kubebuilder:object:root=false

@@ -2,6 +2,7 @@ package git_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -103,11 +104,11 @@ var _ = Describe("GetBranchShas", func() {
 				},
 			}
 			gap := &fakeGitProvider{tempDirPath: tempRepoDir}
-			g := git.NewEnvironmentOperations(repo, gap, defaultBranch)
+			g := git.NewEnvironmentOperations(repo, gap, "default/testrepo")
 			Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
 
 			// Call GetBranchShas with a non-existent branch
-			_, err = g.GetBranchShas(GinkgoT().Context(), "environments/qal-usw2-eks-next")
+			_, err = g.GetBranchShas(GinkgoT().Context(), "environments/qal-usw2-eks-next", "")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("failed to fetch branch"))
 
@@ -278,6 +279,482 @@ var _ = Describe("LsRemote", func() {
 			Expect(err.Error()).To(ContainSubstring("environment/prod"))
 			Expect(err.Error()).To(ContainSubstring("environment/staging"))
 		})
+	})
+})
+
+var _ = Describe("HasConflict", func() {
+	var tempRepoDir string
+	var workDir string
+	var defaultBranch string
+	var repo *v1alpha1.GitRepository
+	var g *git.EnvironmentOperations
+
+	BeforeEach(func() {
+		var err error
+		tempRepoDir, err = os.MkdirTemp("", "git-test-*")
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = runGitCmd(tempRepoDir, "init", "--bare")
+		Expect(err).NotTo(HaveOccurred())
+
+		workDir, err = os.MkdirTemp("", "git-work-*")
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = runGitCmd(workDir, "clone", tempRepoDir, ".")
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = runGitCmd(workDir, "config", "user.name", "Test User")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "config", "user.email", "test@example.com")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "config", "commit.gpgsign", "false")
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(os.MkdirAll(filepath.Join(workDir, "apps", "app-one"), 0o755)).To(Succeed())
+		Expect(os.MkdirAll(filepath.Join(workDir, "apps", "app-two"), 0o755)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-one", "config.yaml"), []byte("version: base\n"), 0o644)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-two", "config.yaml"), []byte("version: base\n"), 0o644)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"base"}`), 0o644)).To(Succeed())
+		_, err = runGitCmd(workDir, "add", "-A")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", "base")
+		Expect(err).NotTo(HaveOccurred())
+
+		out, err := runGitCmd(workDir, "rev-parse", "--abbrev-ref", "HEAD")
+		Expect(err).NotTo(HaveOccurred())
+		defaultBranch = strings.TrimSpace(out)
+
+		_, err = runGitCmd(workDir, "push", "-u", "origin", defaultBranch)
+		Expect(err).NotTo(HaveOccurred())
+
+		repo = &v1alpha1.GitRepository{
+			Spec: v1alpha1.GitRepositorySpec{
+				GitHub: &v1alpha1.GitHubRepo{
+					Owner: "test-owner",
+					Name:  "testrepo",
+				},
+				ScmProviderRef: v1alpha1.ScmProviderObjectReference{
+					Kind: "ScmProvider",
+					Name: "testprovider",
+				},
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "testrepo",
+				Namespace: "default",
+			},
+		}
+	})
+
+	AfterEach(func() {
+		if tempRepoDir != "" {
+			Expect(os.RemoveAll(tempRepoDir)).To(Succeed())
+		}
+		if workDir != "" {
+			Expect(os.RemoveAll(workDir)).To(Succeed())
+		}
+	})
+
+	createBranch := func(branch string, files map[string]string, commitMessage string) {
+		_, err := runGitCmd(workDir, "checkout", "-b", branch, defaultBranch)
+		Expect(err).NotTo(HaveOccurred())
+		for relPath, content := range files {
+			full := filepath.Join(workDir, relPath)
+			Expect(os.MkdirAll(filepath.Dir(full), 0o755)).To(Succeed())
+			Expect(os.WriteFile(full, []byte(content), 0o644)).To(Succeed())
+		}
+		_, err = runGitCmd(workDir, "add", "-A")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", commitMessage)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "-u", "origin", branch)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "checkout", defaultBranch)
+		Expect(err).NotTo(HaveOccurred())
+	}
+
+	prepareEnvOps := func() {
+		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
+		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
+		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
+		_, err := g.GetBranchShas(GinkgoT().Context(), "active", "")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = g.GetBranchShas(GinkgoT().Context(), "proposed", "")
+		Expect(err).NotTo(HaveOccurred())
+	}
+
+	It("returns false when active and proposed touch disjoint files", func() {
+		createBranch("active", map[string]string{
+			"apps/app-one/config.yaml": "version: active\n",
+		}, "active app-one")
+		createBranch("proposed", map[string]string{
+			"apps/app-two/config.yaml": "version: proposed\n",
+		}, "proposed app-two")
+
+		prepareEnvOps()
+
+		hasConflict, err := g.HasConflict(GinkgoT().Context(), "proposed", "active")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(hasConflict).To(BeFalse())
+	})
+
+	It("returns true when active and proposed both modify the same file", func() {
+		createBranch("active", map[string]string{
+			"apps/app-one/config.yaml": "version: active\n",
+		}, "active app-one")
+		createBranch("proposed", map[string]string{
+			"apps/app-one/config.yaml": "version: proposed\n",
+		}, "proposed app-one")
+
+		prepareEnvOps()
+
+		hasConflict, err := g.HasConflict(GinkgoT().Context(), "proposed", "active")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(hasConflict).To(BeTrue())
+	})
+
+	It("returns true when disjoint app paths share modifications to root hydrator.metadata", func() {
+		createBranch("active", map[string]string{
+			"apps/app-one/config.yaml": "version: active\n",
+			"hydrator.metadata":        `{"drySha":"dry-one"}`,
+		}, "active app-one + root metadata")
+		createBranch("proposed", map[string]string{
+			"apps/app-two/config.yaml": "version: proposed\n",
+			"hydrator.metadata":        `{"drySha":"dry-two"}`,
+		}, "proposed app-two + root metadata")
+
+		prepareEnvOps()
+
+		hasConflict, err := g.HasConflict(GinkgoT().Context(), "proposed", "active")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(hasConflict).To(BeTrue())
+	})
+
+	It("returns true when a sibling branch still has different root hydrator.metadata after another sibling has merged into active", func() {
+		_, err := runGitCmd(workDir, "checkout", "-b", "active", defaultBranch)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.Remove(filepath.Join(workDir, "hydrator.metadata"))).To(Succeed())
+		_, err = runGitCmd(workDir, "add", "-A")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", "active: empty base")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "-u", "origin", "active")
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = runGitCmd(workDir, "checkout", "-b", "first", "active")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"first-dry"}`), 0o644)).To(Succeed())
+		_, err = runGitCmd(workDir, "add", "-A")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", "first adds root metadata")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "-u", "origin", "first")
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = runGitCmd(workDir, "checkout", "-b", "second", "active")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"second-dry"}`), 0o644)).To(Succeed())
+		_, err = runGitCmd(workDir, "add", "-A")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", "second adds root metadata")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "-u", "origin", "second")
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = runGitCmd(workDir, "checkout", "active")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "merge", "--no-ff", "-m", "merge first into active", "first")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "origin", "active")
+		Expect(err).NotTo(HaveOccurred())
+
+		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
+		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
+		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
+		_, err = g.GetBranchShas(GinkgoT().Context(), "active", "")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = g.GetBranchShas(GinkgoT().Context(), "second", "")
+		Expect(err).NotTo(HaveOccurred())
+
+		hasConflict, err := g.HasConflict(GinkgoT().Context(), "second", "active")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(hasConflict).To(BeTrue())
+	})
+})
+
+var _ = Describe("ActivePath support", func() {
+	var tempRepoDir string
+	var workDir string
+	var repo *v1alpha1.GitRepository
+	var g *git.EnvironmentOperations
+
+	BeforeEach(func() {
+		var err error
+		tempRepoDir, err = os.MkdirTemp("", "git-test-*")
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = runGitCmd(tempRepoDir, "init", "--bare")
+		Expect(err).NotTo(HaveOccurred())
+
+		workDir, err = os.MkdirTemp("", "git-work-*")
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = runGitCmd(workDir, "clone", tempRepoDir, ".")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "config", "user.name", "Test User")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "config", "user.email", "test@example.com")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "config", "commit.gpgsign", "false")
+		Expect(err).NotTo(HaveOccurred())
+
+		repo = &v1alpha1.GitRepository{
+			Spec: v1alpha1.GitRepositorySpec{
+				GitHub: &v1alpha1.GitHubRepo{Owner: "test-owner", Name: "testrepo"},
+				ScmProviderRef: v1alpha1.ScmProviderObjectReference{
+					Kind: "ScmProvider",
+					Name: "testprovider",
+				},
+			},
+			ObjectMeta: metav1.ObjectMeta{Name: "testrepo", Namespace: "default"},
+		}
+	})
+
+	AfterEach(func() {
+		if tempRepoDir != "" {
+			Expect(os.RemoveAll(tempRepoDir)).To(Succeed())
+		}
+		if workDir != "" {
+			Expect(os.RemoveAll(workDir)).To(Succeed())
+		}
+	})
+
+	It("reads branch and commit metadata from activePath hydrator.metadata", func() {
+		err := os.WriteFile(filepath.Join(workDir, "README.md"), []byte("root"), 0o644)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.MkdirAll(filepath.Join(workDir, "apps", "app-one"), 0o755)).To(Succeed())
+		err = os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"root-sha"}`), 0o644)
+		Expect(err).NotTo(HaveOccurred())
+		err = os.WriteFile(filepath.Join(workDir, "apps", "app-one", "hydrator.metadata"), []byte(`{"drySha":"app-sha"}`), 0o644)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "add", "-A")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", "init")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "branch", "-M", "environment/development")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "-u", "origin", "environment/development")
+		Expect(err).NotTo(HaveOccurred())
+
+		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
+		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
+		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
+
+		shas, err := g.GetBranchShas(GinkgoT().Context(), "environment/development", "apps/app-one")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(shas.Dry).To(Equal("app-sha"))
+		Expect(shas.Hydrated).NotTo(BeEmpty())
+
+		commitSha, err := runGitCmd(workDir, "rev-parse", "environment/development")
+		Expect(err).NotTo(HaveOccurred())
+		commitSha = strings.TrimSpace(commitSha)
+
+		metadata, err := g.GetShaMetadataFromFile(GinkgoT().Context(), commitSha, "apps/app-one")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(metadata.Sha).To(Equal("app-sha"))
+	})
+
+	It("treats a missing activePath hydrator.metadata as empty even when the path exists in the worktree", func() {
+		// Regression for the activePath convergence bug: GetBranchShas reads
+		// <activePath>/hydrator.metadata from the active branch, which legitimately does
+		// not exist until that app's first promotion. When the clone's working tree
+		// already holds that path (e.g. left by a prior checkout of the proposed branch
+		// during conflict resolution), a worktree-sensitive read like `git show origin/<active>:<path>`
+		// fails instead of reporting a clean absence. GetBranchShas must determine presence from the
+		// ref's tree alone (not the worktree) and treat a genuinely-absent path as "no metadata yet",
+		// not a hard error, or the CTP can never compute status and never promotes.
+		Expect(os.MkdirAll(filepath.Join(workDir, "apps", "app-one"), 0o755)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-one", "config.yaml"), []byte("version: active\n"), 0o644)).To(Succeed())
+		// Active branch intentionally has NO apps/app-one/hydrator.metadata.
+		_, err := runGitCmd(workDir, "add", "-A")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", "active without app-one metadata")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "branch", "-M", "active")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "-u", "origin", "active")
+		Expect(err).NotTo(HaveOccurred())
+
+		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
+		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
+		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
+
+		// Place the path in the clone's working tree to prove the read is worktree-independent:
+		// a worktree-only copy must not be mistaken for metadata on the ref.
+		clonePath := g.ClonePath()
+		Expect(os.MkdirAll(filepath.Join(clonePath, "apps", "app-one"), 0o755)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(clonePath, "apps", "app-one", "hydrator.metadata"), []byte(`{"drySha":"worktree-only"}`), 0o644)).To(Succeed())
+
+		shas, err := g.GetBranchShas(GinkgoT().Context(), "active", "apps/app-one")
+		Expect(err).NotTo(HaveOccurred(), "missing activePath metadata on the ref must not be a hard error")
+		Expect(shas.Dry).To(BeEmpty(), "worktree-only metadata must not be mistaken for ref metadata")
+		Expect(shas.Hydrated).NotTo(BeEmpty(), "the hydrated SHA still resolves from the ref")
+	})
+
+	It("path-scoped merge: proposed wins inside activePath, active wins outside on conflict", func() {
+		base := map[string]string{
+			"apps/app-one/config.yaml": "version: base\n",
+			"apps/app-two/config.yaml": "version: base\n",
+		}
+		for filePath, content := range base {
+			Expect(os.MkdirAll(filepath.Dir(filepath.Join(workDir, filePath)), 0o755)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(workDir, filePath), []byte(content), 0o644)).To(Succeed())
+		}
+		metadata := map[string]string{"drySha": "base"}
+		m, err := json.Marshal(metadata)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-one", "hydrator.metadata"), m, 0o644)).To(Succeed())
+		_, err = runGitCmd(workDir, "add", "-A")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", "base")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "branch", "-M", "active")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "-u", "origin", "active")
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = runGitCmd(workDir, "checkout", "-b", "proposed-app-one-next")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-one", "config.yaml"), []byte("version: proposed\n"), 0o644)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-two", "config.yaml"), []byte("version: proposed\n"), 0o644)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"proposed-root"}`), 0o644)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-one", "hydrator.metadata"), []byte(`{"drySha":"proposed"}`), 0o644)).To(Succeed())
+		_, err = runGitCmd(workDir, "add", "-A")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", "proposed")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "-u", "origin", "proposed-app-one-next")
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = runGitCmd(workDir, "checkout", "active")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"active-root"}`), 0o644)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-one", "config.yaml"), []byte("version: active\n"), 0o644)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-two", "config.yaml"), []byte("version: active\n"), 0o644)).To(Succeed())
+		_, err = runGitCmd(workDir, "add", "-A")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", "active")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "origin", "active")
+		Expect(err).NotTo(HaveOccurred())
+
+		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
+		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
+		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
+		_, err = g.GetBranchShas(GinkgoT().Context(), "proposed-app-one-next", "apps/app-one")
+		Expect(err).NotTo(HaveOccurred())
+
+		err = g.MergeWithOursStrategyForPath(GinkgoT().Context(), "proposed-app-one-next", "active", "apps/app-one")
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = runGitCmd(workDir, "fetch", "origin")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "checkout", "-B", "proposed-app-one-next", "origin/proposed-app-one-next")
+		Expect(err).NotTo(HaveOccurred())
+
+		appOneContent, err := os.ReadFile(filepath.Join(workDir, "apps", "app-one", "config.yaml"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(strings.TrimSpace(string(appOneContent))).To(Equal("version: proposed"),
+			"inside activePath, proposed wins")
+
+		appTwoContent, err := os.ReadFile(filepath.Join(workDir, "apps", "app-two", "config.yaml"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(strings.TrimSpace(string(appTwoContent))).To(Equal("version: active"),
+			"outside activePath, active wins on conflict")
+
+		rootMetadata, err := os.ReadFile(filepath.Join(workDir, "hydrator.metadata"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(strings.TrimSpace(string(rootMetadata))).To(ContainSubstring("active-root"),
+			"root hydrator.metadata is no longer special-cased: outside activePath, active wins on conflict")
+
+		hasConflict, err := g.HasConflict(GinkgoT().Context(), "proposed-app-one-next", "active")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(hasConflict).To(BeFalse(), "resolved proposed branch should merge cleanly into active for SCM")
+	})
+
+	It("removes files deleted in the proposed branch from activePath during conflict resolution", func() {
+		base := map[string]string{
+			"apps/app-one/config.yaml": "version: base\n",
+			"apps/app-one/extra.yaml":  "extra: base\n",
+			"apps/app-two/config.yaml": "version: base\n",
+		}
+		for filePath, content := range base {
+			Expect(os.MkdirAll(filepath.Dir(filepath.Join(workDir, filePath)), 0o755)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(workDir, filePath), []byte(content), 0o644)).To(Succeed())
+		}
+		metadata := map[string]string{"drySha": "base"}
+		m, err := json.Marshal(metadata)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-one", "hydrator.metadata"), m, 0o644)).To(Succeed())
+		_, err = runGitCmd(workDir, "add", "-A")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", "base")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "branch", "-M", "active")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "-u", "origin", "active")
+		Expect(err).NotTo(HaveOccurred())
+
+		// Proposed branch: extra.yaml is deleted from apps/app-one
+		_, err = runGitCmd(workDir, "checkout", "-b", "proposed-app-one-next")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-one", "config.yaml"), []byte("version: proposed\n"), 0o644)).To(Succeed())
+		Expect(os.Remove(filepath.Join(workDir, "apps", "app-one", "extra.yaml"))).To(Succeed())
+		_, err = runGitCmd(workDir, "add", "-A")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", "proposed")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "-u", "origin", "proposed-app-one-next")
+		Expect(err).NotTo(HaveOccurred())
+
+		// Advance active branch so a conflict exists
+		_, err = runGitCmd(workDir, "checkout", "active")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-one", "config.yaml"), []byte("version: active\n"), 0o644)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-two", "config.yaml"), []byte("version: active\n"), 0o644)).To(Succeed())
+		_, err = runGitCmd(workDir, "add", "-A")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", "active advance")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "origin", "active")
+		Expect(err).NotTo(HaveOccurred())
+
+		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
+		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
+		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
+		_, err = g.GetBranchShas(GinkgoT().Context(), "proposed-app-one-next", "apps/app-one")
+		Expect(err).NotTo(HaveOccurred())
+
+		err = g.MergeWithOursStrategyForPath(GinkgoT().Context(), "proposed-app-one-next", "active", "apps/app-one")
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = runGitCmd(workDir, "fetch", "origin")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "checkout", "-B", "proposed-app-one-next", "origin/proposed-app-one-next")
+		Expect(err).NotTo(HaveOccurred())
+
+		// extra.yaml was deleted in proposed branch — must not be present after merge
+		_, err = os.Stat(filepath.Join(workDir, "apps", "app-one", "extra.yaml"))
+		Expect(os.IsNotExist(err)).To(BeTrue(), "extra.yaml deleted in proposed branch should not exist after merge")
+
+		// config.yaml should carry proposed content
+		appOneContent, err := os.ReadFile(filepath.Join(workDir, "apps", "app-one", "config.yaml"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(strings.TrimSpace(string(appOneContent))).To(Equal("version: proposed"))
+
+		// app-two is outside activePath — must keep active content
+		appTwoContent, err := os.ReadFile(filepath.Join(workDir, "apps", "app-two", "config.yaml"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(strings.TrimSpace(string(appTwoContent))).To(Equal("version: active"))
 	})
 })
 

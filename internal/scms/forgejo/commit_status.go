@@ -70,7 +70,7 @@ func (cs CommitStatus) Set(ctx context.Context, csObj *promoterv1alpha1.CommitSt
 		options,
 	)
 	if resp != nil {
-		metrics.RecordSCMCall(repo, metrics.SCMAPICommitStatus, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
+		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPICommitStatus, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to set commit status: %w", err)

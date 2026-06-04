@@ -11,7 +11,10 @@ export interface PromotionStrategyTilesProps {
   namespace: string;
 }
 
-export const PromotionStrategiesTiles: React.FC<PromotionStrategyTilesProps> = ({ promotionStrategies, namespace }) => {
+export const PromotionStrategiesTiles: React.FC<PromotionStrategyTilesProps> = ({
+  promotionStrategies,
+  namespace,
+}) => {
   const navigate = useNavigate();
 
   return (
@@ -19,11 +22,11 @@ export const PromotionStrategiesTiles: React.FC<PromotionStrategyTilesProps> = (
       {promotionStrategies.map((ps, idx) => {
         const lastCommitTime = getLastCommitTime(ps);
         const lastUpdated = lastCommitTime ? formatDate(lastCommitTime.toISOString()) : '-';
-        
+
         const enrichedEnvs = enrichFromCRD(ps);
-        const environmentStatuses = enrichedEnvs.map(env => env.promotionStatus || 'unknown');
+        const environmentStatuses = enrichedEnvs.map((env) => env.promotionStatus || 'unknown');
         const borderStatus = getOverallPromotionStatus(environmentStatuses);
-        
+
         return (
           <PromotionStrategyTile
             key={ps.metadata?.name || `ps-${idx}`}
@@ -31,7 +34,9 @@ export const PromotionStrategiesTiles: React.FC<PromotionStrategyTilesProps> = (
             namespace={namespace}
             borderStatus={borderStatus}
             lastUpdated={lastUpdated}
-            onClick={() => navigate(`/promotion-strategies/${namespace}/${ps.metadata?.name || ''}`)}
+            onClick={() =>
+              navigate(`/promotion-strategies/${namespace}/${ps.metadata?.name || ''}`)
+            }
           />
         );
       })}
@@ -39,4 +44,4 @@ export const PromotionStrategiesTiles: React.FC<PromotionStrategyTilesProps> = (
   );
 };
 
-export default PromotionStrategiesTiles; 
+export default PromotionStrategiesTiles;

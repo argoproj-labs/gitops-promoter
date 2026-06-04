@@ -1,5 +1,5 @@
 # Build the dashboard UI
-FROM node:20-bullseye-slim AS dashboard-builder
+FROM node:24.16.0-bullseye-slim@sha256:3416ba4d075ababea074ad55b006a3d36afd9972dd87f9034495a052a2f5a956 AS dashboard-builder
 WORKDIR /workspace
 
 # Copy package files first for better layer caching
@@ -9,9 +9,9 @@ COPY ui/dashboard/package*.json ./ui/dashboard/
 # Copy all UI source files
 COPY ui/ ./ui/
 
-# Install components-lib dependencies first (library - no lock file)
+# Install components-lib dependencies first (use ci for reproducible install from lock file)
 WORKDIR /workspace/ui/components-lib
-RUN npm install
+RUN npm ci
 
 # Install dashboard dependencies (application - has lock file)
 WORKDIR /workspace/ui/dashboard
@@ -23,7 +23,7 @@ RUN npx vite build
 RUN mkdir -p ../web/static && cp -r dist/* ../web/static/
 
 # Build the gitops-promoter binary
-FROM golang:1.25 AS builder
+FROM golang:1.26.4@sha256:b4f9f8a927c6e8f24da1b653f0c7ca86fd1677fe371b03f69fd416166b527268 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
@@ -56,7 +56,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o gi
 # Use distroless as minimal base image to package the gitops-promoter binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
 #FROM gcr.io/distroless/static:nonroot #TODO: figure out smallest/safest way to get git installed
-FROM golang:1.25
+FROM golang:1.26.4@sha256:b4f9f8a927c6e8f24da1b653f0c7ca86fd1677fe371b03f69fd416166b527268
 WORKDIR /
 
 # Install tini to handle process management and prevent process leaks
