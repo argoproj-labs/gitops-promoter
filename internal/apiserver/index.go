@@ -385,7 +385,7 @@ func (p *BundleProvider) Watch(ctx context.Context, namespace, name string, send
 		}
 
 		for i := range items {
- com			item := items[i]
+			item := items[i]
 			select {
 			case w.result <- watch.Event{Type: watch.Added, Object: &item}:
 			default:
