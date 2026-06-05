@@ -93,9 +93,8 @@ type ChangeTransferPolicyConfiguration struct {
 	// +required
 	WorkQueue WorkQueue `json:"workQueue"`
 
-	// CommitMessageTemplate is an optional Go template used to generate the merge commit message
-	// when a promotion pull request is merged. When not set, the commit message defaults to the
-	// pull request title and description rendered by the PullRequest controller template.
+	// CommitMessageTemplate is a Go template used to generate the merge commit message
+	// when a promotion pull request is merged.
 	//
 	// Uses Go template syntax with Sprig functions available for string manipulation.
 	//
@@ -106,10 +105,10 @@ type ChangeTransferPolicyConfiguration struct {
 	// Example: access the original dry commit subject via
 	//   {{ .ChangeTransferPolicy.Status.Proposed.Dry.Subject }}
 	// or the dry SHA via
-	//   {{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}
-	// +optional
+	//   {{ trunc 5 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}
+	// +required
 	// +kubebuilder:validation:MinLength=1
-	CommitMessageTemplate string `json:"commitMessageTemplate,omitempty"`
+	CommitMessageTemplate string `json:"commitMessageTemplate"`
 }
 
 // PullRequestConfiguration defines the configuration for the PullRequest controller.

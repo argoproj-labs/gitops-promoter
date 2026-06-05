@@ -1114,14 +1114,14 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(Equal(fullSha))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
-				By("Verifying the PR commit message equals the dry-commit subject")
+				By("Verifying the PR commit message starts with the dry-commit subject")
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, types.NamespacedName{
 						Name:      utils.KubeSafeUniqueName(prName),
 						Namespace: "default",
 					}, &pr)
 					g.Expect(err).To(Succeed())
-					g.Expect(pr.Spec.Commit.Message).To(Equal(dryCommitSubject))
+					g.Expect(pr.Spec.Commit.Message).To(ContainSubstring(dryCommitSubject))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})

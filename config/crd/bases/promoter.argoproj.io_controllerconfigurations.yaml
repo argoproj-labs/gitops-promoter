@@ -274,9 +274,8 @@ spec:
                 properties:
                   commitMessageTemplate:
                     description: |-
-                      CommitMessageTemplate is an optional Go template used to generate the merge commit message
-                      when a promotion pull request is merged. When not set, the commit message defaults to the
-                      pull request title and description rendered by the PullRequest controller template.
+                      CommitMessageTemplate is a Go template used to generate the merge commit message
+                      when a promotion pull request is merged.
 
                       Uses Go template syntax with Sprig functions available for string manipulation.
 
@@ -287,7 +286,7 @@ spec:
                       Example: access the original dry commit subject via
                         {{ .ChangeTransferPolicy.Status.Proposed.Dry.Subject }}
                       or the dry SHA via
-                        {{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}
+                        {{ trunc 5 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}
                     minLength: 1
                     type: string
                   workQueue:
@@ -492,6 +491,7 @@ spec:
                     - requeueDuration
                     type: object
                 required:
+                - commitMessageTemplate
                 - workQueue
                 type: object
               commitStatus:
