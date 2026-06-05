@@ -108,6 +108,7 @@ type ChangeTransferPolicyConfiguration struct {
 	// or the dry SHA via
 	//   {{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}
 	// +optional
+	// +kubebuilder:validation:MinLength=1
 	CommitMessageTemplate string `json:"commitMessageTemplate,omitempty"`
 }
 

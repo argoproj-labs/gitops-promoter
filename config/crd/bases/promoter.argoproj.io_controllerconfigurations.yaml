@@ -288,6 +288,7 @@ spec:
                         {{ .ChangeTransferPolicy.Status.Proposed.Dry.Subject }}
                       or the dry SHA via
                         {{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}
+                    minLength: 1
                     type: string
                   workQueue:
                     description: |-
