@@ -1,0 +1,345 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.1
+  name: promoternotifications.promoter.argoproj.io
+spec:
+  group: promoter.argoproj.io
+  names:
+    kind: PromoterNotification
+    listKind: PromoterNotificationList
+    plural: promoternotifications
+    singular: promoternotification
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.totalDelivered
+      name: Delivered
+      priority: 1
+      type: integer
+    - jsonPath: .status.totalFailed
+      name: Failed
+      priority: 1
+      type: integer
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: PromoterNotification is the Schema for the promoternotifications
+          API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: PromoterNotificationSpec defines the desired state of PromoterNotification.
+            properties:
+              delivery:
+                description: Delivery describes how matched events are delivered.
+                properties:
+                  webhook:
+                    description: Webhook delivers the notification to an HTTP endpoint.
+                    properties:
+                      headers:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Headers is a set of static HTTP headers to send with every request.
+                          Values are sent verbatim; do not place secrets here (use signing.secretRef instead).
+                        type: object
+                      method:
+                        default: POST
+                        description: Method is the HTTP method used for delivery.
+                        enum:
+                        - POST
+                        - PUT
+                        - PATCH
+                        type: string
+                      retry:
+                        description: Retry configures retry behavior for failed deliveries.
+                        properties:
+                          backoff:
+                            default: Exponential
+                            description: Backoff is the backoff policy applied between
+                              attempts.
+                            enum:
+                            - Fixed
+                            - Exponential
+                            type: string
+                          maxAttempts:
+                            default: 3
+                            description: MaxAttempts is the total number of delivery
+                              attempts (including the first).
+                            format: int32
+                            maximum: 10
+                            minimum: 1
+                            type: integer
+                        type: object
+                      signing:
+                        description: |-
+                          Signing, when set, signs the rendered payload using an HMAC secret and adds a
+                          signature header so the receiver can verify authenticity.
+                        properties:
+                          secretRef:
+                            description: |-
+                              SecretRef references a Secret (in the same namespace as the PromoterNotification)
+                              whose Key holds the HMAC signing secret.
+                            properties:
+                              key:
+                                description: Key is the key within the Secret's data
+                                  that holds the value.
+                                minLength: 1
+                                type: string
+                              name:
+                                description: Name is the name of the Secret.
+                                maxLength: 253
+                                minLength: 1
+                                pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
+                                type: string
+                            required:
+                            - key
+                            - name
+                            type: object
+                        required:
+                        - secretRef
+                        type: object
+                      timeoutSeconds:
+                        default: 10
+                        description: TimeoutSeconds is the per-attempt request timeout
+                          in seconds.
+                        format: int32
+                        maximum: 300
+                        minimum: 1
+                        type: integer
+                      url:
+                        description: URL is the HTTP(S) endpoint to deliver the webhook
+                          to.
+                        minLength: 1
+                        pattern: ^https?://.+
+                        type: string
+                    required:
+                    - url
+                    type: object
+                required:
+                - webhook
+                type: object
+              eventTypes:
+                description: |-
+                  EventTypes is the set of event types this notification subscribes to.
+                  At least one event type must be specified. This is an extensible enum; consumers
+                  must tolerate event types they do not recognize.
+                items:
+                  description: |-
+                    NotificationEventType is the type of event that a PromoterNotification subscribes to.
+                    This is an extensible enum: new event types may be added over time, so consumers
+                    must tolerate unknown values rather than assuming the set is closed.
+                  enum:
+                  - PromotionComplete
+                  - GateFailed
+                  - GateStale
+                  - CTPProposed
+                  - CTPActive
+                  type: string
+                minItems: 1
+                type: array
+                x-kubernetes-list-type: set
+              payloadTemplate:
+                description: |-
+                  PayloadTemplate is a Go text/template rendered against the event to produce the
+                  request body. The event fields (CR ref, labels, environment, sha, URLs, prev/new state,
+                  timestamps, eventID) are exposed as template data, and any Variables results are exposed
+                  as {{ .Vars.<name> }}. This is NOT a CEL expression.
+                  When empty, a default JSON serialization of the event (including evaluated Variables) is delivered.
+                type: string
+              selector:
+                description: |-
+                  Selector is a label selector matched against the originating custom resource
+                  (e.g. the PromotionStrategy, ChangeTransferPolicy, or CommitStatus that produced the event).
+                  When omitted (nil), all originating resources match.
+                properties:
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: |-
+                        A label selector requirement is a selector that contains values, a key, and an operator that
+                        relates the key and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: |-
+                            operator represents a key's relationship to a set of values.
+                            Valid operators are In, NotIn, Exists and DoesNotExist.
+                          type: string
+                        values:
+                          description: |-
+                            values is an array of string values. If the operator is In or NotIn,
+                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                            the values array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is "key", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
+                    type: object
+                type: object
+                x-kubernetes-map-type: atomic
+              variables:
+                additionalProperties:
+                  type: string
+                description: |-
+                  Variables is an optional set of named expressions evaluated against the event before the
+                  payloadTemplate is rendered. Each value is an expr-lang expression
+                  (https://expr-lang.org); the result is exposed to payloadTemplate as {{ .Vars.<name> }}.
+                  This lets templates stay simple — compute structured or conditional values here (e.g.
+                  `event.type == "GateFailed" ? "critical" : "info"`, or `event.newSha[:7]`) instead of
+                  expressing logic in Go text/template. The expression environment exposes the event as
+                  `event` with lower-camelCase string fields: event.type, event.object (.namespace/.name/
+                  .kind/.apiVersion/.uid), event.labels, event.environment, event.gateName, event.previousSha,
+                  event.newSha, event.previousState, event.newState, event.activeURL, event.proposedURL — plus
+                  a top-level `eventID`. (event.type is a plain string, so `event.type == "GateFailed"` works.)
+                  A variable that fails to evaluate is a configuration error (surfaced as a failing
+                  condition), not a transient delivery failure.
+                type: object
+            required:
+            - delivery
+            - eventTypes
+            type: object
+          status:
+            description: PromoterNotificationStatus defines the observed state of
+              PromoterNotification.
+            properties:
+              conditions:
+                description: Conditions represents the observations of the current
+                  state.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              lastDelivery:
+                description: LastDelivery describes the most recent delivery attempt.
+                properties:
+                  eventID:
+                    description: EventID is the stable identifier of the event that
+                      was delivered.
+                    type: string
+                  responseStatus:
+                    description: |-
+                      ResponseStatus is the HTTP status code returned by the receiver, or 0 if no response
+                      was received (for example on connection or timeout errors).
+                    format: int32
+                    type: integer
+                  time:
+                    description: Time is when the delivery attempt occurred.
+                    format: date-time
+                    type: string
+                type: object
+              observedGeneration:
+                description: ObservedGeneration is the .metadata.generation that this
+                  status was reconciled from.
+                format: int64
+                type: integer
+              totalDelivered:
+                description: TotalDelivered is the cumulative number of successfully
+                  delivered events.
+                format: int64
+                type: integer
+              totalFailed:
+                description: TotalFailed is the cumulative number of events that failed
+                  delivery after exhausting retries.
+                format: int64
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

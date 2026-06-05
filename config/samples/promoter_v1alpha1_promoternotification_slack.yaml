@@ -1,0 +1,40 @@
+# Slack incoming-webhook subscriber.
+#
+# Delivers a Slack message whenever a promotion COMPLETES for a PromotionStrategy that
+# carries the label promoter.example/team=payments. The payloadTemplate renders a Slack
+# incoming-webhook JSON body ({"text": "..."}) from the event fields.
+#
+# Slack incoming webhooks do NOT verify an HMAC signature, so no spec.delivery.webhook.signing
+# is set here. Put the real Slack webhook URL in spec.delivery.webhook.url (e.g.
+# https://hooks.slack.com/services/T000/B000/XXXX).
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PromoterNotification
+metadata:
+  labels:
+    app.kubernetes.io/name: promoter
+    app.kubernetes.io/managed-by: kustomize
+  name: promoternotification-slack-sample
+spec:
+  # Only fire on completed promotions.
+  eventTypes:
+    - PromotionComplete
+  # Match only originating resources (the PromotionStrategy) labeled team=payments.
+  # Omit `selector` entirely to match every resource in the namespace.
+  selector:
+    matchLabels:
+      promoter.example/team: payments
+  delivery:
+    webhook:
+      url: https://hooks.slack.com/services/REPLACE/WITH/YOUR-WEBHOOK
+      method: POST
+      timeoutSeconds: 10
+      retry:
+        maxAttempts: 3
+        backoff: Exponential
+  # Go text/template (NOT CEL) rendered against the event. Unset fields render empty.
+  # Available fields include .Type .Object.Name .Object.Namespace .Environment .NewSha
+  # .PreviousSha .ActiveURL .ProposedURL .GateName .Labels.<key> .EventID .OccurredAtRFC3339
+  payloadTemplate: |
+    {
+      "text": ":rocket: *Promotion complete* for `{{ .Object.Name }}` → environment *{{ .Environment }}*\nNew SHA: `{{ .NewSha }}`{{ if .ActiveURL }}\n<{{ .ActiveURL }}|View active environment>{{ end }}"
+    }

@@ -71,6 +71,8 @@ func statusApplyConfig(obj client.Object, conditionsOnly bool) (any, error) {
 		return argoCDCommitStatusStatusApply(o, conditionsOnly)
 	case *promoterv1alpha1.PullRequest:
 		return pullRequestStatusApply(o, conditionsOnly)
+	case *promoterv1alpha1.PromoterNotification:
+		return promoterNotificationStatusApply(o, conditionsOnly)
 	case *promoterv1alpha1.GitRepository:
 		return gitRepositoryStatusApply(o, conditionsOnly)
 	case *promoterv1alpha1.ScmProvider:
@@ -160,6 +162,16 @@ func pullRequestStatusApply(o *promoterv1alpha1.PullRequest, conditionsOnly bool
 		return nil, err
 	}
 	return acv1alpha1.PullRequest(o.Name, o.Namespace).WithStatus(statusAC), nil
+}
+
+func promoterNotificationStatusApply(o *promoterv1alpha1.PromoterNotification, conditionsOnly bool) (any, error) {
+	statusAC := acv1alpha1.PromoterNotificationStatus()
+	if conditionsOnly {
+		statusAC = statusAC.WithConditions(ConditionsToApply(o.Status.Conditions)...)
+	} else if err := jsonRoundTrip(&o.Status, statusAC); err != nil {
+		return nil, err
+	}
+	return acv1alpha1.PromoterNotification(o.Name, o.Namespace).WithStatus(statusAC), nil
 }
 
 func gitRepositoryStatusApply(o *promoterv1alpha1.GitRepository, conditionsOnly bool) (any, error) {

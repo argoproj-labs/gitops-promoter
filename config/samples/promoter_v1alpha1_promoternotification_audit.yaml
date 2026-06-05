@@ -1,0 +1,60 @@
+# Audit-log subscriber.
+#
+# Delivers EVERY relevant event (no selector → matches all originating resources in the
+# namespace) to an internal audit endpoint, and HMAC-signs each request so the receiver can
+# verify authenticity. No payloadTemplate is set, so the default stable-JSON serialization of
+# the event is delivered.
+#
+# The signing secret is read from the Secret referenced by signing.secretRef (must live in the
+# same namespace as this PromoterNotification). A companion Secret is included below.
+#
+# The receiver verifies the X-Promoter-Signature header: it is "sha256=<lowercase-hex>" of
+# HMAC-SHA256(secret, requestBody). See docs/notifications.md and hack/notification-echo for a
+# reference verifier.
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PromoterNotification
+metadata:
+  labels:
+    app.kubernetes.io/name: promoter
+    app.kubernetes.io/managed-by: kustomize
+  name: promoternotification-audit-sample
+spec:
+  # Subscribe to several event types. GateStale is reserved/not-yet-emitted, and there is no
+  # PR-merge event type (a merge is covered by CTPActive / PromotionComplete) — see the docs.
+  eventTypes:
+    - PromotionComplete
+    - GateFailed
+    - CTPActive
+    - CTPProposed
+  # No selector → match all originating resources in this namespace.
+  delivery:
+    webhook:
+      url: https://audit.internal.svc.cluster.local/promoter-events
+      method: POST
+      timeoutSeconds: 10
+      headers:
+        # Static headers are sent verbatim on every request. Do NOT put secrets here — use
+        # signing.secretRef for the HMAC key.
+        X-Audit-Source: gitops-promoter
+      signing:
+        secretRef:
+          name: promoter-audit-signing
+          key: hmac-secret
+      retry:
+        maxAttempts: 5
+        backoff: Exponential
+  # payloadTemplate omitted → default JSON serialization of the event is delivered.
+---
+# Companion Secret holding the HMAC signing key. The same secret value must be configured on
+# the receiver so it can verify X-Promoter-Signature. Replace the value before applying.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: promoter-audit-signing
+  labels:
+    app.kubernetes.io/name: promoter
+    app.kubernetes.io/managed-by: kustomize
+type: Opaque
+stringData:
+  # Use a long, random value in production (e.g. `openssl rand -hex 32`).
+  hmac-secret: replace-with-a-long-random-shared-secret

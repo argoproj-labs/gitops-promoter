@@ -48,6 +48,7 @@ rules:
   - controllerconfigurations
   - gitcommitstatuses
   - gitrepositories
+  - promoternotifications
   - promotionstrategies
   - pullrequests
   - revertcommits
@@ -72,6 +73,7 @@ rules:
   - controllerconfigurations/finalizers
   - gitcommitstatuses/finalizers
   - gitrepositories/finalizers
+  - promoternotifications/finalizers
   - promotionstrategies/finalizers
   - pullrequests/finalizers
   - revertcommits/finalizers
@@ -90,6 +92,7 @@ rules:
   - controllerconfigurations/status
   - gitcommitstatuses/status
   - gitrepositories/status
+  - promoternotifications/status
   - promotionstrategies/status
   - pullrequests/status
   - revertcommits/status

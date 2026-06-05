@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -31,6 +32,7 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/gitauth"
+	notificationevents "github.com/argoproj-labs/gitops-promoter/internal/notification/events"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
@@ -69,6 +71,10 @@ type ChangeTransferPolicyReconciler struct {
 	Scheme      *runtime.Scheme
 	Recorder    events.EventRecorder
 	SettingsMgr *settings.Manager
+
+	// Publisher emits notification events (CTPProposed/CTPActive). Nil-safe: when nil, no events
+	// are published, so the notification framework being disabled never affects reconciliation.
+	Publisher notificationevents.Publisher
 
 	// enqueueFunc is set during SetupWithManager and can be retrieved via GetEnqueueFunc.
 	// It allows other controllers to enqueue CTP reconcile requests.
@@ -557,10 +563,17 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 		ctp.Spec.ProposedBranch: proposedShas,
 	})
 
+	// Capture the prior dry shas before setCommitMetadata overwrites them, so we can detect
+	// proposed/active advancement and publish CTPProposed/CTPActive notification events.
+	prevProposedDrySha := ctp.Status.Proposed.Dry.Sha
+	prevActiveDrySha := ctp.Status.Active.Dry.Sha
+
 	err = r.setCommitMetadata(ctx, ctp, gitOperations, activeShas.Hydrated, proposedShas.Hydrated)
 	if err != nil {
 		return fmt.Errorf("failed to set commit metadata: %w", err)
 	}
+
+	r.publishShaTransitions(ctx, ctp, prevProposedDrySha, prevActiveDrySha)
 
 	err = r.setCommitStatusState(ctx, &ctp.Status.Active, ctp.Spec.ActiveCommitStatuses)
 	if err != nil {
@@ -584,6 +597,71 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 	}
 
 	return nil
+}
+
+// publishShaTransitions emits CTPProposed/CTPActive notification events when the proposed or
+// active dry SHA has advanced relative to the prior reconcile's values. It is nil-safe (no-op
+// when no Publisher is configured) and best-effort: a publish failure is logged but never fails
+// reconciliation. The first time a sha is observed (prev == "") is treated as an advancement.
+func (r *ChangeTransferPolicyReconciler) publishShaTransitions(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, prevProposedDrySha, prevActiveDrySha string) {
+	if r.Publisher == nil {
+		return
+	}
+	logger := log.FromContext(ctx)
+	ref, eventLabels := notificationevents.RefForObject(ctp, promoterv1alpha1.GroupVersion.WithKind(reflect.TypeFor[promoterv1alpha1.ChangeTransferPolicy]().Name()))
+
+	// Enrich the event labels with the owning PromotionStrategy's labels so selector matching is
+	// uniform across event sources. The PS creates CTPs with only system labels (promotion-strategy,
+	// environment), not the user's labels, so a PromoterNotification selector like {app: payments}
+	// would match PromotionComplete (PS-sourced) but silently miss CTPActive/CTPProposed without this.
+	//
+	// Precedence: start from the PS's labels, then overlay the CTP's own labels so the CTP's system
+	// labels win on key conflict (the CTP is authoritative for the keys it defines; the PS only fills
+	// in the rest). Best-effort and nil-safe: on lookup error we log and proceed with CTP labels only,
+	// and we never fail reconcile or skip the event. Done once; both events share the enriched labels.
+	if ps, err := r.getPromotionStrategy(ctx, ctp); err != nil {
+		logger.V(4).Info("could not fetch owning PromotionStrategy to enrich event labels; proceeding with ChangeTransferPolicy labels only",
+			"error", err.Error())
+	} else if ps != nil {
+		if psLabels := ps.GetLabels(); len(psLabels) > 0 {
+			merged := make(map[string]string, len(psLabels)+len(eventLabels))
+			maps.Copy(merged, psLabels)    // PS labels fill in...
+			maps.Copy(merged, eventLabels) // ...then CTP labels overlay and win on conflict.
+			eventLabels = merged
+		}
+	}
+
+	newProposed := ctp.Status.Proposed.Dry.Sha
+	if newProposed != "" && newProposed != prevProposedDrySha {
+		evt := notificationevents.Event{
+			Type:        notificationevents.TypeCTPProposed,
+			Object:      ref,
+			Labels:      eventLabels,
+			Environment: ctp.Spec.ActiveBranch,
+			PreviousSha: prevProposedDrySha,
+			NewSha:      newProposed,
+			OccurredAt:  time.Now(),
+		}
+		if err := r.Publisher.Publish(ctx, evt); err != nil {
+			logger.Error(err, "failed to publish CTPProposed event")
+		}
+	}
+
+	newActive := ctp.Status.Active.Dry.Sha
+	if newActive != "" && newActive != prevActiveDrySha {
+		evt := notificationevents.Event{
+			Type:        notificationevents.TypeCTPActive,
+			Object:      ref,
+			Labels:      eventLabels,
+			Environment: ctp.Spec.ActiveBranch,
+			PreviousSha: prevActiveDrySha,
+			NewSha:      newActive,
+			OccurredAt:  time.Now(),
+		}
+		if err := r.Publisher.Publish(ctx, evt); err != nil {
+			logger.Error(err, "failed to publish CTPActive event")
+		}
+	}
 }
 
 // NewTooManyMatchingShaError creates a new TooManyMatchingShaError. This error indicates that there are too many

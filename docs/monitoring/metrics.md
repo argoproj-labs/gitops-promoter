@@ -158,3 +158,45 @@ Labels:
 
 * `kind`: Kubernetes API kind of the custom resource (matches the thirteen root CRDs reconciled by GitOps Promoter, such as `ArgoCDCommitStatus`, `ChangeTransferPolicy`, `ClusterScmProvider`, `CommitStatus`, `ControllerConfiguration`, `GitCommitStatus`, `GitRepository`, `PromotionStrategy`, `PullRequest`, `RevertCommit`, `ScmProvider`, `TimedCommitStatus`, `WebRequestCommitStatus`).
 * `readiness`: Status of the `Ready` condition on the resource. One of `True`, `False`, `Unknown`, or `""` (empty string, when the `Ready` condition is not present on the resource).
+
+## promoter_notifications_delivered_total
+
+A counter of `PromoterNotification` webhook events delivered successfully (a delivery attempt returned a 2xx response).
+
+See [Notifications](../notifications.md) for the delivery model.
+
+Labels:
+
+* `namespace`: Namespace of the `PromoterNotification`.
+* `name`: Name of the `PromoterNotification`.
+* `event_type`: The event type delivered (for example `PromotionComplete`, `GateFailed`, `CTPActive`, `CTPProposed`).
+
+## promoter_notifications_failed_total
+
+A counter of `PromoterNotification` webhook events that failed delivery permanently (dead-lettered after exhausting all retry attempts, or after a permanent payload render/sign failure).
+
+Labels:
+
+* `namespace`: Namespace of the `PromoterNotification`.
+* `name`: Name of the `PromoterNotification`.
+* `event_type`: The event type that failed.
+
+## promoter_notifications_retry_total
+
+A counter of `PromoterNotification` webhook delivery retries (each failed attempt that is followed by a further attempt).
+
+Labels:
+
+* `namespace`: Namespace of the `PromoterNotification`.
+* `name`: Name of the `PromoterNotification`.
+* `event_type`: The event type being retried.
+
+## promoter_notifications_dropped_total
+
+A counter of `PromoterNotification` deliveries dropped before any delivery attempt because the internal work queue stayed full past the enqueue timeout. This is best-effort backpressure shedding: when a slow or unreachable receiver backs up the delivery workers, further matched deliveries are dropped rather than blocking the originating reconcile. A rising value indicates the notification subsystem cannot keep up with the event rate (e.g. a wedged receiver).
+
+Labels:
+
+* `namespace`: Namespace of the `PromoterNotification`.
+* `name`: Name of the `PromoterNotification`.
+* `event_type`: The event type that was dropped.

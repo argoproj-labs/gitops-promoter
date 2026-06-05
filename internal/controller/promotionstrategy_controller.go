@@ -32,6 +32,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
+	notificationevents "github.com/argoproj-labs/gitops-promoter/internal/notification/events"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -61,6 +62,11 @@ type PromotionStrategyReconciler struct {
 
 	// EnqueueCTP is a function to enqueue CTP reconcile requests without modifying the CTP object.
 	EnqueueCTP CTPEnqueueFunc
+
+	// Publisher emits notification events (PromotionComplete/GateFailed/GateStale). Nil-safe:
+	// when nil, no events are published, so the notification framework being disabled never
+	// affects reconciliation.
+	Publisher notificationevents.Publisher
 
 	// enqueueStates tracks rate limiting state for out-of-sync CTP enqueues.
 	// Key is client.ObjectKey of the CTP. Protected by enqueueStateMutex.
@@ -127,8 +133,14 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to cleanup orphaned ChangeTransferPolicies: %w", err)
 	}
 
+	// Snapshot the prior environment statuses before calculateStatus overwrites them, so we can
+	// detect promotion completion and gate transitions and publish notification events.
+	prevEnvStatuses := ps.Status.Environments
+
 	// Calculate the status of the PromotionStrategy. Updates ps in place.
 	r.calculateStatus(&ps, ctps)
+
+	r.publishEnvironmentTransitions(ctx, &ps, prevEnvStatuses)
 
 	err = r.updatePreviousEnvironmentCommitStatus(ctx, &ps, ctps)
 	if err != nil {
@@ -363,6 +375,89 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 	}
 
 	utils.InheritNotReadyConditionFromObjects(ps, promoterConditions.ChangeTransferPolicyNotReady, ctps...)
+}
+
+// publishEnvironmentTransitions emits notification events by diffing the newly computed
+// per-environment status against the prior reconcile's snapshot. It is nil-safe (no-op when no
+// Publisher is configured) and best-effort: publish failures are logged but never fail
+// reconciliation.
+//
+// Events emitted:
+//   - PromotionComplete: an environment's active dry SHA advanced (a promotion landed on the
+//     active branch).
+//   - GateFailed: a proposed commit-status gate for an environment newly entered the "failure"
+//     phase (it was not failing in the prior snapshot).
+//
+// DELIBERATE GAP — GateStale is NOT emitted here. The NotificationEventType enum reserves a
+// GateStale value, but PromotionStrategy/CTP status carries no first-class "stale" signal today
+// (a gate is pending, success, or failure — there is no staleness timestamp/flag to diff against).
+// Emitting GateStale would require either a new status field tracking gate freshness or a
+// dedicated evaluator, both out of scope for this feature. GateStale is therefore reserved and
+// intentionally unimplemented until such a signal exists; this is documented for reviewers so the
+// omission reads as deliberate, not an oversight.
+func (r *PromotionStrategyReconciler) publishEnvironmentTransitions(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, prev []promoterv1alpha1.EnvironmentStatus) {
+	if r.Publisher == nil {
+		return
+	}
+	logger := log.FromContext(ctx)
+	ref, eventLabels := notificationevents.RefForObject(ps, promoterv1alpha1.GroupVersion.WithKind(reflect.TypeFor[promoterv1alpha1.PromotionStrategy]().Name()))
+
+	// Index the prior snapshot by branch for O(1) lookup.
+	prevByBranch := make(map[string]promoterv1alpha1.EnvironmentStatus, len(prev))
+	for _, e := range prev {
+		prevByBranch[e.Branch] = e
+	}
+
+	publish := func(evt notificationevents.Event, what string) {
+		if err := r.Publisher.Publish(ctx, evt); err != nil {
+			logger.Error(err, "failed to publish notification event", "eventType", what)
+		}
+	}
+
+	for _, env := range ps.Status.Environments {
+		old, hadPrev := prevByBranch[env.Branch]
+
+		// PromotionComplete: the active dry SHA advanced for this environment.
+		newActive := env.Active.Dry.Sha
+		oldActive := old.Active.Dry.Sha
+		if newActive != "" && hadPrev && newActive != oldActive {
+			publish(notificationevents.Event{
+				Type:        notificationevents.TypePromotionComplete,
+				Object:      ref,
+				Labels:      eventLabels,
+				Environment: env.Branch,
+				PreviousSha: oldActive,
+				NewSha:      newActive,
+				OccurredAt:  time.Now(),
+			}, "PromotionComplete")
+		}
+
+		// GateFailed: a proposed commit-status gate newly entered the "failure" phase.
+		oldPhases := make(map[string]string, len(old.Proposed.CommitStatuses))
+		for _, cs := range old.Proposed.CommitStatuses {
+			oldPhases[cs.Key] = cs.Phase
+		}
+		for _, cs := range env.Proposed.CommitStatuses {
+			if cs.Phase != string(promoterv1alpha1.CommitPhaseFailure) {
+				continue
+			}
+			if oldPhases[cs.Key] == string(promoterv1alpha1.CommitPhaseFailure) {
+				// Already failing in the prior snapshot — only emit on the transition into failure.
+				continue
+			}
+			publish(notificationevents.Event{
+				Type:          notificationevents.TypeGateFailed,
+				Object:        ref,
+				Labels:        eventLabels,
+				Environment:   env.Branch,
+				GateName:      cs.Key,
+				NewSha:        env.Proposed.Dry.Sha,
+				PreviousState: oldPhases[cs.Key],
+				NewState:      cs.Phase,
+				OccurredAt:    time.Now(),
+			}, "GateFailed")
+		}
+	}
 }
 
 // enqueueOutOfSyncCTPs checks if all CTPs have the same effective dry SHA
