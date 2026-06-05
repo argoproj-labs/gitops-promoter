@@ -147,6 +147,24 @@ func (m *Manager) GetArgoCDCommitStatusControllersWatchLocalApplicationsDirect(c
 	return config.Spec.ArgoCDCommitStatus.WatchLocalApplications, nil
 }
 
+// GetChangeTransferPolicyCommitMessageTemplate retrieves the optional commit message template
+// from the ChangeTransferPolicy configuration.
+//
+// When the template string is empty, the caller should fall back to the default commit message
+// format (pull request title + description).
+//
+// Parameters:
+//   - ctx: Context for the request, used for cancellation and deadlines
+//
+// Returns the commit message template string, or an error if the configuration cannot be retrieved.
+func (m *Manager) GetChangeTransferPolicyCommitMessageTemplate(ctx context.Context) (string, error) {
+	config, err := m.getControllerConfiguration(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to get controller configuration: %w", err)
+	}
+	return config.Spec.ChangeTransferPolicy.CommitMessageTemplate, nil
+}
+
 // GetPullRequestControllersTemplate retrieves the PullRequest template configuration.
 //
 // This function fetches the ControllerConfiguration resource from the cluster and extracts

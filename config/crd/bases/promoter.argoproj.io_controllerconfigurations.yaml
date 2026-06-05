@@ -272,6 +272,23 @@ spec:
                   ChangeTransferPolicy contains the configuration for the ChangeTransferPolicy controller,
                   including WorkQueue settings that control reconciliation behavior.
                 properties:
+                  commitMessageTemplate:
+                    description: |-
+                      CommitMessageTemplate is an optional Go template used to generate the merge commit message
+                      when a promotion pull request is merged. When not set, the commit message defaults to the
+                      pull request title and description rendered by the PullRequest controller template.
+
+                      Uses Go template syntax with Sprig functions available for string manipulation.
+
+                      Template data available when rendering:
+                        - .ChangeTransferPolicy – the ChangeTransferPolicy managing this promotion
+                        - .PromotionStrategy    – the PromotionStrategy for the CTP
+
+                      Example: access the original dry commit subject via
+                        {{ .ChangeTransferPolicy.Status.Proposed.Dry.Subject }}
+                      or the dry SHA via
+                        {{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}
+                    type: string
                   workQueue:
                     description: |-
                       WorkQueue contains the work queue configuration for the ChangeTransferPolicy controller.

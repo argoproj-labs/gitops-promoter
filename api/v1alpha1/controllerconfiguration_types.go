@@ -92,6 +92,23 @@ type ChangeTransferPolicyConfiguration struct {
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
 	WorkQueue WorkQueue `json:"workQueue"`
+
+	// CommitMessageTemplate is an optional Go template used to generate the merge commit message
+	// when a promotion pull request is merged. When not set, the commit message defaults to the
+	// pull request title and description rendered by the PullRequest controller template.
+	//
+	// Uses Go template syntax with Sprig functions available for string manipulation.
+	//
+	// Template data available when rendering:
+	//   - .ChangeTransferPolicy – the ChangeTransferPolicy managing this promotion
+	//   - .PromotionStrategy    – the PromotionStrategy for the CTP
+	//
+	// Example: access the original dry commit subject via
+	//   {{ .ChangeTransferPolicy.Status.Proposed.Dry.Subject }}
+	// or the dry SHA via
+	//   {{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}
+	// +optional
+	CommitMessageTemplate string `json:"commitMessageTemplate,omitempty"`
 }
 
 // PullRequestConfiguration defines the configuration for the PullRequest controller.

@@ -1081,6 +1081,11 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 		return nil, fmt.Errorf("failed to get pull request template from settings: %w", err)
 	}
 
+	commitMessageTemplate, err := r.SettingsMgr.GetChangeTransferPolicyCommitMessageTemplate(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get commit message template from settings: %w", err)
+	}
+
 	// Template receives the current CTP and its PromotionStrategy.
 	templateData := map[string]any{
 		"ChangeTransferPolicy": ctp,
@@ -1105,11 +1110,18 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 	kind := reflect.TypeOf(promoterv1alpha1.ChangeTransferPolicy{}).Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
+	// Determine the commit message body: use the custom template when configured,
+	// otherwise fall back to the PR title + description.
+	commitMessageBody, err := TemplateCommitMessage(commitMessageTemplate, title, description, templateData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to template commit message: %w", err)
+	}
+
 	// Determine the commit message based on whether this is a new or existing PR
 	var commitMessage string
 	if !prExists {
 		// New PR
-		commitMessage = fmt.Sprintf("%s\n\n%s", title, description)
+		commitMessage = commitMessageBody
 	} else {
 		// Update existing PR - add trailers
 		commitTrailers := trailers{}
@@ -1132,7 +1144,7 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 		commitTrailers[constants.TrailerShaDryActive] = ctp.Status.Active.Dry.Sha
 		commitTrailers[constants.TrailerShaDryProposed] = ctp.Status.Proposed.Dry.Sha
 
-		commitMessage = fmt.Sprintf("%s\n\n%s\n\n%s", title, description, commitTrailers)
+		commitMessage = fmt.Sprintf("%s\n\n%s", commitMessageBody, commitTrailers)
 	}
 
 	// Determine the state: preserve existing state if PR exists, otherwise default to open
@@ -1377,6 +1389,22 @@ func TemplatePullRequest(prt promoterv1alpha1.PullRequestTemplate, data map[stri
 	}
 
 	return title, description, nil
+}
+
+// TemplateCommitMessage renders the merge commit message using an optional Go template string.
+// When commitMessageTemplate is empty it falls back to the default format of
+// "<title>\n\n<description>", preserving backward-compatible behavior.
+// The data map is passed as-is to the template engine (same data used for PR templates).
+func TemplateCommitMessage(commitMessageTemplate, title, description string, data map[string]any) (string, error) {
+	if commitMessageTemplate == "" {
+		return fmt.Sprintf("%s\n\n%s", title, description), nil
+	}
+
+	rendered, err := utils.RenderStringTemplate(commitMessageTemplate, data)
+	if err != nil {
+		return "", fmt.Errorf("failed to render commit message template: %w", err)
+	}
+	return rendered, nil
 }
 
 // boolPtrEqual compares two *bool pointers for equality.

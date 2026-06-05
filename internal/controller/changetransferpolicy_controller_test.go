@@ -1103,6 +1103,73 @@ var _ = Describe("TemplatePullRequest", func() {
 	})
 })
 
+var _ = Describe("TemplateCommitMessage", func() {
+	Context("When rendering the commit message", func() {
+		ctp := &promoterv1alpha1.ChangeTransferPolicy{
+			Spec: promoterv1alpha1.ChangeTransferPolicySpec{
+				ActiveBranch:   testBranchDevelopment,
+				ProposedBranch: testBranchDevelopmentNext,
+			},
+			Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+				Proposed: promoterv1alpha1.CommitBranchState{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha:     "abc1234def5678",
+						Subject: "feat: add new feature",
+					},
+				},
+			},
+		}
+		data := map[string]any{"ChangeTransferPolicy": ctp}
+
+		It("falls back to title+description when template is empty", func() {
+			result, err := TemplateCommitMessage("", "My Title", "My Description", data)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).To(Equal("My Title\n\nMy Description"))
+		})
+
+		It("renders the custom template when set", func() {
+			tmpl := "{{ .ChangeTransferPolicy.Status.Proposed.Dry.Subject }}"
+			result, err := TemplateCommitMessage(tmpl, "My Title", "My Description", data)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).To(Equal("feat: add new feature"))
+		})
+
+		It("supports Sprig functions in the template", func() {
+			tmpl := "{{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }} promoted to {{ .ChangeTransferPolicy.Spec.ActiveBranch }}"
+			result, err := TemplateCommitMessage(tmpl, "My Title", "My Description", data)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).To(Equal("abc1234 promoted to " + testBranchDevelopment))
+		})
+
+		It("returns an error for an invalid template", func() {
+			_, err := TemplateCommitMessage("{{ .Invalid", "title", "desc", data)
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("default shipped template matches the previous hard-coded title+description format", func() {
+			// This is the template shipped in config/config/controllerconfiguration.yaml.
+			// It must produce the same output as the old fmt.Sprintf("%s\n\n%s", title, description).
+			defaultTemplate := "Promote {{ with .ChangeTransferPolicy.Spec.ActivePath }}`{{ . }}` {{ end }}" +
+				"({{ trunc 5 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}) to `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`\n\n" +
+				"This PR is promoting {{ with .ChangeTransferPolicy.Spec.ActivePath }}`{{ . }}` on {{ end }}" +
+				"the environment branch `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}` from dry sha " +
+				"{{ .ChangeTransferPolicy.Status.Active.Dry.Sha }} to {{ .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}."
+
+			// Build the expected title and description the same way the PR template would.
+			expectedTitle := fmt.Sprintf("Promote (abc12) to `%s`", testBranchDevelopment)
+			expectedDescription := fmt.Sprintf(
+				"This PR is promoting the environment branch `%s` from dry sha  to abc1234def5678.",
+				testBranchDevelopment,
+			)
+			expected := fmt.Sprintf("%s\n\n%s", expectedTitle, expectedDescription)
+
+			result, err := TemplateCommitMessage(defaultTemplate, expectedTitle, expectedDescription, data)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).To(Equal(expected))
+		})
+	})
+})
+
 var _ = Describe("tooManyPRsError", func() {
 	Context("When formatting tooManyPRsError", func() {
 		It("returns an error listing all PR names if 3 or fewer", func() {

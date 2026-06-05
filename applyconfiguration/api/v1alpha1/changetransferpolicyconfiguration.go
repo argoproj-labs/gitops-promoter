@@ -28,6 +28,21 @@ type ChangeTransferPolicyConfigurationApplyConfiguration struct {
 	// WorkQueue contains the work queue configuration for the ChangeTransferPolicy controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	WorkQueue *WorkQueueApplyConfiguration `json:"workQueue,omitempty"`
+	// CommitMessageTemplate is an optional Go template used to generate the merge commit message
+	// when a promotion pull request is merged. When not set, the commit message defaults to the
+	// pull request title and description rendered by the PullRequest controller template.
+	//
+	// Uses Go template syntax with Sprig functions available for string manipulation.
+	//
+	// Template data available when rendering:
+	// - .ChangeTransferPolicy – the ChangeTransferPolicy managing this promotion
+	// - .PromotionStrategy    – the PromotionStrategy for the CTP
+	//
+	// Example: access the original dry commit subject via
+	// {{ .ChangeTransferPolicy.Status.Proposed.Dry.Subject }}
+	// or the dry SHA via
+	// {{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}
+	CommitMessageTemplate *string `json:"commitMessageTemplate,omitempty"`
 }
 
 // ChangeTransferPolicyConfigurationApplyConfiguration constructs a declarative configuration of the ChangeTransferPolicyConfiguration type for use with
@@ -41,5 +56,13 @@ func ChangeTransferPolicyConfiguration() *ChangeTransferPolicyConfigurationApply
 // If called multiple times, the WorkQueue field is set to the value of the last call.
 func (b *ChangeTransferPolicyConfigurationApplyConfiguration) WithWorkQueue(value *WorkQueueApplyConfiguration) *ChangeTransferPolicyConfigurationApplyConfiguration {
 	b.WorkQueue = value
+	return b
+}
+
+// WithCommitMessageTemplate sets the CommitMessageTemplate field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the CommitMessageTemplate field is set to the value of the last call.
+func (b *ChangeTransferPolicyConfigurationApplyConfiguration) WithCommitMessageTemplate(value string) *ChangeTransferPolicyConfigurationApplyConfiguration {
+	b.CommitMessageTemplate = &value
 	return b
 }
