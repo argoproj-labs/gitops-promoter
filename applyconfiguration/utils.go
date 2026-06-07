@@ -145,6 +145,10 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.HydratorMetadataApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ModeSpec"):
 		return &apiv1alpha1.ModeSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("NotificationDelivery"):
+		return &apiv1alpha1.NotificationDeliveryApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("NotificationDeliveryStatus"):
+		return &apiv1alpha1.NotificationDeliveryStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("OAuth2Auth"):
 		return &apiv1alpha1.OAuth2AuthApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ObjectReference"):
@@ -153,6 +157,12 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.OutputSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PollingModeSpec"):
 		return &apiv1alpha1.PollingModeSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("PromoterNotification"):
+		return &apiv1alpha1.PromoterNotificationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("PromoterNotificationSpec"):
+		return &apiv1alpha1.PromoterNotificationSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("PromoterNotificationStatus"):
+		return &apiv1alpha1.PromoterNotificationStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PromotionStrategy"):
 		return &apiv1alpha1.PromotionStrategyApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PromotionStrategyConfiguration"):
@@ -193,6 +203,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ScmProviderSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ScmProviderStatus"):
 		return &apiv1alpha1.ScmProviderStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("SecretKeyReference"):
+		return &apiv1alpha1.SecretKeyReferenceApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("SuccessSpec"):
 		return &apiv1alpha1.SuccessSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("TimedCommitStatus"):
@@ -213,6 +225,12 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.TriggerModeSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("URLConfig"):
 		return &apiv1alpha1.URLConfigApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("WebhookDelivery"):
+		return &apiv1alpha1.WebhookDeliveryApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("WebhookRetry"):
+		return &apiv1alpha1.WebhookRetryApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("WebhookSigning"):
+		return &apiv1alpha1.WebhookSigningApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("WebRequestCommitStatus"):
 		return &apiv1alpha1.WebRequestCommitStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("WebRequestCommitStatusConfiguration"):

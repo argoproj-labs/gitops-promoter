@@ -31,7 +31,9 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/cmd/demo"
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
+	notificationcontroller "github.com/argoproj-labs/gitops-promoter/internal/controller/notification"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
+	notificationevents "github.com/argoproj-labs/gitops-promoter/internal/notification/events"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
 
@@ -207,11 +209,18 @@ func runController(
 
 	processSignalsCtx := ctrl.SetupSignalHandler()
 
+	// notifBroker is the in-process event broker that connects the reconcilers (publishers of
+	// notification events) to the PromoterNotification controller (the subscriber). It is passed
+	// as the Publisher to the CTP/PR/PromotionStrategy reconcilers and as the Subscriber to the
+	// notification controller below.
+	notifBroker := notificationevents.NewMemoryBroker()
+
 	if err = (&controller.PullRequestReconciler{
 		Client:      localManager.GetClient(),
 		Scheme:      localManager.GetScheme(),
 		Recorder:    localManager.GetEventRecorder("PullRequest"),
 		SettingsMgr: settingsMgr,
+		Publisher:   notifBroker,
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create PullRequest controller: %w", err))
 	}
@@ -230,6 +239,7 @@ func runController(
 		Scheme:      localManager.GetScheme(),
 		Recorder:    localManager.GetEventRecorder("ChangeTransferPolicy"),
 		SettingsMgr: settingsMgr,
+		Publisher:   notifBroker,
 	}
 	if err = ctpReconciler.SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ChangeTransferPolicy controller: %w", err))
@@ -251,6 +261,7 @@ func runController(
 		Recorder:    localManager.GetEventRecorder("PromotionStrategy"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+		Publisher:   notifBroker,
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create PromotionStrategy controller: %w", err))
 	}
@@ -320,6 +331,24 @@ func runController(
 		setupLog.Error(err, "unable to create controller", "controller", "WebRequestCommitStatus")
 		panic(fmt.Errorf("unable to create WebRequestCommitStatus controller: %w", err))
 	}
+	// PromoterNotification controller: subscribes to the in-process event broker, matches each
+	// event against PromoterNotification CRs, and dispatches deliveries via the Dispatcher.
+	// The webhook Dispatcher (Phase 2b) owns the HTTP send, signing, retry/backoff,
+	// dead-lettering, and status/metrics updates.
+	notifDispatcher := notificationcontroller.NewWebhookDispatcher(
+		localManager.GetClient(),
+		localManager.GetEventRecorder("PromoterNotification"),
+	)
+	if err = (&notificationcontroller.PromoterNotificationReconciler{
+		Client:     localManager.GetClient(),
+		Scheme:     localManager.GetScheme(),
+		Recorder:   localManager.GetEventRecorder("PromoterNotification"),
+		Subscriber: notifBroker,
+		Dispatcher: notifDispatcher,
+	}).SetupWithManager(localManager); err != nil {
+		panic(fmt.Errorf("unable to create PromoterNotification controller: %w", err))
+	}
+
 	//+kubebuilder:scaffold:builder
 
 	if err := localManager.AddHealthzCheck("healthz", healthz.Ping); err != nil {

@@ -42,3 +42,12 @@ const (
 	// PreviousEnvironmentCommitStatusNotReady is the condition type for a previous environment commit status not being ready.
 	PreviousEnvironmentCommitStatusNotReady CommonReason = "PreviousEnvironmentCommitStatusNotReady"
 )
+
+// Reasons that apply to PromoterNotification.
+const (
+	// DeliveryHealthy is the Ready=True reason set after a webhook delivery succeeds.
+	DeliveryHealthy CommonReason = "DeliveryHealthy"
+	// DeliveryFailing is the Ready=False reason set when a webhook delivery is dead-lettered
+	// after exhausting all retry attempts.
+	DeliveryFailing CommonReason = "DeliveryFailing"
+)

@@ -11,4 +11,6 @@ resources:
 - promoter_v1alpha1_clusterscmprovider.yaml
 - promoter_v1alpha1_timedcommitstatus.yaml
 - promoter_v1alpha1_gitcommitstatus.yaml
+- promoter_v1alpha1_promoternotification_slack.yaml
+- promoter_v1alpha1_promoternotification_audit.yaml
 #+kubebuilder:scaffold:manifestskustomizesamples

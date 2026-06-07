@@ -87,6 +87,14 @@ type RateLimit struct {
 	ResetRemaining time.Duration
 }
 
+// Label-name constants for the PromoterNotification delivery metrics. (Pre-existing metric
+// label slices intentionally keep their inline literals.)
+const (
+	labelNamespace = "namespace"
+	labelName      = "name"
+	labelEventType = "event_type"
+)
+
 var (
 	// Labels for git_operations metrics
 	gitOperationLabels = []string{"git_repository", "scm_provider", "scm_provider_kind", "operation", "result"}
@@ -98,7 +106,7 @@ var (
 	scmCallRateLimitLabels = []string{"scm_provider", "scm_provider_kind"}
 
 	// Labels for WebRequestCommitStatus outbound HTTP metrics
-	webRequestCommitStatusHTTPLabels = []string{"namespace", "name", "response_code"}
+	webRequestCommitStatusHTTPLabels = []string{labelNamespace, labelName, "response_code"}
 
 	// git_operations_total
 	gitOperationsTotal = prometheus.NewCounterVec(
@@ -211,6 +219,41 @@ var (
 		},
 	)
 
+	// Labels for PromoterNotification webhook delivery metrics.
+	promoterNotificationLabels = []string{labelNamespace, labelName, labelEventType}
+
+	promoterNotificationsDeliveredTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "promoter_notifications_delivered_total",
+			Help: "A counter of PromoterNotification webhook events delivered successfully (a delivery attempt returned a 2xx response).",
+		},
+		promoterNotificationLabels,
+	)
+
+	promoterNotificationsFailedTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "promoter_notifications_failed_total",
+			Help: "A counter of PromoterNotification webhook events that failed delivery permanently (dead-lettered after exhausting all retry attempts).",
+		},
+		promoterNotificationLabels,
+	)
+
+	promoterNotificationsRetryTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "promoter_notifications_retry_total",
+			Help: "A counter of PromoterNotification webhook delivery retries (each failed attempt that is followed by a further attempt).",
+		},
+		promoterNotificationLabels,
+	)
+
+	promoterNotificationsDroppedTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "promoter_notifications_dropped_total",
+			Help: "A counter of PromoterNotification deliveries dropped before any attempt because the internal work queue stayed full past the enqueue timeout (best-effort backpressure shedding).",
+		},
+		promoterNotificationLabels,
+	)
+
 	// If you add metrics here, document them in docs/monitoring/metrics.md.
 )
 
@@ -229,6 +272,10 @@ func init() {
 		webRequestCommitStatusHTTPRequestDurationSeconds,
 		FinalizerDependentCount,
 		ApplicationWatchEventsHandled,
+		promoterNotificationsDeliveredTotal,
+		promoterNotificationsFailedTotal,
+		promoterNotificationsRetryTotal,
+		promoterNotificationsDroppedTotal,
 	)
 }
 
@@ -316,4 +363,39 @@ func RecordWebRequestCommitStatusHTTPRequest(wrcs *v1alpha1.WebRequestCommitStat
 	}
 	webRequestCommitStatusHTTPRequestsTotal.With(labels).Inc()
 	webRequestCommitStatusHTTPRequestDurationSeconds.With(labels).Observe(duration.Seconds())
+}
+
+// promoterNotificationMetricLabels builds the common label set for PromoterNotification delivery metrics.
+func promoterNotificationMetricLabels(namespace, name, eventType string) prometheus.Labels {
+	return prometheus.Labels{
+		labelNamespace: namespace,
+		labelName:      name,
+		labelEventType: eventType,
+	}
+}
+
+// RecordPromoterNotificationDelivered increments the delivered counter for a notification/event-type.
+// Call once per event that is successfully delivered (a delivery attempt returned a 2xx response).
+func RecordPromoterNotificationDelivered(namespace, name, eventType string) {
+	promoterNotificationsDeliveredTotal.With(promoterNotificationMetricLabels(namespace, name, eventType)).Inc()
+}
+
+// RecordPromoterNotificationFailed increments the failed counter for a notification/event-type.
+// Call once per event that is dead-lettered after exhausting all retry attempts.
+func RecordPromoterNotificationFailed(namespace, name, eventType string) {
+	promoterNotificationsFailedTotal.With(promoterNotificationMetricLabels(namespace, name, eventType)).Inc()
+}
+
+// RecordPromoterNotificationRetry increments the retry counter for a notification/event-type.
+// Call once per failed attempt that is followed by a further attempt.
+func RecordPromoterNotificationRetry(namespace, name, eventType string) {
+	promoterNotificationsRetryTotal.With(promoterNotificationMetricLabels(namespace, name, eventType)).Inc()
+}
+
+// RecordPromoterNotificationDropped increments the dropped counter for a notification/event-type.
+// A drop happens before any delivery attempt when the internal work queue stayed full past the
+// enqueue timeout, so the (notification, event) pair is shed best-effort rather than blocking the
+// publisher's reconcile.
+func RecordPromoterNotificationDropped(namespace, name, eventType string) {
+	promoterNotificationsDroppedTotal.With(promoterNotificationMetricLabels(namespace, name, eventType)).Inc()
 }

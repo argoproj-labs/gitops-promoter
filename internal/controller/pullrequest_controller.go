@@ -30,6 +30,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
+	notificationevents "github.com/argoproj-labs/gitops-promoter/internal/notification/events"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	bitbucket_cloud "github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_cloud"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
@@ -61,6 +62,15 @@ type PullRequestReconciler struct {
 	Scheme      *runtime.Scheme
 	Recorder    events.EventRecorder
 	SettingsMgr *settings.Manager
+
+	// Publisher emits notification events. Nil-safe: when nil, no events are published.
+	//
+	// NOTE: PR merge/close currently has no corresponding NotificationEventType in the closed
+	// enum {PromotionComplete,GateFailed,GateStale,CTPProposed,CTPActive}. The merge -> active
+	// advancement that a merged PR represents is already published as CTPActive (by the CTP
+	// controller) and PromotionComplete (by the PromotionStrategy controller). This field is
+	// wired for symmetry and as the emission hook should a PR-specific event type be added.
+	Publisher notificationevents.Publisher
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests,verbs=get;list;watch;create;update;patch;delete

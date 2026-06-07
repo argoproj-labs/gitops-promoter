@@ -79,6 +79,7 @@ linters:
           exclude:
             - "**/*_types.go" # For CRD types.
             - "**/webrequestsimulator/simulatortypes/*.go" # Simulate Input/Result and related value types.
+            - "**/internal/notification/events/events.go" # Stable in-process event contract surface (types + publisher/subscriber interfaces).
         - name: redundant-import-alias
           disabled: true
         - name: struct-tag
