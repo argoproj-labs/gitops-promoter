@@ -72,3 +72,9 @@ See also: [Argo CD Commit Status](commit-status-controllers/argocd.md), [Timed C
 ### ArgoCDCommitStatus legacy CommitStatus cleanup (planned for v1.0)
 
 Remove `cleanupLegacyOrphanedCommitStatusesWithoutParentLabel` once clusters are past the Argo CD CommitStatus naming and parent-gate label migration ([#1460](https://github.com/argoproj-labs/gitops-promoter/issues/1460)).
+
+### Remove temporary `commitMessageTemplate` runtime validation (planned for v1.0)
+
+The controller currently includes a temporary runtime validation error for `ControllerConfiguration.spec.changeTransferPolicy.commitMessageTemplate` to guide upgrades from older CRDs/ControllerConfiguration resources that can exist without this now-required field.
+
+After the v1 upgrade window, remove this runtime validation guard and rely solely on CRD schema validation.
