@@ -55,6 +55,7 @@ nav:
       - Finalizers: debugging/finalizers.md
       - Labels: debugging/labels.md
   - Architecture: architecture.md
+  - Dashboard Aggregation API: dashboard-apiserver.md
   - Repository Structure: repository-structure.md
   - Custom Hydrator: custom-hydrator.md
   - CRD Specs: crd-specs.md

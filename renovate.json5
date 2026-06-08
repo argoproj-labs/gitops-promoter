@@ -234,7 +234,7 @@
       },
     },
     {
-      description: 'kube-rbac-proxy image is baked into config + dist/install.yaml; regenerate them on bump',
+      description: 'kube-rbac-proxy image is baked into config + dist/ install bundles; regenerate them on bump',
       matchDepNames: [
         'quay.io/brancz/kube-rbac-proxy',
       ],
