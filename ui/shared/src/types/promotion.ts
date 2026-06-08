@@ -1,4 +1,5 @@
-import type { PromotionStrategy as PromotionStrategyCRD } from './crds';
+import type { PromotionStrategy as PromotionStrategyResource } from './view';
+import type { components } from './generated/view.gen';
 
 /**
  * RFC 3339 timestamp from the API (Kubernetes `metav1.Time` JSON, or git `%aI` on reference commits).
@@ -12,21 +13,19 @@ export type Rfc3339DateTime = string;
 /** Pre-computed relative time for display (e.g. `"3 hours ago"`). Not a parseable timestamp. */
 export type RelativeTimeAgo = string;
 
-/** Full PromotionStrategy CRD object (generated from OpenAPI). */
-export type PromotionStrategy = PromotionStrategyCRD;
+/** Full PromotionStrategy CRD object (generated from view OpenAPI). */
+export type PromotionStrategy = PromotionStrategyResource;
 
-type PromotionStrategyStatus = NonNullable<PromotionStrategy['status']>;
+/** Per-environment status assembled for Card/PSData (from CTP status + spec branch). */
+export type Environment = components['schemas']['EnvironmentStatus'];
 
-/** Observed environment status (`status.environments[]`), not spec `Environment`. */
-export type Environment = PromotionStrategyStatus['environments'][number];
-
-export type History = NonNullable<Environment['history']>[number];
+export type History = components['schemas']['History'];
 
 /**
  * Commit metadata on a branch (`active.dry`, `proposed.dry`, etc.).
  * `commitTime` — when the commit was made (dry/hydrated). RFC 3339 from CRD `commitTime` (`metav1.Time`).
  */
-export type Commit = NonNullable<Environment['active']['dry']>;
+export type Commit = components['schemas']['CommitShaState'];
 
 /**
  * Reference commit embedded in `Commit.references`.
@@ -40,9 +39,7 @@ export type ReferenceCommit = NonNullable<
 };
 
 /** Observed commit status on a branch (not the `CommitStatus` CRD resource). */
-export type BranchCommitStatus = NonNullable<
-  NonNullable<Environment['active']['commitStatuses']>[number]
->;
+export type BranchCommitStatus = components['schemas']['ChangeRequestPolicyCommitStatusPhase'];
 
 /** @deprecated Use {@link BranchCommitStatus}. */
 export type CommitStatus = BranchCommitStatus;
@@ -51,7 +48,7 @@ export type CommitStatus = BranchCommitStatus;
  * Pull request state embedded in environment status (not the `PullRequest` CRD).
  * `prMergeTime` — when the promotion PR was merged. RFC 3339 from CRD (`metav1.Time`).
  */
-export type EnvironmentPullRequest = NonNullable<Environment['pullRequest']>;
+export type EnvironmentPullRequest = components['schemas']['PullRequestCommonStatus'];
 
 /** @deprecated Use {@link EnvironmentPullRequest}. */
 export type PullRequest = EnvironmentPullRequest;

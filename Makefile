@@ -100,8 +100,8 @@ cel-cost-report: ## Estimate CRD CEL validation costs vs apiserver limits and wr
 	cd hack/celcost && go run . -o report.md ../../config/crd/bases
 
 .PHONY: generate-ui-types
-generate-ui-types: ## Generate TypeScript types from CRD OpenAPI schemas (requires committed config/crd/bases).
-	cd hack/crd2ts && go run . -crds ../../config/crd/bases -o dist/crds.openapi.json
+generate-ui-types: ## Generate TypeScript types from the view APIService OpenAPI schemas (requires committed zz_generated.openapi.go from make generate-apiserver).
+	go run ./hack/view2ts -o hack/view2ts/dist/view.openapi.json
 	cd ui/codegen && npm ci && npm run generate
 	cd ui/shared && npm ci
 

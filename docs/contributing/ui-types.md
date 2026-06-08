@@ -1,23 +1,23 @@
-# UI TypeScript types from CRDs
+# UI TypeScript types from the view APIService
 
-The dashboard and Argo CD extension use TypeScript types generated from the same CRD OpenAPI schemas that the Kubernetes API server validates.
+The dashboard consumes the aggregated `PromotionStrategyDetails` resource (`view.promoter.argoproj.io/v1alpha1`). The Argo CD extension still loads raw `PromotionStrategy` CRDs from the Argo CD tree. Both shapes are generated from the view APIService OpenAPI definitions.
 
 ## Source of truth
 
-1. Go API types in `api/v1alpha1/`
-2. `make manifests` → `config/crd/bases/promoter.argoproj.io_*.yaml`
-3. `make generate-ui-types` → `ui/shared/src/types/generated/crds.gen.ts`
+1. Go API types in `api/v1alpha1/` and `api/view/v1alpha1/`
+2. `make generate-apiserver` → `api/view/v1alpha1/zz_generated.openapi.go`
+3. `make generate-ui-types` → `ui/shared/src/types/generated/view.gen.ts`
 
-Do not edit `crds.gen.ts` by hand.
+Do not edit `view.gen.ts` by hand.
 
 ## Regenerating after API changes
 
 ```bash
-make manifests
+make generate-apiserver   # when api/view/ or embedded api/v1alpha1 types change
 make generate-ui-types
 ```
 
-Commit the updated CRD YAML and `ui/shared/src/types/generated/crds.gen.ts`.
+Commit updated OpenAPI Go output and `ui/shared/src/types/generated/view.gen.ts`.
 
 CI runs `make generate-ui-types` in the **Check Codegen** job and fails if the generated file drifts.
 
@@ -25,33 +25,33 @@ CI runs `make generate-ui-types` in the **Check Codegen** job and fails if the g
 
 | Path | Purpose |
 |------|---------|
-| `hack/crd2ts/` | Go tool: CRD YAML → OpenAPI 3.0 JSON |
+| `hack/view2ts/` | Go tool: openapi-gen definitions → OpenAPI 3.0 JSON (PromotionStrategyDetails closure) |
 | `ui/codegen/` | `openapi-typescript` runner (dev-only npm package) |
-| `ui/shared/src/types/generated/crds.gen.ts` | Generated CRD types (committed) |
-| `ui/shared/src/types/crds.ts` | Named exports: required `apiVersion`/`kind`, `KubernetesObjectMeta` from `@kubernetes/client-node` |
+| `ui/shared/src/types/generated/view.gen.ts` | Generated view API types (committed) |
+| `ui/shared/src/types/view.ts` | Named exports: `PromotionStrategyDetails`, embedded CRD shapes, `KubernetesObjectMeta` |
 | `ui/shared/src/types/kubernetes.ts` | Re-export of `V1ObjectMeta` |
-| `ui/shared/src/types/promotion.ts` | UI view types and aliases (e.g. `Environment` = status slice item) |
+| `ui/shared/src/types/promotion.ts` | UI view types and aliases (e.g. `Environment` = `EnvironmentStatus`) |
 
 ## Post-processing
 
-`hack/crd2ts` adds `required: [apiVersion, kind, metadata]` on each CRD root schema before TypeScript codegen so identity fields are not optional. Fields such as `spec` are required in generated types when the Go type omits `omitempty` and `make manifests` emits them in the CRD `required` list.
+`hack/view2ts` walks the openapi-gen schema closure rooted at `PromotionStrategyDetails`, `PromotionStrategyDetailsList`, and `PromotionStrategy` (extension). It adds `required: [apiVersion, kind, metadata]` on the resource roots before TypeScript codegen.
 
-`metadata` is still an empty `type: object` in CRD YAML (Kubernetes convention). `ui/shared/src/types/crds.ts` replaces it with `KubernetesObjectMeta` (`V1ObjectMeta` plus required `name` and `namespace` for namespaced kinds).
+`metadata` uses the upstream `ObjectMeta` schema from openapi-gen. `ui/shared/src/types/view.ts` replaces it with `KubernetesObjectMeta` (`V1ObjectMeta` plus required `name` and `namespace` for namespaced resources).
 
-## View types vs CRD types
+## View types vs API types
 
-Generated `crds.gen.ts` mirrors CRD OpenAPI for `spec`/`status`. The UI also uses **view types** that are not in the API:
+Generated `view.gen.ts` mirrors the view APIService OpenAPI. The UI also uses **view types** that are not in the API:
 
 - `EnrichedEnvDetails`, `Check`, `PromotionPhase` in `promotion.ts`
 - Enrichment logic in `ui/shared/src/utils/PSData.ts`
 
-Aliases in `promotion.ts` avoid name clashes with CRD kinds:
+Aliases in `promotion.ts` avoid name clashes:
 
-- `Environment` — `PromotionStrategy.status.environments[]` (not spec `environments`)
+- `Environment` — per-environment status assembled for Card/PSData (`EnvironmentStatus`)
 - `BranchCommitStatus` — inline branch status (not the `CommitStatus` CRD)
 - `EnvironmentPullRequest` — embedded PR state (not the `PullRequest` CRD)
 
-Use `CommitStatusResource` and `PullRequestResource` from `ui/shared/src/types/crds.ts` when typing those CRD resources.
+Use `CommitStatusResource` and `PullRequestResource` from `ui/shared/src/types/view.ts` when typing those CRD resources embedded in the bundle.
 
 ## Linting
 
