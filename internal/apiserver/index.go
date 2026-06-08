@@ -430,6 +430,17 @@ func (p *BundleProvider) broadcast(ev watch.Event, key types.NamespacedName) {
 		if !w.matches(key.Namespace, key.Name) {
 			continue
 		}
+		// Each watcher is served by its own goroutine in the apiserver watch
+		// handler, whose versioning codec mutates the object's TypeMeta (GVK) in
+		// place during serialization (SetGroupVersionKind, restored via defer).
+		// For the default JSON/YAML watch the serving path does NOT copy the
+		// embedded object before encoding; the only layer that copies for this
+		// reason is the storage cacher's cachingObject, which deep-copies the
+		// wrapped object before encoding (see cachingObject.GetObject:
+		// https://github.com/kubernetes/kubernetes/blob/v1.36.1/staging/src/k8s.io/apiserver/pkg/storage/cacher/caching_object.go#L159-L165)
+		// but only wraps etcd-backed resources. This virtual REST bypasses the
+		// cacher, so nothing copies on our behalf. Give every watcher its own
+		// copy so concurrent encodes of a shared object don't race on TypeMeta.
 		evCopy := watch.Event{Type: ev.Type, Object: ev.Object.DeepCopyObject()}
 		select {
 		case w.result <- evCopy:
