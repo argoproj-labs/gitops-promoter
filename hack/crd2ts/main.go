@@ -38,7 +38,7 @@ func main() {
 	for _, f := range files {
 		kind, schema, err := extractCRDSchema(f)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "skip %s: %v\n", f, err)
+			fmt.Fprintf(os.Stderr, "extract schema from %s: %v\n", f, err)
 			os.Exit(1)
 		}
 		if _, exists := schemas[kind]; exists {

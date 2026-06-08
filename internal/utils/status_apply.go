@@ -189,7 +189,7 @@ func clusterScmProviderStatusApply(o *promoterv1alpha1.ClusterScmProvider, condi
 	} else if err := jsonRoundTrip(&o.Status, statusAC); err != nil {
 		return nil, err
 	}
-	return acv1alpha1.ClusterScmProvider(o.Name, "").WithStatus(statusAC), nil
+	return acv1alpha1.ClusterScmProvider(o.Name).WithStatus(statusAC), nil
 }
 
 // jsonRoundTrip copies all JSON-tagged fields from src into dst by marshaling src and

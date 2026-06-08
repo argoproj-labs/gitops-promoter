@@ -48,6 +48,7 @@ nav:
       - UI TypeScript Types from CRDs: contributing/ui-types.md
       - Cutting a Release: contributing/cutting-a-release.md
       - Using Finalizers: contributing/using-finalizers.md
+      - Maintaining CRDs: contributing/maintaining-crds.md
       - Maintaining Resource Status: contributing/updating-status.md
   - Security: security.md
   - Debugging:
@@ -55,6 +56,7 @@ nav:
       - Finalizers: debugging/finalizers.md
       - Labels: debugging/labels.md
   - Architecture: architecture.md
+  - Dashboard Aggregation API: dashboard-apiserver.md
   - Repository Structure: repository-structure.md
   - Custom Hydrator: custom-hydrator.md
   - CRD Specs: crd-specs.md
