@@ -19,7 +19,7 @@ function environmentsFromCTPs(ps: PromotionStrategy, ctps: ChangeTransferPolicy[
     if (branch) byBranch.set(branch, ctp);
   }
 
-  const specEnvironments = ps.spec?.environments ?? [];
+  const specEnvironments = ps.spec.environments;
   return specEnvironments.map((env) => {
     const status = byBranch.get(env.branch)?.status ?? {};
     return {
@@ -77,7 +77,7 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
         if (!res.ok) throw new Error(`Error: ${res.status}`);
         const data: PromotionStrategyBundle[] = await res.json();
 
-        set({ items: (data || []).map((b) => bundleToItem<T>(b)), loading: false });
+        set({ items: data.map((b) => bundleToItem<T>(b)), loading: false });
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         set({ error: errorMessage, loading: false });
