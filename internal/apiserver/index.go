@@ -361,55 +361,65 @@ func (p *BundleProvider) Watch(ctx context.Context, namespace, name string, send
 	p.mu.Unlock()
 
 	if sendInitial {
-		var items []viewv1alpha1.PromotionStrategyDetails
-		var resourceVersion string
-		if name != "" {
-			// A name filter resolves to exactly one bundle, so Get it directly
-			// instead of listing (and building) every PromotionStrategy in the
-			// namespace just to discard all but one.
-			bundle, err := p.Get(ctx, namespace, name)
-			if err != nil {
-				if !apierrors.IsNotFound(err) {
-					w.Stop()
-					return nil, err
-				}
-				// Not found yet: send no initial ADDED event, but still surface
-				// a resource version so the reflector can begin watching.
-				resourceVersion = p.currentResourceVersion()
-			} else {
-				items = []viewv1alpha1.PromotionStrategyDetails{*bundle}
-				resourceVersion = bundle.ResourceVersion
-			}
-		} else {
-			list, err := p.List(ctx, namespace)
-			if err != nil {
-				w.Stop()
-				return nil, err
-			}
-			items = list.Items
-			resourceVersion = list.ResourceVersion
-		}
-
-		for i := range items {
-			item := items[i]
-			select {
-			case w.result <- watch.Event{Type: watch.Added, Object: &item}:
-			default:
-			}
-		}
-
-		if sendInitialEventsBookmark {
-			bookmark := &viewv1alpha1.PromotionStrategyDetails{}
-			bookmark.SetResourceVersion(resourceVersion)
-			bookmark.SetAnnotations(map[string]string{metav1.InitialEventsAnnotationKey: "true"})
-			select {
-			case w.result <- watch.Event{Type: watch.Bookmark, Object: bookmark}:
-			default:
-			}
+		if err := p.sendInitialWatchEvents(ctx, w, namespace, name, sendInitialEventsBookmark); err != nil {
+			return nil, err
 		}
 	}
 
 	return w, nil
+}
+
+func (p *BundleProvider) sendInitialWatchEvents(ctx context.Context, w *bundleWatcher, namespace, name string, sendBookmark bool) error {
+	items, resourceVersion, err := p.initialWatchSnapshot(ctx, namespace, name)
+	if err != nil {
+		w.Stop()
+		return err
+	}
+
+	for i := range items {
+		item := items[i]
+		select {
+		case w.result <- watch.Event{Type: watch.Added, Object: &item}:
+		default:
+		}
+	}
+
+	if !sendBookmark {
+		return nil
+	}
+
+	bookmark := &viewv1alpha1.PromotionStrategyDetails{}
+	bookmark.SetResourceVersion(resourceVersion)
+	bookmark.SetAnnotations(map[string]string{metav1.InitialEventsAnnotationKey: "true"})
+	select {
+	case w.result <- watch.Event{Type: watch.Bookmark, Object: bookmark}:
+	default:
+	}
+	return nil
+}
+
+func (p *BundleProvider) initialWatchSnapshot(ctx context.Context, namespace, name string) ([]viewv1alpha1.PromotionStrategyDetails, string, error) {
+	if name == "" {
+		list, err := p.List(ctx, namespace)
+		if err != nil {
+			return nil, "", err
+		}
+		return list.Items, list.ResourceVersion, nil
+	}
+
+	// A name filter resolves to exactly one bundle, so Get it directly instead of
+	// listing (and building) every PromotionStrategy in the namespace just to
+	// discard all but one.
+	bundle, err := p.Get(ctx, namespace, name)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			// Not found yet: send no initial ADDED event, but still surface a
+			// resource version so the reflector can begin watching.
+			return nil, p.currentResourceVersion(), nil
+		}
+		return nil, "", err
+	}
+	return []viewv1alpha1.PromotionStrategyDetails{*bundle}, bundle.ResourceVersion, nil
 }
 
 // broadcast sends an event to all watchers matching the affected key.
