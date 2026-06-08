@@ -16,7 +16,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
@@ -34,9 +34,7 @@ func main() {
 	out := flag.String("o", "hack/view2ts/dist/view.openapi.json", "output OpenAPI 3.0 JSON file")
 	flag.Parse()
 
-	all := viewv1alpha1.GetOpenAPIDefinitions(func(path string) spec.Ref {
-		return spec.MustCreateRef(path)
-	})
+	all := viewv1alpha1.GetOpenAPIDefinitions(spec.MustCreateRef)
 
 	shortNames := buildShortNames(all)
 	closure := collectClosure(all, rootModels)
@@ -58,6 +56,9 @@ func main() {
 		if err := json.Unmarshal(raw, &schema); err != nil {
 			fmt.Fprintf(os.Stderr, "unmarshal %q: %v\n", fullName, err)
 			os.Exit(1)
+		}
+		if schema == nil {
+			schema = map[string]any{}
 		}
 		sanitizeSchema(schema)
 		rewriteRefs(schema, shortNames)
@@ -93,7 +94,7 @@ func buildShortNames(all map[string]common.OpenAPIDefinition) map[string]string 
 	}
 	out := make(map[string]string, len(all))
 	for short, fulls := range byShort {
-		sort.Strings(fulls)
+		slices.Sort(fulls)
 		if len(fulls) == 1 {
 			out[fulls[0]] = short
 			continue
@@ -160,6 +161,7 @@ func findRefs(v any) []string {
 			for _, item := range n {
 				visit(item)
 			}
+		default:
 		}
 	}
 	visit(v)
@@ -175,6 +177,9 @@ func refToModelName(ref string) string {
 func rewriteRefs(v any, shortNames map[string]string) {
 	switch node := v.(type) {
 	case map[string]any:
+		if node == nil {
+			return
+		}
 		if ref, ok := node["$ref"].(string); ok {
 			if full := refToModelName(ref); full != "" {
 				if short, ok := shortNames[full]; ok {
@@ -189,6 +194,7 @@ func rewriteRefs(v any, shortNames map[string]string) {
 		for _, item := range node {
 			rewriteRefs(item, shortNames)
 		}
+	default:
 	}
 }
 
@@ -206,10 +212,14 @@ func sanitizeSchema(v any) {
 		for _, item := range node {
 			sanitizeSchema(item)
 		}
+	default:
 	}
 }
 
 func postProcessRootSchema(schema map[string]any) {
+	if schema == nil {
+		return
+	}
 	rootRequired := []string{"apiVersion", "kind", "metadata"}
 	existing, _ := schema["required"].([]any)
 	seen := make(map[string]struct{}, len(existing)+len(rootRequired))
@@ -225,7 +235,7 @@ func postProcessRootSchema(schema map[string]any) {
 	for name := range seen {
 		required = append(required, name)
 	}
-	sort.Strings(required)
+	slices.Sort(required)
 	out := make([]any, len(required))
 	for i, name := range required {
 		out[i] = name
@@ -235,12 +245,15 @@ func postProcessRootSchema(schema map[string]any) {
 
 func writeJSON(path string, doc map[string]any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
+		return fmt.Errorf("create output directory: %w", err)
 	}
 	b, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal JSON: %w", err)
 	}
 	b = append(b, '\n')
-	return os.WriteFile(path, b, 0o644)
+	if err := os.WriteFile(path, b, 0o644); err != nil {
+		return fmt.Errorf("write file: %w", err)
+	}
+	return nil
 }
