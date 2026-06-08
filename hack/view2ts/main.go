@@ -222,7 +222,7 @@ func postProcessRootSchema(schema map[string]any) {
 	}
 	rootRequired := []string{"apiVersion", "kind", "metadata"}
 	existing, _ := schema["required"].([]any)
-	seen := make(map[string]struct{}, len(existing)+len(rootRequired))
+	seen := make(map[string]struct{})
 	for _, item := range existing {
 		if s, ok := item.(string); ok {
 			seen[s] = struct{}{}
