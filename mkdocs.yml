@@ -38,10 +38,40 @@ markdown_extensions:
           case: lower
 nav:
   - Overview: index.md
-  - Roadmap: roadmap.md
+  - Architecture: architecture.md
   - Getting Started: getting-started.md
+  - Structuring Your Repos: structuring-your-repos.md
+  - Gating Promotions:
+      - Overview: gating-promotions/index.md
+      - Built-In Gates:
+          - ArgoCDCommitStatus: gating-promotions/built-in-gates/argocd-commit-status.md
+          - GitCommitStatus: gating-promotions/built-in-gates/git-commit-status.md
+          - TimedCommitStatus: gating-promotions/built-in-gates/timed-commit-status.md
+          - WebRequestCommitStatus:
+              - Overview: gating-promotions/built-in-gates/web-request-commit-status/index.md
+              - Simulator: gating-promotions/built-in-gates/web-request-commit-status/simulator.md
+  - Integrating with Argo CD:
+      - Overview: integrating-with-argocd/index.md
+      - Tutorial: integrating-with-argocd/tutorial.md
+  - Monitoring:
+      - Overview: monitoring/index.md
+      - Events: monitoring/events.md
+      - Logs: monitoring/logs.md
+      - Metrics: monitoring/metrics.md
+  - Debugging:
+      - Overview: debugging/index.md
+      - Finalizers: debugging/finalizers.md
+      - Labels: debugging/labels.md
+  - Advanced Usage:
+      - Overview: advanced-usage/index.md
+      - Using a Custom Hydrator: advanced-usage/custom-hydrator.md
+      - Configuring Multi-Tenancy: advanced-usage/multi-tenancy.md
+      - Dashboard Aggregation API: advanced-usage/dashboard-apiserver.md
+  - CRD Specs: crd-specs.md
   - Contributing:
       - Overview: contributing/index.md
+      - Developing a CommitStatus: contributing/developing-a-commitstatus.md
+      - Developing the Argo CD Extension: contributing/developing-the-argocd-extension.md
       - Adding an SCM Provider: contributing/adding-an-scm-provider.md
       - Writing CEL Validation Rules: contributing/writing-cel-rules.md
       - Continuous Integration: contributing/ci.md
@@ -49,40 +79,25 @@ nav:
       - Using Finalizers: contributing/using-finalizers.md
       - Maintaining CRDs: contributing/maintaining-crds.md
       - Maintaining Resource Status: contributing/updating-status.md
-  - Security: security.md
-  - Debugging:
-      - Overview: debugging/index.md
-      - Finalizers: debugging/finalizers.md
-      - Labels: debugging/labels.md
-  - Architecture: architecture.md
-  - Dashboard Aggregation API: dashboard-apiserver.md
-  - Repository Structure: repository-structure.md
-  - Custom Hydrator: custom-hydrator.md
-  - CRD Specs: crd-specs.md
-  - Gating Promotions: gating-promotions.md
-  - CommitStatus Controllers:
-      - Argo CD: commit-status-controllers/argocd.md
-      - Git Commit: commit-status-controllers/git-commit.md
-      - Timed: commit-status-controllers/timed.md
-      - Web Request:
-          - Overview: commit-status-controllers/web-request.md
-          - Simulator: commit-status-controllers/web-request-simulator.md
-      - Development Best Practices: commit-status-controllers/development-best-practices.md
-  - Multi-Tenancy: multi-tenancy.md
-  - Monitoring:
-      - Overview: monitoring/index.md
-      - Events: monitoring/events.md
-      - Logs: monitoring/logs.md
-      - Metrics: monitoring/metrics.md
+  - Security Policy: security.md
   - Tool Comparison: tool-comparison.md
   - FAQs: faqs.md
-  - Tutorials:
-      - Argo CD Apps: tutorial-argocd-apps.md
-  - Argo CD Integrations:
-      - Overview: argocd-integrations/index.md
-      - Extension Development: argocd-integrations/development.md
+  - Roadmap: roadmap.md
 plugins:
   - gh-admonitions
   - redirects:
       redirect_maps:
-        'metrics.md': 'monitoring/metrics.md' # Page was moved to a subdirectory.
+        'metrics.md': 'monitoring/metrics.md'
+        'repository-structure.md': 'structuring-your-repos.md'
+        'commit-status-controllers/argocd.md': 'gating-promotions/built-in-gates/argocd-commit-status.md'
+        'commit-status-controllers/git-commit.md': 'gating-promotions/built-in-gates/git-commit-status.md'
+        'commit-status-controllers/timed.md': 'gating-promotions/built-in-gates/timed-commit-status.md'
+        'commit-status-controllers/web-request.md': 'gating-promotions/built-in-gates/web-request-commit-status/index.md'
+        'commit-status-controllers/web-request-simulator.md': 'gating-promotions/built-in-gates/web-request-commit-status/simulator.md'
+        'commit-status-controllers/development-best-practices.md': 'contributing/developing-a-commitstatus.md'
+        'argocd-integrations/index.md': 'integrating-with-argocd/index.md'
+        'argocd-integrations/development.md': 'contributing/developing-the-argocd-extension.md'
+        'tutorial-argocd-apps.md': 'integrating-with-argocd/tutorial.md'
+        'custom-hydrator.md': 'advanced-usage/custom-hydrator.md'
+        'multi-tenancy.md': 'advanced-usage/multi-tenancy.md'
+        'dashboard-apiserver.md': 'advanced-usage/dashboard-apiserver.md'

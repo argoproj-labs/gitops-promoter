@@ -92,7 +92,7 @@ status:
 #     method: GET
 #   success:
 #     when:
-#       # Boolean (all envs same phase) or object { defaultPhase, environments } — see docs/commit-status-controllers/web-request.md
+#       # Boolean (all envs same phase) or object { defaultPhase, environments } — see docs/gating-promotions/built-in-gates/web-request-commit-status/index.md
 #       expression: "Response.StatusCode == 200"
 #   mode:
 #     context: promotionstrategy
