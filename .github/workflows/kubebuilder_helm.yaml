@@ -42,7 +42,7 @@ jobs:
 
       - name: Generate Helm chart with Kubebuilder
         run: |
-          kubebuilder edit --plugins=helm/v2-alpha --output-dir=./tmp_chart --manifests=./dist/install.yaml
+          kubebuilder edit --plugins=helm/v2-alpha --output-dir=./tmp_chart --manifests=./dist/install-without-ui.yaml
 
       - name: Update example blocks from generated CRDs
         run: |

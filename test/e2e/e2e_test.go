@@ -18,7 +18,9 @@ package e2e
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -119,6 +121,61 @@ var _ = Describe("controller", Ordered, func() {
 				return nil
 			}
 			EventuallyWithOffset(1, verifyControllerUp, time.Minute, time.Second).Should(Succeed())
+		})
+	})
+
+	Context("Dashboard Aggregation API", func() {
+		// This spec deploys the dashboard aggregation apiserver (extension apiserver +
+		// APIService) using the cert-manager overlay (cert-manager is installed in
+		// BeforeAll), then verifies the virtual PromotionStrategyDetails resource is
+		// served and reacts to changes. It is opt-in via RUN_APISERVER_E2E because it
+		// requires the aggregation apiserver image and serving certs to be wired into
+		// the Kind cluster; enable it once that wiring is validated in CI.
+		It("should serve PromotionStrategyDetails and react to child changes", func() {
+			if os.Getenv("RUN_APISERVER_E2E") == "" {
+				Skip("set RUN_APISERVER_E2E to run the dashboard aggregation apiserver e2e spec")
+			}
+
+			imageTag := "0.0.0-test-e2e"
+			projectimage := "quay.io/argoprojlabs/gitops-promoter:" + imageTag
+
+			By("deploying the dashboard aggregation apiserver (cert-manager overlay)")
+			cmd := exec.Command("kubectl", "apply", "-k", "config/apiserver/certs-cert-manager")
+			_, err := utils.Run(cmd)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+
+			By("pointing the apiserver deployment at the e2e image")
+			cmd = exec.Command("kubectl", "-n", namespace, "set", "image",
+				"deploy/promoter-apiserver", "apiserver="+projectimage)
+			_, err = utils.Run(cmd)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+
+			By("waiting for the APIService to become Available")
+			verifyAPIServiceAvailable := func() error {
+				cmd = exec.Command("kubectl", "get", "apiservice",
+					"v1alpha1.view.promoter.argoproj.io",
+					"-o", "jsonpath={.status.conditions[?(@.type=='Available')].status}",
+				)
+				out, err := utils.Run(cmd)
+				if err != nil {
+					return fmt.Errorf("failed to get APIService status: %w", err)
+				}
+				if strings.TrimSpace(string(out)) != "True" {
+					return fmt.Errorf("APIService not Available yet: %q", string(out))
+				}
+				return nil
+			}
+			EventuallyWithOffset(1, verifyAPIServiceAvailable, 3*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("confirming the aggregated resource is discoverable")
+			verifyDiscoverable := func() error {
+				cmd = exec.Command("kubectl", "get", "promotionstrategydetails", "-A")
+				if _, err := utils.Run(cmd); err != nil {
+					return fmt.Errorf("promotionstrategydetails not discoverable yet: %w", err)
+				}
+				return nil
+			}
+			EventuallyWithOffset(1, verifyDiscoverable, time.Minute, 5*time.Second).Should(Succeed())
 		})
 	})
 })

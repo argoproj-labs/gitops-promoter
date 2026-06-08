@@ -68,7 +68,12 @@ help: ## Display this help.
 
 .PHONY: manifests
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
-	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) rbac:roleName=manager-role webhook paths="./..."
+	# CRD generation is scoped to the packages that actually define CRDs. The
+	# view aggregation API (api/view/...) is served by an extension
+	# apiserver, not as CRDs; including it would make controller-gen's CRD generator
+	# treat those TypeMeta/ObjectMeta types as Kinds and fail.
+	$(CONTROLLER_GEN) crd paths="./api/v1alpha1/..." paths="./internal/types/argocd/..." output:crd:artifacts:config=config/crd/bases
 	# Move the Application CRD to the test dir. We don't need it in the promoter config, but we need it for e2e tests.
 	mv config/crd/bases/argoproj.io_applications.yaml test/external_crds/
 
@@ -95,11 +100,59 @@ cel-cost-report: ## Estimate CRD CEL validation costs vs apiserver limits and wr
 	cd hack/celcost && go run . -o report.md ../../config/crd/bases
 
 .PHONY: generate-all
-generate-all: generate generate-extension-icon-styles ## Run all code generation used in CI (controller-gen, extension icon styles). For mocks, run make mockery-gen separately.
+generate-all: generate generate-apiserver generate-extension-icon-styles ## Run all code generation used in CI (controller-gen, view apiserver codegen, extension icon styles). For mocks, run make mockery-gen separately.
+
+# Code generation for the view aggregation API (api/view/...).
+#
+# These are aggregated-apiserver types (NOT CRDs), so they are owned entirely by the
+# k8s code-generators here, never by controller-gen:
+#   * deepcopy-gen   -> zz_generated.deepcopy.go   (DeepCopy + DeepCopyObject)
+#   * openapi-gen    -> zz_generated.openapi.go    (OpenAPI definitions)
+# The resource has a single served version (v1alpha1) and no etcd backing, so there
+# is no internal/hub version and no conversion-gen step. The package carries no
+# kubebuilder markers, so `make generate` (controller-gen) and `make manifests` skip
+# it and never emit a CRD for this group. Re-run this target after changing any type
+# in api/view/...; the output is committed.
+.PHONY: generate-apiserver
+generate-apiserver: ## Generate deepcopy/openapi for the view aggregation API (api/view/...).
+	go tool deepcopy-gen \
+		--output-file zz_generated.deepcopy.go \
+		--go-header-file hack/boilerplate.go.txt \
+		./api/view/v1alpha1
+	# The bundle embeds the promoter v1alpha1 types, so openapi-gen runs over both the
+	# view and promoter packages plus the apimachinery/core/apiextensions deps the
+	# promoter types reference. --output-model-name-file generates OpenAPIModelName()
+	# accessors so the served model names are dot-separated (e.g.
+	# io.argoproj.promoter.v1alpha1.* and io.argoproj.promoter.view.v1alpha1.*)
+	# rather than the Go import path; slash-containing names break strict OpenAPI v2
+	# consumers (e.g. Argo CD). The k8s.io dependency packages already ship their own
+	# model names, so they are marked --readonly-pkg (don't regenerate into the cache).
+	go tool openapi-gen \
+		--output-dir ./api/view/v1alpha1 \
+		--output-pkg github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1 \
+		--output-file zz_generated.openapi.go \
+		--output-model-name-file zz_generated.model_name.go \
+		--go-header-file hack/boilerplate.go.txt \
+		--readonly-pkg k8s.io/api/core/v1 \
+		--readonly-pkg k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1 \
+		--readonly-pkg k8s.io/apimachinery/pkg/apis/meta/v1 \
+		--readonly-pkg k8s.io/apimachinery/pkg/runtime \
+		--readonly-pkg k8s.io/apimachinery/pkg/version \
+		--readonly-pkg k8s.io/apimachinery/pkg/api/resource \
+		--readonly-pkg k8s.io/apimachinery/pkg/util/intstr \
+		./api/view/v1alpha1 ./api/v1alpha1 \
+		k8s.io/api/core/v1 \
+		k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1 \
+		k8s.io/apimachinery/pkg/apis/meta/v1 k8s.io/apimachinery/pkg/runtime k8s.io/apimachinery/pkg/version \
+		k8s.io/apimachinery/pkg/api/resource k8s.io/apimachinery/pkg/util/intstr
 
 .PHONY: mockery-gen
 mockery-gen: mockery
 	$(MOCKERY)
+
+.PHONY: apiserver-certs
+apiserver-certs: ## Generate self-signed serving certs for the dashboard apiserver and patch the APIService caBundle (manual cert path).
+	./hack/gen-apiserver-certs.sh
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.
@@ -123,11 +176,11 @@ test-deps: ginkgo manifests generate fmt vet envtest
 
 .PHONY: test-parallel
 test-parallel: test-deps ## Run tests in parallel
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GINKGO) -p -procs=4 -r -v -cover -coverprofile=cover.out -coverpkg=./... --junit-report=junit.xml internal/
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go tool ginkgo -p -procs=4 -r -v -cover -coverprofile=cover.out -coverpkg=./... --junit-report=junit.xml internal/
 
 .PHONY: test-parallel-repeat3
 test-parallel-repeat3: test-deps ## Run tests in parallel 3 times to check for flakiness --repeat does not count the first run
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GINKGO) -p -procs=4 -r -v -cover -coverprofile=cover.out -coverpkg=./... --junit-report=junit.xml --repeat=2 internal/
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go tool ginkgo -p -procs=4 -r -v -cover -coverprofile=cover.out -coverpkg=./... --junit-report=junit.xml --repeat=2 internal/
 
 ##@ Fuzzing
 
@@ -225,6 +278,35 @@ run-dashboard-dev:
 run-dashboard: build-dashboard 
 	go run ./cmd/main.go dashboard
 
+# Run the dashboard aggregation apiserver from your host (out-of-cluster), against
+# the current kubeconfig context. It self-signs a serving cert into APISERVER_CERT_DIR
+# (no --tls-cert-file), and delegates authn/authz to the cluster via the kubeconfig.
+# Note: `kubectl get promotionstrategydetails` won't route here (the cluster's
+# aggregator can't reach your host) — curl it directly, e.g.
+#   curl -k https://127.0.0.1:$(APISERVER_SECURE_PORT)/healthz
+APISERVER_KUBECONFIG ?= $(HOME)/.kube/config
+APISERVER_SECURE_PORT ?= 6443
+APISERVER_CERT_DIR ?= /tmp/promoter-apiserver-certs
+.PHONY: run-apiserver
+run-apiserver: ## Run the dashboard aggregation apiserver locally (out-of-cluster) against the current kubeconfig.
+	go run ./cmd/main.go apiserver \
+		--authentication-kubeconfig "$(APISERVER_KUBECONFIG)" \
+		--authorization-kubeconfig "$(APISERVER_KUBECONFIG)" \
+		--secure-port $(APISERVER_SECURE_PORT) \
+		--cert-dir "$(APISERVER_CERT_DIR)"
+
+# Register/unregister the APIService so a kind/Docker-Desktop cluster routes the
+# aggregated PromotionStrategyDetails resource to your locally-running `make
+# run-apiserver`. Auto-detects the host IP via host.docker.internal; override with
+# HOST_IP=... (and KIND_NODE=..., PORT=...). Local-dev only (insecureSkipTLSVerify).
+.PHONY: apiserver-register-local
+apiserver-register-local: ## Point the cluster aggregator at your local run-apiserver (kind/Docker Desktop).
+	PORT=$(APISERVER_SECURE_PORT) ./hack/apiserver-local-register.sh register
+
+.PHONY: apiserver-unregister-local
+apiserver-unregister-local: ## Remove the local APIService registration created by apiserver-register-local.
+	./hack/apiserver-local-register.sh unregister
+
 .PHONY: lint-dashboard
 lint-dashboard: ## Run dashboard type-check, lint and audit checks
 	cd ui/dashboard && npm run type-check && npm run lint && npm run format:check && npm audit --omit=dev
@@ -287,14 +369,12 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 	rm Dockerfile.cross
 
 .PHONY: build-installer
-build-installer: manifests generate-all cel-cost-report kustomize ## Generate CRDs, applyconfiguration, CEL cost report, and dist/install.yaml.
-	mkdir -p dist
-	# cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/default > dist/install.yaml
+build-installer: manifests generate-all cel-cost-report kustomize ## Generate CRDs, applyconfiguration, CEL cost report, and the committed dist/ install bundles.
+	./hack/manifests-release.sh $(KUSTOMIZE) $(CURDIR)/dist
 
 .PHONY: manifests-release
-manifests-release: generate manifests kustomize ## Generate the consolidated install.yaml with the release tag.
-	./hack/manifests-release.sh $(KUSTOMIZE) $(IMAGE_TAG)
+manifests-release: generate manifests kustomize ## Generate the consolidated install bundles at the repo root, pinned to the release tag.
+	./hack/manifests-release.sh $(KUSTOMIZE) $(CURDIR) $(IMAGE_TAG)
 
 ##@ Deployment
 
@@ -335,7 +415,6 @@ GOLANGCI_LINT = $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
 DEADCODE = $(LOCALBIN)/deadcode-$(DEADCODE_VERSION)
 MOCKERY = $(LOCALBIN)/mockery-$(MOCKERY_VERSION)
 NILAWAY = $(LOCALBIN)/nilaway-$(NILAWAY_VERSION)
-GINKGO = $(LOCALBIN)/ginkgo-$(GINKGO_VERSION)
 GORELEASER ?= $(LOCALBIN)/goreleaser-$(GORELEASER_VERSION)
 
 ## Tool Versions
@@ -347,7 +426,6 @@ DEADCODE_VERSION ?= v0.45.0
 DEADCODE_FILTER ?= github.com/argoproj-labs/gitops-promoter/internal
 MOCKERY_VERSION ?= v2.53.6
 NILAWAY_VERSION ?= latest
-GINKGO_VERSION=$(shell go list -m all | grep github.com/onsi/ginkgo/v2 | awk '{print $$2}')
 GORELEASER_VERSION ?= v2.16.0
 
 .PHONY: kustomize
@@ -386,8 +464,8 @@ nilaway:
 	$(call go-install-tool,$(NILAWAY),go.uber.org/nilaway/cmd/nilaway,${NILAWAY_VERSION})
 
 .PHONY: ginkgo
-ginkgo:
-	$(call go-install-tool,$(GINKGO),github.com/onsi/ginkgo/v2/ginkgo,${GINKGO_VERSION})
+ginkgo: ## Ginkgo CLI is pinned via the go.mod `tool` directive (matches the ginkgo/v2 library version); this just verifies it builds.
+	go tool ginkgo version
 
 .PHONY: goreleaser
 goreleaser: $(GORELEASER)
