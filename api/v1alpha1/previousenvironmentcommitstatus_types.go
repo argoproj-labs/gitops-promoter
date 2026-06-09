@@ -25,10 +25,24 @@ import (
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // PreviousEnvironmentCommitStatusSpec defines the desired state of PreviousEnvironmentCommitStatus.
-//
-// NOTE: This is a scaffold. Fields (e.g. promotionStrategyRef, key) will be added when the
-// previous-environment commit status logic is migrated from the PromotionStrategy controller.
-type PreviousEnvironmentCommitStatusSpec struct{}
+type PreviousEnvironmentCommitStatusSpec struct {
+	// PromotionStrategyRef is a reference to the promotion strategy that this previous environment
+	// commit status applies to. The controller watches this PromotionStrategy and, for each
+	// environment, reports whether the preceding environment is synced and healthy.
+	// +required
+	PromotionStrategyRef ObjectReference `json:"promotionStrategyRef"`
+
+	// Key is the commit status key referenced in the PromotionStrategy's proposedCommitStatuses.
+	// When omitted, the CRD default is promoter-previous-environment. Set Key explicitly, even if
+	// you use the CRD default.
+	// Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
+	// +optional
+	// +kubebuilder:default=promoter-previous-environment
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+	Key string `json:"key,omitempty"`
+}
 
 // PreviousEnvironmentCommitStatusStatus defines the observed state of PreviousEnvironmentCommitStatus.
 type PreviousEnvironmentCommitStatusStatus struct {

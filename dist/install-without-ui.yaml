@@ -4507,6 +4507,35 @@ spec:
             type: object
           spec:
             description: spec defines the desired state of PreviousEnvironmentCommitStatus
+            properties:
+              key:
+                default: promoter-previous-environment
+                description: |-
+                  Key is the commit status key referenced in the PromotionStrategy's proposedCommitStatuses.
+                  When omitted, the CRD default is promoter-previous-environment. Set Key explicitly, even if
+                  you use the CRD default.
+                  Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                type: string
+              promotionStrategyRef:
+                description: |-
+                  PromotionStrategyRef is a reference to the promotion strategy that this previous environment
+                  commit status applies to. The controller watches this PromotionStrategy and, for each
+                  environment, reports whether the preceding environment is synced and healthy.
+                properties:
+                  name:
+                    description: Name is the name of the object to refer to.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
+                    type: string
+                required:
+                - name
+                type: object
+            required:
+            - promotionStrategyRef
             type: object
           status:
             description: status defines the observed state of PreviousEnvironmentCommitStatus
