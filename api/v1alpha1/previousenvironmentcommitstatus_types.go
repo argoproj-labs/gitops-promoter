@@ -28,8 +28,7 @@ import (
 //
 // NOTE: This is a scaffold. Fields (e.g. promotionStrategyRef, key) will be added when the
 // previous-environment commit status logic is migrated from the PromotionStrategy controller.
-type PreviousEnvironmentCommitStatusSpec struct {
-}
+type PreviousEnvironmentCommitStatusSpec struct {}
 
 // PreviousEnvironmentCommitStatusStatus defines the observed state of PreviousEnvironmentCommitStatus.
 type PreviousEnvironmentCommitStatusStatus struct {

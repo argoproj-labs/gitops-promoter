@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -59,8 +60,11 @@ func (r *PreviousEnvironmentCommitStatusReconciler) Reconcile(ctx context.Contex
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *PreviousEnvironmentCommitStatusReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	if err := ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.PreviousEnvironmentCommitStatus{}).
 		Named("previousenvironmentcommitstatus").
-		Complete(r)
+		Complete(r); err != nil {
+		return fmt.Errorf("setting up previousenvironmentcommitstatus controller: %w", err)
+	}
+	return nil
 }
