@@ -34,7 +34,7 @@ CI runs `make generate-ui-types` in the **Check Codegen** job and fails if the g
 
 ## Post-processing
 
-`hack/view2ts` walks the openapi-gen schema closure rooted at `PromotionStrategyDetails`, `PromotionStrategyDetailsList`, and `PromotionStrategy` (extension). It adds `required: [apiVersion, kind, metadata]` on the resource roots before TypeScript codegen.
+`hack/view2ts` walks the openapi-gen schema closure rooted at `PromotionStrategyDetails` and `PromotionStrategyDetailsList` (embedded types such as `PromotionStrategy` are included transitively). It adds `required: [apiVersion, kind, metadata]` on `PromotionStrategyDetails` and `PromotionStrategy` before TypeScript codegen.
 
 `metadata` uses the upstream `ObjectMeta` schema from openapi-gen. `ui/shared/src/types/view.ts` replaces it with `KubernetesObjectMeta` (`V1ObjectMeta` plus required `name` and `namespace` for namespaced resources).
 

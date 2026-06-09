@@ -1,7 +1,7 @@
 // Command view2ts extracts an OpenAPI 3.0 schema bundle for UI TypeScript codegen.
-// It walks the openapi-gen definitions rooted at PromotionStrategyDetails (and
-// PromotionStrategy for the Argo CD extension) and emits a minimal components.schemas
-// document for openapi-typescript.
+// It walks the openapi-gen definitions rooted at PromotionStrategyDetails and
+// PromotionStrategyDetailsList (embedded types such as PromotionStrategy are included
+// transitively) and emits a minimal components.schemas document for openapi-typescript.
 //
 // Requires committed api/view/v1alpha1/zz_generated.openapi.go (make generate-apiserver).
 //
@@ -27,7 +27,6 @@ import (
 var rootModels = []string{
 	"io.argoproj.promoter.view.v1alpha1.PromotionStrategyDetails",
 	"io.argoproj.promoter.view.v1alpha1.PromotionStrategyDetailsList",
-	"io.argoproj.promoter.v1alpha1.PromotionStrategy",
 }
 
 func main() {
