@@ -105,6 +105,10 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.ObjectReference{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_ObjectReference(ref),
 		apiv1alpha1.OutputSpec{}.OpenAPIModelName():                                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_OutputSpec(ref),
 		apiv1alpha1.PollingModeSpec{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_PollingModeSpec(ref),
+		apiv1alpha1.PreviousEnvironmentCommitStatus{}.OpenAPIModelName():                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_PreviousEnvironmentCommitStatus(ref),
+		apiv1alpha1.PreviousEnvironmentCommitStatusList{}.OpenAPIModelName():                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_PreviousEnvironmentCommitStatusList(ref),
+		apiv1alpha1.PreviousEnvironmentCommitStatusSpec{}.OpenAPIModelName():                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_PreviousEnvironmentCommitStatusSpec(ref),
+		apiv1alpha1.PreviousEnvironmentCommitStatusStatus{}.OpenAPIModelName():                schema_argoproj_labs_gitops_promoter_api_v1alpha1_PreviousEnvironmentCommitStatusStatus(ref),
 		apiv1alpha1.PromotionStrategy{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategy(ref),
 		apiv1alpha1.PromotionStrategyConfiguration{}.OpenAPIModelName():                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategyConfiguration(ref),
 		apiv1alpha1.PromotionStrategyList{}.OpenAPIModelName():                                schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategyList(ref),
@@ -3435,6 +3439,152 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PollingModeSpec(ref commo
 		},
 		Dependencies: []string{
 			metav1.Duration{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PreviousEnvironmentCommitStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "PreviousEnvironmentCommitStatus is the Schema for the previousenvironmentcommitstatuses API",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Description: "metadata is a standard object metadata",
+							Default:     map[string]interface{}{},
+							Ref:         ref(metav1.ObjectMeta{}.OpenAPIModelName()),
+						},
+					},
+					"spec": {
+						SchemaProps: spec.SchemaProps{
+							Description: "spec defines the desired state of PreviousEnvironmentCommitStatus",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.PreviousEnvironmentCommitStatusSpec{}.OpenAPIModelName()),
+						},
+					},
+					"status": {
+						SchemaProps: spec.SchemaProps{
+							Description: "status defines the observed state of PreviousEnvironmentCommitStatus",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.PreviousEnvironmentCommitStatusStatus{}.OpenAPIModelName()),
+						},
+					},
+				},
+				Required: []string{"spec"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.PreviousEnvironmentCommitStatusSpec{}.OpenAPIModelName(), apiv1alpha1.PreviousEnvironmentCommitStatusStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PreviousEnvironmentCommitStatusList(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "PreviousEnvironmentCommitStatusList contains a list of PreviousEnvironmentCommitStatus",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref(metav1.ListMeta{}.OpenAPIModelName()),
+						},
+					},
+					"items": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.PreviousEnvironmentCommitStatus{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"metadata", "items"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.PreviousEnvironmentCommitStatus{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PreviousEnvironmentCommitStatusSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "PreviousEnvironmentCommitStatusSpec defines the desired state of PreviousEnvironmentCommitStatus.\n\nNOTE: This is a scaffold. Fields (e.g. promotionStrategyRef, key) will be added when the previous-environment commit status logic is migrated from the PromotionStrategy controller.",
+				Type:        []string{"object"},
+			},
+		},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PreviousEnvironmentCommitStatusStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "PreviousEnvironmentCommitStatusStatus defines the observed state of PreviousEnvironmentCommitStatus.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"conditions": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-map-keys": []interface{}{
+									"type",
+								},
+								"x-kubernetes-list-type": "map",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "conditions represent the current state of the PreviousEnvironmentCommitStatus resource. Each condition has a unique type and reflects the status of a specific aspect of the resource.\n\nStandard condition types include: - \"Available\": the resource is fully functional - \"Progressing\": the resource is being created or updated - \"Degraded\": the resource failed to reach or maintain its desired state\n\nThe status of each condition is one of True, False, or Unknown.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(metav1.Condition{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			metav1.Condition{}.OpenAPIModelName()},
 	}
 }
 
