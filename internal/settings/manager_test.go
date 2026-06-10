@@ -12,7 +12,10 @@ import (
 )
 
 func TestGetChangeTransferPolicyCommitMessageTemplate(t *testing.T) {
+	t.Parallel()
+
 	t.Run("returns configured template", func(t *testing.T) {
+		t.Parallel()
 		cfg := &promoterv1alpha1.ControllerConfiguration{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      ControllerConfigurationName,
@@ -38,6 +41,7 @@ func TestGetChangeTransferPolicyCommitMessageTemplate(t *testing.T) {
 	})
 
 	t.Run("returns upgrade guidance error for empty template", func(t *testing.T) {
+		t.Parallel()
 		cfg := &promoterv1alpha1.ControllerConfiguration{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      ControllerConfigurationName,

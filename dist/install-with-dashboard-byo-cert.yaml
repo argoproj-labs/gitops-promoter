@@ -2356,6 +2356,23 @@ spec:
                   ChangeTransferPolicy contains the configuration for the ChangeTransferPolicy controller,
                   including WorkQueue settings that control reconciliation behavior.
                 properties:
+                  commitMessageTemplate:
+                    description: |-
+                      CommitMessageTemplate is a Go template used to generate the merge commit message
+                      when a promotion pull request is merged.
+
+                      Uses Go template syntax with Sprig functions available for string manipulation.
+
+                      Template data available when rendering:
+                        - .ChangeTransferPolicy – the ChangeTransferPolicy managing this promotion
+                        - .PromotionStrategy    – the PromotionStrategy for the CTP
+
+                      Example: access the original dry commit subject via
+                        {{ .ChangeTransferPolicy.Status.Proposed.Dry.Subject }}
+                      or the dry SHA via
+                        {{ trunc 5 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}
+                    minLength: 1
+                    type: string
                   workQueue:
                     description: |-
                       WorkQueue contains the work queue configuration for the ChangeTransferPolicy controller.
@@ -2558,6 +2575,7 @@ spec:
                     - requeueDuration
                     type: object
                 required:
+                - commitMessageTemplate
                 - workQueue
                 type: object
               commitStatus:
@@ -8634,6 +8652,10 @@ spec:
             slowDelay: 5m
       requeueDuration: 5m
   changeTransferPolicy:
+    commitMessageTemplate: |-
+      Promote {{ with .ChangeTransferPolicy.Spec.ActivePath }}`{{ . }}` {{ end }}({{ trunc 5 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}) to `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`
+
+      This PR is promoting {{ with .ChangeTransferPolicy.Spec.ActivePath }}`{{ . }}` on {{ end }}the environment branch `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}` from dry sha {{ .ChangeTransferPolicy.Status.Active.Dry.Sha }} to {{ .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}.
     workQueue:
       maxConcurrentReconciles: 10
       rateLimiter:
