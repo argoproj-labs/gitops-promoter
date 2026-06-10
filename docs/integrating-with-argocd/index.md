@@ -1,5 +1,11 @@
+# Integrating with Argo CD
+
 Argo CD supports a variety of integrations with external systems to improve the user experience. Here are some
 integrations you can enable to improve your Argo CD experience while using GitOps Promoter.
+
+> **New to GitOps Promoter with Argo CD and GitHub?** Start with the [Tutorial](tutorial.md) for a full walkthrough.
+>
+> To build or test the UI extension locally, see [Developing the Argo CD Extension](../contributing/developing-the-argocd-extension.md) in Contributing.
 
 ## UI Extension
 

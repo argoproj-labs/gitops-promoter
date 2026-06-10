@@ -10,7 +10,7 @@ on:
       - main
     paths:
       - 'docs/getting-started.md'
-      - 'docs/tutorial-argocd-apps.md'
+      - 'docs/integrating-with-argocd/tutorial.md'
 
 permissions:
   contents: read

@@ -8,7 +8,7 @@ kind: Kustomization
 # This unions two already-self-contained kustomizations and adds NO namespace/namePrefix
 # transformer of its own, so the apiserver base stays intact - in particular the
 # extension-apiserver-authentication-reader RoleBinding remains in kube-system (see
-# docs/dashboard-apiserver.md). The single images: entry pins both the controller and the
+# docs/advanced-usage/dashboard-apiserver.md). The single images: entry pins both the controller and the
 # apiserver Deployments (same image) to the release tag via hack/manifests-release.sh.
 
 resources:
