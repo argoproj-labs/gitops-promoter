@@ -114,7 +114,7 @@ If you use `activePath` to share one active branch across multiple applications,
 
 > [!NOTE]
 > Multiple `PromotionStrategy` resources on the same active branch must follow the constraints in
-> [repository structure](repository-structure.md#constraints-when-multiple-promotionstrategies-share-an-active-branch).
+> [repository structure](../structuring-your-repos.md#constraints-when-multiple-promotionstrategies-share-an-active-branch).
 
 This ensures independent PromotionStrategies can safely share the same active branch.
 
@@ -344,7 +344,7 @@ The [Argo CD Source Hydrator](https://argo-cd.readthedocs.io/en/stable/user-guid
 feature of Argo CD that implements this contract. It supports Helm, Kustomize, and other Argo CD-supported config
 management tools.
 
-See the [Argo CD tutorial](tutorial-argocd-apps.md) for an example of using Argo CD's Source Hydrator with GitOps
+See the [Argo CD tutorial](../integrating-with-argocd/tutorial.md) for an example of using Argo CD's Source Hydrator with GitOps
 Promoter.
 
 ## Best Practices

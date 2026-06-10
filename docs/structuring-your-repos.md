@@ -1,6 +1,6 @@
-# Repository Structure
+# Structuring Your Repos
 
-This page explains how to structure your Git repository when using GitOps Promoter.
+This page explains how to structure your Git repository when using GitOps Promoter. For how promotion flows through branches and controllers, see [Architecture](architecture.md).
 
 ## Read/Write Interface: DRY Branch
 

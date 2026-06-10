@@ -5,7 +5,7 @@ kind: Kustomization
 # aggregation apiserver WITHOUT cert-manager ("bring your own cert"). Builds the published
 # install-with-dashboard-byo-cert.yaml. The operator supplies the
 # promoter-apiserver-serving-cert Secret and patches the APIService caBundle themselves
-# (see docs/dashboard-apiserver.md, manual cert path).
+# (see docs/advanced-usage/dashboard-apiserver.md, manual cert path).
 #
 # This unions two already-self-contained kustomizations and adds NO namespace/namePrefix
 # transformer of its own, so the apiserver base stays intact - in particular the

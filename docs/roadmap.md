@@ -67,7 +67,7 @@ spec:
 
 Use the same key in `PromotionStrategy` `activeCommitStatuses` for ArgoCDCommitStatus, or in `activeCommitStatuses` / `proposedCommitStatuses` for TimedCommitStatus as appropriate.
 
-See also: [Argo CD Commit Status](commit-status-controllers/argocd.md), [Timed Commit Status](commit-status-controllers/timed.md), and [Development Best Practices](commit-status-controllers/development-best-practices.md).
+See also: [Argo CD Commit Status](gating-promotions/built-in-gates/argocd-commit-status.md), [Timed Commit Status](gating-promotions/built-in-gates/timed-commit-status.md), and [Developing a CommitStatus](contributing/developing-a-commitstatus.md).
 
 ### ArgoCDCommitStatus legacy CommitStatus cleanup (planned for v1.0)
 

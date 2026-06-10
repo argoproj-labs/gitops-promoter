@@ -17,6 +17,7 @@ limitations under the License.
 // +k8s:deepcopy-gen=package
 // +k8s:openapi-gen=true
 // +k8s:openapi-model-package=io.argoproj.promoter.view.v1alpha1
+// +kubebuilder:object:generate=false
 //
 // The +k8s:openapi-model-package tag makes openapi-gen emit OpenAPIModelName()
 // accessors (zz_generated.model_name.go) returning dot-separated, slash-free OpenAPI
@@ -27,9 +28,17 @@ limitations under the License.
 //
 // These are aggregated API types served by the extension apiserver, NOT CRDs, so
 // they are owned exclusively by the k8s code-generators (deepcopy-gen, openapi-gen)
-// via `make generate-apiserver`. They intentionally carry NO kubebuilder markers
-// (no +groupName, +kubebuilder:object:*), so controller-gen (`make generate` /
-// `make manifests`) skips this group entirely and never tries to emit a CRD for it.
+// via `make generate-apiserver`. The +kubebuilder:object:generate=false opt-outs
+// (here at package level, and on each type in types.go) are required because
+// controller-gen's object generator treats the legacy deepcopy-gen markers as its
+// own enablement switches — +k8s:deepcopy-gen=package at package level and, even
+// when the package is opted out, +k8s:deepcopy-gen:interfaces on each type.
+// Without the explicit opt-outs (which take precedence at each level),
+// `make generate` (and everything that chains it, e.g. `make build` /
+// `make test-parallel`) would rewrite zz_generated.deepcopy.go with controller-gen
+// output, fighting deepcopy-gen over the file. No other kubebuilder markers
+// (+groupName, +kubebuilder:object:root) are used, so controller-gen never tries
+// to emit a CRD for this group.
 
 // Package v1alpha1 contains the API types for the view aggregation layer.
 // PromotionStrategyDetails is a read-only, server-computed bundle that joins a

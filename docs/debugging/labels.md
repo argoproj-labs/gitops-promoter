@@ -36,7 +36,7 @@ Built-in parent-gate label keys (derived from Kind):
 | `WebRequestCommitStatus` | `promoter.argoproj.io/web-request-commit-status` |
 | `GitCommitStatus` | `promoter.argoproj.io/git-commit-status` |
 
-The prefix `promoter.argoproj.io/` is `CommitStatusGateLabelPrefix`; the middle segment is a kebab-case stem from the Kind (for example `ArgoCDCommitStatus` → `argo-cd`). Custom gate controllers should use the same pattern; see [Commit Status Controller Best Practices](../commit-status-controllers/development-best-practices.md).
+The prefix `promoter.argoproj.io/` is `CommitStatusGateLabelPrefix`; the middle segment is a kebab-case stem from the Kind (for example `ArgoCDCommitStatus` → `argo-cd`). Custom gate controllers should use the same pattern; see [Developing a CommitStatus](../contributing/developing-a-commitstatus.md).
 
 **Special key:** `promoter-previous-environment` (`PreviousEnvironmentCommitStatusKey`) is used only on CommitStatuses created by the PromotionStrategy controller to represent the previous environment’s aggregate health on the proposed branch. Those objects typically carry only `promoter.argoproj.io/commit-status`, not a parent-gate label.
 
@@ -50,7 +50,7 @@ The prefix `promoter.argoproj.io/` is `CommitStatusGateLabelPrefix`; the middle 
 
 | Label key | Resource | Purpose |
 | --------- | -------- | ------- |
-| `promoter.argoproj.io/has-promotionstrategy` | Argo CD `Application` | When set to `"true"`, shows the GitOps Promoter UI extension tab even if no top-level `PromotionStrategy` appears in the application tree. Documented in [Argo CD Integrations](../argocd-integrations/index.md). |
+| `promoter.argoproj.io/has-promotionstrategy` | Argo CD `Application` | When set to `"true"`, shows the GitOps Promoter UI extension tab even if no top-level `PromotionStrategy` appears in the application tree. Documented in [Integrating with Argo CD](../integrating-with-argocd/index.md). |
 
 This label is **not** defined in `constants.go`; it is a convention for Argo CD Application metadata.
 
@@ -112,4 +112,4 @@ If a third party creates `CommitStatus` objects by hand, they must set at least 
 4. **Controller logs** — gitops-promoter manager logs around the reconcile window; related `kubectl get events`.
 5. **Open an issue** on [argoproj-labs/gitops-promoter](https://github.com/argoproj-labs/gitops-promoter/issues) with the label keys/values you expected and what you see instead.
 
-For implementing custom gate controllers, see [Development Best Practices](../commit-status-controllers/development-best-practices.md). For how commit statuses drive promotion, see [Gating Promotions](../gating-promotions.md).
+For implementing custom gate controllers, see [Developing a CommitStatus](../contributing/developing-a-commitstatus.md). For how commit statuses drive promotion, see [Gating Promotions](../gating-promotions/index.md).

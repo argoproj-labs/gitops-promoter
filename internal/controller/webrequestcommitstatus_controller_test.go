@@ -83,7 +83,7 @@ const (
 // via Server-Side Apply at the end of a reconcile and read from the
 // controller's informer cache at the start of the next reconcile, so the
 // controller offers AT-LEAST-ONCE HTTP delivery, not exactly-once — see the
-// "Delivery semantics" section in docs/commit-status-controllers/web-request.md
+// "Delivery semantics" section in docs/gating-promotions/built-in-gates/web-request-commit-status/index.md
 // and the godoc on TriggerModeSpec. A correct controller still converges to no
 // further HTTP under steady inputs; a regression where dedup is broken keeps
 // firing on every requeue and never stabilizes.

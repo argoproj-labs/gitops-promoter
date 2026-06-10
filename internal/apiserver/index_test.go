@@ -18,6 +18,10 @@ package apiserver
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"sync"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -27,6 +31,28 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
+
+// flakyReader wraps a client.Reader and fails the first `failures` Get calls
+// with a transient (non-NotFound) error.
+type flakyReader struct {
+	client.Reader
+	mu       sync.Mutex
+	failures int
+}
+
+func (f *flakyReader) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+	f.mu.Lock()
+	if f.failures > 0 {
+		f.failures--
+		f.mu.Unlock()
+		return errors.New("transient read failure")
+	}
+	f.mu.Unlock()
+	if err := f.Reader.Get(ctx, key, obj, opts...); err != nil {
+		return fmt.Errorf("flaky reader get: %w", err)
+	}
+	return nil
+}
 
 // mappingSeed provides the objects needed to resolve reverse lookups
 // (GitRepository, (Cluster)ScmProvider) during child->PS mapping.
@@ -109,4 +135,28 @@ var _ = Describe("mapObjectToPromotionStrategies", func() {
 			&promoterv1alpha1.ClusterScmProvider{ObjectMeta: metav1.ObjectMeta{Name: "cluster-scm"}},
 			nil),
 	)
+})
+
+var _ = Describe("BundleProvider processNext", func() {
+	Describe("transient rebuild failures", func() {
+		It("requeues the key for retry instead of dropping the update", func() {
+			fr := &flakyReader{Reader: newFakeReader(seedObjects()...), failures: 1}
+			provider := newProviderWithReader(fr)
+
+			key := types.NamespacedName{Namespace: testNamespace, Name: testPSName}
+			provider.queue.Add(key)
+			// First pass hits the transient read failure.
+			provider.processNext(context.Background())
+
+			// The key must come back (rate-limited) so the delta is not lost.
+			Eventually(func() int {
+				return provider.queue.Len()
+			}, 5*time.Second, 10*time.Millisecond).Should(BeNumerically(">=", 1),
+				"a failed rebuild must be retried")
+
+			// And the retry succeeds once the reader recovers.
+			provider.processNext(context.Background())
+			Expect(provider.queue.Len()).To(BeZero())
+		})
+	})
 })
