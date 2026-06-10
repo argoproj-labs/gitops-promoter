@@ -48,14 +48,14 @@ func mustDetailsList(obj runtime.Object) *viewv1alpha1.PromotionStrategyDetailsL
 	return list
 }
 
-// scaleNamespace isolates these specs from the shared seedObjects namespace.
-const scaleNamespace = "scale-ns"
+// watchTestNamespace isolates makePS fixtures from the shared seedObjects namespace (test-ns).
+const watchTestNamespace = "watch-test-ns"
 
-// makePS returns a minimal PromotionStrategy in scaleNamespace (no repository
+// makePS returns a minimal PromotionStrategy in watchTestNamespace (no repository
 // reference, so buildBundle resolves no git config) with the given labels.
 func makePS(name string, lbls map[string]string) *promoterv1alpha1.PromotionStrategy {
 	return &promoterv1alpha1.PromotionStrategy{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: scaleNamespace, Labels: lbls},
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: watchTestNamespace, Labels: lbls},
 	}
 }
 
@@ -78,7 +78,7 @@ var _ = Describe("Watch fan-out behavior", func() {
 			store := NewREST(newProviderWithReader(newFakeReader(objs...)))
 
 			sendInitialEvents := true
-			w, err := store.Watch(nsContext(scaleNamespace), &metainternalversion.ListOptions{
+			w, err := store.Watch(nsContext(watchTestNamespace), &metainternalversion.ListOptions{
 				SendInitialEvents:    &sendInitialEvents,
 				AllowWatchBookmarks:  true,
 				ResourceVersionMatch: metav1.ResourceVersionMatchNotOlderThan,
@@ -126,7 +126,7 @@ var _ = Describe("Watch fan-out behavior", func() {
 			// client re-lists.
 			key := types.NamespacedName{Namespace: testNamespace, Name: testPSName}
 			for range 200 {
-				provider.reconcileKey(context.Background(), key)
+				Expect(provider.reconcileKey(context.Background(), key)).To(Succeed())
 			}
 
 			Eventually(func() bool {
@@ -156,7 +156,7 @@ var _ = Describe("Watch fan-out behavior", func() {
 		})
 
 		It("filters List results", func() {
-			obj, err := store.List(nsContext(scaleNamespace), &metainternalversion.ListOptions{
+			obj, err := store.List(nsContext(watchTestNamespace), &metainternalversion.ListOptions{
 				LabelSelector: labels.SelectorFromSet(labels.Set{"env": "prod"}),
 			})
 			Expect(err).NotTo(HaveOccurred())
@@ -166,7 +166,7 @@ var _ = Describe("Watch fan-out behavior", func() {
 		})
 
 		It("suppresses non-matching initial watch events", func() {
-			w, err := store.Watch(nsContext(scaleNamespace), &metainternalversion.ListOptions{
+			w, err := store.Watch(nsContext(watchTestNamespace), &metainternalversion.ListOptions{
 				LabelSelector: labels.SelectorFromSet(labels.Set{"env": "prod"}),
 			})
 			Expect(err).NotTo(HaveOccurred())
@@ -190,7 +190,7 @@ var _ = Describe("Watch fan-out behavior", func() {
 			provider := newProviderWithReader(cl)
 			store := NewREST(provider)
 
-			w, err := store.Watch(nsContext(scaleNamespace), &metainternalversion.ListOptions{
+			w, err := store.Watch(nsContext(watchTestNamespace), &metainternalversion.ListOptions{
 				LabelSelector: labels.SelectorFromSet(labels.Set{"env": "prod"}),
 			})
 			Expect(err).NotTo(HaveOccurred())
@@ -201,15 +201,15 @@ var _ = Describe("Watch fan-out behavior", func() {
 			Expect(added.Type).To(Equal(watch.Added))
 
 			// Make the broadcast path aware of the object's current labels.
-			key := types.NamespacedName{Namespace: scaleNamespace, Name: "prod-ps"}
-			provider.reconcileKey(context.Background(), key)
+			key := types.NamespacedName{Namespace: watchTestNamespace, Name: "prod-ps"}
+			Expect(provider.reconcileKey(context.Background(), key)).To(Succeed())
 
 			By("relabeling the PromotionStrategy so it no longer matches the selector")
 			ps := &promoterv1alpha1.PromotionStrategy{}
 			Expect(cl.Get(context.Background(), key, ps)).To(Succeed())
 			ps.Labels = map[string]string{"env": "dev"}
 			Expect(cl.Update(context.Background(), ps)).To(Succeed())
-			provider.reconcileKey(context.Background(), key)
+			Expect(provider.reconcileKey(context.Background(), key)).To(Succeed())
 
 			Eventually(func(g Gomega) {
 				var ev watch.Event
@@ -231,7 +231,7 @@ var _ = Describe("Watch fan-out behavior", func() {
 		})
 
 		It("supports metadata.name equality on List", func() {
-			obj, err := store.List(nsContext(scaleNamespace), &metainternalversion.ListOptions{
+			obj, err := store.List(nsContext(watchTestNamespace), &metainternalversion.ListOptions{
 				FieldSelector: fields.OneTermEqualSelector("metadata.name", "dev-ps"),
 			})
 			Expect(err).NotTo(HaveOccurred())
@@ -241,12 +241,12 @@ var _ = Describe("Watch fan-out behavior", func() {
 		})
 
 		It("rejects unsupported field selectors instead of silently ignoring them", func() {
-			_, err := store.List(nsContext(scaleNamespace), &metainternalversion.ListOptions{
+			_, err := store.List(nsContext(watchTestNamespace), &metainternalversion.ListOptions{
 				FieldSelector: fields.OneTermEqualSelector("spec.unsupported", "x"),
 			})
 			Expect(err).To(HaveOccurred())
 
-			_, err = store.Watch(nsContext(scaleNamespace), &metainternalversion.ListOptions{
+			_, err = store.Watch(nsContext(watchTestNamespace), &metainternalversion.ListOptions{
 				FieldSelector: fields.OneTermEqualSelector("spec.unsupported", "x"),
 			})
 			Expect(err).To(HaveOccurred())
