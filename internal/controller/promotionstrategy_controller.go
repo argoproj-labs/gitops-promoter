@@ -717,4 +717,3 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 
 	return nil
 }
-
