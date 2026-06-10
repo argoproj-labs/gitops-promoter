@@ -315,7 +315,11 @@ func (ws *WebServer) httpList(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, err.Error())
 			return
 		}
-		c.JSON(http.StatusOK, bundleList.Items)
+		items := bundleList.Items
+		if items == nil {
+			items = []viewv1alpha1.PromotionStrategyDetails{}
+		}
+		c.JSON(http.StatusOK, items)
 
 	case "namespace":
 		if c.Query("namespace") != "" {

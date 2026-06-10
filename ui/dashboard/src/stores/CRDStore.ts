@@ -41,6 +41,7 @@ function bundleToItem<T extends CRDItem>(bundle: PromotionStrategyDetails): T {
   const psWithEnvironments = {
     ...ps,
     metadata: {
+      ...ps.metadata,
       name: bundle.metadata.name,
       namespace: bundle.metadata.namespace,
     },
@@ -76,9 +77,9 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
         const res = await fetch(`/list?kind=${kind}&namespace=${namespace}`);
 
         if (!res.ok) throw new Error(`Error: ${res.status}`);
-        const data: PromotionStrategyDetails[] = await res.json();
+        const data = (await res.json()) as PromotionStrategyDetails[] | null;
 
-        set({ items: data.map((b) => bundleToItem<T>(b)), loading: false });
+        set({ items: (data ?? []).map((b) => bundleToItem<T>(b)), loading: false });
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         set({ error: errorMessage, loading: false });
