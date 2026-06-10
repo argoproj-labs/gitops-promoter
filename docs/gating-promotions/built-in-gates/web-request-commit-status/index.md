@@ -739,7 +739,7 @@ spec:
       expression: |
         Response.StatusCode == 200 &&
         len(Response.Body.check_runs) > 0 &&
-        all(Response.Body.check_runs, # r, r.status == "completed" && (r.conclusion == "success" || r.conclusion == "skipped"))
+        all(Response.Body.check_runs, #r, r.status == "completed" && (r.conclusion == "success" || r.conclusion == "skipped"))
   mode:
     polling:
       interval: 1m
