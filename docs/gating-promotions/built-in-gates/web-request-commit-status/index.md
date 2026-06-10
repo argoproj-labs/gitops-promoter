@@ -595,7 +595,6 @@ spec:
         "branch": "{{ .Branch }}",
         "namespace": "{{ index .NamespaceMetadata.Labels \"team\" }}",
         "phase": "{{ .Phase }}"
-        "namespace": "{{ index .NamespaceMetadata.Labels "team" }}"
       }
     authentication:
       basic:
