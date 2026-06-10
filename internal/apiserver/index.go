@@ -175,7 +175,7 @@ func (p *BundleProvider) processNext(ctx context.Context) bool {
 		// Transient failure (e.g. a momentary cache hiccup): retry with backoff so
 		// the delta is not silently lost — watchers would otherwise stay stale
 		// until the next unrelated change to the same PromotionStrategy.
-		log.Error(err, "failed to build bundle; requeueing", "namespace", key.Namespace, "name", key.Name)
+		log.Error(err, "failed to build bundle; requeuing", "namespace", key.Namespace, "name", key.Name)
 		p.queue.AddRateLimited(key)
 		return true
 	}
