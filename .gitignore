@@ -93,8 +93,9 @@ yarn-error.log*
 .env
 .vite/
 
-# Built UI static files
-ui/web/static/
+# Built UI static files (keep a placeholder so //go:embed static always compiles)
+ui/web/static/*
+!ui/web/static/placeholder.txt
 
 # MkDocs build output
 mkdocs-lint.log
