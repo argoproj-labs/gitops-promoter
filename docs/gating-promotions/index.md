@@ -2,8 +2,8 @@
 
 Most environment promotion strategies will involve enforcing some kind of "gates" between promotions.
 
-GitOps promoter uses the [PromotionStrategy API](crd-specs.md#promotionstrategy) to configure checks that must pass
-between environments. It uses the [CommitStatus API](crd-specs.md#commitstatus) to understand the state of the checks.
+GitOps promoter uses the [PromotionStrategy API](../crd-specs.md#promotionstrategy) to configure checks that must pass
+between environments. It uses the [CommitStatus API](../crd-specs.md#commitstatus) to understand the state of the checks.
 
 A "proposed commit status" is a check which must be passing on a proposed change before it can be merged. To set a 
 CommitStatus to be used as a proposed commit status, set the `spec.sha` field to the commit hash of the proposed change
@@ -143,13 +143,13 @@ For now, the previous environment CommitStatus will only be set if there is only
 be set to the URL of the previous environment's active commit status. If there are multiple active commit statuses, no
 URL will be set. This behavior may change in the future.
 
-## Built-in CommitStatus Controllers
+## Built-In Gates
 
-GitOps Promoter provides several built-in controllers that automatically create and manage CommitStatus resources based on various criteria:
+GitOps Promoter ships built-in gate controllers that create and manage `CommitStatus` resources automatically. Each gate has a matching CRD kind (for example `ArgoCDCommitStatus`); configure them in your cluster and reference their `spec.key` in `PromotionStrategy`.
 
 ### Argo CD Health Status
 
-The [ArgoCDCommitStatus](commit-status-controllers/argocd.md) controller monitors Argo CD Applications and creates CommitStatus resources based on application health. This enables gating promotions based on whether applications are healthy in their current environment.
+The [ArgoCDCommitStatus](built-in-gates/argocd-commit-status.md) controller monitors Argo CD Applications and creates CommitStatus resources based on application health. This enables gating promotions based on whether applications are healthy in their current environment.
 
 Key features:
 
@@ -159,7 +159,7 @@ Key features:
 
 ### Time-Based Gating
 
-The [TimedCommitStatus](commit-status-controllers/timed.md) controller implements "soak time" or "bake time" requirements, ensuring changes run in lower environments for a minimum duration before being promoted.
+The [TimedCommitStatus](built-in-gates/timed-commit-status.md) controller implements "soak time" or "bake time" requirements, ensuring changes run in lower environments for a minimum duration before being promoted.
 
 Key features:
 
@@ -170,7 +170,7 @@ Key features:
 
 ### Web Request (HTTP) Validation
 
-The [WebRequestCommitStatus](commit-status-controllers/web-request.md) controller gates promotions on external HTTP/HTTPS APIs. It calls configurable endpoints, evaluates the response with expressions, and creates CommitStatus resources so the SCM shows success or pending.
+The [WebRequestCommitStatus](built-in-gates/web-request-commit-status/index.md) controller gates promotions on external HTTP/HTTPS APIs. It calls configurable endpoints, evaluates the response with expressions, and creates CommitStatus resources so the SCM shows success or pending.
 
 Key features:
 
@@ -179,7 +179,7 @@ Key features:
 - **Optional response expression:** Extract a subset of the HTTP response into `ResponseOutput` for use in the next trigger evaluation and in description/URL templates
 - **TriggerOutput:** Trigger when.output expression can return extra fields that are stored and available on the next run and in templates
 - **SuccessOutput:** Success when.output expression can return extra fields that are stored and available on the next run in trigger, success expressions, and templates
-- **Shared expr (`when.variables`):** Optional map expression whose result is available as **`Variables`** to `when.expression` and `when.output.expression` on the same `when` block (trigger and success); see [Web Request Commit Status](commit-status-controllers/web-request.md#shared-trigger-and-success-expr-whenvariables)
+- **Shared expr (`when.variables`):** Optional map expression whose result is available as **`Variables`** to `when.expression` and `when.output.expression` on the same `when` block (trigger and success); see [Web Request Commit Status](built-in-gates/web-request-commit-status/index.md#shared-trigger-and-success-expr-whenvariables)
 - **Templated URL, headers, body:** Go templates with `Branch`, `Phase`, `PromotionStrategy`, `WebRequestCommitStatus`, `TriggerOutput`, `ResponseOutput`, `SuccessOutput`, namespace metadata, etc.
 - **Authentication:** Basic, Bearer, OAuth2, or mutual TLS via Secrets
 - **reportOn:** Report on the proposed commit (default) or the active (deployed) commit
