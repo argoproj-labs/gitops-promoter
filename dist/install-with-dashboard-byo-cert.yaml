@@ -6055,14 +6055,14 @@ spec:
                 minLength: 1
                 type: string
                 x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
                 - message: branch must not start with '-'
                   rule: '!self.startsWith(''-'')'
                 - message: branch must not contain ':'
                   rule: '!self.contains('':'')'
                 - message: branch must not contain '..'
                   rule: '!self.contains(''..'')'
-                - message: field is immutable
-                  rule: self == oldSelf
               state:
                 default: open
                 description: |-
@@ -6081,14 +6081,14 @@ spec:
                 minLength: 1
                 type: string
                 x-kubernetes-validations:
+                - message: field is immutable
+                  rule: self == oldSelf
                 - message: branch must not start with '-'
                   rule: '!self.startsWith(''-'')'
                 - message: branch must not contain ':'
                   rule: '!self.contains('':'')'
                 - message: branch must not contain '..'
                   rule: '!self.contains(''..'')'
-                - message: field is immutable
-                  rule: self == oldSelf
               title:
                 description: Title is the title of the pull request.
                 minLength: 1
