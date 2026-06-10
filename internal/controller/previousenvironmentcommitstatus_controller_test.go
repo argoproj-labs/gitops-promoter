@@ -51,7 +51,11 @@ var _ = Describe("PreviousEnvironmentCommitStatus Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: promoterv1alpha1.PreviousEnvironmentCommitStatusSpec{
+						PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+							Name: "test-promotion-strategy",
+						},
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
