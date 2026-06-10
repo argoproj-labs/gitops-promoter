@@ -2,20 +2,17 @@ package settings
 
 import (
 	"context"
-	"strings"
-	"testing"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
-func TestGetChangeTransferPolicyCommitMessageTemplate(t *testing.T) {
-	t.Parallel()
-
-	t.Run("returns configured template", func(t *testing.T) {
-		t.Parallel()
+var _ = Describe("GetChangeTransferPolicyCommitMessageTemplate", func() {
+	It("returns configured template", func() {
 		cfg := &promoterv1alpha1.ControllerConfiguration{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      ControllerConfigurationName,
@@ -32,16 +29,11 @@ func TestGetChangeTransferPolicyCommitMessageTemplate(t *testing.T) {
 		mgr := NewManager(cl, cl, ManagerConfig{ControllerNamespace: "default"})
 
 		got, err := mgr.GetChangeTransferPolicyCommitMessageTemplate(context.Background())
-		if err != nil {
-			t.Fatalf("GetChangeTransferPolicyCommitMessageTemplate() unexpected error = %v", err)
-		}
-		if got != cfg.Spec.ChangeTransferPolicy.CommitMessageTemplate {
-			t.Fatalf("GetChangeTransferPolicyCommitMessageTemplate() = %q, want %q", got, cfg.Spec.ChangeTransferPolicy.CommitMessageTemplate)
-		}
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(cfg.Spec.ChangeTransferPolicy.CommitMessageTemplate))
 	})
 
-	t.Run("returns upgrade guidance error for empty template", func(t *testing.T) {
-		t.Parallel()
+	It("returns upgrade guidance error for empty template", func() {
 		cfg := &promoterv1alpha1.ControllerConfiguration{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      ControllerConfigurationName,
@@ -58,16 +50,8 @@ func TestGetChangeTransferPolicyCommitMessageTemplate(t *testing.T) {
 		mgr := NewManager(cl, cl, ManagerConfig{ControllerNamespace: "default"})
 
 		_, err := mgr.GetChangeTransferPolicyCommitMessageTemplate(context.Background())
-		if err == nil {
-			t.Fatal("GetChangeTransferPolicyCommitMessageTemplate() expected error, got nil")
-		}
-
-		msg := err.Error()
-		if !strings.Contains(msg, "update the ControllerConfiguration CRD") {
-			t.Fatalf("GetChangeTransferPolicyCommitMessageTemplate() error = %q, want CRD upgrade guidance", msg)
-		}
-		if !strings.Contains(msg, "latest default ControllerConfiguration custom resource") {
-			t.Fatalf("GetChangeTransferPolicyCommitMessageTemplate() error = %q, want default ControllerConfiguration guidance", msg)
-		}
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("update the ControllerConfiguration CRD"))
+		Expect(err.Error()).To(ContainSubstring("latest default ControllerConfiguration custom resource"))
 	})
-}
+})
