@@ -23,6 +23,7 @@ import (
 )
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:object:generate=false
 
 // PromotionStrategyDetails is a read-only, server-computed bundle that joins a
 // PromotionStrategy with all of its related resources. It is served by the
@@ -75,6 +76,7 @@ type PromotionStrategyDetails struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:object:generate=false
 
 // PromotionStrategyDetailsList contains a list of PromotionStrategyDetails.
 type PromotionStrategyDetailsList struct {

@@ -20,9 +20,12 @@ import (
 	"context"
 	"fmt"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metainternalversion "k8s.io/apimachinery/pkg/apis/meta/internalversion"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/watch"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/rest"
@@ -86,10 +89,16 @@ func (r *REST) Get(ctx context.Context, name string, _ *metav1.GetOptions) (runt
 	return r.provider.Get(ctx, namespace, name)
 }
 
-// List returns the bundles for all PromotionStrategies in the request namespace.
-func (r *REST) List(ctx context.Context, _ *metainternalversion.ListOptions) (runtime.Object, error) {
+// List returns the bundles for the PromotionStrategies in the request namespace,
+// honoring the label selector and the metadata.name field selector. Unsupported
+// field selectors are rejected rather than silently ignored.
+func (r *REST) List(ctx context.Context, options *metainternalversion.ListOptions) (runtime.Object, error) {
 	namespace := genericapirequest.NamespaceValue(ctx)
-	return r.provider.List(ctx, namespace)
+	name, err := nameFromFieldSelector(options)
+	if err != nil {
+		return nil, err
+	}
+	return r.provider.List(ctx, namespace, name, labelSelectorFromOptions(options))
 }
 
 // Watch streams bundle changes for the request namespace.
@@ -107,11 +116,9 @@ func (r *REST) Watch(ctx context.Context, options *metainternalversion.ListOptio
 	allowWatchBookmarks := options != nil && options.AllowWatchBookmarks
 	sendInitial := sendInitialEvents || options == nil || options.ResourceVersion == "" || options.ResourceVersion == "0"
 
-	var name string
-	if options != nil && options.FieldSelector != nil {
-		if v, ok := options.FieldSelector.RequiresExactMatch("metadata.name"); ok {
-			name = v
-		}
+	name, err := nameFromFieldSelector(options)
+	if err != nil {
+		return nil, err
 	}
 
 	// Only emit the terminating initial-events-end bookmark for a genuine watch-list
@@ -119,7 +126,37 @@ func (r *REST) Watch(ctx context.Context, options *metainternalversion.ListOptio
 	// apiserver's own isListWatchRequest gate: the watch handler installs its
 	// watchlist-complete hook only for that combination, and an annotated bookmark on
 	// any other request makes the handler invoke a nil hook and panic.
-	return r.provider.Watch(ctx, namespace, name, sendInitial, sendInitialEvents && allowWatchBookmarks)
+	return r.provider.Watch(ctx, namespace, name, labelSelectorFromOptions(options), sendInitial, sendInitialEvents && allowWatchBookmarks)
+}
+
+// labelSelectorFromOptions extracts the label selector, normalizing "everything"
+// to nil so the provider can skip matching entirely.
+func labelSelectorFromOptions(options *metainternalversion.ListOptions) labels.Selector {
+	if options == nil || options.LabelSelector == nil || options.LabelSelector.Empty() {
+		return nil
+	}
+	return options.LabelSelector
+}
+
+// nameFromFieldSelector extracts an exact metadata.name match from the field
+// selector. Any other field selector requirement is rejected with a 400 — this
+// virtual resource has no other selectable fields, and silently ignoring a
+// selector would return results the client explicitly filtered out.
+func nameFromFieldSelector(options *metainternalversion.ListOptions) (string, error) {
+	if options == nil || options.FieldSelector == nil || options.FieldSelector.Empty() {
+		return "", nil
+	}
+	var name string
+	for _, req := range options.FieldSelector.Requirements() {
+		if req.Field == "metadata.name" && (req.Operator == selection.Equals || req.Operator == selection.DoubleEquals) {
+			name = req.Value
+			continue
+		}
+		return "", apierrors.NewBadRequest(fmt.Sprintf(
+			"field selector %q is not supported on promotionstrategydetails; only an exact metadata.name match is allowed",
+			req.Field))
+	}
+	return name, nil
 }
 
 // ConvertToTable converts objects to a table for kubectl output.
