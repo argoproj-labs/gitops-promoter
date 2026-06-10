@@ -42,7 +42,7 @@ export interface TreeNode {
 }
 
 export interface Tree {
-  nodes: TreeNode[];
+  nodes?: TreeNode[];
 }
 
 export interface AppViewComponentProps {

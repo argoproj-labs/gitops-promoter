@@ -67,7 +67,9 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
     const appName = application.metadata.name;
     const appNamespace = application.metadata.namespace;
 
-    const strategyNodes = tree.nodes.filter((node) => node.group === GROUP && node.kind === KIND);
+    const strategyNodes = (tree.nodes ?? []).filter(
+      (node) => node.group === GROUP && node.kind === KIND,
+    );
 
     if (strategyNodes.length === 0) {
       setFetchError('No PromotionStrategy resources found');

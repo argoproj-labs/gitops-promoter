@@ -36,7 +36,11 @@ func main() {
 	all := viewv1alpha1.GetOpenAPIDefinitions(spec.MustCreateRef)
 
 	shortNames := buildShortNames(all)
-	closure := collectClosure(all, rootModels)
+	closure, err := collectClosure(all, rootModels)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "collect closure: %v\n", err)
+		os.Exit(1)
+	}
 
 	schemas := make(map[string]any, len(closure))
 	for fullName := range closure {
@@ -112,34 +116,39 @@ func shortName(full string) string {
 	return full
 }
 
-func collectClosure(all map[string]common.OpenAPIDefinition, roots []string) map[string]struct{} {
+func collectClosure(all map[string]common.OpenAPIDefinition, roots []string) (map[string]struct{}, error) {
 	closure := make(map[string]struct{})
-	var walk func(full string)
-	walk = func(full string) {
+	var walk func(full string) error
+	walk = func(full string) error {
 		if _, ok := closure[full]; ok {
-			return
+			return nil
 		}
 		def, ok := all[full]
 		if !ok {
-			return
+			return nil
 		}
 		closure[full] = struct{}{}
 		raw, err := json.Marshal(def.Schema)
 		if err != nil {
-			return
+			return fmt.Errorf("marshal schema %q: %w", full, err)
 		}
 		var node any
 		if err := json.Unmarshal(raw, &node); err != nil {
-			return
+			return fmt.Errorf("unmarshal schema %q: %w", full, err)
 		}
 		for _, ref := range findRefs(node) {
-			walk(ref)
+			if err := walk(ref); err != nil {
+				return err
+			}
 		}
+		return nil
 	}
 	for _, root := range roots {
-		walk(root)
+		if err := walk(root); err != nil {
+			return nil, err
+		}
 	}
-	return closure
+	return closure, nil
 }
 
 func findRefs(v any) []string {
