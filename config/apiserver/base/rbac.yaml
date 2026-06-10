@@ -1,0 +1,130 @@
+---
+# The apiserver reads all promoter resources (and namespaces) to build bundles.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: promoter-apiserver
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/part-of: promoter
+    app.kubernetes.io/managed-by: kustomize
+rules:
+  - apiGroups:
+      - promoter.argoproj.io
+    resources:
+      - promotionstrategies
+      - changetransferpolicies
+      - pullrequests
+      - commitstatuses
+      - argocdcommitstatuses
+      - gitcommitstatuses
+      - timedcommitstatuses
+      - webrequestcommitstatuses
+      - gitrepositories
+      - scmproviders
+      - clusterscmproviders
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: promoter-apiserver
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/part-of: promoter
+    app.kubernetes.io/managed-by: kustomize
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: promoter-apiserver
+subjects:
+  - kind: ServiceAccount
+    name: promoter-apiserver
+    namespace: promoter-system
+---
+# Allow the apiserver to delegate authentication/authorization to the kube-apiserver
+# (TokenReview / SubjectAccessReview).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: promoter-apiserver-auth-delegator
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/part-of: promoter
+    app.kubernetes.io/managed-by: kustomize
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: promoter-apiserver
+    namespace: promoter-system
+---
+# Allow the apiserver to read the extension-apiserver-authentication configmap in
+# kube-system (request-header CA, etc.). This RoleBinding MUST live in kube-system.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: promoter-apiserver-extension-auth-reader
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/part-of: promoter
+    app.kubernetes.io/managed-by: kustomize
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+  - kind: ServiceAccount
+    name: promoter-apiserver
+    namespace: promoter-system
+---
+# Allow the dashboard (controller-manager service account) to read the aggregated
+# PromotionStrategyDetails resource.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: promoter-promotionstrategydetails-viewer
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/part-of: promoter
+    app.kubernetes.io/managed-by: kustomize
+rules:
+  - apiGroups:
+      - view.promoter.argoproj.io
+    resources:
+      - promotionstrategydetails
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: promoter-promotionstrategydetails-viewer
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/part-of: promoter
+    app.kubernetes.io/managed-by: kustomize
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: promoter-promotionstrategydetails-viewer
+subjects:
+  - kind: ServiceAccount
+    name: promoter-controller-manager
+    namespace: promoter-system

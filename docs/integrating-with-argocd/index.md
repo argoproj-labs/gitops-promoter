@@ -1,5 +1,11 @@
+# Integrating with Argo CD
+
 Argo CD supports a variety of integrations with external systems to improve the user experience. Here are some
 integrations you can enable to improve your Argo CD experience while using GitOps Promoter.
+
+> **New to GitOps Promoter with Argo CD and GitHub?** Start with the [Tutorial](tutorial.md) for a full walkthrough.
+>
+> To build or test the UI extension locally, see [Developing the Argo CD Extension](../contributing/developing-the-argocd-extension.md) in Contributing.
 
 ## UI Extension
 
@@ -25,9 +31,9 @@ spec:
             - name: EXTENSION_NAME
               value: gitops-promoter
             - name: EXTENSION_URL
-              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.31.0/gitops-promoter-argocd-extension.tar.gz
+              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.31.1/gitops-promoter-argocd-extension.tar.gz
             - name: EXTENSION_CHECKSUM_URL
-              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.31.0/gitops-promoter_0.31.0_checksums.txt
+              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.31.1/gitops-promoter_0.31.1_checksums.txt
           volumeMounts:
             - name: extensions
               mountPath: /tmp/extensions/
@@ -63,9 +69,9 @@ server:
         - name: EXTENSION_NAME
           value: gitops-promoter
         - name: EXTENSION_URL
-          value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.31.0/gitops-promoter-argocd-extension.tar.gz
+          value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.31.1/gitops-promoter-argocd-extension.tar.gz
         - name: EXTENSION_CHECKSUM_URL
-          value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.31.0/gitops-promoter_0.31.0_checksums.txt
+          value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.31.1/gitops-promoter_0.31.1_checksums.txt
       volumeMounts:
         - name: extensions
           mountPath: /tmp/extensions/

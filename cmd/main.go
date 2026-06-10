@@ -29,7 +29,9 @@ import (
 	"go.uber.org/zap/zapcore"
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
 
+	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/cmd/demo"
+	"github.com/argoproj-labs/gitops-promoter/internal/apiserver"
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -399,11 +401,19 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 				return fmt.Errorf("failed to create manager: %w", err)
 			}
 
+			// Register the dashboard aggregation type so the manager cache can watch
+			// the server-computed PromotionStrategyDetails bundle.
+			if err := viewv1alpha1.AddToScheme(mgr.GetScheme()); err != nil {
+				return fmt.Errorf("failed to register dashboard scheme: %w", err)
+			}
+
 			// Create single signal handler
 			ctx := ctrl.SetupSignalHandler()
 
 			ws := webserver.NewWebServer(mgr)
 
+			// The dashboard watches the aggregated PromotionStrategyDetails bundle via
+			// the controller-runtime manager cache and forwards each bundle over SSE.
 			if err = ws.SetupWithManager(mgr); err != nil {
 				panic("unable to create WebServer controller")
 			}
@@ -424,6 +434,35 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 
 	// Add default port flag
 	cmd.Flags().IntVarP(&port, "port", "p", 8080, "Port to run the dashboard on")
+	return cmd
+}
+
+func newAPIServerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
+	opts := apiserver.NewOptions()
+
+	cmd := &cobra.Command{
+		Use:   "apiserver",
+		Short: "GitOps Promoter dashboard aggregation API server",
+		Long: "Runs the dashboard aggregation layer: an extension apiserver that serves a " +
+			"read-only, server-computed PromotionStrategyDetails bundle. Register it with the " +
+			"kube-aggregator via an APIService.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			restConfig, err := clientConfig.ClientConfig()
+			if err != nil {
+				return fmt.Errorf("failed to get client config: %w", err)
+			}
+
+			ctx := ctrl.SetupSignalHandler()
+
+			setupLog.Info("starting dashboard aggregation apiserver")
+			if err := apiserver.Run(ctx, restConfig, opts); err != nil {
+				return fmt.Errorf("apiserver exited with error: %w", err)
+			}
+			return nil
+		},
+	}
+
+	opts.AddFlags(cmd.Flags())
 	return cmd
 }
 
@@ -464,6 +503,7 @@ func newCommand() *cobra.Command {
 	clientConfig = addKubectlFlags(cmd.PersistentFlags())
 	cmd.AddCommand(newControllerCommand(clientConfig))
 	cmd.AddCommand(newDashboardCommand(clientConfig))
+	cmd.AddCommand(newAPIServerCommand(clientConfig))
 	cmd.AddCommand(demo.NewDemoCommand())
 	return cmd
 }

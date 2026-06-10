@@ -1,3 +1,4 @@
+# This is an auto-generated file. DO NOT EDIT
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -15,7 +16,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.1
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: argocdcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -39,6 +40,9 @@ spec:
       openAPIV3Schema:
         description: ArgoCDCommitStatus is the Schema for the argocdcommitstatuses
           API.
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#argocdcommitstatus
         properties:
           apiVersion:
             description: |-
@@ -321,7 +325,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.1
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: changetransferpolicies.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -353,6 +357,9 @@ spec:
       openAPIV3Schema:
         description: ChangeTransferPolicy is the Schema for the changetransferpolicies
           API
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#changetransferpolicy
         properties:
           apiVersion:
             description: |-
@@ -375,19 +382,9 @@ spec:
             description: ChangeTransferPolicySpec defines the desired state of ChangeTransferPolicy
             properties:
               activeBranch:
-                description: |-
-                  ActiveBranch staging hydrated branch
-                  Must not start with '-', contain ':', or contain '..'.
-                maxLength: 100
+                description: ActiveBranch staging hydrated branch
                 minLength: 1
                 type: string
-                x-kubernetes-validations:
-                - message: branch must not start with '-'
-                  rule: '!self.startsWith(''-'')'
-                - message: branch must not contain ':'
-                  rule: '!self.contains('':'')'
-                - message: branch must not contain '..'
-                  rule: '!self.contains(''..'')'
               activeCommitStatuses:
                 description: ActiveCommitStatuses lists the statuses to be monitored
                   on the active branch
@@ -429,19 +426,9 @@ spec:
                 - name
                 type: object
               proposedBranch:
-                description: |-
-                  ProposedBranch staging hydrated branch
-                  Must not start with '-', contain ':', or contain '..'.
-                maxLength: 100
+                description: ProposedBranch staging hydrated branch
                 minLength: 1
                 type: string
-                x-kubernetes-validations:
-                - message: branch must not start with '-'
-                  rule: '!self.startsWith(''-'')'
-                - message: branch must not contain ':'
-                  rule: '!self.contains('':'')'
-                - message: branch must not contain '..'
-                  rule: '!self.contains(''..'')'
               proposedCommitStatuses:
                 description: ProposedCommitStatuses lists the statuses to be monitored
                   on the proposed branch
@@ -1633,7 +1620,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.1
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: clusterscmproviders.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -1653,6 +1640,9 @@ spec:
       openAPIV3Schema:
         description: ClusterScmProvider is the Schema for the clusterscmproviders
           API.
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#clusterscmprovider
         properties:
           apiVersion:
             description: |-
@@ -1880,7 +1870,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.1
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: commitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -1913,6 +1903,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: CommitStatus is the Schema for the commitstatuses API
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#commitstatus
         properties:
           apiVersion:
             description: |-
@@ -2094,7 +2087,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.1
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: controllerconfigurations.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -2110,6 +2103,9 @@ spec:
       openAPIV3Schema:
         description: ControllerConfiguration is the Schema for the controllerconfigurations
           API.
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#controllerconfiguration
         properties:
           apiVersion:
             description: |-
@@ -3866,7 +3862,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.1
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: gitcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -3916,6 +3912,9 @@ spec:
 
           Common use cases:
             - "Ensure active commit is not a revert before promoting"
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#gitcommitstatus
         properties:
           apiVersion:
             description: |-
@@ -4184,7 +4183,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.1
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: gitrepositories.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -4206,6 +4205,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: GitRepository is the Schema for the gitrepositories API
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#gitrepository
         properties:
           apiVersion:
             description: |-
@@ -4469,7 +4471,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.1
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: promotionstrategies.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -4488,6 +4490,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: PromotionStrategy is the Schema for the promotionstrategies API
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#promotionstrategy
         properties:
           apiVersion:
             description: |-
@@ -4582,19 +4587,10 @@ spec:
                         If false, the dry commit will be proposed but not merged.
                       type: boolean
                     branch:
-                      description: |-
-                        Branch is the name of the active branch for the environment.
-                        Must not start with '-', contain ':', or contain '..'.
-                      maxLength: 100
+                      description: Branch is the name of the active branch for the
+                        environment.
                       minLength: 1
                       type: string
-                      x-kubernetes-validations:
-                      - message: branch must not start with '-'
-                        rule: '!self.startsWith(''-'')'
-                      - message: branch must not contain ':'
-                        rule: '!self.contains('':'')'
-                      - message: branch must not contain '..'
-                        rule: '!self.contains(''..'')'
                     proposedCommitStatuses:
                       description: |-
                         ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running
@@ -4622,7 +4618,6 @@ spec:
                   required:
                   - branch
                   type: object
-                maxItems: 1000
                 minItems: 1
                 type: array
                 x-kubernetes-list-map-keys:
@@ -5924,7 +5919,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.1
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: pullrequests.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -5961,6 +5956,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: PullRequest is the Schema for the pullrequests API
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#pullrequest
         properties:
           apiVersion:
             description: |-
@@ -6020,21 +6018,12 @@ spec:
                 pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
                 type: string
               sourceBranch:
-                description: |-
-                  SourceBranch is the base the git reference that we are merging into Head ---> Base
-                  Must not start with '-', contain ':', or contain '..'.
-                maxLength: 100
-                minLength: 1
+                description: SourceBranch is the base the git reference that we are
+                  merging into Head ---> Base
                 type: string
                 x-kubernetes-validations:
-                - message: Value is immutable
+                - message: field is immutable
                   rule: self == oldSelf
-                - message: branch must not start with '-'
-                  rule: '!self.startsWith(''-'')'
-                - message: branch must not contain ':'
-                  rule: '!self.contains('':'')'
-                - message: branch must not contain '..'
-                  rule: '!self.contains(''..'')'
               state:
                 default: open
                 description: |-
@@ -6046,21 +6035,12 @@ spec:
                 - open
                 type: string
               targetBranch:
-                description: |-
-                  TargetBranch is the head the git reference we are merging from Head ---> Base
-                  Must not start with '-', contain ':', or contain '..'.
-                maxLength: 100
-                minLength: 1
+                description: TargetBranch is the head the git reference we are merging
+                  from Head ---> Base
                 type: string
                 x-kubernetes-validations:
-                - message: Value is immutable
+                - message: field is immutable
                   rule: self == oldSelf
-                - message: branch must not start with '-'
-                  rule: '!self.startsWith(''-'')'
-                - message: branch must not contain ':'
-                  rule: '!self.contains('':'')'
-                - message: branch must not contain '..'
-                  rule: '!self.contains(''..'')'
               title:
                 description: Title is the title of the pull request.
                 minLength: 1
@@ -6193,7 +6173,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.1
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: revertcommits.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -6247,7 +6227,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.1
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: scmproviders.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -6266,6 +6246,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: ScmProvider is the Schema for the scmproviders API
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#scmprovider
         properties:
           apiVersion:
             description: |-
@@ -6493,7 +6476,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.1
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: timedcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -6515,6 +6498,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: TimedCommitStatus is the Schema for the timedcommitstatuses API
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#timedcommitstatus
         properties:
           apiVersion:
             description: |-
@@ -6721,7 +6707,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.1
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: webrequestcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -6750,6 +6736,9 @@ spec:
       openAPIV3Schema:
         description: WebRequestCommitStatus is the Schema for the webrequestcommitstatuses
           API
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#webrequestcommitstatus
         properties:
           apiVersion:
             description: |-
@@ -7565,6 +7554,17 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: serviceaccount
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver
+  namespace: promoter-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
   name: promoter-controller-manager
@@ -7614,6 +7614,42 @@ rules:
   verbs:
   - create
   - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - promotionstrategies
+  - changetransferpolicies
+  - pullrequests
+  - commitstatuses
+  - argocdcommitstatuses
+  - gitcommitstatuses
+  - timedcommitstatuses
+  - webrequestcommitstatuses
+  - gitrepositories
+  - scmproviders
+  - clusterscmproviders
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - get
+  - list
+  - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -8001,6 +8037,24 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-promotionstrategydetails-viewer
+rules:
+- apiGroups:
+  - view.promoter.argoproj.io
+  resources:
+  - promotionstrategydetails
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
     app.kubernetes.io/component: kube-rbac-proxy
     app.kubernetes.io/created-by: promoter
     app.kubernetes.io/instance: proxy-role
@@ -8168,6 +8222,24 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver-extension-auth-reader
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+- kind: ServiceAccount
+  name: promoter-apiserver
+  namespace: promoter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
     app.kubernetes.io/component: rbac
     app.kubernetes.io/created-by: promoter
     app.kubernetes.io/instance: leader-election-rolebinding
@@ -8183,6 +8255,40 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: promoter-controller-manager
+  namespace: promoter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: promoter-apiserver
+subjects:
+- kind: ServiceAccount
+  name: promoter-apiserver
+  namespace: promoter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver-auth-delegator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+- kind: ServiceAccount
+  name: promoter-apiserver
   namespace: promoter-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -8209,6 +8315,23 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/part-of: promoter
+  name: promoter-promotionstrategydetails-viewer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: promoter-promotionstrategydetails-viewer
+subjects:
+- kind: ServiceAccount
+  name: promoter-controller-manager
+  namespace: promoter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
     app.kubernetes.io/component: kube-rbac-proxy
     app.kubernetes.io/created-by: promoter
     app.kubernetes.io/instance: proxy-rolebinding
@@ -8224,6 +8347,25 @@ subjects:
 - kind: ServiceAccount
   name: promoter-controller-manager
   namespace: promoter-system
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: service
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver
+  namespace: promoter-system
+spec:
+  ports:
+  - name: https
+    port: 443
+    protocol: TCP
+    targetPort: https
+  selector:
+    app.kubernetes.io/component: dashboard-apiserver
 ---
 apiVersion: v1
 kind: Service
@@ -8259,6 +8401,88 @@ spec:
     targetPort: 3333
   selector:
     control-plane: controller-manager
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: deployment
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver
+  namespace: promoter-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: dashboard-apiserver
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: dashboard-apiserver
+    spec:
+      containers:
+      - args:
+        - --secure-port=6443
+        - --tls-cert-file=/serving-certs/tls.crt
+        - --tls-private-key-file=/serving-certs/tls.key
+        command:
+        - /usr/bin/tini
+        - --
+        - /gitops-promoter
+        - apiserver
+        image: quay.io/argoprojlabs/gitops-promoter:latest
+        livenessProbe:
+          httpGet:
+            path: /livez
+            port: https
+            scheme: HTTPS
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        name: apiserver
+        ports:
+        - containerPort: 6443
+          name: https
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: https
+            scheme: HTTPS
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          limits:
+            cpu: 500m
+            memory: 256Mi
+          requests:
+            cpu: 10m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - mountPath: /serving-certs
+          name: serving-cert
+          readOnly: true
+        - mountPath: /tmp
+          name: tmp
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: promoter-apiserver
+      terminationGracePeriodSeconds: 10
+      volumes:
+      - name: serving-cert
+        secret:
+          secretName: promoter-apiserver-serving-cert
+      - emptyDir: {}
+        name: tmp
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -8365,6 +8589,56 @@ spec:
           type: RuntimeDefault
       serviceAccountName: promoter-controller-manager
       terminationGracePeriodSeconds: 10
+---
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  annotations:
+    cert-manager.io/inject-ca-from: promoter-system/promoter-apiserver-serving-cert
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: apiservice
+    app.kubernetes.io/part-of: promoter
+  name: v1alpha1.view.promoter.argoproj.io
+spec:
+  group: view.promoter.argoproj.io
+  groupPriorityMinimum: 1000
+  service:
+    name: promoter-apiserver
+    namespace: promoter-system
+    port: 443
+  version: v1alpha1
+  versionPriority: 15
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver-serving-cert
+  namespace: promoter-system
+spec:
+  dnsNames:
+  - promoter-apiserver.promoter-system.svc
+  - promoter-apiserver.promoter-system.svc.cluster.local
+  issuerRef:
+    group: cert-manager.io
+    kind: Issuer
+    name: promoter-apiserver-selfsigned
+  secretName: promoter-apiserver-serving-cert
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver
+    app.kubernetes.io/part-of: promoter
+  name: promoter-apiserver-selfsigned
+  namespace: promoter-system
+spec:
+  selfSigned: {}
 ---
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: ControllerConfiguration

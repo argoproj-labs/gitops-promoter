@@ -1,0 +1,15 @@
+# Selector-less Service whose backend is your laptop (see endpointslice.yaml).
+# Applied/templated by hack/apiserver-local-register.sh (make apiserver-register-local).
+apiVersion: v1
+kind: Service
+metadata:
+  name: promoter-apiserver-local
+  namespace: promoter-system
+  labels:
+    app.kubernetes.io/component: dashboard-apiserver-local
+    app.kubernetes.io/part-of: promoter
+spec:
+  ports:
+    - port: 443
+      targetPort: __PORT__
+      protocol: TCP

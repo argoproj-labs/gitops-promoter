@@ -38,7 +38,7 @@ type PullRequestSpec struct {
 	Title string `json:"title"`
 	// TargetBranch is the head the git reference we are merging from Head ---> Base
 	// Must not start with '-', contain ':', or contain '..'.
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
+	// +k8s:immutable
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=100
@@ -48,7 +48,7 @@ type PullRequestSpec struct {
 	TargetBranch string `json:"targetBranch"`
 	// SourceBranch is the base the git reference that we are merging into Head ---> Base
 	// Must not start with '-', contain ':', or contain '..'.
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
+	// +k8s:immutable
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=100
@@ -133,6 +133,7 @@ func (ps *PullRequest) SetObservedGeneration(generation int64) {
 }
 
 // +kubebuilder:ac:generate=true
+// +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#pullrequest",description="CRD reference (examples and behavior)"
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 

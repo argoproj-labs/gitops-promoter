@@ -21,7 +21,7 @@ To complete this tutorial, you will need the following:
 
 > [!NOTE]
 > GitOps Promoter provides several opt-in Argo CD integrations that improve the user experience. Check out the 
-> [Argo CD Integrations](argocd-integrations/index.md) page for more information.
+> [Integrating with Argo CD](index.md) page for more information.
 
 > [!TIP]
 > For the impatient, the steps below are also available as a command `./gitops-promoter demo` 
@@ -68,10 +68,10 @@ Connect with this password for the `admin` user.
 
 ### Install GitOps Promoter
 
-> See [Getting Started](./getting-started.md)
+> See [Getting Started](../getting-started.md)
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.31.0/install.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.31.1/install-without-ui.yaml
 ```
 
 > [!NOTE]
@@ -215,8 +215,6 @@ done
 ```
 
 If you go to the [Argo CD UI](https://localhost:8080/applications/argocd/development-helm-guestbook), in the applications, you should now see the "SOURCE HYDRATOR" section in the header.
-
-![Argo CD Application with Source Hydrator](./assets/source-hydrator.png)
 
 It should have the message "from HEAD (...) to environment/development-next (...)"
 

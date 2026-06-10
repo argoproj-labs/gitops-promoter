@@ -218,9 +218,7 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
-          'go mod tidy',
-          'make manifests',
-          'make generate',
+          'make build-installer',
         ],
         installTools: {
           golang: {},
@@ -228,15 +226,15 @@
         fileFilters: [
           'config/**',
           'test/**',
+          'applyconfiguration/**',
+          'dist/**',
           '**/*.go',
-          'go.mod',
-          'go.sum',
         ],
         executionMode: 'branch',
       },
     },
     {
-      description: 'kube-rbac-proxy image is baked into config + dist/install.yaml; regenerate them on bump',
+      description: 'kube-rbac-proxy image is baked into config + dist/ install bundles; regenerate them on bump',
       matchDepNames: [
         'quay.io/brancz/kube-rbac-proxy',
       ],

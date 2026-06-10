@@ -1,0 +1,18 @@
+# Manually-managed EndpointSlice pointing the local Service at your host machine.
+# __HOST_IP__ and __PORT__ are substituted by hack/apiserver-local-register.sh.
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: promoter-apiserver-local-1
+  namespace: promoter-system
+  labels:
+    kubernetes.io/service-name: promoter-apiserver-local
+    app.kubernetes.io/component: dashboard-apiserver-local
+    app.kubernetes.io/part-of: promoter
+addressType: IPv4
+ports:
+  - port: __PORT__
+    protocol: TCP
+endpoints:
+  - addresses:
+      - "__HOST_IP__"

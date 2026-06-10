@@ -99,7 +99,7 @@ duration before being promoted.
 ### GitCommitStatus
 
 A GitCommitStatus evaluates commit data with a custom expression and creates CommitStatus resources for
-promotion gating. See [Git Commit Status](commit-status-controllers/git-commit.md) for configuration, expression
+promotion gating. See [Git Commit Status](gating-promotions/built-in-gates/git-commit-status.md) for configuration, expression
 variables, and examples.
 
 ```yaml
@@ -108,7 +108,7 @@ variables, and examples.
 
 ### WebRequestCommitStatus
 
-A WebRequestCommitStatus gates promotions on external HTTP/HTTPS API validation. It makes HTTP requests to configurable endpoints, evaluates a validation expression against the response, and creates or updates CommitStatus resources. It supports polling mode (fixed interval) or trigger mode (expression-based triggering). See the [Web Request Commit Status](commit-status-controllers/web-request.md) documentation for full configuration, examples, and template variables.
+A WebRequestCommitStatus gates promotions on external HTTP/HTTPS API validation. It makes HTTP requests to configurable endpoints, evaluates a validation expression against the response, and creates or updates CommitStatus resources. It supports polling mode (fixed interval) or trigger mode (expression-based triggering). See the [Web Request Commit Status](gating-promotions/built-in-gates/web-request-commit-status/index.md) documentation for full configuration, examples, and template variables.
 
 ```yaml
 {!internal/controller/testdata/WebRequestCommitStatus.yaml!}
@@ -233,7 +233,7 @@ Built-in controllers set promoter labels on `ChangeTransferPolicy`, `PullRequest
 
 Label keys are defined in [`api/v1alpha1/constants.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/api/v1alpha1/constants.go); parent-gate label keys are derived from the gate Kind. Branch and name values are sanitized with `KubeSafeLabel` before they are stored.
 
-See [Labels](debugging/labels.md) for the full reference, useful `kubectl` queries, and troubleshooting when gating does not match expectations. For how commit-status labels relate to `PromotionStrategy` selectors, see [Gating Promotions](gating-promotions.md).
+See [Labels](debugging/labels.md) for the full reference, useful `kubectl` queries, and troubleshooting when gating does not match expectations. For how commit-status labels relate to `PromotionStrategy` selectors, see [Gating Promotions](gating-promotions/index.md).
 
 ## Validation Conventions
 

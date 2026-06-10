@@ -23,6 +23,7 @@ import (
 )
 
 // ContextMode represents the request-scope mode for WebRequestCommitStatus.
+// +k8s:enum
 type ContextMode string
 
 const (
@@ -138,7 +139,6 @@ type ModeSpec struct {
 	// Context is "environments" (default) or "promotionstrategy". See the ModeSpec type documentation for behavior, template limits, and success expression rules.
 	// +optional
 	// +kubebuilder:default=environments
-	// +kubebuilder:validation:Enum=environments;promotionstrategy
 	Context ContextMode `json:"context,omitempty"`
 }
 
@@ -551,6 +551,7 @@ type WebRequestCommitStatusEnvironmentStatus struct {
 }
 
 // +kubebuilder:ac:generate=true
+// +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#webrequestcommitstatus",description="CRD reference (examples and behavior)"
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
