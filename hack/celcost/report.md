@@ -194,12 +194,12 @@ Source: `promoter.argoproj.io_pullrequests.yaml`
 
 | Path | Cost | % of rule limit | Expression |
 |---|---:|---:|---|
-| `.spec.sourceBranch` | 42 | 0.00% | `self == oldSelf` |
 | `.spec.sourceBranch` | 42 | 0.00% | `!self.contains(':')` |
 | `.spec.sourceBranch` | 42 | 0.00% | `!self.contains('..')` |
-| `.spec.targetBranch` | 42 | 0.00% | `self == oldSelf` |
+| `.spec.sourceBranch` | 42 | 0.00% | `self == oldSelf` |
 | `.spec.targetBranch` | 42 | 0.00% | `!self.contains(':')` |
 | `.spec.targetBranch` | 42 | 0.00% | `!self.contains('..')` |
+| `.spec.targetBranch` | 42 | 0.00% | `self == oldSelf` |
 | `(root)` | 9 | 0.00% | `self.spec.state == 'open' \|\| has(self.status.id) && self.status.id != ""` |
 | `.spec.sourceBranch` | 3 | 0.00% | `!self.startsWith('-')` |
 | `.spec.targetBranch` | 3 | 0.00% | `!self.startsWith('-')` |
