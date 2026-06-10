@@ -6,6 +6,7 @@ import { PromotionStrategyStore } from '../stores/PromotionStrategyStore';
 import BackButton from '../components/BackButton';
 import HeaderBar from '@lib/components/HeaderBar';
 import PromotionStrategyDetailsView from '../components/PromotionStrategyDetailsView';
+import EnvironmentStepper from '../components/EnvironmentStepper';
 import { LiveManifestView } from '@lib/components/LiveManifestView';
 import type { PromotionStrategy } from '@shared/utils/PSData';
 import './PromotionStrategyPage.scss';
@@ -116,7 +117,8 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
       </div>
 
       {currentView === 'cards' ? (
-        <div style={{ marginTop: '40px' }}>
+        <div style={{ marginTop: '8px' }}>
+          <EnvironmentStepper environments={selectedStrategy.status?.environments || []} />
           <PromotionStrategyDetailsView strategy={selectedStrategy} />
         </div>
       ) : (

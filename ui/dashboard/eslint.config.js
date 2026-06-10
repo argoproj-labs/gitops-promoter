@@ -36,6 +36,8 @@ export default [
         fetch: 'readonly',
         EventSource: 'readonly',
         MessageEvent: 'readonly',
+        // DOM types (used as TS type references in ref<...> generics)
+        HTMLDivElement: 'readonly',
         // Node globals
         process: 'readonly',
         __dirname: 'readonly',

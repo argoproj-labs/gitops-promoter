@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import DashboardPage from './pages/DashboardPage';
 import PromotionStrategyPage from './pages/PromotionStrategyPage';
+import HistoryPage from './pages/HistoryPage';
 import { TopBar } from '../src/components/TopBar';
 
 function PromotionStrategyPageWithNamespace() {
@@ -18,6 +19,10 @@ function App() {
         <Route
           path="/promotion-strategies/:namespace/:name"
           element={<PromotionStrategyPageWithNamespace />}
+        />
+        <Route
+          path="/promotion-strategies/:namespace/:name/history/*"
+          element={<HistoryPage />}
         />
       </Routes>
     </BrowserRouter>
