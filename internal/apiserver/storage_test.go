@@ -104,7 +104,7 @@ var _ = Describe("REST storage", func() {
 			Expect(snap.Name).To(Equal(testPSName))
 
 			By("broadcasting a delta when the key is rebuilt")
-			store.provider.reconcileKey(context.Background(), types.NamespacedName{Namespace: testNamespace, Name: testPSName})
+			Expect(store.provider.reconcileKey(context.Background(), types.NamespacedName{Namespace: testNamespace, Name: testPSName})).To(Succeed())
 
 			var delta watch.Event
 			Eventually(w.ResultChan()).Should(Receive(&delta))
