@@ -27,8 +27,10 @@ type ChangeTransferPolicySpecApplyConfiguration struct {
 	// RepositoryReference what repository to open the PR on.
 	RepositoryReference *ObjectReferenceApplyConfiguration `json:"gitRepositoryRef,omitempty"`
 	// ProposedBranch staging hydrated branch
+	// Must not start with '-', contain ':', or contain '..'.
 	ProposedBranch *string `json:"proposedBranch,omitempty"`
 	// ActiveBranch staging hydrated branch
+	// Must not start with '-', contain ':', or contain '..'.
 	ActiveBranch *string `json:"activeBranch,omitempty"`
 	// ActivePath is an optional repository subpath for this policy's active state.
 	// When set, hydrator metadata is read from <activePath>/hydrator.metadata.

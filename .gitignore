@@ -103,6 +103,9 @@ mkdocs-lint.log
 site/
 # Go build output (prevent accidentally committing the manager binary)
 main
+# hack/view2ts build output
+hack/view2ts/view2ts
+hack/view2ts/dist/
 
 # Claude Code
 .claude

@@ -37,12 +37,24 @@ type PullRequestSpec struct {
 	// +kubebuilder:validation:MinLength=1
 	Title string `json:"title"`
 	// TargetBranch is the head the git reference we are merging from Head ---> Base
+	// Must not start with '-', contain ':', or contain '..'.
 	// +k8s:immutable
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=100
+	// +kubebuilder:validation:XValidation:rule="!self.startsWith('-')",message="branch must not start with '-'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains(':')",message="branch must not contain ':'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains('..')",message="branch must not contain '..'"
 	TargetBranch string `json:"targetBranch"`
 	// SourceBranch is the base the git reference that we are merging into Head ---> Base
+	// Must not start with '-', contain ':', or contain '..'.
 	// +k8s:immutable
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=100
+	// +kubebuilder:validation:XValidation:rule="!self.startsWith('-')",message="branch must not start with '-'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains(':')",message="branch must not contain ':'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains('..')",message="branch must not contain '..'"
 	SourceBranch string `json:"sourceBranch"`
 	// Description is the description body of the pull/merge request
 	Description string `json:"description,omitempty"`

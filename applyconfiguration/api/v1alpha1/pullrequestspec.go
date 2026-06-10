@@ -33,8 +33,10 @@ type PullRequestSpecApplyConfiguration struct {
 	// Title is the title of the pull request.
 	Title *string `json:"title,omitempty"`
 	// TargetBranch is the head the git reference we are merging from Head ---> Base
+	// Must not start with '-', contain ':', or contain '..'.
 	TargetBranch *string `json:"targetBranch,omitempty"`
 	// SourceBranch is the base the git reference that we are merging into Head ---> Base
+	// Must not start with '-', contain ':', or contain '..'.
 	SourceBranch *string `json:"sourceBranch,omitempty"`
 	// Description is the description body of the pull/merge request
 	Description *string `json:"description,omitempty"`
