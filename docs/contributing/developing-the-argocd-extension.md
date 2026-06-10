@@ -60,4 +60,4 @@ To test **only** your local build:
 
 4. Hard-refresh the Argo CD UI to load the new extension.
 
-When you are done testing, re-apply your extension patch (e.g. the one from the [Argo CD Integrations index](index.md#ui-extension)) and restart the deployment to restore the release extension.
+When you are done testing, re-apply your extension patch (e.g. the one from the [Integrating with Argo CD index](../integrating-with-argocd/index.md#ui-extension)) and restart the deployment to restore the release extension.

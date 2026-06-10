@@ -15,7 +15,7 @@ PromotionStrategy.
 
 > [!NOTE]
 > GitOps Promoter provides several opt-in Argo CD integrations that improve the user experience. Check out the 
-> [Argo CD Integrations](../argocd-integrations/index.md) page for more information.
+> [Integrating with Argo CD](../../integrating-with-argocd/index.md) page for more information.
 
 ## Example Configurations
 
@@ -40,7 +40,7 @@ spec:
 
 ### `spec.key`
 
-`spec.key` is the gate name your PromotionStrategy checks in `activeCommitStatuses`. When omitted, the CRD default is `argocd-health`. We recommend setting `spec.key` explicitly (including `argocd-health` when that is your gate name) so it matches your PromotionStrategy and your manifests are ready if the field becomes required in v1.0; see [Roadmap](../roadmap.md).
+`spec.key` is the gate name your PromotionStrategy checks in `activeCommitStatuses`. When omitted, the CRD default is `argocd-health`. We recommend setting `spec.key` explicitly (including `argocd-health` when that is your gate name) so it matches your PromotionStrategy and your manifests are ready if the field becomes required in v1.0; see [Roadmap](../../roadmap.md).
 
 Reference the same key in the PromotionStrategy:
 
@@ -70,7 +70,7 @@ To configure setting the url of a commit status, for example, a link to an Argo 
 The following variables are available in the template:
 
 - `.Environment` - string holding the environment name (i.e. environment branch name) for the group of Applications the URL is being generated for.
-- `.ArgoCDCommitStatus` - holds the whole [CR](../crd-specs.md#argocdcommitstatus) in its current state
+- `.ArgoCDCommitStatus` - holds the whole [CR](../../crd-specs.md#argocdcommitstatus) in its current state
 
 #### Template Options 
 Template options can be configured for how missing variables are handled. 

@@ -29,7 +29,7 @@ handle whatever manifest structure your organization prefers.
 
 ## Do I need Argo CD to use GitOps Promoter?
 No, GitOps Promoter works with any tools that can provide hydrated manifests in Git.
-Check the [Custom Hydration](./custom-hydrator.md) documentation for more details.
+Check the [Custom Hydration](advanced-usage/custom-hydrator.md) documentation for more details.
 
 ## Why Should I use Webhooks?
 

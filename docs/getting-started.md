@@ -32,7 +32,7 @@ kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/downl
 
 Installs the controller and the dashboard API without a cert-manager dependency. After applying,
 supply the `promoter-apiserver-serving-cert` Secret and patch the `APIService` `caBundle` yourself
-(see [Dashboard Aggregation API](dashboard-apiserver.md#serving-certs)):
+(see [Dashboard Aggregation API](advanced-usage/dashboard-apiserver.md#serving-certs)):
 
 ```bash
 kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.31.1/install-with-dashboard-byo-cert.yaml
@@ -512,7 +512,7 @@ spec:
 > configuration must hydrate to these branch names, but **suffixed with `-next`**. This convention is hard-coded in
 > GitOps Promoter.
 >
-> For an example of how to configure the Argo CD Source Hydrator, see the [Argo CD tutorial](tutorial-argocd-apps.md#deploy-an-application-for-3-environments).
+> For an example of how to configure the Argo CD Source Hydrator, see the [Argo CD tutorial](integrating-with-argocd/tutorial.md#deploy-an-application-for-3-environments).
 > (Note the difference between the `syncSource` and the `hydrateTo` fields.)
 
 > [!TIP]
@@ -563,7 +563,7 @@ This bundle has no cert-manager dependency. Apply it, then supply the
 kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.31.1/install-with-dashboard-byo-cert.yaml
 ```
 
-See the [Dashboard Aggregation API](dashboard-apiserver.md#serving-certs) page for the
+See the [Dashboard Aggregation API](advanced-usage/dashboard-apiserver.md#serving-certs) page for the
 scripted/manual cert steps and cert rotation.
 
 ///
@@ -578,7 +578,7 @@ kubectl get promotionstrategydetails -A
 > [!NOTE]
 > If the `APIService` reports `Available=False` with an `x509`/TLS error, the `caBundle`
 > does not match the apiserver's serving cert. See the
-> [Dashboard Aggregation API](dashboard-apiserver.md#verifying-the-install) page.
+> [Dashboard Aggregation API](advanced-usage/dashboard-apiserver.md#verifying-the-install) page.
 
 ### Launch the UI
 
