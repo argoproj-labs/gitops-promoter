@@ -595,7 +595,6 @@ spec:
         "branch": "{{ .Branch }}",
         "namespace": "{{ index .NamespaceMetadata.Labels \"team\" }}",
         "phase": "{{ .Phase }}"
-        "namespace": "{{ index .NamespaceMetadata.Labels "team" }}"
       }
     authentication:
       basic:
@@ -739,7 +738,7 @@ spec:
       expression: |
         Response.StatusCode == 200 &&
         len(Response.Body.check_runs) > 0 &&
-        all(Response.Body.check_runs, # r, r.status == "completed" && (r.conclusion == "success" || r.conclusion == "skipped"))
+        all(Response.Body.check_runs, .status == "completed" && (.conclusion == "success" || .conclusion == "skipped"))
   mode:
     polling:
       interval: 1m
