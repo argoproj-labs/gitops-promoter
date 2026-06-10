@@ -26,6 +26,7 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
 	toolscache "k8s.io/client-go/tools/cache"
@@ -43,6 +44,12 @@ var log = ctrl.Log.WithName("dashboard-apiserver")
 // debounceInterval coalesces bursts of child changes for the same PromotionStrategy.
 const debounceInterval = 250 * time.Millisecond
 
+// watcherBufferSize is the per-watcher headroom for delta events beyond the
+// initial snapshot. A watcher whose buffer overflows is terminated (its result
+// channel is closed) so the client re-lists, mirroring the apiserver cacher's
+// handling of watchers that cannot keep up — deltas are never silently dropped.
+const watcherBufferSize = 64
+
 // BundleProvider builds PromotionStrategyDetails bundles from a read-only
 // controller-runtime cache, and fans out watch events to registered watchers when
 // any related resource changes.
@@ -54,10 +61,12 @@ type BundleProvider struct {
 	// from nextID), so broadcast can fan events out to matching watchers and a
 	// watcher can be removed when its stream stops.
 	watchers map[int]*bundleWatcher
-	// known tracks PromotionStrategy keys that have already emitted an ADDED event,
-	// so reconcileKey can distinguish ADDED from MODIFIED and only emit a DELETED
-	// tombstone for keys it previously surfaced.
-	known map[types.NamespacedName]bool
+	// known tracks the last-broadcast labels of PromotionStrategy keys that have
+	// already emitted an ADDED event, so reconcileKey can distinguish ADDED from
+	// MODIFIED, only emit a DELETED tombstone for keys it previously surfaced, and
+	// give label-selector watchers correct ADDED/DELETED transitions when an
+	// object's labels start or stop matching their selector.
+	known map[types.NamespacedName]labels.Set
 
 	mu     sync.RWMutex
 	rv     atomic.Uint64
@@ -82,7 +91,7 @@ func newProviderWithReader(reader client.Reader) *BundleProvider {
 			workqueue.TypedRateLimitingQueueConfig[types.NamespacedName]{Name: "dashboard-bundles"},
 		),
 		watchers: map[int]*bundleWatcher{},
-		known:    map[types.NamespacedName]bool{},
+		known:    map[types.NamespacedName]labels.Set{},
 	}
 	p.rv.Store(1)
 	return p
@@ -162,18 +171,26 @@ func (p *BundleProvider) processNext(ctx context.Context) bool {
 		return false
 	}
 	defer p.queue.Done(key)
-	p.reconcileKey(ctx, key)
+	if err := p.reconcileKey(ctx, key); err != nil {
+		// Transient failure (e.g. a momentary cache hiccup): retry with backoff so
+		// the delta is not silently lost — watchers would otherwise stay stale
+		// until the next unrelated change to the same PromotionStrategy.
+		log.Error(err, "failed to build bundle; requeueing", "namespace", key.Namespace, "name", key.Name)
+		p.queue.AddRateLimited(key)
+		return true
+	}
 	p.queue.Forget(key)
 	return true
 }
 
 // reconcileKey rebuilds the bundle for a PromotionStrategy key and broadcasts the
-// resulting watch event (ADDED/MODIFIED/DELETED) to matching watchers.
-func (p *BundleProvider) reconcileKey(ctx context.Context, key types.NamespacedName) {
+// resulting watch event (ADDED/MODIFIED/DELETED) to matching watchers. A non-nil
+// error means the rebuild failed transiently and the caller should retry.
+func (p *BundleProvider) reconcileKey(ctx context.Context, key types.NamespacedName) error {
 	bundle, err := buildBundle(ctx, p.reader, key.Namespace, key.Name, p.nextResourceVersion())
 	if apierrors.IsNotFound(err) {
 		p.mu.Lock()
-		wasKnown := p.known[key]
+		lastLabels, wasKnown := p.known[key]
 		delete(p.known, key)
 		p.mu.Unlock()
 		if wasKnown {
@@ -181,27 +198,30 @@ func (p *BundleProvider) reconcileKey(ctx context.Context, key types.NamespacedN
 				ObjectMeta: metav1.ObjectMeta{
 					Name:            key.Name,
 					Namespace:       key.Namespace,
+					Labels:          lastLabels,
 					ResourceVersion: p.currentResourceVersion(),
 				},
 			}
-			p.broadcast(watch.Event{Type: watch.Deleted, Object: tombstone}, key)
+			p.broadcast(watch.Event{Type: watch.Deleted, Object: tombstone}, key, lastLabels, nil)
 		}
-		return
+		return nil
 	}
 	if err != nil {
-		log.Error(err, "failed to build bundle", "namespace", key.Namespace, "name", key.Name)
-		return
+		return err
 	}
 
+	curLabels := labels.Set(bundle.Labels)
 	p.mu.Lock()
+	prevLabels, wasKnown := p.known[key]
 	eventType := watch.Modified
-	if !p.known[key] {
+	if !wasKnown {
 		eventType = watch.Added
-		p.known[key] = true
 	}
+	p.known[key] = curLabels
 	p.mu.Unlock()
 
-	p.broadcast(watch.Event{Type: eventType, Object: bundle}, key)
+	p.broadcast(watch.Event{Type: eventType, Object: bundle}, key, prevLabels, curLabels)
+	return nil
 }
 
 // enqueueForObject maps a changed child object to the owning PromotionStrategy
@@ -310,9 +330,33 @@ func (p *BundleProvider) Get(ctx context.Context, namespace, name string) (*view
 	return buildBundle(ctx, p.reader, namespace, name, p.currentResourceVersion())
 }
 
-// List builds bundles for all PromotionStrategies in the given namespace (all
-// namespaces when namespace is empty).
-func (p *BundleProvider) List(ctx context.Context, namespace string) (*viewv1alpha1.PromotionStrategyDetailsList, error) {
+// List builds bundles for the PromotionStrategies in the given namespace (all
+// namespaces when namespace is empty), filtered by the optional exact name and
+// label selector (nil selects everything). The bundle's labels are the source
+// PromotionStrategy's labels, so the selector is applied to the PS before the
+// (more expensive) bundle is built.
+func (p *BundleProvider) List(ctx context.Context, namespace, name string, labelSelector labels.Selector) (*viewv1alpha1.PromotionStrategyDetailsList, error) {
+	rv := p.currentResourceVersion()
+	out := &viewv1alpha1.PromotionStrategyDetailsList{
+		ListMeta: metav1.ListMeta{ResourceVersion: rv},
+	}
+
+	if name != "" {
+		// A name filter resolves to at most one bundle, so Get it directly instead
+		// of listing (and building) every PromotionStrategy in the namespace.
+		bundle, err := p.Get(ctx, namespace, name)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				return out, nil
+			}
+			return nil, err
+		}
+		if matchesLabels(labelSelector, bundle.Labels) {
+			out.Items = append(out.Items, *bundle)
+		}
+		return out, nil
+	}
+
 	psList := &promoterv1alpha1.PromotionStrategyList{}
 	var listOpts []client.ListOption
 	if namespace != "" {
@@ -322,12 +366,11 @@ func (p *BundleProvider) List(ctx context.Context, namespace string) (*viewv1alp
 		return nil, fmt.Errorf("failed to list PromotionStrategies: %w", err)
 	}
 
-	rv := p.currentResourceVersion()
-	out := &viewv1alpha1.PromotionStrategyDetailsList{
-		ListMeta: metav1.ListMeta{ResourceVersion: rv},
-	}
 	for i := range psList.Items {
 		ps := &psList.Items[i]
+		if !matchesLabels(labelSelector, ps.Labels) {
+			continue
+		}
 		bundle, err := buildBundle(ctx, p.reader, ps.Namespace, ps.Name, rv)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
@@ -340,96 +383,95 @@ func (p *BundleProvider) List(ctx context.Context, namespace string) (*viewv1alp
 	return out, nil
 }
 
-// Watch registers a watcher for the given namespace (and optional name filter).
-// When sendInitial is true, the current set of bundles is delivered as ADDED events
-// before subsequent deltas stream in. When sendInitialEventsBookmark is also true
-// (client-go "watch list" protocol), a terminating Bookmark event annotated with
-// k8s.io/initial-events-end is sent after the snapshot so reflectors know the initial
-// list is complete.
-func (p *BundleProvider) Watch(ctx context.Context, namespace, name string, sendInitial, sendInitialEventsBookmark bool) (watch.Interface, error) {
-	w := &bundleWatcher{
-		namespace: namespace,
-		name:      name,
-		result:    make(chan watch.Event, 64),
-		provider:  p,
+// Watch registers a watcher for the given namespace (and optional exact-name and
+// label-selector filters). When sendInitial is true, the current set of bundles is
+// delivered as ADDED events before subsequent deltas stream in. When
+// sendInitialEventsBookmark is also true (client-go "watch list" protocol), a
+// terminating Bookmark event annotated with k8s.io/initial-events-end is sent after
+// the snapshot so reflectors know the initial list is complete.
+//
+// The snapshot and the watcher registration happen atomically with respect to
+// broadcast (under the provider lock), so a delta can never be delivered ahead of
+// the snapshot it is newer than, and the snapshot itself can never be interleaved
+// with concurrent events. Initial events are buffered in full on the watcher's
+// input queue — they are never dropped, no matter how many bundles exist — and a
+// per-watcher goroutine forwards them to the result channel as the watch handler
+// drains it.
+func (p *BundleProvider) Watch(ctx context.Context, namespace, name string, labelSelector labels.Selector, sendInitial, sendInitialEventsBookmark bool) (watch.Interface, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	var initial []watch.Event
+	if sendInitial {
+		list, err := p.List(ctx, namespace, name, labelSelector)
+		if err != nil {
+			return nil, err
+		}
+		for i := range list.Items {
+			initial = append(initial, watch.Event{Type: watch.Added, Object: &list.Items[i]})
+		}
+		if sendInitialEventsBookmark {
+			bookmark := &viewv1alpha1.PromotionStrategyDetails{}
+			bookmark.SetResourceVersion(list.ResourceVersion)
+			bookmark.SetAnnotations(map[string]string{metav1.InitialEventsAnnotationKey: "true"})
+			initial = append(initial, watch.Event{Type: watch.Bookmark, Object: bookmark})
+		}
 	}
 
-	p.mu.Lock()
+	w := &bundleWatcher{
+		provider:      p,
+		namespace:     namespace,
+		name:          name,
+		labelSelector: labelSelector,
+		// Size the input queue to hold the entire initial snapshot plus headroom
+		// for deltas, so the queueing below can never block or drop.
+		input:  make(chan watch.Event, len(initial)+watcherBufferSize),
+		result: make(chan watch.Event),
+		done:   make(chan struct{}),
+	}
+	for _, ev := range initial {
+		w.input <- ev
+	}
+
 	p.nextID++
 	w.id = p.nextID
 	p.watchers[w.id] = w
-	p.mu.Unlock()
-
-	if sendInitial {
-		if err := p.sendInitialWatchEvents(ctx, w, namespace, name, sendInitialEventsBookmark); err != nil {
-			return nil, err
-		}
-	}
+	go w.process()
 
 	return w, nil
 }
 
-func (p *BundleProvider) sendInitialWatchEvents(ctx context.Context, w *bundleWatcher, namespace, name string, sendBookmark bool) error {
-	items, resourceVersion, err := p.initialWatchSnapshot(ctx, namespace, name)
-	if err != nil {
-		w.Stop()
-		return err
-	}
+// broadcast fans an event out to all watchers matching the affected key. For
+// label-selector watchers it applies the upstream cacher's transition semantics
+// using the previous and current label sets: an object that starts matching is
+// delivered as ADDED, one that stops matching is delivered as DELETED, and one
+// that matches throughout is delivered with the original event type. Watchers
+// whose input buffer is full are terminated (closing their result channel) so the
+// client re-lists instead of silently missing deltas.
+func (p *BundleProvider) broadcast(ev watch.Event, key types.NamespacedName, prevLabels, curLabels labels.Set) {
+	var overflowed []*bundleWatcher
 
-	for i := range items {
-		item := items[i]
-		select {
-		case w.result <- watch.Event{Type: watch.Added, Object: &item}:
-		default:
-		}
-	}
-
-	if !sendBookmark {
-		return nil
-	}
-
-	bookmark := &viewv1alpha1.PromotionStrategyDetails{}
-	bookmark.SetResourceVersion(resourceVersion)
-	bookmark.SetAnnotations(map[string]string{metav1.InitialEventsAnnotationKey: "true"})
-	select {
-	case w.result <- watch.Event{Type: watch.Bookmark, Object: bookmark}:
-	default:
-	}
-	return nil
-}
-
-func (p *BundleProvider) initialWatchSnapshot(ctx context.Context, namespace, name string) ([]viewv1alpha1.PromotionStrategyDetails, string, error) {
-	if name == "" {
-		list, err := p.List(ctx, namespace)
-		if err != nil {
-			return nil, "", err
-		}
-		return list.Items, list.ResourceVersion, nil
-	}
-
-	// A name filter resolves to exactly one bundle, so Get it directly instead of
-	// listing (and building) every PromotionStrategy in the namespace just to
-	// discard all but one.
-	bundle, err := p.Get(ctx, namespace, name)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			// Not found yet: send no initial ADDED event, but still surface a
-			// resource version so the reflector can begin watching.
-			return nil, p.currentResourceVersion(), nil
-		}
-		return nil, "", err
-	}
-	return []viewv1alpha1.PromotionStrategyDetails{*bundle}, bundle.ResourceVersion, nil
-}
-
-// broadcast sends an event to all watchers matching the affected key.
-func (p *BundleProvider) broadcast(ev watch.Event, key types.NamespacedName) {
 	p.mu.RLock()
-	defer p.mu.RUnlock()
 	for _, w := range p.watchers {
-		if !w.matches(key.Namespace, key.Name) {
+		if !w.matchesKey(key.Namespace, key.Name) {
 			continue
 		}
+		// prev only exists for MODIFIED/DELETED events; cur only for ADDED/MODIFIED.
+		matchesPrev := ev.Type != watch.Added && w.matchesLabels(prevLabels)
+		matchesCur := ev.Type != watch.Deleted && w.matchesLabels(curLabels)
+
+		var sendType watch.EventType
+		switch {
+		case matchesPrev && matchesCur:
+			sendType = ev.Type
+		case matchesCur:
+			sendType = watch.Added
+		case matchesPrev:
+			sendType = watch.Deleted
+		default:
+			continue
+		}
+
 		// Each watcher is served by its own goroutine in the apiserver watch
 		// handler, whose versioning codec mutates the object's TypeMeta (GVK) in
 		// place during serialization (SetGroupVersionKind, restored via defer).
@@ -441,35 +483,71 @@ func (p *BundleProvider) broadcast(ev watch.Event, key types.NamespacedName) {
 		// but only wraps etcd-backed resources. This virtual REST bypasses the
 		// cacher, so nothing copies on our behalf. Give every watcher its own
 		// copy so concurrent encodes of a shared object don't race on TypeMeta.
-		evCopy := watch.Event{Type: ev.Type, Object: ev.Object.DeepCopyObject()}
+		evCopy := watch.Event{Type: sendType, Object: ev.Object.DeepCopyObject()}
 		select {
-		case w.result <- evCopy:
+		case w.input <- evCopy:
 		default:
-			log.Info("dropping watch event; watcher buffer full", "namespace", key.Namespace, "name", key.Name)
+			overflowed = append(overflowed, w)
 		}
+	}
+	p.mu.RUnlock()
+
+	// Stop takes the provider lock, so terminate overflowed watchers outside it.
+	for _, w := range overflowed {
+		log.Info("terminating watcher that cannot keep up; client will re-list",
+			"namespace", key.Namespace, "name", key.Name)
+		w.Stop()
 	}
 }
 
 func (p *BundleProvider) removeWatcher(id int) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if w, ok := p.watchers[id]; ok {
-		delete(p.watchers, id)
-		close(w.result)
-	}
+	delete(p.watchers, id)
+}
+
+// matchesLabels reports whether the given label set matches the selector (a nil
+// selector matches everything).
+func matchesLabels(selector labels.Selector, lbls map[string]string) bool {
+	return selector == nil || selector.Matches(labels.Set(lbls))
 }
 
 // bundleWatcher implements watch.Interface for a single registered watcher.
+// Events are queued on input (initial snapshot first, then deltas) and forwarded
+// to result by the process goroutine; result is closed when the watcher stops,
+// which the apiserver watch handler surfaces to the client as the end of the
+// watch (triggering a re-list).
 type bundleWatcher struct {
-	provider  *BundleProvider
-	result    chan watch.Event
-	namespace string
-	name      string
-	stopOnce  sync.Once
-	id        int
+	provider      *BundleProvider
+	input         chan watch.Event
+	result        chan watch.Event
+	done          chan struct{}
+	labelSelector labels.Selector
+	namespace     string
+	name          string
+	stopOnce      sync.Once
+	id            int
 }
 
-func (w *bundleWatcher) matches(namespace, name string) bool {
+// process forwards queued events to the result channel until the watcher stops.
+// It is the only sender on (and closer of) result.
+func (w *bundleWatcher) process() {
+	defer close(w.result)
+	for {
+		select {
+		case ev := <-w.input:
+			select {
+			case w.result <- ev:
+			case <-w.done:
+				return
+			}
+		case <-w.done:
+			return
+		}
+	}
+}
+
+func (w *bundleWatcher) matchesKey(namespace, name string) bool {
 	if w.namespace != "" && w.namespace != namespace {
 		return false
 	}
@@ -479,10 +557,16 @@ func (w *bundleWatcher) matches(namespace, name string) bool {
 	return true
 }
 
-// Stop implements watch.Interface.
+func (w *bundleWatcher) matchesLabels(lbls labels.Set) bool {
+	return w.labelSelector == nil || w.labelSelector.Matches(lbls)
+}
+
+// Stop implements watch.Interface. It is idempotent and safe to call from the
+// watch handler, the broadcaster (on overflow), or both concurrently.
 func (w *bundleWatcher) Stop() {
 	w.stopOnce.Do(func() {
 		w.provider.removeWatcher(w.id)
+		close(w.done)
 	})
 }
 
