@@ -3578,6 +3578,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PreviousEnvironmentCommit
 				Description: "PreviousEnvironmentCommitStatusStatus defines the observed state of PreviousEnvironmentCommitStatus.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
+					"observedGeneration": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.",
+							Type:        []string{"integer"},
+							Format:      "int64",
+						},
+					},
 					"conditions": {
 						VendorExtensible: spec.VendorExtensible{
 							Extensions: spec.Extensions{

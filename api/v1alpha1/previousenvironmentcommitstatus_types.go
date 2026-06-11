@@ -46,11 +46,12 @@ type PreviousEnvironmentCommitStatusSpec struct {
 
 // PreviousEnvironmentCommitStatusStatus defines the observed state of PreviousEnvironmentCommitStatus.
 type PreviousEnvironmentCommitStatusStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// For Kubernetes API conventions, see:
-	// https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties
+	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
+	// Because status is written via Server-Side Apply with ForceOwnership (which has no
+	// optimistic-concurrency check), this field is the canonical way to detect stale
+	// status writes: compare status.observedGeneration with metadata.generation.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
 	// conditions represent the current state of the PreviousEnvironmentCommitStatus resource.
 	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
@@ -94,6 +95,16 @@ type PreviousEnvironmentCommitStatusList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitzero"`
 	Items           []PreviousEnvironmentCommitStatus `json:"items"`
+}
+
+// GetConditions returns the conditions of the PreviousEnvironmentCommitStatus.
+func (p *PreviousEnvironmentCommitStatus) GetConditions() *[]metav1.Condition {
+	return &p.Status.Conditions
+}
+
+// SetObservedGeneration records the object generation that produced the current status.
+func (p *PreviousEnvironmentCommitStatus) SetObservedGeneration(generation int64) {
+	p.Status.ObservedGeneration = generation
 }
 
 func init() {
