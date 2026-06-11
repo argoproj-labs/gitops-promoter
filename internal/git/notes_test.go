@@ -195,8 +195,8 @@ var _ = Describe("Promotion history notes", func() {
 		Expect(statusAfter).To(Equal(statusBefore), "SetHistoryNote must not dirty the worktree/index")
 	})
 
-	It("supports the parent/tree/ancestor helpers used for merge-commit location", func() {
-		// Build: base -> feature branch -> merge commit, plus a squash-like commit with feature's tree.
+	It("supports the parent/ancestor helpers used for merge-commit location", func() {
+		// Build: base -> feature branch -> merge commit.
 		_, err := runGitCmd(workDir, "checkout", "-b", "feature")
 		Expect(err).NotTo(HaveOccurred())
 		featureSha := commit("feature.txt", "feature", "feature commit")
@@ -217,12 +217,6 @@ var _ = Describe("Promotion history notes", func() {
 		Expect(parents).To(HaveLen(2))
 		Expect(parents[0]).To(Equal(shaTwo))
 		Expect(parents[1]).To(Equal(featureSha))
-
-		featureTree, err := g.GetTreeSha(GinkgoT().Context(), featureSha)
-		Expect(err).NotTo(HaveOccurred())
-		mergeTree, err := g.GetTreeSha(GinkgoT().Context(), mergeSha)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(mergeTree).To(Equal(featureTree), "fast-forward-able merge keeps the feature tree")
 
 		isAncestor, err := g.IsAncestor(GinkgoT().Context(), featureSha, mergeSha)
 		Expect(err).NotTo(HaveOccurred())

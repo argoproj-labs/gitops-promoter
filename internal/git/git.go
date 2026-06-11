@@ -970,24 +970,6 @@ func (g *EnvironmentOperations) GetCommitParents(ctx context.Context, sha string
 	return strings.Fields(stdout), nil
 }
 
-// GetTreeSha returns the tree SHA of the given commit.
-//
-// Read-only: never mutates the clone's index/worktree/HEAD. Requires the SHA's commit object to have
-// been fetched.
-func (g *EnvironmentOperations) GetTreeSha(ctx context.Context, sha string) (string, error) {
-	gitPath := g.ClonePath()
-	if gitPath == "" {
-		return "", fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
-	}
-
-	stdout, stderr, err := g.runCmd(ctx, gitPath, "rev-parse", sha+"^{tree}")
-	if err != nil {
-		return "", fmt.Errorf("failed to get tree sha for %q: %w (stderr: %s)", sha, err, stderr)
-	}
-
-	return strings.TrimSpace(stdout), nil
-}
-
 // IsAncestor reports whether ancestor is an ancestor of descendant using git merge-base --is-ancestor.
 //
 // Read-only: never mutates the clone's index/worktree/HEAD. Requires both commits to have been fetched.

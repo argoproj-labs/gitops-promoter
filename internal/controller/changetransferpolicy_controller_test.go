@@ -1551,3 +1551,118 @@ var _ = Describe("buildHistoryEntry trailer sources", func() {
 		Expect(entry.PullRequest.Url).To(Equal("https://example.com/pr/88"))
 	})
 })
+
+var _ = Describe("findDrySha merge-commit location", func() {
+	var workDir string
+	var bareDir string
+	var branch string
+	var gitOps *git.EnvironmentOperations
+
+	mustRunGit := func(dir string, args ...string) string {
+		GinkgoHelper()
+		out, err := runGitCmd(ctx, dir, args...)
+		Expect(err).NotTo(HaveOccurred())
+		return strings.TrimSpace(out)
+	}
+
+	// commitWithDrySha commits a hydrator.metadata carrying the given dry sha (plus a unique file so every
+	// commit has a distinct tree) and returns the commit sha.
+	commitWithDrySha := func(drySha, fileName string) string {
+		GinkgoHelper()
+		Expect(os.WriteFile(path.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"`+drySha+`"}`), 0o644)).To(Succeed())
+		Expect(os.WriteFile(path.Join(workDir, fileName), []byte(fileName), 0o644)).To(Succeed())
+		mustRunGit(workDir, "add", "-A")
+		mustRunGit(workDir, "commit", "-m", "promote "+drySha)
+		return mustRunGit(workDir, "rev-parse", "HEAD")
+	}
+
+	revList := func() []string {
+		GinkgoHelper()
+		Expect(gitOps.FetchBranch(ctx, branch)).To(Succeed())
+		shas, err := gitOps.GetRevListFirstParent(ctx, "origin/"+branch, mergeCommitSearchWindow)
+		Expect(err).NotTo(HaveOccurred())
+		return shas
+	}
+
+	BeforeEach(func() {
+		var err error
+		bareDir, err = os.MkdirTemp("", "find-dry-sha-bare-*")
+		Expect(err).NotTo(HaveOccurred())
+		mustRunGit(bareDir, "init", "--bare")
+
+		workDir, err = os.MkdirTemp("", "find-dry-sha-work-*")
+		Expect(err).NotTo(HaveOccurred())
+		mustRunGit(workDir, "clone", bareDir, ".")
+		mustRunGit(workDir, "config", "user.name", "Test User")
+		mustRunGit(workDir, "config", "user.email", "test@example.com")
+		mustRunGit(workDir, "config", "commit.gpgsign", "false")
+
+		gitRepo := &promoterv1alpha1.GitRepository{
+			ObjectMeta: metav1.ObjectMeta{Name: "find-dry-sha-repo", Namespace: "default"},
+			Spec: promoterv1alpha1.GitRepositorySpec{
+				Fake: &promoterv1alpha1.FakeRepo{Owner: "test-owner", Name: "find-dry-sha-repo"},
+			},
+		}
+		gitOps = git.NewEnvironmentOperations(gitRepo, &localGitProvider{repoPath: bareDir}, "default/find-dry-sha-"+bareDir)
+	})
+
+	AfterEach(func() {
+		_ = os.RemoveAll(bareDir)
+		_ = os.RemoveAll(workDir)
+	})
+
+	It("returns the transition commit, not an older commit that carried the same dry sha", func() {
+		// History (oldest -> newest): promote A, promote B, re-promote A (the merge under finalization),
+		// then a sibling commit that does not change the dry sha.
+		commitWithDrySha("dry-a", "one.txt")
+		commitWithDrySha("dry-b", "two.txt")
+		rePromoteSha := commitWithDrySha("dry-a", "three.txt")
+		commitWithDrySha("dry-a", "four.txt")
+		branch = mustRunGit(workDir, "rev-parse", "--abbrev-ref", "HEAD")
+		mustRunGit(workDir, "push", "-u", "origin", branch)
+		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
+
+		shas := revList()
+		Expect(findDrySha(ctx, gitOps, shas, "", "dry-a")).To(Equal(rePromoteSha),
+			"the newest contiguous run wins; the ancient dry-a commit must not match")
+	})
+
+	It("returns empty when the tip does not carry the dry sha (closed-not-merged)", func() {
+		commitWithDrySha("dry-a", "one.txt")
+		commitWithDrySha("dry-b", "two.txt")
+		branch = mustRunGit(workDir, "rev-parse", "--abbrev-ref", "HEAD")
+		mustRunGit(workDir, "push", "-u", "origin", branch)
+		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
+
+		shas := revList()
+		Expect(findDrySha(ctx, gitOps, shas, "", "dry-never-merged")).To(BeEmpty())
+		Expect(findDrySha(ctx, gitOps, shas, "", "")).To(BeEmpty(), "no dry sha trailer means no match")
+	})
+
+	It("returns the root commit when the whole (short) history carries the dry sha", func() {
+		first := commitWithDrySha("dry-a", "one.txt")
+		commitWithDrySha("dry-a", "two.txt")
+		branch = mustRunGit(workDir, "rev-parse", "--abbrev-ref", "HEAD")
+		mustRunGit(workDir, "push", "-u", "origin", branch)
+		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
+
+		shas := revList()
+		Expect(findDrySha(ctx, gitOps, shas, "", "dry-a")).To(Equal(first),
+			"reaching the branch root means the oldest commit introduced the dry sha")
+	})
+
+	It("returns empty when the transition is not visible inside a full search window", func() {
+		commitWithDrySha("dry-old", "zero.txt")
+		for i := 0; i < mergeCommitSearchWindow; i++ {
+			commitWithDrySha("dry-a", fmt.Sprintf("file-%d.txt", i))
+		}
+		branch = mustRunGit(workDir, "rev-parse", "--abbrev-ref", "HEAD")
+		mustRunGit(workDir, "push", "-u", "origin", branch)
+		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
+
+		shas := revList()
+		Expect(shas).To(HaveLen(mergeCommitSearchWindow))
+		Expect(findDrySha(ctx, gitOps, shas, "", "dry-a")).To(BeEmpty(),
+			"a full window of matches is ambiguous: the transition commit is older than the window")
+	})
+})
