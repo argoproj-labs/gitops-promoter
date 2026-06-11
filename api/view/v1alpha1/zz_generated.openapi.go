@@ -1133,7 +1133,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicySpec(
 					},
 					"proposedBranch": {
 						SchemaProps: spec.SchemaProps{
-							Description: "ProposedBranch staging hydrated branch",
+							Description: "ProposedBranch staging hydrated branch Must not start with '-', contain ':', or contain '..'.",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",
@@ -1141,7 +1141,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicySpec(
 					},
 					"activeBranch": {
 						SchemaProps: spec.SchemaProps{
-							Description: "ActiveBranch staging hydrated branch",
+							Description: "ActiveBranch staging hydrated branch Must not start with '-', contain ':', or contain '..'.",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",
@@ -2072,7 +2072,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_Environment(ref common.Re
 				Properties: map[string]spec.Schema{
 					"branch": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Branch is the name of the active branch for the environment.",
+							Description: "Branch is the name of the active branch for the environment. Must not start with '-', contain ':', or contain '..'.",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",
@@ -4085,7 +4085,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestSpec(ref commo
 					},
 					"targetBranch": {
 						SchemaProps: spec.SchemaProps{
-							Description: "TargetBranch is the head the git reference we are merging from Head ---> Base",
+							Description: "TargetBranch is the head the git reference we are merging from Head ---> Base Must not start with '-', contain ':', or contain '..'.",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",
@@ -4093,7 +4093,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestSpec(ref commo
 					},
 					"sourceBranch": {
 						SchemaProps: spec.SchemaProps{
-							Description: "SourceBranch is the base the git reference that we are merging into Head ---> Base",
+							Description: "SourceBranch is the base the git reference that we are merging into Head ---> Base Must not start with '-', contain ':', or contain '..'.",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",

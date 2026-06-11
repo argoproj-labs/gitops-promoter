@@ -234,7 +234,7 @@ var _ = Describe("APIServer integration (in-process server + dynamic client)", O
 		Expect(addedObj.GetName()).To(Equal(testPSName))
 
 		By("receiving a delta after a child change is reconciled")
-		provider.reconcileKey(context.Background(), types.NamespacedName{Namespace: testNamespace, Name: testPSName})
+		Expect(provider.reconcileKey(context.Background(), types.NamespacedName{Namespace: testNamespace, Name: testPSName})).To(Succeed())
 
 		delta := nextDataEvent()
 		Expect([]watch.EventType{watch.Added, watch.Modified}).To(ContainElement(delta.Type))

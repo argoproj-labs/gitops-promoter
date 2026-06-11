@@ -93,8 +93,9 @@ yarn-error.log*
 .env
 .vite/
 
-# Built UI static files
-ui/web/static/
+# Built UI static files (keep a placeholder so //go:embed static always compiles)
+ui/web/static/*
+!ui/web/static/placeholder.txt
 
 # MkDocs build output
 mkdocs-lint.log
@@ -102,6 +103,9 @@ mkdocs-lint.log
 site/
 # Go build output (prevent accidentally committing the manager binary)
 main
+# hack/view2ts build output
+hack/view2ts/view2ts
+hack/view2ts/dist/
 
 # Claude Code
 .claude

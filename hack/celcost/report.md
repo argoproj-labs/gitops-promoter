@@ -10,15 +10,15 @@ Estimated static CEL costs versus kube-apiserver limits, computed from `k8s.io/a
 | Resource | Version | Total cost | % of schema limit |
 |---|---|---:|---:|
 | ArgoCDCommitStatus | v1alpha1 | 0 | 0.00% |
-| ChangeTransferPolicy | v1alpha1 | 56,623,119 | 56.62% |
+| ChangeTransferPolicy | v1alpha1 | 56,623,293 | 56.62% |
 | ClusterScmProvider | v1alpha1 | 135 | 0.00% |
 | CommitStatus | v1alpha1 | 3 | 0.00% |
 | ControllerConfiguration | v1alpha1 | 2,840 | 0.00% |
 | GitCommitStatus | v1alpha1 | 0 | 0.00% |
 | GitRepository | v1alpha1 | 128 | 0.00% |
 | PreviousEnvironmentCommitStatus | v1alpha1 | 0 | 0.00% |
-| PromotionStrategy | v1alpha1 | 72,351,744 | 72.35% |
-| PullRequest | v1alpha1 | 629,162 | 0.63% |
+| PromotionStrategy | v1alpha1 | 72,438,744 | 72.44% |
+| PullRequest | v1alpha1 | 270 | 0.00% |
 | RevertCommit | v1alpha1 | 0 | 0.00% |
 | ScmProvider | v1alpha1 | 135 | 0.00% |
 | TimedCommitStatus | v1alpha1 | 0 | 0.00% |
@@ -60,12 +60,18 @@ Source: `promoter.argoproj.io_changetransferpolicies.yaml`
 | `.status.proposed.dry.references[].commit.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
 | `.status.proposed.hydrated.references[].commit.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
 | `.status.proposed.note.references[].commit.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
+| `.spec.activeBranch` | 42 | 0.00% | `!self.contains(':')` |
+| `.spec.activeBranch` | 42 | 0.00% | `!self.contains('..')` |
+| `.spec.proposedBranch` | 42 | 0.00% | `!self.contains(':')` |
+| `.spec.proposedBranch` | 42 | 0.00% | `!self.contains('..')` |
+| `.spec.activeBranch` | 3 | 0.00% | `!self.startsWith('-')` |
+| `.spec.proposedBranch` | 3 | 0.00% | `!self.startsWith('-')` |
 | `.status.active.dry.repoURL` | 3 | 0.00% | `self == '' \|\| isURL(self)` |
 | `.status.active.hydrated.repoURL` | 3 | 0.00% | `self == '' \|\| isURL(self)` |
 | `.status.proposed.dry.repoURL` | 3 | 0.00% | `self == '' \|\| isURL(self)` |
 | `.status.proposed.hydrated.repoURL` | 3 | 0.00% | `self == '' \|\| isURL(self)` |
 | `.status.pullRequest.url` | 3 | 0.00% | `self == '' \|\| isURL(self)` |
-| **Total** | **56,623,119** | **56.62%** | |
+| **Total** | **56,623,293** | **56.62%** | |
 
 #### ClusterScmProvider
 
@@ -184,7 +190,10 @@ Source: `promoter.argoproj.io_promotionstrategies.yaml`
 | `.status.environments[].proposed.hydrated.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
 | `.status.environments[].proposed.note.references[].commit.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
 | `.status.environments[].pullRequest.url` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| **Total** | **72,351,744** | **72.35%** | |
+| `.spec.environments[].branch` | 42,000 | 0.42% | `!self.contains(':')` |
+| `.spec.environments[].branch` | 42,000 | 0.42% | `!self.contains('..')` |
+| `.spec.environments[].branch` | 3,000 | 0.03% | `!self.startsWith('-')` |
+| **Total** | **72,438,744** | **72.44%** | |
 
 #### PullRequest
 
@@ -194,11 +203,17 @@ Source: `promoter.argoproj.io_pullrequests.yaml`
 
 | Path | Cost | % of rule limit | Expression |
 |---|---:|---:|---|
-| `.spec.sourceBranch` | 314,575 | 3.15% | `self == oldSelf` |
-| `.spec.targetBranch` | 314,575 | 3.15% | `self == oldSelf` |
+| `.spec.sourceBranch` | 42 | 0.00% | `self == oldSelf` |
+| `.spec.sourceBranch` | 42 | 0.00% | `!self.contains(':')` |
+| `.spec.sourceBranch` | 42 | 0.00% | `!self.contains('..')` |
+| `.spec.targetBranch` | 42 | 0.00% | `self == oldSelf` |
+| `.spec.targetBranch` | 42 | 0.00% | `!self.contains(':')` |
+| `.spec.targetBranch` | 42 | 0.00% | `!self.contains('..')` |
 | `(root)` | 9 | 0.00% | `self.spec.state == 'open' \|\| has(self.status.id) && self.status.id != ""` |
+| `.spec.sourceBranch` | 3 | 0.00% | `!self.startsWith('-')` |
+| `.spec.targetBranch` | 3 | 0.00% | `!self.startsWith('-')` |
 | `.status.url` | 3 | 0.00% | `self == '' \|\| isURL(self)` |
-| **Total** | **629,162** | **0.63%** | |
+| **Total** | **270** | **0.00%** | |
 
 #### RevertCommit
 

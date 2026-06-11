@@ -26,6 +26,38 @@
 // The package-level functions that do not use a clone (LsRemote, AddTrailerToCommitMessage,
 // ParseTrailersFromMessage) are concurrency-safe.
 //
+// # Clone state invariant
+//
+// Operations leave the clone in a "resting state" on return (success or error): an empty
+// `git status --porcelain`, no in-progress markers (.git/MERGE_HEAD, CHERRY_PICK_HEAD,
+// rebase-merge, rebase-apply), and a HEAD that resolves to a commit. In practice every operation
+// here satisfies this trivially, because none of them mutate the clone's index, worktree, or HEAD:
+//
+//   - Read operations resolve everything from refs and the object DB (rev-parse, ls-tree, show,
+//     cat-file, log, notes, rev-list, merge-tree --write-tree). They work even on an otherwise dirty
+//     clone and never write to the index/worktree/HEAD.
+//   - The merges (MergeWithOursStrategy, MergeWithOursStrategyForPath) build their result entirely
+//     in the object DB — commit-tree for the "ours" merge, and a temporary index (GIT_INDEX_FILE)
+//     plus read-tree/write-tree/commit-tree for the path-scoped merge — then push the computed
+//     commit straight to the remote ref. They never check out a branch, so they cannot be wedged by,
+//     nor leave behind, a dirty worktree or a half-finished merge.
+//
+// The clone's working tree therefore stays exactly as CloneRepo left it for the life of the clone.
+//
+// MAINTAINER NOTE: new code MUST NOT introduce worktree-mutating git operations (checkout, merge,
+// reset, add, commit, rm against the real index/worktree). Prefer object-DB plumbing as the merges
+// do; if a worktree mutation is ever truly unavoidable, it MUST restore the resting state before
+// returning (on success AND error) and be covered by an invariant test (see the merge specs that
+// assert HEAD and `git status --porcelain` are unchanged across a merge).
+//
+// Note on freshness preconditions (a separate concern from the resting-state invariant): operations
+// that read a specific ref/SHA/note assume the relevant objects were already fetched. HasConflict
+// and the merges assume origin/<active> and origin/<proposed> were fetched by an earlier
+// GetBranchShas; SHA-based readers (GetShaMetadataFromGit, GetShaMetadataFromFile,
+// GetRevListFirstParent, GetTrailers) assume the commit is present; GetHydratorNote assumes
+// FetchNotes ran. These are forward ordering requirements satisfied by the controller's call
+// sequence; they are documented per method but not enforced here.
+//
 // # Future work
 //
 // The per-identity-clone model trades disk space for safety. In the future the library could be made
@@ -170,7 +202,10 @@ func buildHydratorMetadataPath(activePath string) string {
 	return path.Join(activePath, "hydrator.metadata")
 }
 
-// GetBranchShas checks out the given branch, pulls the latest changes, and returns the hydrated and dry SHAs.
+// GetBranchShas fetches the given branch and returns its hydrated and dry SHAs.
+//
+// Read-only: fetches the branch ref and reads from refs/object DB; never mutates the clone's
+// index/worktree/HEAD.
 func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch, activePath string) (BranchShas, error) {
 	logger := log.FromContext(ctx)
 	gitPath := g.ClonePath()
@@ -238,6 +273,9 @@ func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch, activ
 }
 
 // GetShaMetadataFromFile retrieves commit metadata from the hydrator.metadata file for a given SHA.
+//
+// Read-only: never mutates the clone's index/worktree/HEAD. Requires the SHA's objects to have been
+// fetched.
 func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha, activePath string) (v1alpha1.CommitShaState, error) {
 	logger := log.FromContext(ctx)
 
@@ -279,6 +317,9 @@ func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha,
 }
 
 // GetShaMetadataFromGit retrieves commit metadata by running git commands for a given SHA.
+//
+// Read-only: never mutates the clone's index/worktree/HEAD. Requires the SHA's commit object to have
+// been fetched.
 func (g *EnvironmentOperations) GetShaMetadataFromGit(ctx context.Context, sha string) (v1alpha1.CommitShaState, error) {
 	gitPath := g.ClonePath()
 	if gitPath == "" {
@@ -451,11 +492,24 @@ func LsRemote(ctx context.Context, gap scms.GitOperationsProvider, gitRepo *v1al
 
 // runCmd runs a git command in the given directory with the provided arguments and returns stdout, stderr, and error.
 func (g *EnvironmentOperations) runCmd(ctx context.Context, directory string, args ...string) (string, string, error) {
-	return runCmd(ctx, g.gap, directory, args...)
+	return runCmdWithEnv(ctx, g.gap, directory, nil, args...)
+}
+
+// runCmdWithEnv is like runCmd but sets additional environment variables (for example
+// GIT_INDEX_FILE) on top of the standard auth env. It is used by the plumbing-based merges, which
+// build trees in a temporary index so the clone's real index and worktree are never touched.
+func (g *EnvironmentOperations) runCmdWithEnv(ctx context.Context, directory string, extraEnv []string, args ...string) (string, string, error) {
+	return runCmdWithEnv(ctx, g.gap, directory, extraEnv, args...)
 }
 
 // runCmd runs a git command with the provided arguments and returns stdout, stderr, and error.
 func runCmd(ctx context.Context, gap scms.GitOperationsProvider, directory string, args ...string) (string, string, error) {
+	return runCmdWithEnv(ctx, gap, directory, nil, args...)
+}
+
+// runCmdWithEnv runs a git command, appending extraEnv to the standard auth environment, and
+// returns stdout, stderr, and error.
+func runCmdWithEnv(ctx context.Context, gap scms.GitOperationsProvider, directory string, extraEnv []string, args ...string) (string, string, error) {
 	user, err := gap.GetUser(ctx)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to get user: %w", err)
@@ -467,13 +521,13 @@ func runCmd(ctx context.Context, gap scms.GitOperationsProvider, directory strin
 	}
 
 	cmd := exec.CommandContext(ctx, "git", args...)
-	cmd.Env = []string{
+	cmd.Env = append([]string{
 		"GIT_ASKPASS=promoter_askpass.sh", // Needs to be on path
 		"GIT_USERNAME=" + user,
 		"GIT_PASSWORD=" + token,
 		"PATH=" + os.Getenv("PATH"),
 		"GIT_TERMINAL_PROMPT=0",
-	}
+	}, extraEnv...)
 	var stdoutBuf bytes.Buffer
 	var stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf
@@ -496,8 +550,10 @@ func runCmd(ctx context.Context, gap scms.GitOperationsProvider, directory strin
 }
 
 // HasConflict checks if there is a merge conflict between the proposed branch and the active branch using git merge-tree.
-// This performs a stateless merge check without modifying the working directory. It assumes that origin/<branch> is
-// currently fetched and updated in the local repository. This should happen via GetBranchShas function earlier in the reconcile.
+//
+// Read-only: uses merge-tree --write-tree, a stateless check that writes only loose objects and never
+// mutates the clone's index/worktree/HEAD. Requires origin/<active> and origin/<proposed> to have
+// been fetched (GetBranchShas earlier in the reconcile).
 func (g *EnvironmentOperations) HasConflict(ctx context.Context, proposedBranch, activeBranch string) (bool, error) {
 	logger := log.FromContext(ctx)
 	repoPath := g.ClonePath()
@@ -521,33 +577,43 @@ func (g *EnvironmentOperations) HasConflict(ctx context.Context, proposedBranch,
 	return false, nil
 }
 
-// MergeWithOursStrategy merges the proposed branch into the active branch using the "ours" strategy.
-// This assumes that both branches have already been fetched via GetBranchShas earlier in the reconciliation,
-// ensuring we merge the exact same refs that were checked for conflicts.
+// MergeWithOursStrategy merges the active branch into the proposed branch using the "ours" strategy
+// and pushes the result to the proposed branch.
+//
+// Operates on the object DB only: it builds the merge commit with commit-tree and pushes it directly,
+// never checking out or otherwise mutating the clone's worktree/index/HEAD (see the package "Clone
+// state invariant" docs). Requires origin/<proposed> and origin/<active> to have been fetched
+// (GetBranchShas earlier in the reconcile).
 func (g *EnvironmentOperations) MergeWithOursStrategy(ctx context.Context, proposedBranch, activeBranch string) error {
 	logger := log.FromContext(ctx)
 	gitPath := g.ClonePath()
 
-	// Checkout the proposed branch from the already-fetched origin ref
-	// We use the origin ref to ensure we're working with the same commits that were checked for conflicts
-	_, stderr, err := g.runCmd(ctx, gitPath, "checkout", "-B", proposedBranch, "origin/"+proposedBranch)
-	if err != nil {
-		logger.Error(err, "Failed to checkout branch", "branch", proposedBranch, "stderr", stderr)
-		return fmt.Errorf("failed to checkout branch %q: %w (stderr: %s)", proposedBranch, err, stderr)
-	}
+	proposedRef := "origin/" + proposedBranch
+	activeRef := "origin/" + activeBranch
 
-	// Perform the merge with "ours" strategy using the already-fetched origin ref
-	_, stderr, err = g.runCmd(ctx, gitPath, "merge", "-s", "ours", "origin/"+activeBranch)
+	// The "ours" strategy keeps proposed's tree wholesale and records active as a second parent. We
+	// build that commit directly from the already-fetched refs, so nothing is checked out and the
+	// clone's worktree/index are never touched.
+	treeSha, stderr, err := g.runCmd(ctx, gitPath, "rev-parse", proposedRef+"^{tree}")
 	if err != nil {
-		logger.Error(err, "Failed to merge branch", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
-		return fmt.Errorf("failed to merge branch %q into %q with 'ours' strategy: %w", activeBranch, proposedBranch, err)
+		logger.Error(err, "Failed to resolve proposed tree", "proposedBranch", proposedBranch, "stderr", stderr)
+		return fmt.Errorf("failed to resolve tree for branch %q: %w (stderr: %s)", proposedBranch, err, stderr)
 	}
+	treeSha = strings.TrimSpace(treeSha)
 
-	// Push the changes to the remote repository
-	_, stderr, err = g.runCmd(ctx, gitPath, "push", "origin", proposedBranch)
+	commitMessage := fmt.Sprintf("Merge %s into %s (ours)", activeBranch, proposedBranch)
+	commitSha, stderr, err := g.runCmd(ctx, gitPath, "commit-tree", treeSha, "-p", proposedRef, "-p", activeRef, "-m", commitMessage)
+	if err != nil {
+		logger.Error(err, "Failed to create merge commit", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
+		return fmt.Errorf("failed to create 'ours' merge commit for branch %q: %w (stderr: %s)", proposedBranch, err, stderr)
+	}
+	commitSha = strings.TrimSpace(commitSha)
+
+	// Push the computed commit straight to the remote proposed ref; no local branch, no checkout.
+	_, stderr, err = g.runCmd(ctx, gitPath, "push", "origin", commitSha+":refs/heads/"+proposedBranch)
 	if err != nil {
 		logger.Error(err, "Failed to push merged branch", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
-		return fmt.Errorf("failed to push merged branch %q: %w", proposedBranch, err)
+		return fmt.Errorf("failed to push merged branch %q: %w (stderr: %s)", proposedBranch, err, stderr)
 	}
 
 	logger.Info("Successfully merged branches with 'ours' strategy", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
@@ -555,57 +621,82 @@ func (g *EnvironmentOperations) MergeWithOursStrategy(ctx context.Context, propo
 }
 
 // MergeWithOursStrategyForPath resolves conflicts by taking proposed branch content only within activePath and
-// active branch content everywhere else.
+// active branch content everywhere else, then pushes the result to the proposed branch.
+//
+// Operates on the object DB only: it assembles the resolved tree in a temporary index (via
+// GIT_INDEX_FILE), creates the merge commit with commit-tree, and pushes it directly. The clone's
+// real index/worktree/HEAD are never touched, so this cannot be wedged by — or leave behind — a
+// dirty worktree or an in-progress merge (see the package "Clone state invariant" docs). Requires
+// origin/<proposed> and origin/<active> to have been fetched (GetBranchShas earlier in the reconcile).
 func (g *EnvironmentOperations) MergeWithOursStrategyForPath(ctx context.Context, proposedBranch, activeBranch, activePath string) error {
 	logger := log.FromContext(ctx)
 	gitPath := g.ClonePath()
 
-	_, stderr, err := g.runCmd(ctx, gitPath, "checkout", "-B", proposedBranch, "origin/"+proposedBranch)
+	proposedRef := "origin/" + proposedBranch
+	activeRef := "origin/" + activeBranch
+
+	// Build the resolved tree in a temporary index so the clone's real index/worktree/HEAD are never
+	// touched. The temp index lives outside the clone so it cannot appear as an untracked file.
+	tmpIndex, err := os.CreateTemp("", "promoter-merge-index-*")
 	if err != nil {
-		logger.Error(err, "Failed to checkout branch", "branch", proposedBranch, "stderr", stderr)
-		return fmt.Errorf("failed to checkout branch %q: %w", proposedBranch, err)
+		return fmt.Errorf("failed to create temp index for path-scoped merge: %w", err)
 	}
+	tmpIndexPath := tmpIndex.Name()
+	_ = tmpIndex.Close()
+	defer func() {
+		if rmErr := os.Remove(tmpIndexPath); rmErr != nil && !os.IsNotExist(rmErr) {
+			logger.Error(rmErr, "failed to remove temp index", "path", tmpIndexPath)
+		}
+	}()
+	indexEnv := []string{"GIT_INDEX_FILE=" + tmpIndexPath}
 
-	stdout, stderr, err := g.runCmd(ctx, gitPath, "merge", "--no-commit", "--no-ff", "origin/"+activeBranch)
-	if err != nil && !strings.Contains(stdout, "CONFLICT") && !strings.Contains(stderr, "CONFLICT") &&
-		!strings.Contains(stdout, "Automatic merge failed") && !strings.Contains(stderr, "Automatic merge failed") {
-		logger.Error(err, "Failed to start merge", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
-		return fmt.Errorf("failed to merge branch %q into %q: %w (stdout: %s, stderr: %s)", activeBranch, proposedBranch, err, stdout, stderr)
-	}
-
-	_, stderr, err = g.runCmd(ctx, gitPath, "checkout", "origin/"+activeBranch, "--", ".")
+	// Start from active's tree (active wins outside activePath).
+	_, stderr, err := g.runCmdWithEnv(ctx, gitPath, indexEnv, "read-tree", activeRef)
 	if err != nil {
-		logger.Error(err, "Failed to checkout active branch content", "activeBranch", activeBranch, "stderr", stderr)
-		return fmt.Errorf("failed to checkout active branch content from %q: %w (stderr: %s)", activeBranch, err, stderr)
+		logger.Error(err, "Failed to read active tree into temp index", "activeBranch", activeBranch, "stderr", stderr)
+		return fmt.Errorf("failed to read tree for branch %q: %w (stderr: %s)", activeBranch, err, stderr)
 	}
 
-	// Remove the activePath subtree before checking it out from the proposed branch so that
-	// files deleted in proposedBranch are not left behind from the activeBranch checkout above.
-	_, stderr, err = g.runCmd(ctx, gitPath, "rm", "-r", "-f", "--ignore-unmatch", "--", ":(literal)"+activePath)
+	// Drop the activePath subtree so proposed's version (including any deletions) fully replaces it.
+	_, stderr, err = g.runCmdWithEnv(ctx, gitPath, indexEnv, "rm", "-r", "-f", "--cached", "--ignore-unmatch", "--", ":(literal)"+activePath)
 	if err != nil {
-		logger.Error(err, "Failed to remove activePath before proposed checkout", "activePath", activePath, "stderr", stderr)
-		return fmt.Errorf("failed to remove activePath %q before proposed checkout: %w (stderr: %s)", activePath, err, stderr)
+		logger.Error(err, "Failed to remove activePath from temp index", "activePath", activePath, "stderr", stderr)
+		return fmt.Errorf("failed to remove activePath %q from index: %w (stderr: %s)", activePath, err, stderr)
 	}
 
-	_, stderr, err = g.runCmd(ctx, gitPath, "checkout", "origin/"+proposedBranch, "--", ":(literal)"+activePath)
+	// Overlay proposed's activePath subtree (proposed wins inside activePath). Skip the overlay if
+	// proposed has no content at activePath — the subtree then stays removed, matching proposed.
+	lsTreeStdout, stderr, err := g.runCmd(ctx, gitPath, "ls-tree", proposedRef, "--", ":(literal)"+activePath)
 	if err != nil {
-		logger.Error(err, "Failed to checkout proposed activePath content", "proposedBranch", proposedBranch, "activePath", activePath, "stderr", stderr)
-		return fmt.Errorf("failed to checkout activePath %q from proposed branch %q: %w (stderr: %s)", activePath, proposedBranch, err, stderr)
+		logger.Error(err, "Failed to inspect proposed activePath", "proposedBranch", proposedBranch, "activePath", activePath, "stderr", stderr)
+		return fmt.Errorf("failed to inspect activePath %q on branch %q: %w (stderr: %s)", activePath, proposedBranch, err, stderr)
+	}
+	if strings.TrimSpace(lsTreeStdout) != "" {
+		_, stderr, err = g.runCmdWithEnv(ctx, gitPath, indexEnv, "read-tree", "--prefix="+activePath+"/", proposedRef+":"+activePath)
+		if err != nil {
+			logger.Error(err, "Failed to overlay proposed activePath into temp index", "proposedBranch", proposedBranch, "activePath", activePath, "stderr", stderr)
+			return fmt.Errorf("failed to overlay activePath %q from branch %q: %w (stderr: %s)", activePath, proposedBranch, err, stderr)
+		}
 	}
 
-	_, stderr, err = g.runCmd(ctx, gitPath, "add", "-A")
+	// Write the resolved tree and create the merge commit. Parents are [proposed, active], preserving
+	// the "ours"-style topology so the subsequent SCM merge stays clean.
+	treeSha, stderr, err := g.runCmdWithEnv(ctx, gitPath, indexEnv, "write-tree")
 	if err != nil {
-		logger.Error(err, "Failed to stage files during path-scoped merge", "stderr", stderr)
-		return fmt.Errorf("failed to stage files for path-scoped merge: %w (stderr: %s)", err, stderr)
+		logger.Error(err, "Failed to write resolved tree", "stderr", stderr)
+		return fmt.Errorf("failed to write resolved tree for branch %q: %w (stderr: %s)", proposedBranch, err, stderr)
 	}
+	treeSha = strings.TrimSpace(treeSha)
 
-	_, stderr, err = g.runCmd(ctx, gitPath, "commit", "-m", "Resolve conflicts for "+activePath)
+	commitSha, stderr, err := g.runCmd(ctx, gitPath, "commit-tree", treeSha, "-p", proposedRef, "-p", activeRef, "-m", "Resolve conflicts for "+activePath)
 	if err != nil {
-		logger.Error(err, "Failed to commit path-scoped merge", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "activePath", activePath, "stderr", stderr)
-		return fmt.Errorf("failed to commit path-scoped merge for branch %q: %w (stderr: %s)", proposedBranch, err, stderr)
+		logger.Error(err, "Failed to create path-scoped merge commit", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "activePath", activePath, "stderr", stderr)
+		return fmt.Errorf("failed to create path-scoped merge commit for branch %q: %w (stderr: %s)", proposedBranch, err, stderr)
 	}
+	commitSha = strings.TrimSpace(commitSha)
 
-	_, stderr, err = g.runCmd(ctx, gitPath, "push", "origin", proposedBranch)
+	// Push the computed commit straight to the remote proposed ref; no local branch, no checkout.
+	_, stderr, err = g.runCmd(ctx, gitPath, "push", "origin", commitSha+":refs/heads/"+proposedBranch)
 	if err != nil {
 		logger.Error(err, "Failed to push merged branch", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
 		return fmt.Errorf("failed to push merged branch %q: %w (stderr: %s)", proposedBranch, err, stderr)
@@ -616,6 +707,9 @@ func (g *EnvironmentOperations) MergeWithOursStrategyForPath(ctx context.Context
 }
 
 // GetRevListFirstParent retrieves the first parent commit SHAs for the given branch using git rev-list.
+//
+// Read-only: never mutates the clone's index/worktree/HEAD. Requires the branch's commits to have
+// been fetched.
 func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, branch string, maxCount int) ([]string, error) {
 	logger := log.FromContext(ctx)
 
@@ -670,6 +764,8 @@ func AddTrailerToCommitMessage(ctx context.Context, commitMessage, trailerKey, t
 }
 
 // FetchNotes fetches the git notes from the remote repository.
+//
+// Read-only: updates the notes ref only; never mutates the clone's index/worktree/HEAD.
 func (g *EnvironmentOperations) FetchNotes(ctx context.Context) error {
 	logger := log.FromContext(ctx)
 	gitPath := g.ClonePath()
@@ -699,6 +795,8 @@ func (g *EnvironmentOperations) FetchNotes(ctx context.Context) error {
 
 // GetHydratorNote reads the hydrator git note for a given commit SHA.
 // Returns an empty HydratorMetadata if no note exists for the commit.
+//
+// Read-only: never mutates the clone's index/worktree/HEAD. Requires FetchNotes to have run.
 func (g *EnvironmentOperations) GetHydratorNote(ctx context.Context, sha string) (*HydratorMetadata, error) {
 	logger := log.FromContext(ctx)
 	gitPath := g.ClonePath()
@@ -774,6 +872,9 @@ func ParseTrailersFromMessage(ctx context.Context, commitMessage string) (map[st
 
 // GetTrailers retrieves the trailers from the last commit in the repository using git interpret-trailers.
 // Returns a map where each key can have multiple values (e.g., multiple "Signed-off-by" trailers).
+//
+// Read-only: never mutates the clone's index/worktree/HEAD. Requires the SHA's commit object to have
+// been fetched.
 func (g *EnvironmentOperations) GetTrailers(ctx context.Context, sha string) (map[string][]string, error) {
 	logger := log.FromContext(ctx)
 	// run git interpret-trailers to get the trailers from the last commit
