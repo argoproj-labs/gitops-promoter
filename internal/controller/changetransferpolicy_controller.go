@@ -120,12 +120,6 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, err
 	}
 
-	// Handle PR finalizer removal if PR is being deleted and CTP status is already synced
-	err = r.handlePRFinalizerRemoval(ctx, &ctp)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to handle PR finalizer removal: %w", err)
-	}
-
 	// Remove any existing Ready condition. We want to start fresh.
 	meta.RemoveStatusCondition(ctp.GetConditions(), string(promoterConditions.Ready))
 
@@ -156,6 +150,15 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	err = gitOperations.FetchNotes(ctx)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to fetch git notes: %w", err)
+	}
+
+	// Handle PR finalizer removal if PR is being deleted and CTP status is already synced. This runs after the
+	// clone/notes fetch because it writes the promotion-history git note before releasing the PR: removal now
+	// requires a working clone, which is acceptable since promotion as a whole is blocked anyway when git is
+	// unreachable, and handleCTPCleanupOnDelete remains the note-free escape hatch when the CTP itself is deleted.
+	err = r.handlePRFinalizerRemoval(ctx, &ctp, gitOperations)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to handle PR finalizer removal: %w", err)
 	}
 
 	err = r.calculateStatus(ctx, &ctp, gitOperations)
@@ -239,11 +242,21 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 	ctp.Status.History = history
 }
 
-// buildHistoryEntry creates a single history entry for the given SHA
+// buildHistoryEntry creates a single history entry for the given SHA. The trailer data comes from the
+// promotion-history git note when one exists (written at PR finalization, surviving SCM-side message
+// rewrites), falling back to the commit message trailers for commits that predate the notes.
 func (r *ChangeTransferPolicyReconciler) buildHistoryEntry(ctx context.Context, sha, activePath string, gitOperations *git.EnvironmentOperations) (promoterv1alpha1.History, bool, error) {
-	activeTrailers, err := gitOperations.GetTrailers(ctx, sha)
+	logger := log.FromContext(ctx)
+
+	activeTrailers, err := gitOperations.GetHistoryNote(ctx, sha)
 	if err != nil {
-		return promoterv1alpha1.History{}, false, fmt.Errorf("failed to get trailers for SHA %q: %w", sha, err)
+		logger.V(4).Info("failed to get history note, falling back to commit message trailers", "sha", sha, "err", err)
+	}
+	if len(activeTrailers) == 0 {
+		activeTrailers, err = gitOperations.GetTrailers(ctx, sha)
+		if err != nil {
+			return promoterv1alpha1.History{}, false, fmt.Errorf("failed to get trailers for SHA %q: %w", sha, err)
+		}
 	}
 
 	historyEntry := promoterv1alpha1.History{
@@ -820,8 +833,9 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 }
 
 // handlePRFinalizerRemoval checks if there's a PR being deleted with our finalizer where the CTP status
-// already matches the PR status. If so, it removes the finalizer to allow the PR to be deleted.
-func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
+// already matches the PR status. If so, it writes the promotion-history git note for the merge and then
+// removes the finalizer to allow the PR to be deleted.
+func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
 	logger := log.FromContext(ctx)
 
 	// Find any PR resources for this CTP
@@ -873,6 +887,15 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 		return nil
 	}
 
+	// Write the promotion-history note before releasing the finalizer: the PR's commit message is the last
+	// place the trailers survive when the SCM rewrote the merge commit (squash or external merge), and the
+	// finalizer is what guarantees that data is still around. A failure here keeps the finalizer so the next
+	// reconcile retries; SetHistoryNote's overwrite semantics make the retry idempotent.
+	if err := r.writePromotionHistoryNote(ctx, ctp, gitOperations, &livePR); err != nil {
+		r.Recorder.Eventf(ctp, nil, "Warning", constants.PromotionHistoryNoteFailedReason, "WritingPromotionHistoryNote", constants.PromotionHistoryNoteFailedMessage, livePR.Name, err)
+		return fmt.Errorf("failed to write promotion history note for PullRequest %q: %w", livePR.Name, err)
+	}
+
 	logger.Info("Removing CTP finalizer from PR - status already synced",
 		"prName", livePR.Name,
 		"prID", livePR.Status.ID,
@@ -889,6 +912,163 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 
 	logger.V(4).Info("PR finalizer removed")
 	return nil
+}
+
+// mergeCommitSearchWindow is how many first-parent commits on the active branch we walk when locating the
+// merge commit for a finalized pull request. The merge is normally at or very near the tip; the window only
+// matters when many commits land between the merge and finalization (e.g. activePath repos sharing a branch).
+const mergeCommitSearchWindow = 50
+
+// writePromotionHistoryNote records the pull request's commit message trailers as a git note on the merge
+// commit of the active branch. The note is the durable copy of the trailer data: when the SCM rewrites the
+// merge commit message (squash merges, or merges performed directly on the SCM), the trailers are lost from
+// the commit itself, and history building falls back to this note.
+//
+// Returns nil without writing a note when there is nothing to record: the PR was closed rather than merged,
+// it never accumulated trailers, or no matching merge commit exists on the active branch (an externally
+// closed PR is indistinguishable from an externally merged one until we look for its merge commit).
+func (r *ChangeTransferPolicyReconciler) writePromotionHistoryNote(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations, livePR *promoterv1alpha1.PullRequest) error {
+	logger := log.FromContext(ctx)
+
+	if livePR.Status.State == promoterv1alpha1.PullRequestClosed {
+		logger.V(4).Info("PR was closed, not merged, skipping promotion history note")
+		return nil
+	}
+	if livePR.Spec.MergeSha == "" {
+		logger.V(4).Info("PR has no merge sha, skipping promotion history note")
+		return nil
+	}
+	externallyMergedOrClosed := livePR.Status.ExternallyMergedOrClosed != nil && *livePR.Status.ExternallyMergedOrClosed
+	if livePR.Status.State != promoterv1alpha1.PullRequestMerged && !externallyMergedOrClosed {
+		logger.V(4).Info("PR is not merged or externally merged/closed, skipping promotion history note",
+			"prState", livePR.Status.State)
+		return nil
+	}
+
+	trailers, err := git.ParseTrailersFromMessage(ctx, livePR.Spec.Commit.Message)
+	if err != nil {
+		return fmt.Errorf("failed to parse trailers from PullRequest commit message: %w", err)
+	}
+	if len(trailers) == 0 {
+		// A brand-new PR can be merged before the CTP's trailer-bearing update ever ran; there is nothing to record.
+		logger.V(4).Info("PR commit message has no trailers, skipping promotion history note")
+		return nil
+	}
+
+	mergeCommitSha, err := findMergeCommitOnActiveBranch(ctx, gitOperations, ctp.Spec.ActiveBranch, ctp.Spec.ProposedBranch, livePR.Spec.MergeSha)
+	if err != nil {
+		return fmt.Errorf("failed to find merge commit on active branch %q: %w", ctp.Spec.ActiveBranch, err)
+	}
+	if mergeCommitSha == "" {
+		// No merge commit means the PR was most likely closed without merging (ExternallyMergedOrClosed cannot
+		// tell the two apart); there is nothing to annotate.
+		logger.V(4).Info("No merge commit found on active branch, skipping promotion history note",
+			"mergeSha", livePR.Spec.MergeSha, "activeBranch", ctp.Spec.ActiveBranch)
+		return nil
+	}
+
+	// The merge-time trailer is added in-flight by the PullRequest controller during a controller-initiated
+	// merge and is never persisted to spec.commit.message, so derive it from the merge commit itself.
+	if _, ok := trailers[constants.TrailerPullRequestMergeTime]; !ok {
+		mergeTime, err := gitOperations.GetShaTime(ctx, mergeCommitSha)
+		if err != nil {
+			return fmt.Errorf("failed to get commit time for merge commit %q: %w", mergeCommitSha, err)
+		}
+		trailers[constants.TrailerPullRequestMergeTime] = []string{mergeTime.Format(time.RFC3339)}
+	}
+
+	if err := gitOperations.SetHistoryNote(ctx, mergeCommitSha, trailers); err != nil {
+		return fmt.Errorf("failed to set history note on merge commit %q: %w", mergeCommitSha, err)
+	}
+
+	logger.Info("Wrote promotion history note", "mergeCommit", mergeCommitSha, "prID", livePR.Status.ID)
+	return nil
+}
+
+// findMergeCommitOnActiveBranch locates the commit on the active branch that merged mergeSha (the proposed
+// branch tip recorded on the PullRequest). It walks first-parent history newest to oldest looking for, in
+// order of preference:
+//
+//  1. the commit itself (fast-forward merge),
+//  2. a merge commit whose second parent is mergeSha or a descendant of it (regular or external merge of a
+//     possibly newer proposed tip),
+//  3. a commit whose tree equals mergeSha's tree (squash merge; only checked when the mergeSha object is
+//     available locally, and as a second pass so it can never shadow an exact match).
+//
+// Returns "" when no matching commit is found, which usually means the PR was closed without merging.
+func findMergeCommitOnActiveBranch(ctx context.Context, gitOperations *git.EnvironmentOperations, activeBranch, proposedBranch, mergeSha string) (string, error) {
+	logger := log.FromContext(ctx)
+
+	if err := gitOperations.FetchBranch(ctx, activeBranch); err != nil {
+		return "", fmt.Errorf("failed to fetch active branch %q: %w", activeBranch, err)
+	}
+	// Make sure the mergeSha object is local for the parent/tree comparisons below. The proposed branch
+	// usually still points at or above it; failing that, try fetching the SHA directly (not all servers
+	// allow that, so both fetches are best-effort).
+	if !gitOperations.CommitExists(ctx, mergeSha) {
+		if err := gitOperations.FetchBranch(ctx, proposedBranch); err != nil {
+			logger.V(4).Info("failed to fetch proposed branch while locating merge commit", "branch", proposedBranch, "err", err)
+		}
+	}
+	if !gitOperations.CommitExists(ctx, mergeSha) {
+		if err := gitOperations.FetchSha(ctx, mergeSha); err != nil {
+			logger.V(4).Info("failed to fetch merge sha while locating merge commit", "sha", mergeSha, "err", err)
+		}
+	}
+	mergeShaIsLocal := gitOperations.CommitExists(ctx, mergeSha)
+
+	shas, err := gitOperations.GetRevListFirstParent(ctx, "origin/"+activeBranch, mergeCommitSearchWindow)
+	if err != nil {
+		return "", fmt.Errorf("failed to get rev-list for branch %q: %w", activeBranch, err)
+	}
+
+	// Pass 1: exact fast-forward or merge-commit matches.
+	for _, sha := range shas {
+		if sha == mergeSha {
+			return sha, nil
+		}
+		parents, err := gitOperations.GetCommitParents(ctx, sha)
+		if err != nil {
+			return "", fmt.Errorf("failed to get parents of commit %q: %w", sha, err)
+		}
+		if len(parents) < 2 {
+			continue
+		}
+		if parents[1] == mergeSha {
+			return sha, nil
+		}
+		if mergeShaIsLocal {
+			// An external merge may have merged a proposed tip newer than the recorded mergeSha.
+			isAncestor, err := gitOperations.IsAncestor(ctx, mergeSha, parents[1])
+			if err != nil {
+				return "", fmt.Errorf("failed to check ancestry of merge sha %q: %w", mergeSha, err)
+			}
+			if isAncestor {
+				return sha, nil
+			}
+		}
+	}
+
+	// Pass 2: squash merges leave no parent link, but the squash commit's tree matches the proposed tip's
+	// tree as long as the active branch had not moved since the PR base (the controller's continuous
+	// back-merge of active into proposed makes that the common case).
+	if mergeShaIsLocal {
+		mergeTree, err := gitOperations.GetTreeSha(ctx, mergeSha)
+		if err != nil {
+			return "", fmt.Errorf("failed to get tree sha of merge sha %q: %w", mergeSha, err)
+		}
+		for _, sha := range shas {
+			tree, err := gitOperations.GetTreeSha(ctx, sha)
+			if err != nil {
+				return "", fmt.Errorf("failed to get tree sha of commit %q: %w", sha, err)
+			}
+			if tree == mergeTree {
+				return sha, nil
+			}
+		}
+	}
+
+	return "", nil
 }
 
 // ctpPullRequestListOptions returns list options for PullRequests owned by this ChangeTransferPolicy.

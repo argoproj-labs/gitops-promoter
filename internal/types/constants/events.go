@@ -28,6 +28,11 @@ const (
 	// PullRequestUpdatedReason indicates that a pull request has been updated.
 	PullRequestUpdatedReason = "PullRequestUpdated"
 
+	// PromotionHistoryNoteFailedReason indicates that writing the promotion-history git note failed.
+	PromotionHistoryNoteFailedReason = "PromotionHistoryNoteFailed"
+	// PromotionHistoryNoteFailedMessage is the message for a failed promotion-history git note write.
+	PromotionHistoryNoteFailedMessage = "Failed to write promotion history note for Pull Request %s: %v"
+
 	// CommitStatusSetReason indicates that a commit status has been set.
 	CommitStatusSetReason = "CommitStatusSet"
 

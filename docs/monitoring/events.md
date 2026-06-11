@@ -30,6 +30,7 @@ All resources may produce the following events:
 | Normal     | PullRequestUpdated  | A pull request was updated for a ChangeTransferPolicy.                                                           |
 | Warning    | TooManyMatchingSha  | There is more than one CommitStatus for a given key and SHA. There must only be one CommitStatus per key/sha.    |
 | Warning    | PullRequestNotReady | One or more of the [PullRequest](../crd-specs.md#pullrequest) managed by this ChangeTransferPolicy is not Ready. |
+| Warning    | PromotionHistoryNoteFailed | Writing the promotion-history git note for a merged pull request failed. The PullRequest finalizer is kept so the write is retried. |
 
 ## CommitStatus
 
