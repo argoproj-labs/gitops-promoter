@@ -35,6 +35,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	"github.com/argoproj-labs/gitops-promoter/internal/version"
 	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
 
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -51,6 +52,7 @@ import (
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 
@@ -165,7 +167,10 @@ func runController(
 	// Create the provider first, then the manager with the provider
 	provider := kubeconfigprovider.New(providerOpts)
 
-	mcMgr, err := mcmanager.New(ctrl.GetConfigOrDie(), provider, ctrl.Options{
+	restConfig := ctrl.GetConfigOrDie()
+	rest.AddUserAgent(restConfig, "gitops-promoter/"+version.Version)
+
+	mcMgr, err := mcmanager.New(restConfig, provider, ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress:    metricsAddr,
