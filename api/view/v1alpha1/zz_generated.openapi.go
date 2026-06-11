@@ -4052,7 +4052,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestTemplate(ref c
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "PullRequestTemplate defines the template configuration for generating pull requests.\n\nTemplates use Go template syntax and have access to Sprig functions for flexible string manipulation and formatting.\n\nTemplate data available when rendering (used by the ChangeTransferPolicy controller when creating/updating PRs):\n  - .ChangeTransferPolicy – the ChangeTransferPolicy for the managing this PullRequest\n  - .PromotionStrategy – the PromotionStrategy for the CTP",
+				Description: "PullRequestTemplate defines the template configuration for generating pull requests.\n\nTemplates use Go template syntax and have access to Sprig functions for flexible string manipulation and formatting.\n\nThe optional CommitMessage template customizes the merge commit message; commit trailers required by the promoter are appended automatically after the rendered message.\n\nTemplate data available when rendering (used by the ChangeTransferPolicy controller when creating/updating PRs):\n  - .ChangeTransferPolicy – the ChangeTransferPolicy for the managing this PullRequest\n  - .PromotionStrategy – the PromotionStrategy for the CTP",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"title": {
@@ -4067,6 +4067,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestTemplate(ref c
 						SchemaProps: spec.SchemaProps{
 							Description: "Description is the template used to generate the body/description of the pull request. Uses Go template syntax with Sprig functions available for string manipulation.",
 							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"commitMessage": {
+						SchemaProps: spec.SchemaProps{
+							Description: "CommitMessage is an optional template used to generate the merge commit message for the pull request. When set, it replaces the default commit message of \"<title>\\n\\n<description>\" (rendered from the Title and Description templates above). When unset, the default behavior is unchanged. Machine-read commit trailers used by the promoter to reconstruct promotion history are always appended after the rendered message; do not attempt to include them in the template. Uses Go template syntax with Sprig functions available for string manipulation.",
 							Type:        []string{"string"},
 							Format:      "",
 						},

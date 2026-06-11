@@ -122,6 +122,11 @@ A global ControllerConfiguration is deployed alongside the controller and applie
 
 All fields are required, but defaults are provided in the installation manifests.
 
+The `pullRequest.template` section controls the title and description of promotion PRs. The optional
+`commitMessage` field customizes the merge commit message; when unset, the message defaults to the rendered
+title and description. Commit trailers used by the promoter to reconstruct promotion history are always
+appended automatically after the rendered message.
+
 ```yaml
 {!internal/controller/testdata/ControllerConfiguration.yaml!}
 ```
