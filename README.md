@@ -65,12 +65,7 @@ See the  **[Contributing](https://gitops-promoter.readthedocs.io/en/latest/contr
 
 ## Roadmap
 
-Planned features include:
-
-* Support for additional SCMs (such as Bitbucket Server)
-* Advanced promotion strategies (such as full DAG support)
-* Deployment window commit status support
-* Multiple instances per cluster for horizontal scaling, reduced blast radius, etc.
+See the **[Roadmap](https://gitops-promoter.readthedocs.io/en/latest/roadmap/)** in the documentation for planned features.
 
 ## Users
 

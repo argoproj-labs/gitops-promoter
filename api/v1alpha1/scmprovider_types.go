@@ -82,6 +82,7 @@ type ScmProviderStatus struct {
 }
 
 // +kubebuilder:ac:generate=true
+// +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#scmprovider",description="CRD reference (examples and behavior)"
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
@@ -115,7 +116,10 @@ type ScmProviderList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&ScmProvider{}, &ScmProviderList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &ScmProvider{}, &ScmProviderList{})
+		return nil
+	})
 }
 
 // +kubebuilder:object:root=false

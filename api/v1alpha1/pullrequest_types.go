@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -35,13 +36,31 @@ type PullRequestSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	Title string `json:"title"`
+	// Immutability is enforced via an explicit XValidation rule rather than the k8s immutable
+	// marker: controller-gen iterates markers of different names in random map order, so mixing
+	// the two makes the emitted x-kubernetes-validations rule order nondeterministic.
+
 	// TargetBranch is the head the git reference we are merging from Head ---> Base
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
+	// Must not start with '-', contain ':', or contain '..'.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=100
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="field is immutable"
+	// +kubebuilder:validation:XValidation:rule="!self.startsWith('-')",message="branch must not start with '-'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains(':')",message="branch must not contain ':'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains('..')",message="branch must not contain '..'"
 	TargetBranch string `json:"targetBranch"`
+	// Immutability via explicit XValidation rather than the k8s immutable marker — see TargetBranch.
+
 	// SourceBranch is the base the git reference that we are merging into Head ---> Base
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
+	// Must not start with '-', contain ':', or contain '..'.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=100
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="field is immutable"
+	// +kubebuilder:validation:XValidation:rule="!self.startsWith('-')",message="branch must not start with '-'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains(':')",message="branch must not contain ':'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains('..')",message="branch must not contain '..'"
 	SourceBranch string `json:"sourceBranch"`
 	// Description is the description body of the pull/merge request
 	Description string `json:"description,omitempty"`
@@ -120,6 +139,7 @@ func (ps *PullRequest) SetObservedGeneration(generation int64) {
 }
 
 // +kubebuilder:ac:generate=true
+// +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#pullrequest",description="CRD reference (examples and behavior)"
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
@@ -149,7 +169,10 @@ type PullRequestList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&PullRequest{}, &PullRequestList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &PullRequest{}, &PullRequestList{})
+		return nil
+	})
 }
 
 // PullRequestState represents the state of a pull request.

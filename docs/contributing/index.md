@@ -9,7 +9,8 @@ Thanks for helping improve GitOps Promoter. The project is still young; we keep 
 3. **Make focused changes** — one logical change per PR when possible.
 4. **Run checks** that match what you changed:
     - **Go only** (no CRD, webhook, or generated install / apply-config churn): `go mod tidy`, `make lint`, `make test-parallel`, `make fuzz-replay` (replay seeds (`f.Add`) + corpus (`testdata/fuzz`); same as CI).
-    - **APIs, CRDs, webhooks, or bundled install YAML** (anything `make build-installer` regenerates—`config/`, `dist/install.yaml`, deepcopy/applyconfiguration, extension icon output): **`make build-installer`**, commit the full diff, then `go mod tidy`, `make lint`, `make test-parallel`.
+    - **APIs, CRDs, webhooks, or bundled install YAML** (anything `make build-installer` regenerates—`config/`, the `dist/` install bundles, deepcopy/applyconfiguration, extension icon output, `hack/celcost/report.md`): **`make build-installer`**, commit the full diff, then `go mod tidy`, `make lint`, `make test-parallel`.
+    - **SCM interfaces** (`internal/scms/`): **`make mockery-gen`**, commit `internal/scms/mock/` (CI checks this separately from `build-installer`).
     - **`ui/`**: `make lint-ui`, `make test-unit-test-extension`, `make test-ui-test-dashboard`.
     - **`docs/`** (this site): `make lint-docs`.
     - CI also runs **Nilaway** and **spell checking**; use **`make nilaway-no-test`** locally if you want parity before pushing.
@@ -43,6 +44,7 @@ To add a **`prepare-commit-msg`** hook that signs off automatically, follow [Arg
 | Metrics                         | [`internal/metrics/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/internal/metrics)       |
 | SCM provider integrations       | [`internal/scms/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/internal/scms) (see [Adding an SCM Provider](adding-an-scm-provider.md)) |
 | User docs (MkDocs)              | [`docs/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/docs)                               |
+| CRD maintenance checklist       | [Maintaining CRDs](maintaining-crds.md)                                                                  |
 | Dashboard & Argo CD extension   | [`ui/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/ui)                                   |
 | Envtest-based integration tests | [`internal/`](https://github.com/argoproj-labs/gitops-promoter/tree/main/internal) (via Ginkgo)          |
 
@@ -51,10 +53,12 @@ To add a **`prepare-commit-msg`** hook that signs off automatically, follow [Arg
 - **Reconcilers** — Follow controller-runtime style used in `internal/controller/`: idempotent reconcile loops, structured logging, and the same client/scheme/recorder patterns as neighboring controllers.
 - **Tests** — Extend Ginkgo suites under `internal/` and reuse envtest patterns from [`internal/controller/suite_test.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/controller/suite_test.go) when testing cluster behavior; mirror how similar resources are covered today.
 - **APIs and RBAC** — Express API permissions with **`// +kubebuilder:rbac`** on the reconcilers in **`internal/controller/*_controller.go`** (not by editing `config/rbac/role.yaml`). Regenerate via **`make build-installer`** so rules stay aligned with what the binary actually needs.
-- **Commit status controllers** — If you create or update `CommitStatus` objects, follow [Commit status development best practices](../commit-status-controllers/development-best-practices.md) (standard labels, owner references, and keys that match `PromotionStrategy` config).
+- **Commit status controllers** — If you create or update `CommitStatus` objects, follow [Developing a CommitStatus](developing-a-commitstatus.md) (standard labels, owner references, and keys that match `PromotionStrategy` config).
+- **Argo CD extension** — To build or test the UI extension locally, see [Developing the Argo CD Extension](developing-the-argocd-extension.md).
 - **Metrics** — Register operational metrics in `internal/metrics` and describe them for operators in [Metrics](../monitoring/metrics.md) (see the note in [`internal/metrics/metrics.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/metrics/metrics.go)).
 - **SCM providers** — New or extended provider code lives under `internal/scms/<provider>/`. Call [`metrics.RecordSCMCall`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/metrics/metrics.go) for every SCM REST request so metrics and debug logs stay correct; see [Adding an SCM Provider](adding-an-scm-provider.md).
 - **Finalizers** — When adding or changing deletion ordering, follow [Using finalizers](using-finalizers.md) (naming, who adds them, and how to watch related objects during delete).
+- **CRD changes** — New or materially changed API types follow [Maintaining CRDs](maintaining-crds.md): testdata example, CRD Specs embed, `externalDocs`, and a strict unmarshal test.
 - **Status writes** — Status subresource updates go through the deferred `utils.HandleReconciliationResult` using per-controller SSA; see [Maintaining resource status](updating-status.md).
 
 ## Questions?

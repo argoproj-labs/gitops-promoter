@@ -1,4 +1,4 @@
-import { getCommitUrl, extractNameOnly, extractBodyPreTrailer, formatDate, timeAgo } from './util';
+import { getCommitUrl, extractNameOnly, extractBodyPreTrailer, timeAgo } from './util';
 import { getEnvironmentStatus, getHealthStatus } from './getStatus';
 import type {
   CommitStatus,
@@ -9,6 +9,7 @@ import type {
   EnrichedEnvDetails,
   PromotionPhase,
   ReferenceCommit,
+  RelativeTimeAgo,
 } from '../types/promotion';
 
 function getChecks(commitStatuses: CommitStatus[]): Check[] {
@@ -45,7 +46,8 @@ function extractReferenceCommitData(dryCommit: Commit): null | ReferenceCommit {
   const subject = referenceCommit.subject || '-';
   const body = referenceCommit.body || '-';
 
-  const date = referenceCommit.date ? formatDate(referenceCommit.date) : '-';
+  // Pass RFC 3339 through for TimeAgo; do not formatDate here.
+  const date = referenceCommit.date;
   const url = getCommitUrl(referenceCommit.repoURL || '', referenceCommit.sha || '');
 
   return { sha, author, subject, body, date, url };
@@ -90,7 +92,7 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
   const activePr = historyWithPr ?? mergedEnvPr;
 
   // Resolve merge time: prefer prMergeTime, fall back to hydrated commitTime
-  let historyMergeTimeAgo: string | null = null;
+  let historyMergeTimeAgo: RelativeTimeAgo | null = null;
   if (index > 0) {
     const entry = history[index];
     const mergeTimeStr =
@@ -100,7 +102,9 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
 
   // Merge time for the live (index 0) active PR
   const liveMergeTimeStr = activePr?.prMergeTime || history[0]?.pullRequest?.prMergeTime || null;
-  const activeMergeTimeAgo = liveMergeTimeStr ? timeAgo(liveMergeTimeStr) : null;
+  const activeMergeTimeAgo: RelativeTimeAgo | null = liveMergeTimeStr
+    ? timeAgo(liveMergeTimeStr)
+    : null;
 
   // In historical view, proposed cards should only show status info, not commit details
   const isHistoric = index > 0;
@@ -117,7 +121,7 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
     activeCommitSubject: activeCommitInfo.subject || '-',
     activeCommitMessage: extractBodyPreTrailer(activeCommitInfo.body || '-'),
     activeCommitAuthor: extractNameOnly(activeCommitInfo.author || '-'),
-    activeCommitDate: activeCommitInfo.commitTime ? formatDate(activeCommitInfo.commitTime) : '-',
+    activeCommitDate: activeCommitInfo.commitTime || '',
     activeCommitUrl: getCommitUrl(activeCommitInfo.repoURL ?? '', activeCommitInfo.sha ?? ''),
     activeSha: activeCommitInfo.sha ? activeCommitInfo.sha.slice(0, 7) : '-',
     activeReferenceCommit: activeReferenceData,
@@ -136,7 +140,7 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
     proposedDryCommitSubject: proposedDry.subject || '-',
     proposedDryCommitBody: extractBodyPreTrailer(proposedDry.body || '-'),
     proposedDryCommitAuthor: extractNameOnly(proposedDry.author || '-'),
-    proposedDryCommitDate: proposedDry.commitTime ? formatDate(proposedDry.commitTime) : '-',
+    proposedDryCommitDate: proposedDry.commitTime || '',
     proposedDryCommitUrl: getCommitUrl(proposedDry.repoURL ?? '', proposedDry.sha ?? ''),
     proposedSha: proposedDry.sha ? proposedDry.sha.slice(0, 7) : '-',
     proposedReferenceCommit: proposedReferenceData,

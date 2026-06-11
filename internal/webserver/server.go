@@ -13,6 +13,7 @@ import (
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
 	webserverlogr "github.com/argoproj-labs/gitops-promoter/internal/webserver/logr"
 	"github.com/argoproj-labs/gitops-promoter/ui/web"
 	"github.com/gin-contrib/gzip"
@@ -28,6 +29,10 @@ import (
 )
 
 var logger = ctrl.Log.WithName("webServer")
+
+// promotionStrategyDetailsKind is the Kind of the aggregated bundle resource and
+// the SSE event name the dashboard UI subscribes to.
+const promotionStrategyDetailsKind = "PromotionStrategyDetails"
 
 // WebServer handles the web server functionality for the dashboard and API endpoints.
 type WebServer struct {
@@ -116,86 +121,31 @@ func (ws *WebServer) sendDeleteEvent(e client.Object) {
 }
 
 // SetupWithManager sets up the WebServer controller with the given manager.
+//
+// Rather than watching the four raw promoter CRD kinds and stitching them together
+// in the browser, the dashboard now watches the single server-computed
+// PromotionStrategyDetails bundle served by the dashboard aggregation apiserver and
+// forwards each bundle to clients over SSE.
 func (ws *WebServer) SetupWithManager(mgr ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(mgr).
 		Named("webServer").
-		Watches(&promoterv1alpha1.PromotionStrategy{}, handler.Funcs{ //nolint:dupl // similar watch handlers are intentional for different resource types
+		Watches(&viewv1alpha1.PromotionStrategyDetails{}, handler.Funcs{
 			CreateFunc: func(ctx context.Context, e event.TypedCreateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if ps, ok := e.Object.(*promoterv1alpha1.PromotionStrategy); ok {
-					ps.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("PromotionStrategy"))
-					ws.sendEvent(ps)
+				if bundle, ok := e.Object.(*viewv1alpha1.PromotionStrategyDetails); ok {
+					bundle.SetGroupVersionKind(viewv1alpha1.GroupVersion.WithKind(promotionStrategyDetailsKind))
+					ws.sendEvent(bundle)
 				}
 			},
 			UpdateFunc: func(ctx context.Context, e event.TypedUpdateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if ps, ok := e.ObjectNew.(*promoterv1alpha1.PromotionStrategy); ok {
-					ps.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("PromotionStrategy"))
-					ws.sendEvent(ps)
+				if bundle, ok := e.ObjectNew.(*viewv1alpha1.PromotionStrategyDetails); ok {
+					bundle.SetGroupVersionKind(viewv1alpha1.GroupVersion.WithKind(promotionStrategyDetailsKind))
+					ws.sendEvent(bundle)
 				}
 			},
 			DeleteFunc: func(ctx context.Context, e event.TypedDeleteEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if ps, ok := e.Object.(*promoterv1alpha1.PromotionStrategy); ok {
-					ps.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("PromotionStrategy"))
-					ws.sendDeleteEvent(ps)
-				}
-			},
-		}).
-		Watches(&promoterv1alpha1.ChangeTransferPolicy{}, handler.Funcs{ //nolint:dupl // similar watch handlers are intentional for different resource types
-			CreateFunc: func(ctx context.Context, e event.TypedCreateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if ctp, ok := e.Object.(*promoterv1alpha1.ChangeTransferPolicy); ok {
-					ctp.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("ChangeTransferPolicy"))
-					ws.sendEvent(ctp)
-				}
-			},
-			UpdateFunc: func(ctx context.Context, e event.TypedUpdateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if ctp, ok := e.ObjectNew.(*promoterv1alpha1.ChangeTransferPolicy); ok {
-					ctp.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("ChangeTransferPolicy"))
-					ws.sendEvent(ctp)
-				}
-			},
-			DeleteFunc: func(ctx context.Context, e event.TypedDeleteEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if ctp, ok := e.Object.(*promoterv1alpha1.ChangeTransferPolicy); ok {
-					ctp.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("ChangeTransferPolicy"))
-					ws.sendDeleteEvent(ctp)
-				}
-			},
-		}).
-		Watches(&promoterv1alpha1.PullRequest{}, handler.Funcs{ //nolint:dupl // similar watch handlers are intentional for different resource types
-			CreateFunc: func(ctx context.Context, e event.TypedCreateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if pr, ok := e.Object.(*promoterv1alpha1.PullRequest); ok {
-					pr.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("PullRequest"))
-					ws.sendEvent(pr)
-				}
-			},
-			UpdateFunc: func(ctx context.Context, e event.TypedUpdateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if pr, ok := e.ObjectNew.(*promoterv1alpha1.PullRequest); ok {
-					pr.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("PullRequest"))
-					ws.sendEvent(pr)
-				}
-			},
-			DeleteFunc: func(ctx context.Context, e event.TypedDeleteEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if pr, ok := e.Object.(*promoterv1alpha1.PullRequest); ok {
-					pr.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("PullRequest"))
-					ws.sendDeleteEvent(pr)
-				}
-			},
-		}).
-		Watches(&promoterv1alpha1.CommitStatus{}, handler.Funcs{ //nolint:dupl // similar watch handlers are intentional for different resource types
-			CreateFunc: func(ctx context.Context, e event.TypedCreateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if cs, ok := e.Object.(*promoterv1alpha1.CommitStatus); ok {
-					cs.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("CommitStatus"))
-					ws.sendEvent(cs)
-				}
-			},
-			UpdateFunc: func(ctx context.Context, e event.TypedUpdateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if cs, ok := e.ObjectNew.(*promoterv1alpha1.CommitStatus); ok {
-					cs.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("CommitStatus"))
-					ws.sendEvent(cs)
-				}
-			},
-			DeleteFunc: func(ctx context.Context, e event.TypedDeleteEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if cs, ok := e.Object.(*promoterv1alpha1.CommitStatus); ok {
-					cs.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("CommitStatus"))
-					ws.sendDeleteEvent(cs)
+				if bundle, ok := e.Object.(*viewv1alpha1.PromotionStrategyDetails); ok {
+					bundle.SetGroupVersionKind(viewv1alpha1.GroupVersion.WithKind(promotionStrategyDetailsKind))
+					ws.sendDeleteEvent(bundle)
 				}
 			},
 		}).
@@ -223,12 +173,17 @@ func (ws *WebServer) StartDashboard(ctx context.Context, addr string) error {
 	router.Use(webserverlogr.Ginlogr(logger, time.RFC3339, true))
 	router.Use(webserverlogr.RecoveryWithLogr(logger, time.RFC3339, true, true))
 
-	router.GET("/watch", WatchHeadersMiddleware(), ws.Event.serveHTTP(), ws.httpWatch)
-
+	// gzip is registered before the routes so it also covers the /watch SSE stream.
+	// The bundles streamed over /watch are large, repetitive JSON, so compression is a
+	// clear bandwidth win. gin-contrib/gzip's writer flushes the underlying gzip.Writer
+	// on Flush(), so the per-event c.Writer.Flush() in httpWatch still delivers events in
+	// real time. No minLength is set: a non-zero minLength buffers sub-threshold frames in
+	// a pre-compression buffer that Flush() does not drain, which would stall small SSE
+	// events until a later larger one arrives.
 	router.Use(gzip.Gzip(gzip.DefaultCompression))
-	router.GET("/list", ws.httpList)
 
-	router.GET("/get", ws.httpGet)
+	router.GET("/watch", WatchHeadersMiddleware(), ws.Event.serveHTTP(), ws.httpWatch)
+	router.GET("/list", ws.httpList)
 
 	router.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, "ok")
@@ -284,7 +239,7 @@ func (ws *WebServer) StartDashboard(ctx context.Context, addr string) error {
 		section := c.Param("section")
 
 		// Skip if it's an API or static asset
-		if section == "watch" || section == "list" || section == "get" || section == "healthz" ||
+		if section == "watch" || section == "list" || section == "healthz" ||
 			section == "assets" {
 			c.Status(http.StatusNotFound)
 			return
@@ -341,65 +296,6 @@ func (ws *WebServer) StartDashboard(ctx context.Context, addr string) error {
 	return nil
 }
 
-func (ws *WebServer) httpGet(c *gin.Context) {
-	if c.Query("kind") == "" {
-		c.JSON(http.StatusBadRequest, "kind is required")
-		return
-	}
-	if c.Query("namespace") == "" {
-		c.JSON(http.StatusBadRequest, "namespace is required")
-		return
-	}
-	if c.Query("name") == "" {
-		c.JSON(http.StatusBadRequest, "name is required")
-		return
-	}
-	kind := strings.ToLower(c.Query("kind"))
-	namespace := strings.ToLower(c.Query("namespace"))
-	name := strings.ToLower(c.Query("name"))
-
-	switch kind {
-	case "promotionstrategy":
-		ps := &promoterv1alpha1.PromotionStrategy{}
-		err := ws.Get(c, client.ObjectKey{Namespace: namespace, Name: name}, ps)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, err.Error())
-			return
-		}
-		c.JSON(http.StatusOK, ps)
-
-	case "changetransferpolicy":
-		ctps := &promoterv1alpha1.ChangeTransferPolicy{}
-		err := ws.Get(c, client.ObjectKey{Namespace: namespace, Name: name}, ctps)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, err.Error())
-			return
-		}
-		c.JSON(http.StatusOK, ctps)
-
-	case "pullrequest":
-		pr := &promoterv1alpha1.PullRequest{}
-		err := ws.Get(c, client.ObjectKey{Namespace: namespace, Name: name}, pr)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, err.Error())
-			return
-		}
-		c.JSON(http.StatusOK, pr)
-
-	case "commitstatus":
-		cs := &promoterv1alpha1.CommitStatus{}
-		err := ws.Get(c, client.ObjectKey{Namespace: namespace, Name: name}, cs)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, err.Error())
-			return
-		}
-		c.JSON(http.StatusOK, cs)
-
-	default:
-		c.JSON(http.StatusBadRequest, "invalid kind")
-	}
-}
-
 func (ws *WebServer) httpList(c *gin.Context) {
 	if c.Query("kind") == "" {
 		c.JSON(http.StatusBadRequest, "kind is required")
@@ -412,41 +308,14 @@ func (ws *WebServer) httpList(c *gin.Context) {
 	}
 
 	switch kind {
-	case "promotionstrategy":
-		psl := &promoterv1alpha1.PromotionStrategyList{}
-		err := ws.List(c, psl, listOptions)
+	case "promotionstrategydetails":
+		bundleList := &viewv1alpha1.PromotionStrategyDetailsList{}
+		err := ws.List(c, bundleList, listOptions)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, err.Error())
 			return
 		}
-		c.JSON(http.StatusOK, psl.Items)
-
-	case "changetransferpolicy":
-		ctpl := &promoterv1alpha1.ChangeTransferPolicyList{}
-		err := ws.List(c, ctpl, listOptions)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, err.Error())
-			return
-		}
-		c.JSON(http.StatusOK, ctpl.Items)
-
-	case "pullrequest":
-		prl := &promoterv1alpha1.PullRequestList{}
-		err := ws.List(c, prl, listOptions)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, err.Error())
-			return
-		}
-		c.JSON(http.StatusOK, prl.Items)
-
-	case "commitstatus":
-		csl := &promoterv1alpha1.CommitStatusList{}
-		err := ws.List(c, csl, listOptions)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, err.Error())
-			return
-		}
-		c.JSON(http.StatusOK, csl.Items)
+		c.JSON(http.StatusOK, bundleList.Items)
 
 	case "namespace":
 		if c.Query("namespace") != "" {

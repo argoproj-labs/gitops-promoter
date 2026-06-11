@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -183,6 +184,7 @@ type GitCommitStatusEnvironmentStatus struct {
 }
 
 // +kubebuilder:ac:generate=true
+// +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#gitcommitstatus",description="CRD reference (examples and behavior)"
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Key",type=string,JSONPath=`.spec.key`
@@ -248,5 +250,8 @@ func (g *GitCommitStatus) SetObservedGeneration(generation int64) {
 }
 
 func init() {
-	SchemeBuilder.Register(&GitCommitStatus{}, &GitCommitStatusList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &GitCommitStatus{}, &GitCommitStatusList{})
+		return nil
+	})
 }

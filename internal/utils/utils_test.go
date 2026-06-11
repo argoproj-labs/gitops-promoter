@@ -3,6 +3,7 @@ package utils_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -592,5 +593,101 @@ var _ = Describe("HandleReconciliationResult fallback status apply", func() {
 		Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
 		Expect(readyCondition.Message).To(ContainSubstring("Reconciliation failed"))
 		Expect(readyCondition.Message).To(ContainSubstring("reconciliation failed for test"))
+	})
+})
+
+var _ = Describe("EnqueueChangeTransferPolicies", func() {
+	var (
+		ctx      context.Context
+		ps       *promoterv1alpha1.PromotionStrategy
+		enqueued []string // collects "namespace/name" pairs passed to enqueueCTP
+	)
+
+	BeforeEach(func() {
+		ctx = context.Background()
+		ps = &promoterv1alpha1.PromotionStrategy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-strategy",
+				Namespace: "my-namespace",
+			},
+		}
+		enqueued = nil
+	})
+
+	It("enqueues the expected CTP names for each transitioned branch", func() {
+		branches := []string{"main", "staging"}
+		utils.EnqueueChangeTransferPolicies(ctx, func(namespace, name string) {
+			enqueued = append(enqueued, namespace+"/"+name)
+		}, ps, branches, "validation transition")
+
+		expected := []string{
+			"my-namespace/" + utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName("my-strategy", "main")),
+			"my-namespace/" + utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName("my-strategy", "staging")),
+		}
+		Expect(enqueued).To(Equal(expected))
+	})
+
+	It("does nothing when transitionedBranches is empty", func() {
+		utils.EnqueueChangeTransferPolicies(ctx, func(namespace, name string) {
+			enqueued = append(enqueued, namespace+"/"+name)
+		}, ps, nil, "validation transition")
+
+		Expect(enqueued).To(BeEmpty())
+	})
+
+	It("does not panic when enqueueCTP is nil", func() {
+		Expect(func() {
+			utils.EnqueueChangeTransferPolicies(ctx, nil, ps, []string{"main"}, "validation transition")
+		}).NotTo(Panic())
+	})
+
+	It("uses the CTP name derived from the promotion strategy name and branch", func() {
+		var capturedName string
+		utils.EnqueueChangeTransferPolicies(ctx, func(namespace, name string) {
+			capturedName = name
+		}, ps, []string{"main"}, "validation transition")
+
+		expected := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName("my-strategy", "main"))
+		Expect(capturedName).To(Equal(expected))
+	})
+})
+
+var _ = Describe("API error helpers", func() {
+	It("extracts the innermost NotFound StatusDetails from a wrapped client error", func() {
+		inner := apierrors.NewNotFound(
+			schema.GroupResource{Group: "promoter.argoproj.io", Resource: "scmproviders"},
+			"my-scm",
+		)
+		err := fmt.Errorf("failed to get ScmProvider and secret: %w", fmt.Errorf("failed to get ScmProvider: %w", inner))
+
+		details, isNotFound := utils.NotFoundInErrorChain(err)
+		Expect(isNotFound).To(BeTrue())
+		Expect(details).To(Equal(&metav1.StatusDetails{
+			Group: "promoter.argoproj.io",
+			Kind:  "scmproviders",
+			Name:  "my-scm",
+		}))
+	})
+
+	It("reports NotFound without resource details", func() {
+		err := fmt.Errorf("wrap: %w", &apierrors.StatusError{
+			ErrStatus: metav1.Status{
+				Status:  metav1.StatusFailure,
+				Code:    404,
+				Reason:  metav1.StatusReasonNotFound,
+				Message: "not found",
+			},
+		})
+
+		details, isNotFound := utils.NotFoundInErrorChain(err)
+		Expect(isNotFound).To(BeTrue())
+		Expect(details).To(BeNil())
+	})
+
+	It("returns false for non-NotFound errors", func() {
+		err := errors.New("connection refused")
+		details, isNotFound := utils.NotFoundInErrorChain(err)
+		Expect(isNotFound).To(BeFalse())
+		Expect(details).To(BeNil())
 	})
 })

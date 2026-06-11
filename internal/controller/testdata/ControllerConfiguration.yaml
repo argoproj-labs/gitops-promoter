@@ -83,6 +83,26 @@ spec:
           qps: 20
           bucket: 50
 
+  # TimedCommitStatus controller enforces soak-time gates via CommitStatus resources
+  timedCommitStatus:
+    workQueue:
+      requeueDuration: "1m"
+      maxConcurrentReconciles: 5
+      rateLimiter:
+        exponentialFailure:
+          baseDelay: "500ms"
+          maxDelay: "1m"
+
+  # GitCommitStatus controller evaluates commit expressions and creates CommitStatus resources
+  gitCommitStatus:
+    workQueue:
+      requeueDuration: "2m"
+      maxConcurrentReconciles: 5
+      rateLimiter:
+        exponentialFailure:
+          baseDelay: "500ms"
+          maxDelay: "1m"
+
   # WebRequestCommitStatus controller runs HTTP requests and reports commit status from response
   webRequestCommitStatus:
     workQueue:

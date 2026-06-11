@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Path A: manual / scripted serving certs (no cert-manager dependency).
+#
+# 1. Apply this overlay:        kubectl apply -k config/apiserver/certs-manual
+# 2. Generate certs + caBundle: make apiserver-certs
+#    (hack/gen-apiserver-certs.sh creates the promoter-apiserver-serving-cert
+#     Secret and patches the APIService .spec.caBundle with the generated CA).
+#
+# This overlay is identical to the base; it exists as the documented entrypoint
+# for the manual cert workflow.
+
+resources:
+  - ../base

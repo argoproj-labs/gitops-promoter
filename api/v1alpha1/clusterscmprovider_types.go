@@ -20,6 +20,7 @@ import (
 	"reflect"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -28,6 +29,7 @@ import (
 // ClusterScmProviderKind is the kind of the ClusterScmProvider resource.
 var ClusterScmProviderKind = reflect.TypeOf(ClusterScmProvider{}).Name()
 
+// +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#clusterscmprovider",description="CRD reference (examples and behavior)"
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster
@@ -62,7 +64,10 @@ type ClusterScmProviderList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&ClusterScmProvider{}, &ClusterScmProviderList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &ClusterScmProvider{}, &ClusterScmProviderList{})
+		return nil
+	})
 }
 
 // +kubebuilder:object:root:false

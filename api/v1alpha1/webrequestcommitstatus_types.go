@@ -19,9 +19,11 @@ package v1alpha1
 import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // ContextMode represents the request-scope mode for WebRequestCommitStatus.
+// +k8s:enum
 type ContextMode string
 
 const (
@@ -137,7 +139,6 @@ type ModeSpec struct {
 	// Context is "environments" (default) or "promotionstrategy". See the ModeSpec type documentation for behavior, template limits, and success expression rules.
 	// +optional
 	// +kubebuilder:default=environments
-	// +kubebuilder:validation:Enum=environments;promotionstrategy
 	Context ContextMode `json:"context,omitempty"`
 }
 
@@ -550,6 +551,7 @@ type WebRequestCommitStatusEnvironmentStatus struct {
 }
 
 // +kubebuilder:ac:generate=true
+// +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#webrequestcommitstatus",description="CRD reference (examples and behavior)"
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
@@ -594,5 +596,8 @@ func (wrcs *WebRequestCommitStatus) SetObservedGeneration(generation int64) {
 }
 
 func init() {
-	SchemeBuilder.Register(&WebRequestCommitStatus{}, &WebRequestCommitStatusList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &WebRequestCommitStatus{}, &WebRequestCommitStatusList{})
+		return nil
+	})
 }

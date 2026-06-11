@@ -62,41 +62,6 @@ func resolveReportedSha(envStatus *promoterv1alpha1.EnvironmentStatus, reportOn 
 	return envStatus.Proposed.Hydrated.Sha
 }
 
-// getApplicableEnvironments returns the PromotionStrategy environments that match a given
-// WebRequestCommitStatus key / reportOn combination. An environment is included if its key is
-// referenced in global or environment-specific ProposedCommitStatuses (when reportOn is "proposed"
-// or default) or ActiveCommitStatuses (when reportOn is "active").
-func getApplicableEnvironments(ps *promoterv1alpha1.PromotionStrategy, key string, reportOn string) []promoterv1alpha1.Environment {
-	globalSelectors := ps.Spec.ProposedCommitStatuses
-	getEnvSelectors := func(e promoterv1alpha1.Environment) []promoterv1alpha1.CommitStatusSelector {
-		return e.ProposedCommitStatuses
-	}
-	if reportOn == constants.CommitRefActive {
-		globalSelectors = ps.Spec.ActiveCommitStatuses
-		getEnvSelectors = func(e promoterv1alpha1.Environment) []promoterv1alpha1.CommitStatusSelector {
-			return e.ActiveCommitStatuses
-		}
-	}
-
-	keyInSelectors := func(selectors []promoterv1alpha1.CommitStatusSelector) bool {
-		for _, sel := range selectors {
-			if sel.Key == key {
-				return true
-			}
-		}
-		return false
-	}
-	keyInGlobal := keyInSelectors(globalSelectors)
-
-	applicable := make([]promoterv1alpha1.Environment, 0, len(ps.Spec.Environments))
-	for _, env := range ps.Spec.Environments {
-		if keyInGlobal || keyInSelectors(getEnvSelectors(env)) {
-			applicable = append(applicable, env)
-		}
-	}
-	return applicable
-}
-
 // parsePerBranchPhases extracts defaultPhase and optional per-branch overrides from an expression
 // result object of the form { defaultPhase?, environments?: [{ branch, phase }] }.
 func parsePerBranchPhases(obj map[string]any) (promoterv1alpha1.CommitStatusPhase, map[string]promoterv1alpha1.CommitStatusPhase, error) {

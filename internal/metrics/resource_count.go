@@ -1,3 +1,4 @@
+//nolint:goconst // CRD kind strings in promoterResources are inlined for readability alongside each type.
 package metrics
 
 import (

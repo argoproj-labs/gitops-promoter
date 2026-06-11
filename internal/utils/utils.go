@@ -74,14 +74,14 @@ func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Clien
 	return provider, nil
 }
 
-// GetGitRepositoryFromObjectKey returns the GitRepository object from the repository reference
+// GetGitRepositoryFromObjectKey returns the GitRepository for objectKey.
+//
+//nolint:wrapcheck // trivial client.Get wrapper; callers add context
 func GetGitRepositoryFromObjectKey(ctx context.Context, k8sClient client.Client, objectKey client.ObjectKey) (*promoterv1alpha1.GitRepository, error) {
 	var gitRepo promoterv1alpha1.GitRepository
-	err := k8sClient.Get(ctx, objectKey, &gitRepo)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
+	if err := k8sClient.Get(ctx, objectKey, &gitRepo); err != nil {
+		return nil, err
 	}
-
 	return &gitRepo, nil
 }
 
@@ -140,7 +140,7 @@ func GetScmProviderSecretAndGitRepositoryFromRepositoryReference(ctx context.Con
 	}
 	scmProvider, secret, err := getScmProviderAndSecretFromGitRepository(ctx, k8sClient, controllerNamespace, gitRepo, obj)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, err //nolint:wrapcheck // err is already contextualized by getScmProviderAndSecretFromGitRepository
 	}
 	return scmProvider, secret, gitRepo, nil
 }
@@ -191,6 +191,39 @@ func GetChangeTransferPolicyName(promotionStrategyName, environmentBranch string
 	return fmt.Sprintf("%s-%s", promotionStrategyName, environmentBranch)
 }
 
+// EnqueueChangeTransferPolicies triggers reconciliation of the ChangeTransferPolicies for each
+// environment branch in transitionedBranches. enqueueCTP may be nil (it is nil-checked before
+// calling). logReason describes why the transition occurred and is included in the log message
+// (e.g. "validation transition", "time gate transition").
+func EnqueueChangeTransferPolicies(
+	ctx context.Context,
+	enqueueCTP func(namespace, name string),
+	ps *promoterv1alpha1.PromotionStrategy,
+	transitionedBranches []string,
+	logReason string,
+) {
+	logger := log.FromContext(ctx)
+
+	for _, envBranch := range transitionedBranches {
+		ctpName := KubeSafeUniqueName(GetChangeTransferPolicyName(ps.Name, envBranch))
+
+		if enqueueCTP == nil {
+			logger.Info("Skipping ChangeTransferPolicy reconciliation enqueue because enqueue function is nil",
+				"changeTransferPolicy", ctpName,
+				"branch", envBranch,
+				"reason", logReason)
+			continue
+		}
+
+		logger.Info("Triggering ChangeTransferPolicy reconciliation",
+			"changeTransferPolicy", ctpName,
+			"branch", envBranch,
+			"reason", logReason)
+
+		enqueueCTP(ps.Namespace, ctpName)
+	}
+}
+
 // KubeSafeUniqueName returns a DNS-1123 subdomain-safe unique name: lowercase, non-alphanumerics become '-',
 // then a rune budget is reserved for "-"+FNV hash (hash of the full sanitized string) under DNS1123 max length.
 //
@@ -198,11 +231,12 @@ func GetChangeTransferPolicyName(promotionStrategyName, environmentBranch string
 // sanitization is all hyphens), the stem falls back to "x" so the result is still "x-<hash>" instead of "-<hash>",
 // which would violate DNS1123 (names must start and end with an alphanumeric character). The same fallback
 // applies if the stem would end up empty after TruncateString + TrimRight.
-func KubeSafeUniqueName(ctx context.Context, name string) string {
+func KubeSafeUniqueName(name string) string {
 	s := strings.ToLower(m1.ReplaceAllString(name, "-"))
 	h := fnv.New32a()
 	if _, err := h.Write([]byte(s)); err != nil {
-		log.FromContext(ctx).Error(err, "Failed to write to hash")
+		// hash.Hash.Write is documented to never return an error; this panic should never be reached.
+		panic(fmt.Sprintf("KubeSafeUniqueName: unexpected error writing to FNV hash: %v", err))
 	}
 	hash := strconv.FormatUint(uint64(h.Sum32()), 16)
 	limit := validation.DNS1123SubdomainMaxLength

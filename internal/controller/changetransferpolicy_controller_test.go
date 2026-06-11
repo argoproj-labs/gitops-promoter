@@ -21,9 +21,11 @@ import (
 	_ "embed"
 	"fmt"
 	"os"
+	"path"
 	"strings"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -113,14 +115,14 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				Eventually(func(g Gomega) {
 					typeNamespacedNamePR := types.NamespacedName{
-						Name:      utils.KubeSafeUniqueName(ctx, prName),
+						Name:      utils.KubeSafeUniqueName(prName),
 						Namespace: "default",
 					}
 					err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
 					g.Expect(err).To(Succeed())
-					g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `%s`", shortSha, testBranchDevelopment)))
+					g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote (%s) to `%s`", shortSha, testBranchDevelopment)))
 					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-					g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
+					g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(prName)))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Adding another pending commit")
@@ -128,13 +130,13 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, types.NamespacedName{
-						Name:      utils.KubeSafeUniqueName(ctx, prName),
+						Name:      utils.KubeSafeUniqueName(prName),
 						Namespace: "default",
 					}, &pr)
 					g.Expect(err).To(Succeed())
-					g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `%s`", shortSha, testBranchDevelopment)))
+					g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote (%s) to `%s`", shortSha, testBranchDevelopment)))
 					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-					g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
+					g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(prName)))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Eventually(func(g Gomega) {
@@ -155,7 +157,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				Eventually(func(g Gomega) {
 					typeNamespacedNamePR := types.NamespacedName{
-						Name:      utils.KubeSafeUniqueName(ctx, prName),
+						Name:      utils.KubeSafeUniqueName(prName),
 						Namespace: "default",
 					}
 					err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
@@ -270,7 +272,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				Eventually(func(g Gomega) {
 					typeNamespacedNamePR := types.NamespacedName{
-						Name:      utils.KubeSafeUniqueName(ctx, prName),
+						Name:      utils.KubeSafeUniqueName(prName),
 						Namespace: "default",
 					}
 					err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
@@ -340,14 +342,14 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				Eventually(func(g Gomega) {
 					typeNamespacedNamePR := types.NamespacedName{
-						Name:      utils.KubeSafeUniqueName(ctx, prName),
+						Name:      utils.KubeSafeUniqueName(prName),
 						Namespace: "default",
 					}
 					err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
 					g.Expect(err).To(Succeed())
-					g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `%s`", shortSha, testBranchDevelopment)))
+					g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote (%s) to `%s`", shortSha, testBranchDevelopment)))
 					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-					g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
+					g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(prName)))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Adding another pending commit")
@@ -355,13 +357,13 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, types.NamespacedName{
-						Name:      utils.KubeSafeUniqueName(ctx, prName),
+						Name:      utils.KubeSafeUniqueName(prName),
 						Namespace: "default",
 					}, &pr)
 					g.Expect(err).To(Succeed())
-					g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `%s`", shortSha, testBranchDevelopment)))
+					g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote (%s) to `%s`", shortSha, testBranchDevelopment)))
 					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-					g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
+					g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(prName)))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Eventually(func(g Gomega) {
@@ -375,7 +377,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				Eventually(func(g Gomega) {
 					typeNamespacedNamePR := types.NamespacedName{
-						Name:      utils.KubeSafeUniqueName(ctx, prName),
+						Name:      utils.KubeSafeUniqueName(prName),
 						Namespace: "default",
 					}
 					err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
@@ -429,7 +431,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				// Verify mergeSha is set and matches the current proposed hydrated SHA
 				Eventually(func(g Gomega) {
 					typeNamespacedNamePR := types.NamespacedName{
-						Name:      utils.KubeSafeUniqueName(ctx, prName),
+						Name:      utils.KubeSafeUniqueName(prName),
 						Namespace: "default",
 					}
 					err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
@@ -618,7 +620,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				var createdPR promoterv1alpha1.PullRequest
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, types.NamespacedName{
-						Name:      utils.KubeSafeUniqueName(ctx, prName),
+						Name:      utils.KubeSafeUniqueName(prName),
 						Namespace: "default",
 					}, &createdPR)
 					g.Expect(err).To(Succeed())
@@ -656,7 +658,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				var createdPR promoterv1alpha1.PullRequest
 				Eventually(func(g Gomega) {
 					typeNamespacedNamePR := types.NamespacedName{
-						Name:      utils.KubeSafeUniqueName(ctx, prName),
+						Name:      utils.KubeSafeUniqueName(prName),
 						Namespace: "default",
 					}
 					err := k8sClient.Get(ctx, typeNamespacedNamePR, &createdPR)
@@ -913,6 +915,128 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
+
+		// Regression test for the "stale PullRequest.spec.mergeSha after auto-resolved conflict" bug.
+		//
+		// Reproduction shape:
+		//   1. Pre-populate the git server so the active branch and the proposed branch already
+		//      have a content/content conflict on the same file before any CTP exists. Both
+		//      branches share a merge-base from the initial test setup; both modify
+		//      manifests-fake.yaml to different content; only the proposed branch ships an
+		//      updated hydrator.metadata so a real promotion is needed.
+		//   2. Create the CTP with AutoMerge=true.
+		//   3. The first reconcile reads the proposed branch tip S_old, detects a conflict,
+		//      runs MergeWithOursStrategy (which pushes a new merge commit S_new on the
+		//      proposed branch), and *in the same reconcile cycle* calls
+		//      createOrUpdatePullRequest with PR.Spec.MergeSha = ctp.Status.Proposed.Hydrated.Sha
+		//      = S_old (the value calculateStatus set before the merge ran). mergePullRequests
+		//      then flips PR.Spec.State to merged.
+		//   4. The PullRequest controller picks up state=merged and asks the SCM provider to
+		//      merge. The SCM provider compares actualSha (origin/<proposed> = S_new) against
+		//      PR.Spec.MergeSha (S_old) and rejects the merge. We count this in the fake SCM
+		//      via fake.MergeShaMismatchCount.
+		//   5. Eventually a follow-up CTP reconcile (triggered by the PR Owns watch) re-derives
+		//      Status.Proposed from the now-resolved tip and updates PR.Spec.MergeSha to S_new,
+		//      after which the next merge attempt succeeds and the active branch advances.
+		//
+		// The merge does eventually land, but the bug burns at least one extra
+		// SCM merge call per conflict-resolved promotion. The fix is
+		// to short-circuit the rest of this reconcile when MergeWithOursStrategy rewrites the
+		// proposed branch and requeue immediately so the next reconcile creates/updates the PR
+		// with the correct mergeSha on the very next attempt.
+		Context("When the active and proposed branches conflict and auto-merge is on", func() {
+			var name string
+			var gitRepo *promoterv1alpha1.GitRepository
+			var changeTransferPolicy *promoterv1alpha1.ChangeTransferPolicy
+			var typeNamespacedName types.NamespacedName
+			var scmSecret *v1.Secret
+			var scmProvider *promoterv1alpha1.ScmProvider
+
+			BeforeEach(func() {
+				name, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-conflict-auto-merge", "default")
+
+				typeNamespacedName = types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}
+
+				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
+				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
+				changeTransferPolicy.Spec.AutoMerge = ptr.To(true)
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				// Intentionally do not create the CTP here — the test pushes conflicting commits
+				// to the git server first so that the very first CTP reconcile observes the
+				// conflict.
+			})
+
+			AfterEach(func() {
+				By("Cleaning up resources")
+				_ = k8sClient.Delete(ctx, changeTransferPolicy)
+			})
+
+			It("does not call SCM Merge with a stale PullRequest.spec.mergeSha", func() {
+				gitPath, err := os.MkdirTemp("", "*")
+				Expect(err).NotTo(HaveOccurred())
+				defer func() { _ = os.RemoveAll(gitPath) }()
+
+				By("Pre-populating the active and proposed branches with conflicting content")
+				_, err = runGitCmd(ctx, gitPath, "clone", testGitRepoCloneURL(gitRepo), ".")
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "config", "user.name", "testuser")
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "config", "user.email", "testmail@test.com")
+				Expect(err).NotTo(HaveOccurred())
+
+				// Active branch: write a manifests-fake.yaml with content X.
+				_, err = runGitCmd(ctx, gitPath, "checkout", "-B", testBranchDevelopment, "origin/"+testBranchDevelopment)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(os.WriteFile(path.Join(gitPath, "manifests-fake.yaml"), []byte("{\"side\": \"active\"}\n"), 0o644)).To(Succeed())
+				_, err = runGitCmd(ctx, gitPath, "add", "manifests-fake.yaml")
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "commit", "-m", "active manifest")
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "push", "origin", testBranchDevelopment)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Proposed branch: write a *different* manifests-fake.yaml (content Y) plus an
+				// updated hydrator.metadata so the controller sees this as a real promotion.
+				const proposedDrySha = "deadbeefcafefacefeedbabe1234567890abcdef"
+				_, err = runGitCmd(ctx, gitPath, "checkout", "-B", testBranchDevelopmentNext, "origin/"+testBranchDevelopmentNext)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(os.WriteFile(path.Join(gitPath, "manifests-fake.yaml"), []byte("{\"side\": \"proposed\"}\n"), 0o644)).To(Succeed())
+				Expect(os.WriteFile(path.Join(gitPath, "hydrator.metadata"),
+					fmt.Appendf(nil, "{\"drySha\": %q}", proposedDrySha), 0o644)).To(Succeed())
+				_, err = runGitCmd(ctx, gitPath, "add", "manifests-fake.yaml", "hydrator.metadata")
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "commit", "-m", "proposed hydrated commit")
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "push", "origin", testBranchDevelopmentNext)
+				Expect(err).NotTo(HaveOccurred())
+
+				By("Resetting the fake SCM's merge-sha-mismatch counter")
+				fake.ResetMergeShaMismatchCount()
+
+				By("Creating the CTP so its very first reconcile sees the pre-existing conflict")
+				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
+
+				By("Waiting for the conflict-resolved PR to merge into active")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
+					g.Expect(err).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).To(Equal(proposedDrySha),
+						"active branch should be promoted to the proposed dry SHA after auto-resolved conflict")
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Asserting the SCM was never asked to merge with a stale mergeSha")
+				Expect(fake.MergeShaMismatchCount()).To(BeNumerically("==", 0),
+					"PR.Spec.MergeSha must not lag origin/<proposedBranch> after gitMergeStrategyOurs "+
+						"rewrites the proposed branch tip; otherwise the PullRequest controller asks "+
+						"the SCM to merge a sha origin no longer has on the source branch")
+			})
+		})
 	})
 })
 
@@ -1015,7 +1139,7 @@ var _ = Describe("tooManyPRsError", func() {
 
 //nolint:unparam // namespace is always "default" in tests but kept for consistency with other test helpers
 func changeTransferPolicyResources(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.ChangeTransferPolicy) {
-	name = name + "-" + utils.KubeSafeUniqueName(ctx, randomString(15))
+	name = name + "-" + utils.KubeSafeUniqueName(randomString(15))
 	gitRepo := &promoterv1alpha1.GitRepository{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,

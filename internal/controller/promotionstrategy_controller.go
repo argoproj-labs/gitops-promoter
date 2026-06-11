@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"path"
 	"reflect"
 	"sync"
 	"time"
@@ -190,7 +191,7 @@ func (r *PromotionStrategyReconciler) SetupWithManager(ctx context.Context, mgr 
 func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, environment promoterv1alpha1.Environment) (*promoterv1alpha1.ChangeTransferPolicy, error) {
 	logger := log.FromContext(ctx)
 
-	ctpName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(ps.Name, environment.Branch))
+	ctpName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(ps.Name, environment.Branch))
 
 	// Build owner reference
 	kind := reflect.TypeOf(promoterv1alpha1.PromotionStrategy{}).Name()
@@ -231,13 +232,27 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 		}
 	}
 
+	activePath := ps.Spec.ActivePath
+	if environment.ActivePath != "" {
+		activePath = environment.ActivePath
+	}
+
+	proposedBranch := fmt.Sprintf("%s-%s", environment.Branch, "next")
+	if activePath != "" {
+		proposedBranch = path.Join(proposedBranch, activePath)
+	}
+
 	// Build the spec
 	ctpSpec := acv1alpha1.ChangeTransferPolicySpec().
 		WithRepositoryReference(acv1alpha1.ObjectReference().WithName(ps.Spec.RepositoryReference.Name)).
-		WithProposedBranch(fmt.Sprintf("%s-%s", environment.Branch, "next")).
+		WithProposedBranch(proposedBranch).
 		WithActiveBranch(environment.Branch).
 		WithActiveCommitStatuses(activeCommitStatuses...).
 		WithProposedCommitStatuses(proposedCommitStatuses...)
+
+	if activePath != "" {
+		ctpSpec = ctpSpec.WithActivePath(activePath)
+	}
 
 	if environment.AutoMerge != nil {
 		ctpSpec = ctpSpec.WithAutoMerge(*environment.AutoMerge)
@@ -555,7 +570,7 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 	logger := log.FromContext(ctx)
 
 	// TODO: do we like this name proposed-<name>?
-	csName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel+ctp.Name)
+	csName := utils.KubeSafeUniqueName(promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel + ctp.Name)
 
 	kind := reflect.TypeOf(promoterv1alpha1.ChangeTransferPolicy{}).Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)

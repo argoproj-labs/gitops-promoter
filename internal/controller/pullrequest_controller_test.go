@@ -33,9 +33,11 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 //go:embed testdata/PullRequest.yaml
@@ -1004,10 +1006,106 @@ var _ = Describe("PullRequest Controller", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
+
+	Context("When deleting a PullRequest after GitRepository is removed", func() {
+		var name string
+		var scmSecret *v1.Secret
+		var scmProvider *promoterv1alpha1.ScmProvider
+		var gitRepo *promoterv1alpha1.GitRepository
+		var pullRequest *promoterv1alpha1.PullRequest
+		var typeNamespacedName types.NamespacedName
+
+		BeforeEach(func() {
+			name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "delete-missing-gitrepo")
+
+			typeNamespacedName = types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				g.Expect(pullRequest.Status.ID).ToNot(BeEmpty())
+				g.Expect(pullRequest.Finalizers).To(ContainElement(promoterv1alpha1.PullRequestFinalizer))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		AfterEach(func() {
+			var pr promoterv1alpha1.PullRequest
+			if err := k8sClient.Get(ctx, typeNamespacedName, &pr); err == nil {
+				if pr.DeletionTimestamp != nil && controllerutil.ContainsFinalizer(&pr, promoterv1alpha1.PullRequestFinalizer) {
+					base := pr.DeepCopy()
+					controllerutil.RemoveFinalizer(&pr, promoterv1alpha1.PullRequestFinalizer)
+					_ = k8sClient.Patch(ctx, &pr, client.MergeFrom(base))
+				}
+				_ = client.IgnoreNotFound(k8sClient.Delete(ctx, &pr))
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, typeNamespacedName, &pr)
+					g.Expect(k8serrors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
+			}
+
+			_ = client.IgnoreNotFound(k8sClient.Delete(ctx, gitRepo))
+			_ = client.IgnoreNotFound(k8sClient.Delete(ctx, scmProvider))
+			_ = client.IgnoreNotFound(k8sClient.Delete(ctx, scmSecret))
+		})
+
+		It("should keep the finalizer and report which dependency is missing", func() {
+			By("Removing GitRepository finalizer so the object can be deleted while the PullRequest remains")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, gitRepo)).To(Succeed())
+				g.Expect(gitRepo.Finalizers).To(ContainElement(promoterv1alpha1.GitRepositoryFinalizer))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Expect(k8sClient.Get(ctx, typeNamespacedName, gitRepo)).To(Succeed())
+			base := gitRepo.DeepCopy()
+			controllerutil.RemoveFinalizer(gitRepo, promoterv1alpha1.GitRepositoryFinalizer)
+			Expect(k8sClient.Patch(ctx, gitRepo, client.MergeFrom(base))).To(Succeed())
+			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, gitRepo)
+				g.Expect(k8serrors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Deleting the PullRequest")
+			Expect(k8sClient.Delete(ctx, pullRequest)).To(Succeed())
+
+			By("Verifying deletion is blocked with an operator-facing dependency error")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.DeletionTimestamp).ToNot(BeNil())
+				g.Expect(pullRequest.Finalizers).To(ContainElement(promoterv1alpha1.PullRequestFinalizer))
+
+				ready := meta.FindStatusCondition(pullRequest.Status.Conditions, string(conditions.Ready))
+				g.Expect(ready).NotTo(BeNil())
+				g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(ready.Reason).To(Equal(string(conditions.ReconciliationError)))
+
+				msg := ready.Message
+				g.Expect(msg).To(ContainSubstring("Reconciliation failed"))
+				g.Expect(msg).To(ContainSubstring("cannot close its SCM pull request"))
+				g.Expect(msg).To(ContainSubstring("promoter.argoproj.io/GitRepository"))
+				g.Expect(msg).To(ContainSubstring(name))
+				g.Expect(msg).To(ContainSubstring(promoterv1alpha1.PullRequestFinalizer))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Consistently(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.Finalizers).To(ContainElement(promoterv1alpha1.PullRequestFinalizer))
+			}, "3s", "500ms").Should(Succeed())
+		})
+	})
 })
 
 func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.PullRequest) {
-	name = name + "-" + utils.KubeSafeUniqueName(ctx, randomString(15))
+	name = name + "-" + utils.KubeSafeUniqueName(randomString(15))
 	gitRepo := &promoterv1alpha1.GitRepository{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
