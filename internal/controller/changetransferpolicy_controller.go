@@ -103,7 +103,8 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 
 	var ctp promoterv1alpha1.ChangeTransferPolicy
 	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &ctp, r.Client, r.Recorder, constants.ChangeTransferPolicyControllerFieldOwner, &result, &err)
+	var previousReady *metav1.Condition
+	defer utils.HandleReconciliationResult(ctx, startTime, &ctp, r.Client, r.Recorder, constants.ChangeTransferPolicyControllerFieldOwner, &result, &err, &previousReady)
 
 	err = r.Get(ctx, req.NamespacedName, &ctp, &client.GetOptions{})
 	if err != nil {
@@ -127,7 +128,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	}
 
 	// Remove any existing Ready condition. We want to start fresh.
-	meta.RemoveStatusCondition(ctp.GetConditions(), string(promoterConditions.Ready))
+	previousReady = utils.RemoveReadyCondition(&ctp)
 
 	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), ctp.Spec.RepositoryReference, &ctp)
 	if err != nil {
@@ -158,10 +159,14 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, fmt.Errorf("failed to fetch git notes: %w", err)
 	}
 
+	// Snapshot the persisted status (from the Get above) before calculateStatus overwrites it,
+	// so promotion lifecycle events can be emitted only on actual state transitions.
+	prevStatus := ctp.Status.DeepCopy()
 	err = r.calculateStatus(ctx, &ctp, gitOperations)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to calculate ChangeTransferPolicy status: %w", err)
 	}
+	r.emitPromotionLifecycleEvents(&ctp, prevStatus)
 
 	mergedProposedBranch, err := r.gitMergeStrategyOurs(ctx, gitOperations, &ctp)
 	if err != nil {
@@ -592,6 +597,52 @@ func NewTooManyMatchingShaError(commitStatusKey string, commitStatuses []promote
 	return &TooManyMatchingShaError{
 		commitStatusKey: commitStatusKey,
 		commitStatuses:  commitStatuses,
+	}
+}
+
+// emitPromotionLifecycleEvents compares the status persisted by the previous reconcile (prev,
+// snapshotted before calculateStatus overwrote it) with the freshly calculated status and emits
+// promotion lifecycle events. All events are transition-only: a state that persists across
+// reconciles (e.g. still blocked on the same pending commit status) emits nothing.
+func (r *ChangeTransferPolicyReconciler) emitPromotionLifecycleEvents(ctp *promoterv1alpha1.ChangeTransferPolicy, prev *promoterv1alpha1.ChangeTransferPolicyStatus) {
+	cur := &ctp.Status
+	pendingNow := cur.Proposed.Dry.Sha != "" && cur.Proposed.Dry.Sha != cur.Active.Dry.Sha
+	pendingBefore := prev.Proposed.Dry.Sha != "" && prev.Proposed.Dry.Sha != prev.Active.Dry.Sha
+	// A new attempt is a proposed dry sha we haven't seen before, either because nothing was
+	// pending or because a newer change superseded the in-flight one.
+	newAttempt := pendingNow && (!pendingBefore || prev.Proposed.Dry.Sha != cur.Proposed.Dry.Sha)
+
+	if newAttempt {
+		r.Recorder.Eventf(ctp, nil, "Normal", constants.PromotionStartedReason, "Promoting",
+			constants.PromotionStartedMessage, cur.Proposed.Dry.Sha, ctp.Spec.ActiveBranch, cur.Active.Dry.Sha)
+	}
+
+	if pendingNow {
+		prevPhases := make(map[string]string, len(prev.Proposed.CommitStatuses))
+		for _, s := range prev.Proposed.CommitStatuses {
+			prevPhases[s.Key] = s.Phase
+		}
+		for _, s := range cur.Proposed.CommitStatuses {
+			if s.Phase == string(promoterv1alpha1.CommitPhaseSuccess) {
+				continue
+			}
+			if !newAttempt && prevPhases[s.Key] == s.Phase {
+				// Same gate, same phase as the last reconcile: already announced.
+				continue
+			}
+			eventType := "Normal"
+			if s.Phase == string(promoterv1alpha1.CommitPhaseFailure) {
+				eventType = "Warning"
+			}
+			r.Recorder.Eventf(ctp, nil, eventType, constants.PromotionBlockedReason, "Promoting",
+				constants.PromotionBlockedMessage, cur.Proposed.Dry.Sha, ctp.Spec.ActiveBranch, s.Key, s.Phase)
+		}
+	}
+
+	// The first-ever status population is not a promotion, hence the prev guard.
+	if prev.Active.Dry.Sha != "" && cur.Active.Dry.Sha != "" && prev.Active.Dry.Sha != cur.Active.Dry.Sha {
+		r.Recorder.Eventf(ctp, nil, "Normal", constants.PromotionCompletedReason, "Promoting",
+			constants.PromotionCompletedMessage, ctp.Spec.ActiveBranch, cur.Active.Dry.Sha, prev.Active.Dry.Sha)
 	}
 }
 

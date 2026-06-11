@@ -326,6 +326,29 @@ type StatusConditionUpdater interface {
 	SetObservedGeneration(generation int64)
 }
 
+// RemoveReadyCondition removes the Ready condition from obj's status conditions and returns a deep
+// copy of the removed condition, or nil if none was present. Controllers call this at the top of
+// Reconcile (instead of meta.RemoveStatusCondition) so stale conditions from a previous reconcile
+// don't bleed into this one, and pass the returned condition to HandleReconciliationResult so it
+// can emit an event only when the Ready condition actually transitions.
+func RemoveReadyCondition(obj StatusConditionUpdater) *metav1.Condition {
+	conditions := obj.GetConditions()
+	prev := meta.FindStatusCondition(*conditions, string(promoterConditions.Ready))
+	if prev != nil {
+		prev = prev.DeepCopy()
+	}
+	meta.RemoveStatusCondition(conditions, string(promoterConditions.Ready))
+	return prev
+}
+
+// readyConditionTransitioned reports whether the Ready condition changed status or reason compared
+// to the previous reconcile's condition. Message-only changes are not transitions: failure messages
+// often vary per attempt (timestamps, retry counts), and treating them as transitions would re-emit
+// an event on every reconcile.
+func readyConditionTransitioned(prev, current *metav1.Condition) bool {
+	return prev == nil || prev.Status != current.Status || prev.Reason != current.Reason
+}
+
 // HandleReconciliationResult handles reconciliation results for any object with status conditions.
 // It applies the object's status subresource via Server-Side Apply under the provided
 // fieldOwner with ForceOwnership. If the full-status apply is rejected (e.g. by an
@@ -347,6 +370,14 @@ type StatusConditionUpdater interface {
 // If result is non-nil and this function sets an error (e.g. status apply failed), it
 // clears any Requeue/RequeueAfter in *result so the caller does not return both a
 // requeue and an error.
+//
+// previousReady points at the Ready condition captured by RemoveReadyCondition at the top of
+// Reconcile (a pointer-to-pointer because this function is deferred before the capture happens,
+// same idiom as result and err). Ready-condition events are emitted only when the condition
+// transitions relative to *previousReady; pass nil to always emit (e.g. when no previous
+// condition is available).
+//
+//nolint:revive // argument-limit: the trailing previousReady pointer mirrors result/err; folding the late-bound pointers into a struct would obscure the defer idiom at every call site.
 func HandleReconciliationResult(
 	ctx context.Context,
 	startTime time.Time,
@@ -356,6 +387,7 @@ func HandleReconciliationResult(
 	fieldOwner string,
 	result *reconcile.Result,
 	err *error,
+	previousReady **metav1.Condition,
 ) {
 	// Recover from any panic and convert it to an error.
 	// This function is always called as a defer from the Reconcile function, which means recover() will work correctly here.
@@ -379,11 +411,11 @@ func HandleReconciliationResult(
 	}
 
 	conditions := obj.GetConditions() // GetConditions() is guaranteed to be non-nil for our CRDs.
-	// Controllers are expected to call meta.RemoveStatusCondition(..., "Ready") at the
-	// top of Reconcile so stale conditions from a previous reconcile don't bleed into
-	// this one. If FindStatusCondition still returns non-nil here, the reconciler
-	// deliberately set a Ready state during this reconcile (e.g. via
-	// InheritNotReadyConditionFromObjects) and we preserve it.
+	// Controllers are expected to call RemoveReadyCondition at the top of Reconcile so
+	// stale conditions from a previous reconcile don't bleed into this one. If
+	// FindStatusCondition still returns non-nil here, the reconciler deliberately set a
+	// Ready state during this reconcile (e.g. via InheritNotReadyConditionFromObjects)
+	// and we preserve it.
 	readyCondition := meta.FindStatusCondition(*conditions, string(promoterConditions.Ready))
 	if readyCondition == nil {
 		// If the condition hasn't already been set by the caller, assume success.
@@ -398,28 +430,35 @@ func HandleReconciliationResult(
 	}
 
 	// Set the Ready condition based on reconciliation result
-	if *err == nil {
-		// Success case: set Ready condition if not already set
-		meta.SetStatusCondition(conditions, *readyCondition)
-		eventType := "Normal"
-		if readyCondition.Status == metav1.ConditionFalse {
-			eventType = "Warning"
-		}
-		recorder.Eventf(obj, nil, eventType, readyCondition.Reason, "Reconciling", readyCondition.Message)
-	} else {
-		// Error case: set Ready condition to False. Conflict errors from Update calls
-		// elsewhere in the reconcile flow are expected and transient, so don't spam events
-		// for those; the retry will emit the event if the condition persists.
-		if !k8serrors.IsConflict(*err) {
-			recorder.Eventf(obj, nil, "Warning", string(promoterConditions.ReconciliationError), "Reconciling", "Reconciliation failed: %v", *err)
-		}
-		meta.SetStatusCondition(conditions, metav1.Condition{
+	if *err != nil {
+		readyCondition = &metav1.Condition{
 			Type:               string(promoterConditions.Ready),
 			Status:             metav1.ConditionFalse,
 			Reason:             string(promoterConditions.ReconciliationError),
 			Message:            fmt.Sprintf("Reconciliation failed: %s", *err),
 			ObservedGeneration: obj.GetGeneration(),
-		})
+		}
+	}
+	meta.SetStatusCondition(conditions, *readyCondition)
+
+	// Ready-condition events are emitted only when the condition transitions relative to the
+	// previous reconcile's condition (captured by RemoveReadyCondition); emitting on every
+	// reconcile floods the event stream and buries domain events. A persistently failing
+	// resource emits one Warning on the True->False transition; the evolving failure message
+	// stays visible on the Ready condition itself. Conflict errors from Update calls elsewhere
+	// in the reconcile flow are expected and transient, so never emit for those; the retry
+	// will emit the event if the condition persists.
+	var prevReadyCondition *metav1.Condition
+	if previousReady != nil {
+		prevReadyCondition = *previousReady
+	}
+	isConflict := *err != nil && k8serrors.IsConflict(*err)
+	if !isConflict && readyConditionTransitioned(prevReadyCondition, readyCondition) {
+		eventType := "Normal"
+		if readyCondition.Status == metav1.ConditionFalse {
+			eventType = "Warning"
+		}
+		recorder.Eventf(obj, nil, eventType, readyCondition.Reason, "Reconciling", readyCondition.Message)
 	}
 
 	// Stamp status.observedGeneration before building the apply configuration so the SSA

@@ -224,7 +224,7 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 
 		// This function will panic, and HandleReconciliationResult should recover from it
 		func() {
-			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err)
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err, nil)
 			panic("test panic message")
 		}()
 
@@ -243,7 +243,7 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 
 		// This function will return an error normally
 		func() {
-			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err)
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err, nil)
 			err = errors.New("test error message")
 		}()
 
@@ -261,7 +261,7 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 
 		// This function will complete successfully
 		func() {
-			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err)
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err, nil)
 			// No error or panic
 		}()
 
@@ -281,7 +281,7 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(obj).Build()
 
 		func() {
-			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, &result, &err)
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, &result, &err, nil)
 			panic("test panic message")
 		}()
 
@@ -308,7 +308,7 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 		Expect(fakeClient.Create(ctx, obj)).To(Succeed())
 
 		func() {
-			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, &result, &err)
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, &result, &err, nil)
 			// No error or panic — HandleReconciliationResult will try (and fail) to apply status.
 		}()
 
@@ -325,7 +325,7 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 		Expect(fakeClient.Create(ctx, obj)).To(Succeed())
 
 		func() {
-			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, &result, &err)
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, &result, &err, nil)
 			// No error or panic
 		}()
 
@@ -350,12 +350,160 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 			Build()
 
 		func() {
-			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err)
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err, nil)
 			// No reconciliation error; the status apply returns NotFound.
 		}()
 
 		// NotFound on status apply is treated as "object deleted concurrently", not an error.
 		Expect(err).ToNot(HaveOccurred())
+	})
+})
+
+var _ = Describe("HandleReconciliationResult event emission", func() {
+	var (
+		ctx        context.Context
+		obj        *promoterv1alpha1.PromotionStrategy
+		recorder   *events.FakeRecorder
+		fakeClient client.Client
+	)
+
+	BeforeEach(func() {
+		ctx = context.Background()
+		obj = &promoterv1alpha1.PromotionStrategy{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "PromotionStrategy",
+				APIVersion: "promoter.argoproj.io/v1alpha1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "test-strategy",
+				Namespace:  "default",
+				Generation: 1,
+			},
+		}
+		scheme := runtime.NewScheme()
+		_ = promoterv1alpha1.AddToScheme(scheme)
+		recorder = events.NewFakeRecorder(10)
+		fakeClient = fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(obj).Build()
+		Expect(fakeClient.Create(ctx, obj)).To(Succeed())
+	})
+
+	drainEvents := func() []string {
+		var drained []string
+		for {
+			select {
+			case e := <-recorder.Events:
+				drained = append(drained, e)
+			default:
+				return drained
+			}
+		}
+	}
+
+	It("emits an event when there is no previous Ready condition", func() {
+		var err error
+		func() {
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err, nil)
+		}()
+
+		emitted := drainEvents()
+		Expect(emitted).To(HaveLen(1))
+		Expect(emitted[0]).To(ContainSubstring(string(conditions.ReconciliationSuccess)))
+	})
+
+	It("does not emit an event when the Ready condition did not transition", func() {
+		var err error
+		previousReady := &metav1.Condition{
+			Type:    string(conditions.Ready),
+			Status:  metav1.ConditionTrue,
+			Reason:  string(conditions.ReconciliationSuccess),
+			Message: "Reconciliation successful",
+		}
+		func() {
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err, &previousReady)
+		}()
+
+		Expect(drainEvents()).To(BeEmpty())
+	})
+
+	It("emits a Warning event when the Ready condition transitions from True to False", func() {
+		var err error
+		previousReady := &metav1.Condition{
+			Type:    string(conditions.Ready),
+			Status:  metav1.ConditionTrue,
+			Reason:  string(conditions.ReconciliationSuccess),
+			Message: "Reconciliation successful",
+		}
+		func() {
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err, &previousReady)
+			err = errors.New("something broke")
+		}()
+
+		emitted := drainEvents()
+		Expect(emitted).To(HaveLen(1))
+		Expect(emitted[0]).To(ContainSubstring("Warning"))
+		Expect(emitted[0]).To(ContainSubstring(string(conditions.ReconciliationError)))
+	})
+
+	It("does not emit an event when reconciliation keeps failing with the same reason", func() {
+		var err error
+		// Message intentionally differs from what this reconcile will produce: message-only
+		// changes are not transitions, because failure messages often vary per attempt.
+		previousReady := &metav1.Condition{
+			Type:    string(conditions.Ready),
+			Status:  metav1.ConditionFalse,
+			Reason:  string(conditions.ReconciliationError),
+			Message: "Reconciliation failed: previous attempt",
+		}
+		func() {
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err, &previousReady)
+			err = errors.New("something broke again")
+		}()
+
+		Expect(drainEvents()).To(BeEmpty())
+	})
+
+	It("captures previousReady late, after the defer is registered", func() {
+		var err error
+		var previousReady *metav1.Condition
+		func() {
+			// The defer is registered while previousReady is still nil, mirroring how
+			// controllers register the defer before calling RemoveReadyCondition.
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err, &previousReady)
+			previousReady = &metav1.Condition{
+				Type:    string(conditions.Ready),
+				Status:  metav1.ConditionTrue,
+				Reason:  string(conditions.ReconciliationSuccess),
+				Message: "Reconciliation successful",
+			}
+		}()
+
+		Expect(drainEvents()).To(BeEmpty())
+	})
+})
+
+var _ = Describe("RemoveReadyCondition", func() {
+	It("returns nil when no Ready condition exists", func() {
+		obj := &promoterv1alpha1.PromotionStrategy{}
+		Expect(utils.RemoveReadyCondition(obj)).To(BeNil())
+	})
+
+	It("removes the Ready condition and returns a copy of it", func() {
+		obj := &promoterv1alpha1.PromotionStrategy{}
+		meta.SetStatusCondition(obj.GetConditions(), metav1.Condition{
+			Type:               string(conditions.Ready),
+			Status:             metav1.ConditionTrue,
+			Reason:             string(conditions.ReconciliationSuccess),
+			Message:            "Reconciliation successful",
+			ObservedGeneration: 3,
+		})
+
+		prev := utils.RemoveReadyCondition(obj)
+
+		Expect(prev).ToNot(BeNil())
+		Expect(prev.Status).To(Equal(metav1.ConditionTrue))
+		Expect(prev.Reason).To(Equal(string(conditions.ReconciliationSuccess)))
+		Expect(prev.ObservedGeneration).To(Equal(int64(3)))
+		Expect(meta.FindStatusCondition(*obj.GetConditions(), string(conditions.Ready))).To(BeNil())
 	})
 })
 
@@ -414,7 +562,7 @@ var _ = Describe("HandleReconciliationResult fallback status apply", func() {
 		// Simulate a successful reconciliation followed by a status apply failure
 		result := reconcile.Result{}
 		func() {
-			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, constants.ArgoCDCommitStatusControllerFieldOwner, &result, &err)
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, constants.ArgoCDCommitStatusControllerFieldOwner, &result, &err, nil)
 			// No reconciliation error - reconciliation succeeded
 		}()
 
@@ -467,7 +615,7 @@ var _ = Describe("HandleReconciliationResult fallback status apply", func() {
 
 		result := reconcile.Result{}
 		func() {
-			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, constants.ArgoCDCommitStatusControllerFieldOwner, &result, &err)
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, constants.ArgoCDCommitStatusControllerFieldOwner, &result, &err, nil)
 			// No reconciliation error
 		}()
 
@@ -513,7 +661,7 @@ var _ = Describe("HandleReconciliationResult fallback status apply", func() {
 			Phase:     promoterv1alpha1.CommitPhaseSuccess,
 		}}
 		func() {
-			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, constants.ArgoCDCommitStatusControllerFieldOwner, nil, &err)
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, constants.ArgoCDCommitStatusControllerFieldOwner, nil, &err, nil)
 		}()
 		Expect(err).ToNot(HaveOccurred())
 
@@ -531,7 +679,7 @@ var _ = Describe("HandleReconciliationResult fallback status apply", func() {
 		obj2.Generation = 2
 		result := reconcile.Result{}
 		func() {
-			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj2, fakeClient, recorder, constants.ArgoCDCommitStatusControllerFieldOwner, &result, &err)
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj2, fakeClient, recorder, constants.ArgoCDCommitStatusControllerFieldOwner, &result, &err, nil)
 		}()
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("applying only the Ready condition succeeded"))
@@ -577,7 +725,7 @@ var _ = Describe("HandleReconciliationResult fallback status apply", func() {
 		reconcileErr := errors.New("reconciliation failed for test")
 		result := reconcile.Result{}
 		func() {
-			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, constants.ArgoCDCommitStatusControllerFieldOwner, &result, &err)
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, constants.ArgoCDCommitStatusControllerFieldOwner, &result, &err, nil)
 			err = reconcileErr
 		}()
 

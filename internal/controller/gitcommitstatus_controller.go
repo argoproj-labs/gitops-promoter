@@ -31,7 +31,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
-	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	"k8s.io/utils/ptr"
 
@@ -84,7 +84,8 @@ func (r *GitCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	var gcs promoterv1alpha1.GitCommitStatus
 	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &gcs, r.Client, r.Recorder, constants.GitCommitStatusControllerFieldOwner, &result, &err)
+	var previousReady *metav1.Condition
+	defer utils.HandleReconciliationResult(ctx, startTime, &gcs, r.Client, r.Recorder, constants.GitCommitStatusControllerFieldOwner, &result, &err, &previousReady)
 
 	err = r.Get(ctx, req.NamespacedName, &gcs, &client.GetOptions{})
 	if err != nil {
@@ -98,7 +99,7 @@ func (r *GitCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	// Remove any existing Ready condition. We want to start fresh.
-	meta.RemoveStatusCondition(gcs.GetConditions(), string(promoterConditions.Ready))
+	previousReady = utils.RemoveReadyCondition(&gcs)
 
 	// Fetch the referenced PromotionStrategy
 	var ps promoterv1alpha1.PromotionStrategy
@@ -251,6 +252,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 				"branch", branch,
 				"sha", proposedSha)
 		}
+		emitCommitStatusPhaseChangedEvent(r.Recorder, gcs, gcs.Spec.Key, branch, previousPhase, string(phase))
 
 		// Update status for this environment
 		envValidationStatus := promoterv1alpha1.GitCommitStatusEnvironmentStatus{

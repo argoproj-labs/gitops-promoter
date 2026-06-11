@@ -38,7 +38,6 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
@@ -89,7 +88,8 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	var ps promoterv1alpha1.PromotionStrategy
 	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &ps, r.Client, r.Recorder, constants.PromotionStrategyControllerFieldOwner, &result, &err)
+	var previousReady *metav1.Condition
+	defer utils.HandleReconciliationResult(ctx, startTime, &ps, r.Client, r.Recorder, constants.PromotionStrategyControllerFieldOwner, &result, &err, &previousReady)
 
 	err = r.Get(ctx, req.NamespacedName, &ps, &client.GetOptions{})
 	if err != nil {
@@ -108,7 +108,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	// Remove any existing Ready condition. We want to start fresh.
-	meta.RemoveStatusCondition(ps.GetConditions(), string(promoterConditions.Ready))
+	previousReady = utils.RemoveReadyCondition(&ps)
 
 	// If a ChangeTransferPolicy does not exist, create it otherwise get it and store the ChangeTransferPolicy in a slice with the same order as ps.Spec.Environments.
 	ctps := make([]*promoterv1alpha1.ChangeTransferPolicy, len(ps.Spec.Environments))
