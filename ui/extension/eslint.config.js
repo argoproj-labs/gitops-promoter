@@ -1,3 +1,5 @@
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import js from '@eslint/js';
 import tsPlugin from '@typescript-eslint/eslint-plugin';
 import tsParser from '@typescript-eslint/parser';
@@ -6,21 +8,31 @@ import reactHooksPlugin from 'eslint-plugin-react-hooks';
 import reactRefreshPlugin from 'eslint-plugin-react-refresh';
 import prettierConfig from 'eslint-config-prettier';
 
+const tsconfigRootDir = dirname(fileURLToPath(import.meta.url));
+
 export default [
   // Ignore patterns
   {
-    ignores: ['dist/', 'node_modules/', '*.min.js', '*.d.ts'],
+    ignores: [
+      'dist/',
+      'coverage/',
+      'node_modules/',
+      '*.min.js',
+      '*.d.ts',
+      '../shared/src/types/generated/',
+    ],
   },
 
   // Base config for all files
   {
-    files: ['**/*.{ts,tsx,js,jsx}'],
-
+    files: ['**/*.{ts,tsx}'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
       parser: tsParser,
       parserOptions: {
+        project: ['./tsconfig.eslint.json'],
+        tsconfigRootDir,
         ecmaFeatures: {
           jsx: true,
         },
@@ -69,6 +81,7 @@ export default [
       // TypeScript rules
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-unnecessary-condition': 'error',
 
       // React rules
       'react/prop-types': 'off',
@@ -91,7 +104,7 @@ export default [
 
   // Test files override
   {
-    files: ['test/**/*.{ts,tsx,js,jsx}', '**/*.test.{ts,tsx,js,jsx}'],
+    files: ['test/**/*.{ts,tsx}', '**/*.test.{ts,tsx}'],
     languageOptions: {
       globals: {
         // Mocha globals
@@ -112,6 +125,7 @@ export default [
     rules: {
       'no-console': 'off',
       '@typescript-eslint/no-var-requires': 'off',
+      '@typescript-eslint/no-unnecessary-condition': 'off',
     },
   },
 

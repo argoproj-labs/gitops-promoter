@@ -35,9 +35,7 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
   const { items, fetchItems, subscribe, unsubscribe } = PromotionStrategyStore();
 
   // Find the selected strategy
-  const selectedStrategy = items.find(
-    (ps: PromotionStrategy) => ps.metadata?.name === strategyName,
-  );
+  const selectedStrategy = items.find((ps: PromotionStrategy) => ps.metadata.name === strategyName);
 
   useEffect(() => {
     if (!namespace) return;
