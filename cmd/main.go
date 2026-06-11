@@ -323,8 +323,10 @@ func runController(
 		panic(fmt.Errorf("unable to create WebRequestCommitStatus controller: %w", err))
 	}
 	if err := (&controller.PreviousEnvironmentCommitStatusReconciler{
-		Client: localManager.GetClient(),
-		Scheme: localManager.GetScheme(),
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorder("PreviousEnvironmentCommitStatus"),
+		SettingsMgr: settingsMgr,
 	}).SetupWithManager(localManager); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PreviousEnvironmentCommitStatus")
 		panic(fmt.Errorf("unable to create PreviousEnvironmentCommitStatus controller: %w", err))
