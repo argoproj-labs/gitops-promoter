@@ -150,6 +150,24 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
   };
 }
 
+// Returns the set of branch names whose environments are currently being processed.
+export function getProcessingEnvs(environments: Environment[]): Set<string> {
+  const effective = (e: Environment) => e.proposed?.note?.drySha || e.proposed?.dry?.sha || '';
+  let target = '',
+    newest = -Infinity;
+  for (const e of environments) {
+    const sha = e.proposed?.dry?.sha;
+    if (!sha) continue;
+    const t = Date.parse(e.proposed?.hydrated?.commitTime ?? '') || 0;
+    if (!target || t > newest) {
+      target = sha;
+      newest = t;
+    }
+  }
+  if (!target) return new Set();
+  return new Set(environments.filter((e) => effective(e) !== target).map((e) => e.branch));
+}
+
 // Takes the PS objects (for dashboard)
 export function enrichFromCRD(
   ps: PromotionStrategy,
