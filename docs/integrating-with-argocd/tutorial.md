@@ -37,7 +37,7 @@ If you don't have a test cluster yet, create one. With kind, simply run `kind cr
 > [!TIP]
 > You can name the cluster with `kind create cluster --name promoter`
 
-Confirm that your access works with `kubectl get nodes`. Nodes should have a name starting with the name of your cluster (per example: `promoter-control-plane`)
+Confirm that your access works with `kubectl get nodes`. Nodes should have a name starting with the name of your cluster (for example: `promoter-control-plane`)
 
 ### Install Argo CD
 
