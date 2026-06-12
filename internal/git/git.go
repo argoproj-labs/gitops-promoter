@@ -71,6 +71,7 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -109,6 +110,12 @@ type HydratorMetadata = v1alpha1.HydratorMetadata
 
 // HydratorNotesRef is the git notes reference used by hydrators to store metadata about hydrated commits.
 const HydratorNotesRef = "refs/notes/hydrator.metadata"
+
+// PromoterHistoryNotesRef is the git notes reference used by the ChangeTransferPolicy controller to store
+// promotion-history metadata (the commit message trailers) on merge commits at pull request finalization.
+// This keeps history reconstructable even when the SCM rewrites the merge commit message (e.g. squash merges
+// or merges performed directly on the SCM).
+const PromoterHistoryNotesRef = "refs/notes/promoter.history"
 
 // NewEnvironmentOperations creates a new EnvironmentOperations instance. The identity parameter is an opaque,
 // caller-supplied identifier (for example the owning object's namespace/name); together with the repo URL it forms
@@ -216,14 +223,9 @@ func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch, activ
 	logger.V(4).Info("git path", "path", gitPath)
 
 	// Fetch the branch to ensure we have the latest remote ref
-	start := time.Now()
-	_, stderr, err := g.runCmd(ctx, gitPath, "fetch", "origin", branch)
-	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetch, metrics.GitOperationResultFromError(err), time.Since(start))
-	if err != nil {
-		logger.Error(err, "could not fetch branch", "gitError", stderr)
-		return BranchShas{}, fmt.Errorf("failed to fetch branch %q: %w", branch, err)
+	if err := g.FetchBranch(ctx, branch); err != nil {
+		return BranchShas{}, err
 	}
-	logger.V(4).Info("Fetched branch", "branch", branch)
 
 	// Get the SHA of the remote branch
 	stdout, stderr, err := g.runCmd(ctx, gitPath, "rev-parse", "origin/"+branch)
@@ -270,6 +272,28 @@ func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch, activ
 	logger.V(4).Info("Got dry branch sha", "branch", branch, "sha", shas.Dry)
 
 	return shas, nil
+}
+
+// FetchBranch fetches the given branch from origin so origin/<branch> reflects the latest remote state.
+//
+// Read-only: updates the remote-tracking ref only; never mutates the clone's index/worktree/HEAD.
+func (g *EnvironmentOperations) FetchBranch(ctx context.Context, branch string) error {
+	logger := log.FromContext(ctx)
+	gitPath := g.ClonePath()
+	if gitPath == "" {
+		return fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	start := time.Now()
+	_, stderr, err := g.runCmd(ctx, gitPath, "fetch", "origin", branch)
+	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetch, metrics.GitOperationResultFromError(err), time.Since(start))
+	if err != nil {
+		logger.Error(err, "could not fetch branch", "gitError", stderr)
+		return fmt.Errorf("failed to fetch branch %q: %w", branch, err)
+	}
+	logger.V(4).Info("Fetched branch", "branch", branch)
+
+	return nil
 }
 
 // GetShaMetadataFromFile retrieves commit metadata from the hydrator.metadata file for a given SHA.
@@ -765,8 +789,22 @@ func AddTrailerToCommitMessage(ctx context.Context, commitMessage, trailerKey, t
 
 // FetchNotes fetches the git notes from the remote repository.
 //
-// Read-only: updates the notes ref only; never mutates the clone's index/worktree/HEAD.
+// Read-only: updates the notes refs only; never mutates the clone's index/worktree/HEAD.
 func (g *EnvironmentOperations) FetchNotes(ctx context.Context) error {
+	// Each ref is fetched in its own invocation because a multi-refspec fetch fails wholesale when any
+	// single ref is missing, and either ref can legitimately be absent.
+	for _, ref := range []string{HydratorNotesRef, PromoterHistoryNotesRef} {
+		if err := g.fetchNotesRef(ctx, ref); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// fetchNotesRef fetches a single notes ref from origin, tolerating a missing remote ref.
+//
+// Read-only: updates the notes ref only; never mutates the clone's index/worktree/HEAD.
+func (g *EnvironmentOperations) fetchNotesRef(ctx context.Context, ref string) error {
 	logger := log.FromContext(ctx)
 	gitPath := g.ClonePath()
 	if gitPath == "" {
@@ -775,21 +813,21 @@ func (g *EnvironmentOperations) FetchNotes(ctx context.Context) error {
 
 	// Fetch the notes ref from origin. We use + to force update in case of divergence.
 	start := time.Now()
-	_, stderr, err := g.runCmd(ctx, gitPath, "fetch", "origin", "+"+HydratorNotesRef+":"+HydratorNotesRef)
+	_, stderr, err := g.runCmd(ctx, gitPath, "fetch", "origin", "+"+ref+":"+ref)
 	if err != nil {
 		// Notes ref might not exist yet, which is fine
 		if strings.Contains(stderr, "couldn't find remote ref") {
 			metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetchNotes, metrics.GitOperationResultSuccess, time.Since(start))
-			logger.V(4).Info("Git notes ref does not exist on remote", "ref", HydratorNotesRef)
+			logger.V(4).Info("Git notes ref does not exist on remote", "ref", ref)
 			return nil
 		}
 		metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetchNotes, metrics.GitOperationResultFailure, time.Since(start))
 		logger.Error(err, "Failed to fetch git notes", "stderr", stderr)
-		return fmt.Errorf("failed to fetch git notes: %w", err)
+		return fmt.Errorf("failed to fetch git notes for ref %q: %w", ref, err)
 	}
 	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetchNotes, metrics.GitOperationResultSuccess, time.Since(start))
 
-	logger.V(4).Info("Fetched git notes", "ref", HydratorNotesRef)
+	logger.V(4).Info("Fetched git notes", "ref", ref)
 	return nil
 }
 
@@ -823,6 +861,170 @@ func (g *EnvironmentOperations) GetHydratorNote(ctx context.Context, sha string)
 
 	logger.V(4).Info("Got hydrator note", "sha", sha, "note", note)
 	return &note, nil
+}
+
+// GetHistoryNote reads the promotion-history git note for a given commit SHA from PromoterHistoryNotesRef.
+// The note payload is a JSON-encoded trailers map (the same shape ParseTrailersFromMessage returns).
+// Returns (nil, nil) when no note exists for the commit or the note is not valid JSON.
+//
+// Read-only: never mutates the clone's index/worktree/HEAD. Requires FetchNotes to have run.
+func (g *EnvironmentOperations) GetHistoryNote(ctx context.Context, sha string) (map[string][]string, error) {
+	logger := log.FromContext(ctx)
+	gitPath := g.ClonePath()
+	if gitPath == "" {
+		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	stdout, stderr, err := g.runCmd(ctx, gitPath, "notes", "--ref="+PromoterHistoryNotesRef, "show", sha)
+	if err != nil {
+		// No note for this commit is not an error - git outputs "error: no note found for object <sha>"
+		if strings.Contains(strings.ToLower(stderr), "no note found") {
+			logger.V(4).Info("No history note found for commit", "sha", sha)
+			return nil, nil
+		}
+		logger.Error(err, "Failed to read history note", "sha", sha, "stderr", stderr)
+		return nil, fmt.Errorf("failed to read history note for sha %q: %w", sha, err)
+	}
+
+	var trailers map[string][]string
+	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &trailers); err != nil {
+		logger.V(4).Info("Failed to parse history note as JSON, ignoring", "sha", sha, "content", stdout, "error", err)
+		return nil, nil
+	}
+
+	logger.V(4).Info("Got history note", "sha", sha, "trailers", trailers)
+	return trailers, nil
+}
+
+// setHistoryNoteMaxAttempts bounds the fetch/add/push retry loop in SetHistoryNote. The notes ref is shared
+// by every clone of the repository, so concurrent writers can race on the push; each retry re-fetches the
+// ref and re-applies the note on top of the latest remote state.
+const setHistoryNoteMaxAttempts = 3
+
+// SetHistoryNote attaches (or overwrites) the promotion-history note on the given commit SHA and pushes
+// PromoterHistoryNotesRef to origin. The payload is JSON-encoded; GetHistoryNote is the reader.
+// Retries on non-fast-forward pushes since concurrent clones of the same repository share the remote ref.
+//
+// Writes only the notes ref and its objects; never mutates the clone's index/worktree/HEAD.
+func (g *EnvironmentOperations) SetHistoryNote(ctx context.Context, sha string, payload map[string][]string) error {
+	logger := log.FromContext(ctx)
+	gitPath := g.ClonePath()
+	if gitPath == "" {
+		return fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal history note payload: %w", err)
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= setHistoryNoteMaxAttempts; attempt++ {
+		// Force-fetch deliberately discards any local note state so the add below re-applies on top of the
+		// latest remote state.
+		if err := g.fetchNotesRef(ctx, PromoterHistoryNotesRef); err != nil {
+			return err
+		}
+
+		// -f overwrites an existing note, which keeps retried reconciles idempotent.
+		_, stderr, err := g.runCmd(ctx, gitPath, "notes", "--ref="+PromoterHistoryNotesRef, "add", "-f", "-m", string(payloadJSON), sha)
+		if err != nil {
+			logger.Error(err, "Failed to add history note", "sha", sha, "stderr", stderr)
+			return fmt.Errorf("failed to add history note for sha %q: %w", sha, err)
+		}
+
+		start := time.Now()
+		_, stderr, err = g.runCmd(ctx, gitPath, "push", "origin", PromoterHistoryNotesRef+":"+PromoterHistoryNotesRef)
+		metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationPushNotes, metrics.GitOperationResultFromError(err), time.Since(start))
+		if err == nil {
+			logger.V(4).Info("Pushed history note", "sha", sha, "attempt", attempt)
+			return nil
+		}
+
+		lastErr = fmt.Errorf("failed to push history note for sha %q: %w", sha, err)
+		if !strings.Contains(stderr, "non-fast-forward") && !strings.Contains(stderr, "fetch first") && !strings.Contains(stderr, "[rejected]") {
+			logger.Error(err, "Failed to push history note", "sha", sha, "stderr", stderr)
+			return lastErr
+		}
+		logger.V(4).Info("History note push rejected, retrying", "sha", sha, "attempt", attempt, "stderr", stderr)
+	}
+
+	return fmt.Errorf("failed to push history note after %d attempts: %w", setHistoryNoteMaxAttempts, lastErr)
+}
+
+// GetCommitParents returns the parent SHAs of the given commit in order (first parent first).
+//
+// Read-only: never mutates the clone's index/worktree/HEAD. Requires the SHA's commit object to have
+// been fetched.
+func (g *EnvironmentOperations) GetCommitParents(ctx context.Context, sha string) ([]string, error) {
+	gitPath := g.ClonePath()
+	if gitPath == "" {
+		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	stdout, stderr, err := g.runCmd(ctx, gitPath, "log", "-1", "--format=%P", sha)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get parents for sha %q: %w (stderr: %s)", sha, err, stderr)
+	}
+
+	return strings.Fields(stdout), nil
+}
+
+// IsAncestor reports whether ancestor is an ancestor of descendant using git merge-base --is-ancestor.
+//
+// Read-only: never mutates the clone's index/worktree/HEAD. Requires both commits to have been fetched.
+func (g *EnvironmentOperations) IsAncestor(ctx context.Context, ancestor, descendant string) (bool, error) {
+	gitPath := g.ClonePath()
+	if gitPath == "" {
+		return false, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	_, stderr, err := g.runCmd(ctx, gitPath, "merge-base", "--is-ancestor", ancestor, descendant)
+	if err != nil {
+		// Exit code 1 means "not an ancestor"; anything else is a real error.
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to check ancestry of %q in %q: %w (stderr: %s)", ancestor, descendant, err, stderr)
+	}
+
+	return true, nil
+}
+
+// CommitExists reports whether the given SHA resolves to a commit object in the local object database.
+//
+// Read-only: never mutates the clone's index/worktree/HEAD.
+func (g *EnvironmentOperations) CommitExists(ctx context.Context, sha string) bool {
+	gitPath := g.ClonePath()
+	if gitPath == "" {
+		return false
+	}
+
+	_, _, err := g.runCmd(ctx, gitPath, "cat-file", "-e", sha+"^{commit}")
+	return err == nil
+}
+
+// FetchSha fetches a single commit object by SHA from origin. Best-effort callers should tolerate errors:
+// not all servers allow fetching arbitrary SHAs (uploadpack.allowAnySHA1InWant).
+//
+// Read-only: writes only fetched objects; never mutates the clone's index/worktree/HEAD.
+func (g *EnvironmentOperations) FetchSha(ctx context.Context, sha string) error {
+	logger := log.FromContext(ctx)
+	gitPath := g.ClonePath()
+	if gitPath == "" {
+		return fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	start := time.Now()
+	_, stderr, err := g.runCmd(ctx, gitPath, "fetch", "origin", sha)
+	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetch, metrics.GitOperationResultFromError(err), time.Since(start))
+	if err != nil {
+		logger.V(4).Info("could not fetch sha from origin", "sha", sha, "stderr", stderr, "err", err)
+		return fmt.Errorf("failed to fetch sha %q: %w", sha, err)
+	}
+
+	return nil
 }
 
 // ParseTrailersFromMessage parses git trailers from a commit message using git interpret-trailers.
