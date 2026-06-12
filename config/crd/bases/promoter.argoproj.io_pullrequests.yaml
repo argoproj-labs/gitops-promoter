@@ -266,6 +266,10 @@ spec:
             is empty
           rule: self.spec.state == 'open' || has(self.status.id) && self.status.id
             != ""
+        - message: spec.state is immutable once status.state has reached a terminal
+            state (merged or closed)
+          rule: '!(has(oldSelf.status.state) && (oldSelf.status.state == ''merged''
+            || oldSelf.status.state == ''closed'')) || self.spec.state == oldSelf.spec.state'
     served: true
     storage: true
     subresources:

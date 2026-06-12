@@ -151,6 +151,7 @@ func (ps *PullRequest) SetObservedGeneration(generation int64) {
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="URL",type=string,JSONPath=`.status.url`,priority=1
 // +kubebuilder:validation:XValidation:rule=`self.spec.state == 'open' || has(self.status.id) && self.status.id != ""`,message="Cannot transition to 'closed' or 'merged' state when status.id is empty"
+// +kubebuilder:validation:XValidation:rule=`!(has(oldSelf.status.state) && (oldSelf.status.state == 'merged' || oldSelf.status.state == 'closed')) || self.spec.state == oldSelf.spec.state`,message="spec.state is immutable once status.state has reached a terminal state (merged or closed)"
 type PullRequest struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
