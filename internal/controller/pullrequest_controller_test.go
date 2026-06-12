@@ -293,6 +293,137 @@ var _ = Describe("PullRequest Controller", func() {
 		})
 	})
 
+	Context("When spec.state transitions are restricted after terminal status", func() {
+		const blockingFinalizer = "promoter.argoproj.io/test-will-not-remove"
+		const terminalStatusImmutableMsg = "spec.state is immutable once status.state has reached a terminal state"
+
+		setupPullRequestWithBlockingFinalizer := func(namePrefix string) (types.NamespacedName, *promoterv1alpha1.PullRequest) {
+			name, scmSecret, scmProvider, gitRepo, pullRequest := pullRequestResources(ctx, namePrefix)
+			typeNamespacedName := types.NamespacedName{Name: name, Namespace: "default"}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				g.Expect(pullRequest.Status.ID).ToNot(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+			base := pullRequest.DeepCopy()
+			pullRequest.Finalizers = append(pullRequest.Finalizers, blockingFinalizer)
+			Expect(k8sClient.Patch(ctx, pullRequest, client.MergeFrom(base))).To(Succeed())
+
+			return typeNamespacedName, pullRequest
+		}
+
+		removeBlockingFinalizerIfDeleting := func(typeNamespacedName types.NamespacedName) {
+			var pr promoterv1alpha1.PullRequest
+			if err := k8sClient.Get(ctx, typeNamespacedName, &pr); err != nil {
+				return
+			}
+			if pr.DeletionTimestamp == nil {
+				return
+			}
+			var kept []string
+			for _, f := range pr.Finalizers {
+				if f != blockingFinalizer {
+					kept = append(kept, f)
+				}
+			}
+			if len(kept) == len(pr.Finalizers) {
+				return
+			}
+			base := pr.DeepCopy()
+			pr.Finalizers = kept
+			_ = k8sClient.Patch(ctx, &pr, client.MergeFrom(base))
+		}
+
+		It("should reject changing spec.state when status.state is merged", func() {
+			typeNamespacedName, pullRequest := setupPullRequestWithBlockingFinalizer("cel-terminal-merged")
+			defer removeBlockingFinalizerIfDeleting(typeNamespacedName)
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				base := pullRequest.DeepCopy()
+				pullRequest.Spec.State = promoterv1alpha1.PullRequestMerged
+				g.Expect(k8sClient.Patch(ctx, pullRequest, client.MergeFrom(base))).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				pullRequest.Status.State = promoterv1alpha1.PullRequestMerged
+				g.Expect(k8sClient.Status().Update(ctx, pullRequest)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+			base := pullRequest.DeepCopy()
+			pullRequest.Spec.State = promoterv1alpha1.PullRequestOpen
+			err := k8sClient.Patch(ctx, pullRequest, client.MergeFrom(base))
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring(terminalStatusImmutableMsg))
+		})
+
+		It("should reject changing spec.state when status.state is closed", func() {
+			typeNamespacedName, pullRequest := setupPullRequestWithBlockingFinalizer("cel-terminal-closed")
+			defer removeBlockingFinalizerIfDeleting(typeNamespacedName)
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				base := pullRequest.DeepCopy()
+				pullRequest.Spec.State = promoterv1alpha1.PullRequestClosed
+				g.Expect(k8sClient.Patch(ctx, pullRequest, client.MergeFrom(base))).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				pullRequest.Status.State = promoterv1alpha1.PullRequestClosed
+				g.Expect(k8sClient.Status().Update(ctx, pullRequest)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+			base := pullRequest.DeepCopy()
+			pullRequest.Spec.State = promoterv1alpha1.PullRequestOpen
+			err := k8sClient.Patch(ctx, pullRequest, client.MergeFrom(base))
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring(terminalStatusImmutableMsg))
+		})
+
+		It("should allow reverting spec.state to open while status.state is still open", func() {
+			name, scmSecret, scmProvider, gitRepo, pullRequest := pullRequestResources(ctx, "cel-abort-inflight")
+			typeNamespacedName := types.NamespacedName{Name: name, Namespace: "default"}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				g.Expect(pullRequest.Status.ID).ToNot(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				base := pullRequest.DeepCopy()
+				pullRequest.Spec.State = promoterv1alpha1.PullRequestMerged
+				g.Expect(k8sClient.Patch(ctx, pullRequest, client.MergeFrom(base))).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				base := pullRequest.DeepCopy()
+				pullRequest.Spec.State = promoterv1alpha1.PullRequestOpen
+				g.Expect(k8sClient.Patch(ctx, pullRequest, client.MergeFrom(base))).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
 	Context("When deleting a PullRequest that never created a PR on SCM", func() {
 		var name string
 		var scmSecret *v1.Secret
