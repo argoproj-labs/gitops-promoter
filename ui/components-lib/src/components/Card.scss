@@ -55,6 +55,32 @@
   color: $argo-color-gray-7;
 }
 
+.env-card__proposed-loading {
+  width: 100%;
+  height: 2px;
+  background: $argo-running;
+  border-radius: 1px;
+  animation: proposed-loading-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes proposed-loading-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .env-card__proposed-loading {
+    animation: none;
+    opacity: 1;
+  }
+}
+
 .history-toggle {
   background: none;
   border: none;
