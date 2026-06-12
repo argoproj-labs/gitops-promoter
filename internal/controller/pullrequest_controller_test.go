@@ -150,6 +150,13 @@ var _ = Describe("PullRequest Controller", func() {
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
 				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Verifying a PullRequestClosed event was emitted")
+				Eventually(func(g Gomega) {
+					var eventList v1.EventList
+					g.Expect(k8sClient.List(ctx, &eventList, client.InNamespace("default"))).To(Succeed())
+					g.Expect(hasEventWithReason(eventList, name, constants.PullRequestClosedReason)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
 	})
@@ -248,6 +255,13 @@ var _ = Describe("PullRequest Controller", func() {
 					// The message should be: "Reconciliation failed: failed to merge pull request: <actual error>"
 					// NOT: "Reconciliation failed: failed to merge pull request: failed to merge pull request: failed to merge pull request: <actual error>"
 					g.Expect(message).ToNot(ContainSubstring("failed to merge pull request: failed to merge pull request"))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Verifying a PullRequestMergeFailed event was emitted")
+				Eventually(func(g Gomega) {
+					var eventList v1.EventList
+					g.Expect(k8sClient.List(ctx, &eventList, client.InNamespace("default"))).To(Succeed())
+					g.Expect(hasEventWithReason(eventList, name, constants.PullRequestMergeFailedReason)).To(BeTrue())
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
@@ -867,6 +881,13 @@ var _ = Describe("PullRequest Controller", func() {
 				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying a PullRequestExternallyMergedOrClosed event was emitted")
+			Eventually(func(g Gomega) {
+				var eventList v1.EventList
+				g.Expect(k8sClient.List(ctx, &eventList, client.InNamespace("default"))).To(Succeed())
+				g.Expect(hasEventWithReason(eventList, name, constants.PullRequestExternallyMergedOrClosedReason)).To(BeTrue())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying CTP status preserves ExternallyMergedOrClosed even after PR deletion")

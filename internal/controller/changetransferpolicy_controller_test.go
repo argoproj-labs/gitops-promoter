@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"slices"
 	"strings"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -36,6 +37,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/utils/ptr"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -277,6 +279,99 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					}
 					err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+		})
+
+		Context("When emitting promotion lifecycle events", func() {
+			var name string
+			var scmSecret *v1.Secret
+			var scmProvider *promoterv1alpha1.ScmProvider
+			var gitRepo *promoterv1alpha1.GitRepository
+			var commitStatus *promoterv1alpha1.CommitStatus
+			var changeTransferPolicy *promoterv1alpha1.ChangeTransferPolicy
+			var typeNamespacedName types.NamespacedName
+			var gitPath string
+			var err error
+
+			const promotionGateCSKey = "promotion-gate"
+
+			BeforeEach(func() {
+				name, scmSecret, scmProvider, gitRepo, commitStatus, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-lifecycle-events", "default")
+
+				typeNamespacedName = types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}
+
+				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
+				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
+				changeTransferPolicy.Spec.AutoMerge = ptr.To(true)
+				changeTransferPolicy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+					{
+						Key: promotionGateCSKey,
+					},
+				}
+
+				commitStatus.Spec.Name = promotionGateCSKey
+				commitStatus.Labels = map[string]string{
+					promoterv1alpha1.CommitStatusLabel: promotionGateCSKey,
+				}
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
+
+				gitPath, err = os.MkdirTemp("", "*")
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			AfterEach(func() {
+				By("Cleaning up resources")
+				Expect(k8sClient.Delete(ctx, changeTransferPolicy)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, commitStatus)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+			})
+
+			It("emits PromotionStarted, PromotionBlocked, and PromotionCompleted across the promotion flow", func() {
+				By("Adding a pending commit")
+				makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+
+				By("Waiting for PromotionStarted and PromotionBlocked while the proposed gate is pending")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).NotTo(BeEmpty())
+					g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).NotTo(Equal(changeTransferPolicy.Status.Active.Dry.Sha))
+
+					var eventList v1.EventList
+					g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
+					g.Expect(hasEventWithReason(eventList, name, constants.PromotionStartedReason)).To(BeTrue())
+					g.Expect(hasEventWithReason(eventList, name, constants.PromotionBlockedReason)).To(BeTrue())
+					g.Expect(hasEventWithReason(eventList, name, constants.PromotionCompletedReason)).To(BeFalse())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Passing the proposed commit status gate")
+				Eventually(func(g Gomega) {
+					sha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+changeTransferPolicy.Spec.ProposedBranch)
+					g.Expect(err).NotTo(HaveOccurred())
+
+					commitStatus.Spec.Sha = strings.TrimSpace(sha)
+					commitStatus.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+					err = k8sClient.Create(ctx, commitStatus)
+					g.Expect(err).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Waiting for the merge and PromotionCompleted")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).To(Equal(changeTransferPolicy.Status.Proposed.Dry.Sha))
+
+					var eventList v1.EventList
+					g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
+					g.Expect(hasEventWithReason(eventList, name, constants.PromotionCompletedReason)).To(BeTrue())
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
@@ -1136,6 +1231,101 @@ var _ = Describe("tooManyPRsError", func() {
 		})
 	})
 })
+
+var _ = Describe("emitPromotionLifecycleEvents", func() {
+	var recorder *events.FakeRecorder
+	var reconciler *ChangeTransferPolicyReconciler
+	var ctp *promoterv1alpha1.ChangeTransferPolicy
+
+	BeforeEach(func() {
+		recorder = events.NewFakeRecorder(100)
+		reconciler = &ChangeTransferPolicyReconciler{Recorder: recorder}
+		ctp = &promoterv1alpha1.ChangeTransferPolicy{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-ctp", Namespace: "default"},
+			Spec:       promoterv1alpha1.ChangeTransferPolicySpec{ActiveBranch: "environment/development"},
+		}
+	})
+
+	drainEvents := func() string {
+		var sb strings.Builder
+		for {
+			select {
+			case e := <-recorder.Events:
+				sb.WriteString(e)
+				sb.WriteString("\n")
+			default:
+				return sb.String()
+			}
+		}
+	}
+
+	gate := func(key, phase string) promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase {
+		return promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{Key: key, Phase: phase}
+	}
+	ctpStatus := func(activeDry, proposedDry string, proposedGates ...promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) promoterv1alpha1.ChangeTransferPolicyStatus {
+		return promoterv1alpha1.ChangeTransferPolicyStatus{
+			Active:   promoterv1alpha1.CommitBranchState{Dry: promoterv1alpha1.CommitShaState{Sha: activeDry}},
+			Proposed: promoterv1alpha1.CommitBranchState{Dry: promoterv1alpha1.CommitShaState{Sha: proposedDry}, CommitStatuses: proposedGates},
+		}
+	}
+
+	Context("When comparing the previous and current status", func() {
+		DescribeTable("emits events only on transitions",
+			func(prev, cur promoterv1alpha1.ChangeTransferPolicyStatus, expected, unexpected []string) {
+				ctp.Status = cur
+				reconciler.emitPromotionLifecycleEvents(ctp, &prev)
+				emitted := drainEvents()
+				for _, want := range expected {
+					Expect(emitted).To(ContainSubstring(want))
+				}
+				for _, dontWant := range unexpected {
+					Expect(emitted).NotTo(ContainSubstring(dontWant))
+				}
+			},
+			Entry("new proposed dry sha emits PromotionStarted",
+				ctpStatus("sha-a", "sha-a"), ctpStatus("sha-a", "sha-b"),
+				[]string{constants.PromotionStartedReason}, []string{constants.PromotionBlockedReason, constants.PromotionCompletedReason}),
+			Entry("unchanged pending promotion emits nothing",
+				ctpStatus("sha-a", "sha-b", gate("gate", "pending")), ctpStatus("sha-a", "sha-b", gate("gate", "pending")),
+				nil, []string{constants.PromotionStartedReason, constants.PromotionBlockedReason, constants.PromotionCompletedReason}),
+			Entry("a newer change superseding the in-flight one emits PromotionStarted again",
+				ctpStatus("sha-a", "sha-b"), ctpStatus("sha-a", "sha-c"),
+				[]string{constants.PromotionStartedReason}, nil),
+			Entry("pending gate on a new attempt emits PromotionStarted and PromotionBlocked",
+				ctpStatus("sha-a", "sha-a"), ctpStatus("sha-a", "sha-b", gate("gate", "pending")),
+				[]string{constants.PromotionStartedReason, constants.PromotionBlockedReason}, []string{constants.PromotionCompletedReason}),
+			Entry("gate phase change pending to failure emits a Warning PromotionBlocked",
+				ctpStatus("sha-a", "sha-b", gate("gate", "pending")), ctpStatus("sha-a", "sha-b", gate("gate", "failure")),
+				[]string{"Warning", constants.PromotionBlockedReason, "failure"}, []string{constants.PromotionStartedReason}),
+			Entry("gate stuck in the same phase emits nothing",
+				ctpStatus("sha-a", "sha-b", gate("gate", "failure")), ctpStatus("sha-a", "sha-b", gate("gate", "failure")),
+				nil, []string{constants.PromotionBlockedReason}),
+			Entry("successful gates do not emit PromotionBlocked",
+				ctpStatus("sha-a", "sha-a"), ctpStatus("sha-a", "sha-b", gate("health-check", "success")),
+				[]string{constants.PromotionStartedReason}, []string{constants.PromotionBlockedReason}),
+			Entry("active dry sha advancing emits PromotionCompleted",
+				ctpStatus("sha-a", "sha-b"), ctpStatus("sha-b", "sha-b"),
+				[]string{constants.PromotionCompletedReason}, []string{constants.PromotionStartedReason, constants.PromotionBlockedReason}),
+			Entry("first-ever status population does not emit PromotionCompleted",
+				ctpStatus("", ""), ctpStatus("sha-a", "sha-a"),
+				nil, []string{constants.PromotionCompletedReason, constants.PromotionStartedReason}),
+		)
+	})
+})
+
+// hasEventWithReason reports whether eventList contains an event for the named involved object
+// with the given reason.
+func hasEventWithReason(eventList v1.EventList, involvedName, reason string) bool {
+	return hasEventWithReasonAndMessage(eventList, involvedName, reason, "")
+}
+
+// hasEventWithReasonAndMessage is hasEventWithReason narrowed to events whose message contains
+// the given substring.
+func hasEventWithReasonAndMessage(eventList v1.EventList, involvedName, reason, messageSubstring string) bool {
+	return slices.ContainsFunc(eventList.Items, func(e v1.Event) bool {
+		return e.InvolvedObject.Name == involvedName && e.Reason == reason && strings.Contains(e.Message, messageSubstring)
+	})
+}
 
 //nolint:unparam // namespace is always "default" in tests but kept for consistency with other test helpers
 func changeTransferPolicyResources(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.ChangeTransferPolicy) {

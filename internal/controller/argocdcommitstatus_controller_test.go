@@ -254,6 +254,13 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				g.Expect(commitStatusList.Items[0].Spec.Name).To(Equal(customCommitStatusKey + "/" + testBranchStaging))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
+			By("Verifying a CommitStatusPhaseChanged event was emitted")
+			Eventually(func(g Gomega) {
+				var eventList v1.EventList
+				g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
+				g.Expect(hasEventWithReasonAndMessage(eventList, name, constants.CommitStatusPhaseChangedReason, "to success")).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
 			// Clean up
 			Expect(k8sClient.Delete(ctx, app)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, commitStatus)).To(Succeed())
