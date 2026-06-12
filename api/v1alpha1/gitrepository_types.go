@@ -26,6 +26,7 @@ import (
 
 // GitRepositorySpec defines the desired state of GitRepository
 // +kubebuilder:validation:ExactlyOneOf=github;gitlab;forgejo;gitea;bitbucketCloud;azureDevOps;fake
+// +kubebuilder:validation:XValidation:rule="!has(self.bitbucketCloud) || !has(self.mergeMethod) || self.mergeMethod != 'squash'",message="squash merge is not supported for Bitbucket Cloud"
 type GitRepositorySpec struct {
 	GitHub         *GitHubRepo         `json:"github,omitempty"`
 	GitLab         *GitLabRepo         `json:"gitlab,omitempty"`
@@ -36,6 +37,31 @@ type GitRepositorySpec struct {
 	Fake           *FakeRepo           `json:"fake,omitempty"`
 	// +kubebuilder:validation:Required
 	ScmProviderRef ScmProviderObjectReference `json:"scmProviderRef"`
+	// MergeMethod determines how promotion pull requests are merged: a merge commit
+	// ("merge") or a single squash commit ("squash"). Defaults to "merge".
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Enum=merge;squash
+	// +kubebuilder:default:=merge
+	MergeMethod MergeMethod `json:"mergeMethod,omitempty"`
+}
+
+// MergeMethod is how a pull request is merged into the target branch.
+type MergeMethod string
+
+const (
+	// MergeMethodMerge merges the pull request with a merge commit.
+	MergeMethodMerge MergeMethod = "merge"
+	// MergeMethodSquash squashes the pull request into a single commit on the target branch.
+	MergeMethodSquash MergeMethod = "squash"
+)
+
+// GetMergeMethod returns the configured merge method, defaulting to MergeMethodMerge when unset.
+// The CRD default covers API-created objects; this guards in-memory constructed objects.
+func (s *GitRepositorySpec) GetMergeMethod() MergeMethod {
+	if s.MergeMethod == "" {
+		return MergeMethodMerge
+	}
+	return s.MergeMethod
 }
 
 // ScmProviderObjectReference is a reference to a SCM provider object.

@@ -20,6 +20,8 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"os"
+	"path"
 	"strings"
 	"time"
 
@@ -150,6 +152,99 @@ var _ = Describe("PullRequest Controller", func() {
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
 				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+		})
+
+		Context("When merging with the squash merge method", func() {
+			var mergeSha string
+
+			BeforeEach(func() {
+				By("Creating test resources")
+				name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "squash-merge-method")
+				gitRepo.Spec.MergeMethod = promoterv1alpha1.MergeMethodSquash
+
+				pullRequest.Spec.TargetBranch = testBranchDevelopment
+				pullRequest.Spec.SourceBranch = testBranchDevelopmentNext
+				pullRequest.Spec.Commit.Message = "squash promote commit message"
+
+				typeNamespacedName = types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}
+
+				By("Pushing a commit to the source branch so the squash merge has content")
+				gitPath, err := os.MkdirTemp("", "*")
+				Expect(err).NotTo(HaveOccurred())
+				DeferCleanup(func() { _ = os.RemoveAll(gitPath) })
+				_, err = runGitCmd(ctx, gitPath, "clone", testGitRepoCloneURL(gitRepo), ".")
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "config", "user.name", "testuser")
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "config", "user.email", "testmail@test.com")
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "checkout", "-B", testBranchDevelopmentNext, "origin/"+testBranchDevelopmentNext)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(os.WriteFile(path.Join(gitPath, "manifests-fake.yaml"), []byte("{\"side\": \"proposed\"}\n"), 0o644)).To(Succeed())
+				_, err = runGitCmd(ctx, gitPath, "add", "manifests-fake.yaml")
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "commit", "-m", "proposed hydrated commit")
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "push", "origin", testBranchDevelopmentNext)
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
+
+				By("Waiting for PullRequest to be open")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+					g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+					g.Expect(pullRequest.Status.ID).ToNot(BeEmpty())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				mergeSha = getGitBranchSHA(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, pullRequest.Spec.SourceBranch)
+			})
+
+			It("merges as a single-parent squash commit carrying the configured message", func() {
+				By("Requesting the merge")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+					pullRequest.Spec.MergeSha = mergeSha
+					pullRequest.Spec.State = promoterv1alpha1.PullRequestMerged
+					g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Verifying the PullRequest is deleted after the merge")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+					g.Expect(err).To(HaveOccurred())
+					g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Verifying the target branch tip is a single-parent squash commit of the source content")
+				checkPath, err := os.MkdirTemp("", "*")
+				Expect(err).NotTo(HaveOccurred())
+				DeferCleanup(func() { _ = os.RemoveAll(checkPath) })
+				_, err = runGitCmd(ctx, checkPath, "clone", testGitRepoCloneURL(gitRepo), ".")
+				Expect(err).NotTo(HaveOccurred())
+
+				parentsOut, err := runGitCmd(ctx, checkPath, "rev-list", "--parents", "-1", "origin/"+testBranchDevelopment)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(strings.Fields(strings.TrimSpace(parentsOut))).To(HaveLen(2),
+					"target tip should be a single-parent squash commit, got %q", parentsOut)
+
+				messageOut, err := runGitCmd(ctx, checkPath, "log", "--format=%B", "-1", "origin/"+testBranchDevelopment)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(messageOut).To(ContainSubstring("squash promote commit message"))
+
+				targetTree, err := runGitCmd(ctx, checkPath, "rev-parse", "origin/"+testBranchDevelopment+"^{tree}")
+				Expect(err).NotTo(HaveOccurred())
+				sourceTree, err := runGitCmd(ctx, checkPath, "rev-parse", mergeSha+"^{tree}")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(strings.TrimSpace(targetTree)).To(Equal(strings.TrimSpace(sourceTree)),
+					"squash commit must have exactly the source branch tip's tree")
 			})
 		})
 	})

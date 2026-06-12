@@ -191,15 +191,22 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) er
 		return fmt.Errorf("failed to get repo: %w", err)
 	}
 
+	squash := repo.Spec.GetMergeMethod() == v1alpha1.MergeMethodSquash
 	options := &gitlab.AcceptMergeRequestOptions{
 		AutoMerge:                gitlab.Ptr(false),
 		ShouldRemoveSourceBranch: gitlab.Ptr(false),
-		Squash:                   gitlab.Ptr(false),
+		Squash:                   gitlab.Ptr(squash),
 		SHA:                      gitlab.Ptr(prObj.Spec.MergeSha),
 	}
 	// Gitlab throws a 422 if you send it an empty commit message. So leave it as nil unless we have a message.
 	if prObj.Spec.Commit.Message != "" {
 		options.MergeCommitMessage = gitlab.Ptr(prObj.Spec.Commit.Message)
+		if squash {
+			// Depending on the project's merge method setting, the squash commit may be what lands
+			// as the target branch's first-parent commit, so it must carry the promoter's trailers
+			// too.
+			options.SquashCommitMessage = gitlab.Ptr(prObj.Spec.Commit.Message)
+		}
 	}
 
 	start := time.Now()

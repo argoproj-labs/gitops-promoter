@@ -1037,6 +1037,122 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 						"the SCM to merge a sha origin no longer has on the source branch")
 			})
 		})
+
+		// A squash merge writes a brand-new single-parent commit to the active branch; the merged
+		// proposed commits never become reachable from active. Without the post-squash alignment
+		// (alignProposedBranchAfterSquash), the long-lived branches diverge permanently and every
+		// subsequent PR's commit list accumulates the already-promoted commits. This test drives two
+		// full squash promotion cycles and asserts that the proposed branch is realigned to the
+		// active tip between them and that the active history stays linear.
+		Context("When the merge method is squash and auto-merge is on", func() {
+			var name string
+			var gitRepo *promoterv1alpha1.GitRepository
+			var changeTransferPolicy *promoterv1alpha1.ChangeTransferPolicy
+			var typeNamespacedName types.NamespacedName
+			var scmSecret *v1.Secret
+			var scmProvider *promoterv1alpha1.ScmProvider
+
+			BeforeEach(func() {
+				name, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-squash-auto-merge", "default")
+
+				typeNamespacedName = types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}
+
+				gitRepo.Spec.MergeMethod = promoterv1alpha1.MergeMethodSquash
+				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
+				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
+				changeTransferPolicy.Spec.AutoMerge = ptr.To(true)
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
+			})
+
+			AfterEach(func() {
+				By("Cleaning up resources")
+				_ = k8sClient.Delete(ctx, changeTransferPolicy)
+			})
+
+			// activeTipParents clones the test repo and returns the active branch tip's sha and its
+			// parent shas.
+			activeTipParents := func(g Gomega) (string, []string) {
+				checkPath, err := os.MkdirTemp("", "*")
+				g.Expect(err).NotTo(HaveOccurred())
+				defer func() { _ = os.RemoveAll(checkPath) }()
+				_, err = runGitCmd(ctx, checkPath, "clone", testGitRepoCloneURL(gitRepo), ".")
+				g.Expect(err).NotTo(HaveOccurred())
+				out, err := runGitCmd(ctx, checkPath, "rev-list", "--parents", "-1", "origin/"+testBranchDevelopment)
+				g.Expect(err).NotTo(HaveOccurred())
+				fields := strings.Fields(strings.TrimSpace(out))
+				g.Expect(fields).NotTo(BeEmpty())
+				return fields[0], fields[1:]
+			}
+
+			It("promotes with single-parent squash commits and realigns the proposed branch between cycles", func() {
+				By("Resetting the fake SCM's merge-sha-mismatch counter")
+				fake.ResetMergeShaMismatchCount()
+
+				gitPath, err := os.MkdirTemp("", "*")
+				Expect(err).NotTo(HaveOccurred())
+				defer func() { _ = os.RemoveAll(gitPath) }()
+
+				By("Hydrating the proposed branch with a first dry commit")
+				firstDrySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "first squash dry commit", "")
+
+				By("Waiting for the first squash promotion to land on the active branch")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).To(Equal(firstDrySha))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Asserting the active tip is a single-parent squash commit and the proposed branch was realigned to it")
+				var firstSquashSha string
+				Eventually(func(g Gomega) {
+					tip, parents := activeTipParents(g)
+					g.Expect(parents).To(HaveLen(1), "active tip should be a single-parent squash commit")
+					firstSquashSha = tip
+
+					checkPath, err := os.MkdirTemp("", "*")
+					g.Expect(err).NotTo(HaveOccurred())
+					defer func() { _ = os.RemoveAll(checkPath) }()
+					_, err = runGitCmd(ctx, checkPath, "clone", testGitRepoCloneURL(gitRepo), ".")
+					g.Expect(err).NotTo(HaveOccurred())
+					proposedSha, err := runGitCmd(ctx, checkPath, "rev-parse", "origin/"+testBranchDevelopmentNext)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(strings.TrimSpace(proposedSha)).To(Equal(tip),
+						"proposed branch must be realigned to the active tip after a squash merge")
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Hydrating a second dry commit on top of the realigned proposed branch")
+				secondGitPath, err := os.MkdirTemp("", "*")
+				Expect(err).NotTo(HaveOccurred())
+				defer func() { _ = os.RemoveAll(secondGitPath) }()
+				secondDrySha, _ := makeChangeAndHydrateRepo(secondGitPath, gitRepo, "second squash dry commit", "")
+				Expect(secondDrySha).NotTo(Equal(firstDrySha))
+
+				By("Waiting for the second squash promotion to land on the active branch")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).To(Equal(secondDrySha))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Asserting the active history stays linear across squash promotions")
+				Eventually(func(g Gomega) {
+					_, parents := activeTipParents(g)
+					g.Expect(parents).To(HaveLen(1), "active tip should be a single-parent squash commit")
+					g.Expect(parents[0]).To(Equal(firstSquashSha),
+						"the second squash commit's parent should be the first squash commit; anything else means stale commits accumulated")
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Asserting the SCM was never asked to merge with a stale mergeSha")
+				Expect(fake.MergeShaMismatchCount()).To(BeNumerically("==", 0),
+					"the post-squash alignment requeue must prevent the PullRequest controller from "+
+						"asking the SCM to merge a sha origin no longer has on the source branch")
+			})
+		})
 	})
 })
 

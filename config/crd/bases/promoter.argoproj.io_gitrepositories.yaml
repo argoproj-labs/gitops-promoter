@@ -179,6 +179,15 @@ spec:
                 - namespace
                 - projectId
                 type: object
+              mergeMethod:
+                default: merge
+                description: |-
+                  MergeMethod determines how promotion pull requests are merged: a merge commit
+                  ("merge") or a single squash commit ("squash"). Defaults to "merge".
+                enum:
+                - merge
+                - squash
+                type: string
               scmProviderRef:
                 description: ScmProviderObjectReference is a reference to a SCM provider
                   object.
@@ -204,6 +213,9 @@ spec:
             - scmProviderRef
             type: object
             x-kubernetes-validations:
+            - message: squash merge is not supported for Bitbucket Cloud
+              rule: '!has(self.bitbucketCloud) || !has(self.mergeMethod) || self.mergeMethod
+                != ''squash'''
             - message: exactly one of the fields in [github gitlab forgejo gitea bitbucketCloud
                 azureDevOps fake] must be set
               rule: '[has(self.github),has(self.gitlab),has(self.forgejo),has(self.gitea),has(self.bitbucketCloud),has(self.azureDevOps),has(self.fake)].filter(x,x==true).size()

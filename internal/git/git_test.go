@@ -941,6 +941,235 @@ var _ = Describe("ActivePath support", func() {
 	})
 })
 
+var _ = Describe("AlignProposedBranchAfterSquash", func() {
+	var tempRepoDir string
+	var workDir string
+	var defaultBranch string
+	var repo *v1alpha1.GitRepository
+	var g *git.EnvironmentOperations
+
+	BeforeEach(func() {
+		var err error
+		tempRepoDir, err = os.MkdirTemp("", "git-test-*")
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = runGitCmd(tempRepoDir, "init", "--bare")
+		Expect(err).NotTo(HaveOccurred())
+
+		workDir, err = os.MkdirTemp("", "git-work-*")
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = runGitCmd(workDir, "clone", tempRepoDir, ".")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "config", "user.name", "Test User")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "config", "user.email", "test@example.com")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "config", "commit.gpgsign", "false")
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(os.WriteFile(filepath.Join(workDir, "config.yaml"), []byte("version: base\n"), 0o644)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"base"}`), 0o644)).To(Succeed())
+		_, err = runGitCmd(workDir, "add", "-A")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", "base")
+		Expect(err).NotTo(HaveOccurred())
+
+		out, err := runGitCmd(workDir, "rev-parse", "--abbrev-ref", "HEAD")
+		Expect(err).NotTo(HaveOccurred())
+		defaultBranch = strings.TrimSpace(out)
+
+		_, err = runGitCmd(workDir, "push", "-u", "origin", defaultBranch)
+		Expect(err).NotTo(HaveOccurred())
+
+		// The active branch starts at the base commit.
+		_, err = runGitCmd(workDir, "branch", "active", defaultBranch)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "origin", "active")
+		Expect(err).NotTo(HaveOccurred())
+
+		repo = &v1alpha1.GitRepository{
+			Spec: v1alpha1.GitRepositorySpec{
+				GitHub: &v1alpha1.GitHubRepo{Owner: "test-owner", Name: "testrepo"},
+				ScmProviderRef: v1alpha1.ScmProviderObjectReference{
+					Kind: "ScmProvider",
+					Name: "testprovider",
+				},
+			},
+			ObjectMeta: metav1.ObjectMeta{Name: "testrepo", Namespace: "default"},
+		}
+	})
+
+	AfterEach(func() {
+		if tempRepoDir != "" {
+			Expect(os.RemoveAll(tempRepoDir)).To(Succeed())
+		}
+		if workDir != "" {
+			Expect(os.RemoveAll(workDir)).To(Succeed())
+		}
+	})
+
+	// commitOnBranch commits the given files on the branch (creating it from the default branch if
+	// needed), pushes, and returns the new commit sha.
+	commitOnBranch := func(branch string, files map[string]string, message string) string {
+		GinkgoHelper()
+		existing, _ := runGitCmd(workDir, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch)
+		if strings.TrimSpace(existing) == "" {
+			_, err := runGitCmd(workDir, "checkout", "-b", branch, defaultBranch)
+			Expect(err).NotTo(HaveOccurred())
+		} else {
+			_, err := runGitCmd(workDir, "checkout", branch)
+			Expect(err).NotTo(HaveOccurred())
+		}
+		for relPath, content := range files {
+			full := filepath.Join(workDir, relPath)
+			Expect(os.MkdirAll(filepath.Dir(full), 0o755)).To(Succeed())
+			Expect(os.WriteFile(full, []byte(content), 0o644)).To(Succeed())
+		}
+		_, err := runGitCmd(workDir, "add", "-A")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", message)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "-u", "origin", branch)
+		Expect(err).NotTo(HaveOccurred())
+		sha, err := runGitCmd(workDir, "rev-parse", "HEAD")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "checkout", defaultBranch)
+		Expect(err).NotTo(HaveOccurred())
+		return strings.TrimSpace(sha)
+	}
+
+	// squashOntoActive simulates an SCM squash merge of proposed into active: a single new commit
+	// on active whose tree is exactly proposed's tree.
+	squashOntoActive := func() string {
+		GinkgoHelper()
+		treeSha, err := runGitCmd(workDir, "rev-parse", "proposed^{tree}")
+		Expect(err).NotTo(HaveOccurred())
+		activeSha, err := runGitCmd(workDir, "rev-parse", "active")
+		Expect(err).NotTo(HaveOccurred())
+		squashSha, err := runGitCmd(workDir, "commit-tree", strings.TrimSpace(treeSha), "-p", strings.TrimSpace(activeSha), "-m", "squash promote")
+		Expect(err).NotTo(HaveOccurred())
+		squashShaTrimmed := strings.TrimSpace(squashSha)
+		_, err = runGitCmd(workDir, "push", "origin", squashShaTrimmed+":refs/heads/active")
+		Expect(err).NotTo(HaveOccurred())
+		return squashShaTrimmed
+	}
+
+	remoteSha := func(branch string) string {
+		GinkgoHelper()
+		out, err := runGitCmd(tempRepoDir, "rev-parse", "refs/heads/"+branch)
+		Expect(err).NotTo(HaveOccurred())
+		return strings.TrimSpace(out)
+	}
+
+	prepareEnvOps := func() {
+		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
+		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
+		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
+		_, err := g.GetBranchShas(GinkgoT().Context(), "active", "")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = g.GetBranchShas(GinkgoT().Context(), "proposed", "")
+		Expect(err).NotTo(HaveOccurred())
+	}
+
+	It("aligns the proposed branch to the active tip after a squash merge", func() {
+		commitOnBranch("proposed", map[string]string{
+			"config.yaml":       "version: 2\n",
+			"hydrator.metadata": `{"drySha":"dry-2"}`,
+		}, "hydrate 2")
+		squashSha := squashOntoActive()
+
+		prepareEnvOps()
+		clonePath := g.ClonePath()
+		headBefore, statusBefore := cloneHeadAndStatus(clonePath)
+
+		aligned, err := g.AlignProposedBranchAfterSquash(GinkgoT().Context(), "proposed", "active")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(aligned).To(BeTrue())
+		Expect(remoteSha("proposed")).To(Equal(squashSha))
+
+		headAfter, statusAfter := cloneHeadAndStatus(clonePath)
+		Expect(headAfter).To(Equal(headBefore), "alignment must not move the clone's HEAD")
+		Expect(statusAfter).To(Equal(statusBefore), "alignment must not touch the clone's worktree/index")
+	})
+
+	It("returns false when the proposed branch is an ancestor of the active branch", func() {
+		proposedSha := commitOnBranch("proposed", map[string]string{
+			"config.yaml":       "version: 2\n",
+			"hydrator.metadata": `{"drySha":"dry-2"}`,
+		}, "hydrate 2")
+
+		// A true merge: proposed becomes reachable from active.
+		_, err := runGitCmd(workDir, "checkout", "active")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "merge", "--no-ff", "-m", "merge promote", "proposed")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "origin", "active")
+		Expect(err).NotTo(HaveOccurred())
+
+		prepareEnvOps()
+
+		aligned, err := g.AlignProposedBranchAfterSquash(GinkgoT().Context(), "proposed", "active")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(aligned).To(BeFalse())
+		Expect(remoteSha("proposed")).To(Equal(proposedSha))
+	})
+
+	It("returns false when the branch tips are the same commit", func() {
+		_, err := runGitCmd(workDir, "branch", "proposed", defaultBranch)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "origin", "proposed")
+		Expect(err).NotTo(HaveOccurred())
+
+		prepareEnvOps()
+
+		aligned, err := g.AlignProposedBranchAfterSquash(GinkgoT().Context(), "proposed", "active")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(aligned).To(BeFalse())
+	})
+
+	It("skips when the hydrator pushed new proposed content before the fetch", func() {
+		commitOnBranch("proposed", map[string]string{
+			"config.yaml":       "version: 2\n",
+			"hydrator.metadata": `{"drySha":"dry-2"}`,
+		}, "hydrate 2")
+		squashOntoActive()
+		hydratorSha := commitOnBranch("proposed", map[string]string{
+			"config.yaml":       "version: 3\n",
+			"hydrator.metadata": `{"drySha":"dry-3"}`,
+		}, "hydrate 3")
+
+		prepareEnvOps()
+
+		aligned, err := g.AlignProposedBranchAfterSquash(GinkgoT().Context(), "proposed", "active")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(aligned).To(BeFalse())
+		Expect(remoteSha("proposed")).To(Equal(hydratorSha), "a hydrator commit must never be rewound")
+	})
+
+	It("fails the lease instead of clobbering a hydrator push that raced the alignment", func() {
+		commitOnBranch("proposed", map[string]string{
+			"config.yaml":       "version: 2\n",
+			"hydrator.metadata": `{"drySha":"dry-2"}`,
+		}, "hydrate 2")
+		squashOntoActive()
+
+		prepareEnvOps()
+
+		// The hydrator pushes after our fetch: the lease must reject the alignment push.
+		racedSha := commitOnBranch("proposed", map[string]string{
+			"config.yaml":       "version: 3\n",
+			"hydrator.metadata": `{"drySha":"dry-3"}`,
+		}, "hydrate 3")
+
+		aligned, err := g.AlignProposedBranchAfterSquash(GinkgoT().Context(), "proposed", "active")
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("failed to push post-squash alignment"))
+		Expect(aligned).To(BeFalse())
+		Expect(remoteSha("proposed")).To(Equal(racedSha), "a hydrator commit must never be rewound")
+	})
+})
+
 type fakeGitProvider struct {
 	tempDirPath string
 }

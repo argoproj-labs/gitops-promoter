@@ -36,6 +36,10 @@ spec:
   scmProviderRef:
     kind: ScmProvider # or ClusterScmProvider
     name: example-scm-provider
+
+  # How promotion pull requests are merged: "merge" (a merge commit, the default) or "squash"
+  # (a single squash commit per promotion). Squash is not supported for Bitbucket Cloud.
+  mergeMethod: merge
 status:
   observedGeneration: 123 # compare with metadata.generation to detect stale status
   conditions:
