@@ -182,6 +182,12 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) er
 		return fmt.Errorf("failed to get repo: %w", err)
 	}
 
+	// Belt-and-suspenders behind the GitRepository CEL validation: go-bitbucket does not expose a
+	// merge strategy, so a squash setting that somehow reaches this point cannot be honored.
+	if repo.Spec.GetMergeMethod() == v1alpha1.MergeMethodSquash {
+		return errors.New("squash merge is not supported by the Bitbucket Cloud integration")
+	}
+
 	options := &bitbucket.PullRequestsOptions{
 		Owner:             repo.Spec.BitbucketCloud.Owner,
 		RepoSlug:          repo.Spec.BitbucketCloud.Name,

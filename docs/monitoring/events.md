@@ -25,6 +25,7 @@ All resources may produce the following events:
 | Event Type | Event Reason        | Description                                                                                                      |
 |------------|---------------------|------------------------------------------------------------------------------------------------------------------|
 | Normal     | ResolvedConflict    | A git merge conflict was resolved for a ChangeTransferPolicy.                                                    |
+| Normal     | AlignedProposedBranch | The proposed branch was reset to the active branch tip after a squash merge.                                   |
 | Normal     | PullRequestCreated  | A pull request was created for a ChangeTransferPolicy.                                                           |
 | Normal     | PullRequestMerged   | A pull request was merged for a ChangeTransferPolicy.                                                            |
 | Normal     | PullRequestUpdated  | A pull request was updated for a ChangeTransferPolicy.                                                           |

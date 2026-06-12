@@ -169,8 +169,12 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj promoterv1alpha1.PullReq
 		return err
 	}
 
+	style := gitea.MergeStyleMerge
+	if repo.Spec.GetMergeMethod() == promoterv1alpha1.MergeMethodSquash {
+		style = gitea.MergeStyleSquash
+	}
 	options := gitea.MergePullRequestOption{
-		Style:        gitea.MergeStyleMerge, // TODO: make the merge style configurable
+		Style:        style,
 		Message:      prObj.Spec.Commit.Message,
 		HeadCommitId: prObj.Spec.MergeSha,
 	}

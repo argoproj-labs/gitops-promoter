@@ -15,7 +15,7 @@ Estimated static CEL costs versus kube-apiserver limits, computed from `k8s.io/a
 | CommitStatus | v1alpha1 | 3 | 0.00% |
 | ControllerConfiguration | v1alpha1 | 2,840 | 0.00% |
 | GitCommitStatus | v1alpha1 | 0 | 0.00% |
-| GitRepository | v1alpha1 | 128 | 0.00% |
+| GitRepository | v1alpha1 | 135 | 0.00% |
 | PromotionStrategy | v1alpha1 | 72,438,744 | 72.44% |
 | PullRequest | v1alpha1 | 270 | 0.00% |
 | RevertCommit | v1alpha1 | 0 | 0.00% |
@@ -148,7 +148,8 @@ Source: `promoter.argoproj.io_gitrepositories.yaml`
 | Path | Cost | % of rule limit | Expression |
 |---|---:|---:|---|
 | `.spec` | 128 | 0.00% | `[has(self.github),has(self.gitlab),has(self.forgejo),has(self.gitea),has(self.bitbucketCloud),has(self.azureDevOps),h...` |
-| **Total** | **128** | **0.00%** | |
+| `.spec` | 7 | 0.00% | `!has(self.bitbucketCloud) \|\| !has(self.mergeMethod) \|\| self.mergeMethod != 'squash'` |
+| **Total** | **135** | **0.00%** | |
 
 #### PromotionStrategy
 
@@ -194,12 +195,12 @@ Source: `promoter.argoproj.io_pullrequests.yaml`
 
 | Path | Cost | % of rule limit | Expression |
 |---|---:|---:|---|
-| `.spec.sourceBranch` | 42 | 0.00% | `self == oldSelf` |
 | `.spec.sourceBranch` | 42 | 0.00% | `!self.contains(':')` |
 | `.spec.sourceBranch` | 42 | 0.00% | `!self.contains('..')` |
-| `.spec.targetBranch` | 42 | 0.00% | `self == oldSelf` |
+| `.spec.sourceBranch` | 42 | 0.00% | `self == oldSelf` |
 | `.spec.targetBranch` | 42 | 0.00% | `!self.contains(':')` |
 | `.spec.targetBranch` | 42 | 0.00% | `!self.contains('..')` |
+| `.spec.targetBranch` | 42 | 0.00% | `self == oldSelf` |
 | `(root)` | 9 | 0.00% | `self.spec.state == 'open' \|\| has(self.status.id) && self.status.id != ""` |
 | `.spec.sourceBranch` | 3 | 0.00% | `!self.startsWith('-')` |
 | `.spec.targetBranch` | 3 | 0.00% | `!self.startsWith('-')` |

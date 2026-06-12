@@ -168,7 +168,7 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 		prNumber,
 		pullRequest.Spec.Commit.Message,
 		&github.PullRequestOptions{
-			MergeMethod:        "merge",
+			MergeMethod:        string(gitRepo.Spec.GetMergeMethod()),
 			DontDefaultIfBlank: false,
 			SHA:                pullRequest.Spec.MergeSha,
 		})

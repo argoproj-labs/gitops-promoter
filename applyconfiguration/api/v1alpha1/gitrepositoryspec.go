@@ -17,6 +17,10 @@ limitations under the License.
 
 package v1alpha1
 
+import (
+	apiv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+)
+
 // GitRepositorySpecApplyConfiguration represents a declarative configuration of the GitRepositorySpec type for use
 // with apply.
 //
@@ -32,6 +36,9 @@ type GitRepositorySpecApplyConfiguration struct {
 	AzureDevOps    *AzureDevOpsRepoApplyConfiguration            `json:"azureDevOps,omitempty"`
 	Fake           *FakeRepoApplyConfiguration                   `json:"fake,omitempty"`
 	ScmProviderRef *ScmProviderObjectReferenceApplyConfiguration `json:"scmProviderRef,omitempty"`
+	// MergeMethod determines how promotion pull requests are merged: a merge commit
+	// ("merge") or a single squash commit ("squash"). Defaults to "merge".
+	MergeMethod *apiv1alpha1.MergeMethod `json:"mergeMethod,omitempty"`
 }
 
 // GitRepositorySpecApplyConfiguration constructs a declarative configuration of the GitRepositorySpec type for use with
@@ -101,5 +108,13 @@ func (b *GitRepositorySpecApplyConfiguration) WithFake(value *FakeRepoApplyConfi
 // If called multiple times, the ScmProviderRef field is set to the value of the last call.
 func (b *GitRepositorySpecApplyConfiguration) WithScmProviderRef(value *ScmProviderObjectReferenceApplyConfiguration) *GitRepositorySpecApplyConfiguration {
 	b.ScmProviderRef = value
+	return b
+}
+
+// WithMergeMethod sets the MergeMethod field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the MergeMethod field is set to the value of the last call.
+func (b *GitRepositorySpecApplyConfiguration) WithMergeMethod(value apiv1alpha1.MergeMethod) *GitRepositorySpecApplyConfiguration {
+	b.MergeMethod = &value
 	return b
 }
