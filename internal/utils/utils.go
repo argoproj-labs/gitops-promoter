@@ -445,21 +445,37 @@ func HandleReconciliationResult(
 	// previous reconcile's condition (captured by RemoveReadyCondition); emitting on every
 	// reconcile floods the event stream and buries domain events. A persistently failing
 	// resource emits one Warning on the True->False transition; the evolving failure message
-	// stays visible on the Ready condition itself. Conflict errors from Update calls elsewhere
-	// in the reconcile flow are expected and transient, so never emit for those; the retry
-	// will emit the event if the condition persists.
+	// stays visible on the Ready condition itself. Conflict errors (from Update calls
+	// elsewhere in the reconcile flow) are expected and transient, so never emit for those;
+	// the retry will emit the event if the condition persists.
+	//
+	// Emission is deferred until this function settles on the final outcome: the fallback
+	// path below can rewrite the Ready condition to ReconciliationError after a failed full
+	// apply, and the event must describe what was actually persisted, not what the reconcile
+	// computed in memory. persistedReady is set only on the paths where a status patch
+	// succeeded; when nothing was persisted (object deleted, both applies failed) no event is
+	// emitted and the next reconcile, still seeing the old persisted condition, retries.
 	var prevReadyCondition *metav1.Condition
 	if previousReady != nil {
 		prevReadyCondition = *previousReady
 	}
-	isConflict := *err != nil && k8serrors.IsConflict(*err)
-	if !isConflict && readyConditionTransitioned(prevReadyCondition, readyCondition) {
+	var persistedReady *metav1.Condition
+	defer func() {
+		if persistedReady == nil {
+			return
+		}
+		if *err != nil && k8serrors.IsConflict(*err) {
+			return
+		}
+		if !readyConditionTransitioned(prevReadyCondition, persistedReady) {
+			return
+		}
 		eventType := "Normal"
-		if readyCondition.Status == metav1.ConditionFalse {
+		if persistedReady.Status == metav1.ConditionFalse {
 			eventType = "Warning"
 		}
-		recorder.Eventf(obj, nil, eventType, readyCondition.Reason, "Reconciling", readyCondition.Message)
-	}
+		recorder.Eventf(obj, nil, eventType, persistedReady.Reason, "Reconciling", persistedReady.Message)
+	}()
 
 	// Stamp status.observedGeneration before building the apply configuration so the SSA
 	// patch records which spec generation produced this status. SSA with ForceOwnership
@@ -486,6 +502,7 @@ func HandleReconciliationResult(
 	patchErr := c.Status().Patch(ctx, obj, ApplyPatch{ApplyConfig: fullCfg},
 		client.FieldOwner(fieldOwner), client.ForceOwnership)
 	if patchErr == nil {
+		persistedReady = readyCondition
 		return
 	}
 
@@ -569,6 +586,7 @@ func HandleReconciliationResult(
 	}
 
 	// Fallback succeeded, but report the original status apply failure
+	persistedReady = &fallbackCondition
 	logger.Info("Successfully applied only the Ready condition after full status apply failed")
 	if *err == nil {
 		*err = fmt.Errorf("failed to apply full status (but applying only the Ready condition succeeded): %w", patchErr)

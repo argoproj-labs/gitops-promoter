@@ -252,7 +252,6 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 				"branch", branch,
 				"sha", proposedSha)
 		}
-		emitCommitStatusPhaseChangedEvent(r.Recorder, gcs, gcs.Spec.Key, branch, previousPhase, string(phase))
 
 		// Update status for this environment
 		envValidationStatus := promoterv1alpha1.GitCommitStatusEnvironmentStatus{
@@ -272,6 +271,9 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 			return nil, nil, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", branch, err)
 		}
 		commitStatuses = append(commitStatuses, cs)
+
+		// Emit only after the upsert succeeded so the event always describes persisted state.
+		emitCommitStatusPhaseChangedEvent(r.Recorder, gcs, gcs.Spec.Key, branch, previousPhase, string(phase))
 
 		logger.Info("Processed environment validation",
 			"branch", branch,

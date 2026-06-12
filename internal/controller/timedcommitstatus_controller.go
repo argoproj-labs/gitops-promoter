@@ -237,7 +237,6 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 				"branch", envConfig.Branch,
 				"sha", currentActiveSha)
 		}
-		emitCommitStatusPhaseChangedEvent(r.Recorder, tcs, tcs.Spec.Key, envConfig.Branch, previousPhase, string(phase))
 
 		// Update status for this environment
 		envTimedStatus := promoterv1alpha1.TimedCommitStatusEnvironmentsStatus{
@@ -257,6 +256,9 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 			return nil, nil, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", envConfig.Branch, err)
 		}
 		commitStatuses = append(commitStatuses, cs)
+
+		// Emit only after the upsert succeeded so the event always describes persisted state.
+		emitCommitStatusPhaseChangedEvent(r.Recorder, tcs, tcs.Spec.Key, envConfig.Branch, previousPhase, string(phase))
 
 		logger.Info("Processed environment time gate",
 			"branch", envConfig.Branch,

@@ -87,9 +87,18 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	startTime := time.Now()
 
 	var ps promoterv1alpha1.PromotionStrategy
+	// skipStatusWrite is set on the deletion fast-path below to suppress the deferred status
+	// apply: the controller intentionally stops reconciling deleting objects, so patching
+	// status (and emitting Ready events) for them is pure noise.
+	skipStatusWrite := false
 	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
 	var previousReady *metav1.Condition
-	defer utils.HandleReconciliationResult(ctx, startTime, &ps, r.Client, r.Recorder, constants.PromotionStrategyControllerFieldOwner, &result, &err, &previousReady)
+	defer func() {
+		if skipStatusWrite {
+			return
+		}
+		utils.HandleReconciliationResult(ctx, startTime, &ps, r.Client, r.Recorder, constants.PromotionStrategyControllerFieldOwner, &result, &err, &previousReady)
+	}()
 
 	err = r.Get(ctx, req.NamespacedName, &ps, &client.GetOptions{})
 	if err != nil {
@@ -103,6 +112,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	// If the resource is being deleted, stop reconciling immediately without requeuing
 	if !ps.DeletionTimestamp.IsZero() {
+		skipStatusWrite = true
 		logger.V(4).Info("PromotionStrategy is being deleted, skipping reconciliation")
 		return ctrl.Result{}, nil
 	}

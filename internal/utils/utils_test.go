@@ -364,6 +364,7 @@ var _ = Describe("HandleReconciliationResult event emission", func() {
 		ctx        context.Context
 		obj        *promoterv1alpha1.PromotionStrategy
 		recorder   *events.FakeRecorder
+		scheme     *runtime.Scheme
 		fakeClient client.Client
 	)
 
@@ -380,7 +381,7 @@ var _ = Describe("HandleReconciliationResult event emission", func() {
 				Generation: 1,
 			},
 		}
-		scheme := runtime.NewScheme()
+		scheme = runtime.NewScheme()
 		_ = promoterv1alpha1.AddToScheme(scheme)
 		recorder = events.NewFakeRecorder(10)
 		fakeClient = fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(obj).Build()
@@ -399,111 +400,186 @@ var _ = Describe("HandleReconciliationResult event emission", func() {
 		}
 	}
 
-	It("emits an event when there is no previous Ready condition", func() {
-		var err error
-		func() {
-			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err, nil)
-		}()
+	Context("When the status apply succeeds", func() {
+		It("emits an event when there is no previous Ready condition", func() {
+			var err error
+			func() {
+				defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err, nil)
+			}()
 
-		emitted := drainEvents()
-		Expect(emitted).To(HaveLen(1))
-		Expect(emitted[0]).To(ContainSubstring(string(conditions.ReconciliationSuccess)))
-	})
+			emitted := drainEvents()
+			Expect(emitted).To(HaveLen(1))
+			Expect(emitted[0]).To(ContainSubstring(string(conditions.ReconciliationSuccess)))
+		})
 
-	It("does not emit an event when the Ready condition did not transition", func() {
-		var err error
-		previousReady := &metav1.Condition{
-			Type:    string(conditions.Ready),
-			Status:  metav1.ConditionTrue,
-			Reason:  string(conditions.ReconciliationSuccess),
-			Message: "Reconciliation successful",
-		}
-		func() {
-			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err, &previousReady)
-		}()
-
-		Expect(drainEvents()).To(BeEmpty())
-	})
-
-	It("emits a Warning event when the Ready condition transitions from True to False", func() {
-		var err error
-		previousReady := &metav1.Condition{
-			Type:    string(conditions.Ready),
-			Status:  metav1.ConditionTrue,
-			Reason:  string(conditions.ReconciliationSuccess),
-			Message: "Reconciliation successful",
-		}
-		func() {
-			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err, &previousReady)
-			err = errors.New("something broke")
-		}()
-
-		emitted := drainEvents()
-		Expect(emitted).To(HaveLen(1))
-		Expect(emitted[0]).To(ContainSubstring("Warning"))
-		Expect(emitted[0]).To(ContainSubstring(string(conditions.ReconciliationError)))
-	})
-
-	It("does not emit an event when reconciliation keeps failing with the same reason", func() {
-		var err error
-		// Message intentionally differs from what this reconcile will produce: message-only
-		// changes are not transitions, because failure messages often vary per attempt.
-		previousReady := &metav1.Condition{
-			Type:    string(conditions.Ready),
-			Status:  metav1.ConditionFalse,
-			Reason:  string(conditions.ReconciliationError),
-			Message: "Reconciliation failed: previous attempt",
-		}
-		func() {
-			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err, &previousReady)
-			err = errors.New("something broke again")
-		}()
-
-		Expect(drainEvents()).To(BeEmpty())
-	})
-
-	It("captures previousReady late, after the defer is registered", func() {
-		var err error
-		var previousReady *metav1.Condition
-		func() {
-			// The defer is registered while previousReady is still nil, mirroring how
-			// controllers register the defer before calling RemoveReadyCondition.
-			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err, &previousReady)
-			previousReady = &metav1.Condition{
+		It("does not emit an event when the Ready condition did not transition", func() {
+			var err error
+			previousReady := &metav1.Condition{
 				Type:    string(conditions.Ready),
 				Status:  metav1.ConditionTrue,
 				Reason:  string(conditions.ReconciliationSuccess),
 				Message: "Reconciliation successful",
 			}
-		}()
+			func() {
+				defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err, &previousReady)
+			}()
 
-		Expect(drainEvents()).To(BeEmpty())
+			Expect(drainEvents()).To(BeEmpty())
+		})
+
+		It("emits a Warning event when the Ready condition transitions from True to False", func() {
+			var err error
+			previousReady := &metav1.Condition{
+				Type:    string(conditions.Ready),
+				Status:  metav1.ConditionTrue,
+				Reason:  string(conditions.ReconciliationSuccess),
+				Message: "Reconciliation successful",
+			}
+			func() {
+				defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err, &previousReady)
+				err = errors.New("something broke")
+			}()
+
+			emitted := drainEvents()
+			Expect(emitted).To(HaveLen(1))
+			Expect(emitted[0]).To(ContainSubstring("Warning"))
+			Expect(emitted[0]).To(ContainSubstring(string(conditions.ReconciliationError)))
+		})
+
+		It("does not emit an event when reconciliation keeps failing with the same reason", func() {
+			var err error
+			// Message intentionally differs from what this reconcile will produce: message-only
+			// changes are not transitions, because failure messages often vary per attempt.
+			previousReady := &metav1.Condition{
+				Type:    string(conditions.Ready),
+				Status:  metav1.ConditionFalse,
+				Reason:  string(conditions.ReconciliationError),
+				Message: "Reconciliation failed: previous attempt",
+			}
+			func() {
+				defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err, &previousReady)
+				err = errors.New("something broke again")
+			}()
+
+			Expect(drainEvents()).To(BeEmpty())
+		})
+
+		It("captures previousReady late, after the defer is registered", func() {
+			var err error
+			var previousReady *metav1.Condition
+			func() {
+				// The defer is registered while previousReady is still nil, mirroring how
+				// controllers register the defer before calling RemoveReadyCondition.
+				defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err, &previousReady)
+				previousReady = &metav1.Condition{
+					Type:    string(conditions.Ready),
+					Status:  metav1.ConditionTrue,
+					Reason:  string(conditions.ReconciliationSuccess),
+					Message: "Reconciliation successful",
+				}
+			}()
+
+			Expect(drainEvents()).To(BeEmpty())
+		})
+	})
+
+	Context("When the status apply fails", func() {
+		It("emits the fallback Ready condition, not the in-memory success, when only the conditions-only apply succeeds", func() {
+			var err error
+			// Fail the first (full) status apply and let the second (conditions-only fallback)
+			// succeed. The persisted condition is then Ready=False/ReconciliationError even
+			// though the reconcile itself succeeded in memory.
+			patchCalls := 0
+			failFirstPatchClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithStatusSubresource(obj).
+				WithInterceptorFuncs(interceptor.Funcs{
+					SubResourcePatch: func(ctx context.Context, c client.Client, subResourceName string, o client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error {
+						patchCalls++
+						if patchCalls == 1 {
+							return apierrors.NewInternalError(errors.New("simulated full status apply failure"))
+						}
+						return c.Status().Patch(ctx, o, patch, opts...)
+					},
+				}).
+				Build()
+			// obj was already created in the shared fakeClient by BeforeEach; clear the
+			// ResourceVersion so it can be created in this spec-local client too.
+			obj.ResourceVersion = ""
+			Expect(failFirstPatchClient.Create(ctx, obj)).To(Succeed())
+
+			previousReady := &metav1.Condition{
+				Type:    string(conditions.Ready),
+				Status:  metav1.ConditionTrue,
+				Reason:  string(conditions.ReconciliationSuccess),
+				Message: "Reconciliation successful",
+			}
+			func() {
+				defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, failFirstPatchClient, recorder, testFieldOwner, nil, &err, &previousReady)
+				// No reconcile error; the full status apply fails, the fallback succeeds.
+			}()
+
+			Expect(err).To(HaveOccurred())
+			emitted := drainEvents()
+			Expect(emitted).To(HaveLen(1))
+			Expect(emitted[0]).To(ContainSubstring("Warning"))
+			Expect(emitted[0]).To(ContainSubstring(string(conditions.ReconciliationError)))
+			Expect(emitted[0]).NotTo(ContainSubstring(string(conditions.ReconciliationSuccess)))
+		})
+
+		It("does not emit an event when nothing was persisted", func() {
+			var err error
+			// Both the full apply and the conditions-only fallback fail: the object still has
+			// its old Ready condition, so no event should announce a state that never landed.
+			alwaysFailClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithStatusSubresource(obj).
+				WithInterceptorFuncs(interceptor.Funcs{
+					SubResourcePatch: func(_ context.Context, _ client.Client, _ string, _ client.Object, _ client.Patch, _ ...client.SubResourcePatchOption) error {
+						return apierrors.NewInternalError(errors.New("simulated status apply failure"))
+					},
+				}).
+				Build()
+			// obj was already created in the shared fakeClient by BeforeEach; clear the
+			// ResourceVersion so it can be created in this spec-local client too.
+			obj.ResourceVersion = ""
+			Expect(alwaysFailClient.Create(ctx, obj)).To(Succeed())
+
+			func() {
+				defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, alwaysFailClient, recorder, testFieldOwner, nil, &err, nil)
+			}()
+
+			Expect(err).To(HaveOccurred())
+			Expect(drainEvents()).To(BeEmpty())
+		})
 	})
 })
 
 var _ = Describe("RemoveReadyCondition", func() {
-	It("returns nil when no Ready condition exists", func() {
-		obj := &promoterv1alpha1.PromotionStrategy{}
-		Expect(utils.RemoveReadyCondition(obj)).To(BeNil())
-	})
-
-	It("removes the Ready condition and returns a copy of it", func() {
-		obj := &promoterv1alpha1.PromotionStrategy{}
-		meta.SetStatusCondition(obj.GetConditions(), metav1.Condition{
-			Type:               string(conditions.Ready),
-			Status:             metav1.ConditionTrue,
-			Reason:             string(conditions.ReconciliationSuccess),
-			Message:            "Reconciliation successful",
-			ObservedGeneration: 3,
+	Context("When removing the Ready condition", func() {
+		It("returns nil when no Ready condition exists", func() {
+			obj := &promoterv1alpha1.PromotionStrategy{}
+			Expect(utils.RemoveReadyCondition(obj)).To(BeNil())
 		})
 
-		prev := utils.RemoveReadyCondition(obj)
+		It("removes the Ready condition and returns a copy of it", func() {
+			obj := &promoterv1alpha1.PromotionStrategy{}
+			meta.SetStatusCondition(obj.GetConditions(), metav1.Condition{
+				Type:               string(conditions.Ready),
+				Status:             metav1.ConditionTrue,
+				Reason:             string(conditions.ReconciliationSuccess),
+				Message:            "Reconciliation successful",
+				ObservedGeneration: 3,
+			})
 
-		Expect(prev).ToNot(BeNil())
-		Expect(prev.Status).To(Equal(metav1.ConditionTrue))
-		Expect(prev.Reason).To(Equal(string(conditions.ReconciliationSuccess)))
-		Expect(prev.ObservedGeneration).To(Equal(int64(3)))
-		Expect(meta.FindStatusCondition(*obj.GetConditions(), string(conditions.Ready))).To(BeNil())
+			prev := utils.RemoveReadyCondition(obj)
+
+			Expect(prev).ToNot(BeNil())
+			Expect(prev.Status).To(Equal(metav1.ConditionTrue))
+			Expect(prev.Reason).To(Equal(string(conditions.ReconciliationSuccess)))
+			Expect(prev.ObservedGeneration).To(Equal(int64(3)))
+			Expect(meta.FindStatusCondition(*obj.GetConditions(), string(conditions.Ready))).To(BeNil())
+		})
 	})
 })
 
