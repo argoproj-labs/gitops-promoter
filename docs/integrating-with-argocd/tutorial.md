@@ -214,7 +214,7 @@ EOF
 done
 ```
 
-If you go to the [Argo CD UI](https://localhost:8080/applications/argocd/development-helm-guestbook), in the applications, you should now see the "SOURCE HYDRATOR" section in the header.
+If you go to the [Argo CD UI](http://localhost:8080/applications/argocd/development-helm-guestbook), in the applications, you should now see the "SOURCE HYDRATOR" section in the header.
 
 It should have the message "from HEAD (...) to environment/development-next (...)"
 
