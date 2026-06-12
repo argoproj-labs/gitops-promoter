@@ -326,6 +326,9 @@ type Bucket struct {
 // Templates use Go template syntax and have access to Sprig functions for flexible string
 // manipulation and formatting.
 //
+// The optional CommitMessage template customizes the merge commit message; commit trailers required by the
+// promoter are appended automatically after the rendered message.
+//
 // Template data available when rendering (used by the ChangeTransferPolicy controller when creating/updating PRs):
 //   - .ChangeTransferPolicy – the ChangeTransferPolicy for the managing this PullRequest
 //   - .PromotionStrategy – the PromotionStrategy for the CTP
@@ -339,6 +342,15 @@ type PullRequestTemplate struct {
 	// Uses Go template syntax with Sprig functions available for string manipulation.
 	// +required
 	Description string `json:"description"`
+
+	// CommitMessage is an optional template used to generate the merge commit message for the pull request.
+	// When set, it replaces the default commit message of "<title>\n\n<description>" (rendered from the Title
+	// and Description templates above). When unset, the default behavior is unchanged.
+	// Machine-read commit trailers used by the promoter to reconstruct promotion history are always appended
+	// after the rendered message; do not attempt to include them in the template.
+	// Uses Go template syntax with Sprig functions available for string manipulation.
+	// +optional
+	CommitMessage string `json:"commitMessage,omitempty"`
 }
 
 // ControllerConfigurationStatus defines the observed state of ControllerConfiguration.

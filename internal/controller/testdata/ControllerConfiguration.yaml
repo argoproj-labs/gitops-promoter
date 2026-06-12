@@ -50,6 +50,10 @@ spec:
         **Changes:**
         - Current SHA: {{ .ChangeTransferPolicy.Status.Active.Dry.Sha }}
         - Proposed SHA: {{ .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}
+      # Optional: customize the merge commit message of the promotion PR.
+      # When unset, the message defaults to "<title>\n\n<description>" rendered from the templates above.
+      # Machine-read promotion trailers are always appended automatically after the rendered message.
+      commitMessage: "promote: {{ .ChangeTransferPolicy.Status.Proposed.Dry.Subject }} ({{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }})"
     workQueue:
       requeueDuration: "5m"
       maxConcurrentReconciles: 3
