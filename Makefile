@@ -424,7 +424,7 @@ ENVTEST_VERSION ?= release-0.24
 GOLANGCI_LINT_VERSION ?= v2.12.2
 DEADCODE_VERSION ?= v0.45.0
 DEADCODE_FILTER ?= github.com/argoproj-labs/gitops-promoter/internal
-MOCKERY_VERSION ?= v2.53.6
+MOCKERY_VERSION ?= v3.7.1
 NILAWAY_VERSION ?= latest
 GORELEASER_VERSION ?= v2.16.0
 
@@ -457,7 +457,7 @@ $(DEADCODE): $(LOCALBIN)
 
 .PHONY: mockery
 mockery:
-	$(call go-install-tool,$(MOCKERY),github.com/vektra/mockery/v2,${MOCKERY_VERSION})
+	$(call go-install-tool,$(MOCKERY),github.com/vektra/mockery/v3,${MOCKERY_VERSION})
 
 .PHONY: nilaway
 nilaway:
