@@ -201,6 +201,18 @@ func (r *PullRequestReconciler) cleanupTerminalStates(ctx context.Context, pr *p
 	} else {
 		logger.Info("Cleaning up closed and merged pull request", "pullRequestID", pr.Status.ID)
 	}
+
+	// TODO: The PullRequest finalizer could be removed immediately after a successful merge/close on the SCM
+	// (when we first know SCM cleanup is done), and optionally initiate Delete in that same reconciliation, to
+	// save an extra reconcile. We remove it here alongside Delete instead to keep the terminal-cleanup path
+	// simple and reliable.
+	if controllerutil.ContainsFinalizer(pr, promoterv1alpha1.PullRequestFinalizer) {
+		controllerutil.RemoveFinalizer(pr, promoterv1alpha1.PullRequestFinalizer)
+		if err := r.Update(ctx, pr); err != nil {
+			return false, fmt.Errorf("failed to remove finalizer before cleanup delete: %w", err)
+		}
+	}
+
 	if err := r.Delete(ctx, pr); err != nil && !k8serrors.IsNotFound(err) {
 		logger.Error(err, "Failed to delete PullRequest")
 		return false, fmt.Errorf("failed to delete PullRequest: %w", err)
