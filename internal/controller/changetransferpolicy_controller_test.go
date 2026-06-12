@@ -1269,46 +1269,48 @@ var _ = Describe("emitPromotionLifecycleEvents", func() {
 		}
 	}
 
-	DescribeTable("emits events only on transitions",
-		func(prev, cur promoterv1alpha1.ChangeTransferPolicyStatus, expected, unexpected []string) {
-			ctp.Status = cur
-			reconciler.emitPromotionLifecycleEvents(ctp, &prev)
-			emitted := drainEvents()
-			for _, want := range expected {
-				Expect(emitted).To(ContainSubstring(want))
-			}
-			for _, dontWant := range unexpected {
-				Expect(emitted).NotTo(ContainSubstring(dontWant))
-			}
-		},
-		Entry("new proposed dry sha emits PromotionStarted",
-			ctpStatus("sha-a", "sha-a"), ctpStatus("sha-a", "sha-b"),
-			[]string{constants.PromotionStartedReason}, []string{constants.PromotionBlockedReason, constants.PromotionCompletedReason}),
-		Entry("unchanged pending promotion emits nothing",
-			ctpStatus("sha-a", "sha-b", gate("gate", "pending")), ctpStatus("sha-a", "sha-b", gate("gate", "pending")),
-			nil, []string{constants.PromotionStartedReason, constants.PromotionBlockedReason, constants.PromotionCompletedReason}),
-		Entry("a newer change superseding the in-flight one emits PromotionStarted again",
-			ctpStatus("sha-a", "sha-b"), ctpStatus("sha-a", "sha-c"),
-			[]string{constants.PromotionStartedReason}, nil),
-		Entry("pending gate on a new attempt emits PromotionStarted and PromotionBlocked",
-			ctpStatus("sha-a", "sha-a"), ctpStatus("sha-a", "sha-b", gate("gate", "pending")),
-			[]string{constants.PromotionStartedReason, constants.PromotionBlockedReason}, []string{constants.PromotionCompletedReason}),
-		Entry("gate phase change pending to failure emits a Warning PromotionBlocked",
-			ctpStatus("sha-a", "sha-b", gate("gate", "pending")), ctpStatus("sha-a", "sha-b", gate("gate", "failure")),
-			[]string{"Warning", constants.PromotionBlockedReason, "failure"}, []string{constants.PromotionStartedReason}),
-		Entry("gate stuck in the same phase emits nothing",
-			ctpStatus("sha-a", "sha-b", gate("gate", "failure")), ctpStatus("sha-a", "sha-b", gate("gate", "failure")),
-			nil, []string{constants.PromotionBlockedReason}),
-		Entry("successful gates do not emit PromotionBlocked",
-			ctpStatus("sha-a", "sha-a"), ctpStatus("sha-a", "sha-b", gate("health-check", "success")),
-			[]string{constants.PromotionStartedReason}, []string{constants.PromotionBlockedReason}),
-		Entry("active dry sha advancing emits PromotionCompleted",
-			ctpStatus("sha-a", "sha-b"), ctpStatus("sha-b", "sha-b"),
-			[]string{constants.PromotionCompletedReason}, []string{constants.PromotionStartedReason, constants.PromotionBlockedReason}),
-		Entry("first-ever status population does not emit PromotionCompleted",
-			ctpStatus("", ""), ctpStatus("sha-a", "sha-a"),
-			nil, []string{constants.PromotionCompletedReason, constants.PromotionStartedReason}),
-	)
+	Context("When comparing the previous and current status", func() {
+		DescribeTable("emits events only on transitions",
+			func(prev, cur promoterv1alpha1.ChangeTransferPolicyStatus, expected, unexpected []string) {
+				ctp.Status = cur
+				reconciler.emitPromotionLifecycleEvents(ctp, &prev)
+				emitted := drainEvents()
+				for _, want := range expected {
+					Expect(emitted).To(ContainSubstring(want))
+				}
+				for _, dontWant := range unexpected {
+					Expect(emitted).NotTo(ContainSubstring(dontWant))
+				}
+			},
+			Entry("new proposed dry sha emits PromotionStarted",
+				ctpStatus("sha-a", "sha-a"), ctpStatus("sha-a", "sha-b"),
+				[]string{constants.PromotionStartedReason}, []string{constants.PromotionBlockedReason, constants.PromotionCompletedReason}),
+			Entry("unchanged pending promotion emits nothing",
+				ctpStatus("sha-a", "sha-b", gate("gate", "pending")), ctpStatus("sha-a", "sha-b", gate("gate", "pending")),
+				nil, []string{constants.PromotionStartedReason, constants.PromotionBlockedReason, constants.PromotionCompletedReason}),
+			Entry("a newer change superseding the in-flight one emits PromotionStarted again",
+				ctpStatus("sha-a", "sha-b"), ctpStatus("sha-a", "sha-c"),
+				[]string{constants.PromotionStartedReason}, nil),
+			Entry("pending gate on a new attempt emits PromotionStarted and PromotionBlocked",
+				ctpStatus("sha-a", "sha-a"), ctpStatus("sha-a", "sha-b", gate("gate", "pending")),
+				[]string{constants.PromotionStartedReason, constants.PromotionBlockedReason}, []string{constants.PromotionCompletedReason}),
+			Entry("gate phase change pending to failure emits a Warning PromotionBlocked",
+				ctpStatus("sha-a", "sha-b", gate("gate", "pending")), ctpStatus("sha-a", "sha-b", gate("gate", "failure")),
+				[]string{"Warning", constants.PromotionBlockedReason, "failure"}, []string{constants.PromotionStartedReason}),
+			Entry("gate stuck in the same phase emits nothing",
+				ctpStatus("sha-a", "sha-b", gate("gate", "failure")), ctpStatus("sha-a", "sha-b", gate("gate", "failure")),
+				nil, []string{constants.PromotionBlockedReason}),
+			Entry("successful gates do not emit PromotionBlocked",
+				ctpStatus("sha-a", "sha-a"), ctpStatus("sha-a", "sha-b", gate("health-check", "success")),
+				[]string{constants.PromotionStartedReason}, []string{constants.PromotionBlockedReason}),
+			Entry("active dry sha advancing emits PromotionCompleted",
+				ctpStatus("sha-a", "sha-b"), ctpStatus("sha-b", "sha-b"),
+				[]string{constants.PromotionCompletedReason}, []string{constants.PromotionStartedReason, constants.PromotionBlockedReason}),
+			Entry("first-ever status population does not emit PromotionCompleted",
+				ctpStatus("", ""), ctpStatus("sha-a", "sha-a"),
+				nil, []string{constants.PromotionCompletedReason, constants.PromotionStartedReason}),
+		)
+	})
 })
 
 // hasEventWithReason reports whether eventList contains an event for the named involved object
