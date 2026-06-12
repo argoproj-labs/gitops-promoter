@@ -376,6 +376,11 @@ func (in PreviousEnvironmentCommitStatus) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in PreviousEnvironmentCommitStatusConfiguration) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.PreviousEnvironmentCommitStatusConfiguration"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in PreviousEnvironmentCommitStatusList) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.PreviousEnvironmentCommitStatusList"
 }

@@ -106,6 +106,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.OutputSpec{}.OpenAPIModelName():                                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_OutputSpec(ref),
 		apiv1alpha1.PollingModeSpec{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_PollingModeSpec(ref),
 		apiv1alpha1.PreviousEnvironmentCommitStatus{}.OpenAPIModelName():                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_PreviousEnvironmentCommitStatus(ref),
+		apiv1alpha1.PreviousEnvironmentCommitStatusConfiguration{}.OpenAPIModelName():         schema_argoproj_labs_gitops_promoter_api_v1alpha1_PreviousEnvironmentCommitStatusConfiguration(ref),
 		apiv1alpha1.PreviousEnvironmentCommitStatusList{}.OpenAPIModelName():                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_PreviousEnvironmentCommitStatusList(ref),
 		apiv1alpha1.PreviousEnvironmentCommitStatusSpec{}.OpenAPIModelName():                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_PreviousEnvironmentCommitStatusSpec(ref),
 		apiv1alpha1.PreviousEnvironmentCommitStatusStatus{}.OpenAPIModelName():                schema_argoproj_labs_gitops_promoter_api_v1alpha1_PreviousEnvironmentCommitStatusStatus(ref),
@@ -2043,12 +2044,19 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSp
 							Ref:         ref(apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName()),
 						},
 					},
+					"previousEnvironmentCommitStatus": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PreviousEnvironmentCommitStatus contains the configuration for the PreviousEnvironmentCommitStatus controller, including WorkQueue settings that control reconciliation behavior.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.PreviousEnvironmentCommitStatusConfiguration{}.OpenAPIModelName()),
+						},
+					},
 				},
-				Required: []string{"promotionStrategy", "changeTransferPolicy", "pullRequest", "commitStatus", "argocdCommitStatus", "timedCommitStatus", "gitCommitStatus", "webRequestCommitStatus"},
+				Required: []string{"promotionStrategy", "changeTransferPolicy", "pullRequest", "commitStatus", "argocdCommitStatus", "timedCommitStatus", "gitCommitStatus", "webRequestCommitStatus", "previousEnvironmentCommitStatus"},
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.ArgoCDCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyConfiguration{}.OpenAPIModelName(), apiv1alpha1.CommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategyConfiguration{}.OpenAPIModelName(), apiv1alpha1.PullRequestConfiguration{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName()},
+			apiv1alpha1.ArgoCDCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyConfiguration{}.OpenAPIModelName(), apiv1alpha1.CommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.PreviousEnvironmentCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategyConfiguration{}.OpenAPIModelName(), apiv1alpha1.PullRequestConfiguration{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName()},
 	}
 }
 
@@ -3490,6 +3498,29 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PreviousEnvironmentCommit
 		},
 		Dependencies: []string{
 			apiv1alpha1.PreviousEnvironmentCommitStatusSpec{}.OpenAPIModelName(), apiv1alpha1.PreviousEnvironmentCommitStatusStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PreviousEnvironmentCommitStatusConfiguration(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "PreviousEnvironmentCommitStatusConfiguration defines the configuration for the PreviousEnvironmentCommitStatus controller.\n\nThis configuration controls how the PreviousEnvironmentCommitStatus controller processes reconciliation requests, including requeue intervals, concurrency limits, and rate limiting behavior.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"workQueue": {
+						SchemaProps: spec.SchemaProps{
+							Description: "WorkQueue contains the work queue configuration for the PreviousEnvironmentCommitStatus controller. This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.WorkQueue{}.OpenAPIModelName()),
+						},
+					},
+				},
+				Required: []string{"workQueue"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.WorkQueue{}.OpenAPIModelName()},
 	}
 }
 
