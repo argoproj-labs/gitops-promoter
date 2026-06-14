@@ -53,6 +53,9 @@ type ControllerConfigurationSpecApplyConfiguration struct {
 	// WebRequestCommitStatus contains the configuration for the WebRequestCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	WebRequestCommitStatus *WebRequestCommitStatusConfigurationApplyConfiguration `json:"webRequestCommitStatus,omitempty"`
+	// PreviousEnvironmentCommitStatus contains the configuration for the PreviousEnvironmentCommitStatus controller,
+	// including WorkQueue settings that control reconciliation behavior.
+	PreviousEnvironmentCommitStatus *PreviousEnvironmentCommitStatusConfigurationApplyConfiguration `json:"previousEnvironmentCommitStatus,omitempty"`
 }
 
 // ControllerConfigurationSpecApplyConfiguration constructs a declarative configuration of the ControllerConfigurationSpec type for use with
@@ -122,5 +125,13 @@ func (b *ControllerConfigurationSpecApplyConfiguration) WithGitCommitStatus(valu
 // If called multiple times, the WebRequestCommitStatus field is set to the value of the last call.
 func (b *ControllerConfigurationSpecApplyConfiguration) WithWebRequestCommitStatus(value *WebRequestCommitStatusConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
 	b.WebRequestCommitStatus = value
+	return b
+}
+
+// WithPreviousEnvironmentCommitStatus sets the PreviousEnvironmentCommitStatus field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the PreviousEnvironmentCommitStatus field is set to the value of the last call.
+func (b *ControllerConfigurationSpecApplyConfiguration) WithPreviousEnvironmentCommitStatus(value *PreviousEnvironmentCommitStatusConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
+	b.PreviousEnvironmentCommitStatus = value
 	return b
 }

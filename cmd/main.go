@@ -322,6 +322,15 @@ func runController(
 		setupLog.Error(err, "unable to create controller", "controller", "WebRequestCommitStatus")
 		panic(fmt.Errorf("unable to create WebRequestCommitStatus controller: %w", err))
 	}
+	if err := (&controller.PreviousEnvironmentCommitStatusReconciler{
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorder("PreviousEnvironmentCommitStatus"),
+		SettingsMgr: settingsMgr,
+	}).SetupWithManager(localManager); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "PreviousEnvironmentCommitStatus")
+		panic(fmt.Errorf("unable to create PreviousEnvironmentCommitStatus controller: %w", err))
+	}
 	//+kubebuilder:scaffold:builder
 
 	if err := localManager.AddHealthzCheck("healthz", healthz.Ping); err != nil {
