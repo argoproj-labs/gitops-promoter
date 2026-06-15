@@ -435,7 +435,7 @@ func HandleReconciliationResult(
 			Type:               string(promoterConditions.Ready),
 			Status:             metav1.ConditionFalse,
 			Reason:             string(promoterConditions.ReconciliationError),
-			Message:            fmt.Sprintf("Reconciliation failed: %s", *err),
+			Message:            fmt.Sprintf("Reconciliation failed: %v", *err),
 			ObservedGeneration: obj.GetGeneration(),
 		}
 	}

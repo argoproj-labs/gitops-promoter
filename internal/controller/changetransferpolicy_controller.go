@@ -162,9 +162,6 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	// Snapshot the persisted status (from the Get above) before calculateStatus overwrites it,
 	// so promotion lifecycle events can be emitted only on actual state transitions.
 	prevStatus := ctp.Status.DeepCopy()
-	if prevStatus == nil {
-		prevStatus = &promoterv1alpha1.ChangeTransferPolicyStatus{}
-	}
 	err = r.calculateStatus(ctx, &ctp, gitOperations)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to calculate ChangeTransferPolicy status: %w", err)
