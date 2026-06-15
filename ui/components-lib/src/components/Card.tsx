@@ -1,5 +1,5 @@
 import { FaServer, FaHistory } from 'react-icons/fa';
-import { StatusType } from './StatusIcon';
+import { StatusIcon, StatusType } from './StatusIcon';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import CommitInfo from './CommitInfo';
 import HistoryNavigation from './HistoryNavigation';
@@ -173,7 +173,22 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                   {/* Proposed Commits Section (normal mode only) */}
                   {!inHistoryMode &&
                     (isProcessing ? (
-                      <div className="env-card__proposed-loading" />
+                      // Processing: stand in for the Proposed section with a labeled
+                      // loading placeholder while the newer commit is hydrated.
+                      <div className="commit-group env-card__proposed-loading">
+                        <div className="commit-group-header">
+                          <StatusIcon phase="pending" type="health" />
+                          <h4 className="commit-group-title">Proposed</h4>
+                        </div>
+                        <div
+                          className="env-card__proposed-loading-bar"
+                          role="progressbar"
+                          aria-label="Preparing newer commit"
+                        />
+                        <div className="env-card__proposed-loading-text">
+                          preparing newer commit&hellip;
+                        </div>
+                      </div>
                     ) : proposedStatus !== 'promoted' && proposedStatus !== 'success' ? (
                       <CommitInfo
                         title="Proposed"
