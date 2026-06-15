@@ -266,6 +266,19 @@ if err := (&controller.MyCommitStatusReconciler{
 }
 ```
 
+## Standard Events
+
+Commit status controllers should emit a consistent set of Kubernetes events so users can observe gate
+behavior with `kubectl get events`. The built-in controllers (ArgoCD, Timed, Git, WebRequest) all emit the
+following three standard events; custom controllers should do the same. See the
+[events reference](../monitoring/events.md) for the per-controller tables.
+
+| Event Reason | Type | When to emit |
+|--------------|------|--------------|
+| `CommitStatusPhaseChanged` | Normal / Warning | The phase computed for an environment changes from the phase computed on the previous reconcile. Emit only on a transition, after the new phase is persisted. Use `Warning` when the new phase is `failure`, `Normal` otherwise. |
+| `CommitStatusesNotReady` | Warning | One or more of the `CommitStatus` resources the controller manages is not Ready. |
+| `OrphanedCommitStatusDeleted` | Normal | An owned `CommitStatus` no longer applies (e.g., the environment/branch was removed) and was deleted during orphan cleanup. |
+
 ## Validation
 
 To verify your controller sets labels correctly, check a created CommitStatus:
