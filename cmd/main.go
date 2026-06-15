@@ -327,7 +327,7 @@ func runController(
 		Scheme:      localManager.GetScheme(),
 		Recorder:    localManager.GetEventRecorder("PreviousEnvironmentCommitStatus"),
 		SettingsMgr: settingsMgr,
-	}).SetupWithManager(localManager); err != nil {
+	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PreviousEnvironmentCommitStatus")
 		panic(fmt.Errorf("unable to create PreviousEnvironmentCommitStatus controller: %w", err))
 	}
