@@ -150,21 +150,18 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
   };
 }
 
-// Returns the set of branch names whose environments are currently being processed,
-// i.e. the newest hydrated dry commit has not yet propagated to that environment.
-//
-// The target is the hydrated dry SHA (proposed.note.drySha) of the environment with
-// the newest proposed hydrated commit. An environment is "processing" when its own
-// hydrated dry SHA differs from that target — its proposed branch has not yet been
-// re-hydrated against the newest dry commit. The comparison is symmetric (note.drySha
-// on both sides): at rest every environment shares the same hydrated dry SHA and the
-// set is empty.
+// Returns branch names whose proposed commit has not yet been hydrated to the
+// newest dry commit. Envs with no proposed commit are not processing.
 export function getProcessingEnvs(environments: Environment[]): Set<string> {
-  const hydratedDrySha = (e: Environment) => e.proposed?.note?.drySha ?? '';
+  const effectiveDrySha = (e: Environment) =>
+    e.proposed?.note?.drySha || e.proposed?.dry?.sha || '';
+  const hasProposedChange = (e: Environment) =>
+    !!e.proposed?.dry?.sha && e.active?.dry?.sha !== e.proposed?.dry?.sha;
+
   let target = '',
     newest = -Infinity;
   for (const e of environments) {
-    const sha = hydratedDrySha(e);
+    const sha = effectiveDrySha(e);
     if (!sha) continue;
     const t = Date.parse(e.proposed?.hydrated?.commitTime ?? '') || 0;
     if (!target || t > newest) {
@@ -175,10 +172,7 @@ export function getProcessingEnvs(environments: Environment[]): Set<string> {
   if (!target) return new Set();
   return new Set(
     environments
-      .filter((e) => {
-        const sha = hydratedDrySha(e);
-        return sha !== '' && sha !== target;
-      })
+      .filter((e) => hasProposedChange(e) && effectiveDrySha(e) !== target)
       .map((e) => e.branch),
   );
 }
