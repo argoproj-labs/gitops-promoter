@@ -72,14 +72,16 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
 
   // Loading State
   if (items.length === 0) {
-    return <div style={{ textAlign: 'center', marginTop: '20px' }}>Loading strategies...</div>;
+    return (
+      <div style={{ textAlign: 'center', marginTop: '20px' }}>Loading promotion strategies…</div>
+    );
   }
 
   // Not found state
   if (!selectedStrategy) {
     return (
       <div style={{ textAlign: 'center', marginTop: '20px' }}>
-        No strategy found for {strategyName}
+        We couldn't find a promotion strategy named {strategyName}.
       </div>
     );
   }
@@ -110,7 +112,7 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
             >
               Live
               <br />
-              Manifest
+              manifest
             </button>
           </div>
         </div>

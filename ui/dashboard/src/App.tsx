@@ -10,8 +10,13 @@ function PromotionStrategyPageWithNamespace() {
 }
 
 function App() {
+  // Vite injects BASE_URL at build time. For local dev it's '/' (no-op);
+  // for static-host deploys under a subpath (e.g. GitHub Pages) it becomes
+  // '/<repo-name>/'. Stripping the trailing slash gives a valid Router
+  // basename for both cases.
+  const basename = import.meta.env.BASE_URL.replace(/\/$/, '');
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={basename}>
       <TopBar />
       <Routes>
         <Route path="/" element={<Navigate to="/promotion-strategies" replace />} />

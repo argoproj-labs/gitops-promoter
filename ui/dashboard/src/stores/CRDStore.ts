@@ -71,6 +71,7 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
     // Fetch the current set of bundles via the /list endpoint.
     fetchItems: async (namespace: string) => {
       set({ loading: true, error: null });
+
       try {
         const res = await fetch(`/list?kind=${kind}&namespace=${namespace}`);
 
