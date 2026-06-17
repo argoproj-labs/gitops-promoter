@@ -57,6 +57,26 @@ auth mechanism.
 {!internal/controller/testdata/GitRepository.yaml!}
 ```
 
+#### Merge method
+
+The `mergeMethod` field controls how promotion pull requests are merged: `merge` (the default) asks the SCM for a
+merge commit, and `squash` asks for a single squash commit per promotion. Use `squash` when your repository policy
+disallows merge commits.
+
+Because a squash commit never makes the proposed branch's commits reachable from the active branch, the promoter
+automatically resets the proposed branch to the active branch tip after each squash merge (a content no-op, since the
+squash commit's tree is identical to the merged proposed tip). The reset is guarded with `--force-with-lease`, so a
+hydrator push that races it is never overwritten; in that case the promoter falls back to its regular conflict
+resolution for that promotion cycle.
+
+Provider notes:
+
+* **Bitbucket Cloud** does not support `squash` (rejected at admission).
+* **GitHub** repositories must have "Allow squash merging" enabled, otherwise merging fails and surfaces as a
+  `Ready=False` condition on the PullRequest resource.
+* **GitLab** projects should leave squashing "allowed" (not "required" or "forbidden") so the per-MR squash flag set by
+  the promoter takes effect.
+
 ### ScmProvider
 
 An ScmProvider represents a scm instance (such as github). It references a Secret to enable access via some configured

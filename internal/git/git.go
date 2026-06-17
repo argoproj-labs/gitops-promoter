@@ -620,6 +620,90 @@ func (g *EnvironmentOperations) MergeWithOursStrategy(ctx context.Context, propo
 	return nil
 }
 
+// AlignProposedBranchAfterSquash force-pushes origin/<activeBranch>'s tip onto
+// refs/heads/<proposedBranch> when a squash merge has left the branches content-identical but
+// history-divergent. Without this, the squashed-away commits stay unreachable from the active
+// branch forever and every subsequent pull request's commit list accumulates them. The push is a
+// content no-op by construction (the trees must be identical) and is guarded by force-with-lease
+// against the proposed sha observed at fetch time, so a hydrator push that races this call fails
+// the lease instead of being clobbered.
+//
+// Returns (false, nil) when no alignment is needed or it is not provably safe:
+//   - the branch tips are already the same commit, or
+//   - origin/<proposedBranch> is an ancestor of origin/<activeBranch> (a true merge happened), or
+//   - the two refs' trees differ (e.g. the hydrator pushed before our fetch).
+//
+// Operates on the object DB and remote refs only: it never checks out or otherwise mutates the
+// clone's worktree/index/HEAD (see the package "Clone state invariant" docs). Requires
+// origin/<proposed> and origin/<active> to have been fetched (GetBranchShas earlier in the
+// reconcile).
+func (g *EnvironmentOperations) AlignProposedBranchAfterSquash(ctx context.Context, proposedBranch, activeBranch string) (bool, error) {
+	logger := log.FromContext(ctx)
+	gitPath := g.ClonePath()
+
+	proposedRef := "origin/" + proposedBranch
+	activeRef := "origin/" + activeBranch
+
+	// This sha is the ref value as of this reconcile's fetch, not a live remote read. It doubles
+	// as the lease expectation for the push below.
+	proposedSha, stderr, err := g.runCmd(ctx, gitPath, "rev-parse", proposedRef)
+	if err != nil {
+		return false, fmt.Errorf("failed to resolve sha for branch %q: %w (stderr: %s)", proposedBranch, err, stderr)
+	}
+	proposedSha = strings.TrimSpace(proposedSha)
+
+	activeSha, stderr, err := g.runCmd(ctx, gitPath, "rev-parse", activeRef)
+	if err != nil {
+		return false, fmt.Errorf("failed to resolve sha for branch %q: %w (stderr: %s)", activeBranch, err, stderr)
+	}
+	activeSha = strings.TrimSpace(activeSha)
+
+	if proposedSha == activeSha {
+		return false, nil
+	}
+
+	// rev-list --count instead of merge-base --is-ancestor: the latter signals "no" with a generic
+	// non-zero exit, which runCmd cannot distinguish from a real failure. A count of 0 means
+	// proposed is reachable from active, i.e. a true merge happened and there is nothing to align.
+	countOut, stderr, err := g.runCmd(ctx, gitPath, "rev-list", "--count", proposedSha, "--not", activeSha)
+	if err != nil {
+		return false, fmt.Errorf("failed to count commits on %q not reachable from %q: %w (stderr: %s)", proposedBranch, activeBranch, err, stderr)
+	}
+	if strings.TrimSpace(countOut) == "0" {
+		return false, nil
+	}
+
+	proposedTree, stderr, err := g.runCmd(ctx, gitPath, "rev-parse", proposedSha+"^{tree}")
+	if err != nil {
+		return false, fmt.Errorf("failed to resolve tree for branch %q: %w (stderr: %s)", proposedBranch, err, stderr)
+	}
+	activeTree, stderr, err := g.runCmd(ctx, gitPath, "rev-parse", activeSha+"^{tree}")
+	if err != nil {
+		return false, fmt.Errorf("failed to resolve tree for branch %q: %w (stderr: %s)", activeBranch, err, stderr)
+	}
+	if strings.TrimSpace(proposedTree) != strings.TrimSpace(activeTree) {
+		// The hydrator pushed new content before our fetch. Skip; the regular conflict-resolution
+		// path (HasConflict -> MergeWithOursStrategy) owns this cycle's divergence.
+		logger.V(4).Info("Skipping post-squash alignment, branch trees differ", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
+		return false, nil
+	}
+
+	// A lease failure here means the hydrator pushed after our fetch; the caller's requeue
+	// re-derives everything from fresh fetches, so nothing the hydrator wrote is ever lost.
+	_, stderr, err = g.runCmd(ctx, gitPath, "push",
+		"--force-with-lease=refs/heads/"+proposedBranch+":"+proposedSha,
+		"origin", activeSha+":refs/heads/"+proposedBranch)
+	if err != nil {
+		logger.Error(err, "Failed to push post-squash alignment", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
+		return false, fmt.Errorf("failed to push post-squash alignment to branch %q: %w (stderr: %s)", proposedBranch, err, stderr)
+	}
+
+	logger.Info("Aligned proposed branch to active tip after squash merge",
+		"proposedBranch", proposedBranch, "activeBranch", activeBranch,
+		"previousProposedSha", proposedSha, "newProposedSha", activeSha)
+	return true, nil
+}
+
 // MergeWithOursStrategyForPath resolves conflicts by taking proposed branch content only within activePath and
 // active branch content everywhere else, then pushes the result to the proposed branch.
 //

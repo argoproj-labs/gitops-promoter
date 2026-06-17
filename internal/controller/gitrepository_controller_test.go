@@ -229,4 +229,50 @@ var _ = Describe("GitRepository Controller", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
+
+	Context("When validating the mergeMethod field", func() {
+		ctx := context.Background()
+
+		newGitRepo := func(name string, spec promoterv1alpha1.GitRepositorySpec) *promoterv1alpha1.GitRepository {
+			spec.ScmProviderRef = promoterv1alpha1.ScmProviderObjectReference{
+				Kind: promoterv1alpha1.ScmProviderKind,
+				Name: name,
+			}
+			return &promoterv1alpha1.GitRepository{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: "default",
+				},
+				Spec: spec,
+			}
+		}
+
+		It("rejects squash for Bitbucket Cloud repositories", func() {
+			repo := newGitRepo("merge-method-bitbucket-squash", promoterv1alpha1.GitRepositorySpec{
+				BitbucketCloud: &promoterv1alpha1.BitbucketCloudRepo{Owner: "test-owner", Name: "test-repo"},
+				MergeMethod:    promoterv1alpha1.MergeMethodSquash,
+			})
+			err := k8sClient.Create(ctx, repo)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("squash merge is not supported for Bitbucket Cloud"))
+		})
+
+		It("accepts the default merge method for Bitbucket Cloud repositories", func() {
+			repo := newGitRepo("merge-method-bitbucket-merge", promoterv1alpha1.GitRepositorySpec{
+				BitbucketCloud: &promoterv1alpha1.BitbucketCloudRepo{Owner: "test-owner", Name: "test-repo"},
+			})
+			Expect(k8sClient.Create(ctx, repo)).To(Succeed())
+			Expect(repo.Spec.MergeMethod).To(Equal(promoterv1alpha1.MergeMethodMerge), "CRD default should apply")
+			Expect(k8sClient.Delete(ctx, repo)).To(Succeed())
+		})
+
+		It("accepts squash for providers that support it", func() {
+			repo := newGitRepo("merge-method-github-squash", promoterv1alpha1.GitRepositorySpec{
+				GitHub:      &promoterv1alpha1.GitHubRepo{Owner: "test-owner", Name: "test-repo"},
+				MergeMethod: promoterv1alpha1.MergeMethodSquash,
+			})
+			Expect(k8sClient.Create(ctx, repo)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, repo)).To(Succeed())
+		})
+	})
 })

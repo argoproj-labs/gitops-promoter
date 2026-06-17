@@ -2938,6 +2938,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitRepositorySpec(ref com
 							Ref:     ref(apiv1alpha1.ScmProviderObjectReference{}.OpenAPIModelName()),
 						},
 					},
+					"mergeMethod": {
+						SchemaProps: spec.SchemaProps{
+							Description: "MergeMethod determines how promotion pull requests are merged: a merge commit (\"merge\") or a single squash commit (\"squash\"). Defaults to \"merge\".",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 				},
 				Required: []string{"scmProviderRef"},
 			},

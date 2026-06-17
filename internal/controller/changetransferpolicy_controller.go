@@ -163,6 +163,19 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, fmt.Errorf("failed to calculate ChangeTransferPolicy status: %w", err)
 	}
 
+	alignedProposedBranch, err := r.alignProposedBranchAfterSquash(ctx, gitOperations, gitRepo, &ctp)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to align proposed branch after squash merge: %w", err)
+	}
+
+	// Same contract as the gitMergeStrategyOurs requeue below: the alignment force-pushed
+	// origin/<proposedBranch> past what calculateStatus recorded, so continuing this reconcile
+	// would apply the PR with a stale MergeSha and stale Status fields. Requeue so the next
+	// reconcile re-derives Status.Proposed from the new tip.
+	if alignedProposedBranch {
+		return ctrl.Result{RequeueAfter: 100 * time.Millisecond}, nil
+	}
+
 	mergedProposedBranch, err := r.gitMergeStrategyOurs(ctx, gitOperations, &ctp)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to git merge for conflict resolution: %w", err)
@@ -1309,6 +1322,42 @@ func (r *ChangeTransferPolicyReconciler) gitMergeStrategyOurs(ctx context.Contex
 	r.Recorder.Eventf(ctp, nil, "Normal", constants.ResolvedConflictReason, "ResolvingConflict", constants.ResolvedConflictMessage, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 
 	return true, nil
+}
+
+// alignProposedBranchAfterSquash resets the proposed branch to the active tip after a squash
+// merge left the branches content-identical but history-divergent. Squash merges never make the
+// proposed commits reachable from the active branch, so without this step every subsequent pull
+// request's commit list accumulates the already-promoted commits.
+//
+// Returns true if the proposed branch was force-pushed (with lease). Callers should requeue
+// rather than continue this reconcile when true is returned, so that the next reconcile
+// re-derives Status.Proposed from the new tip (same contract as gitMergeStrategyOurs).
+func (r *ChangeTransferPolicyReconciler) alignProposedBranchAfterSquash(ctx context.Context, gitOperations *git.EnvironmentOperations, gitRepo *promoterv1alpha1.GitRepository, ctp *promoterv1alpha1.ChangeTransferPolicy) (bool, error) {
+	if gitRepo.Spec.GetMergeMethod() != promoterv1alpha1.MergeMethodSquash {
+		return false, nil
+	}
+
+	// Only align when the branches are content-identical: nothing promoted yet, or a new
+	// hydration is pending, means there is nothing to safely align (and skipping the git calls is
+	// the fast path while waiting on the hydrator).
+	if ctp.Status.Active.Dry.Sha == "" || ctp.Status.Active.Dry.Sha != ctp.Status.Proposed.Dry.Sha {
+		return false, nil
+	}
+
+	if ctp.Status.Proposed.Hydrated.Sha == ctp.Status.Active.Hydrated.Sha {
+		return false, nil
+	}
+
+	aligned, err := gitOperations.AlignProposedBranchAfterSquash(ctx, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+	if err != nil {
+		return false, fmt.Errorf("failed to align proposed branch %q to active branch %q after squash merge: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
+	}
+
+	if aligned {
+		r.Recorder.Eventf(ctp, nil, "Normal", constants.AlignedProposedBranchReason, "AligningProposedBranch", constants.AlignedProposedBranchMessage, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+	}
+
+	return aligned, nil
 }
 
 // handleFinalizer ensures ChangeTransferPolicyPullRequestCleanupFinalizer is on the CTP while it exists so deletion

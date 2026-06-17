@@ -217,8 +217,14 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 		return fmt.Errorf("failed to create Git client: %w", err)
 	}
 
+	mergeStrategy := git.GitPullRequestMergeStrategyValues.NoFastForward
+	if gitRepo.Spec.GetMergeMethod() == v1alpha1.MergeMethodSquash {
+		mergeStrategy = git.GitPullRequestMergeStrategyValues.Squash
+	}
+
 	// Complete the pull request (merge it) using Azure DevOps completion API
 	completionOptions := git.GitPullRequestCompletionOptions{
+		MergeStrategy:      &mergeStrategy,
 		MergeCommitMessage: &pullRequest.Spec.Commit.Message,
 		DeleteSourceBranch: &[]bool{false}[0], // Keep source branch by default
 	}
