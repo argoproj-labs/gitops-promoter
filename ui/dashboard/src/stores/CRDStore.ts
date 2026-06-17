@@ -1,6 +1,11 @@
 import { create } from 'zustand';
 import { enrichFromCRD } from '@shared/utils/PSData';
 import type { PromotionStrategy } from '@shared/utils/PSData';
+// TEMP-MOCK: local visual review only. REVERT before commit.
+import { getMockStrategies } from '../mockData';
+
+// TEMP-MOCK: local visual review only. REVERT before commit.
+const USE_MOCK = true;
 
 interface CRDItem extends PromotionStrategy {
   enriched?: unknown;
@@ -27,6 +32,14 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
     // Fetch items from via /list endpoint
     fetchItems: async (namespace: string) => {
       set({ loading: true, error: null });
+
+      // TEMP-MOCK: local visual review only. REVERT before commit.
+      if (USE_MOCK) {
+        const data = getMockStrategies(namespace) as T[];
+        set({ items: data, loading: false });
+        return;
+      }
+
       try {
         const res = await fetch(`/list?kind=${kind}&namespace=${namespace}`);
 
@@ -42,6 +55,9 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
 
     // Subscribing to SSE
     subscribe: (namespace: string) => {
+      // TEMP-MOCK: local visual review only. REVERT before commit.
+      if (USE_MOCK) return;
+
       if (eventSource) eventSource.close();
 
       // Real-Time fetch via /watch endpoint

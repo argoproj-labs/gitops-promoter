@@ -2,7 +2,12 @@ import React, { useEffect } from 'react';
 import Select, { components, OptionProps, SingleValue } from 'react-select';
 import { FaFolder } from 'react-icons/fa';
 import { namespaceStore } from '../stores/NamespaceStore';
+// TEMP-MOCK: local visual review only. REVERT before commit.
+import { getMockNamespaces } from '../mockData';
 import './NamespaceDropdown.scss';
+
+// TEMP-MOCK: local visual review only. REVERT before commit.
+const USE_MOCK = true;
 
 interface NamespaceStore {
   namespace: string;
@@ -24,6 +29,11 @@ const NamespaceDropdown: React.FC = () => {
 
   // Fetching namespace from API
   useEffect(() => {
+    // TEMP-MOCK: local visual review only. REVERT before commit.
+    if (USE_MOCK) {
+      setNamespaces(getMockNamespaces());
+      return;
+    }
     fetch('/list?kind=namespace')
       .then((res) => res.json())
       .then((data) => setNamespaces(Array.isArray(data) ? data : []))
