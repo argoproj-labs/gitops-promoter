@@ -9,6 +9,10 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+    # By default Dependabot only bumps direct requires. Indirect modules listed in
+    # go.mod (e.g. golang.org/x/crypto) need this to get version-update PRs.
+    allow:
+      - dependency-type: "indirect"
     ignore:
       - dependency-name: "k8s.io/*"
       - dependency-name: "sigs.k8s.io/controller-runtime"
