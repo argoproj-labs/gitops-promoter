@@ -994,7 +994,7 @@ exit 1
 		dump, err := os.ReadFile(envDump)
 		Expect(err).NotTo(HaveOccurred())
 		got := map[string]string{}
-		for _, line := range strings.Split(strings.TrimSpace(string(dump)), "\n") {
+		for line := range strings.SplitSeq(strings.TrimSpace(string(dump)), "\n") {
 			key, val, ok := strings.Cut(line, "=")
 			Expect(ok).To(BeTrue(), "unexpected dump line %q", line)
 			got[key] = val

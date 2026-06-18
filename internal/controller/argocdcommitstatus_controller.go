@@ -29,7 +29,6 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"k8s.io/client-go/tools/events"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/multicluster-runtime/pkg/controller"
 
@@ -542,7 +541,7 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: maxConcurrentReconciles,
 			RateLimiter:             rateLimiter,
-			UsePriorityQueue:        ptr.To(true),
+			UsePriorityQueue:        new(true),
 		}).
 		Watches(&argocd.Application{}, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
 			mcbuilder.WithEngageWithLocalCluster(watchLocalApplications),
@@ -681,7 +680,7 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 	commitStatusName := key + "/" + targetBranch
 
 	resourceName := utils.CommitStatusResourceName(ctx, &argoCDCommitStatus, targetBranch)
-	kind := reflect.TypeOf(promoterv1alpha1.ArgoCDCommitStatus{}).Name()
+	kind := reflect.TypeFor[promoterv1alpha1.ArgoCDCommitStatus]().Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
 	// Build the spec

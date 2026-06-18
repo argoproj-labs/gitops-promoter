@@ -38,7 +38,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
-	"k8s.io/utils/ptr"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -83,7 +82,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
 				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
 				// We set auto merge to false to avoid the PR being merged automatically so we can run checks on it
-				changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
+				changeTransferPolicy.Spec.AutoMerge = new(false)
 
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -145,7 +144,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					err = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
 					Expect(err).To(Succeed())
 					// We now have a PR so we can set it to true and then check that it gets merged
-					changeTransferPolicy.Spec.AutoMerge = ptr.To(true)
+					changeTransferPolicy.Spec.AutoMerge = new(true)
 					err = k8sClient.Update(ctx, changeTransferPolicy)
 					g.Expect(err).To(Succeed())
 				}, constants.EventuallyTimeout).Should(Succeed())
@@ -192,7 +191,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
 				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
 				// We set auto merge to false to avoid the PR being merged automatically so we can run checks on it
-				changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
+				changeTransferPolicy.Spec.AutoMerge = new(false)
 
 				changeTransferPolicy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 					{
@@ -267,7 +266,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					err = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
 					Expect(err).To(Succeed())
 					// We now have a PR so we can set it to true and then check that it gets merged
-					changeTransferPolicy.Spec.AutoMerge = ptr.To(true)
+					changeTransferPolicy.Spec.AutoMerge = new(true)
 					err = k8sClient.Update(ctx, changeTransferPolicy)
 					g.Expect(err).To(Succeed())
 				}, constants.EventuallyTimeout).Should(Succeed())
@@ -306,7 +305,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
 				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
-				changeTransferPolicy.Spec.AutoMerge = ptr.To(true)
+				changeTransferPolicy.Spec.AutoMerge = new(true)
 				changeTransferPolicy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 					{
 						Key: promotionGateCSKey,
@@ -400,7 +399,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
 				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
 				// We set auto merge to false to avoid the PR being merged automatically so we can run checks on it
-				changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
+				changeTransferPolicy.Spec.AutoMerge = new(false)
 
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -465,7 +464,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					err = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
 					Expect(err).To(Succeed())
 					// We now have a PR so we can set it to true and then check that it gets merged
-					changeTransferPolicy.Spec.AutoMerge = ptr.To(true)
+					changeTransferPolicy.Spec.AutoMerge = new(true)
 					err = k8sClient.Update(ctx, changeTransferPolicy)
 					g.Expect(err).To(Succeed())
 				}, constants.EventuallyTimeout).Should(Succeed())
@@ -496,7 +495,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
 				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
-				changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
+				changeTransferPolicy.Spec.AutoMerge = new(false)
 
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -568,7 +567,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
 				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
-				changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
+				changeTransferPolicy.Spec.AutoMerge = new(false)
 
 				changeTransferPolicy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 					{
@@ -684,7 +683,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
 				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
-				changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
+				changeTransferPolicy.Spec.AutoMerge = new(false)
 
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -771,7 +770,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(err).To(Succeed())
 
 					// Simulate PR controller marking it as externally closed
-					createdPR.Status.ExternallyMergedOrClosed = ptr.To(true)
+					createdPR.Status.ExternallyMergedOrClosed = new(true)
 					createdPR.Status.State = promoterv1alpha1.PullRequestClosed
 					err = k8sClient.Status().Update(ctx, &createdPR)
 					g.Expect(err).To(Succeed())
@@ -843,7 +842,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
 				// Avoid auto-merging so the proposed branch keeps advancing across the two
 				// hydrations the test drives.
-				changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
+				changeTransferPolicy.Spec.AutoMerge = new(false)
 
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -941,7 +940,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
 				// Avoid auto-merging so the proposed branch keeps advancing across the two
 				// hydrations the test drives.
-				changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
+				changeTransferPolicy.Spec.AutoMerge = new(false)
 
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -1057,7 +1056,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
 				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
-				changeTransferPolicy.Spec.AutoMerge = ptr.To(true)
+				changeTransferPolicy.Spec.AutoMerge = new(true)
 
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
