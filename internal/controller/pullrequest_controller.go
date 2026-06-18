@@ -37,11 +37,9 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitea"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
-	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/util/retry"
@@ -79,7 +77,8 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	var pr promoterv1alpha1.PullRequest
 	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &pr, r.Client, r.Recorder, constants.PullRequestControllerFieldOwner, &result, &err)
+	var previousReady *metav1.Condition
+	defer utils.HandleReconciliationResult(ctx, startTime, &pr, r.Client, r.Recorder, constants.PullRequestControllerFieldOwner, &result, &err, &previousReady)
 
 	if err := r.Get(ctx, req.NamespacedName, &pr); err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -90,7 +89,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Remove any existing Ready condition. We want to start fresh.
-	meta.RemoveStatusCondition(pr.GetConditions(), string(promoterConditions.Ready))
+	previousReady = utils.RemoveReadyCondition(&pr)
 
 	// Handle deletion early - if being deleted and status.ID is empty, we can skip provider setup
 	if handled, err := r.handleEmptyIDDeletion(ctx, &pr); handled || err != nil {
@@ -138,7 +137,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Handle state transitions
-	cleanupRequired, err := r.handleStateTransitions(ctx, &pr, provider)
+	cleanupRequired, err := r.handleStateTransitions(ctx, &pr, provider, previousReady)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -250,6 +249,11 @@ func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *p
 			// Controller still thinks PR should be open, but it's not found on provider. That includes a
 			// human or another system closing/merging the PR, and also our own deletion finalizer having
 			// closed it on the SCM: the next sync cannot tell those apart, so we set ExternallyMergedOrClosed.
+			// The persisted previous value gates the event so a lost status write retries the
+			// emission but a persisted one never repeats it.
+			if pr.Status.ExternallyMergedOrClosed == nil || !*pr.Status.ExternallyMergedOrClosed {
+				r.Recorder.Eventf(pr, nil, "Warning", constants.PullRequestExternallyMergedOrClosedReason, "SyncingPullRequestState", constants.PullRequestExternallyMergedOrClosedMessage, pr.Name, pr.Status.ID)
+			}
 			pr.Status.ExternallyMergedOrClosed = ptr.To(true)
 			// Don't set State since we don't know if it was merged or closed externally.
 			// The ExternallyMergedOrClosed flag means this PR is no longer open on the provider while we still
@@ -279,7 +283,10 @@ func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *p
 
 // handleStateTransitions handles transitions between PullRequest states.
 // Returns (done=true, nil) if a terminal state was reached, (false, nil) otherwise, or (false, err) on error.
-func (r *PullRequestReconciler) handleStateTransitions(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) (bool, error) {
+// previousReady is the Ready condition from the previous reconcile; SCM create/merge failure events
+// are emitted only on the first failure after a healthy reconcile so backoff retries don't spam
+// events (the evolving error stays visible on the Ready condition).
+func (r *PullRequestReconciler) handleStateTransitions(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider, previousReady *metav1.Condition) (bool, error) {
 	logger := log.FromContext(ctx)
 
 	logger.Info("Reconciling PullRequest state", "desired", pr.Spec.State, "current", pr.Status.State)
@@ -292,18 +299,26 @@ func (r *PullRequestReconciler) handleStateTransitions(ctx context.Context, pr *
 		return false, nil
 	}
 
+	wasHealthy := previousReady == nil || previousReady.Status == metav1.ConditionTrue
+
 	switch pr.Spec.State {
 	case promoterv1alpha1.PullRequestOpen:
 		if pr.Status.ID == "" {
 			// Because status id is empty, we need to create a new pull request
 			logger.Info("Creating PullRequest")
 			if err := r.createPullRequest(ctx, pr, provider); err != nil {
+				if wasHealthy {
+					r.Recorder.Eventf(pr, nil, "Warning", constants.PullRequestCreateFailedReason, "CreatingPullRequest", constants.PullRequestCreateFailedMessage, pr.Name, err)
+				}
 				return false, fmt.Errorf("failed to create pull request: %w", err) // Top-level wrap for create errors
 			}
 		}
 	case promoterv1alpha1.PullRequestMerged:
 		logger.Info("Merging PullRequest")
 		if err := r.mergePullRequest(ctx, pr, provider); err != nil {
+			if wasHealthy {
+				r.Recorder.Eventf(pr, nil, "Warning", constants.PullRequestMergeFailedReason, "MergingPullRequest", constants.PullRequestMergeFailedMessage, pr.Name, err)
+			}
 			return false, fmt.Errorf("failed to merge pull request: %w", err) // Top-level wrap for merge errors
 		}
 		return true, nil
@@ -540,5 +555,6 @@ func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr *promot
 		return err //nolint:wrapcheck // Error wrapping handled at top level
 	}
 	pr.Status.State = promoterv1alpha1.PullRequestClosed
+	r.Recorder.Eventf(pr, nil, "Normal", constants.PullRequestClosedReason, "ClosingPullRequest", constants.PullRequestClosedMessage, pr.Name)
 	return nil
 }
