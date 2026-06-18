@@ -947,9 +947,9 @@ var _ = Describe("Git subprocess proxy env", func() {
 		want := map[string]string{
 			"HTTPS_PROXY":    "http://proxy.test:8443",
 			"HTTP_PROXY":     "http://proxy.test:8080",
-			"NO_PROXY":         "localhost,127.0.0.1",
-			"GIT_SSL_CAINFO":   "/tmp/test-ca.pem",
-			"SSL_CERT_FILE":    "/tmp/test-cert.pem",
+			"NO_PROXY":       "localhost,127.0.0.1",
+			"GIT_SSL_CAINFO": "/tmp/test-ca.pem",
+			"SSL_CERT_FILE":  "/tmp/test-cert.pem",
 		}
 		for key, val := range want {
 			GinkgoT().Setenv(key, val)
