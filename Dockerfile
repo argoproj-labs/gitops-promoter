@@ -65,7 +65,6 @@ RUN apt-get update && apt-get install -y tini && apt-get clean && rm -rf /var/li
 RUN mkdir /git
 COPY --from=builder /workspace/gitops-promoter .
 COPY --from=builder /workspace/hack/git/promoter_askpass.sh /git/promoter_askpass.sh
-COPY --from=dashboard-builder /workspace/ui/web/static ./ui/web/static
 ENV PATH="${PATH}:/git"
 RUN echo "${PATH}" >> /etc/bash.bashrc
 USER 65532:65532
