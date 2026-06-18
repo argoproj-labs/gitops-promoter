@@ -13,7 +13,7 @@ import (
 //
 // On macOS, Go's default verifier uses the platform trust store and does not honor
 // SSL_CERT_FILE for http.DefaultTransport. That breaks MITM proxies unless
-// we install an explicit root pool (curl honors --cacert; Go needs this hook).
+// we install an explicit root pool.
 func ConfigureDefaultTransportFromEnv() error {
 	caPath := os.Getenv("SSL_CERT_FILE")
 	if caPath == "" {
