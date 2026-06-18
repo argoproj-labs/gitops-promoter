@@ -20,6 +20,15 @@ updates:
       - dependency-name: "sigs.k8s.io/structured-merge-diff/*"
       - dependency-name: "sigs.k8s.io/json"
       - dependency-name: "sigs.k8s.io/randfill"
+    groups:
+      # etcd modules (api, client/pkg, client/v3) release together; one PR beats three.
+      go-etcd:
+        patterns:
+          - "go.etcd.io/etcd/*"
+      # otel core, exporters, contrib instrumentation, and proto/otlp share a release train.
+      opentelemetry:
+        patterns:
+          - "go.opentelemetry.io/*"
 
   - package-ecosystem: "github-actions"
     directory: "/"
