@@ -204,7 +204,7 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 	ctpName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(ps.Name, environment.Branch))
 
 	// Build owner reference
-	kind := reflect.TypeOf(promoterv1alpha1.PromotionStrategy{}).Name()
+	kind := reflect.TypeFor[promoterv1alpha1.PromotionStrategy]().Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
 	// Build active commit status selectors
@@ -582,7 +582,7 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 	// TODO: do we like this name proposed-<name>?
 	csName := utils.KubeSafeUniqueName(promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel + ctp.Name)
 
-	kind := reflect.TypeOf(promoterv1alpha1.ChangeTransferPolicy{}).Name()
+	kind := reflect.TypeFor[promoterv1alpha1.ChangeTransferPolicy]().Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
 	// If there is only one commit status, use the URL from that commit status.

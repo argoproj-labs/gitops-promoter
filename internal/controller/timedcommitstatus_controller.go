@@ -211,10 +211,7 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 
 		// Calculate timing information based on current environment's active commit
 		elapsed := time.Since(currentActiveCommitTime)
-		timeRemaining := envConfig.Duration.Duration - elapsed
-		if timeRemaining < 0 {
-			timeRemaining = 0
-		}
+		timeRemaining := max(envConfig.Duration.Duration-elapsed, 0)
 
 		// Determine commit status phase based on time elapsed in current environment
 		// This status will be reported for the current environment's active SHA
@@ -283,7 +280,7 @@ func (r *TimedCommitStatusReconciler) calculateCommitStatusPhase(requiredDuratio
 }
 
 func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, message string, envBranch string) (*promoterv1alpha1.CommitStatus, error) {
-	kind := reflect.TypeOf(promoterv1alpha1.TimedCommitStatus{}).Name()
+	kind := reflect.TypeFor[promoterv1alpha1.TimedCommitStatus]().Name()
 	commitStatusName := utils.CommitStatusResourceName(ctx, tcs, branch)
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 

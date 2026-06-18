@@ -43,7 +43,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/util/retry"
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -254,7 +253,7 @@ func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *p
 			if pr.Status.ExternallyMergedOrClosed == nil || !*pr.Status.ExternallyMergedOrClosed {
 				r.Recorder.Eventf(pr, nil, "Warning", constants.PullRequestExternallyMergedOrClosedReason, "SyncingPullRequestState", constants.PullRequestExternallyMergedOrClosedMessage, pr.Name, pr.Status.ID)
 			}
-			pr.Status.ExternallyMergedOrClosed = ptr.To(true)
+			pr.Status.ExternallyMergedOrClosed = new(true)
 			// Don't set State since we don't know if it was merged or closed externally.
 			// The ExternallyMergedOrClosed flag means this PR is no longer open on the provider while we still
 			// desired open; that includes true external action and indistinguishable cases such as our delete finalizer

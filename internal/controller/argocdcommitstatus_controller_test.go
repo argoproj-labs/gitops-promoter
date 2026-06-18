@@ -1172,7 +1172,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 
 			// Force multiple reconciliations and verify they ALL produce identical error messages
 			// This catches nondeterministic behavior that the controller's map iteration would cause
-			for i := 0; i < 5; i++ {
+			for i := range 5 {
 				// Use retry on conflict since the controller may update the status concurrently
 				err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 					updated := &promoterv1alpha1.ArgoCDCommitStatus{}

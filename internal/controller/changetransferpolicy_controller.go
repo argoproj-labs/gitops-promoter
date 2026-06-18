@@ -1058,7 +1058,7 @@ func (r *ChangeTransferPolicyReconciler) handleCTPCleanupOnDelete(ctx context.Co
 func (r *ChangeTransferPolicyReconciler) getPromotionStrategy(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) (*promoterv1alpha1.PromotionStrategy, error) {
 	logger := log.FromContext(ctx)
 
-	psKind := reflect.TypeOf(promoterv1alpha1.PromotionStrategy{}).Name()
+	psKind := reflect.TypeFor[promoterv1alpha1.PromotionStrategy]().Name()
 	for _, ref := range ctp.OwnerReferences {
 		if ref.Kind == psKind && ptr.Deref(ref.Controller, false) {
 			var ps promoterv1alpha1.PromotionStrategy
@@ -1156,7 +1156,7 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 	}
 
 	// Build owner reference
-	kind := reflect.TypeOf(promoterv1alpha1.ChangeTransferPolicy{}).Name()
+	kind := reflect.TypeFor[promoterv1alpha1.ChangeTransferPolicy]().Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
 	// Determine the commit message based on whether this is a new or existing PR

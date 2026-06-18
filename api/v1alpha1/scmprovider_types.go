@@ -28,7 +28,7 @@ import (
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // ScmProviderKind is the kind of the ScmProvider resource.
-var ScmProviderKind = reflect.TypeOf(ScmProvider{}).Name()
+var ScmProviderKind = reflect.TypeFor[ScmProvider]().Name()
 
 // ScmProviderSpec defines the desired state of ScmProvider
 // +kubebuilder:validation:ExactlyOneOf=github;gitlab;forgejo;gitea;bitbucketCloud;azureDevOps;fake
