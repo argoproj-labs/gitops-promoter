@@ -13,6 +13,7 @@ const environmentWithReferenceCommit: Environment = {
       repoURL: 'https://github.example.com/deployment',
       subject: '[Changed] - infrastructure deployment',
     },
+    hydrated: {},
   },
   proposed: {
     dry: {
@@ -33,8 +34,10 @@ const environmentWithReferenceCommit: Environment = {
         },
       ],
     },
+    hydrated: {},
     commitStatuses: [],
   },
+  lastHealthyDryShas: [],
 };
 
 describe('enrichFromEnvironments', () => {
