@@ -9,16 +9,14 @@ import (
 )
 
 // ConfigureDefaultTransportFromEnv replaces http.DefaultTransport with a clone whose
-// RootCAs are loaded from SSL_CERT_FILE or GIT_SSL_CAINFO when set.
+// RootCAs are loaded from SSL_CERT_FILE when set.
 //
 // On macOS, Go's default verifier uses the platform trust store and does not honor
 // SSL_CERT_FILE for http.DefaultTransport. That breaks MITM proxies unless
-// we install an explicit root pool.
+// we install an explicit root pool. Git subprocesses use GIT_SSL_CAINFO instead;
+// see internal/git.proxyRelatedEnvVars.
 func ConfigureDefaultTransportFromEnv() error {
 	caPath := os.Getenv("SSL_CERT_FILE")
-	if caPath == "" {
-		caPath = os.Getenv("GIT_SSL_CAINFO")
-	}
 	if caPath == "" {
 		return nil
 	}
