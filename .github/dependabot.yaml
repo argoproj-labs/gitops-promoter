@@ -9,6 +9,7 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+    open-pull-requests-limit: 10
     # By default Dependabot only bumps direct requires. Indirect modules listed in
     # go.mod (e.g. golang.org/x/crypto) need this to get version-update PRs.
     allow:
@@ -29,8 +30,25 @@ updates:
       opentelemetry:
         patterns:
           - "go.opentelemetry.io/*"
+      # crypto, net, sys, text, tools, etc. often bump in the same Dependabot cycle.
+      golang-org-x:
+        patterns:
+          - "golang.org/x/*"
+      # kube-openapi pulls in a dozen swag/* submodules that version independently.
+      go-openapi-swag:
+        patterns:
+          - "github.com/go-openapi/swag/*"
+      # genproto, grpc, and protobuf are a coupled gRPC stack.
+      google-golang-org:
+        patterns:
+          - "google.golang.org/*"
+      # client_golang plus client_model/common/procfs.
+      prometheus:
+        patterns:
+          - "github.com/prometheus/*"
 
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "daily"
+    open-pull-requests-limit: 10
