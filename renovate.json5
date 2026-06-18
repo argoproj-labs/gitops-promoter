@@ -162,11 +162,10 @@
     // Other Makefile tools with their required post-ops
     // ----------------------------------------------------------------------
     {
-      description: 'mockery: stay on v2 (v3 is a breaking rewrite) and always regenerate mocks',
+      description: 'mockery: regenerate mocks after version bumps',
       matchDepNames: [
         'vektra/mockery',
       ],
-      allowedVersions: '<3.0.0',
       semanticCommits: 'enabled',
       semanticCommitType: 'chore',
       semanticCommitScope: 'deps',
