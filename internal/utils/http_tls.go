@@ -12,7 +12,7 @@ import (
 // RootCAs are loaded from SSL_CERT_FILE or GIT_SSL_CAINFO when set.
 //
 // On macOS, Go's default verifier uses the platform trust store and does not honor
-// SSL_CERT_FILE for http.DefaultTransport. That breaks MITM load-test proxies unless
+// SSL_CERT_FILE for http.DefaultTransport. That breaks MITM proxies unless
 // we install an explicit root pool (curl honors --cacert; Go needs this hook).
 func ConfigureDefaultTransportFromEnv() error {
 	caPath := os.Getenv("SSL_CERT_FILE")
