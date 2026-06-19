@@ -45,7 +45,6 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/util/retry"
-	"k8s.io/utils/ptr"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
@@ -728,7 +727,7 @@ func makeChangeAndHydrateRepo(gitPath string, repo *promoterv1alpha1.GitReposito
 				{
 					Commit: &promoterv1alpha1.CommitMetadata{
 						Author:  "upstream <upstream@example.com>",
-						Date:    ptr.To(metav1.Now()),
+						Date:    new(metav1.Now()),
 						Subject: "This is a fix for an upstream issue",
 						Body:    "This is a body of the commit",
 						Sha:     "c4c862564afe56abf8cc8ac683eee3dc8bf96108",
@@ -1390,7 +1389,7 @@ func createKubeconfigSecret(ctx context.Context, name string, namespace string, 
 
 func createAndStartTestEnv() (*envtest.Environment, *rest.Config, client.Client) {
 	env := &envtest.Environment{
-		UseExistingCluster: ptr.To(false),
+		UseExistingCluster: new(false),
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "..", "config", "crd", "bases"),
 			filepath.Join("..", "..", "test", "external_crds"),

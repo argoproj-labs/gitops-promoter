@@ -28,6 +28,26 @@ const (
 	// PullRequestUpdatedReason indicates that a pull request has been updated.
 	PullRequestUpdatedReason = "PullRequestUpdated"
 
+	// PullRequestClosedReason indicates that a pull request has been closed without being merged.
+	PullRequestClosedReason = "PullRequestClosed"
+	// PullRequestClosedMessage is the message for a closed pull request.
+	PullRequestClosedMessage = "Pull Request %s closed"
+
+	// PullRequestExternallyMergedOrClosedReason indicates that a pull request was merged or closed directly on the SCM, outside the controller.
+	PullRequestExternallyMergedOrClosedReason = "PullRequestExternallyMergedOrClosed"
+	// PullRequestExternallyMergedOrClosedMessage is the message for an externally merged or closed pull request.
+	PullRequestExternallyMergedOrClosedMessage = "Pull Request %s (provider ID %s) was merged or closed directly on the SCM"
+
+	// PullRequestCreateFailedReason indicates that creating a pull request on the SCM failed.
+	PullRequestCreateFailedReason = "PullRequestCreateFailed"
+	// PullRequestCreateFailedMessage is the message for a failed pull request creation.
+	PullRequestCreateFailedMessage = "Failed to create pull request %s on SCM: %v"
+
+	// PullRequestMergeFailedReason indicates that merging a pull request on the SCM failed.
+	PullRequestMergeFailedReason = "PullRequestMergeFailed"
+	// PullRequestMergeFailedMessage is the message for a failed pull request merge.
+	PullRequestMergeFailedMessage = "Failed to merge pull request %s on SCM: %v"
+
 	// CommitStatusSetReason indicates that a commit status has been set.
 	CommitStatusSetReason = "CommitStatusSet"
 
@@ -40,4 +60,32 @@ const (
 	OrphanedCommitStatusDeletedReason = "OrphanedCommitStatusDeleted"
 	// OrphanedCommitStatusDeletedMessage is the message for a deleted orphaned CommitStatus.
 	OrphanedCommitStatusDeletedMessage = "Deleted orphaned CommitStatus %s"
+
+	// PromotionStartedReason indicates that a new dry sha was detected and its promotion to an environment has started.
+	PromotionStartedReason = "PromotionStarted"
+	// PromotionStartedMessage is the message for a started promotion.
+	PromotionStartedMessage = "Promotion of dry sha %s to environment branch %s started (current active dry sha %s)"
+
+	// PromotionBlockedReason indicates that a pending promotion is blocked by a proposed commit status that is not in the success phase.
+	PromotionBlockedReason = "PromotionBlocked"
+	// PromotionBlockedMessage is the message for a blocked promotion.
+	PromotionBlockedMessage = "Promotion of dry sha %s to environment branch %s is blocked: commit status %q is %s"
+
+	// PromotionCompletedReason indicates that the active branch of an environment advanced to a new dry sha.
+	PromotionCompletedReason = "PromotionCompleted"
+	// PromotionCompletedMessage is the message for a completed promotion.
+	PromotionCompletedMessage = "Environment branch %s promoted to dry sha %s (previously %s)"
+
+	// CommitStatusPhaseChangedReason indicates that the phase computed by a commit status gate
+	// (TimedCommitStatus, GitCommitStatus, WebRequestCommitStatus, ArgoCDCommitStatus) changed for an environment.
+	CommitStatusPhaseChangedReason = "CommitStatusPhaseChanged"
+	// CommitStatusPhaseChangedMessage is the message for a changed commit status phase.
+	CommitStatusPhaseChangedMessage = "Commit status %q for environment branch %s changed from %s to %s"
+	// CommitStatusNoPreviousPhase is used in CommitStatusPhaseChanged messages when the gate had no previously recorded phase.
+	CommitStatusNoPreviousPhase = "<none>"
+
+	// WebRequestFailedReason indicates that the HTTP request made by a WebRequestCommitStatus failed.
+	WebRequestFailedReason = "WebRequestFailed"
+	// WebRequestFailedMessage is the message for a failed web request.
+	WebRequestFailedMessage = "HTTP request for commit status %q failed: %v"
 )

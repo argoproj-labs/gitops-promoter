@@ -27,7 +27,7 @@ import (
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // ClusterScmProviderKind is the kind of the ClusterScmProvider resource.
-var ClusterScmProviderKind = reflect.TypeOf(ClusterScmProvider{}).Name()
+var ClusterScmProviderKind = reflect.TypeFor[ClusterScmProvider]().Name()
 
 // +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#clusterscmprovider",description="CRD reference (examples and behavior)"
 // +kubebuilder:object:root=true

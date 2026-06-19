@@ -9,6 +9,11 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+    open-pull-requests-limit: 10
+    # By default Dependabot only bumps direct requires. Indirect modules listed in
+    # go.mod (e.g. golang.org/x/crypto) need this to get version-update PRs.
+    allow:
+      - dependency-type: "indirect"
     ignore:
       - dependency-name: "k8s.io/*"
       - dependency-name: "sigs.k8s.io/controller-runtime"
@@ -16,8 +21,34 @@ updates:
       - dependency-name: "sigs.k8s.io/structured-merge-diff/*"
       - dependency-name: "sigs.k8s.io/json"
       - dependency-name: "sigs.k8s.io/randfill"
+    groups:
+      # etcd modules (api, client/pkg, client/v3) release together; one PR beats three.
+      go-etcd:
+        patterns:
+          - "go.etcd.io/etcd/*"
+      # otel core, exporters, contrib instrumentation, and proto/otlp share a release train.
+      opentelemetry:
+        patterns:
+          - "go.opentelemetry.io/*"
+      # crypto, net, sys, text, tools, etc. often bump in the same Dependabot cycle.
+      golang-org-x:
+        patterns:
+          - "golang.org/x/*"
+      # kube-openapi pulls in a dozen swag/* submodules that version independently.
+      go-openapi-swag:
+        patterns:
+          - "github.com/go-openapi/swag/*"
+      # genproto, grpc, and protobuf are a coupled gRPC stack.
+      google-golang-org:
+        patterns:
+          - "google.golang.org/*"
+      # client_golang plus client_model/common/procfs.
+      prometheus:
+        patterns:
+          - "github.com/prometheus/*"
 
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "daily"
+    open-pull-requests-limit: 10

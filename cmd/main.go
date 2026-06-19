@@ -121,6 +121,11 @@ func runController(
 		os.Exit(1)
 	}
 
+	if err := utils.ConfigureDefaultTransportFromEnv(); err != nil {
+		setupLog.Error(err, "failed to configure HTTP TLS roots from environment")
+		os.Exit(1)
+	}
+
 	// Recover any panic and log using the configured logger. This ensures that panics get logged in JSON format if
 	// JSON logging is enabled.
 	defer func() {

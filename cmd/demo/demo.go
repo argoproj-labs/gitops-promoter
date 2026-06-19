@@ -76,10 +76,10 @@ func NewDemoCommand() *cobra.Command {
 			// 3. Create the repository
 			color.Green("Creating repository %s/%s...\n", username, repoName)
 			repo, _, err := client.Repositories.Create(ctx, "", &github.Repository{
-				Name:        github.Ptr(repoName),
-				Description: github.Ptr("GitOps Promoter demo repository"),
-				Private:     github.Ptr(true),
-				AutoInit:    github.Ptr(true), // Creates with README
+				Name:        new(repoName),
+				Description: new("GitOps Promoter demo repository"),
+				Private:     new(true),
+				AutoInit:    new(true), // Creates with README
 			})
 			if err != nil {
 				// Check if repo already exists

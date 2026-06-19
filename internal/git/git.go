@@ -507,6 +507,24 @@ func runCmd(ctx context.Context, gap scms.GitOperationsProvider, directory strin
 	return runCmdWithEnv(ctx, gap, directory, nil, args...)
 }
 
+// proxyRelatedEnvVars returns proxy/TLS env vars from the current process so git subprocesses
+// honor HTTPS_PROXY and GIT_SSL_CAINFO when the controller is run behind an MITM proxy.
+// cmd.Env replaces the entire child environment; without this, git bypasses the proxy.
+func proxyRelatedEnvVars() []string {
+	var out []string
+	for _, key := range []string{
+		"HTTPS_PROXY", "https_proxy",
+		"HTTP_PROXY", "http_proxy",
+		"NO_PROXY", "no_proxy",
+		"GIT_SSL_CAINFO", "SSL_CERT_FILE",
+	} {
+		if v := os.Getenv(key); v != "" {
+			out = append(out, key+"="+v)
+		}
+	}
+	return out
+}
+
 // runCmdWithEnv runs a git command, appending extraEnv to the standard auth environment, and
 // returns stdout, stderr, and error.
 func runCmdWithEnv(ctx context.Context, gap scms.GitOperationsProvider, directory string, extraEnv []string, args ...string) (string, string, error) {
@@ -527,7 +545,8 @@ func runCmdWithEnv(ctx context.Context, gap scms.GitOperationsProvider, director
 		"GIT_PASSWORD=" + token,
 		"PATH=" + os.Getenv("PATH"),
 		"GIT_TERMINAL_PROMPT=0",
-	}, extraEnv...)
+	}, proxyRelatedEnvVars()...)
+	cmd.Env = append(cmd.Env, extraEnv...)
 	var stdoutBuf bytes.Buffer
 	var stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf

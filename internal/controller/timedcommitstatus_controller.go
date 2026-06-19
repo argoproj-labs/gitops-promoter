@@ -27,7 +27,6 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
@@ -73,7 +72,8 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	var tcs promoterv1alpha1.TimedCommitStatus
 	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &tcs, r.Client, r.Recorder, constants.TimedCommitStatusControllerFieldOwner, &result, &err)
+	var previousReady *metav1.Condition
+	defer utils.HandleReconciliationResult(ctx, startTime, &tcs, r.Client, r.Recorder, constants.TimedCommitStatusControllerFieldOwner, &result, &err, &previousReady)
 
 	// 1. Fetch the TimedCommitStatus instance
 	err = r.Get(ctx, req.NamespacedName, &tcs, &client.GetOptions{})
@@ -87,7 +87,7 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	// Remove any existing Ready condition. We want to start fresh.
-	meta.RemoveStatusCondition(tcs.GetConditions(), string(promoterConditions.Ready))
+	previousReady = utils.RemoveReadyCondition(&tcs)
 
 	// 2. Fetch the referenced PromotionStrategy
 	var ps promoterv1alpha1.PromotionStrategy
@@ -211,10 +211,7 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 
 		// Calculate timing information based on current environment's active commit
 		elapsed := time.Since(currentActiveCommitTime)
-		timeRemaining := envConfig.Duration.Duration - elapsed
-		if timeRemaining < 0 {
-			timeRemaining = 0
-		}
+		timeRemaining := max(envConfig.Duration.Duration-elapsed, 0)
 
 		// Determine commit status phase based on time elapsed in current environment
 		// This status will be reported for the current environment's active SHA
@@ -257,6 +254,9 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 		}
 		commitStatuses = append(commitStatuses, cs)
 
+		// Emit only after the upsert succeeded so the event always describes persisted state.
+		emitCommitStatusPhaseChangedEvent(r.Recorder, tcs, tcs.Spec.Key, envConfig.Branch, previousPhase, string(phase))
+
 		logger.Info("Processed environment time gate",
 			"branch", envConfig.Branch,
 			"activeSha", currentActiveSha,
@@ -280,7 +280,7 @@ func (r *TimedCommitStatusReconciler) calculateCommitStatusPhase(requiredDuratio
 }
 
 func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, message string, envBranch string) (*promoterv1alpha1.CommitStatus, error) {
-	kind := reflect.TypeOf(promoterv1alpha1.TimedCommitStatus{}).Name()
+	kind := reflect.TypeFor[promoterv1alpha1.TimedCommitStatus]().Name()
 	commitStatusName := utils.CommitStatusResourceName(ctx, tcs, branch)
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 

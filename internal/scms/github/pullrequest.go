@@ -43,10 +43,10 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 	logger := log.FromContext(ctx)
 
 	newPR := &github.NewPullRequest{
-		Title: github.Ptr(title),
-		Head:  github.Ptr(head),
-		Base:  github.Ptr(base),
-		Body:  github.Ptr(description),
+		Title: new(title),
+		Head:  new(head),
+		Base:  new(base),
+		Body:  new(description),
 	}
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
@@ -77,8 +77,8 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pu
 	logger := log.FromContext(ctx)
 
 	newPR := &github.PullRequest{
-		Title: github.Ptr(title),
-		Body:  github.Ptr(description),
+		Title: new(title),
+		Body:  new(description),
 	}
 
 	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
@@ -115,7 +115,7 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullReque
 	logger := log.FromContext(ctx)
 
 	newPR := &github.PullRequest{
-		State: github.Ptr("closed"),
+		State: new("closed"),
 	}
 
 	prNumber, err := strconv.Atoi(pullRequest.Status.ID)

@@ -52,10 +52,10 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, desc strin
 	}
 
 	options := &gitlab.CreateMergeRequestOptions{
-		Title:        gitlab.Ptr(title),
-		SourceBranch: gitlab.Ptr(head),
-		TargetBranch: gitlab.Ptr(base),
-		Description:  gitlab.Ptr(desc),
+		Title:        new(title),
+		SourceBranch: new(head),
+		TargetBranch: new(base),
+		Description:  new(desc),
 	}
 
 	start := time.Now()
@@ -99,8 +99,8 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 	}
 
 	options := &gitlab.UpdateMergeRequestOptions{
-		Title:       gitlab.Ptr(title),
-		Description: gitlab.Ptr(description),
+		Title:       new(title),
+		Description: new(description),
 	}
 
 	start := time.Now()
@@ -146,7 +146,7 @@ func (pr *PullRequest) Close(ctx context.Context, prObj v1alpha1.PullRequest) er
 	}
 
 	options := &gitlab.UpdateMergeRequestOptions{
-		StateEvent: gitlab.Ptr("close"),
+		StateEvent: new("close"),
 	}
 
 	start := time.Now()
@@ -192,14 +192,14 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) er
 	}
 
 	options := &gitlab.AcceptMergeRequestOptions{
-		AutoMerge:                gitlab.Ptr(false),
-		ShouldRemoveSourceBranch: gitlab.Ptr(false),
-		Squash:                   gitlab.Ptr(false),
-		SHA:                      gitlab.Ptr(prObj.Spec.MergeSha),
+		AutoMerge:                new(false),
+		ShouldRemoveSourceBranch: new(false),
+		Squash:                   new(false),
+		SHA:                      new(prObj.Spec.MergeSha),
 	}
 	// Gitlab throws a 422 if you send it an empty commit message. So leave it as nil unless we have a message.
 	if prObj.Spec.Commit.Message != "" {
-		options.MergeCommitMessage = gitlab.Ptr(prObj.Spec.Commit.Message)
+		options.MergeCommitMessage = new(prObj.Spec.Commit.Message)
 	}
 
 	start := time.Now()
@@ -241,9 +241,9 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	}
 
 	options := &gitlab.ListProjectMergeRequestsOptions{
-		SourceBranch: gitlab.Ptr(pullRequest.Spec.SourceBranch),
-		TargetBranch: gitlab.Ptr(pullRequest.Spec.TargetBranch),
-		State:        gitlab.Ptr("opened"),
+		SourceBranch: new(pullRequest.Spec.SourceBranch),
+		TargetBranch: new(pullRequest.Spec.TargetBranch),
+		State:        new("opened"),
 	}
 
 	start := time.Now()

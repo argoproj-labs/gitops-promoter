@@ -254,6 +254,13 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				g.Expect(commitStatusList.Items[0].Spec.Name).To(Equal(customCommitStatusKey + "/" + testBranchStaging))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
+			By("Verifying a CommitStatusPhaseChanged event was emitted")
+			Eventually(func(g Gomega) {
+				var eventList v1.EventList
+				g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
+				g.Expect(hasEventWithReasonAndMessage(eventList, name, constants.CommitStatusPhaseChangedReason, "to success")).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
 			// Clean up
 			Expect(k8sClient.Delete(ctx, app)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, commitStatus)).To(Succeed())
@@ -1165,7 +1172,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 
 			// Force multiple reconciliations and verify they ALL produce identical error messages
 			// This catches nondeterministic behavior that the controller's map iteration would cause
-			for i := 0; i < 5; i++ {
+			for i := range 5 {
 				// Use retry on conflict since the controller may update the status concurrently
 				err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 					updated := &promoterv1alpha1.ArgoCDCommitStatus{}
