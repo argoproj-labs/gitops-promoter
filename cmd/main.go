@@ -106,6 +106,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	return cmd
 }
 
+//nolint:gocyclo // complexity comes from the number of controller registrations, not branching logic
 func runController(
 	metricsAddr string,
 	probeAddr string,
