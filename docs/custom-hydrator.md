@@ -121,15 +121,15 @@ for ENV in "${ENVIRONMENTS[@]}"; do
   cp -r manifests/${ENV}/* .
   
   # Create hydrator.metadata
-  cat > hydrator.metadata << EOF
-{
-  "drySha": "${DRY_SHA}",
-  "repoURL": "https://github.com/org/repo",
-  "author": "$(git show -s --format='%an <%ae>' ${DRY_SHA})",
-  "date": "$(git show -s --format='%aI' ${DRY_SHA})",
-  "subject": "$(git show -s --format='%s' ${DRY_SHA})"
-}
-EOF
+  # Use jq --arg to safely escape any special characters (e.g. quotes) in git fields
+  jq -n \
+    --arg drySha "${DRY_SHA}" \
+    --arg repoURL "https://github.com/org/repo" \
+    --arg author "$(git show -s --format='%an <%ae>' "${DRY_SHA}")" \
+    --arg date "$(git show -s --format='%aI' "${DRY_SHA}")" \
+    --arg subject "$(git show -s --format='%s' "${DRY_SHA}")" \
+    '{drySha: $drySha, repoURL: $repoURL, author: $author, date: $date, subject: $subject}' \
+    > hydrator.metadata
   
   # Commit and push
   git add -A
@@ -271,10 +271,10 @@ else
 {
   "drySha": "${DRY_SHA}",
   "repoURL": "${REPO_URL}",
-  "author": "$(git show -s --format='%an <%ae>' ${DRY_SHA})",
-  "date": "$(git show -s --format='%aI' ${DRY_SHA})",
-  "subject": $(git show -s --format='%s' ${DRY_SHA} | jq -Rs .),
-  "body": $(git show -s --format='%b' ${DRY_SHA} | jq -Rs .)
+  "author": $(git show -s --format='%an <%ae>' "${DRY_SHA}" | jq -Rs .),
+  "date": "$(git show -s --format='%aI' "${DRY_SHA}")",
+  "subject": $(git show -s --format='%s' "${DRY_SHA}" | jq -Rs .),
+  "body": $(git show -s --format='%b' "${DRY_SHA}" | jq -Rs .)
 }
 EOF
   
