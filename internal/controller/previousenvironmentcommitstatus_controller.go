@@ -24,7 +24,6 @@ import (
 
 	"gopkg.in/yaml.v3"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
@@ -70,7 +69,8 @@ func (r *PreviousEnvironmentCommitStatusReconciler) Reconcile(ctx context.Contex
 
 	var pecs promoterv1alpha1.PreviousEnvironmentCommitStatus
 	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &pecs, r.Client, r.Recorder, constants.PreviousEnvironmentCommitStatusControllerFieldOwner, &result, &err)
+	var previousReady *metav1.Condition
+	defer utils.HandleReconciliationResult(ctx, startTime, &pecs, r.Client, r.Recorder, constants.PreviousEnvironmentCommitStatusControllerFieldOwner, &result, &err, &previousReady)
 
 	// 1. Fetch the PreviousEnvironmentCommitStatus instance
 	err = r.Get(ctx, req.NamespacedName, &pecs, &client.GetOptions{})
@@ -84,7 +84,7 @@ func (r *PreviousEnvironmentCommitStatusReconciler) Reconcile(ctx context.Contex
 	}
 
 	// Remove any existing Ready condition. We want to start fresh.
-	meta.RemoveStatusCondition(pecs.GetConditions(), string(promoterConditions.Ready))
+	previousReady = utils.RemoveReadyCondition(&pecs)
 
 	// 2. Fetch the referenced PromotionStrategy
 	var ps promoterv1alpha1.PromotionStrategy
