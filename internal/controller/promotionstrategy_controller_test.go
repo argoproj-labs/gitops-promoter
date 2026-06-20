@@ -4411,6 +4411,23 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
+			// The previous-environment gate is now owned by the dedicated PreviousEnvironmentCommitStatus
+			// controller, which only runs when a PreviousEnvironmentCommitStatus CR exists. Create one so
+			// the gate is maintained for these out-of-order specs.
+			previousEnvironmentCommitStatus := &promoterv1alpha1.PreviousEnvironmentCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.PreviousEnvironmentCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+				},
+			}
+			Expect(k8sClient.Create(ctx, previousEnvironmentCommitStatus)).To(Succeed())
+
 			ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
 			ctpStaging = promoterv1alpha1.ChangeTransferPolicy{}
 		})
@@ -4534,7 +4551,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 				// The previous environment commit status should exist and be pending
 				var prevEnvCS promoterv1alpha1.CommitStatus
-				csName := utils.KubeSafeUniqueName(promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel + ctpStaging.Name)
+				csName := utils.KubeSafeUniqueName(name + "-" + ctpStaging.Spec.ActiveBranch + "-previous-environment")
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      csName,
 					Namespace: "default",
@@ -4585,7 +4602,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			By("Verifying staging can now be promoted (previous environment check passes)")
 			Eventually(func(g Gomega) {
 				var prevEnvCS promoterv1alpha1.CommitStatus
-				csName := utils.KubeSafeUniqueName(promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel + ctpStaging.Name)
+				csName := utils.KubeSafeUniqueName(name + "-" + ctpStaging.Spec.ActiveBranch + "-previous-environment")
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      csName,
 					Namespace: "default",
@@ -4699,7 +4716,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			By("Verifying the previous environment commit status is pending (blocking staging)")
 			Eventually(func(g Gomega) {
 				var prevEnvCS promoterv1alpha1.CommitStatus
-				csName := utils.KubeSafeUniqueName(promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel + ctpStaging.Name)
+				csName := utils.KubeSafeUniqueName(name + "-" + ctpStaging.Spec.ActiveBranch + "-previous-environment")
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      csName,
 					Namespace: "default",
@@ -4731,7 +4748,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			By("Verifying staging is now unblocked (previous env check passes due to git note)")
 			Eventually(func(g Gomega) {
 				var prevEnvCS promoterv1alpha1.CommitStatus
-				csName := utils.KubeSafeUniqueName(promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel + ctpStaging.Name)
+				csName := utils.KubeSafeUniqueName(name + "-" + ctpStaging.Spec.ActiveBranch + "-previous-environment")
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      csName,
 					Namespace: "default",
@@ -4921,7 +4938,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			By("Verifying production's previous environment check passes (staging is ahead with matching Note.DrySha)")
 			Eventually(func(g Gomega) {
 				var prevEnvCS promoterv1alpha1.CommitStatus
-				csName := utils.KubeSafeUniqueName(promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel + ctpProd.Name)
+				csName := utils.KubeSafeUniqueName(name + "-" + ctpProd.Spec.ActiveBranch + "-previous-environment")
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      csName,
 					Namespace: "default",
@@ -5039,7 +5056,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			// At this point, dev hasn't merged yet, so prod should be blocked
 			Eventually(func(g Gomega) {
 				var prevEnvCS promoterv1alpha1.CommitStatus
-				csName := utils.KubeSafeUniqueName(promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel + ctpProd.Name)
+				csName := utils.KubeSafeUniqueName(name + "-" + ctpProd.Spec.ActiveBranch + "-previous-environment")
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      csName,
 					Namespace: "default",
@@ -5085,7 +5102,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			By("Verifying production's previous environment check is now SUCCESS")
 			Eventually(func(g Gomega) {
 				var prevEnvCS promoterv1alpha1.CommitStatus
-				csName := utils.KubeSafeUniqueName(promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel + ctpProd.Name)
+				csName := utils.KubeSafeUniqueName(name + "-" + ctpProd.Spec.ActiveBranch + "-previous-environment")
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      csName,
 					Namespace: "default",

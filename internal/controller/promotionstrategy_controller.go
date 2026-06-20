@@ -141,11 +141,6 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// Calculate the status of the PromotionStrategy. Updates ps in place.
 	r.calculateStatus(&ps, ctps)
 
-	err = r.updatePreviousEnvironmentCommitStatus(ctx, &ps, ctps)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to merge PRs: %w", err)
-	}
-
 	// Check if any environments need to refresh their git notes.
 	// SCM's do not send webhooks when git notes are pushed, so we need to
 	// trigger CTP reconciliation when we detect stale NoteDrySha values.
