@@ -103,7 +103,7 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 		}
 	case AuthTypePAT:
 		if cfg.token == "" {
-			return nil, nil, errors.New("azure DevOps token not found in secret")
+			return nil, nil, errors.New("azure DevOps Personal Access Token is empty - please check your secret configuration")
 		}
 		connection = azuredevops.NewPatConnection(organizationUrl, cfg.token)
 	default:

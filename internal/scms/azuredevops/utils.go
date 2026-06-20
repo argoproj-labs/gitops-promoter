@@ -25,7 +25,7 @@ func ApplyHTTPAuth(ctx context.Context, secret v1.Secret, req *http.Request) err
 	}
 
 	if cfg.token == "" {
-		return errors.New("non-empty token required in secret for Azure DevOps SCM auth")
+		return errors.New("azure DevOps Personal Access Token is empty - please check your secret configuration")
 	}
 	credentials := base64.StdEncoding.EncodeToString([]byte(":" + cfg.token))
 	req.Header.Set("Authorization", "Basic "+credentials)
