@@ -7,10 +7,12 @@ import (
 )
 
 func TestParseAuthConfig(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		name     string
-		data     map[string][]byte
-		want     authConfig
+		name string
+		data map[string][]byte
+		want authConfig
 	}{
 		{
 			name: "PAT by default",
@@ -40,6 +42,8 @@ func TestParseAuthConfig(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := parseAuthConfig(v1.Secret{Data: tc.data})
 			if got != tc.want {
 				t.Fatalf("parseAuthConfig() = %+v, want %+v", got, tc.want)

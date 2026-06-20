@@ -28,6 +28,8 @@ func withStubTokenSource(t *testing.T, stub tokenSource) {
 }
 
 func TestGitAuthenticationProvider_GetToken_PAT(t *testing.T) {
+	t.Parallel()
+
 	scm := &v1alpha1.ScmProvider{Spec: v1alpha1.ScmProviderSpec{AzureDevOps: &v1alpha1.AzureDevOps{Organization: "org"}}}
 	secret := &v1.Secret{Data: map[string][]byte{"token": []byte("pat-abc")}}
 
@@ -39,6 +41,9 @@ func TestGitAuthenticationProvider_GetToken_PAT(t *testing.T) {
 	}
 }
 
+// Not parallel: mutates the package-level tokens var via withStubTokenSource.
+//
+//nolint:paralleltest // swaps the shared package-level tokens source
 func TestGitAuthenticationProvider_GetToken_WorkloadIdentity(t *testing.T) {
 	stub := &stubTokenSource{token: "wi-token"}
 	withStubTokenSource(t, stub)
@@ -61,6 +66,8 @@ func TestGitAuthenticationProvider_GetToken_WorkloadIdentity(t *testing.T) {
 }
 
 func TestGetClient_PAT(t *testing.T) {
+	t.Parallel()
+
 	scm := &v1alpha1.ScmProvider{Spec: v1alpha1.ScmProviderSpec{AzureDevOps: &v1alpha1.AzureDevOps{Organization: "myorg"}}}
 	secret := v1.Secret{Data: map[string][]byte{"token": []byte("pat-abc")}}
 
@@ -77,6 +84,9 @@ func TestGetClient_PAT(t *testing.T) {
 	}
 }
 
+// Not parallel: mutates the package-level tokens var via withStubTokenSource.
+//
+//nolint:paralleltest // swaps the shared package-level tokens source
 func TestGetClient_WorkloadIdentity(t *testing.T) {
 	withStubTokenSource(t, &stubTokenSource{token: "wi-token"})
 

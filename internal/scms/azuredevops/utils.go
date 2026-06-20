@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"net/http"
 
 	v1 "k8s.io/api/core/v1"
@@ -18,7 +19,7 @@ func ApplyHTTPAuth(ctx context.Context, secret v1.Secret, req *http.Request) err
 	if cfg.authType == AuthTypeWorkloadIdentity {
 		token, err := tokens.Token(ctx, cfg)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to get Azure DevOps token: %w", err)
 		}
 		req.Header.Set("Authorization", "Bearer "+token)
 		return nil

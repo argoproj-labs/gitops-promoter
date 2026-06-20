@@ -10,10 +10,13 @@ import (
 )
 
 func TestApplyHTTPAuth_PAT(t *testing.T) {
-	secret := v1.Secret{Data: map[string][]byte{"token": []byte("ado-pat")}}
-	req := httptest.NewRequest(http.MethodGet, "https://dev.azure.com/", nil)
+	t.Parallel()
 
-	if err := ApplyHTTPAuth(context.Background(), secret, req); err != nil {
+	ctx := context.Background()
+	secret := v1.Secret{Data: map[string][]byte{"token": []byte("ado-pat")}}
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "https://dev.azure.com/", nil)
+
+	if err := ApplyHTTPAuth(ctx, secret, req); err != nil {
 		t.Fatalf("ApplyHTTPAuth() error: %v", err)
 	}
 	// base64(":ado-pat") == "OmFkby1wYXQ="
@@ -22,13 +25,17 @@ func TestApplyHTTPAuth_PAT(t *testing.T) {
 	}
 }
 
+// Not parallel: mutates the package-level tokens var via withStubTokenSource.
+//
+//nolint:paralleltest // swaps the shared package-level tokens source
 func TestApplyHTTPAuth_WorkloadIdentity(t *testing.T) {
 	withStubTokenSource(t, &stubTokenSource{token: "wi-token"})
 
+	ctx := context.Background()
 	secret := v1.Secret{Data: map[string][]byte{"workloadIdentity": []byte("true")}}
-	req := httptest.NewRequest(http.MethodGet, "https://dev.azure.com/", nil)
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "https://dev.azure.com/", nil)
 
-	if err := ApplyHTTPAuth(context.Background(), secret, req); err != nil {
+	if err := ApplyHTTPAuth(ctx, secret, req); err != nil {
 		t.Fatalf("ApplyHTTPAuth() error: %v", err)
 	}
 	if got := req.Header.Get("Authorization"); got != "Bearer wi-token" {
@@ -37,8 +44,11 @@ func TestApplyHTTPAuth_WorkloadIdentity(t *testing.T) {
 }
 
 func TestApplyHTTPAuth_PAT_Empty(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "https://dev.azure.com/", nil)
-	if err := ApplyHTTPAuth(context.Background(), v1.Secret{}, req); err == nil {
+	t.Parallel()
+
+	ctx := context.Background()
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "https://dev.azure.com/", nil)
+	if err := ApplyHTTPAuth(ctx, v1.Secret{}, req); err == nil {
 		t.Fatal("expected error for empty PAT, got nil")
 	}
 }

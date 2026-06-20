@@ -11,8 +11,8 @@ import (
 )
 
 type fakeCredential struct {
-	token    string
 	err      error
+	token    string
 	getCalls int
 }
 
@@ -25,6 +25,8 @@ func (f *fakeCredential) GetToken(_ context.Context, _ policy.TokenRequestOption
 }
 
 func TestWorkloadIdentityTokenSource_Token(t *testing.T) {
+	t.Parallel()
+
 	cred := &fakeCredential{token: "entra-token"}
 	newCalls := 0
 	src := &workloadIdentityTokenSource{
@@ -52,6 +54,8 @@ func TestWorkloadIdentityTokenSource_Token(t *testing.T) {
 }
 
 func TestWorkloadIdentityTokenSource_TokenError(t *testing.T) {
+	t.Parallel()
+
 	src := &workloadIdentityTokenSource{
 		cache: map[string]credential{},
 		newCred: func(authConfig) (credential, error) {

@@ -28,9 +28,9 @@ type tokenSource interface {
 // Credential instances are cached by client/tenant so the SDK's internal token cache is reused
 // across reconciles (the credential refreshes the ~1h token internally).
 type workloadIdentityTokenSource struct {
-	mu      sync.Mutex
 	cache   map[string]credential
 	newCred func(cfg authConfig) (credential, error)
+	mu      sync.Mutex
 }
 
 // tokens is the package-level token source used by production code. Tests may replace it.

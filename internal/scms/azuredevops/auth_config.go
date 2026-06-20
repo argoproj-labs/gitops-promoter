@@ -15,10 +15,10 @@ const (
 
 // authConfig holds the Azure DevOps authentication parameters parsed from a secret.
 type authConfig struct {
-	authType AuthType
 	token    string
 	clientID string
 	tenantID string
+	authType AuthType
 }
 
 // parseAuthConfig reads the Azure DevOps auth configuration from the secret. It selects Workload

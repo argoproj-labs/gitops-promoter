@@ -61,7 +61,11 @@ func (azdo GitAuthenticationProvider) GetGitHttpsRepoUrl(gitRepository v1alpha1.
 func (azdo GitAuthenticationProvider) GetToken(ctx context.Context) (string, error) {
 	switch azdo.cfg.authType {
 	case AuthTypeWorkloadIdentity:
-		return tokens.Token(ctx, azdo.cfg)
+		token, err := tokens.Token(ctx, azdo.cfg)
+		if err != nil {
+			return "", fmt.Errorf("failed to get Azure DevOps token: %w", err)
+		}
+		return token, nil
 	case AuthTypePAT:
 		if azdo.cfg.token == "" {
 			return "", errors.New("azure DevOps Personal Access Token is empty - please check your secret configuration")
@@ -94,7 +98,7 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 	case AuthTypeWorkloadIdentity:
 		token, err := tokens.Token(ctx, cfg)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("failed to get Azure DevOps token: %w", err)
 		}
 		connection = &azuredevops.Connection{
 			AuthorizationString:     "Bearer " + token,
