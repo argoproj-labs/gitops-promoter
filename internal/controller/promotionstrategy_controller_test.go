@@ -1745,6 +1745,20 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
+				previousEnvironmentCommitStatus := &promoterv1alpha1.PreviousEnvironmentCommitStatus{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      name,
+						Namespace: "default",
+					},
+					Spec: promoterv1alpha1.PreviousEnvironmentCommitStatusSpec{
+						PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+							Name: name,
+						},
+						Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+					},
+				}
+				Expect(k8sClient.Create(ctx, previousEnvironmentCommitStatus)).To(Succeed())
+
 				// Initialize empty structs for use in tests
 				ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
 				ctpStaging = promoterv1alpha1.ChangeTransferPolicy{}
@@ -2204,6 +2218,20 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+				previousEnvironmentCommitStatus := &promoterv1alpha1.PreviousEnvironmentCommitStatus{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      name,
+						Namespace: "default",
+					},
+					Spec: promoterv1alpha1.PreviousEnvironmentCommitStatusSpec{
+						PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+							Name: name,
+						},
+						Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+					},
+				}
+				Expect(k8sClient.Create(ctx, previousEnvironmentCommitStatus)).To(Succeed())
 
 				// Initialize empty structs for use in tests
 				ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
@@ -2850,6 +2878,20 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, &argoCDAppDev)).To(Succeed())
 				Expect(k8sClient.Create(ctx, &argoCDAppStaging)).To(Succeed())
 				Expect(k8sClient.Create(ctx, &argoCDAppProduction)).To(Succeed())
+
+				previousEnvironmentCommitStatus := &promoterv1alpha1.PreviousEnvironmentCommitStatus{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      name,
+						Namespace: "default",
+					},
+					Spec: promoterv1alpha1.PreviousEnvironmentCommitStatusSpec{
+						PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+							Name: name,
+						},
+						Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+					},
+				}
+				Expect(k8sClient.Create(ctx, previousEnvironmentCommitStatus)).To(Succeed())
 			})
 
 			AfterEach(func() {
@@ -3112,6 +3154,20 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClientDev.Create(ctx, &argoCDAppDev)).To(Succeed())
 				Expect(k8sClientStaging.Create(ctx, &argoCDAppStaging)).To(Succeed())
 				Expect(k8sClient.Create(ctx, &argoCDAppProduction)).To(Succeed())
+
+				previousEnvironmentCommitStatus := &promoterv1alpha1.PreviousEnvironmentCommitStatus{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      name,
+						Namespace: "default",
+					},
+					Spec: promoterv1alpha1.PreviousEnvironmentCommitStatusSpec{
+						PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+							Name: name,
+						},
+						Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+					},
+				}
+				Expect(k8sClient.Create(ctx, previousEnvironmentCommitStatus)).To(Succeed())
 			})
 
 			AfterEach(func() {
@@ -3847,6 +3903,20 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
+				previousEnvironmentCommitStatus := &promoterv1alpha1.PreviousEnvironmentCommitStatus{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      name,
+						Namespace: "default",
+					},
+					Spec: promoterv1alpha1.PreviousEnvironmentCommitStatusSpec{
+						PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+							Name: name,
+						},
+						Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+					},
+				}
+				Expect(k8sClient.Create(ctx, previousEnvironmentCommitStatus)).To(Succeed())
+
 				// Initialize empty structs for use in tests
 				ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
 				ctpStaging = promoterv1alpha1.ChangeTransferPolicy{}
@@ -3929,7 +3999,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				}, time.Second*5, time.Millisecond*500).Should(Succeed())
 
 				By("Capturing baseline: previous-environment commit status should be at success")
-				csName := utils.KubeSafeUniqueName(promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel + ctpStaging.Name)
+				csName := utils.KubeSafeUniqueName(name + "-" + ctpStaging.Spec.ActiveBranch + "-previous-environment")
 				commitStatus := &promoterv1alpha1.CommitStatus{}
 				var commitStatusOriginalSha string
 				var commitStatusOriginalPhase promoterv1alpha1.CommitStatusPhase
