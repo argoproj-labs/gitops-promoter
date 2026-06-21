@@ -569,5 +569,3 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 		r.EnqueueCTP(key.Namespace, key.Name)
 	}
 }
-
-
