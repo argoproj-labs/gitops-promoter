@@ -399,7 +399,7 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 	case scmProvider.GetSpec().Gitea != nil:
 		return gitea.NewGiteaPullRequestProvider(r.Client, *secret, scmProvider.GetSpec().Gitea.Domain) //nolint:wrapcheck // provider factory returns descriptive errors
 	case scmProvider.GetSpec().AzureDevOps != nil:
-		return azuredevops.NewAzdoPullRequestProvider(r.Client, *secret, scmProvider, scmProvider.GetSpec().AzureDevOps.Organization) //nolint:wrapcheck,contextcheck // provider factory returns descriptive errors
+		return azuredevops.NewAzdoPullRequestProvider(ctx, r.Client, *secret, scmProvider, scmProvider.GetSpec().AzureDevOps.Organization) //nolint:wrapcheck // provider factory returns descriptive errors
 	case scmProvider.GetSpec().Fake != nil:
 		return fake.NewFakePullRequestProvider(r.Client), nil
 	default:

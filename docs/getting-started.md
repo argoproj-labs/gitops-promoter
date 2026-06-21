@@ -466,6 +466,66 @@ spec:
     organization: <your-azdo-organization>
 ```
 
+**Workload Identity**
+
+As an alternative to PATs, Gitops Promoter supports [Azure Workload Identity](https://azure.github.io/azure-workload-identity/docs/) for authenticating with Azure DevOps. This allows the controller to obtain short-lived tokens automatically without storing long-lived credentials.
+
+**Cluster setup**
+
+Before creating the secret, configure Workload Identity on your cluster:
+
+1. Annotate the controller's ServiceAccount with the managed identity client ID:
+
+    ```yaml
+    azure.workload.identity/client-id: <client-id>
+    ```
+
+2. Ensure the controller pod carries the label:
+
+    ```yaml
+    azure.workload.identity/use: "true"
+    ```
+
+3. Configure a federated credential on the Entra (Azure AD) application that trusts the controller's ServiceAccount (issuer URL of your cluster + subject `system:serviceaccount:<namespace>:<service-account-name>`).
+
+> [!NOTE]
+> `secretRef` is still required in Workload Identity mode. The secret holds the `workloadIdentity` marker and any optional overrides — it does not need to contain a `token`.
+
+Create the secret and ScmProvider:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: <your-secret-name>
+type: Opaque
+stringData:
+  workloadIdentity: "true"
+  # Optional: override the AZURE_CLIENT_ID injected by the Workload Identity webhook.
+  azureClientID: "<client-id>"
+  # Optional: override the AZURE_TENANT_ID injected by the Workload Identity webhook.
+  azureTenantID: "<tenant-id>"
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ScmProvider
+metadata:
+  name: <your-scmprovider-name>
+spec:
+  secretRef:
+    name: <your-secret-name>
+  azureDevOps:
+    organization: <your-azdo-organization>
+```
+
+**Secret keys reference**
+
+| Key | Required | Description |
+|---|---|---|
+| `workloadIdentity` | Yes (for WI mode) | Set to `"true"` to enable Workload Identity. Absence or any other value falls back to PAT mode. |
+| `azureClientID` | No | Overrides the `AZURE_CLIENT_ID` environment variable injected by the Workload Identity webhook. |
+| `azureTenantID` | No | Overrides the `AZURE_TENANT_ID` environment variable injected by the Workload Identity webhook. |
+| `token` | PAT mode only | Personal Access Token. Not used when `workloadIdentity: "true"` is set. |
+
 **GitRepository**
 
 We also need a GitRepository referencing the ScmProvider:

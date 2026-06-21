@@ -468,7 +468,7 @@ func ApplySCMAuth(ctx context.Context, scmProvider promoterv1alpha1.GenericScmPr
 		return nil, nil
 
 	case spec.AzureDevOps != nil:
-		if err := azuredevops.ApplyHTTPAuth(secret, req); err != nil {
+		if err := azuredevops.ApplyHTTPAuth(ctx, secret, req); err != nil {
 			return nil, fmt.Errorf("failed to apply Azure DevOps SCM auth: %w", err)
 		}
 		logger.V(4).Info("Applied SCM authentication", "provider", "AzureDevOps", "scmProvider", scmProvider.GetName())

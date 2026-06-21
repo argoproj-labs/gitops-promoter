@@ -29,8 +29,8 @@ type PullRequest struct {
 var _ scms.PullRequestProvider = &PullRequest{}
 
 // NewAzdoPullRequestProvider creates a new instance of PullRequest for Azure DevOps.
-func NewAzdoPullRequestProvider(k8sClient client.Client, secret v1.Secret, scmProvider v1alpha1.GenericScmProvider, org string) (*PullRequest, error) {
-	prClient, _, err := GetClient(context.Background(), scmProvider, secret, org)
+func NewAzdoPullRequestProvider(ctx context.Context, k8sClient client.Client, secret v1.Secret, scmProvider v1alpha1.GenericScmProvider, org string) (*PullRequest, error) {
+	prClient, _, err := GetClient(ctx, scmProvider, secret, org)
 	if err != nil {
 		return nil, err
 	}

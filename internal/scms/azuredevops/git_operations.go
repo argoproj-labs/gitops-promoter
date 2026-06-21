@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7"
@@ -15,13 +16,6 @@ const (
 	azureDevOpsTokenSecretKey = "token"
 )
 
-// GitAuthenticationProvider provides methods to authenticate with Azure DevOps.
-type GitAuthenticationProvider struct {
-	scmProvider v1alpha1.GenericScmProvider
-	token       string
-	authType    AuthType
-}
-
 // AuthType represents the authentication method
 type AuthType int
 
@@ -32,15 +26,19 @@ const (
 	AuthTypeWorkloadIdentity
 )
 
-// NewAzdoGitAuthenticationProvider creates a new instance of GitAuthenticationProvider for Azure DevOps.
-// It supports both Personal Access Token (PAT)
-func NewAzdoGitAuthenticationProvider(scmProvider v1alpha1.GenericScmProvider, secret *v1.Secret) GitAuthenticationProvider {
-	token := string(secret.Data[azureDevOpsTokenSecretKey])
+// GitAuthenticationProvider provides methods to authenticate with Azure DevOps.
+type GitAuthenticationProvider struct {
+	scmProvider v1alpha1.GenericScmProvider
+	cfg         authConfig
+}
 
+// NewAzdoGitAuthenticationProvider creates a new instance of GitAuthenticationProvider for Azure DevOps.
+// It supports both Personal Access Token (PAT) and Azure Workload Identity authentication, selected by
+// the contents of the secret.
+func NewAzdoGitAuthenticationProvider(scmProvider v1alpha1.GenericScmProvider, secret *v1.Secret) GitAuthenticationProvider {
 	return GitAuthenticationProvider{
 		scmProvider: scmProvider,
-		token:       token,
-		authType:    AuthTypePAT,
+		cfg:         parseAuthConfig(*secret),
 	}
 }
 
@@ -59,20 +57,22 @@ func (azdo GitAuthenticationProvider) GetGitHttpsRepoUrl(gitRepository v1alpha1.
 		gitRepository.Spec.AzureDevOps.Name)
 }
 
-// GetToken retrieves the authentication token for Azure DevOps
+// GetToken retrieves the authentication token for Azure DevOps.
 func (azdo GitAuthenticationProvider) GetToken(ctx context.Context) (string, error) {
-	switch azdo.authType {
+	switch azdo.cfg.authType {
 	case AuthTypeWorkloadIdentity:
-		// Get access token using workload identity token manager
-		return "AuthTypeWorkloadIdentity not implemented", nil
+		token, err := tokens.Token(ctx, azdo.cfg)
+		if err != nil {
+			return "", fmt.Errorf("failed to get Azure DevOps token: %w", err)
+		}
+		return token, nil
 	case AuthTypePAT:
-		// Return the stored PAT token
-		if azdo.token == "" {
+		if azdo.cfg.token == "" {
 			return "", errors.New("azure DevOps Personal Access Token is empty - please check your secret configuration")
 		}
-		return azdo.token, nil
+		return azdo.cfg.token, nil
 	default:
-		return "", fmt.Errorf("unknown authentication type: %v - this should not happen", azdo.authType)
+		return "", fmt.Errorf("unknown authentication type: %v - this should not happen", azdo.cfg.authType)
 	}
 }
 
@@ -81,9 +81,9 @@ func (azdo GitAuthenticationProvider) GetUser(ctx context.Context) (string, erro
 	return "git", nil
 }
 
-// GetClient retrieves an Azure DevOps connection for the specified organization.
+// GetClient retrieves an Azure DevOps connection for the specified organization, using either PAT or
+// Workload Identity authentication as configured in the secret.
 func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, secret v1.Secret, org string) (*azuredevops.Connection, *GitAuthenticationProvider, error) {
-	// Create the organization URL
 	var organizationUrl string
 	if scmProvider.GetSpec().AzureDevOps.Domain != "" {
 		organizationUrl = fmt.Sprintf("https://%s/%s", scmProvider.GetSpec().AzureDevOps.Domain, scmProvider.GetSpec().AzureDevOps.Organization)
@@ -91,30 +91,35 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 		organizationUrl = "https://dev.azure.com/" + scmProvider.GetSpec().AzureDevOps.Organization
 	}
 
-	var connection *azuredevops.Connection
-	var authProvider GitAuthenticationProvider
-	var err error
+	cfg := parseAuthConfig(secret)
 
-	connection, authProvider, err = createPATConnection(scmProvider, secret, organizationUrl)
-	if err != nil {
-		return nil, nil, err
+	var connection *azuredevops.Connection
+	switch cfg.authType {
+	case AuthTypeWorkloadIdentity:
+		token, err := tokens.Token(ctx, cfg)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get Azure DevOps token: %w", err)
+		}
+		connection = &azuredevops.Connection{
+			AuthorizationString:     "Bearer " + token,
+			BaseUrl:                 normalizeURL(organizationUrl),
+			SuppressFedAuthRedirect: true,
+		}
+	case AuthTypePAT:
+		if cfg.token == "" {
+			return nil, nil, errors.New("azure DevOps Personal Access Token is empty - please check your secret configuration")
+		}
+		connection = azuredevops.NewPatConnection(organizationUrl, cfg.token)
+	default:
+		return nil, nil, fmt.Errorf("unknown authentication type: %v - this should not happen", cfg.authType)
 	}
 
+	authProvider := GitAuthenticationProvider{scmProvider: scmProvider, cfg: cfg}
 	return connection, &authProvider, nil
 }
 
-// createPATConnection creates an Azure DevOps connection using PAT authentication
-func createPATConnection(scmProvider v1alpha1.GenericScmProvider, secret v1.Secret, organizationUrl string) (*azuredevops.Connection, GitAuthenticationProvider, error) {
-	// Use PAT authentication
-	token := string(secret.Data[azureDevOpsTokenSecretKey])
-	if token == "" {
-		return nil, GitAuthenticationProvider{}, errors.New("azure DevOps token not found in secret")
-	}
-	connection := azuredevops.NewPatConnection(organizationUrl, token)
-	authProvider := GitAuthenticationProvider{
-		scmProvider: scmProvider,
-		token:       token,
-		authType:    AuthTypePAT,
-	}
-	return connection, authProvider, nil
+// normalizeURL lower-cases the URL and trims a trailing slash, matching the azure-devops-go-api
+// SDK's internal normalization (which we bypass when constructing a bearer Connection directly).
+func normalizeURL(u string) string {
+	return strings.ToLower(strings.TrimRight(u, "/"))
 }
