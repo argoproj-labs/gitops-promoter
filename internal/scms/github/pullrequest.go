@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -236,9 +237,14 @@ func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequ
 		return "", fmt.Errorf("failed to convert PR number to int when generating pull request url: %w", err)
 	}
 
-	if pr.client.BaseURL.Host == "api.github.com" {
+	baseURL, err := url.Parse(pr.client.BaseURL())
+	if err != nil {
+		return "", fmt.Errorf("failed to parse GitHub base URL: %w", err)
+	}
+
+	if baseURL.Host == "api.github.com" {
 		return fmt.Sprintf("%s/%s/%s/pull/%d", "https://github.com", gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, prNumber), nil
 	}
 
-	return fmt.Sprintf("https://%s/%s/%s/pull/%d", pr.client.BaseURL.Host, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, prNumber), nil
+	return fmt.Sprintf("https://%s/%s/%s/pull/%d", baseURL.Host, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, prNumber), nil
 }

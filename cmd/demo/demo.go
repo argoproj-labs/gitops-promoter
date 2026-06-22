@@ -59,7 +59,10 @@ func NewDemoCommand() *cobra.Command {
 
 			ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: credentials.Token})
 			tc := oauth2.NewClient(ctx, ts)
-			client := github.NewClient(tc)
+			client, err := github.NewClient(github.WithHTTPClient(tc))
+			if err != nil {
+				return fmt.Errorf("failed to create GitHub client: %w", err)
+			}
 
 			// Get current user
 			user, _, err := client.Users.Get(ctx, "")
