@@ -10,7 +10,7 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/bradleyfalzon/ghinstallation/v2"
-	"github.com/google/go-github/v71/github"
+	"github.com/google/go-github/v88/github"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -107,10 +107,16 @@ func newTransport(domain string, appID, installationID int64, privateKey []byte)
 	enterprise, baseURL, uploadURL := getUrls(domain)
 	var client *github.Client
 	if !enterprise {
-		client = github.NewClient(&http.Client{Transport: itr})
+		client, err = github.NewClient(github.WithHTTPClient(&http.Client{Transport: itr}))
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create GitHub client: %w", err)
+		}
 	} else {
 		itr.BaseURL = baseURL
-		client, err = github.NewClient(&http.Client{Transport: itr}).WithEnterpriseURLs(baseURL, uploadURL)
+		client, err = github.NewClient(
+			github.WithHTTPClient(&http.Client{Transport: itr}),
+			github.WithEnterpriseURLs(baseURL, uploadURL),
+		)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create GitHub enterprise client: %w", err)
 		}
@@ -168,10 +174,16 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 
 	var client *github.Client
 	if !enterprise {
-		client = github.NewClient(&http.Client{Transport: itr})
+		client, err = github.NewClient(github.WithHTTPClient(&http.Client{Transport: itr}))
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create GitHub client: %w", err)
+		}
 	} else {
 		itr.BaseURL = baseUrl
-		client, err = github.NewClient(&http.Client{Transport: itr}).WithEnterpriseURLs(baseUrl, uploadUrl)
+		client, err = github.NewClient(
+			github.WithHTTPClient(&http.Client{Transport: itr}),
+			github.WithEnterpriseURLs(baseUrl, uploadUrl),
+		)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create GitHub enterprise client: %w", err)
 		}
