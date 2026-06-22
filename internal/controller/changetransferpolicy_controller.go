@@ -573,8 +573,8 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 
 	if err := validateProposedDryMetadata(ctp); err != nil {
 		metadataPath := hydratorMetadataPath(ctp.Spec.ActivePath)
-		r.Recorder.Eventf(ctp, nil, "Warning", constants.MissingProposedDryMetadataReason, "EvaluatingPromotion",
-			constants.MissingProposedDryMetadataMessage, ctp.Spec.ProposedBranch, ctp.Status.Proposed.Hydrated.Sha, metadataPath)
+		r.Recorder.Eventf(ctp, nil, "Warning", constants.MissingProposedHydratorMetadataReason, "EvaluatingPromotion",
+			constants.MissingProposedHydratorMetadataMessage, ctp.Spec.ProposedBranch, ctp.Status.Proposed.Hydrated.Sha, metadataPath)
 		return err
 	}
 

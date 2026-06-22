@@ -1311,61 +1311,404 @@ var _ = Describe("emitPromotionLifecycleEvents", func() {
 		)
 	})
 
-	Describe("validateProposedDryMetadata", func() {
-		It("accepts empty proposed dry when proposed matches active", func() {
-			ctp := &promoterv1alpha1.ChangeTransferPolicy{
-				Spec: promoterv1alpha1.ChangeTransferPolicySpec{ActivePath: "apps/foo"},
-				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
-					Active:   promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "active-sha"}},
-					Proposed: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "active-sha"}},
-				},
-			}
-			Expect(validateProposedDryMetadata(ctp)).NotTo(HaveOccurred())
+	Describe("ChangeTransferPolicy proposed dry metadata validation", Label("e2e"), func() {
+		const (
+			activePathApp = "apps/app-one"
+			wrongPath     = activePathApp + "/overlay/stag"
+			testNamespace = "default"
+		)
+
+		var ctx context.Context
+
+		BeforeEach(func() {
+			ctx = context.Background()
 		})
 
-		It("accepts empty proposed dry when proposed hydrated is not set yet", func() {
-			ctp := &promoterv1alpha1.ChangeTransferPolicy{
-				Spec: promoterv1alpha1.ChangeTransferPolicySpec{ActivePath: "apps/foo"},
-				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
-					Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "active-sha"}},
-				},
-			}
-			Expect(validateProposedDryMetadata(ctp)).NotTo(HaveOccurred())
+		Context("with activePath", func() {
+			var (
+				gitRepo              *promoterv1alpha1.GitRepository
+				promotionStrategy    *promoterv1alpha1.PromotionStrategy
+				changeTransferPolicy promoterv1alpha1.ChangeTransferPolicy
+				ctpNamespacedName    types.NamespacedName
+				proposedBranch       string
+			)
+
+			BeforeEach(func() {
+				var scmSecret *v1.Secret
+				var scmProvider *promoterv1alpha1.ScmProvider
+				_, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "ctp-proposed-dry", testNamespace)
+				setupInitialTestGitRepoForActivePath(ctx, gitRepo)
+
+				promotionStrategy.Spec.ActivePath = activePathApp
+				promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
+					{Branch: testBranchDevelopment, AutoMerge: new(false)},
+				}
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+				ctpNamespacedName = types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, testBranchDevelopment)),
+					Namespace: testNamespace,
+				}
+
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, ctpNamespacedName, &changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Spec.ActivePath).To(Equal(activePathApp))
+					proposedBranch = changeTransferPolicy.Spec.ProposedBranch
+					g.Expect(proposedBranch).To(Equal(path.Join(testBranchDevelopmentNext, activePathApp)))
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+
+			AfterEach(func() {
+				_ = k8sClient.Delete(ctx, promotionStrategy)
+			})
+
+			It("opens a PR when the hydrator writes metadata at activePath", func() {
+				gitPath, err := cloneTestRepo(ctx, gitRepo)
+				Expect(err).NotTo(HaveOccurred())
+				defer func() { _ = os.RemoveAll(gitPath) }()
+
+				drySha, err := makeDryCommit(ctx, gitPath, "dry commit at activePath")
+				Expect(err).NotTo(HaveOccurred())
+
+				beforeSha, hydratedSha, err := pushHydratedBranchForPath(ctx, gitPath, proposedBranch,
+					activePathApp, testBranchDevelopment, drySha, "hydrated at activePath")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(pushGitNote(ctx, gitPath, hydratedSha, drySha)).To(Succeed())
+				sendWebhookForPush(ctx, beforeSha, proposedBranch)
+
+				prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(
+					gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name,
+					changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch,
+				))
+
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, ctpNamespacedName, &changeTransferPolicy)).To(Succeed())
+
+					ready := meta.FindStatusCondition(changeTransferPolicy.Status.Conditions, string(promoterConditions.Ready))
+					g.Expect(ready).NotTo(BeNil())
+					g.Expect(ready.Status).To(Equal(metav1.ConditionTrue))
+
+					g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(Equal(drySha))
+					g.Expect(changeTransferPolicy.Status.Proposed.Hydrated.Sha).To(Equal(hydratedSha))
+					g.Expect(changeTransferPolicy.Status.Proposed.Hydrated.Sha).NotTo(Equal(changeTransferPolicy.Status.Active.Hydrated.Sha))
+
+					err := k8sClient.Get(ctx, types.NamespacedName{Name: prName, Namespace: testNamespace}, &promoterv1alpha1.PullRequest{})
+					g.Expect(err).NotTo(HaveOccurred())
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+
+			It("reconciles successfully when proposed matches active before any new hydration", func() {
+				gitPath, err := cloneTestRepo(ctx, gitRepo)
+				Expect(err).NotTo(HaveOccurred())
+				defer func() { _ = os.RemoveAll(gitPath) }()
+
+				_, err = runGitCmd(ctx, gitPath, "fetch", "origin")
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "checkout", "-B", proposedBranch, "origin/"+testBranchDevelopment)
+				Expect(err).NotTo(HaveOccurred())
+				beforeSha, err := runGitCmd(ctx, gitPath, "rev-parse", proposedBranch)
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", proposedBranch)
+				Expect(err).NotTo(HaveOccurred())
+				sendWebhookForPush(ctx, strings.TrimSpace(beforeSha), proposedBranch)
+
+				prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(
+					gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name,
+					changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch,
+				))
+
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, ctpNamespacedName, &changeTransferPolicy)).To(Succeed())
+
+					ready := meta.FindStatusCondition(changeTransferPolicy.Status.Conditions, string(promoterConditions.Ready))
+					g.Expect(ready).NotTo(BeNil())
+					g.Expect(ready.Status).To(Equal(metav1.ConditionTrue))
+
+					g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(BeEmpty())
+					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).To(BeEmpty())
+					g.Expect(changeTransferPolicy.Status.Proposed.Hydrated.Sha).To(Equal(changeTransferPolicy.Status.Active.Hydrated.Sha))
+
+					err := k8sClient.Get(ctx, types.NamespacedName{Name: prName, Namespace: testNamespace}, &promoterv1alpha1.PullRequest{})
+					g.Expect(errors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+
+			It("fails reconciliation when the hydrator writes metadata outside activePath", func() {
+				gitPath, err := cloneTestRepo(ctx, gitRepo)
+				Expect(err).NotTo(HaveOccurred())
+				defer func() { _ = os.RemoveAll(gitPath) }()
+
+				drySha, err := makeDryCommit(ctx, gitPath, "dry commit at wrong path")
+				Expect(err).NotTo(HaveOccurred())
+
+				beforeSha, hydratedSha, err := pushHydratedBranchForPath(ctx, gitPath, proposedBranch,
+					wrongPath, testBranchDevelopment, drySha, "hydrated outside activePath")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(pushGitNote(ctx, gitPath, hydratedSha, drySha)).To(Succeed())
+				sendWebhookForPush(ctx, beforeSha, proposedBranch)
+
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, ctpNamespacedName, &changeTransferPolicy)).To(Succeed())
+
+					ready := meta.FindStatusCondition(changeTransferPolicy.Status.Conditions, string(promoterConditions.Ready))
+					g.Expect(ready).NotTo(BeNil())
+					g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+					g.Expect(ready.Reason).To(Equal(string(promoterConditions.ReconciliationError)))
+
+					metadataPath := path.Join(activePathApp, "hydrator.metadata")
+					g.Expect(ready.Message).To(Equal(fmt.Sprintf(
+						"Reconciliation failed: failed to calculate ChangeTransferPolicy status: proposed branch %q has hydrated commit %s but no dry SHA from %q on that commit; ensure the hydrator writes hydrator.metadata under activePath %q (git note reports dry SHA %s, confirming hydration ran)",
+						changeTransferPolicy.Spec.ProposedBranch,
+						changeTransferPolicy.Status.Proposed.Hydrated.Sha,
+						metadataPath,
+						activePathApp,
+						drySha,
+					)))
+
+					g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(BeEmpty())
+					g.Expect(changeTransferPolicy.Status.Proposed.Hydrated.Sha).NotTo(BeEmpty())
+					g.Expect(changeTransferPolicy.Status.Proposed.Hydrated.Sha).NotTo(Equal(changeTransferPolicy.Status.Active.Hydrated.Sha))
+
+					var eventList v1.EventList
+					g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace(changeTransferPolicy.Namespace))).To(Succeed())
+					expectedEventMsg := fmt.Sprintf(constants.MissingProposedHydratorMetadataMessage,
+						changeTransferPolicy.Spec.ProposedBranch,
+						changeTransferPolicy.Status.Proposed.Hydrated.Sha,
+						metadataPath,
+					)
+					g.Expect(slices.ContainsFunc(eventList.Items, func(e v1.Event) bool {
+						return e.InvolvedObject.Name == changeTransferPolicy.Name &&
+							e.Reason == constants.MissingProposedHydratorMetadataReason &&
+							e.Message == expectedEventMsg
+					})).To(BeTrue())
+
+					prList := promoterv1alpha1.PullRequestList{}
+					g.Expect(k8sClient.List(ctx, &prList, ctrlclient.InNamespace(changeTransferPolicy.Namespace), ctrlclient.MatchingLabels(map[string]string{
+						promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(changeTransferPolicy.Name),
+					}))).To(Succeed())
+					g.Expect(prList.Items).To(BeEmpty())
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+
+			It("fails reconciliation when metadata is outside activePath and no git note exists", func() {
+				gitPath, err := cloneTestRepo(ctx, gitRepo)
+				Expect(err).NotTo(HaveOccurred())
+				defer func() { _ = os.RemoveAll(gitPath) }()
+
+				drySha, err := makeDryCommit(ctx, gitPath, "dry commit without note")
+				Expect(err).NotTo(HaveOccurred())
+
+				beforeSha, _, err := pushHydratedBranchForPath(ctx, gitPath, proposedBranch,
+					wrongPath, testBranchDevelopment, drySha, "hydrated outside activePath without note")
+				Expect(err).NotTo(HaveOccurred())
+				sendWebhookForPush(ctx, beforeSha, proposedBranch)
+
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, ctpNamespacedName, &changeTransferPolicy)).To(Succeed())
+
+					ready := meta.FindStatusCondition(changeTransferPolicy.Status.Conditions, string(promoterConditions.Ready))
+					g.Expect(ready).NotTo(BeNil())
+					g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+					g.Expect(ready.Reason).To(Equal(string(promoterConditions.ReconciliationError)))
+
+					metadataPath := path.Join(activePathApp, "hydrator.metadata")
+					g.Expect(ready.Message).To(Equal(fmt.Sprintf(
+						"Reconciliation failed: failed to calculate ChangeTransferPolicy status: proposed branch %q has hydrated commit %s but no dry SHA from %q on that commit; ensure the hydrator writes hydrator.metadata under activePath %q",
+						changeTransferPolicy.Spec.ProposedBranch,
+						changeTransferPolicy.Status.Proposed.Hydrated.Sha,
+						metadataPath,
+						activePathApp,
+					)))
+
+					g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(BeEmpty())
+					g.Expect(changeTransferPolicy.Status.Proposed.Hydrated.Sha).NotTo(BeEmpty())
+					g.Expect(changeTransferPolicy.Status.Proposed.Hydrated.Sha).NotTo(Equal(changeTransferPolicy.Status.Active.Hydrated.Sha))
+
+					var eventList v1.EventList
+					g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace(changeTransferPolicy.Namespace))).To(Succeed())
+					expectedEventMsg := fmt.Sprintf(constants.MissingProposedHydratorMetadataMessage,
+						changeTransferPolicy.Spec.ProposedBranch,
+						changeTransferPolicy.Status.Proposed.Hydrated.Sha,
+						metadataPath,
+					)
+					g.Expect(slices.ContainsFunc(eventList.Items, func(e v1.Event) bool {
+						return e.InvolvedObject.Name == changeTransferPolicy.Name &&
+							e.Reason == constants.MissingProposedHydratorMetadataReason &&
+							e.Message == expectedEventMsg
+					})).To(BeTrue())
+
+					prList := promoterv1alpha1.PullRequestList{}
+					g.Expect(k8sClient.List(ctx, &prList, ctrlclient.InNamespace(changeTransferPolicy.Namespace), ctrlclient.MatchingLabels(map[string]string{
+						promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(changeTransferPolicy.Name),
+					}))).To(Succeed())
+					g.Expect(prList.Items).To(BeEmpty())
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
 		})
 
-		It("accepts populated proposed dry", func() {
-			ctp := &promoterv1alpha1.ChangeTransferPolicy{
-				Spec: promoterv1alpha1.ChangeTransferPolicySpec{ActivePath: "apps/foo"},
-				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
-					Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "active-sha"}},
-					Proposed: promoterv1alpha1.CommitBranchState{
-						Dry:      promoterv1alpha1.CommitShaState{Sha: "dry-sha"},
-						Hydrated: promoterv1alpha1.CommitShaState{Sha: "proposed-sha"},
-					},
-				},
-			}
-			Expect(validateProposedDryMetadata(ctp)).NotTo(HaveOccurred())
+		Context("without activePath", func() {
+			var (
+				gitRepo              *promoterv1alpha1.GitRepository
+				changeTransferPolicy *promoterv1alpha1.ChangeTransferPolicy
+				ctpNamespacedName    types.NamespacedName
+			)
+
+			BeforeEach(func() {
+				var scmSecret *v1.Secret
+				var scmProvider *promoterv1alpha1.ScmProvider
+				var name string
+				name, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-proposed-dry-no-path", testNamespace)
+
+				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
+				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
+				changeTransferPolicy.Spec.AutoMerge = new(false)
+
+				ctpNamespacedName = types.NamespacedName{Name: name, Namespace: testNamespace}
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
+
+				// Wait for the initial reconcile so status.proposed.hydrated.sha is set.
+				// Webhook matching uses that field as the push "before" SHA.
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, ctpNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.Proposed.Hydrated.Sha).NotTo(BeEmpty())
+					g.Expect(changeTransferPolicy.Status.Proposed.Hydrated.Sha).
+						To(Equal(changeTransferPolicy.Status.Active.Hydrated.Sha))
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+
+			AfterEach(func() {
+				_ = k8sClient.Delete(ctx, changeTransferPolicy)
+			})
+
+			It("opens a PR when the hydrator writes metadata at the repository root", func() {
+				gitPath, err := os.MkdirTemp("", "*")
+				Expect(err).NotTo(HaveOccurred())
+				defer func() { _ = os.RemoveAll(gitPath) }()
+
+				fullSha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, ctpNamespacedName, changeTransferPolicy)).To(Succeed())
+
+					ready := meta.FindStatusCondition(changeTransferPolicy.Status.Conditions, string(promoterConditions.Ready))
+					g.Expect(ready).NotTo(BeNil())
+					g.Expect(ready.Status).To(Equal(metav1.ConditionTrue))
+					g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(Equal(fullSha))
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+
+			It("fails reconciliation when metadata is not at the repository root", func() {
+				gitPath, err := cloneTestRepo(ctx, gitRepo)
+				Expect(err).NotTo(HaveOccurred())
+				defer func() { _ = os.RemoveAll(gitPath) }()
+
+				drySha, err := makeDryCommit(ctx, gitPath, "dry commit for misplaced root metadata")
+				Expect(err).NotTo(HaveOccurred())
+
+				beforeSha, _, err := pushHydratedBranchWithMetadataAtOnly(ctx, gitPath, testBranchDevelopmentNext,
+					testBranchDevelopment, "apps/nested/hydrator.metadata", drySha, "hydrated under apps/nested")
+				Expect(err).NotTo(HaveOccurred())
+				sendWebhookForPush(ctx, beforeSha, testBranchDevelopmentNext)
+
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, ctpNamespacedName, changeTransferPolicy)).To(Succeed())
+
+					ready := meta.FindStatusCondition(changeTransferPolicy.Status.Conditions, string(promoterConditions.Ready))
+					g.Expect(ready).NotTo(BeNil())
+					g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+					g.Expect(ready.Reason).To(Equal(string(promoterConditions.ReconciliationError)))
+
+					metadataPath := "hydrator.metadata"
+					g.Expect(ready.Message).To(Equal(fmt.Sprintf(
+						"Reconciliation failed: failed to calculate ChangeTransferPolicy status: proposed branch %q has hydrated commit %s but no dry SHA from %q on that commit",
+						changeTransferPolicy.Spec.ProposedBranch,
+						changeTransferPolicy.Status.Proposed.Hydrated.Sha,
+						metadataPath,
+					)))
+
+					g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(BeEmpty())
+					g.Expect(changeTransferPolicy.Status.Proposed.Hydrated.Sha).NotTo(BeEmpty())
+					g.Expect(changeTransferPolicy.Status.Proposed.Hydrated.Sha).NotTo(Equal(changeTransferPolicy.Status.Active.Hydrated.Sha))
+
+					var eventList v1.EventList
+					g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace(changeTransferPolicy.Namespace))).To(Succeed())
+					expectedEventMsg := fmt.Sprintf(constants.MissingProposedHydratorMetadataMessage,
+						changeTransferPolicy.Spec.ProposedBranch,
+						changeTransferPolicy.Status.Proposed.Hydrated.Sha,
+						metadataPath,
+					)
+					g.Expect(slices.ContainsFunc(eventList.Items, func(e v1.Event) bool {
+						return e.InvolvedObject.Name == changeTransferPolicy.Name &&
+							e.Reason == constants.MissingProposedHydratorMetadataReason &&
+							e.Message == expectedEventMsg
+					})).To(BeTrue())
+
+					prList := promoterv1alpha1.PullRequestList{}
+					g.Expect(k8sClient.List(ctx, &prList, ctrlclient.InNamespace(changeTransferPolicy.Namespace), ctrlclient.MatchingLabels(map[string]string{
+						promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(changeTransferPolicy.Name),
+					}))).To(Succeed())
+					g.Expect(prList.Items).To(BeEmpty())
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
 		})
 
-		It("rejects empty proposed dry when proposed is ahead of active", func() {
-			ctp := &promoterv1alpha1.ChangeTransferPolicy{
-				Spec: promoterv1alpha1.ChangeTransferPolicySpec{
-					ActivePath:     "apps/foo",
-					ProposedBranch: "environment/dev-next/apps/foo",
-				},
-				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
-					Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "active-sha"}},
-					Proposed: promoterv1alpha1.CommitBranchState{
-						Hydrated: promoterv1alpha1.CommitShaState{Sha: "proposed-sha"},
-						Note:     &promoterv1alpha1.HydratorMetadata{DrySha: "note-dry-sha"},
-					},
-				},
-			}
-			err := validateProposedDryMetadata(ctp)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("apps/foo/hydrator.metadata"))
-			Expect(err.Error()).To(ContainSubstring("note-dry-sha"))
-			Expect(err.Error()).To(ContainSubstring("hydrator writes hydrator.metadata"))
+		Context("before the hydrator creates the proposed branch", func() {
+			var (
+				gitRepo              *promoterv1alpha1.GitRepository
+				promotionStrategy    *promoterv1alpha1.PromotionStrategy
+				changeTransferPolicy promoterv1alpha1.ChangeTransferPolicy
+				ctpNamespacedName    types.NamespacedName
+			)
+
+			BeforeEach(func() {
+				var scmSecret *v1.Secret
+				var scmProvider *promoterv1alpha1.ScmProvider
+				_, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "ctp-proposed-dry-wait", testNamespace)
+				setupInitialTestGitRepoForActivePath(ctx, gitRepo)
+
+				promotionStrategy.Spec.ActivePath = activePathApp
+				promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
+					{Branch: testBranchDevelopment, AutoMerge: new(false)},
+				}
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+				ctpNamespacedName = types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, testBranchDevelopment)),
+					Namespace: testNamespace,
+				}
+			})
+
+			AfterEach(func() {
+				_ = k8sClient.Delete(ctx, promotionStrategy)
+			})
+
+			It("reports the missing proposed branch instead of MissingProposedHydratorMetadata", func() {
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, ctpNamespacedName, &changeTransferPolicy)).To(Succeed())
+
+					ready := meta.FindStatusCondition(changeTransferPolicy.Status.Conditions, string(promoterConditions.Ready))
+					g.Expect(ready).NotTo(BeNil())
+					g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+					g.Expect(ready.Reason).To(Equal(string(promoterConditions.ReconciliationError)))
+					g.Expect(ready.Message).To(ContainSubstring("branch may not exist yet"))
+
+					var eventList v1.EventList
+					g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace(testNamespace))).To(Succeed())
+					g.Expect(hasEventWithReason(eventList, changeTransferPolicy.Name, constants.MissingProposedHydratorMetadataReason)).To(BeFalse())
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
 		})
 	})
 })
