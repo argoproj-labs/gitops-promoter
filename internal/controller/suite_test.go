@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
@@ -1092,7 +1093,7 @@ func pushHydratedBranchForPath(ctx context.Context, gitPath, branch, activePath,
 // inherit root hydrator.metadata from test fixture setup.
 func pushHydratedBranchWithMetadataAtOnly(ctx context.Context, gitPath, branch, bootstrapBranch, metadataRelPath, drySha, commitMessage string) (beforeSha, hydratedSha string, err error) {
 	if bootstrapBranch == "" {
-		return "", "", fmt.Errorf("bootstrapBranch is required")
+		return "", "", errors.New("bootstrapBranch is required")
 	}
 
 	_, err = runGitCmd(ctx, gitPath, "fetch", "origin")
