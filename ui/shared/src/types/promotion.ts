@@ -74,6 +74,7 @@ export interface Environment {
     dry?: Commit;
     hydrated?: Commit;
     commitStatuses?: CommitStatus[];
+    note?: { drySha?: string };
   };
   pullRequest?: PullRequest;
   history?: History[];

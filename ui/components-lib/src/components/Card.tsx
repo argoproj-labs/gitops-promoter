@@ -1,9 +1,13 @@
 import { FaServer, FaHistory } from 'react-icons/fa';
-import { StatusType } from './StatusIcon';
+import { StatusIcon, StatusType } from './StatusIcon';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import CommitInfo from './CommitInfo';
 import HistoryNavigation from './HistoryNavigation';
-import { EnrichedEnvDetails, enrichFromEnvironments } from '@shared/utils/PSData';
+import {
+  EnrichedEnvDetails,
+  enrichFromEnvironments,
+  getProcessingEnvs,
+} from '@shared/utils/PSData';
 import type { Environment } from '@shared/types/promotion';
 import './Card.scss';
 
@@ -43,6 +47,8 @@ const Card: React.FC<CardProps> = ({ environments }) => {
     return (historyMode[branch] || 0) > 0;
   };
 
+  const processingEnvs = useMemo(() => getProcessingEnvs(environments), [environments]);
+
   // Get enriched environments with current history index
   const enrichedEnvs = useMemo(() => {
     return environments.map((env) => {
@@ -57,6 +63,7 @@ const Card: React.FC<CardProps> = ({ environments }) => {
         {enrichedEnvs.map((env: EnrichedEnvDetails, index) => {
           const branch = env.branch;
           const proposedStatus = env.promotionStatus;
+          const isProcessing = processingEnvs.has(branch);
           const inHistoryMode = isInHistoryMode(branch);
           const isNavigationVisible = hoveredIcon === branch;
           const environment = environments.find((e) => e.branch === branch);
@@ -165,8 +172,24 @@ const Card: React.FC<CardProps> = ({ environments }) => {
 
                   {/* Proposed Commits Section (normal mode only) */}
                   {!inHistoryMode &&
-                    proposedStatus !== 'promoted' &&
-                    proposedStatus !== 'success' && (
+                    (isProcessing ? (
+                      // Processing: stand in for the Proposed section with a labeled
+                      // loading placeholder while the newer commit is hydrated.
+                      <div className="commit-group env-card__proposed-loading">
+                        <div className="commit-group-header">
+                          <StatusIcon phase="pending" type="health" />
+                          <h4 className="commit-group-title">Proposed</h4>
+                        </div>
+                        <div
+                          className="env-card__proposed-loading-bar"
+                          role="progressbar"
+                          aria-label="Preparing newer commit"
+                        />
+                        <div className="env-card__proposed-loading-text">
+                          preparing newer commit&hellip;
+                        </div>
+                      </div>
+                    ) : proposedStatus !== 'promoted' && proposedStatus !== 'success' ? (
                       <CommitInfo
                         title="Proposed"
                         deploymentCommit={proposedDeploymentCommit}
@@ -181,7 +204,7 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                         prUrl={env.prUrl}
                         prNumber={env.prNumber?.toString()}
                       />
-                    )}
+                    ) : null)}
                 </div>
               </div>
               {index < enrichedEnvs.length - 1 && (
