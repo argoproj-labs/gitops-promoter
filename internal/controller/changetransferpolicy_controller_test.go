@@ -1310,6 +1310,64 @@ var _ = Describe("emitPromotionLifecycleEvents", func() {
 				nil, []string{constants.PromotionCompletedReason, constants.PromotionStartedReason}),
 		)
 	})
+
+	Describe("validateProposedDryMetadata", func() {
+		It("accepts empty proposed dry when proposed matches active", func() {
+			ctp := &promoterv1alpha1.ChangeTransferPolicy{
+				Spec: promoterv1alpha1.ChangeTransferPolicySpec{ActivePath: "apps/foo"},
+				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+					Active:   promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "active-sha"}},
+					Proposed: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "active-sha"}},
+				},
+			}
+			Expect(validateProposedDryMetadata(ctp)).NotTo(HaveOccurred())
+		})
+
+		It("accepts empty proposed dry when proposed hydrated is not set yet", func() {
+			ctp := &promoterv1alpha1.ChangeTransferPolicy{
+				Spec: promoterv1alpha1.ChangeTransferPolicySpec{ActivePath: "apps/foo"},
+				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+					Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "active-sha"}},
+				},
+			}
+			Expect(validateProposedDryMetadata(ctp)).NotTo(HaveOccurred())
+		})
+
+		It("accepts populated proposed dry", func() {
+			ctp := &promoterv1alpha1.ChangeTransferPolicy{
+				Spec: promoterv1alpha1.ChangeTransferPolicySpec{ActivePath: "apps/foo"},
+				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+					Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "active-sha"}},
+					Proposed: promoterv1alpha1.CommitBranchState{
+						Dry:      promoterv1alpha1.CommitShaState{Sha: "dry-sha"},
+						Hydrated: promoterv1alpha1.CommitShaState{Sha: "proposed-sha"},
+					},
+				},
+			}
+			Expect(validateProposedDryMetadata(ctp)).NotTo(HaveOccurred())
+		})
+
+		It("rejects empty proposed dry when proposed is ahead of active", func() {
+			ctp := &promoterv1alpha1.ChangeTransferPolicy{
+				Spec: promoterv1alpha1.ChangeTransferPolicySpec{
+					ActivePath:     "apps/foo",
+					ProposedBranch: "environment/dev-next/apps/foo",
+				},
+				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+					Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "active-sha"}},
+					Proposed: promoterv1alpha1.CommitBranchState{
+						Hydrated: promoterv1alpha1.CommitShaState{Sha: "proposed-sha"},
+						Note:     &promoterv1alpha1.HydratorMetadata{DrySha: "note-dry-sha"},
+					},
+				},
+			}
+			err := validateProposedDryMetadata(ctp)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("apps/foo/hydrator.metadata"))
+			Expect(err.Error()).To(ContainSubstring("note-dry-sha"))
+			Expect(err.Error()).To(ContainSubstring("hydrator writes hydrator.metadata"))
+		})
+	})
 })
 
 // hasEventWithReason reports whether eventList contains an event for the named involved object
