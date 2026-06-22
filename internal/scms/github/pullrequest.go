@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -64,7 +65,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 		return "", err //nolint:wrapcheck // Error wrapping handled at top level
 	}
 	if githubPullRequest == nil || githubPullRequest.Number == nil {
-		return "", fmt.Errorf("github returned empty pull request response")
+		return "", errors.New("GitHub returned empty pull request response")
 	}
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
