@@ -108,6 +108,31 @@
       automerge: false,
     },
     // ----------------------------------------------------------------------
+    // Group A2: GitHub API client (go-github major paths + ghinstallation)
+    // go-github uses /vNN module paths; Renovate rewrites imports on major jumps.
+    // Dependabot ignores these packages to avoid duplicate PRs.
+    // ----------------------------------------------------------------------
+    {
+      description: 'go-github and ghinstallation bump together; rewrite imports on major path changes',
+      matchManagers: [
+        'gomod',
+      ],
+      matchPackageNames: [
+        'github.com/google/go-github/**',
+        'github.com/bradleyfalzon/ghinstallation/**',
+      ],
+      enabled: true,
+      groupName: 'GitHub API client',
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      automerge: false,
+      postUpdateOptions: [
+        'gomodUpdateImportPaths',
+        'gomodTidy',
+      ],
+    },
+    // ----------------------------------------------------------------------
     // Group B: Go toolchain + golangci-lint (+ golang base image)
     // ----------------------------------------------------------------------
     {

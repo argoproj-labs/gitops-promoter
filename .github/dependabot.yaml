@@ -4,7 +4,9 @@ updates:
   # The coupled Kubernetes platform packages (k8s.io/*, controller-runtime,
   # multicluster-runtime, and their staging deps) are ALSO owned by Renovate so
   # they can be bumped in lockstep with the Makefile envtest versions; they are
-  # ignored here to avoid duplicate PRs. See renovate.json5 for configuration.
+  # ignored here to avoid duplicate PRs. go-github (major /vNN paths) and
+  # ghinstallation are also Renovate-owned for import rewrites on major bumps.
+  # See renovate.json5 for configuration.
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
@@ -23,6 +25,8 @@ updates:
       - dependency-name: "sigs.k8s.io/structured-merge-diff/*"
       - dependency-name: "sigs.k8s.io/json"
       - dependency-name: "sigs.k8s.io/randfill"
+      - dependency-name: "github.com/google/go-github/*"
+      - dependency-name: "github.com/bradleyfalzon/ghinstallation/*"
     groups:
       # etcd modules (api, client/pkg, client/v3) release together; one PR beats three.
       go-etcd:
