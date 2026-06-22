@@ -613,15 +613,15 @@ func hydratorMetadataPath(activePath string) string {
 // active but promoter could not read a dry SHA from hydrator.metadata at activePath. An empty active
 // dry SHA is normal before the first promotion; an empty proposed dry SHA is not once the proposed
 // branch tip differs from active. A git note dry SHA that differs from proposed dry SHA is fine.
+//
+// This function assumes ctp.Status.Proposed.Hydrated.Sha is non-empty. That should already be
+// confirmed by this point in the reconcile.
 func validateProposedDryMetadata(ctp *promoterv1alpha1.ChangeTransferPolicy) error {
 	if ctp.Status.Proposed.Dry.Sha != "" {
 		return nil
 	}
 
 	proposedHydratedSha := ctp.Status.Proposed.Hydrated.Sha
-	if proposedHydratedSha == "" {
-		return nil
-	}
 
 	if proposedHydratedSha == ctp.Status.Active.Hydrated.Sha {
 		return nil
