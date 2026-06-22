@@ -7,7 +7,7 @@ import (
 	"io/fs"
 	"strings"
 
-	"github.com/google/go-github/v71/github"
+	"github.com/google/go-github/v88/github"
 )
 
 //go:embed all:helm-guestbook

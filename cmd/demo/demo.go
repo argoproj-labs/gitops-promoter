@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/google/go-github/v71/github"
+	"github.com/google/go-github/v88/github"
 	"github.com/spf13/cobra"
 	"golang.org/x/oauth2"
 	ctrl "sigs.k8s.io/controller-runtime"
