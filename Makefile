@@ -151,8 +151,9 @@ mockery-gen: mockery
 	$(MOCKERY)
 
 .PHONY: apiserver-certs
-apiserver-certs: ## Generate self-signed serving certs for the dashboard apiserver and patch the APIService caBundle (manual cert path).
-	./hack/gen-apiserver-certs.sh
+apiserver-certs: ## Generate self-signed serving certs for the dashboard apiserver and patch the APIService caBundle (manual cert path). Optional: CERT_DAYS, CA_DAYS, NAMESPACE.
+	@env $(if $(CERT_DAYS),CERT_DAYS=$(CERT_DAYS),) $(if $(CA_DAYS),CA_DAYS=$(CA_DAYS),) \
+		./hack/gen-apiserver-certs.sh $(NAMESPACE)
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.
