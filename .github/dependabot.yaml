@@ -14,6 +14,8 @@ updates:
     # go.mod (e.g. golang.org/x/crypto) need this to get version-update PRs.
     allow:
       - dependency-type: "indirect"
+      # oauth2, sync, and time are direct requires; include them in golang-org-x.
+      - dependency-name: "golang.org/x/*"
     ignore:
       - dependency-name: "k8s.io/*"
       - dependency-name: "sigs.k8s.io/controller-runtime"
@@ -34,10 +36,10 @@ updates:
       golang-org-x:
         patterns:
           - "golang.org/x/*"
-      # kube-openapi pulls in a dozen swag/* submodules that version independently.
-      go-openapi-swag:
+      # swag root, jsonpointer/jsonreference, and swag/* submodules version together.
+      go-openapi:
         patterns:
-          - "github.com/go-openapi/swag/*"
+          - "github.com/go-openapi/*"
       # genproto, grpc, and protobuf are a coupled gRPC stack.
       google-golang-org:
         patterns:
