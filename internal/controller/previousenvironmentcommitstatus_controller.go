@@ -244,10 +244,9 @@ func (r *PreviousEnvironmentCommitStatusReconciler) updatePreviousEnvironmentCom
 			currentEnvironmentStatus.Proposed.Hydrated.Sha,
 			commitStatusPhase,
 			pendingReason,
-			previousEnvironmentInfo{
-				branch:         previousEnvironmentStatus.Branch,
-				commitStatuses: previousEnvironmentStatus.Active.CommitStatuses,
-			})
+			previousEnvironmentStatus.Branch,
+			previousEnvironmentStatus.Active.CommitStatuses,
+		)
 		if err != nil {
 			return fmt.Errorf("failed to create or update previous environment commit status for branch %s: %w", currentEnvironmentStatus.Branch, err)
 		}
@@ -259,18 +258,11 @@ func (r *PreviousEnvironmentCommitStatusReconciler) updatePreviousEnvironmentCom
 	return nil
 }
 
-// previousEnvironmentInfo holds the preceding environment's data used to build the
-// previous-environment CommitStatus (its branch and its active commit statuses).
-type previousEnvironmentInfo struct {
-	// branch is the branch of the preceding environment being checked.
-	branch string
-	// commitStatuses are the preceding environment's active commit statuses, aggregated into the annotation.
-	commitStatuses []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase
-}
-
 // createOrUpdatePreviousEnvironmentCommitStatus creates or updates the previous-environment CommitStatus
 // for a single environment. The CommitStatus is attached to the current environment's proposed
 // hydrated SHA and is owned by the PreviousEnvironmentCommitStatus CR.
+//
+//nolint:revive // argument-limit: previousEnvBranch and previousEnvCommitStatuses are kept separate for clarity.
 func (r *PreviousEnvironmentCommitStatusReconciler) createOrUpdatePreviousEnvironmentCommitStatus(
 	ctx context.Context,
 	pecs *promoterv1alpha1.PreviousEnvironmentCommitStatus,
@@ -279,7 +271,8 @@ func (r *PreviousEnvironmentCommitStatusReconciler) createOrUpdatePreviousEnviro
 	proposedHydratedSha string,
 	phase promoterv1alpha1.CommitStatusPhase,
 	pendingReason string,
-	previousEnv previousEnvironmentInfo,
+	previousEnvBranch string,
+	previousEnvCommitStatuses []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase,
 ) (*promoterv1alpha1.CommitStatus, error) {
 	logger := logf.FromContext(ctx)
 
@@ -291,12 +284,12 @@ func (r *PreviousEnvironmentCommitStatusReconciler) createOrUpdatePreviousEnviro
 
 	// If there is only one commit status, use the URL from that commit status.
 	var url string
-	if len(previousEnv.commitStatuses) == 1 {
-		url = previousEnv.commitStatuses[0].Url
+	if len(previousEnvCommitStatuses) == 1 {
+		url = previousEnvCommitStatuses[0].Url
 	}
 
 	statusMap := make(map[string]string)
-	for _, status := range previousEnv.commitStatuses {
+	for _, status := range previousEnvCommitStatuses {
 		statusMap[status.Key] = status.Phase
 	}
 	yamlStatusMap, err := yaml.Marshal(statusMap)
@@ -304,7 +297,7 @@ func (r *PreviousEnvironmentCommitStatusReconciler) createOrUpdatePreviousEnviro
 		return nil, fmt.Errorf("failed to marshal previous environment commit statuses: %w", err)
 	}
 
-	description := previousEnv.branch + " - synced and healthy"
+	description := previousEnvBranch + " - synced and healthy"
 	if phase == promoterv1alpha1.CommitPhasePending && pendingReason != "" {
 		description = pendingReason
 	}
@@ -328,7 +321,7 @@ func (r *PreviousEnvironmentCommitStatusReconciler) createOrUpdatePreviousEnviro
 			WithRepositoryReference(acv1alpha1.ObjectReference().
 				WithName(ps.Spec.RepositoryReference.Name)).
 			WithSha(proposedHydratedSha).
-			WithName(previousEnv.branch + " - synced and healthy").
+			WithName(previousEnvBranch + " - synced and healthy").
 			WithDescription(description).
 			WithPhase(phase).
 			WithUrl(url))
