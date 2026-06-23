@@ -277,6 +277,11 @@ func (r *PreviousEnvironmentCommitStatusReconciler) createOrUpdatePreviousEnviro
 	logger := logf.FromContext(ctx)
 
 	key := pecs.Spec.Key
+	if key == "" {
+		// Spec.Key is defaulted by the CRD on the API-server write path; fall back here
+		// so objects built directly (e.g. in tests) still get the canonical gate key.
+		key = promoterv1alpha1.PreviousEnvironmentCommitStatusKey
+	}
 	commitStatusName := utils.CommitStatusResourceName(ctx, pecs, currentBranch)
 
 	kind := reflect.TypeOf(promoterv1alpha1.PreviousEnvironmentCommitStatus{}).Name()
