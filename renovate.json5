@@ -181,6 +181,10 @@
       matchDepNames: [
         'python',
       ],
+      matchPackageNames: [
+        'python',
+        'library/python',
+      ],
       groupName: 'Python runtime',
       semanticCommits: 'enabled',
       semanticCommitType: 'chore',
