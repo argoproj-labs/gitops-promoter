@@ -170,6 +170,24 @@
       },
     },
     // ----------------------------------------------------------------------
+    // Group B3: Python runtime (CI, Read the Docs, local MkDocs docker)
+    // pip/MkDocs package deps are in the docs dependencies group above.
+    // ----------------------------------------------------------------------
+    {
+      description: 'Group Python runtime across CI, Read the Docs, and local MkDocs docker',
+      matchManagers: [
+        'custom.regex',
+      ],
+      matchDepNames: [
+        'python',
+      ],
+      groupName: 'Python runtime',
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      automerge: false,
+    },
+    // ----------------------------------------------------------------------
     // Group C: goreleaser (Makefile + both release workflows in one PR)
     // ----------------------------------------------------------------------
     {
@@ -544,6 +562,47 @@
       datasourceTemplate: 'github-releases',
       versioningTemplate: 'semver',
       extractVersionTemplate: '^v(?<version>.*)$',
+    },
+    // ===== Python runtime (CI, Read the Docs, local MkDocs docker) =====
+    {
+      customType: 'regex',
+      description: 'Update Python version in GitHub Actions setup-python inputs',
+      managerFilePatterns: [
+        '/^\\.github/workflows/.*\\.ya?ml$/',
+      ],
+      matchStrings: [
+        'python-version:\\s*[\'"]?(?<currentValue>3\\.\\d+)[\'"]?',
+      ],
+      depNameTemplate: 'python',
+      datasourceTemplate: 'python-version',
+      versioningTemplate: 'docker',
+    },
+    {
+      customType: 'regex',
+      description: 'Update Python version in Read the Docs config',
+      managerFilePatterns: [
+        '/^\\.readthedocs\\.yaml$/',
+      ],
+      matchStrings: [
+        'python:\\s*"(?<currentValue>3\\.\\d+)"',
+      ],
+      depNameTemplate: 'python',
+      datasourceTemplate: 'python-version',
+      versioningTemplate: 'docker',
+    },
+    {
+      customType: 'regex',
+      description: 'Update Python version in the local MkDocs docker image',
+      managerFilePatterns: [
+        '/^Makefile$/',
+      ],
+      matchStrings: [
+        'MKDOCS_DOCKER_IMAGE\\?=python:(?<currentValue>3\\.\\d+)-alpine',
+      ],
+      depNameTemplate: 'python',
+      datasourceTemplate: 'docker',
+      packageNameTemplate: 'library/python',
+      versioningTemplate: 'docker',
     },
     // ===== Workflow tool inputs (version: fields Dependabot cannot reach) =====
     {

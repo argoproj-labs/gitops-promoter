@@ -44,7 +44,7 @@ jobs:
       - name: Set up Python and venv for docs
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: '3.14'
+          python-version: '3.13'
       - name: Create venv and install MkDocs requirements
         run: |
           python3 -m venv .venv
