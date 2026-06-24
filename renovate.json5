@@ -299,6 +299,20 @@
       automerge: false,
     },
     // ----------------------------------------------------------------------
+    // Group D: Argo CD (tilt-ci install pin)
+    // ----------------------------------------------------------------------
+    {
+      description: 'Keep the Argo CD install version pinned in tilt-ci',
+      matchDepNames: [
+        'argoproj/argo-cd',
+      ],
+      groupName: 'Argo CD',
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      automerge: false,
+    },
+    // ----------------------------------------------------------------------
     // Docker base images: full version tags only, never digest-only PRs
     // ----------------------------------------------------------------------
     {
@@ -541,6 +555,21 @@
         'goreleaser/goreleaser-action@[\\s\\S]*?version:\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
       ],
       depNameTemplate: 'goreleaser/goreleaser',
+      datasourceTemplate: 'github-releases',
+      versioningTemplate: 'semver',
+      extractVersionTemplate: '^v(?<version>.*)$',
+    },
+    // ===== Argo CD (tilt-ci install pin) =====
+    {
+      customType: 'regex',
+      description: 'Update Argo CD version pinned in the tilt-ci workflow',
+      managerFilePatterns: [
+        '/^\\.github/workflows/tilt-ci\\.yaml$/',
+      ],
+      matchStrings: [
+        'ARGOCD_VERSION:\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
+      ],
+      depNameTemplate: 'argoproj/argo-cd',
       datasourceTemplate: 'github-releases',
       versioningTemplate: 'semver',
       extractVersionTemplate: '^v(?<version>.*)$',
