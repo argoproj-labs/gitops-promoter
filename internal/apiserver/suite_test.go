@@ -24,8 +24,8 @@ import (
 )
 
 // TestAPIServer runs the dashboard aggregation apiserver unit specs with the
-// Ginkgo runner. These specs use a fake controller-runtime client and do not
-// require envtest.
+// Ginkgo runner. Most specs use a fake controller-runtime client; Run integration
+// specs use envtest when KUBEBUILDER_ASSETS is set (make test / make test-parallel).
 func TestAPIServer(t *testing.T) {
 	t.Parallel()
 	RegisterFailHandler(Fail)
