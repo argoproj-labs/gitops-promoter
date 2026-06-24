@@ -133,6 +133,20 @@
       ],
     },
     // ----------------------------------------------------------------------
+    // Group A3: E2E Kind node images (ci-e2e matrix; sliding window of minors)
+    // ----------------------------------------------------------------------
+    {
+      description: 'Group kindest/node bumps in the e2e Kind matrix',
+      matchDepNames: [
+        'kindest/node',
+      ],
+      groupName: 'E2E Kind Kubernetes matrix',
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      automerge: false,
+    },
+    // ----------------------------------------------------------------------
     // Group B: Go toolchain + golangci-lint (+ golang base image)
     // ----------------------------------------------------------------------
     {
@@ -458,6 +472,20 @@
       datasourceTemplate: 'custom.envtest-k8s',
       versioningTemplate: 'semver',
       extractVersionTemplate: '^v(?<version>.*)$',
+    },
+    {
+      customType: 'regex',
+      description: 'Update kindest/node versions in the e2e Kind matrix',
+      managerFilePatterns: [
+        '/^\\.github/workflows/ci-e2e\\.yaml$/',
+      ],
+      matchStrings: [
+        '- (?<currentValue>1\\.\\d+\\.\\d+)\\s*$',
+      ],
+      depNameTemplate: 'kindest/node',
+      datasourceTemplate: 'docker',
+      versioningTemplate: 'docker',
+      extractVersionTemplate: '^v?(?<version>.*)$',
     },
     // ===== Makefile tool versions =====
     {
