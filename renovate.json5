@@ -299,10 +299,10 @@
       automerge: false,
     },
     // ----------------------------------------------------------------------
-    // Group D: Argo CD (tilt-ci install pin)
+    // Group D: Argo CD (tilt-ci + demo CLI install pins)
     // ----------------------------------------------------------------------
     {
-      description: 'Keep the Argo CD install version pinned in tilt-ci',
+      description: 'Keep Argo CD install versions in sync across tilt-ci and the demo CLI',
       matchDepNames: [
         'argoproj/argo-cd',
       ],
@@ -559,7 +559,7 @@
       versioningTemplate: 'semver',
       extractVersionTemplate: '^v(?<version>.*)$',
     },
-    // ===== Argo CD (tilt-ci install pin) =====
+    // ===== Argo CD (tilt-ci + demo CLI install pins) =====
     {
       customType: 'regex',
       description: 'Update Argo CD version pinned in the tilt-ci workflow',
@@ -568,6 +568,34 @@
       ],
       matchStrings: [
         'ARGOCD_VERSION:\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
+      ],
+      depNameTemplate: 'argoproj/argo-cd',
+      datasourceTemplate: 'github-releases',
+      versioningTemplate: 'semver',
+      extractVersionTemplate: '^v(?<version>.*)$',
+    },
+    {
+      customType: 'regex',
+      description: 'Update Argo CD version embedded in the demo CLI installer',
+      managerFilePatterns: [
+        '/^cmd/demo/config/argocd_version$/',
+      ],
+      matchStrings: [
+        '^v(?<currentValue>\\d+\\.\\d+\\.\\d+)\\s*$',
+      ],
+      depNameTemplate: 'argoproj/argo-cd',
+      datasourceTemplate: 'github-releases',
+      versioningTemplate: 'semver',
+      extractVersionTemplate: '^v(?<version>.*)$',
+    },
+    {
+      customType: 'regex',
+      description: 'Update Argo CD upstream URL in the demo CLI config template',
+      managerFilePatterns: [
+        '/^cmd/demo/config/config\\.yaml$/',
+      ],
+      matchStrings: [
+        'upstream: https://raw\\.githubusercontent\\.com/argoproj/argo-cd/v(?<currentValue>\\d+\\.\\d+\\.\\d+)/manifests/install-with-hydrator\\.yaml',
       ],
       depNameTemplate: 'argoproj/argo-cd',
       datasourceTemplate: 'github-releases',
