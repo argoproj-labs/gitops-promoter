@@ -40,8 +40,9 @@ import (
 
 func integrationAPIServerOptions() *Options {
 	opts := NewOptions()
-	opts.RecommendedOptions.SecureServing.BindAddress = net.ParseIP("127.0.0.1")
-	opts.RecommendedOptions.SecureServing.BindPort = freeLocalPort()
+	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
+	Expect(err).NotTo(HaveOccurred())
+	opts.RecommendedOptions.SecureServing.Listener = listener
 	opts.RecommendedOptions.SecureServing.ServerCert.CertDirectory = GinkgoT().TempDir()
 	opts.RecommendedOptions.Authentication.SkipInClusterLookup = true
 	opts.RecommendedOptions.Authentication.RemoteKubeConfigFileOptional = true
@@ -141,6 +142,7 @@ var _ = Describe("Run integration (envtest + in-process server)", func() {
 		Expect(runtime.server.GenericAPIServer.LoopbackClientConfig).NotTo(BeNil())
 
 		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 		errCh := make(chan error, 1)
 		go func() {
 			defer GinkgoRecover()
@@ -188,6 +190,7 @@ var _ = Describe("Run integration (envtest + in-process server)", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 		errCh := make(chan error, 1)
 		go func() {
 			defer GinkgoRecover()
@@ -200,7 +203,10 @@ var _ = Describe("Run integration (envtest + in-process server)", func() {
 		Eventually(func() error {
 			_, listErr := dyn.Resource(promotionStrategyDetailsGVR).Namespace(testNamespace).
 				List(context.Background(), metav1.ListOptions{})
-			return listErr
+			if listErr != nil {
+				return fmt.Errorf("list promotionstrategydetails: %w", listErr)
+			}
+			return nil
 		}, 30*time.Second, 200*time.Millisecond).Should(Succeed())
 
 		w, err := dyn.Resource(promotionStrategyDetailsGVR).Namespace(testNamespace).

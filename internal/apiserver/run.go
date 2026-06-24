@@ -37,8 +37,8 @@ type dashboardRuntime struct {
 }
 
 // newDashboardRuntime wires the read cache, bundle provider, and extension apiserver.
-// authorizer, when non-nil, overrides delegated authorization (used by tests).
-func newDashboardRuntime(ctx context.Context, restConfig *clientrest.Config, opts *Options, authorizer authorizer.Authorizer) (*dashboardRuntime, error) {
+// authz, when non-nil, overrides delegated authorization (used by tests).
+func newDashboardRuntime(ctx context.Context, restConfig *clientrest.Config, opts *Options, authz authorizer.Authorizer) (*dashboardRuntime, error) {
 	readCache, err := cache.New(restConfig, cache.Options{
 		Scheme:           utils.GetScheme(),
 		DefaultTransform: cacheTransform(),
@@ -56,8 +56,8 @@ func newDashboardRuntime(ctx context.Context, restConfig *clientrest.Config, opt
 	if err != nil {
 		return nil, fmt.Errorf("failed to build apiserver config: %w", err)
 	}
-	if authorizer != nil {
-		config.GenericConfig.Authorization.Authorizer = authorizer
+	if authz != nil {
+		config.GenericConfig.Authorization.Authorizer = authz
 	}
 
 	server, err := config.Complete().New()
@@ -72,6 +72,7 @@ func newDashboardRuntime(ctx context.Context, restConfig *clientrest.Config, opt
 	}, nil
 }
 
+// run starts the read cache, bundle provider workqueue, and extension apiserver until ctx is cancelled.
 func (d *dashboardRuntime) run(ctx context.Context) error {
 	g, ctx := errgroup.WithContext(ctx)
 
@@ -83,6 +84,7 @@ func (d *dashboardRuntime) run(ctx context.Context) error {
 	})
 
 	if !d.readCache.WaitForCacheSync(ctx) {
+		_ = g.Wait()
 		return errors.New("failed to sync read cache")
 	}
 
