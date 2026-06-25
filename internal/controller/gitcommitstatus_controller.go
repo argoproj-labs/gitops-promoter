@@ -440,24 +440,12 @@ func (r *GitCommitStatusReconciler) enqueueGitCommitStatusForPromotionStrategy()
 		if !ok {
 			return nil
 		}
-
-		// List all GitCommitStatus resources in the same namespace
-		var gcsList promoterv1alpha1.GitCommitStatusList
-		if err := r.List(ctx, &gcsList, client.InNamespace(ps.Namespace)); err != nil {
-			log.FromContext(ctx).Error(err, "failed to list GitCommitStatus resources")
-			return nil
-		}
-
-		// Enqueue all GitCommitStatus resources that reference this PromotionStrategy
-		var requests []ctrl.Request
-		for _, gcs := range gcsList.Items {
-			if gcs.Spec.PromotionStrategyRef.Name == ps.Name {
-				requests = append(requests, ctrl.Request{
-					NamespacedName: client.ObjectKeyFromObject(&gcs),
-				})
-			}
-		}
-
-		return requests
+		return utils.EnqueueCommitStatusGatesForPromotionStrategy(
+			ctx, r.Client, ps,
+			&promoterv1alpha1.GitCommitStatusList{},
+			func(gcs *promoterv1alpha1.GitCommitStatus) string {
+				return gcs.Spec.PromotionStrategyRef.Name
+			},
+		)
 	})
 }
