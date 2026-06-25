@@ -70,7 +70,7 @@ pullRequest:
     expression: "['lgtm', 'approved']"
 ```
 
-Pre-create `lgtm` and `approved` in the repository (or rely on Azure DevOps auto-create on add).
+Pre-create `lgtm` and `approved` in the repository only if you need specific label colors or descriptions; otherwise the promoter creates them on first apply.
 
 ### One label per commit status key
 
@@ -133,10 +133,10 @@ Invalid expression output causes the ChangeTransferPolicy Ready condition to bec
 
 | Provider | Label sync |
 |----------|------------|
-| GitHub, GitLab, Azure DevOps, Gitea, Forgejo | Supported |
+| GitHub, GitLab, Azure DevOps, Gitea, Forgejo | Supported; missing labels are created on add |
 | Bitbucket Cloud | Not supported (no PR labels API) |
 
-Pre-create labels in your repository before referencing them in expressions (except Azure DevOps, which auto-creates labels on add).
+Supported providers create repository or project labels automatically when `AddLabels` runs. Pre-create labels only when you need custom colors or descriptions.
 
 ## API load and drift
 

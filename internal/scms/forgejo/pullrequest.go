@@ -251,7 +251,7 @@ func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest promoterv1alpha1.
 	return fmt.Sprintf("https://%s/%s/%s/pulls/%s", pr.domain, gitRepo.Spec.Forgejo.Owner, gitRepo.Spec.Forgejo.Name, pullRequest.Status.ID), nil
 }
 
-// AddLabels adds labels to a pull request on Forgejo.
+// AddLabels adds labels to a pull request on Forgejo, creating missing repository labels first.
 func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest promoterv1alpha1.PullRequest, labelNames []string) error {
 	if len(labelNames) == 0 {
 		return nil
@@ -267,7 +267,7 @@ func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest promoterv1alph
 		return fmt.Errorf("failed to convert PR ID to int: %w", err)
 	}
 
-	labelIDs, err := pr.resolveLabelIDs(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, labelNames)
+	labelIDs, err := pr.labelIDsForNames(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, labelNames, true)
 	if err != nil {
 		return err
 	}
@@ -300,7 +300,7 @@ func (pr *PullRequest) RemoveLabels(ctx context.Context, pullRequest promoterv1a
 		return fmt.Errorf("failed to convert PR ID to int: %w", err)
 	}
 
-	labelIDs, err := pr.resolveLabelIDs(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, labelNames)
+	labelIDs, err := pr.labelIDsForNames(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, labelNames, false)
 	if err != nil {
 		return err
 	}
@@ -322,7 +322,53 @@ func (pr *PullRequest) RemoveLabels(ctx context.Context, pullRequest promoterv1a
 	return nil
 }
 
-func (pr *PullRequest) resolveLabelIDs(owner, repo string, labelNames []string) ([]int64, error) {
+func (pr *PullRequest) labelIDsForNames(owner, repo string, labelNames []string, createMissing bool) ([]int64, error) {
+	nameToID, err := pr.repoLabelNameToID(owner, repo)
+	if err != nil {
+		return nil, err
+	}
+
+	ids := make([]int64, 0, len(labelNames))
+	for _, name := range labelNames {
+		id, ok := nameToID[name]
+		if !ok {
+			if !createMissing {
+				continue
+			}
+			var createErr error
+			id, createErr = pr.createRepoLabelID(owner, repo, name)
+			if createErr != nil {
+				return nil, createErr
+			}
+			nameToID[name] = id
+		}
+		ids = append(ids, id)
+	}
+
+	return ids, nil
+}
+
+func (pr *PullRequest) createRepoLabelID(owner, repo, name string) (int64, error) {
+	created, resp, err := pr.foregejoClient.CreateLabel(owner, repo, forgejo.CreateLabelOption{
+		Name:  name,
+		Color: defaultForgejoLabelColor,
+	})
+	if err == nil {
+		return created.ID, nil
+	}
+	if resp != nil && resp.StatusCode == http.StatusUnprocessableEntity {
+		nameToID, listErr := pr.repoLabelNameToID(owner, repo)
+		if listErr != nil {
+			return 0, listErr
+		}
+		if id, ok := nameToID[name]; ok {
+			return id, nil
+		}
+	}
+	return 0, fmt.Errorf("failed to create repository label %q: %w", name, err)
+}
+
+func (pr *PullRequest) repoLabelNameToID(owner, repo string) (map[string]int64, error) {
 	repoLabels, err := pr.listAllRepoLabels(owner, repo)
 	if err != nil {
 		return nil, err
@@ -332,18 +378,10 @@ func (pr *PullRequest) resolveLabelIDs(owner, repo string, labelNames []string) 
 	for _, label := range repoLabels {
 		nameToID[label.Name] = label.ID
 	}
-
-	ids := make([]int64, 0, len(labelNames))
-	for _, name := range labelNames {
-		id, ok := nameToID[name]
-		if !ok {
-			return nil, fmt.Errorf("repository label %q not found; create it before using in pullRequest.labels.expression", name)
-		}
-		ids = append(ids, id)
-	}
-
-	return ids, nil
+	return nameToID, nil
 }
+
+const defaultForgejoLabelColor = "cccccc"
 
 func (pr *PullRequest) listAllRepoLabels(owner, repo string) ([]*forgejo.Label, error) {
 	var allLabels []*forgejo.Label

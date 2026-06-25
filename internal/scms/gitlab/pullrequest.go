@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -288,8 +289,24 @@ func (pr *PullRequest) GetUrl(ctx context.Context, prObj v1alpha1.PullRequest) (
 	return FormatMergeRequestUrl(pr.client, repo.Spec.GitLab, prObj.Status.ID), nil
 }
 
-// AddLabels adds labels to a merge request on GitLab.
+// AddLabels adds labels to a merge request on GitLab, creating missing project labels first.
 func (pr *PullRequest) AddLabels(ctx context.Context, prObj v1alpha1.PullRequest, labelNames []string) error {
+	if len(labelNames) == 0 {
+		return nil
+	}
+
+	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
+		Namespace: prObj.Namespace,
+		Name:      prObj.Spec.RepositoryReference.Name,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get repo: %w", err)
+	}
+
+	if err := pr.ensureProjectLabels(ctx, repo, labelNames); err != nil {
+		return err
+	}
+
 	return pr.updateMergeRequestLabels(ctx, prObj, labelNames, true)
 }
 
@@ -340,6 +357,52 @@ func (pr *PullRequest) updateMergeRequestLabels(ctx context.Context, prObj v1alp
 	}
 	if err != nil {
 		return fmt.Errorf("failed to %s merge request: %w", failVerb, err)
+	}
+
+	return nil
+}
+
+const defaultGitLabLabelColor = "#428BCA"
+
+func (pr *PullRequest) ensureProjectLabels(ctx context.Context, repo *v1alpha1.GitRepository, labelNames []string) error {
+	existing := make(map[string]struct{}, len(labelNames))
+	page := int64(1)
+	for {
+		labels, resp, err := pr.client.Labels.ListLabels(repo.Spec.GitLab.ProjectID, &gitlab.ListLabelsOptions{
+			ListOptions: gitlab.ListOptions{Page: page, PerPage: 100},
+		}, gitlab.WithContext(ctx))
+		if err != nil {
+			return fmt.Errorf("failed to list project labels: %w", err)
+		}
+		for _, label := range labels {
+			existing[label.Name] = struct{}{}
+		}
+		if resp == nil || resp.CurrentPage >= resp.TotalPages {
+			break
+		}
+		page = resp.NextPage
+	}
+
+	for _, name := range labelNames {
+		if _, ok := existing[name]; ok {
+			continue
+		}
+
+		start := time.Now()
+		_, resp, err := pr.client.Labels.CreateLabel(repo.Spec.GitLab.ProjectID, &gitlab.CreateLabelOptions{
+			Name:  gitlab.Ptr(name),
+			Color: gitlab.Ptr(defaultGitLabLabelColor),
+		}, gitlab.WithContext(ctx))
+		if resp != nil {
+			metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreateLabel, resp.StatusCode, time.Since(start), nil)
+		}
+		if err != nil {
+			if resp != nil && (resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusConflict) {
+				continue
+			}
+			return fmt.Errorf("failed to create project label %q: %w", name, err)
+		}
+		existing[name] = struct{}{}
 	}
 
 	return nil

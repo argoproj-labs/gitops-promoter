@@ -254,7 +254,7 @@ func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequ
 	return fmt.Sprintf("https://%s/%s/%s/pull/%d", baseURL.Host, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, prNumber), nil
 }
 
-// AddLabels adds labels to a pull request on GitHub.
+// AddLabels adds labels to a pull request on GitHub, creating missing repository labels first.
 func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labels []string) error {
 	if len(labels) == 0 {
 		return nil
@@ -272,6 +272,10 @@ func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest v1alpha1.PullR
 		return fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
+	if err := pr.ensureRepositoryLabels(ctx, gitRepo, labels); err != nil {
+		return err
+	}
+
 	start := time.Now()
 	_, response, err := pr.client.Issues.AddLabelsToIssue(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, prNumber, labels)
 	if response != nil {
@@ -281,6 +285,40 @@ func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest v1alpha1.PullR
 		return fmt.Errorf("failed to add labels to pull request: %w", err)
 	}
 	logger.V(4).Info("added labels to github pull request", "labels", labels)
+
+	return nil
+}
+
+func (pr *PullRequest) ensureRepositoryLabels(ctx context.Context, gitRepo *v1alpha1.GitRepository, labelNames []string) error {
+	owner := gitRepo.Spec.GitHub.Owner
+	repo := gitRepo.Spec.GitHub.Name
+
+	existing := make(map[string]struct{}, len(labelNames))
+	for label, err := range pr.client.Issues.ListLabelsIter(ctx, owner, repo, &github.ListOptions{PerPage: 100}) {
+		if err != nil {
+			return fmt.Errorf("failed to list repository labels: %w", err)
+		}
+		existing[label.GetName()] = struct{}{}
+	}
+
+	for _, name := range labelNames {
+		if _, ok := existing[name]; ok {
+			continue
+		}
+
+		start := time.Now()
+		_, response, err := pr.client.Issues.CreateLabel(ctx, owner, repo, &github.Label{Name: github.Ptr(name)})
+		if response != nil {
+			metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreateLabel, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
+		}
+		if err != nil {
+			if response != nil && response.StatusCode == http.StatusUnprocessableEntity {
+				continue
+			}
+			return fmt.Errorf("failed to create repository label %q: %w", name, err)
+		}
+		existing[name] = struct{}{}
+	}
 
 	return nil
 }
