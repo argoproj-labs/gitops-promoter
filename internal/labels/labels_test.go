@@ -62,6 +62,30 @@ var _ = Describe("Diff", func() {
 	})
 })
 
+var _ = Describe("ObservedManaged", func() {
+	It("returns managed labels present on the SCM", func() {
+		got := ObservedManaged(
+			[]string{"lgtm", "approved"},
+			[]string{"lgtm", "approved"},
+			[]string{"approved", "tide/merge"},
+		)
+		Expect(got).To(Equal([]string{"approved"}))
+	})
+
+	It("keeps labels pending removal when spec shrinks", func() {
+		got := ObservedManaged(
+			[]string{"lgtm"},
+			[]string{"lgtm", "approved"},
+			[]string{"lgtm", "approved"},
+		)
+		Expect(got).To(Equal([]string{"approved", "lgtm"}))
+	})
+
+	It("returns nil when nothing is managed", func() {
+		Expect(ObservedManaged(nil, nil, []string{"tide/merge"})).To(BeNil())
+	})
+})
+
 var _ = Describe("Evaluator", func() {
 	It("evaluates a conditional expression", func() {
 		e := &Evaluator{}

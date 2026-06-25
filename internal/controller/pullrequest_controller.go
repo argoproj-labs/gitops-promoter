@@ -106,12 +106,12 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, fmt.Errorf("failed to get PullRequest provider: %w", err)
 	}
 
-	found, prID, prCreationTime, err := provider.FindOpen(ctx, pr)
+	openResult, err := provider.FindOpen(ctx, pr)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to check for open PR: %w", err)
 	}
 
-	if deleted, err := r.handleFinalizer(ctx, &pr, provider, found); err != nil || deleted {
+	if deleted, err := r.handleFinalizer(ctx, &pr, provider, openResult.Found); err != nil || deleted {
 		return ctrl.Result{}, err
 	}
 
@@ -121,7 +121,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Sync state from provider
-	needsImmediateRequeue, err := r.syncStateFromProvider(ctx, &pr, provider, found, prID, prCreationTime)
+	needsImmediateRequeue, err := r.syncStateFromProvider(ctx, &pr, provider, openResult.Found, openResult.ID, openResult.CreationTime)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -135,6 +135,8 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if needsImmediateRequeue {
 		return ctrl.Result{RequeueAfter: 1 * time.Microsecond}, nil
 	}
+
+	r.syncAppliedLabelsFromFindOpen(&pr, openResult)
 
 	// Handle state transitions
 	cleanupRequired, err := r.handleStateTransitions(ctx, &pr, provider, previousReady)
@@ -561,6 +563,14 @@ func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr *promot
 	pr.Status.State = promoterv1alpha1.PullRequestClosed
 	r.Recorder.Eventf(pr, nil, "Normal", constants.PullRequestClosedReason, "ClosingPullRequest", constants.PullRequestClosedMessage, pr.Name)
 	return nil
+}
+
+// syncAppliedLabelsFromFindOpen refreshes status.appliedLabels from SCM labels returned by FindOpen.
+func (r *PullRequestReconciler) syncAppliedLabelsFromFindOpen(pr *promoterv1alpha1.PullRequest, open scms.FindOpenResult) {
+	if !open.LabelsReported || !open.Found || pr.Status.ID == "" {
+		return
+	}
+	pr.Status.AppliedLabels = labels.ObservedManaged(pr.Spec.Labels, pr.Status.AppliedLabels, open.SCMLabels)
 }
 
 // reconcileLabels syncs spec.labels to the SCM provider and updates status.appliedLabels.

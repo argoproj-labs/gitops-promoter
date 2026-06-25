@@ -6,9 +6,9 @@ package mock
 
 import (
 	"context"
-	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -543,41 +543,29 @@ func (_c *MockPullRequestProvider_Create_Call) RunAndReturn(run func(ctx context
 }
 
 // FindOpen provides a mock function for the type MockPullRequestProvider
-func (_mock *MockPullRequestProvider) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string, time.Time, error) {
+func (_mock *MockPullRequestProvider) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.FindOpenResult, error) {
 	ret := _mock.Called(ctx, pullRequest)
 
 	if len(ret) == 0 {
 		panic("no return value specified for FindOpen")
 	}
 
-	var r0 bool
-	var r1 string
-	var r2 time.Time
-	var r3 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, v1alpha1.PullRequest) (bool, string, time.Time, error)); ok {
+	var r0 scms.FindOpenResult
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, v1alpha1.PullRequest) (scms.FindOpenResult, error)); ok {
 		return returnFunc(ctx, pullRequest)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, v1alpha1.PullRequest) bool); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, v1alpha1.PullRequest) scms.FindOpenResult); ok {
 		r0 = returnFunc(ctx, pullRequest)
 	} else {
-		r0 = ret.Get(0).(bool)
+		r0 = ret.Get(0).(scms.FindOpenResult)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, v1alpha1.PullRequest) string); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, v1alpha1.PullRequest) error); ok {
 		r1 = returnFunc(ctx, pullRequest)
 	} else {
-		r1 = ret.Get(1).(string)
+		r1 = ret.Error(1)
 	}
-	if returnFunc, ok := ret.Get(2).(func(context.Context, v1alpha1.PullRequest) time.Time); ok {
-		r2 = returnFunc(ctx, pullRequest)
-	} else {
-		r2 = ret.Get(2).(time.Time)
-	}
-	if returnFunc, ok := ret.Get(3).(func(context.Context, v1alpha1.PullRequest) error); ok {
-		r3 = returnFunc(ctx, pullRequest)
-	} else {
-		r3 = ret.Error(3)
-	}
-	return r0, r1, r2, r3
+	return r0, r1
 }
 
 // MockPullRequestProvider_FindOpen_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FindOpen'
@@ -610,12 +598,12 @@ func (_c *MockPullRequestProvider_FindOpen_Call) Run(run func(ctx context.Contex
 	return _c
 }
 
-func (_c *MockPullRequestProvider_FindOpen_Call) Return(found bool, id string, creationTime time.Time, err error) *MockPullRequestProvider_FindOpen_Call {
-	_c.Call.Return(found, id, creationTime, err)
+func (_c *MockPullRequestProvider_FindOpen_Call) Return(findOpenResult scms.FindOpenResult, err error) *MockPullRequestProvider_FindOpen_Call {
+	_c.Call.Return(findOpenResult, err)
 	return _c
 }
 
-func (_c *MockPullRequestProvider_FindOpen_Call) RunAndReturn(run func(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string, time.Time, error)) *MockPullRequestProvider_FindOpen_Call {
+func (_c *MockPullRequestProvider_FindOpen_Call) RunAndReturn(run func(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.FindOpenResult, error)) *MockPullRequestProvider_FindOpen_Call {
 	_c.Call.Return(run)
 	return _c
 }

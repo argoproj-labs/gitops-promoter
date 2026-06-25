@@ -2,7 +2,6 @@ package scms
 
 import (
 	"context"
-	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
@@ -20,9 +19,9 @@ type PullRequestProvider interface {
 	// Merge merges an existing pull request with the specified commit message.
 	// pullRequest.Status.ID is guaranteed to be set when this is called.
 	Merge(ctx context.Context, pullRequest v1alpha1.PullRequest) error
-	// FindOpen checks if a pull request is open and returns its status. The returned PullRequestCommonStatus should
-	// contain a populated ID and PRCreationTime. All other fields are ignored.
-	FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (found bool, id string, creationTime time.Time, err error)
+	// FindOpen checks if a pull request is open and returns its status.
+	// When LabelsReported is true, SCMLabels holds PR label names from the list response.
+	FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (FindOpenResult, error)
 	// GetUrl retrieves the URL of the pull request.
 	GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequest) (string, error)
 	// AddLabels adds SCM labels to an open pull request, creating missing repository or project labels when needed.

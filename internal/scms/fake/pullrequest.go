@@ -278,30 +278,36 @@ func (pr *PullRequest) GetRecordedState(ctx context.Context, pullRequest v1alpha
 }
 
 // FindOpen checks if a pull request is open and returns its status.
-func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string, time.Time, error) {
+func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.FindOpenResult, error) {
 	findOpenCallCount.Add(1)
 
 	mutexPR.RLock()
-	found, id := pr.findOpen(ctx, pullRequest)
-	mutexPR.RUnlock()
+	defer mutexPR.RUnlock()
 
-	return found, id, time.Now(), nil
-}
-
-func (pr *PullRequest) findOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string) {
 	log.FromContext(ctx).Info("Finding open pull request", "pullRequest", pullRequest)
 	if pullRequests == nil {
-		return false, ""
+		return scms.FindOpenResult{}, nil
 	}
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
 		log.FromContext(ctx).Error(err, "failed to get GitRepository")
-		return false, ""
+		return scms.FindOpenResult{}, nil
 	}
 
-	pullRequestState, ok := pullRequests[pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)]
-	return ok && pullRequestState.state == v1alpha1.PullRequestOpen, pullRequestState.id
+	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+	st, ok := pullRequests[prKey]
+	if !ok || st.state != v1alpha1.PullRequestOpen {
+		return scms.FindOpenResult{}, nil
+	}
+
+	return scms.FindOpenResult{
+		Found:          true,
+		ID:             st.id,
+		CreationTime:   time.Now(),
+		SCMLabels:      slices.Clone(st.labels),
+		LabelsReported: true,
+	}, nil
 }
 
 func (pr *PullRequest) getMapKey(pullRequest v1alpha1.PullRequest, owner, name string) string {
@@ -491,6 +497,30 @@ func (pr *PullRequest) RemoveLabels(ctx context.Context, pullRequest v1alpha1.Pu
 		}
 	}
 	st.labels = filtered
+	pullRequests[prKey] = st
+	return nil
+}
+
+// SetScmLabels sets SCM-side labels on an open pull request without going through RemoveLabels (for tests).
+func SetScmLabels(ctx context.Context, k8sClient client.Client, pullRequest v1alpha1.PullRequest, labelNames []string) error {
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	pr := &PullRequest{k8sClient: k8sClient}
+	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+
+	mutexPR.Lock()
+	defer mutexPR.Unlock()
+	if pullRequests == nil {
+		return errors.New("pull request not found")
+	}
+	st, ok := pullRequests[prKey]
+	if !ok {
+		return errors.New("pull request not found")
+	}
+	st.labels = slices.Clone(labelNames)
 	pullRequests[prKey] = st
 	return nil
 }

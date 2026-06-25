@@ -189,7 +189,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj promoterv1alpha1.PullReq
 }
 
 // FindOpen checks if a pull request with the specified source and target branches exists and is open.
-func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest promoterv1alpha1.PullRequest) (bool, string, time.Time, error) {
+func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest promoterv1alpha1.PullRequest) (scms.FindOpenResult, error) {
 	logger := log.FromContext(ctx)
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, k8sClient.ObjectKey{
@@ -197,7 +197,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest promoterv1alpha
 		Name:      pullRequest.Spec.RepositoryReference.Name,
 	})
 	if err != nil {
-		return false, "", time.Time{}, fmt.Errorf("failed to get git repository from object: %w", err)
+		return scms.FindOpenResult{}, fmt.Errorf("failed to get git repository from object: %w", err)
 	}
 
 	options := forgejo.ListPullRequestsOptions{
@@ -210,7 +210,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest promoterv1alpha
 		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
-		return false, "", time.Time{}, fmt.Errorf("failed to list pull requests: %w", err)
+		return scms.FindOpenResult{}, fmt.Errorf("failed to list pull requests: %w", err)
 	}
 	logger.V(4).Info("forgejo response status", "status", resp.Status)
 
@@ -219,10 +219,22 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest promoterv1alpha
 			prItem.Base.Name != pullRequest.Spec.TargetBranch {
 			continue
 		}
-		return true, strconv.FormatInt(prItem.Index, 10), *prItem.Created, nil
+		scmLabels := make([]string, 0, len(prItem.Labels))
+		for _, label := range prItem.Labels {
+			if label != nil {
+				scmLabels = append(scmLabels, label.Name)
+			}
+		}
+		return scms.FindOpenResult{
+			Found:          true,
+			ID:             strconv.FormatInt(prItem.Index, 10),
+			CreationTime:   *prItem.Created,
+			SCMLabels:      scmLabels,
+			LabelsReported: true,
+		}, nil
 	}
 
-	return false, "", time.Time{}, nil
+	return scms.FindOpenResult{}, nil
 }
 
 func checkOpenPR(ctx context.Context, pr PullRequest, repo *promoterv1alpha1.GitRepository, prID int64) (bool, error) {

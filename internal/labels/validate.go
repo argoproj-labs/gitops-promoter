@@ -55,6 +55,34 @@ func SetsEqual(a, b []string) bool {
 	return slices.Equal(aCopy, bCopy)
 }
 
+// ObservedManaged returns SCM labels within the promoter's managed set (union of desired and applied).
+// Used to refresh status.appliedLabels from FindOpen without treating third-party SCM labels as owned.
+func ObservedManaged(desired, applied, scm []string) []string {
+	managed := unionLabelSet(desired, applied)
+	if len(managed) == 0 {
+		return nil
+	}
+	observed := make([]string, 0, len(scm))
+	for _, name := range scm {
+		if _, ok := managed[name]; ok {
+			observed = append(observed, name)
+		}
+	}
+	slices.Sort(observed)
+	return observed
+}
+
+func unionLabelSet(a, b []string) map[string]struct{} {
+	out := make(map[string]struct{}, len(a)+len(b))
+	for _, name := range a {
+		out[name] = struct{}{}
+	}
+	for _, name := range b {
+		out[name] = struct{}{}
+	}
+	return out
+}
+
 // Diff returns labels to add and remove when moving from applied to desired.
 // Only labels in applied are candidates for removal (promoter ownership).
 func Diff(desired, applied []string) (toAdd, toRemove []string) {

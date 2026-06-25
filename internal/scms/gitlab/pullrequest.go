@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -229,7 +230,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) er
 }
 
 // FindOpen checks if a pull request is open and returns its status.
-func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string, time.Time, error) {
+func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.FindOpenResult, error) {
 	logger := log.FromContext(ctx)
 	logger.V(4).Info("Finding Open Pull Request")
 
@@ -238,7 +239,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 		Name:      pullRequest.Spec.RepositoryReference.Name,
 	})
 	if err != nil {
-		return false, "", time.Time{}, fmt.Errorf("failed to get repo: %w", err)
+		return scms.FindOpenResult{}, fmt.Errorf("failed to get repo: %w", err)
 	}
 
 	options := &gitlab.ListProjectMergeRequestsOptions{
@@ -253,11 +254,11 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 		statusCode := -1
 		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
 		logger.V(4).Info("gitlab response status", "status", "nil response")
-		return false, "", time.Time{}, errors.New("received nil response from GitLab API")
+		return scms.FindOpenResult{}, errors.New("received nil response from GitLab API")
 	}
 	metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, resp.StatusCode, time.Since(start), nil)
 	if err != nil {
-		return false, "", time.Time{}, fmt.Errorf("failed to list pull requests: %w", err)
+		return scms.FindOpenResult{}, fmt.Errorf("failed to list pull requests: %w", err)
 	}
 
 	logGitLabRateLimitsIfAvailable(
@@ -269,10 +270,16 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 		"status", resp.Status)
 
 	if len(mrs) > 0 {
-		return true, strconv.FormatInt(mrs[0].IID, 10), *mrs[0].CreatedAt, nil
+		return scms.FindOpenResult{
+			Found:          true,
+			ID:             strconv.FormatInt(mrs[0].IID, 10),
+			CreationTime:   *mrs[0].CreatedAt,
+			SCMLabels:      slices.Clone(mrs[0].Labels),
+			LabelsReported: true,
+		}, nil
 	}
 
-	return false, "", time.Time{}, nil
+	return scms.FindOpenResult{}, nil
 }
 
 // GetUrl retrieves the URL of the pull request.

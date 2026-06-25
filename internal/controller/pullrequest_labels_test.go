@@ -114,6 +114,54 @@ var _ = Describe("PullRequest SCM labels", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(applied).To(BeEmpty())
 	})
+
+	It("re-applies labels removed externally on the SCM", func() {
+		var name string
+		name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "scm-labels-drift")
+		resourceName = types.NamespacedName{Name: name, Namespace: "default"}
+
+		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
+
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, resourceName, pullRequest)).To(Succeed())
+			g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+			g.Expect(pullRequest.Status.ID).NotTo(BeEmpty())
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, resourceName, pullRequest)).To(Succeed())
+			pullRequest.Spec.Labels = []string{"lgtm", "approved"}
+			g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, resourceName, pullRequest)).To(Succeed())
+			g.Expect(pullRequest.Status.AppliedLabels).To(ConsistOf("lgtm", "approved"))
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		Expect(fake.SetScmLabels(ctx, k8sClient, *pullRequest, []string{"approved"})).To(Succeed())
+
+		fake.ResetLabelCallCount()
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, resourceName, pullRequest)).To(Succeed())
+			pullRequest.Spec.Title = pullRequest.Spec.Title + " "
+			g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, resourceName, pullRequest)).To(Succeed())
+			g.Expect(pullRequest.Status.AppliedLabels).To(ConsistOf("lgtm", "approved"))
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		provider := fake.NewFakePullRequestProvider(k8sClient)
+		applied, err := provider.GetAppliedLabels(ctx, *pullRequest)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(applied).To(ConsistOf("lgtm", "approved"))
+		Expect(fake.LabelCallCount()).To(BeNumerically(">", 0))
+	})
 })
 
 var _ = Describe("PromotionStrategy pullRequest propagation", func() {

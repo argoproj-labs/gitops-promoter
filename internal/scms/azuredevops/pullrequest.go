@@ -257,19 +257,19 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 }
 
 // FindOpen checks if a pull request is open and returns its status.
-func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string, time.Time, error) {
+func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.FindOpenResult, error) {
 	logger := log.FromContext(ctx)
 	logger.V(4).Info("Finding Open Pull Request in Azure DevOps")
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
-		return false, "", time.Time{}, fmt.Errorf("failed to get GitRepository: %w", err)
+		return scms.FindOpenResult{}, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
 	// Get Git client
 	gitClient, err := git.NewClient(ctx, pr.client)
 	if err != nil {
-		return false, "", time.Time{}, fmt.Errorf("failed to create Git client: %w", err)
+		return scms.FindOpenResult{}, fmt.Errorf("failed to create Git client: %w", err)
 	}
 
 	// Ensure branch names are in correct format for Azure DevOps
@@ -295,7 +295,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	if err != nil {
 		statusCode = 500
 		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
-		return false, "", time.Time{}, fmt.Errorf("failed to search pull requests: %w", err)
+		return scms.FindOpenResult{}, fmt.Errorf("failed to search pull requests: %w", err)
 	}
 
 	metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
@@ -306,7 +306,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 		// Generate URL directly since pullRequest.Status.ID is not set yet
 		url, err := pr.generatePullRequestUrl(ctx, pullRequest, *firstPR.PullRequestId)
 		if err != nil {
-			return false, "", time.Time{}, fmt.Errorf("failed to generate pull request URL: %w", err)
+			return scms.FindOpenResult{}, fmt.Errorf("failed to generate pull request URL: %w", err)
 		}
 
 		prStatus := v1alpha1.PullRequestCommonStatus{
@@ -315,10 +315,14 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 			PRCreationTime: metav1.Time{Time: firstPR.CreationDate.Time},
 			Url:            url,
 		}
-		return true, prStatus.ID, prStatus.PRCreationTime.Time, nil
+		return scms.FindOpenResult{
+			Found:        true,
+			ID:           prStatus.ID,
+			CreationTime: prStatus.PRCreationTime.Time,
+		}, nil
 	}
 
-	return false, "", time.Time{}, nil
+	return scms.FindOpenResult{}, nil
 }
 
 // GetUrl returns the URL of the pull request.

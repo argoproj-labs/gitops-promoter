@@ -196,13 +196,13 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 }
 
 // FindOpen checks if a pull request is open and returns its status.
-func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string, time.Time, error) {
+func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.FindOpenResult, error) {
 	logger := log.FromContext(ctx)
 	logger.V(4).Info("Finding Open Pull Request")
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil || gitRepo == nil {
-		return false, "", time.Time{}, fmt.Errorf("failed to get GitRepository: %w", err)
+		return scms.FindOpenResult{}, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
 	start := time.Now()
@@ -214,7 +214,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
 	}
 	if err != nil {
-		return false, "", time.Time{}, fmt.Errorf("failed to list pull requests: %w", err)
+		return scms.FindOpenResult{}, fmt.Errorf("failed to list pull requests: %w", err)
 	}
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
@@ -224,10 +224,23 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	logger.V(4).Info("github response status",
 		"status", response.Status)
 	if len(pullRequests) > 0 {
-		return true, strconv.Itoa(*pullRequests[0].Number), pullRequests[0].CreatedAt.Time, nil
+		pr0 := pullRequests[0]
+		scmLabels := make([]string, 0, len(pr0.Labels))
+		for _, label := range pr0.Labels {
+			if label != nil && label.Name != nil {
+				scmLabels = append(scmLabels, *label.Name)
+			}
+		}
+		return scms.FindOpenResult{
+			Found:          true,
+			ID:             strconv.Itoa(*pr0.Number),
+			CreationTime:   pr0.CreatedAt.Time,
+			SCMLabels:      scmLabels,
+			LabelsReported: true,
+		}, nil
 	}
 
-	return false, "", time.Time{}, nil
+	return scms.FindOpenResult{}, nil
 }
 
 // GetUrl returns the URL of the pull request.
