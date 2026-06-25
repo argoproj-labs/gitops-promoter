@@ -21,9 +21,9 @@ spec:
   # (which the controller should do automatically as long as there are no errors).
   state:
   # SCM pull request labels (not Kubernetes metadata.labels). Written by the ChangeTransferPolicy controller.
-  # labels:
-  #   - lgtm
-  #   - approved
+  labels:
+    - lgtm
+    - approved
 status:
   observedGeneration: 123 # compare with metadata.generation to detect stale status
   conditions:

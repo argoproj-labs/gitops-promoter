@@ -19,8 +19,6 @@ first one, the PromotionStrategy controller will inject a `proposedCommitStatus`
 previous environment. This is how the PromotionStrategy ensures that the environment PRs are merged in order, respecting
 the previous environments' active commit statuses.
 
-Optional `spec.pullRequest.labels.expression` on PromotionStrategy is copied to each ChangeTransferPolicy and drives dynamic SCM labels on promotion pull requests. See [Dynamic Pull Request Labels](advanced-usage/pull-request-labels.md).
-
 The [Events](monitoring/events.md#changetransferpolicy) page documents the Kubernetes events produced by 
 ChangeTransferPolicies. PromotionStrategy and ChangeTransferPolicy controllers set standard labels on related resources; see [Labels](debugging/labels.md#promotion-and-change-transfer).
 
@@ -32,8 +30,6 @@ ChangeTransferPolicies. PromotionStrategy and ChangeTransferPolicy controllers s
 
 A PullRequest is a thin wrapper around the SCM's pull request API. ChangeTransferPolicies use PullRequests to manage
 promotions. PullRequests carry promotion-strategy, change-transfer-policy, and environment labels for correlation; see [Labels](debugging/labels.md#promotion-and-change-transfer).
-
-`PullRequest.spec.labels` holds **SCM** label names (written by the ChangeTransferPolicy controller). Do not confuse these with `metadata.labels`, which are Kubernetes correlation labels. See [Dynamic Pull Request Labels](advanced-usage/pull-request-labels.md).
 
 ```yaml
 {!internal/controller/testdata/PullRequest.yaml!}

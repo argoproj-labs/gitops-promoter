@@ -4,7 +4,7 @@ GitOps Promoter can manage **SCM pull request labels** dynamically using an [exp
 
 ## Configure on PromotionStrategy
 
-In V1, configure labels at the top level of `PromotionStrategy` (not per environment). The PromotionStrategy controller copies `spec.pullRequest` onto each generated `ChangeTransferPolicy`.
+Configure labels at the top level of `PromotionStrategy` (not per environment). The PromotionStrategy controller copies `spec.pullRequest` onto each generated `ChangeTransferPolicy`.
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
@@ -140,8 +140,10 @@ Supported providers create repository or project labels automatically when `AddL
 
 ## API load and drift
 
+Using pull request labels increases SCM API traffic: each label change can trigger `create-label`, `add-labels`, and/or `remove-labels` calls on the PullRequest API. Monitor [`scm_calls_total` and `scm_calls_duration_seconds`](../monitoring/metrics.md#scm_calls_total) filtered by `api="PullRequest"` and `operation` in (`create-label`, `add-labels`, `remove-labels`).
+
 - **Zero SCM label calls when idle**: if `spec.labels` equals `status.appliedLabels`, the PullRequest controller skips SCM.
-- **No SCM GET in V1**: externally removed labels are not automatically re-applied (drift is not repaired).
+- **No SCM label GET**: externally removed labels are not automatically re-applied (drift is not repaired).
 - The promoter only removes labels it previously applied (`status.appliedLabels`).
 
 ## Prow / Tide example

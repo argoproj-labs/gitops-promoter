@@ -267,7 +267,7 @@ func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest promoterv1alph
 		return fmt.Errorf("failed to convert PR ID to int: %w", err)
 	}
 
-	labelIDs, err := pr.labelIDsForNames(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, labelNames, true)
+	labelIDs, err := pr.labelIDsForNames(ctx, repo, repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, labelNames, true)
 	if err != nil {
 		return err
 	}
@@ -300,7 +300,7 @@ func (pr *PullRequest) RemoveLabels(ctx context.Context, pullRequest promoterv1a
 		return fmt.Errorf("failed to convert PR ID to int: %w", err)
 	}
 
-	labelIDs, err := pr.labelIDsForNames(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, labelNames, false)
+	labelIDs, err := pr.labelIDsForNames(ctx, repo, repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, labelNames, false)
 	if err != nil {
 		return err
 	}
@@ -322,7 +322,7 @@ func (pr *PullRequest) RemoveLabels(ctx context.Context, pullRequest promoterv1a
 	return nil
 }
 
-func (pr *PullRequest) labelIDsForNames(owner, repo string, labelNames []string, createMissing bool) ([]int64, error) {
+func (pr *PullRequest) labelIDsForNames(ctx context.Context, gitRepo *promoterv1alpha1.GitRepository, owner, repo string, labelNames []string, createMissing bool) ([]int64, error) {
 	nameToID, err := pr.repoLabelNameToID(owner, repo)
 	if err != nil {
 		return nil, err
@@ -336,7 +336,7 @@ func (pr *PullRequest) labelIDsForNames(owner, repo string, labelNames []string,
 				continue
 			}
 			var createErr error
-			id, createErr = pr.createRepoLabelID(owner, repo, name)
+			id, createErr = pr.createRepoLabelID(ctx, gitRepo, owner, repo, name)
 			if createErr != nil {
 				return nil, createErr
 			}
@@ -348,11 +348,15 @@ func (pr *PullRequest) labelIDsForNames(owner, repo string, labelNames []string,
 	return ids, nil
 }
 
-func (pr *PullRequest) createRepoLabelID(owner, repo, name string) (int64, error) {
+func (pr *PullRequest) createRepoLabelID(ctx context.Context, gitRepo *promoterv1alpha1.GitRepository, owner, repo, name string) (int64, error) {
+	start := time.Now()
 	created, resp, err := pr.foregejoClient.CreateLabel(owner, repo, forgejo.CreateLabelOption{
 		Name:  name,
-		Color: defaultForgejoLabelColor,
+		Color: scms.AutoCreatedLabelColor,
 	})
+	if resp != nil {
+		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreateLabel, resp.StatusCode, time.Since(start), nil)
+	}
 	if err == nil {
 		return created.ID, nil
 	}
@@ -380,8 +384,6 @@ func (pr *PullRequest) repoLabelNameToID(owner, repo string) (map[string]int64, 
 	}
 	return nameToID, nil
 }
-
-const defaultForgejoLabelColor = "cccccc"
 
 func (pr *PullRequest) listAllRepoLabels(owner, repo string) ([]*forgejo.Label, error) {
 	var allLabels []*forgejo.Label

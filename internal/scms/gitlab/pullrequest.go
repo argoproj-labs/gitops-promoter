@@ -362,8 +362,6 @@ func (pr *PullRequest) updateMergeRequestLabels(ctx context.Context, prObj v1alp
 	return nil
 }
 
-const defaultGitLabLabelColor = "#428BCA"
-
 func (pr *PullRequest) ensureProjectLabels(ctx context.Context, repo *v1alpha1.GitRepository, labelNames []string) error {
 	existing := make(map[string]struct{}, len(labelNames))
 	page := int64(1)
@@ -391,7 +389,7 @@ func (pr *PullRequest) ensureProjectLabels(ctx context.Context, repo *v1alpha1.G
 		start := time.Now()
 		_, resp, err := pr.client.Labels.CreateLabel(repo.Spec.GitLab.ProjectID, &gitlab.CreateLabelOptions{
 			Name:  gitlab.Ptr(name),
-			Color: gitlab.Ptr(defaultGitLabLabelColor),
+			Color: gitlab.Ptr(scms.AutoCreatedLabelColorHex),
 		}, gitlab.WithContext(ctx))
 		if resp != nil {
 			metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreateLabel, resp.StatusCode, time.Since(start), nil)

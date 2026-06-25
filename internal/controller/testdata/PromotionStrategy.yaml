@@ -18,11 +18,10 @@ spec:
       - key: performance-test
       proposedCommitStatuses:
       - key: deployment-freeze
-  # Optional: dynamic SCM pull request labels (copied to each ChangeTransferPolicy).
-  # pullRequest:
-  #   labels:
-  #     expression: |
-  #       all(Status.Proposed.CommitStatuses, {.Phase == 'success'}) ? ['lgtm'] : []
+  pullRequest:
+    labels:
+      expression: |
+        all(Status.Proposed.CommitStatuses, {.Phase == 'success'}) ? ['lgtm'] : []
 status:
   observedGeneration: 123 # compare with metadata.generation to detect stale status
   conditions:
