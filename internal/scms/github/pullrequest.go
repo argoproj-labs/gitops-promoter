@@ -319,31 +319,39 @@ func (pr *PullRequest) ensureRepositoryLabels(ctx context.Context, gitRepo *v1al
 			continue
 		}
 
-		start := time.Now()
-		_, response, err := pr.client.Issues.CreateLabel(ctx, owner, repo, &github.Label{
-			Name:  github.Ptr(name),
-			Color: github.Ptr(scms.AutoCreatedLabelColor),
-		})
-		if response != nil {
-			metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreateLabel, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
-		}
-		if err != nil {
-			if response != nil && response.StatusCode == http.StatusUnprocessableEntity {
-				exists, listErr := pr.repositoryHasLabel(ctx, owner, repo, name)
-				if listErr != nil {
-					return listErr
-				}
-				if exists {
-					existing[name] = struct{}{}
-					continue
-				}
-			}
-			return fmt.Errorf("failed to create repository label %q: %w", name, err)
+		if err := pr.createRepositoryLabel(ctx, gitRepo, owner, repo, name); err != nil {
+			return err
 		}
 		existing[name] = struct{}{}
 	}
 
 	return nil
+}
+
+func (pr *PullRequest) createRepositoryLabel(ctx context.Context, gitRepo *v1alpha1.GitRepository, owner, repo, name string) error {
+	start := time.Now()
+	_, response, err := pr.client.Issues.CreateLabel(ctx, owner, repo, &github.Label{
+		Name:  github.Ptr(name),
+		Color: github.Ptr(scms.AutoCreatedLabelColor),
+	})
+	if response != nil {
+		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreateLabel, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
+	}
+	if err == nil {
+		return nil
+	}
+	// GitHub returns 422 for "label already exists" (create race) and for real validation
+	// failures. Re-list and only treat 422 as success when the label is actually present.
+	if response != nil && response.StatusCode == http.StatusUnprocessableEntity {
+		exists, err := pr.repositoryHasLabel(ctx, owner, repo, name)
+		if err != nil {
+			return err
+		}
+		if exists {
+			return nil
+		}
+	}
+	return fmt.Errorf("failed to create repository label %q: %w", name, err)
 }
 
 func (pr *PullRequest) repositoryHasLabel(ctx context.Context, owner, repo, name string) (bool, error) {
