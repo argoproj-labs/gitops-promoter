@@ -319,6 +319,13 @@ func (r *PullRequestReconciler) handleStateTransitions(ctx context.Context, pr *
 				}
 				return false, fmt.Errorf("failed to create pull request: %w", err) // Top-level wrap for create errors
 			}
+			// Post any pending merge signals immediately after creation — avoids waiting for the
+			// next periodic requeue (which can be minutes) when PendingMergeSignals was set before the ID existed.
+			if pr.Status.ID != "" {
+				if err := r.reconcileMergeSignals(ctx, pr, provider); err != nil {
+					return false, fmt.Errorf("failed to reconcile merge signals after PR creation: %w", err)
+				}
+			}
 		}
 	case promoterv1alpha1.PullRequestMerged:
 		logger.Info("Merging PullRequest")
