@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/controller"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
@@ -50,9 +51,23 @@ func psLabeledMeta(name string) metav1.ObjectMeta {
 	return m
 }
 
+// newFakeClientBuilder returns a fake client builder with gate promotionStrategyRef field indexes.
+func newFakeClientBuilder() *fake.ClientBuilder {
+	b := fake.NewClientBuilder().WithScheme(utils.GetScheme())
+	for _, obj := range []client.Object{
+		&promoterv1alpha1.ArgoCDCommitStatus{},
+		&promoterv1alpha1.GitCommitStatus{},
+		&promoterv1alpha1.TimedCommitStatus{},
+		&promoterv1alpha1.WebRequestCommitStatus{},
+	} {
+		b = b.WithIndex(obj, controller.PromotionStrategyRefField, controller.PromotionStrategyRefIndexValues)
+	}
+	return b
+}
+
 // newFakeReader builds a fake controller-runtime read client over the promoter scheme.
 func newFakeReader(objs ...client.Object) client.Reader {
-	return fake.NewClientBuilder().WithScheme(utils.GetScheme()).WithObjects(objs...).Build()
+	return newFakeClientBuilder().WithObjects(objs...).Build()
 }
 
 // seedObjects returns a representative PromotionStrategy and all of its related

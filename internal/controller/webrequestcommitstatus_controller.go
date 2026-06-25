@@ -528,21 +528,20 @@ func (r *WebRequestCommitStatusReconciler) enqueueWebRequestCommitStatusForPromo
 			return nil
 		}
 
-		// List all WebRequestCommitStatus resources in the same namespace
 		var wrcsList promoterv1alpha1.WebRequestCommitStatusList
-		if err := r.List(ctx, &wrcsList, client.InNamespace(ps.Namespace)); err != nil {
+		if err := r.List(ctx, &wrcsList,
+			client.InNamespace(ps.Namespace),
+			client.MatchingFields{PromotionStrategyRefField: ps.Name},
+		); err != nil {
 			log.FromContext(ctx).Error(err, "failed to list WebRequestCommitStatus resources")
 			return nil
 		}
 
-		// Enqueue all WebRequestCommitStatus resources that reference this PromotionStrategy
-		var requests []ctrl.Request
-		for _, wrcs := range wrcsList.Items {
-			if wrcs.Spec.PromotionStrategyRef.Name == ps.Name {
-				requests = append(requests, ctrl.Request{
-					NamespacedName: client.ObjectKeyFromObject(&wrcs),
-				})
-			}
+		requests := make([]ctrl.Request, 0, len(wrcsList.Items))
+		for i := range wrcsList.Items {
+			requests = append(requests, ctrl.Request{
+				NamespacedName: client.ObjectKeyFromObject(&wrcsList.Items[i]),
+			})
 		}
 
 		return requests

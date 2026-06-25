@@ -156,6 +156,9 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
+          // go fix applies stdlib fixers for the new toolchain (any, min/max, iterators, …).
+          // Run before lint-fix so golangci-lint can clean up anything fix leaves behind.
+          'make go-fix || true',
           'make lint-fix || true',
         ],
         installTools: {
@@ -186,6 +189,20 @@
         'node',
       ],
       groupName: 'Node.js',
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      automerge: false,
+    },
+    // ----------------------------------------------------------------------
+    // Group C2: cosign CLI (release workflows; action SHA is Dependabot-owned)
+    // ----------------------------------------------------------------------
+    {
+      description: 'Keep cosign CLI in sync across release workflows',
+      matchDepNames: [
+        'sigstore/cosign',
+      ],
+      groupName: 'cosign',
       semanticCommits: 'enabled',
       semanticCommitType: 'chore',
       semanticCommitScope: 'deps',
@@ -315,6 +332,20 @@
       addLabels: [
         'coordinate-with-helm-repo',
       ],
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      automerge: false,
+    },
+    // ----------------------------------------------------------------------
+    // Group D: Argo CD (tilt-ci + demo CLI install pins)
+    // ----------------------------------------------------------------------
+    {
+      description: 'Keep Argo CD install versions in sync across tilt-ci and the demo CLI',
+      matchDepNames: [
+        'argoproj/argo-cd',
+      ],
+      groupName: 'Argo CD',
       semanticCommits: 'enabled',
       semanticCommitType: 'chore',
       semanticCommitScope: 'deps',
@@ -551,6 +582,22 @@
       versioningTemplate: 'semver',
       extractVersionTemplate: '^v(?<version>.*)$',
     },
+    // ===== cosign CLI (release workflows; installer action SHA is Dependabot-owned) =====
+    {
+      customType: 'regex',
+      description: 'Update cosign CLI version pinned in release workflows',
+      managerFilePatterns: [
+        '/^\\.github/workflows/release\\.yaml$/',
+        '/^\\.github/workflows/release-latest\\.yaml$/',
+      ],
+      matchStrings: [
+        'cosign-release:\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
+      ],
+      depNameTemplate: 'sigstore/cosign',
+      datasourceTemplate: 'github-releases',
+      versioningTemplate: 'semver',
+      extractVersionTemplate: '^v(?<version>.*)$',
+    },
     // ===== goreleaser pinned in release workflows (kept in lockstep) =====
     {
       customType: 'regex',
@@ -580,6 +627,49 @@
       depNameTemplate: 'node',
       datasourceTemplate: 'node-version',
       versioningTemplate: 'node',
+    },
+    // ===== Argo CD (tilt-ci + demo CLI install pins) =====
+    {
+      customType: 'regex',
+      description: 'Update Argo CD version pinned in the tilt-ci workflow',
+      managerFilePatterns: [
+        '/^\\.github/workflows/tilt-ci\\.yaml$/',
+      ],
+      matchStrings: [
+        'ARGOCD_VERSION:\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
+      ],
+      depNameTemplate: 'argoproj/argo-cd',
+      datasourceTemplate: 'github-releases',
+      versioningTemplate: 'semver',
+      extractVersionTemplate: '^v(?<version>.*)$',
+    },
+    {
+      customType: 'regex',
+      description: 'Update Argo CD version embedded in the demo CLI installer',
+      managerFilePatterns: [
+        '/^cmd/demo/config/argocd_version$/',
+      ],
+      matchStrings: [
+        '^v(?<currentValue>\\d+\\.\\d+\\.\\d+)\\s*$',
+      ],
+      depNameTemplate: 'argoproj/argo-cd',
+      datasourceTemplate: 'github-releases',
+      versioningTemplate: 'semver',
+      extractVersionTemplate: '^v(?<version>.*)$',
+    },
+    {
+      customType: 'regex',
+      description: 'Update Argo CD upstream URL in the demo CLI config template',
+      managerFilePatterns: [
+        '/^cmd/demo/config/config\\.yaml$/',
+      ],
+      matchStrings: [
+        'upstream: https://raw\\.githubusercontent\\.com/argoproj/argo-cd/v(?<currentValue>\\d+\\.\\d+\\.\\d+)/manifests/install-with-hydrator\\.yaml',
+      ],
+      depNameTemplate: 'argoproj/argo-cd',
+      datasourceTemplate: 'github-releases',
+      versioningTemplate: 'semver',
+      extractVersionTemplate: '^v(?<version>.*)$',
     },
     // ===== Workflow tool inputs (version: fields Dependabot cannot reach) =====
     {
