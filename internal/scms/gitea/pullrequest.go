@@ -249,3 +249,23 @@ func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest promoterv1alpha1.
 
 	return fmt.Sprintf("https://%s/%s/%s/pulls/%s", pr.domain, gitRepo.Spec.Gitea.Owner, gitRepo.Spec.Gitea.Name, pullRequest.Status.ID), nil
 }
+
+// AddLabels is not yet supported for Gitea.
+func (pr *PullRequest) AddLabels(_ context.Context, _ promoterv1alpha1.PullRequest, _ []string) error {
+	return fmt.Errorf("merge signal delegation (AddLabels) is not supported for Gitea in this version")
+}
+
+// RemoveLabel is not yet supported for Gitea.
+func (pr *PullRequest) RemoveLabel(_ context.Context, _ promoterv1alpha1.PullRequest, _ string) error {
+	return fmt.Errorf("merge signal delegation (RemoveLabel) is not supported for Gitea in this version")
+}
+
+// CreateComment is not yet supported for Gitea.
+func (pr *PullRequest) CreateComment(_ context.Context, _ promoterv1alpha1.PullRequest, _ string) (string, error) {
+	return "", fmt.Errorf("merge signal delegation (CreateComment) is not supported for Gitea in this version")
+}
+
+// DeleteComment is not yet supported for Gitea.
+func (pr *PullRequest) DeleteComment(_ context.Context, _ promoterv1alpha1.PullRequest, _ string) error {
+	return fmt.Errorf("merge signal delegation (DeleteComment) is not supported for Gitea in this version")
+}

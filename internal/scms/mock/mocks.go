@@ -680,6 +680,251 @@ func (_c *MockPullRequestProvider_Merge_Call) RunAndReturn(run func(ctx context.
 	return _c
 }
 
+// AddLabels provides a mock function for the type MockPullRequestProvider
+func (_mock *MockPullRequestProvider) AddLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labels []string) error {
+	ret := _mock.Called(ctx, pullRequest, labels)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AddLabels")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, v1alpha1.PullRequest, []string) error); ok {
+		r0 = returnFunc(ctx, pullRequest, labels)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockPullRequestProvider_AddLabels_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AddLabels'
+type MockPullRequestProvider_AddLabels_Call struct {
+	*mock.Call
+}
+
+// AddLabels is a helper method to define mock.On call
+//   - ctx context.Context
+//   - pullRequest v1alpha1.PullRequest
+//   - labels []string
+func (_e *MockPullRequestProvider_Expecter) AddLabels(ctx any, pullRequest any, labels any) *MockPullRequestProvider_AddLabels_Call {
+	return &MockPullRequestProvider_AddLabels_Call{Call: _e.mock.On("AddLabels", ctx, pullRequest, labels)}
+}
+
+func (_c *MockPullRequestProvider_AddLabels_Call) Run(run func(ctx context.Context, pullRequest v1alpha1.PullRequest, labels []string)) *MockPullRequestProvider_AddLabels_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 v1alpha1.PullRequest
+		if args[1] != nil {
+			arg1 = args[1].(v1alpha1.PullRequest)
+		}
+		var arg2 []string
+		if args[2] != nil {
+			arg2 = args[2].([]string)
+		}
+		run(arg0, arg1, arg2)
+	})
+	return _c
+}
+
+func (_c *MockPullRequestProvider_AddLabels_Call) Return(err error) *MockPullRequestProvider_AddLabels_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockPullRequestProvider_AddLabels_Call) RunAndReturn(run func(ctx context.Context, pullRequest v1alpha1.PullRequest, labels []string) error) *MockPullRequestProvider_AddLabels_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RemoveLabel provides a mock function for the type MockPullRequestProvider
+func (_mock *MockPullRequestProvider) RemoveLabel(ctx context.Context, pullRequest v1alpha1.PullRequest, label string) error {
+	ret := _mock.Called(ctx, pullRequest, label)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RemoveLabel")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, v1alpha1.PullRequest, string) error); ok {
+		r0 = returnFunc(ctx, pullRequest, label)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockPullRequestProvider_RemoveLabel_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RemoveLabel'
+type MockPullRequestProvider_RemoveLabel_Call struct {
+	*mock.Call
+}
+
+// RemoveLabel is a helper method to define mock.On call
+//   - ctx context.Context
+//   - pullRequest v1alpha1.PullRequest
+//   - label string
+func (_e *MockPullRequestProvider_Expecter) RemoveLabel(ctx any, pullRequest any, label any) *MockPullRequestProvider_RemoveLabel_Call {
+	return &MockPullRequestProvider_RemoveLabel_Call{Call: _e.mock.On("RemoveLabel", ctx, pullRequest, label)}
+}
+
+func (_c *MockPullRequestProvider_RemoveLabel_Call) Run(run func(ctx context.Context, pullRequest v1alpha1.PullRequest, label string)) *MockPullRequestProvider_RemoveLabel_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 v1alpha1.PullRequest
+		if args[1] != nil {
+			arg1 = args[1].(v1alpha1.PullRequest)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(arg0, arg1, arg2)
+	})
+	return _c
+}
+
+func (_c *MockPullRequestProvider_RemoveLabel_Call) Return(err error) *MockPullRequestProvider_RemoveLabel_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockPullRequestProvider_RemoveLabel_Call) RunAndReturn(run func(ctx context.Context, pullRequest v1alpha1.PullRequest, label string) error) *MockPullRequestProvider_RemoveLabel_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// CreateComment provides a mock function for the type MockPullRequestProvider
+func (_mock *MockPullRequestProvider) CreateComment(ctx context.Context, pullRequest v1alpha1.PullRequest, comment string) (string, error) {
+	ret := _mock.Called(ctx, pullRequest, comment)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateComment")
+	}
+
+	var r0 string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, v1alpha1.PullRequest, string) (string, error)); ok {
+		return returnFunc(ctx, pullRequest, comment)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, v1alpha1.PullRequest, string) string); ok {
+		r0 = returnFunc(ctx, pullRequest, comment)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, v1alpha1.PullRequest, string) error); ok {
+		r1 = returnFunc(ctx, pullRequest, comment)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockPullRequestProvider_CreateComment_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateComment'
+type MockPullRequestProvider_CreateComment_Call struct {
+	*mock.Call
+}
+
+// CreateComment is a helper method to define mock.On call
+//   - ctx context.Context
+//   - pullRequest v1alpha1.PullRequest
+//   - comment string
+func (_e *MockPullRequestProvider_Expecter) CreateComment(ctx any, pullRequest any, comment any) *MockPullRequestProvider_CreateComment_Call {
+	return &MockPullRequestProvider_CreateComment_Call{Call: _e.mock.On("CreateComment", ctx, pullRequest, comment)}
+}
+
+func (_c *MockPullRequestProvider_CreateComment_Call) Run(run func(ctx context.Context, pullRequest v1alpha1.PullRequest, comment string)) *MockPullRequestProvider_CreateComment_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 v1alpha1.PullRequest
+		if args[1] != nil {
+			arg1 = args[1].(v1alpha1.PullRequest)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(arg0, arg1, arg2)
+	})
+	return _c
+}
+
+func (_c *MockPullRequestProvider_CreateComment_Call) Return(commentID string, err error) *MockPullRequestProvider_CreateComment_Call {
+	_c.Call.Return(commentID, err)
+	return _c
+}
+
+func (_c *MockPullRequestProvider_CreateComment_Call) RunAndReturn(run func(ctx context.Context, pullRequest v1alpha1.PullRequest, comment string) (string, error)) *MockPullRequestProvider_CreateComment_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// DeleteComment provides a mock function for the type MockPullRequestProvider
+func (_mock *MockPullRequestProvider) DeleteComment(ctx context.Context, pullRequest v1alpha1.PullRequest, commentID string) error {
+	ret := _mock.Called(ctx, pullRequest, commentID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteComment")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, v1alpha1.PullRequest, string) error); ok {
+		r0 = returnFunc(ctx, pullRequest, commentID)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockPullRequestProvider_DeleteComment_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteComment'
+type MockPullRequestProvider_DeleteComment_Call struct {
+	*mock.Call
+}
+
+// DeleteComment is a helper method to define mock.On call
+//   - ctx context.Context
+//   - pullRequest v1alpha1.PullRequest
+//   - commentID string
+func (_e *MockPullRequestProvider_Expecter) DeleteComment(ctx any, pullRequest any, commentID any) *MockPullRequestProvider_DeleteComment_Call {
+	return &MockPullRequestProvider_DeleteComment_Call{Call: _e.mock.On("DeleteComment", ctx, pullRequest, commentID)}
+}
+
+func (_c *MockPullRequestProvider_DeleteComment_Call) Run(run func(ctx context.Context, pullRequest v1alpha1.PullRequest, commentID string)) *MockPullRequestProvider_DeleteComment_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 v1alpha1.PullRequest
+		if args[1] != nil {
+			arg1 = args[1].(v1alpha1.PullRequest)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(arg0, arg1, arg2)
+	})
+	return _c
+}
+
+func (_c *MockPullRequestProvider_DeleteComment_Call) Return(err error) *MockPullRequestProvider_DeleteComment_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockPullRequestProvider_DeleteComment_Call) RunAndReturn(run func(ctx context.Context, pullRequest v1alpha1.PullRequest, commentID string) error) *MockPullRequestProvider_DeleteComment_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Update provides a mock function for the type MockPullRequestProvider
 func (_mock *MockPullRequestProvider) Update(ctx context.Context, title string, description string, pullRequest v1alpha1.PullRequest) error {
 	ret := _mock.Called(ctx, title, description, pullRequest)

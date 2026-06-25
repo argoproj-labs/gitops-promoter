@@ -229,6 +229,106 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	return false, "", time.Time{}, nil
 }
 
+// AddLabels adds labels to an existing pull request.
+// PRs are issues in GitHub's model, so the Issues API is used here.
+func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labels []string) error {
+	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
+	if err != nil {
+		return fmt.Errorf("failed to convert PR number to int: %w", err)
+	}
+
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil || gitRepo == nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	start := time.Now()
+	_, response, err := pr.client.Issues.AddLabelsToIssue(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, prNumber, labels)
+	if response != nil {
+		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationUpdate, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
+	}
+	if err != nil {
+		return fmt.Errorf("failed to add labels to pull request: %w", err)
+	}
+
+	return nil
+}
+
+// RemoveLabel removes a single label from an existing pull request.
+// PRs are issues in GitHub's model, so the Issues API is used here.
+func (pr *PullRequest) RemoveLabel(ctx context.Context, pullRequest v1alpha1.PullRequest, label string) error {
+	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
+	if err != nil {
+		return fmt.Errorf("failed to convert PR number to int: %w", err)
+	}
+
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil || gitRepo == nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	start := time.Now()
+	response, err := pr.client.Issues.RemoveLabelForIssue(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, prNumber, label)
+	if response != nil {
+		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationUpdate, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
+	}
+	if err != nil {
+		return fmt.Errorf("failed to remove label from pull request: %w", err)
+	}
+
+	return nil
+}
+
+// CreateComment posts a comment on an existing pull request and returns its SCM-assigned ID.
+// PRs are issues in GitHub's model, so the Issues API is used here.
+func (pr *PullRequest) CreateComment(ctx context.Context, pullRequest v1alpha1.PullRequest, comment string) (string, error) {
+	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
+	if err != nil {
+		return "", fmt.Errorf("failed to convert PR number to int: %w", err)
+	}
+
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil || gitRepo == nil {
+		return "", fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	start := time.Now()
+	issueComment, response, err := pr.client.Issues.CreateComment(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, prNumber, &github.IssueComment{Body: &comment})
+	if response != nil {
+		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to create comment on pull request: %w", err)
+	}
+
+	return strconv.FormatInt(issueComment.GetID(), 10), nil
+}
+
+// DeleteComment removes a previously posted comment from an existing pull request.
+// PRs are issues in GitHub's model, so the Issues API is used here.
+func (pr *PullRequest) DeleteComment(ctx context.Context, pullRequest v1alpha1.PullRequest, commentID string) error {
+	commentIDInt, err := strconv.ParseInt(commentID, 10, 64)
+	if err != nil {
+		return fmt.Errorf("failed to parse comment ID: %w", err)
+	}
+
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil || gitRepo == nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	start := time.Now()
+	response, err := pr.client.Issues.DeleteComment(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, commentIDInt)
+	if response != nil {
+		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationClose, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
+	}
+	if err != nil {
+		return fmt.Errorf("failed to delete comment from pull request: %w", err)
+	}
+
+	return nil
+}
+
 // GetUrl returns the URL of the pull request.
 func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequest) (string, error) {
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})

@@ -143,6 +143,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.HTTPRequestSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("HydratorMetadata"):
 		return &apiv1alpha1.HydratorMetadataApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("MergeSignals"):
+		return &apiv1alpha1.MergeSignalsApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ModeSpec"):
 		return &apiv1alpha1.ModeSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("OAuth2Auth"):

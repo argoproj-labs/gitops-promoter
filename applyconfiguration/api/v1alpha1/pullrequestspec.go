@@ -49,6 +49,10 @@ type PullRequestSpecApplyConfiguration struct {
 	// State of the pull request (closed, merged, or open). Must always be "open" when creating a new pull request.
 	// This value may not be changed to "closed" or "merged" unless the pull request status.id is set.
 	State *apiv1alpha1.PullRequestState `json:"state,omitempty"`
+	// PendingMergeSignals carries merge signals (comments and/or labels) to post on the PR.
+	// Set by the ChangeTransferPolicy controller when external merge delegation is configured and
+	// all merge conditions are met. Cleared when conditions stop being met, which triggers retraction.
+	PendingMergeSignals *MergeSignalsApplyConfiguration `json:"pendingMergeSignals,omitempty"`
 }
 
 // PullRequestSpecApplyConfiguration constructs a declarative configuration of the PullRequestSpec type for use with
@@ -118,5 +122,13 @@ func (b *PullRequestSpecApplyConfiguration) WithMergeSha(value string) *PullRequ
 // If called multiple times, the State field is set to the value of the last call.
 func (b *PullRequestSpecApplyConfiguration) WithState(value apiv1alpha1.PullRequestState) *PullRequestSpecApplyConfiguration {
 	b.State = &value
+	return b
+}
+
+// WithPendingMergeSignals sets the PendingMergeSignals field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the PendingMergeSignals field is set to the value of the last call.
+func (b *PullRequestSpecApplyConfiguration) WithPendingMergeSignals(value *MergeSignalsApplyConfiguration) *PullRequestSpecApplyConfiguration {
+	b.PendingMergeSignals = value
 	return b
 }

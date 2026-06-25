@@ -74,6 +74,20 @@ type ChangeTransferPolicySpec struct {
 	// +listType:=map
 	// +listMapKey=key
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
+
+	// MergeComments lists comments to post on the PR when all merge conditions are met,
+	// instead of merging the PR directly via the SCM API. An external system (e.g. Prow)
+	// is expected to perform the actual merge after seeing these comments.
+	// Requires autoMerge: true. Labels and comments may be combined.
+	// +kubebuilder:validation:Optional
+	MergeComments []string `json:"mergeComments,omitempty"`
+
+	// MergeLabels lists labels to add to the PR when all merge conditions are met,
+	// instead of merging the PR directly via the SCM API. An external system (e.g. Tide)
+	// is expected to perform the actual merge after seeing these labels.
+	// Requires autoMerge: true. Labels and comments may be combined.
+	// +kubebuilder:validation:Optional
+	MergeLabels []string `json:"mergeLabels,omitempty"`
 }
 
 // ChangeRequestPolicyCommitStatusPhase defines the phase of a commit status in a ChangeTransferPolicy.

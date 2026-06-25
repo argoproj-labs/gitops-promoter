@@ -25,4 +25,20 @@ type PullRequestProvider interface {
 	FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (found bool, id string, creationTime time.Time, err error)
 	// GetUrl retrieves the URL of the pull request.
 	GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequest) (string, error)
+	// AddLabels adds the specified labels to an existing pull request.
+	// Used for external merge delegation (e.g. signalling Tide to merge).
+	// pullRequest.Status.ID is guaranteed to be set when this is called.
+	AddLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labels []string) error
+	// RemoveLabel removes a single label from an existing pull request.
+	// Used to retract a previously added merge signal label.
+	// pullRequest.Status.ID is guaranteed to be set when this is called.
+	RemoveLabel(ctx context.Context, pullRequest v1alpha1.PullRequest, label string) error
+	// CreateComment posts a comment on an existing pull request and returns its SCM-assigned ID.
+	// Used for external merge delegation (e.g. posting /lgtm for Prow).
+	// pullRequest.Status.ID is guaranteed to be set when this is called.
+	CreateComment(ctx context.Context, pullRequest v1alpha1.PullRequest, comment string) (commentID string, err error)
+	// DeleteComment removes a previously posted comment from an existing pull request.
+	// Used to retract a merge signal comment when conditions stop being met.
+	// pullRequest.Status.ID is guaranteed to be set when this is called.
+	DeleteComment(ctx context.Context, pullRequest v1alpha1.PullRequest, commentID string) error
 }

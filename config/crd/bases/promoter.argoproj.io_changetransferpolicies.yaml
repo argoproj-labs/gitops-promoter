@@ -113,6 +113,24 @@ spec:
                 required:
                 - name
                 type: object
+              mergeComments:
+                description: |-
+                  MergeComments lists comments to post on the PR when all merge conditions are met,
+                  instead of merging the PR directly via the SCM API. An external system (e.g. Prow)
+                  is expected to perform the actual merge after seeing these comments.
+                  Requires autoMerge: true. Labels and comments may be combined.
+                items:
+                  type: string
+                type: array
+              mergeLabels:
+                description: |-
+                  MergeLabels lists labels to add to the PR when all merge conditions are met,
+                  instead of merging the PR directly via the SCM API. An external system (e.g. Tide)
+                  is expected to perform the actual merge after seeing these labels.
+                  Requires autoMerge: true. Labels and comments may be combined.
+                items:
+                  type: string
+                type: array
               proposedBranch:
                 description: |-
                   ProposedBranch staging hydrated branch

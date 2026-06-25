@@ -80,12 +80,28 @@ type PullRequestSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Enum=closed;merged;open
 	State PullRequestState `json:"state"`
+	// PendingMergeSignals carries merge signals (comments and/or labels) to post on the PR.
+	// Set by the ChangeTransferPolicy controller when external merge delegation is configured and
+	// all merge conditions are met. Cleared when conditions stop being met, which triggers retraction.
+	// +kubebuilder:validation:Optional
+	PendingMergeSignals *MergeSignals `json:"pendingMergeSignals,omitempty"`
 }
 
 // CommitConfiguration defines the commit configuration for how we will merge/squash/etc the pull request.
 type CommitConfiguration struct {
 	// Message is the commit message that will be written for the commit that's made when merging the PR.
 	Message string `json:"message"`
+}
+
+// MergeSignals defines the comments and labels to post on a pull request to
+// delegate merging to an external system (e.g. Prow/Tide).
+type MergeSignals struct {
+	// Comments lists the comments to post on the PR (e.g. "/lgtm", "/approve").
+	// +kubebuilder:validation:Optional
+	Comments []string `json:"comments,omitempty"`
+	// Labels lists the labels to add to the PR (e.g. "lgtm", "approved").
+	// +kubebuilder:validation:Optional
+	Labels []string `json:"labels,omitempty"`
 }
 
 // PullRequestStatus defines the observed state of PullRequest
@@ -119,6 +135,12 @@ type PullRequestStatus struct {
 	// The PullRequest resource will be deleted after this flag is set when possible, but the status is
 	// preserved in the owning ChangeTransferPolicy to maintain a record.
 	ExternallyMergedOrClosed *bool `json:"externallyMergedOrClosed,omitempty"`
+	// PostedMergeCommentIDs maps each posted merge comment body to its SCM comment ID.
+	// Used to delete the comments (retraction) if merge conditions stop being met.
+	PostedMergeCommentIDs map[string]string `json:"postedMergeCommentIDs,omitempty"`
+	// AppliedMergeLabels lists the labels that were added to the PR by the controller.
+	// Used to remove them (retraction) if merge conditions stop being met.
+	AppliedMergeLabels []string `json:"appliedMergeLabels,omitempty"`
 
 	// Conditions Represents the observations of the current state.
 	// +patchMergeKey=type
