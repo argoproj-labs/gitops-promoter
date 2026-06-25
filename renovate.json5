@@ -170,6 +170,20 @@
       },
     },
     // ----------------------------------------------------------------------
+    // Group C2: cosign CLI (release workflows; action SHA is Dependabot-owned)
+    // ----------------------------------------------------------------------
+    {
+      description: 'Keep cosign CLI in sync across release workflows',
+      matchDepNames: [
+        'sigstore/cosign',
+      ],
+      groupName: 'cosign',
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      automerge: false,
+    },
+    // ----------------------------------------------------------------------
     // Group C: goreleaser (Makefile + both release workflows in one PR)
     // ----------------------------------------------------------------------
     {
@@ -539,6 +553,22 @@
         'GORELEASER_VERSION\\s*\\??=\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
       ],
       depNameTemplate: 'goreleaser/goreleaser',
+      datasourceTemplate: 'github-releases',
+      versioningTemplate: 'semver',
+      extractVersionTemplate: '^v(?<version>.*)$',
+    },
+    // ===== cosign CLI (release workflows; installer action SHA is Dependabot-owned) =====
+    {
+      customType: 'regex',
+      description: 'Update cosign CLI version pinned in release workflows',
+      managerFilePatterns: [
+        '/^\\.github/workflows/release\\.yaml$/',
+        '/^\\.github/workflows/release-latest\\.yaml$/',
+      ],
+      matchStrings: [
+        'cosign-release:\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
+      ],
+      depNameTemplate: 'sigstore/cosign',
       datasourceTemplate: 'github-releases',
       versioningTemplate: 'semver',
       extractVersionTemplate: '^v(?<version>.*)$',
