@@ -57,7 +57,7 @@ pullRequest:
     expression: "['lgtm', 'approved']"
 ```
 
-Pre-create `lgtm` and `approved` in the repository only if you need a different color or description; otherwise the promoter creates them on first apply with the default orange (`#ff7e56`).
+Pre-create `lgtm` and `approved` in the repository only if you need a different color or description; otherwise the promoter creates them on first apply with the default navy (`#00254a`).
 
 ### One label per commit status key
 
@@ -124,7 +124,7 @@ Invalid expression output causes the ChangeTransferPolicy Ready condition to bec
 | Azure DevOps | Supported; missing labels are created on add | Not supported (open-PR list responses do not reliably include PR labels) |
 | Bitbucket Cloud | Not supported (no PR labels API) | Not supported |
 
-Supported providers create repository or project labels automatically when labels are first added, using the default orange color (`#ff7e56`). Pre-create labels only when you need a different color or description.
+Supported providers create repository or project labels automatically when labels are first added, using the default navy color (`#00254a`). Pre-create labels only when you need a different color or description.
 
 ## API load and drift
 
