@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strconv"
 	"time"
@@ -273,6 +274,9 @@ func (pr *PullRequest) RemoveLabel(ctx context.Context, pullRequest v1alpha1.Pul
 		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationUpdate, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
 	}
 	if err != nil {
+		if response != nil && response.StatusCode == http.StatusNotFound {
+			return nil
+		}
 		return fmt.Errorf("failed to remove label from pull request: %w", err)
 	}
 
@@ -323,6 +327,9 @@ func (pr *PullRequest) DeleteComment(ctx context.Context, pullRequest v1alpha1.P
 		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationClose, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
 	}
 	if err != nil {
+		if response != nil && response.StatusCode == http.StatusNotFound {
+			return nil
+		}
 		return fmt.Errorf("failed to delete comment from pull request: %w", err)
 	}
 

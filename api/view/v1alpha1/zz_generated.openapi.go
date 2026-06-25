@@ -100,6 +100,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.HealthyDryShas{}.OpenAPIModelName():                                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_HealthyDryShas(ref),
 		apiv1alpha1.History{}.OpenAPIModelName():                                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_History(ref),
 		apiv1alpha1.HydratorMetadata{}.OpenAPIModelName():                                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_HydratorMetadata(ref),
+		apiv1alpha1.MergeSignals{}.OpenAPIModelName():                                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_MergeSignals(ref),
 		apiv1alpha1.ModeSpec{}.OpenAPIModelName():                                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_ModeSpec(ref),
 		apiv1alpha1.OAuth2Auth{}.OpenAPIModelName():                                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_OAuth2Auth(ref),
 		apiv1alpha1.ObjectReference{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_ObjectReference(ref),
@@ -1191,6 +1192,34 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicySpec(
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Ref: ref(apiv1alpha1.CommitStatusSelector{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+					"mergeComments": {
+						SchemaProps: spec.SchemaProps{
+							Description: "MergeComments lists comments to post on the PR when all merge conditions are met, instead of merging the PR directly via the SCM API. An external system (e.g. Prow) is expected to perform the actual merge after seeing these comments. Requires autoMerge: true. Labels and comments may be combined.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
+									},
+								},
+							},
+						},
+					},
+					"mergeLabels": {
+						SchemaProps: spec.SchemaProps{
+							Description: "MergeLabels lists labels to add to the PR when all merge conditions are met, instead of merging the PR directly via the SCM API. An external system (e.g. Tide) is expected to perform the actual merge after seeing these labels. Requires autoMerge: true. Labels and comments may be combined.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
 									},
 								},
 							},
@@ -3295,6 +3324,47 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_HydratorMetadata(ref comm
 	}
 }
 
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_MergeSignals(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "MergeSignals defines the comments and labels to post on a pull request to delegate merging to an external system (e.g. Prow/Tide).",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"comments": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Comments lists the comments to post on the PR (e.g. \"/lgtm\", \"/approve\").",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
+									},
+								},
+							},
+						},
+					},
+					"labels": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Labels lists the labels to add to the PR (e.g. \"lgtm\", \"approved\").",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
 func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ModeSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -3960,12 +4030,18 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestSpec(ref commo
 							Format:      "",
 						},
 					},
+					"pendingMergeSignals": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PendingMergeSignals carries merge signals (comments and/or labels) to post on the PR. Set by the ChangeTransferPolicy controller when external merge delegation is configured and all merge conditions are met. Cleared when conditions stop being met, which triggers retraction.",
+							Ref:         ref(apiv1alpha1.MergeSignals{}.OpenAPIModelName()),
+						},
+					},
 				},
 				Required: []string{"gitRepositoryRef", "title", "targetBranch", "sourceBranch", "mergeSha", "state"},
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.CommitConfiguration{}.OpenAPIModelName(), apiv1alpha1.ObjectReference{}.OpenAPIModelName()},
+			apiv1alpha1.CommitConfiguration{}.OpenAPIModelName(), apiv1alpha1.MergeSignals{}.OpenAPIModelName(), apiv1alpha1.ObjectReference{}.OpenAPIModelName()},
 	}
 }
 
@@ -4015,6 +4091,35 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestStatus(ref com
 							Description: "ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the resource still desired it open (spec.state is \"open\"): either it was merged or closed outside the controller, or it was closed on the SCM because the PullRequest resource was deleted (finalizer) and a subsequent sync observed it missing. The controller does not distinguish those cases here. When true, the State field will be empty (\"\") since we cannot tell merge vs. close from the provider. The PullRequest resource will be deleted after this flag is set when possible, but the status is preserved in the owning ChangeTransferPolicy to maintain a record.",
 							Type:        []string{"boolean"},
 							Format:      "",
+						},
+					},
+					"postedMergeCommentIDs": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PostedMergeCommentIDs maps each posted merge comment body to its SCM comment ID. Used to delete the comments (retraction) if merge conditions stop being met.",
+							Type:        []string{"object"},
+							AdditionalProperties: &spec.SchemaOrBool{
+								Allows: true,
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
+									},
+								},
+							},
+						},
+					},
+					"appliedMergeLabels": {
+						SchemaProps: spec.SchemaProps{
+							Description: "AppliedMergeLabels lists the labels that were added to the PR by the controller. Used to remove them (retraction) if merge conditions stop being met.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
+									},
+								},
+							},
 						},
 					},
 					"conditions": {

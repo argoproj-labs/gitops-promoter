@@ -120,8 +120,11 @@ spec:
                   is expected to perform the actual merge after seeing these comments.
                   Requires autoMerge: true. Labels and comments may be combined.
                 items:
+                  maxLength: 200
+                  minLength: 1
                   type: string
                 type: array
+                x-kubernetes-list-type: set
               mergeLabels:
                 description: |-
                   MergeLabels lists labels to add to the PR when all merge conditions are met,
@@ -129,8 +132,11 @@ spec:
                   is expected to perform the actual merge after seeing these labels.
                   Requires autoMerge: true. Labels and comments may be combined.
                 items:
+                  maxLength: 100
+                  minLength: 1
                   type: string
                 type: array
+                x-kubernetes-list-type: set
               proposedBranch:
                 description: |-
                   ProposedBranch staging hydrated branch

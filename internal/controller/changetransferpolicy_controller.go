@@ -1377,9 +1377,18 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 			WithMergeSha(pullRequest.Spec.MergeSha).
 			WithState(pullRequest.Spec.State).
 			WithPendingMergeSignals(signals)
+		if pullRequest.Spec.Description != "" {
+			prSpec = prSpec.WithDescription(pullRequest.Spec.Description)
+		}
+		if pullRequest.Spec.Commit.Message != "" {
+			prSpec = prSpec.WithCommit(acv1alpha1.CommitConfiguration().WithMessage(pullRequest.Spec.Commit.Message))
+		}
 		prApply := acv1alpha1.PullRequest(pullRequest.Name, pullRequest.Namespace).
 			WithLabels(pullRequest.Labels).
 			WithSpec(prSpec)
+		for i := range pullRequest.OwnerReferences {
+			prApply = prApply.WithOwnerReferences(ownerReferenceToApply(pullRequest.OwnerReferences[i]))
+		}
 		pr := &promoterv1alpha1.PullRequest{}
 		pr.Name = pullRequest.Name
 		pr.Namespace = pullRequest.Namespace
@@ -1422,6 +1431,10 @@ func (r *ChangeTransferPolicyReconciler) clearPendingMergeSignals(ctx context.Co
 		return nil, fmt.Errorf("failed to list PullRequests for signal retraction: %w", err)
 	}
 
+	if len(prl.Items) > 1 {
+		return nil, tooManyPRsError(&prl)
+	}
+
 	for i := range prl.Items {
 		pullRequest := &prl.Items[i]
 		if pullRequest.Spec.PendingMergeSignals == nil {
@@ -1435,9 +1448,18 @@ func (r *ChangeTransferPolicyReconciler) clearPendingMergeSignals(ctx context.Co
 			WithSourceBranch(pullRequest.Spec.SourceBranch).
 			WithMergeSha(pullRequest.Spec.MergeSha).
 			WithState(pullRequest.Spec.State)
+		if pullRequest.Spec.Description != "" {
+			prSpec = prSpec.WithDescription(pullRequest.Spec.Description)
+		}
+		if pullRequest.Spec.Commit.Message != "" {
+			prSpec = prSpec.WithCommit(acv1alpha1.CommitConfiguration().WithMessage(pullRequest.Spec.Commit.Message))
+		}
 		prApply := acv1alpha1.PullRequest(pullRequest.Name, pullRequest.Namespace).
 			WithLabels(pullRequest.Labels).
 			WithSpec(prSpec)
+		for i := range pullRequest.OwnerReferences {
+			prApply = prApply.WithOwnerReferences(ownerReferenceToApply(pullRequest.OwnerReferences[i]))
+		}
 		pr := &promoterv1alpha1.PullRequest{}
 		pr.Name = pullRequest.Name
 		pr.Namespace = pullRequest.Namespace

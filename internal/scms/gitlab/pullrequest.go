@@ -290,22 +290,22 @@ func (pr *PullRequest) GetUrl(ctx context.Context, prObj v1alpha1.PullRequest) (
 
 // AddLabels is not yet supported for GitLab.
 func (pr *PullRequest) AddLabels(_ context.Context, _ v1alpha1.PullRequest, _ []string) error {
-	return fmt.Errorf("merge signal delegation (AddLabels) is not supported for GitLab in this version")
+	return errors.New("merge signal delegation (AddLabels) is not supported for GitLab in this version")
 }
 
 // RemoveLabel is not yet supported for GitLab.
 func (pr *PullRequest) RemoveLabel(_ context.Context, _ v1alpha1.PullRequest, _ string) error {
-	return fmt.Errorf("merge signal delegation (RemoveLabel) is not supported for GitLab in this version")
+	return errors.New("merge signal delegation (RemoveLabel) is not supported for GitLab in this version")
 }
 
 // CreateComment is not yet supported for GitLab.
 func (pr *PullRequest) CreateComment(_ context.Context, _ v1alpha1.PullRequest, _ string) (string, error) {
-	return "", fmt.Errorf("merge signal delegation (CreateComment) is not supported for GitLab in this version")
+	return "", errors.New("merge signal delegation (CreateComment) is not supported for GitLab in this version")
 }
 
 // DeleteComment is not yet supported for GitLab.
 func (pr *PullRequest) DeleteComment(_ context.Context, _ v1alpha1.PullRequest, _ string) error {
-	return fmt.Errorf("merge signal delegation (DeleteComment) is not supported for GitLab in this version")
+	return errors.New("merge signal delegation (DeleteComment) is not supported for GitLab in this version")
 }
 
 // FormatMergeRequestUrl constructs a GitLab merge request URL from the client's base URL and repository details.

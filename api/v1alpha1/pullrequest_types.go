@@ -98,9 +98,15 @@ type CommitConfiguration struct {
 type MergeSignals struct {
 	// Comments lists the comments to post on the PR (e.g. "/lgtm", "/approve").
 	// +kubebuilder:validation:Optional
+	// +listType=set
+	// +kubebuilder:validation:items:MinLength=1
+	// +kubebuilder:validation:items:MaxLength=200
 	Comments []string `json:"comments,omitempty"`
 	// Labels lists the labels to add to the PR (e.g. "lgtm", "approved").
 	// +kubebuilder:validation:Optional
+	// +listType=set
+	// +kubebuilder:validation:items:MinLength=1
+	// +kubebuilder:validation:items:MaxLength=100
 	Labels []string `json:"labels,omitempty"`
 }
 

@@ -80,6 +80,9 @@ type ChangeTransferPolicySpec struct {
 	// is expected to perform the actual merge after seeing these comments.
 	// Requires autoMerge: true. Labels and comments may be combined.
 	// +kubebuilder:validation:Optional
+	// +listType=set
+	// +kubebuilder:validation:items:MinLength=1
+	// +kubebuilder:validation:items:MaxLength=200
 	MergeComments []string `json:"mergeComments,omitempty"`
 
 	// MergeLabels lists labels to add to the PR when all merge conditions are met,
@@ -87,6 +90,9 @@ type ChangeTransferPolicySpec struct {
 	// is expected to perform the actual merge after seeing these labels.
 	// Requires autoMerge: true. Labels and comments may be combined.
 	// +kubebuilder:validation:Optional
+	// +listType=set
+	// +kubebuilder:validation:items:MinLength=1
+	// +kubebuilder:validation:items:MaxLength=100
 	MergeLabels []string `json:"mergeLabels,omitempty"`
 }
 

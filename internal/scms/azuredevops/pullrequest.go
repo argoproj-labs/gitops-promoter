@@ -331,22 +331,22 @@ func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequ
 
 // AddLabels is not yet supported for Azure DevOps.
 func (pr *PullRequest) AddLabels(_ context.Context, _ v1alpha1.PullRequest, _ []string) error {
-	return fmt.Errorf("merge signal delegation (AddLabels) is not supported for Azure DevOps in this version")
+	return errors.New("merge signal delegation (AddLabels) is not supported for Azure DevOps in this version")
 }
 
 // RemoveLabel is not yet supported for Azure DevOps.
 func (pr *PullRequest) RemoveLabel(_ context.Context, _ v1alpha1.PullRequest, _ string) error {
-	return fmt.Errorf("merge signal delegation (RemoveLabel) is not supported for Azure DevOps in this version")
+	return errors.New("merge signal delegation (RemoveLabel) is not supported for Azure DevOps in this version")
 }
 
 // CreateComment is not yet supported for Azure DevOps.
 func (pr *PullRequest) CreateComment(_ context.Context, _ v1alpha1.PullRequest, _ string) (string, error) {
-	return "", fmt.Errorf("merge signal delegation (CreateComment) is not supported for Azure DevOps in this version")
+	return "", errors.New("merge signal delegation (CreateComment) is not supported for Azure DevOps in this version")
 }
 
 // DeleteComment is not yet supported for Azure DevOps.
 func (pr *PullRequest) DeleteComment(_ context.Context, _ v1alpha1.PullRequest, _ string) error {
-	return fmt.Errorf("merge signal delegation (DeleteComment) is not supported for Azure DevOps in this version")
+	return errors.New("merge signal delegation (DeleteComment) is not supported for Azure DevOps in this version")
 }
 
 // generatePullRequestUrl generates a pull request URL for the given repository and PR ID

@@ -111,14 +111,20 @@ spec:
                     description: Comments lists the comments to post on the PR (e.g.
                       "/lgtm", "/approve").
                     items:
+                      maxLength: 200
+                      minLength: 1
                       type: string
                     type: array
+                    x-kubernetes-list-type: set
                   labels:
                     description: Labels lists the labels to add to the PR (e.g. "lgtm",
                       "approved").
                     items:
+                      maxLength: 100
+                      minLength: 1
                       type: string
                     type: array
+                    x-kubernetes-list-type: set
                 type: object
               sourceBranch:
                 description: |-
