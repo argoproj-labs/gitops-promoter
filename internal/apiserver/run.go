@@ -26,6 +26,7 @@ import (
 	clientrest "k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/controller"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
@@ -45,6 +46,10 @@ func newDashboardRuntime(ctx context.Context, restConfig *clientrest.Config, opt
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create read cache: %w", err)
+	}
+
+	if err := controller.RegisterGatePromotionStrategyRefFieldIndexes(ctx, readCache); err != nil {
+		return fmt.Errorf("failed to register gate field indexes: %w", err)
 	}
 
 	provider := NewBundleProvider(readCache)
