@@ -15,6 +15,12 @@ const (
 	// TooManyMatchingShaProposedMessage is the message for too many matching SHAs for the proposed commit status.
 	TooManyMatchingShaProposedMessage = "There are too many matching SHAs for the proposed commit status"
 
+	// MissingProposedHydratorMetadataReason indicates that the proposed branch has hydration output but
+	// promoter could not read a dry SHA from hydrator.metadata at activePath.
+	MissingProposedHydratorMetadataReason = "MissingProposedHydratorMetadata"
+	// MissingProposedHydratorMetadataMessage is the message for missing proposed hydrator metadata.
+	MissingProposedHydratorMetadataMessage = "Proposed branch %q has hydrated commit %s but no dry SHA from %q"
+
 	// PullRequestCreatedReason indicates that a pull request has been created.
 	PullRequestCreatedReason = "PullRequestCreated"
 	// PullRequestCreatedMessage is the message for a created pull request.
