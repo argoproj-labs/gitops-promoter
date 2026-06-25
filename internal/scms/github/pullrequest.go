@@ -320,7 +320,10 @@ func (pr *PullRequest) ensureRepositoryLabels(ctx context.Context, gitRepo *v1al
 		}
 
 		start := time.Now()
-		_, response, err := pr.client.Issues.CreateLabel(ctx, owner, repo, &github.Label{Name: github.Ptr(name)})
+		_, response, err := pr.client.Issues.CreateLabel(ctx, owner, repo, &github.Label{
+			Name:  github.Ptr(name),
+			Color: github.Ptr(scms.AutoCreatedLabelColor),
+		})
 		if response != nil {
 			metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreateLabel, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
 		}
