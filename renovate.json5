@@ -156,6 +156,9 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
+          // go fix applies stdlib fixers for the new toolchain (any, min/max, iterators, …).
+          // Run before lint-fix so golangci-lint can clean up anything fix leaves behind.
+          'make go-fix || true',
           'make lint-fix || true',
         ],
         installTools: {
