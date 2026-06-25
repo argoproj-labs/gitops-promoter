@@ -9,42 +9,31 @@ import (
 )
 
 var _ = Describe("ValidateLabelNames", func() {
-	It("accepts valid labels", func() {
-		Expect(ValidateLabelNames([]string{"lgtm", "approved"})).To(Succeed())
-	})
-
-	It("accepts an empty list", func() {
-		Expect(ValidateLabelNames(nil)).To(Succeed())
-	})
-
-	It("rejects an empty string label", func() {
-		Expect(ValidateLabelNames([]string{""})).NotTo(Succeed())
-	})
-
-	It("rejects labels longer than 50 runes", func() {
-		Expect(ValidateLabelNames([]string{strings.Repeat("a", 51)})).NotTo(Succeed())
-	})
-
-	It("accepts labels up to 50 runes", func() {
-		Expect(ValidateLabelNames([]string{strings.Repeat("\u00e9", 50)})).To(Succeed())
-	})
-
-	It("rejects labels with newlines or NUL", func() {
-		Expect(ValidateLabelNames([]string{"bad\nlabel"})).NotTo(Succeed())
-		Expect(ValidateLabelNames([]string{"bad\x00label"})).NotTo(Succeed())
-	})
-
-	It("rejects duplicate labels", func() {
-		Expect(ValidateLabelNames([]string{"a", "a"})).NotTo(Succeed())
-	})
-
-	It("rejects more than 10 labels", func() {
-		labels := make([]string, 11)
-		for i := range labels {
-			labels[i] = "label"
-		}
-		Expect(ValidateLabelNames(labels)).NotTo(Succeed())
-	})
+	DescribeTable("validates label names",
+		func(labels []string, shouldSucceed bool) {
+			err := ValidateLabelNames(labels)
+			if shouldSucceed {
+				Expect(err).NotTo(HaveOccurred())
+			} else {
+				Expect(err).To(HaveOccurred())
+			}
+		},
+		Entry("accepts valid labels", []string{"lgtm", "approved"}, true),
+		Entry("accepts an empty list", nil, true),
+		Entry("rejects an empty string label", []string{""}, false),
+		Entry("rejects labels longer than 50 runes", []string{strings.Repeat("a", 51)}, false),
+		Entry("accepts labels up to 50 runes", []string{strings.Repeat("\u00e9", 50)}, true),
+		Entry("rejects labels with newlines", []string{"bad\nlabel"}, false),
+		Entry("rejects labels with NUL", []string{"bad\x00label"}, false),
+		Entry("rejects duplicate labels", []string{"a", "a"}, false),
+		Entry("rejects more than 10 labels", func() []string {
+			labels := make([]string, 11)
+			for i := range labels {
+				labels[i] = "label"
+			}
+			return labels
+		}(), false),
+	)
 })
 
 var _ = Describe("SetsEqual", func() {

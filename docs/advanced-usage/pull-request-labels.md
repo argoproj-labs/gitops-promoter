@@ -17,8 +17,8 @@ spec:
   pullRequest:
     labels:
       expression: |
-        len(Status.Proposed.CommitStatuses) > 0 &&
-        all(Status.Proposed.CommitStatuses, {.Phase == 'success'})
+        (len(Status.Proposed.CommitStatuses) == 0 ||
+         all(Status.Proposed.CommitStatuses, {.Phase == 'success'}))
           ? ['lgtm', 'approved']
           : []
   environments:
@@ -32,19 +32,6 @@ spec:
 1. **PromotionStrategy → ChangeTransferPolicy**: `spec.pullRequest` is copied to each CTP via server-side apply.
 2. **ChangeTransferPolicy → PullRequest**: The CTP controller evaluates `pullRequest.labels.expression`, validates the result, and writes `PullRequest.spec.labels` when the set changes.
 3. **PullRequest → SCM**: The PullRequest controller diffs `spec.labels` against `status.appliedLabels` and calls the SCM provider to add or remove labels. On supported providers, each reconcile also reads label data from the routine open-PR check (no extra SCM call), refreshes `appliedLabels` for managed labels, and re-applies any that were removed externally.
-
-```mermaid
-sequenceDiagram
-  participant PS as PromotionStrategy
-  participant CTP as ChangeTransferPolicy
-  participant PR as PullRequest
-  participant SCM as SCM
-
-  PS->>CTP: copy spec.pullRequest
-  CTP->>CTP: evaluate expression
-  CTP->>PR: patch spec.labels (if changed)
-  PR->>SCM: AddLabels / RemoveLabels (if diff)
-```
 
 ## Expression context
 
@@ -97,14 +84,14 @@ Keys come from `Spec.ProposedCommitStatuses` on each `ChangeTransferPolicy` (mer
 
 ### All gates pass, then apply a fixed set
 
-Only add `lgtm` and `approved` when every proposed commit status is `success`:
+Add `lgtm` and `approved` when there are no proposed commit status gates, or when every proposed commit status is `success`:
 
 ```yaml
 pullRequest:
   labels:
     expression: |
-      len(Status.Proposed.CommitStatuses) > 0 &&
-      all(Status.Proposed.CommitStatuses, {.Phase == 'success'})
+      (len(Status.Proposed.CommitStatuses) == 0 ||
+       all(Status.Proposed.CommitStatuses, {.Phase == 'success'}))
         ? ['lgtm', 'approved']
         : []
 ```

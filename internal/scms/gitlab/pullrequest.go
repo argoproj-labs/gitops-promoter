@@ -402,7 +402,7 @@ func (pr *PullRequest) ensureProjectLabels(ctx context.Context, repo *v1alpha1.G
 			metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreateLabel, resp.StatusCode, time.Since(start), nil)
 		}
 		if err != nil {
-			if resp != nil && (resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusConflict) {
+			if resp != nil && resp.StatusCode == http.StatusConflict {
 				continue
 			}
 			return fmt.Errorf("failed to create project label %q: %w", name, err)

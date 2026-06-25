@@ -1,61 +1,47 @@
-package azuredevops
+package azuredevops_test
 
 import (
 	"errors"
 	"net/http"
-	"testing"
 
-	"github.com/microsoft/azure-devops-go-api/azuredevops/v7"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/azuredevops"
+	ado "github.com/microsoft/azure-devops-go-api/azuredevops/v7"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
-func TestAzureDevOpsHTTPStatusCode(t *testing.T) {
-	t.Parallel()
+var _ = Describe("Azure DevOps HTTP errors", func() {
+	DescribeTable("azureDevOpsHTTPStatusCode",
+		func(err error, wantCode int, wantOK bool) {
+			gotCode, gotOK := azuredevops.AzureDevOpsHTTPStatusCode(err)
+			Expect(gotOK).To(Equal(wantOK))
+			Expect(gotCode).To(Equal(wantCode))
+		},
+		Entry("nil error", nil, 0, false),
+		Entry("pointer wrapped error", func() error {
+			notFound := http.StatusNotFound
+			return &ado.WrappedError{StatusCode: &notFound}
+		}(), http.StatusNotFound, true),
+		Entry("value wrapped error", func() error {
+			serverError := http.StatusInternalServerError
+			return ado.WrappedError{StatusCode: &serverError}
+		}(), http.StatusInternalServerError, true),
+		Entry("unrelated error", errors.New("network timeout"), 0, false),
+	)
 
-	notFound := http.StatusNotFound
-	serverError := http.StatusInternalServerError
-
-	tests := []struct {
-		err      error
-		name     string
-		wantCode int
-		wantOK   bool
-		want404  bool
-	}{
-		{
-			name:   "nil error",
-			err:    nil,
-			wantOK: false,
+	DescribeTable("isAzureDevOpsNotFound",
+		func(err error, want bool) {
+			Expect(azuredevops.IsAzureDevOpsNotFound(err)).To(Equal(want))
 		},
-		{
-			name:     "pointer wrapped error",
-			err:      &azuredevops.WrappedError{StatusCode: &notFound},
-			wantCode: http.StatusNotFound,
-			wantOK:   true,
-			want404:  true,
-		},
-		{
-			name:     "value wrapped error",
-			err:      azuredevops.WrappedError{StatusCode: &serverError},
-			wantCode: http.StatusInternalServerError,
-			wantOK:   true,
-		},
-		{
-			name:   "unrelated error",
-			err:    errors.New("network timeout"),
-			wantOK: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			gotCode, gotOK := azureDevOpsHTTPStatusCode(tt.err)
-			if gotOK != tt.wantOK || gotCode != tt.wantCode {
-				t.Fatalf("azureDevOpsHTTPStatusCode() = (%d, %v), want (%d, %v)", gotCode, gotOK, tt.wantCode, tt.wantOK)
-			}
-			if isAzureDevOpsNotFound(tt.err) != tt.want404 {
-				t.Fatalf("isAzureDevOpsNotFound() = %v, want %v", isAzureDevOpsNotFound(tt.err), tt.want404)
-			}
-		})
-	}
-}
+		Entry("nil error", nil, false),
+		Entry("404 wrapped error", func() error {
+			notFound := http.StatusNotFound
+			return &ado.WrappedError{StatusCode: &notFound}
+		}(), true),
+		Entry("500 wrapped error", func() error {
+			serverError := http.StatusInternalServerError
+			return &ado.WrappedError{StatusCode: &serverError}
+		}(), false),
+		Entry("unrelated error", errors.New("network timeout"), false),
+	)
+})
