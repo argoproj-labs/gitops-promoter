@@ -49,7 +49,7 @@ func newDashboardRuntime(ctx context.Context, restConfig *clientrest.Config, opt
 	}
 
 	if err := controller.RegisterGatePromotionStrategyRefFieldIndexes(ctx, readCache); err != nil {
-		return fmt.Errorf("failed to register gate field indexes: %w", err)
+		return nil, fmt.Errorf("failed to register gate field indexes: %w", err)
 	}
 
 	provider := NewBundleProvider(readCache)
