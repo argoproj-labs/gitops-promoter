@@ -1123,6 +1123,107 @@ var _ = Describe("PullRequest Controller", func() {
 			}, "3s", "500ms").Should(Succeed())
 		})
 	})
+
+	// This Context tests the guard in the PR controller's handleStateTransitions:
+	//
+	//   if pr.Status.ID != "" && pr.Status.State == PullRequestOpen {
+	//       reconcileMergeSignals(...)
+	//   }
+	//
+	// Without this guard, the reconciler would call CreateComment/AddLabels on an already-closed
+	// PR whenever PendingMergeSignals is set — e.g. when CTP hasn't reacted yet to the bot merge.
+	Context("When merge signals are pending but the PR is externally closed", func() {
+		var name string
+		var scmSecret *v1.Secret
+		var scmProvider *promoterv1alpha1.ScmProvider
+		var gitRepo *promoterv1alpha1.GitRepository
+		var pullRequest *promoterv1alpha1.PullRequest
+		var typeNamespacedName types.NamespacedName
+
+		BeforeEach(func() {
+			By("Creating test resources with PendingMergeSignals set from the start")
+			name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "signal-guard-closed-pr")
+
+			typeNamespacedName = types.NamespacedName{Name: name, Namespace: "default"}
+
+			pullRequest.Spec.PendingMergeSignals = &promoterv1alpha1.MergeSignals{
+				Comments: []string{"/lgtm"},
+				Labels:   []string{"approved"},
+			}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
+
+			By("Waiting for the PR to be open with an ID")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				g.Expect(pullRequest.Status.ID).ToNot(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		AfterEach(func() {
+			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
+			_ = fakeProvider.DeletePullRequest(ctx, *pullRequest)
+
+			var pr promoterv1alpha1.PullRequest
+			if err := k8sClient.Get(ctx, typeNamespacedName, &pr); err == nil {
+				base := pr.DeepCopy()
+				pr.Finalizers = nil
+				_ = k8sClient.Patch(ctx, &pr, client.MergeFrom(base))
+				_ = k8sClient.Delete(ctx, &pr)
+			}
+			_ = client.IgnoreNotFound(k8sClient.Delete(ctx, gitRepo))
+			_ = client.IgnoreNotFound(k8sClient.Delete(ctx, scmProvider))
+			_ = client.IgnoreNotFound(k8sClient.Delete(ctx, scmSecret))
+		})
+
+		It("does not post merge signals to the PR after it is externally closed", func() {
+			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
+
+			By("Waiting for signals to be posted while the PR is open")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				comments, err := fakeProvider.GetFakeComments(ctx, *pullRequest)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(comments).ToNot(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Recording the comment IDs posted while the PR was open")
+			Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+			capturedPR := pullRequest.DeepCopy()
+			commentsBefore, err := fakeProvider.GetFakeComments(ctx, *capturedPR)
+			Expect(err).NotTo(HaveOccurred())
+			commentCountBefore := len(commentsBefore)
+
+			By("Simulating an external bot merge: removing the PR from the SCM provider")
+			// PendingMergeSignals remains set on the spec — this is the race the guard must handle.
+			Expect(fakeProvider.DeletePullRequest(ctx, *pullRequest)).To(Succeed())
+
+			By("Waiting for the reconciler to detect that the PR is no longer open")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				if k8serrors.IsNotFound(err) {
+					return // PR cleaned up by reconciler — state transition completed
+				}
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(pullRequest.Status.State).NotTo(Equal(promoterv1alpha1.PullRequestOpen))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying no new signals are posted after the PR is closed")
+			// The guard `Status.State == PullRequestOpen` must prevent reconcileMergeSignals
+			// from being called. Without it the reconciler would call CreateComment again,
+			// incrementing the comment count in the fake provider.
+			Consistently(func(g Gomega) {
+				current, err := fakeProvider.GetFakeComments(ctx, *capturedPR)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(len(current)).To(BeNumerically("<=", commentCountBefore),
+					"comment count must not grow after external close — guard must prevent re-posting")
+			}, "3s", "500ms").Should(Succeed())
+		})
+	})
 })
 
 func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.PullRequest) {
