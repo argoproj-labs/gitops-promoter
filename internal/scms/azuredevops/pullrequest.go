@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7"
+	"github.com/microsoft/azure-devops-go-api/azuredevops/v7/core"
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7/git"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -359,6 +361,101 @@ func (pr *PullRequest) generatePullRequestUrl(ctx context.Context, prObj v1alpha
 	}
 
 	return baseUrl, nil
+}
+
+// AddLabels adds labels to a pull request on Azure DevOps (labels are auto-created when missing).
+func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labelNames []string) error {
+	if len(labelNames) == 0 {
+		return nil
+	}
+
+	prID, err := strconv.Atoi(pullRequest.Status.ID)
+	if err != nil {
+		return fmt.Errorf("failed to convert PR ID to int: %w", err)
+	}
+
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	gitClient, err := git.NewClient(ctx, pr.client)
+	if err != nil {
+		return fmt.Errorf("failed to create Git client: %w", err)
+	}
+
+	pullRequestID := prID
+	for _, name := range labelNames {
+		start := time.Now()
+		_, err := gitClient.CreatePullRequestLabel(ctx, git.CreatePullRequestLabelArgs{
+			Label: &core.WebApiCreateTagRequestData{
+				Name: &name,
+			},
+			PullRequestId: &pullRequestID,
+			Project:       &gitRepo.Spec.AzureDevOps.Project,
+			RepositoryId:  &gitRepo.Spec.AzureDevOps.Name,
+		})
+		statusCode := http.StatusOK
+		if sc, ok := azureDevOpsHTTPStatusCode(err); ok {
+			statusCode = sc
+		} else if err != nil {
+			statusCode = http.StatusInternalServerError
+		}
+		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationAddLabels, statusCode, time.Since(start), nil)
+		if err != nil {
+			return fmt.Errorf("failed to add label %q to pull request: %w", name, err)
+		}
+	}
+
+	return nil
+}
+
+// RemoveLabels removes labels from a pull request on Azure DevOps.
+func (pr *PullRequest) RemoveLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labelNames []string) error {
+	if len(labelNames) == 0 {
+		return nil
+	}
+
+	prID, err := strconv.Atoi(pullRequest.Status.ID)
+	if err != nil {
+		return fmt.Errorf("failed to convert PR ID to int: %w", err)
+	}
+
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	gitClient, err := git.NewClient(ctx, pr.client)
+	if err != nil {
+		return fmt.Errorf("failed to create Git client: %w", err)
+	}
+
+	pullRequestID := prID
+	for _, name := range labelNames {
+		start := time.Now()
+		err := gitClient.DeletePullRequestLabels(ctx, git.DeletePullRequestLabelsArgs{
+			LabelIdOrName: &name,
+			PullRequestId: &pullRequestID,
+			Project:       &gitRepo.Spec.AzureDevOps.Project,
+			RepositoryId:  &gitRepo.Spec.AzureDevOps.Name,
+		})
+		statusCode := http.StatusOK
+		if sc, ok := azureDevOpsHTTPStatusCode(err); ok {
+			statusCode = sc
+		} else if err != nil {
+			statusCode = http.StatusInternalServerError
+		}
+		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationRemoveLabels, statusCode, time.Since(start), nil)
+		if err != nil {
+			if isAzureDevOpsNotFound(err) {
+				continue
+			}
+			return fmt.Errorf("failed to remove label %q from pull request: %w", name, err)
+		}
+	}
+
+	return nil
 }
 
 // mapAzureDevOpsPRStatusToState maps Azure DevOps PullRequestStatus to GitOps Promoter PullRequestState

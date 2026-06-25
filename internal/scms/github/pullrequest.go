@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strconv"
 	"time"
@@ -251,4 +252,71 @@ func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequ
 	}
 
 	return fmt.Sprintf("https://%s/%s/%s/pull/%d", baseURL.Host, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, prNumber), nil
+}
+
+// AddLabels adds labels to a pull request on GitHub.
+func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labels []string) error {
+	if len(labels) == 0 {
+		return nil
+	}
+
+	logger := log.FromContext(ctx)
+
+	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
+	if err != nil {
+		return fmt.Errorf("failed to convert PR number to int: %w", err)
+	}
+
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	start := time.Now()
+	_, response, err := pr.client.Issues.AddLabelsToIssue(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, prNumber, labels)
+	if response != nil {
+		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationAddLabels, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
+	}
+	if err != nil {
+		return fmt.Errorf("failed to add labels to pull request: %w", err)
+	}
+	logger.V(4).Info("added labels to github pull request", "labels", labels)
+
+	return nil
+}
+
+// RemoveLabels removes labels from a pull request on GitHub.
+func (pr *PullRequest) RemoveLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labels []string) error {
+	if len(labels) == 0 {
+		return nil
+	}
+
+	logger := log.FromContext(ctx)
+
+	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
+	if err != nil {
+		return fmt.Errorf("failed to convert PR number to int: %w", err)
+	}
+
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	for _, label := range labels {
+		start := time.Now()
+		response, err := pr.client.Issues.RemoveLabelForIssue(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, prNumber, label)
+		if response != nil {
+			metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationRemoveLabels, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
+		}
+		if err != nil {
+			if response != nil && response.StatusCode == http.StatusNotFound {
+				continue
+			}
+			return fmt.Errorf("failed to remove label %q from pull request: %w", label, err)
+		}
+	}
+	logger.V(4).Info("removed labels from github pull request", "labels", labels)
+
+	return nil
 }

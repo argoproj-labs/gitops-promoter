@@ -55,6 +55,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
+	prlabels "github.com/argoproj-labs/gitops-promoter/internal/labels"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 )
 
@@ -73,6 +74,8 @@ type ChangeTransferPolicyReconciler struct {
 	// enqueueFunc is set during SetupWithManager and can be retrieved via GetEnqueueFunc.
 	// It allows other controllers to enqueue CTP reconcile requests.
 	enqueueFunc CTPEnqueueFunc
+
+	labelEvaluator prlabels.Evaluator
 }
 
 // GetEnqueueFunc returns a function that can be used to enqueue CTP reconcile requests.
@@ -190,6 +193,13 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	pr, err := r.createOrUpdatePullRequest(ctx, &ctp)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to set promotion state: %w", err)
+	}
+
+	if pr != nil {
+		pr, err = r.reconcilePullRequestLabels(ctx, &ctp, pr)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to reconcile pull request labels: %w", err)
+		}
 	}
 
 	if pr != nil {
@@ -992,6 +1002,7 @@ func pullRequestApplyOwnedByChangeTransferPolicy(pr *promoterv1alpha1.PullReques
 	if pr.Spec.Commit.Message != "" {
 		prSpec = prSpec.WithCommit(acv1alpha1.CommitConfiguration().WithMessage(pr.Spec.Commit.Message))
 	}
+	prSpec.Labels = pr.Spec.Labels
 
 	prApply := acv1alpha1.PullRequest(pr.Name, pr.Namespace).
 		WithLabels(pr.Labels)
@@ -1237,6 +1248,46 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 	}
 
 	return pr, nil
+}
+
+func (r *ChangeTransferPolicyReconciler) reconcilePullRequestLabels(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, pr *promoterv1alpha1.PullRequest) (*promoterv1alpha1.PullRequest, error) {
+	if ctp.Spec.PullRequest == nil || ctp.Spec.PullRequest.Labels == nil || ctp.Spec.PullRequest.Labels.Expression == "" {
+		return pr, nil
+	}
+
+	ps, err := r.getPromotionStrategy(ctx, ctp)
+	if err != nil {
+		return nil, err
+	}
+
+	desiredLabels, err := r.labelEvaluator.Evaluate(ctp.Spec.PullRequest.Labels.Expression, prlabels.ExpressionContext{
+		Status:            ctp.Status,
+		Spec:              ctp.Spec,
+		PromotionStrategy: ps,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to evaluate pull request labels expression: %w", err)
+	}
+
+	if prlabels.SetsEqual(desiredLabels, pr.Spec.Labels) {
+		return pr, nil
+	}
+
+	var livePR promoterv1alpha1.PullRequest
+	if err := r.Get(ctx, client.ObjectKeyFromObject(pr), &livePR); err != nil {
+		return nil, fmt.Errorf("failed to get PullRequest for label patch: %w", err)
+	}
+
+	livePR.Spec.Labels = desiredLabels
+	prApply := pullRequestApplyOwnedByChangeTransferPolicy(&livePR, nil, false)
+	patched := &promoterv1alpha1.PullRequest{}
+	patched.Name = livePR.Name
+	patched.Namespace = livePR.Namespace
+	if err := r.Patch(ctx, patched, utils.ApplyPatch{ApplyConfig: prApply}, client.FieldOwner(constants.ChangeTransferPolicyControllerFieldOwner), client.ForceOwnership); err != nil {
+		return nil, fmt.Errorf("failed to patch PullRequest labels: %w", err)
+	}
+
+	return patched, nil
 }
 
 // mergePullRequests tries to merge the pull request if all the checks have passed and the environment is set to auto merge.

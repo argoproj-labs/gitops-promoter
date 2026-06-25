@@ -30,6 +30,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
+	"github.com/argoproj-labs/gitops-promoter/internal/labels"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	bitbucket_cloud "github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_cloud"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
@@ -151,6 +152,10 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// update would be lost. Now we ensure the status is persisted before deletion occurs.
 	if cleanupRequired {
 		return ctrl.Result{RequeueAfter: 1 * time.Microsecond}, nil
+	}
+
+	if err := r.reconcileLabels(ctx, &pr, provider); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	logger.Info("no known state transitions needed", "specState", pr.Spec.State, "statusState", pr.Status.State)
@@ -555,5 +560,32 @@ func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr *promot
 	}
 	pr.Status.State = promoterv1alpha1.PullRequestClosed
 	r.Recorder.Eventf(pr, nil, "Normal", constants.PullRequestClosedReason, "ClosingPullRequest", constants.PullRequestClosedMessage, pr.Name)
+	return nil
+}
+
+func (r *PullRequestReconciler) reconcileLabels(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
+	if pr.Status.ID == "" {
+		return nil
+	}
+	if labels.SetsEqual(pr.Spec.Labels, pr.Status.AppliedLabels) {
+		return nil
+	}
+	if err := labels.ValidateLabelNames(pr.Spec.Labels); err != nil {
+		return fmt.Errorf("invalid pull request spec.labels: %w", err)
+	}
+
+	toAdd, toRemove := labels.Diff(pr.Spec.Labels, pr.Status.AppliedLabels)
+	if len(toRemove) > 0 {
+		if err := provider.RemoveLabels(ctx, *pr, toRemove); err != nil {
+			return fmt.Errorf("failed to remove pull request labels: %w", err)
+		}
+	}
+	if len(toAdd) > 0 {
+		if err := provider.AddLabels(ctx, *pr, toAdd); err != nil {
+			return fmt.Errorf("failed to add pull request labels: %w", err)
+		}
+	}
+
+	pr.Status.AppliedLabels = slices.Clone(pr.Spec.Labels)
 	return nil
 }

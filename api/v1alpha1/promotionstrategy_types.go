@@ -67,6 +67,10 @@ type PromotionStrategySpec struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MinLength=1
 	ActivePath string `json:"activePath,omitempty"`
+
+	// PullRequest configures SCM pull request behavior for all environments in this strategy.
+	// +kubebuilder:validation:Optional
+	PullRequest *PullRequestPolicySpec `json:"pullRequest,omitempty"`
 }
 
 // Environment defines a single environment in the promotion sequence.

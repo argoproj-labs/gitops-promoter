@@ -25,4 +25,10 @@ type PullRequestProvider interface {
 	FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (found bool, id string, creationTime time.Time, err error)
 	// GetUrl retrieves the URL of the pull request.
 	GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequest) (string, error)
+	// AddLabels adds SCM labels to an open pull request.
+	// pullRequest.Status.ID is guaranteed to be set when this is called.
+	AddLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labels []string) error
+	// RemoveLabels removes SCM labels from a pull request.
+	// pullRequest.Status.ID is guaranteed to be set when this is called.
+	RemoveLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labels []string) error
 }

@@ -20,6 +20,10 @@ spec:
   # Must be set to "open" when initially created, and cannot be set to "closed" or "merged" unless status.id is set
   # (which the controller should do automatically as long as there are no errors).
   state:
+  # SCM pull request labels (not Kubernetes metadata.labels). Written by the ChangeTransferPolicy controller.
+  # labels:
+  #   - lgtm
+  #   - approved
 status:
   observedGeneration: 123 # compare with metadata.generation to detect stale status
   conditions:
@@ -37,4 +41,8 @@ status:
   state: open # open, closed, or merged; empty when externallyMergedOrClosed is true
   url: https://github.com/org/repo/pull/848
   prCreationTime: 2023-10-01T00:00:00Z
+  # SCM labels successfully applied by gitops-promoter (bookkeeping for sync/retraction).
+  # appliedLabels:
+  #   - lgtm
+  #   - approved
   # externallyMergedOrClosed: true

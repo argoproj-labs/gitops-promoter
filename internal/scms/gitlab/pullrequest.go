@@ -288,6 +288,63 @@ func (pr *PullRequest) GetUrl(ctx context.Context, prObj v1alpha1.PullRequest) (
 	return FormatMergeRequestUrl(pr.client, repo.Spec.GitLab, prObj.Status.ID), nil
 }
 
+// AddLabels adds labels to a merge request on GitLab.
+func (pr *PullRequest) AddLabels(ctx context.Context, prObj v1alpha1.PullRequest, labelNames []string) error {
+	return pr.updateMergeRequestLabels(ctx, prObj, labelNames, true)
+}
+
+// RemoveLabels removes labels from a merge request on GitLab.
+func (pr *PullRequest) RemoveLabels(ctx context.Context, prObj v1alpha1.PullRequest, labelNames []string) error {
+	return pr.updateMergeRequestLabels(ctx, prObj, labelNames, false)
+}
+
+func (pr *PullRequest) updateMergeRequestLabels(ctx context.Context, prObj v1alpha1.PullRequest, labelNames []string, add bool) error {
+	if len(labelNames) == 0 {
+		return nil
+	}
+
+	mrIID, err := strconv.ParseInt(prObj.Status.ID, 10, 64)
+	if err != nil {
+		return fmt.Errorf("failed to convert MR ID %q to int64: %w", prObj.Status.ID, err)
+	}
+
+	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
+		Namespace: prObj.Namespace,
+		Name:      prObj.Spec.RepositoryReference.Name,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get repo: %w", err)
+	}
+
+	labelOpts := gitlab.LabelOptions(labelNames)
+	options := &gitlab.UpdateMergeRequestOptions{}
+	operation := metrics.SCMOperationRemoveLabels
+	failVerb := "remove labels from"
+	if add {
+		options.AddLabels = &labelOpts
+		operation = metrics.SCMOperationAddLabels
+		failVerb = "add labels to"
+	} else {
+		options.RemoveLabels = &labelOpts
+	}
+
+	start := time.Now()
+	_, resp, err := pr.client.MergeRequests.UpdateMergeRequest(
+		repo.Spec.GitLab.ProjectID,
+		mrIID,
+		options,
+		gitlab.WithContext(ctx),
+	)
+	if resp != nil {
+		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, operation, resp.StatusCode, time.Since(start), nil)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to %s merge request: %w", failVerb, err)
+	}
+
+	return nil
+}
+
 // FormatMergeRequestUrl constructs a GitLab merge request URL from the client's base URL and repository details.
 // The client's BaseURL() returns the full API URL including protocol (e.g., "https://gitlab.example.com/api/v4").
 // This function extracts the scheme and host to construct the web UI URL for the merge request.

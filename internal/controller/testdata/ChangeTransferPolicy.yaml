@@ -14,6 +14,10 @@ spec:
   proposedCommitStatuses:
   - key: security-scan
   - key: promoter-previous-environment
+  # Copied from the owning PromotionStrategy (when configured).
+  # pullRequest:
+  #   labels:
+  #     expression: "all(Status.Proposed.CommitStatuses, {.Phase == 'success'}) ? ['lgtm'] : []"
 status:
   observedGeneration: 123 # compare with metadata.generation to detect stale status
   conditions:

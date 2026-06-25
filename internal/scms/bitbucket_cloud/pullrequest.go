@@ -311,3 +311,13 @@ func (pr *PullRequest) GetUrl(ctx context.Context, prObj v1alpha1.PullRequest) (
 		repo.Spec.BitbucketCloud.Name,
 		prObj.Status.ID), nil
 }
+
+// AddLabels is not supported on Bitbucket Cloud (no pull request labels API).
+func (pr *PullRequest) AddLabels(_ context.Context, _ v1alpha1.PullRequest, _ []string) error {
+	return errors.New("bitbucket cloud does not support pull request labels")
+}
+
+// RemoveLabels is not supported on Bitbucket Cloud (no pull request labels API).
+func (pr *PullRequest) RemoveLabels(_ context.Context, _ v1alpha1.PullRequest, _ []string) error {
+	return errors.New("bitbucket cloud does not support pull request labels")
+}

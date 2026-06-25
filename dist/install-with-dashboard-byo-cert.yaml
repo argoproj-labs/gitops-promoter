@@ -468,6 +468,34 @@ spec:
                 x-kubernetes-list-map-keys:
                 - key
                 x-kubernetes-list-type: map
+              pullRequest:
+                description: |-
+                  PullRequest configures SCM pull request behavior for this change transfer policy.
+                  Copied from the owning PromotionStrategy by the PromotionStrategy controller.
+                properties:
+                  labels:
+                    description: Labels configures dynamic SCM labels applied to promotion
+                      pull requests.
+                    properties:
+                      expression:
+                        description: |-
+                          Expression is evaluated using the expr library (github.com/expr-lang/expr) against
+                          ChangeTransferPolicy status and spec. It must return a list of SCM label name strings.
+
+                          Available variables:
+                            - Status: ChangeTransferPolicy status (Proposed/Active commit statuses, branch SHAs, etc.)
+                            - Spec: ChangeTransferPolicy spec (ActiveBranch, ProposedBranch, etc.)
+                            - PromotionStrategy: owning PromotionStrategy spec and status when available
+
+                          Each returned label name must satisfy the same validation as PullRequest.spec.labels
+                          (non-empty, max 50 characters, no newlines, max 10 labels, unique).
+                        maxLength: 8192
+                        minLength: 1
+                        type: string
+                    required:
+                    - expression
+                    type: object
+                type: object
             required:
             - activeBranch
             - gitRepositoryRef
@@ -4690,6 +4718,33 @@ spec:
                 x-kubernetes-list-map-keys:
                 - key
                 x-kubernetes-list-type: map
+              pullRequest:
+                description: PullRequest configures SCM pull request behavior for
+                  all environments in this strategy.
+                properties:
+                  labels:
+                    description: Labels configures dynamic SCM labels applied to promotion
+                      pull requests.
+                    properties:
+                      expression:
+                        description: |-
+                          Expression is evaluated using the expr library (github.com/expr-lang/expr) against
+                          ChangeTransferPolicy status and spec. It must return a list of SCM label name strings.
+
+                          Available variables:
+                            - Status: ChangeTransferPolicy status (Proposed/Active commit statuses, branch SHAs, etc.)
+                            - Spec: ChangeTransferPolicy spec (ActiveBranch, ProposedBranch, etc.)
+                            - PromotionStrategy: owning PromotionStrategy spec and status when available
+
+                          Each returned label name must satisfy the same validation as PullRequest.spec.labels
+                          (non-empty, max 50 characters, no newlines, max 10 labels, unique).
+                        maxLength: 8192
+                        minLength: 1
+                        type: string
+                    required:
+                    - expression
+                    type: object
+                type: object
             required:
             - environments
             - gitRepositoryRef
@@ -6038,6 +6093,18 @@ spec:
                 required:
                 - name
                 type: object
+              labels:
+                description: |-
+                  Labels is the desired set of SCM pull request labels (not Kubernetes metadata labels).
+                  Written by the ChangeTransferPolicy controller from pullRequest.labels.expression evaluation.
+                items:
+                  maxLength: 50
+                  minLength: 1
+                  pattern: ^[^\n\r\x00]+$
+                  type: string
+                maxItems: 10
+                type: array
+                x-kubernetes-list-type: set
               mergeSha:
                 description: |-
                   MergeSha is the commit SHA that the head branch must match before the PR can be merged.
@@ -6104,6 +6171,17 @@ spec:
           status:
             description: PullRequestStatus defines the observed state of PullRequest
             properties:
+              appliedLabels:
+                description: AppliedLabels lists SCM labels successfully applied by
+                  gitops-promoter (for sync and retraction).
+                items:
+                  maxLength: 50
+                  minLength: 1
+                  pattern: ^[^\n\r\x00]+$
+                  type: string
+                maxItems: 10
+                type: array
+                x-kubernetes-list-type: set
               conditions:
                 description: Conditions Represents the observations of the current
                   state.

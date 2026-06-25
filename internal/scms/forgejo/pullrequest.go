@@ -3,6 +3,7 @@ package forgejo
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -248,4 +249,98 @@ func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest promoterv1alpha1.
 	}
 
 	return fmt.Sprintf("https://%s/%s/%s/pulls/%s", pr.domain, gitRepo.Spec.Forgejo.Owner, gitRepo.Spec.Forgejo.Name, pullRequest.Status.ID), nil
+}
+
+// AddLabels adds labels to a pull request on Forgejo.
+func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest promoterv1alpha1.PullRequest, labelNames []string) error {
+	if len(labelNames) == 0 {
+		return nil
+	}
+
+	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, k8sClient.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	prIndex, err := strconv.ParseInt(pullRequest.Status.ID, 10, 64)
+	if err != nil {
+		return fmt.Errorf("failed to convert PR ID to int: %w", err)
+	}
+
+	labelIDs, err := pr.resolveLabelIDs(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, labelNames)
+	if err != nil {
+		return err
+	}
+
+	start := time.Now()
+	_, resp, err := pr.foregejoClient.AddIssueLabels(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, prIndex, forgejo.IssueLabelsOption{Labels: labelIDs})
+	if resp != nil {
+		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationAddLabels, resp.StatusCode, time.Since(start), nil)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to add labels to pull request: %w", err)
+	}
+
+	return nil
+}
+
+// RemoveLabels removes labels from a pull request on Forgejo.
+func (pr *PullRequest) RemoveLabels(ctx context.Context, pullRequest promoterv1alpha1.PullRequest, labelNames []string) error {
+	if len(labelNames) == 0 {
+		return nil
+	}
+
+	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, k8sClient.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	prIndex, err := strconv.ParseInt(pullRequest.Status.ID, 10, 64)
+	if err != nil {
+		return fmt.Errorf("failed to convert PR ID to int: %w", err)
+	}
+
+	labelIDs, err := pr.resolveLabelIDs(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, labelNames)
+	if err != nil {
+		return err
+	}
+
+	for _, labelID := range labelIDs {
+		start := time.Now()
+		resp, err := pr.foregejoClient.DeleteIssueLabel(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, prIndex, labelID)
+		if resp != nil {
+			metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationRemoveLabels, resp.StatusCode, time.Since(start), nil)
+		}
+		if err != nil {
+			if resp != nil && resp.StatusCode == http.StatusNotFound {
+				continue
+			}
+			return fmt.Errorf("failed to remove label from pull request: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (pr *PullRequest) resolveLabelIDs(owner, repo string, labelNames []string) ([]int64, error) {
+	repoLabels, _, err := pr.foregejoClient.ListRepoLabels(owner, repo, forgejo.ListLabelsOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list repository labels: %w", err)
+	}
+
+	nameToID := make(map[string]int64, len(repoLabels))
+	for _, label := range repoLabels {
+		nameToID[label.Name] = label.ID
+	}
+
+	ids := make([]int64, 0, len(labelNames))
+	for _, name := range labelNames {
+		id, ok := nameToID[name]
+		if !ok {
+			return nil, fmt.Errorf("repository label %q not found; create it before using in pullRequest.labels.expression", name)
+		}
+		ids = append(ids, id)
+	}
+
+	return ids, nil
 }
