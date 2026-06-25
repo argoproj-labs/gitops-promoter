@@ -196,13 +196,6 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	}
 
 	if pr != nil {
-		pr, err = r.reconcilePullRequestLabels(ctx, &ctp, pr)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to reconcile pull request labels: %w", err)
-		}
-	}
-
-	if pr != nil {
 		utils.InheritNotReadyConditionFromObjects(&ctp, promoterConditions.PullRequestNotReady, pr)
 	}
 
@@ -1206,30 +1199,49 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 		prState = existingPR.Spec.State
 	}
 
-	// Build the apply configuration
-	prApply := acv1alpha1.PullRequest(prName, ctp.Namespace).
-		WithLabels(map[string]string{
-			promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
-			promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
-			promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
-		}).
-		WithOwnerReferences(acmetav1.OwnerReference().
-			WithAPIVersion(gvk.GroupVersion().String()).
-			WithKind(gvk.Kind).
-			WithName(ctp.Name).
-			WithUID(ctp.UID).
-			WithController(true).
-			WithBlockOwnerDeletion(true)).
-		WithFinalizers(promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer).
-		WithSpec(acv1alpha1.PullRequestSpec().
-			WithRepositoryReference(acv1alpha1.ObjectReference().WithName(ctp.Spec.RepositoryReference.Name)).
-			WithTitle(title).
-			WithTargetBranch(ctp.Spec.ActiveBranch).
-			WithSourceBranch(ctp.Spec.ProposedBranch).
-			WithDescription(description).
-			WithCommit(acv1alpha1.CommitConfiguration().WithMessage(commitMessage)).
-			WithMergeSha(ctp.Status.Proposed.Hydrated.Sha).
-			WithState(prState))
+	desiredLabels, manageLabels, err := r.evaluatePullRequestLabels(ctp, ps)
+	if err != nil {
+		return nil, fmt.Errorf("failed to evaluate pull request labels: %w", err)
+	}
+
+	draftPR := &promoterv1alpha1.PullRequest{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      prName,
+			Namespace: ctp.Namespace,
+			Labels: map[string]string{
+				promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
+				promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
+				promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
+			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion:         gvk.GroupVersion().String(),
+					Kind:               kind,
+					Name:               ctp.Name,
+					UID:                ctp.UID,
+					Controller:         ptr.To(true),
+					BlockOwnerDeletion: ptr.To(true),
+				},
+			},
+		},
+		Spec: promoterv1alpha1.PullRequestSpec{
+			RepositoryReference: promoterv1alpha1.ObjectReference{Name: ctp.Spec.RepositoryReference.Name},
+			Title:               title,
+			TargetBranch:        ctp.Spec.ActiveBranch,
+			SourceBranch:        ctp.Spec.ProposedBranch,
+			Description:         description,
+			Commit:              promoterv1alpha1.CommitConfiguration{Message: commitMessage},
+			MergeSha:            ctp.Status.Proposed.Hydrated.Sha,
+			State:               prState,
+		},
+	}
+	if manageLabels {
+		draftPR.Spec.Labels = desiredLabels
+	} else if prExists {
+		draftPR.Spec.Labels = existingPR.Spec.Labels
+	}
+
+	prApply := pullRequestApplyOwnedByChangeTransferPolicy(draftPR, nil, true)
 
 	// Apply using Server-Side Apply with Patch to get the result directly
 	pr := &promoterv1alpha1.PullRequest{}
@@ -1250,14 +1262,9 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 	return pr, nil
 }
 
-func (r *ChangeTransferPolicyReconciler) reconcilePullRequestLabels(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, pr *promoterv1alpha1.PullRequest) (*promoterv1alpha1.PullRequest, error) {
+func (r *ChangeTransferPolicyReconciler) evaluatePullRequestLabels(ctp *promoterv1alpha1.ChangeTransferPolicy, ps *promoterv1alpha1.PromotionStrategy) ([]string, bool, error) {
 	if ctp.Spec.PullRequest == nil || ctp.Spec.PullRequest.Labels == nil || ctp.Spec.PullRequest.Labels.Expression == "" {
-		return pr, nil
-	}
-
-	ps, err := r.getPromotionStrategy(ctx, ctp)
-	if err != nil {
-		return nil, err
+		return nil, false, nil
 	}
 
 	desiredLabels, err := r.labelEvaluator.Evaluate(ctp.Spec.PullRequest.Labels.Expression, prlabels.ExpressionContext{
@@ -1266,28 +1273,10 @@ func (r *ChangeTransferPolicyReconciler) reconcilePullRequestLabels(ctx context.
 		PromotionStrategy: ps,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to evaluate pull request labels expression: %w", err)
+		return nil, false, fmt.Errorf("failed to evaluate pull request labels expression: %w", err)
 	}
 
-	if prlabels.SetsEqual(desiredLabels, pr.Spec.Labels) {
-		return pr, nil
-	}
-
-	var livePR promoterv1alpha1.PullRequest
-	if err := r.Get(ctx, client.ObjectKeyFromObject(pr), &livePR); err != nil {
-		return nil, fmt.Errorf("failed to get PullRequest for label patch: %w", err)
-	}
-
-	livePR.Spec.Labels = desiredLabels
-	prApply := pullRequestApplyOwnedByChangeTransferPolicy(&livePR, nil, false)
-	patched := &promoterv1alpha1.PullRequest{}
-	patched.Name = livePR.Name
-	patched.Namespace = livePR.Namespace
-	if err := r.Patch(ctx, patched, utils.ApplyPatch{ApplyConfig: prApply}, client.FieldOwner(constants.ChangeTransferPolicyControllerFieldOwner), client.ForceOwnership); err != nil {
-		return nil, fmt.Errorf("failed to patch PullRequest labels: %w", err)
-	}
-
-	return patched, nil
+	return desiredLabels, true, nil
 }
 
 // mergePullRequests tries to merge the pull request if all the checks have passed and the environment is set to auto merge.
