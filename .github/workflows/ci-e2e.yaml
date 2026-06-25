@@ -23,7 +23,7 @@ jobs:
           - 1.34.8
           - 1.35.5
           - 1.36.1
-    name: E2E Tests
+    name: E2E Tests (${{ matrix.kubernetes-minor-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -45,3 +45,17 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Run E2E-Tests
         run: make test-e2e
+  e2e:
+    # Stable status check for branch protection; matrix jobs above may change names when
+    # kindest/node versions bump, but this job name stays constant.
+    name: E2E Tests
+    needs: ci
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: All matrix jobs passed
+        run: |
+          if [[ "${{ needs.ci.result }}" != "success" ]]; then
+            echo "One or more E2E matrix jobs failed or were cancelled."
+            exit 1
+          fi
