@@ -30,16 +30,39 @@ import (
 )
 
 var _ = Describe("PullRequest SCM labels", func() {
-	var ctx context.Context
+	var (
+		ctx          context.Context
+		scmSecret    *v1.Secret
+		scmProvider  *promoterv1alpha1.ScmProvider
+		gitRepo      *promoterv1alpha1.GitRepository
+		pullRequest  *promoterv1alpha1.PullRequest
+		resourceName types.NamespacedName
+	)
 
 	BeforeEach(func() {
 		ctx = context.Background()
 		fake.ResetLabelCallCount()
 	})
 
+	AfterEach(func() {
+		if pullRequest != nil {
+			_ = k8sClient.Delete(ctx, pullRequest)
+		}
+		if gitRepo != nil {
+			_ = k8sClient.Delete(ctx, gitRepo)
+		}
+		if scmProvider != nil {
+			_ = k8sClient.Delete(ctx, scmProvider)
+		}
+		if scmSecret != nil {
+			_ = k8sClient.Delete(ctx, scmSecret)
+		}
+	})
+
 	It("applies and retracts SCM labels via the fake provider", func() {
-		name, scmSecret, scmProvider, gitRepo, pullRequest := pullRequestResources(ctx, "scm-labels-apply")
-		typeNamespacedName := types.NamespacedName{Name: name, Namespace: "default"}
+		var name string
+		name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "scm-labels-apply")
+		resourceName = types.NamespacedName{Name: name, Namespace: "default"}
 
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -47,20 +70,20 @@ var _ = Describe("PullRequest SCM labels", func() {
 		Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
 
 		Eventually(func(g Gomega) {
-			g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+			g.Expect(k8sClient.Get(ctx, resourceName, pullRequest)).To(Succeed())
 			g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 			g.Expect(pullRequest.Status.ID).NotTo(BeEmpty())
 		}, constants.EventuallyTimeout).Should(Succeed())
 
 		fake.ResetLabelCallCount()
 		Eventually(func(g Gomega) {
-			g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+			g.Expect(k8sClient.Get(ctx, resourceName, pullRequest)).To(Succeed())
 			pullRequest.Spec.Labels = []string{"lgtm", "approved"}
 			g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
 		}, constants.EventuallyTimeout).Should(Succeed())
 
 		Eventually(func(g Gomega) {
-			g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+			g.Expect(k8sClient.Get(ctx, resourceName, pullRequest)).To(Succeed())
 			g.Expect(pullRequest.Status.AppliedLabels).To(ConsistOf("lgtm", "approved"))
 		}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -77,13 +100,13 @@ var _ = Describe("PullRequest SCM labels", func() {
 
 		fake.ResetLabelCallCount()
 		Eventually(func(g Gomega) {
-			g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+			g.Expect(k8sClient.Get(ctx, resourceName, pullRequest)).To(Succeed())
 			pullRequest.Spec.Labels = nil
 			g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
 		}, constants.EventuallyTimeout).Should(Succeed())
 
 		Eventually(func(g Gomega) {
-			g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+			g.Expect(k8sClient.Get(ctx, resourceName, pullRequest)).To(Succeed())
 			g.Expect(pullRequest.Status.AppliedLabels).To(BeEmpty())
 		}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -94,17 +117,40 @@ var _ = Describe("PullRequest SCM labels", func() {
 })
 
 var _ = Describe("PromotionStrategy pullRequest propagation", func() {
+	var (
+		ctx               context.Context
+		scmSecret         *v1.Secret
+		scmProvider       *promoterv1alpha1.ScmProvider
+		gitRepo           *promoterv1alpha1.GitRepository
+		promotionStrategy *promoterv1alpha1.PromotionStrategy
+		resourceName      types.NamespacedName
+	)
+
+	BeforeEach(func() {
+		ctx = context.Background()
+	})
+
+	AfterEach(func() {
+		if promotionStrategy != nil {
+			_ = k8sClient.Delete(ctx, promotionStrategy)
+		}
+		if gitRepo != nil {
+			_ = k8sClient.Delete(ctx, gitRepo)
+		}
+		if scmProvider != nil {
+			_ = k8sClient.Delete(ctx, scmProvider)
+		}
+		if scmSecret != nil {
+			_ = k8sClient.Delete(ctx, scmSecret)
+		}
+	})
+
 	It("copies spec.pullRequest to each ChangeTransferPolicy", func() {
-		ctx := context.Background()
-		var scmSecret *v1.Secret
-		var scmProvider *promoterv1alpha1.ScmProvider
-		var gitRepo *promoterv1alpha1.GitRepository
-		var promotionStrategy *promoterv1alpha1.PromotionStrategy
 		var name string
 		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "labels-propagation-ps", "default")
 		setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
-		typeNamespacedName := types.NamespacedName{Name: name, Namespace: "default"}
+		resourceName = types.NamespacedName{Name: name, Namespace: "default"}
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
@@ -119,7 +165,7 @@ var _ = Describe("PromotionStrategy pullRequest propagation", func() {
 		}, constants.EventuallyTimeout).Should(Succeed())
 
 		Eventually(func(g Gomega) {
-			g.Expect(k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)).To(Succeed())
+			g.Expect(k8sClient.Get(ctx, resourceName, promotionStrategy)).To(Succeed())
 			promotionStrategy.Spec.PullRequest = &promoterv1alpha1.PullRequestPolicySpec{
 				Labels: &promoterv1alpha1.ScmLabelsSpec{
 					Expression: "['lgtm']",
@@ -139,7 +185,5 @@ var _ = Describe("PromotionStrategy pullRequest propagation", func() {
 				g.Expect(ctp.Spec.PullRequest.Labels.Expression).To(Equal("['lgtm']"))
 			}
 		}, constants.EventuallyTimeout).Should(Succeed())
-
-		_ = k8sClient.Delete(ctx, promotionStrategy)
 	})
 })

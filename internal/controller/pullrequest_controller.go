@@ -563,6 +563,10 @@ func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr *promot
 	return nil
 }
 
+// reconcileLabels syncs spec.labels to the SCM provider and updates status.appliedLabels.
+// TODO: add a validating admission webhook to reject spec.labels when the repository's SCM
+// provider does not support pull request labels (e.g. Bitbucket Cloud), so misconfiguration
+// is caught at apply time instead of surfacing as a reconcile error loop.
 func (r *PullRequestReconciler) reconcileLabels(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
 	if pr.Status.ID == "" {
 		return nil

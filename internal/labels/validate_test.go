@@ -17,6 +17,8 @@ func TestValidateLabelNames(t *testing.T) {
 		{name: "empty list", labels: nil},
 		{name: "empty string", labels: []string{""}, wantErr: true},
 		{name: "too long", labels: []string{strings.Repeat("a", 51)}, wantErr: true},
+		{name: "max rune length", labels: []string{strings.Repeat("\u00e9", 50)}},
+		{name: "too many runes", labels: []string{strings.Repeat("\u00e9", 51)}, wantErr: true},
 		{name: "newline", labels: []string{"bad\nlabel"}, wantErr: true},
 		{name: "nul", labels: []string{"bad\x00label"}, wantErr: true},
 		{name: "duplicate", labels: []string{"a", "a"}, wantErr: true},

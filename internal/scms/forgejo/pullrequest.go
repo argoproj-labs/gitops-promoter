@@ -323,9 +323,9 @@ func (pr *PullRequest) RemoveLabels(ctx context.Context, pullRequest promoterv1a
 }
 
 func (pr *PullRequest) resolveLabelIDs(owner, repo string, labelNames []string) ([]int64, error) {
-	repoLabels, _, err := pr.foregejoClient.ListRepoLabels(owner, repo, forgejo.ListLabelsOptions{})
+	repoLabels, err := pr.listAllRepoLabels(owner, repo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list repository labels: %w", err)
+		return nil, err
 	}
 
 	nameToID := make(map[string]int64, len(repoLabels))
@@ -343,4 +343,23 @@ func (pr *PullRequest) resolveLabelIDs(owner, repo string, labelNames []string) 
 	}
 
 	return ids, nil
+}
+
+func (pr *PullRequest) listAllRepoLabels(owner, repo string) ([]*forgejo.Label, error) {
+	var allLabels []*forgejo.Label
+	page := 1
+	for {
+		repoLabels, resp, err := pr.foregejoClient.ListRepoLabels(owner, repo, forgejo.ListLabelsOptions{
+			ListOptions: forgejo.ListOptions{Page: page, PageSize: 50},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list repository labels: %w", err)
+		}
+		allLabels = append(allLabels, repoLabels...)
+		if len(repoLabels) == 0 || resp == nil || page >= resp.LastPage {
+			break
+		}
+		page++
+	}
+	return allLabels, nil
 }

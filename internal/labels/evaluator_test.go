@@ -33,6 +33,19 @@ func TestEvaluatorEvaluate(t *testing.T) {
 	}
 }
 
+func TestEvaluatorEvaluateNilPromotionStrategy(t *testing.T) {
+	t.Parallel()
+
+	e := &Evaluator{}
+	got, err := e.Evaluate(`PromotionStrategy == nil ? ['lgtm'] : ['other']`, ExpressionContext{})
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
+	if len(got) != 1 || got[0] != "lgtm" {
+		t.Fatalf("Evaluate() = %v, want [lgtm]", got)
+	}
+}
+
 func TestEvaluatorEvaluateInvalidOutput(t *testing.T) {
 	t.Parallel()
 

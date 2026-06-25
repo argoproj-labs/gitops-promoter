@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"unicode/utf8"
 )
 
 const (
@@ -24,7 +25,7 @@ func ValidateLabelNames(names []string) error {
 		if name == "" {
 			return fmt.Errorf("label at index %d must not be empty", i)
 		}
-		if len(name) > maxLabelLength {
+		if utf8.RuneCountInString(name) > maxLabelLength {
 			return fmt.Errorf("label %q exceeds maximum length of %d characters", name, maxLabelLength)
 		}
 		if !labelNamePattern.MatchString(name) {

@@ -30,11 +30,9 @@ func (e *Evaluator) Evaluate(expression string, evalCtx ExpressionContext) ([]st
 	}
 
 	env := map[string]any{
-		"Status": evalCtx.Status,
-		"Spec":   evalCtx.Spec,
-	}
-	if evalCtx.PromotionStrategy != nil {
-		env["PromotionStrategy"] = evalCtx.PromotionStrategy
+		"Status":            evalCtx.Status,
+		"Spec":              evalCtx.Spec,
+		"PromotionStrategy": evalCtx.PromotionStrategy,
 	}
 
 	output, err := expr.Run(program, env)

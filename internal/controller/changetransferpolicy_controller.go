@@ -1041,7 +1041,11 @@ func pullRequestApplyOwnedByChangeTransferPolicy(pr *promoterv1alpha1.PullReques
 	if pr.Spec.Commit.Message != "" {
 		prSpec = prSpec.WithCommit(acv1alpha1.CommitConfiguration().WithMessage(pr.Spec.Commit.Message))
 	}
-	prSpec.Labels = pr.Spec.Labels
+	if len(pr.Spec.Labels) > 0 {
+		prSpec = prSpec.WithLabels(pr.Spec.Labels...)
+	} else if pr.Spec.Labels != nil {
+		prSpec.Labels = []string{}
+	}
 
 	prApply := acv1alpha1.PullRequest(pr.Name, pr.Namespace).
 		WithLabels(pr.Labels)
