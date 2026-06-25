@@ -329,7 +329,14 @@ func (pr *PullRequest) ensureRepositoryLabels(ctx context.Context, gitRepo *v1al
 		}
 		if err != nil {
 			if response != nil && response.StatusCode == http.StatusUnprocessableEntity {
-				continue
+				exists, listErr := pr.repositoryHasLabel(ctx, owner, repo, name)
+				if listErr != nil {
+					return listErr
+				}
+				if exists {
+					existing[name] = struct{}{}
+					continue
+				}
 			}
 			return fmt.Errorf("failed to create repository label %q: %w", name, err)
 		}
@@ -337,6 +344,18 @@ func (pr *PullRequest) ensureRepositoryLabels(ctx context.Context, gitRepo *v1al
 	}
 
 	return nil
+}
+
+func (pr *PullRequest) repositoryHasLabel(ctx context.Context, owner, repo, name string) (bool, error) {
+	for label, err := range pr.client.Issues.ListLabelsIter(ctx, owner, repo, &github.ListOptions{PerPage: 100}) {
+		if err != nil {
+			return false, fmt.Errorf("failed to list repository labels: %w", err)
+		}
+		if label.GetName() == name {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // RemoveLabels removes labels from a pull request on GitHub.

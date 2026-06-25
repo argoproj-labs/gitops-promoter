@@ -315,10 +315,13 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 			PRCreationTime: metav1.Time{Time: firstPR.CreationDate.Time},
 			Url:            url,
 		}
+		// GetPullRequests list responses do not include pull request labels, so drift
+		// repair from FindOpen is not possible; label sync still uses AddLabels/RemoveLabels.
 		return scms.FindOpenResult{
-			Found:        true,
-			ID:           prStatus.ID,
-			CreationTime: prStatus.PRCreationTime.Time,
+			Found:          true,
+			ID:             prStatus.ID,
+			CreationTime:   prStatus.PRCreationTime.Time,
+			LabelsReported: false,
 		}, nil
 	}
 
