@@ -1198,6 +1198,11 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicySpec(
 						},
 					},
 					"mergeComments": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "set",
+							},
+						},
 						SchemaProps: spec.SchemaProps{
 							Description: "MergeComments lists comments to post on the PR when all merge conditions are met, instead of merging the PR directly via the SCM API. An external system (e.g. Prow) is expected to perform the actual merge after seeing these comments. Requires autoMerge: true. Labels and comments may be combined.",
 							Type:        []string{"array"},
@@ -1212,6 +1217,11 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicySpec(
 						},
 					},
 					"mergeLabels": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "set",
+							},
+						},
 						SchemaProps: spec.SchemaProps{
 							Description: "MergeLabels lists labels to add to the PR when all merge conditions are met, instead of merging the PR directly via the SCM API. An external system (e.g. Tide) is expected to perform the actual merge after seeing these labels. Requires autoMerge: true. Labels and comments may be combined.",
 							Type:        []string{"array"},
@@ -3332,6 +3342,11 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_MergeSignals(ref common.R
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"comments": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "set",
+							},
+						},
 						SchemaProps: spec.SchemaProps{
 							Description: "Comments lists the comments to post on the PR (e.g. \"/lgtm\", \"/approve\").",
 							Type:        []string{"array"},
@@ -3346,6 +3361,11 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_MergeSignals(ref common.R
 						},
 					},
 					"labels": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "set",
+							},
+						},
 						SchemaProps: spec.SchemaProps{
 							Description: "Labels lists the labels to add to the PR (e.g. \"lgtm\", \"approved\").",
 							Type:        []string{"array"},
