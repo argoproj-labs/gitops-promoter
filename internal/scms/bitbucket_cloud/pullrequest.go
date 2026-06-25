@@ -208,7 +208,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) er
 }
 
 // FindOpen checks if a pull request is open and returns its status.
-func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string, time.Time, error) {
+func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.FindOpenResult, error) {
 	logger := log.FromContext(ctx)
 	logger.V(4).Info("Finding Open Pull Request")
 
@@ -217,7 +217,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 		Name:      pullRequest.Spec.RepositoryReference.Name,
 	})
 	if err != nil {
-		return false, "", time.Time{}, fmt.Errorf("failed to get repo: %w", err)
+		return scms.FindOpenResult{}, fmt.Errorf("failed to get repo: %w", err)
 	}
 
 	// Build query to find PRs matching source and target branches and state
@@ -240,9 +240,9 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 
 	if err != nil {
 		if unexpectedErr, ok := errors.AsType[*bitbucket.UnexpectedResponseStatusError](err); ok {
-			return false, "", time.Time{}, fmt.Errorf("failed to list pull requests: %w", unexpectedErr.ErrorWithBody())
+			return scms.FindOpenResult{}, fmt.Errorf("failed to list pull requests: %w", unexpectedErr.ErrorWithBody())
 		}
-		return false, "", time.Time{}, fmt.Errorf("failed to list pull requests: %w", err)
+		return scms.FindOpenResult{}, fmt.Errorf("failed to list pull requests: %w", err)
 	}
 
 	logger.V(4).Info("bitbucket response status", "status", statusCode)
@@ -250,50 +250,54 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	// Parse the paginated response
 	resultMap, ok := result.(map[string]any)
 	if !ok {
-		return false, "", time.Time{}, fmt.Errorf("unexpected response type from Bitbucket API: %T", result)
+		return scms.FindOpenResult{}, fmt.Errorf("unexpected response type from Bitbucket API: %T", result)
 	}
 
 	values, exists := resultMap["values"]
 	if !exists {
-		return false, "", time.Time{}, nil
+		return scms.FindOpenResult{}, nil
 	}
 	prs, ok := values.([]any)
 	if !ok || len(prs) == 0 {
-		return false, "", time.Time{}, nil
+		return scms.FindOpenResult{}, nil
 	}
 
 	// Get the first matching PR
 	firstPR, ok := prs[0].(map[string]any)
 	if !ok {
-		return false, "", time.Time{}, errors.New("unexpected PR format in response")
+		return scms.FindOpenResult{}, errors.New("unexpected PR format in response")
 	}
 
 	// Extract and validate PR ID
 	idValue, exists := firstPR["id"]
 	if !exists {
-		return false, "", time.Time{}, errors.New("PR ID not found in response")
+		return scms.FindOpenResult{}, errors.New("PR ID not found in response")
 	}
 	idFloat, ok := idValue.(float64)
 	if !ok {
-		return false, "", time.Time{}, fmt.Errorf("PR ID has unexpected type: %T", idValue)
+		return scms.FindOpenResult{}, fmt.Errorf("PR ID has unexpected type: %T", idValue)
 	}
 
 	// Extract and validate created_on timestamp
 	createdOn, exists := firstPR["created_on"]
 	if !exists {
-		return false, "", time.Time{}, errors.New("created_on not found in response")
+		return scms.FindOpenResult{}, errors.New("created_on not found in response")
 	}
 	createdStr, ok := createdOn.(string)
 	if !ok {
-		return false, "", time.Time{}, fmt.Errorf("created_on has unexpected type: %T", createdOn)
+		return scms.FindOpenResult{}, fmt.Errorf("created_on has unexpected type: %T", createdOn)
 	}
 
 	createdAt, err := time.Parse(time.RFC3339, createdStr)
 	if err != nil {
-		return false, "", time.Time{}, fmt.Errorf("failed to parse created_on timestamp: %w", err)
+		return scms.FindOpenResult{}, fmt.Errorf("failed to parse created_on timestamp: %w", err)
 	}
 
-	return true, strconv.Itoa(int(idFloat)), createdAt, nil
+	return scms.FindOpenResult{
+		Found:        true,
+		ID:           strconv.Itoa(int(idFloat)),
+		CreationTime: createdAt,
+	}, nil
 }
 
 // GetUrl retrieves the URL of the pull request.
@@ -310,4 +314,14 @@ func (pr *PullRequest) GetUrl(ctx context.Context, prObj v1alpha1.PullRequest) (
 		repo.Spec.BitbucketCloud.Owner,
 		repo.Spec.BitbucketCloud.Name,
 		prObj.Status.ID), nil
+}
+
+// AddLabels is not supported on Bitbucket Cloud (no pull request labels API).
+func (pr *PullRequest) AddLabels(_ context.Context, _ v1alpha1.PullRequest, _ []string) error {
+	return errors.New("bitbucket cloud does not support pull request labels")
+}
+
+// RemoveLabels is not supported on Bitbucket Cloud (no pull request labels API).
+func (pr *PullRequest) RemoveLabels(_ context.Context, _ v1alpha1.PullRequest, _ []string) error {
+	return errors.New("bitbucket cloud does not support pull request labels")
 }

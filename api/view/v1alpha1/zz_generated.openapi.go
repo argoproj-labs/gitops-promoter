@@ -114,6 +114,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.PullRequestCommonStatus{}.OpenAPIModelName():                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestCommonStatus(ref),
 		apiv1alpha1.PullRequestConfiguration{}.OpenAPIModelName():                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestConfiguration(ref),
 		apiv1alpha1.PullRequestList{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestList(ref),
+		apiv1alpha1.PullRequestPolicySpec{}.OpenAPIModelName():                                schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestPolicySpec(ref),
 		apiv1alpha1.PullRequestSpec{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestSpec(ref),
 		apiv1alpha1.PullRequestStatus{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestStatus(ref),
 		apiv1alpha1.PullRequestTemplate{}.OpenAPIModelName():                                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestTemplate(ref),
@@ -126,6 +127,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.RevertCommitStatus{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommitStatus(ref),
 		apiv1alpha1.RevisionReference{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevisionReference(ref),
 		apiv1alpha1.Scm{}.OpenAPIModelName():                                                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_Scm(ref),
+		apiv1alpha1.ScmLabelsSpec{}.OpenAPIModelName():                                        schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmLabelsSpec(ref),
 		apiv1alpha1.ScmProvider{}.OpenAPIModelName():                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProvider(ref),
 		apiv1alpha1.ScmProviderList{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderList(ref),
 		apiv1alpha1.ScmProviderObjectReference{}.OpenAPIModelName():                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderObjectReference(ref),
@@ -1196,12 +1198,18 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicySpec(
 							},
 						},
 					},
+					"pullRequest": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PullRequest configures SCM pull request behavior for this change transfer policy. Copied from the owning PromotionStrategy by the PromotionStrategy controller.",
+							Ref:         ref(apiv1alpha1.PullRequestPolicySpec{}.OpenAPIModelName()),
+						},
+					},
 				},
 				Required: []string{"gitRepositoryRef", "proposedBranch", "activeBranch", "activeCommitStatuses", "proposedCommitStatuses"},
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.CommitStatusSelector{}.OpenAPIModelName(), apiv1alpha1.ObjectReference{}.OpenAPIModelName()},
+			apiv1alpha1.CommitStatusSelector{}.OpenAPIModelName(), apiv1alpha1.ObjectReference{}.OpenAPIModelName(), apiv1alpha1.PullRequestPolicySpec{}.OpenAPIModelName()},
 	}
 }
 
@@ -3637,12 +3645,18 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategySpec(ref
 							Format:      "",
 						},
 					},
+					"pullRequest": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PullRequest configures SCM pull request behavior for all environments in this strategy.",
+							Ref:         ref(apiv1alpha1.PullRequestPolicySpec{}.OpenAPIModelName()),
+						},
+					},
 				},
 				Required: []string{"gitRepositoryRef", "environments"},
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.CommitStatusSelector{}.OpenAPIModelName(), apiv1alpha1.Environment{}.OpenAPIModelName(), apiv1alpha1.ObjectReference{}.OpenAPIModelName()},
+			apiv1alpha1.CommitStatusSelector{}.OpenAPIModelName(), apiv1alpha1.Environment{}.OpenAPIModelName(), apiv1alpha1.ObjectReference{}.OpenAPIModelName(), apiv1alpha1.PullRequestPolicySpec{}.OpenAPIModelName()},
 	}
 }
 
@@ -3892,6 +3906,27 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestList(ref commo
 	}
 }
 
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestPolicySpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "PullRequestPolicySpec configures SCM pull request behavior for a promotion policy.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"labels": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Labels configures dynamic SCM labels applied to promotion pull requests.",
+							Ref:         ref(apiv1alpha1.ScmLabelsSpec{}.OpenAPIModelName()),
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.ScmLabelsSpec{}.OpenAPIModelName()},
+	}
+}
+
 func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -3960,6 +3995,25 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestSpec(ref commo
 							Format:      "",
 						},
 					},
+					"labels": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "set",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "Labels is the desired set of SCM pull request labels (not Kubernetes metadata labels). Written by the ChangeTransferPolicy controller from pullRequest.labels.expression evaluation.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
+									},
+								},
+							},
+						},
+					},
 				},
 				Required: []string{"gitRepositoryRef", "title", "targetBranch", "sourceBranch", "mergeSha", "state"},
 			},
@@ -4015,6 +4069,25 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestStatus(ref com
 							Description: "ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the resource still desired it open (spec.state is \"open\"): either it was merged or closed outside the controller, or it was closed on the SCM because the PullRequest resource was deleted (finalizer) and a subsequent sync observed it missing. The controller does not distinguish those cases here. When true, the State field will be empty (\"\") since we cannot tell merge vs. close from the provider. The PullRequest resource will be deleted after this flag is set when possible, but the status is preserved in the owning ChangeTransferPolicy to maintain a record.",
 							Type:        []string{"boolean"},
 							Format:      "",
+						},
+					},
+					"appliedLabels": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "set",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "AppliedLabels lists SCM labels successfully applied by gitops-promoter (for sync and retraction).",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
+									},
+								},
+							},
 						},
 					},
 					"conditions": {
@@ -4333,6 +4406,28 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_Scm(ref common.ReferenceC
 			SchemaProps: spec.SchemaProps{
 				Description: "Scm specifies authentication using SCM provider credentials.\n\nThis authentication method uses the credentials from the ScmProvider referenced by the PromotionStrategy. The controller retrieves the SCM provider and secret and applies the appropriate authentication based on the provider type.",
 				Type:        []string{"object"},
+			},
+		},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmLabelsSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ScmLabelsSpec configures dynamic SCM pull request labels via an expression.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"expression": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Expression is evaluated using the expr library (github.com/expr-lang/expr) against ChangeTransferPolicy status and spec. It must return a list of SCM label name strings.\n\nAvailable variables:\n  - Status: ChangeTransferPolicy status (Proposed/Active commit statuses, branch SHAs, etc.)\n  - Spec: ChangeTransferPolicy spec (ActiveBranch, ProposedBranch, etc.)\n  - PromotionStrategy: owning PromotionStrategy spec and status when available\n\nEach returned label name must satisfy the same validation as PullRequest.spec.labels (non-empty, max 50 characters, no newlines, max 10 labels, unique).",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"expression"},
 			},
 		},
 	}
