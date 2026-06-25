@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path"
 	"reflect"
 	"slices"
 	"strings"
@@ -570,6 +571,13 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 		return fmt.Errorf("failed to set commit metadata: %w", err)
 	}
 
+	if err := validateProposedDryMetadata(ctp); err != nil {
+		metadataPath := hydratorMetadataPath(ctp.Spec.ActivePath)
+		r.Recorder.Eventf(ctp, nil, "Warning", constants.MissingProposedHydratorMetadataReason, "EvaluatingPromotion",
+			constants.MissingProposedHydratorMetadataMessage, ctp.Spec.ProposedBranch, ctp.Status.Proposed.Hydrated.Sha, metadataPath)
+		return err
+	}
+
 	err = r.setCommitStatusState(ctx, &ctp.Status.Active, ctp.Spec.ActiveCommitStatuses)
 	if err != nil {
 		if _, ok := errors.AsType[*TooManyMatchingShaError](err); ok {
@@ -592,6 +600,44 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 	}
 
 	return nil
+}
+
+func hydratorMetadataPath(activePath string) string {
+	if activePath == "" {
+		return "hydrator.metadata"
+	}
+	return path.Join(activePath, "hydrator.metadata")
+}
+
+// validateProposedDryMetadata returns an error when the proposed branch has clearly moved ahead of
+// active but promoter could not read a dry SHA from hydrator.metadata at activePath. An empty active
+// dry SHA is normal before the first promotion; an empty proposed dry SHA is not once the proposed
+// branch tip differs from active. A git note dry SHA that differs from proposed dry SHA is fine.
+//
+// This function assumes ctp.Status.Proposed.Hydrated.Sha is non-empty. That should already be
+// confirmed by this point in the reconcile.
+func validateProposedDryMetadata(ctp *promoterv1alpha1.ChangeTransferPolicy) error {
+	if ctp.Status.Proposed.Dry.Sha != "" {
+		return nil
+	}
+
+	proposedHydratedSha := ctp.Status.Proposed.Hydrated.Sha
+
+	if proposedHydratedSha == ctp.Status.Active.Hydrated.Sha {
+		return nil
+	}
+
+	metadataPath := hydratorMetadataPath(ctp.Spec.ActivePath)
+	msg := fmt.Sprintf("proposed branch %q has hydrated commit %s but no dry SHA from %q on that commit",
+		ctp.Spec.ProposedBranch, proposedHydratedSha, metadataPath)
+	if ctp.Spec.ActivePath != "" {
+		msg += fmt.Sprintf("; ensure the hydrator writes hydrator.metadata under activePath %q", ctp.Spec.ActivePath)
+	}
+	if noteDrySha := getNoteDrySha(ctp.Status.Proposed.Note); noteDrySha != "" {
+		msg += fmt.Sprintf(" (git note reports dry SHA %s, confirming hydration ran)", noteDrySha)
+	}
+
+	return errors.New(msg)
 }
 
 // NewTooManyMatchingShaError creates a new TooManyMatchingShaError. This error indicates that there are too many

@@ -28,6 +28,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/controller"
 )
 
 // detailsUIDNamespace is a fixed UUID namespace used to derive deterministic UIDs
@@ -105,44 +106,28 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 
 	// Commit-status managers reference the PS by spec.promotionStrategyRef.name.
 	argocdList := &promoterv1alpha1.ArgoCDCommitStatusList{}
-	if err := reader.List(ctx, argocdList, client.InNamespace(namespace)); err != nil {
+	if err := reader.List(ctx, argocdList, client.InNamespace(namespace), client.MatchingFields{controller.PromotionStrategyRefField: name}); err != nil {
 		return nil, fmt.Errorf("failed to list ArgoCDCommitStatuses: %w", err)
 	}
-	for i := range argocdList.Items {
-		if argocdList.Items[i].Spec.PromotionStrategyRef.Name == name {
-			bundle.ArgoCDCommitStatuses = append(bundle.ArgoCDCommitStatuses, argocdList.Items[i])
-		}
-	}
+	bundle.ArgoCDCommitStatuses = nilIfEmpty(argocdList.Items)
 
 	gitCSList := &promoterv1alpha1.GitCommitStatusList{}
-	if err := reader.List(ctx, gitCSList, client.InNamespace(namespace)); err != nil {
+	if err := reader.List(ctx, gitCSList, client.InNamespace(namespace), client.MatchingFields{controller.PromotionStrategyRefField: name}); err != nil {
 		return nil, fmt.Errorf("failed to list GitCommitStatuses: %w", err)
 	}
-	for i := range gitCSList.Items {
-		if gitCSList.Items[i].Spec.PromotionStrategyRef.Name == name {
-			bundle.GitCommitStatuses = append(bundle.GitCommitStatuses, gitCSList.Items[i])
-		}
-	}
+	bundle.GitCommitStatuses = nilIfEmpty(gitCSList.Items)
 
 	timedCSList := &promoterv1alpha1.TimedCommitStatusList{}
-	if err := reader.List(ctx, timedCSList, client.InNamespace(namespace)); err != nil {
+	if err := reader.List(ctx, timedCSList, client.InNamespace(namespace), client.MatchingFields{controller.PromotionStrategyRefField: name}); err != nil {
 		return nil, fmt.Errorf("failed to list TimedCommitStatuses: %w", err)
 	}
-	for i := range timedCSList.Items {
-		if timedCSList.Items[i].Spec.PromotionStrategyRef.Name == name {
-			bundle.TimedCommitStatuses = append(bundle.TimedCommitStatuses, timedCSList.Items[i])
-		}
-	}
+	bundle.TimedCommitStatuses = nilIfEmpty(timedCSList.Items)
 
 	webReqCSList := &promoterv1alpha1.WebRequestCommitStatusList{}
-	if err := reader.List(ctx, webReqCSList, client.InNamespace(namespace)); err != nil {
+	if err := reader.List(ctx, webReqCSList, client.InNamespace(namespace), client.MatchingFields{controller.PromotionStrategyRefField: name}); err != nil {
 		return nil, fmt.Errorf("failed to list WebRequestCommitStatuses: %w", err)
 	}
-	for i := range webReqCSList.Items {
-		if webReqCSList.Items[i].Spec.PromotionStrategyRef.Name == name {
-			bundle.WebRequestCommitStatuses = append(bundle.WebRequestCommitStatuses, webReqCSList.Items[i])
-		}
-	}
+	bundle.WebRequestCommitStatuses = nilIfEmpty(webReqCSList.Items)
 
 	// Git config: GitRepository -> ScmProvider / ClusterScmProvider.
 	// The credentials Secret referenced by the provider is intentionally never read.
