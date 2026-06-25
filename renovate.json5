@@ -173,6 +173,28 @@
       },
     },
     // ----------------------------------------------------------------------
+    // Group B2: Node.js (Dockerfile base image + setup-node in workflows)
+    // npm package deps stay manual; only the runtime version is automated here.
+    // ----------------------------------------------------------------------
+    {
+      description: 'Group Node docker image and setup-node workflow inputs',
+      matchManagers: [
+        'custom.regex',
+        'dockerfile',
+      ],
+      matchDepNames: [
+        'node',
+      ],
+      matchPackageNames: [
+        'node',
+      ],
+      groupName: 'Node.js',
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      automerge: false,
+    },
+    // ----------------------------------------------------------------------
     // Group C2: cosign CLI (release workflows; action SHA is Dependabot-owned)
     // ----------------------------------------------------------------------
     {
@@ -591,6 +613,20 @@
       datasourceTemplate: 'github-releases',
       versioningTemplate: 'semver',
       extractVersionTemplate: '^v(?<version>.*)$',
+    },
+    // ===== Node.js (Dockerfile base image + setup-node in workflows) =====
+    {
+      customType: 'regex',
+      description: 'Update Node.js version in GitHub Actions setup-node inputs',
+      managerFilePatterns: [
+        '/^\\.github/workflows/.*\\.ya?ml$/',
+      ],
+      matchStrings: [
+        'node-version:\\s*[\'"]?(?<currentValue>\\d+\\.\\d+\\.\\d+)[\'"]?',
+      ],
+      depNameTemplate: 'node',
+      datasourceTemplate: 'node-version',
+      versioningTemplate: 'node',
     },
     // ===== Argo CD (tilt-ci + demo CLI install pins) =====
     {
