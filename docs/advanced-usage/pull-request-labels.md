@@ -58,6 +58,59 @@ Expressions are evaluated with:
 
 The expression must return a list of label name strings (`[]string`), for example `['lgtm', 'approved']` or `[]`.
 
+## Expression examples
+
+### Static label list
+
+Apply the same labels on every reconcile (for example when an external bot only checks for label presence, not how they were chosen):
+
+```yaml
+pullRequest:
+  labels:
+    expression: "['lgtm', 'approved']"
+```
+
+Pre-create `lgtm` and `approved` in the repository (or rely on Azure DevOps auto-create on add).
+
+### One label per commit status key
+
+Emit an SCM label named after each **proposed** commit status gate configured on the `ChangeTransferPolicy`, plus a static `promoter` label. External automation can watch for specific gate labels, or for the full set to appear.
+
+Gate keys may be up to 63 characters, but SCM label names are limited to 50 characters — truncate in the expression when needed:
+
+```yaml
+pullRequest:
+  labels:
+    expression: |
+      flatten([
+        ['promoter'],
+        map(
+          Spec.ProposedCommitStatuses,
+          {len(.Key) > 50 ? .Key[:50] : .Key}
+        )
+      ])
+```
+
+If `security-scan` and `deployment-freeze` are configured on the environment, this returns `['promoter', 'security-scan', 'deployment-freeze']`. When the configured gate set changes, labels for removed keys are retracted (the static `promoter` label remains).
+
+Keys come from `Spec.ProposedCommitStatuses` on each `ChangeTransferPolicy` (merged from global and per-environment `proposedCommitStatuses` on the `PromotionStrategy`).
+
+### All gates pass, then apply a fixed set
+
+Only add `lgtm` and `approved` when every proposed commit status is `success`:
+
+```yaml
+pullRequest:
+  labels:
+    expression: |
+      len(Status.Proposed.CommitStatuses) > 0 &&
+      all(Status.Proposed.CommitStatuses, {.Phase == 'success'})
+        ? ['lgtm', 'approved']
+        : []
+```
+
+This is the pattern shown in [Configure on PromotionStrategy](#configure-on-promotionstrategy) above.
+
 ## spec.labels vs metadata.labels
 
 | Field | Meaning |
