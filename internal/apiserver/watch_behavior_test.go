@@ -33,11 +33,9 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
-	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
 // mustDetailsList asserts the runtime.Object returned by List is the typed list.
@@ -184,7 +182,7 @@ var _ = Describe("Watch fan-out behavior", func() {
 		})
 
 		It("sends DELETED to a selector watcher when the object stops matching", func() {
-			cl := fake.NewClientBuilder().WithScheme(utils.GetScheme()).
+			cl := newFakeClientBuilder().
 				WithObjects(makePS("prod-ps", map[string]string{"env": "prod"})).
 				Build()
 			provider := newProviderWithReader(cl)

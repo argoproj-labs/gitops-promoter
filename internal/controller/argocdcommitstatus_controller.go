@@ -445,18 +445,18 @@ func enqueueArgoCDCommitStatusForPromotionStrategy(mcMgr mcmanager.Manager) mcha
 		}
 		logger := log.FromContext(ctx)
 		var list promoterv1alpha1.ArgoCDCommitStatusList
-		if err := mcMgr.GetLocalManager().GetClient().List(ctx, &list, client.InNamespace(ps.Namespace)); err != nil {
+		if err := mcMgr.GetLocalManager().GetClient().List(ctx, &list,
+			client.InNamespace(ps.Namespace),
+			client.MatchingFields{PromotionStrategyRefField: ps.Name},
+		); err != nil {
 			logger.Error(err, "failed to list ArgoCDCommitStatus resources for PromotionStrategy watch")
 			return nil
 		}
-		var reqs []mcreconcile.Request
+		reqs := make([]mcreconcile.Request, 0, len(list.Items))
 		for i := range list.Items {
-			acs := &list.Items[i]
-			if acs.Spec.PromotionStrategyRef.Name == ps.Name {
-				reqs = append(reqs, mcreconcile.Request{
-					Request: reconcile.Request{NamespacedName: client.ObjectKeyFromObject(acs)},
-				})
-			}
+			reqs = append(reqs, mcreconcile.Request{
+				Request: reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])},
+			})
 		}
 		return reqs
 	})
