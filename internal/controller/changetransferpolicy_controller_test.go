@@ -27,6 +27,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -124,6 +125,9 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote (%s) to `%s`", shortSha, testBranchDevelopment)))
 					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 					g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(prName)))
+					// Verify the commit message is rendered from the default template shipped in
+					// config/config/controllerconfiguration.yaml (first line matches the PR title).
+					g.Expect(pr.Spec.Commit.Message).To(ContainSubstring(fmt.Sprintf("Promote (%s) to `%s`", shortSha, testBranchDevelopment)))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Adding another pending commit")
@@ -1129,6 +1133,90 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					"PR.Spec.MergeSha must not lag origin/<proposedBranch> after gitMergeStrategyOurs "+
 						"rewrites the proposed branch tip; otherwise the PullRequest controller asks "+
 						"the SCM to merge a sha origin no longer has on the source branch")
+			})
+		})
+
+		Context("When a custom commitMessageTemplate is set in ControllerConfiguration", func() {
+			var name string
+			var scmSecret *v1.Secret
+			var scmProvider *promoterv1alpha1.ScmProvider
+			var gitRepo *promoterv1alpha1.GitRepository
+			var changeTransferPolicy *promoterv1alpha1.ChangeTransferPolicy
+			var typeNamespacedName types.NamespacedName
+			var pr promoterv1alpha1.PullRequest
+			var prName string
+			var originalTemplate string
+
+			BeforeEach(func() {
+				name, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-custom-commit-msg-tmpl", "default")
+
+				typeNamespacedName = types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}
+
+				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
+				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
+				changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
+
+				prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+
+				// Patch the global ControllerConfiguration to use the template that the
+				// original reporter wanted: the dry-commit subject as the commit message.
+				ccKey := types.NamespacedName{Name: settings.ControllerConfigurationName, Namespace: "default"}
+				cc := &promoterv1alpha1.ControllerConfiguration{}
+				Expect(k8sClient.Get(ctx, ccKey, cc)).To(Succeed())
+				originalTemplate = cc.Spec.ChangeTransferPolicy.CommitMessageTemplate
+				cc.Spec.ChangeTransferPolicy.CommitMessageTemplate = "{{ .ChangeTransferPolicy.Status.Proposed.Dry.Subject }}"
+				Expect(k8sClient.Update(ctx, cc)).To(Succeed())
+			})
+
+			AfterEach(func() {
+				By("Cleaning up resources")
+				_ = k8sClient.Delete(ctx, changeTransferPolicy)
+				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+
+				// Restore the original commitMessageTemplate so other tests are unaffected.
+				ccKey := types.NamespacedName{Name: settings.ControllerConfigurationName, Namespace: "default"}
+				cc := &promoterv1alpha1.ControllerConfiguration{}
+				Expect(k8sClient.Get(ctx, ccKey, cc)).To(Succeed())
+				cc.Spec.ChangeTransferPolicy.CommitMessageTemplate = originalTemplate
+				Expect(k8sClient.Update(ctx, cc)).To(Succeed())
+			})
+
+			It("should use the dry-commit subject as the PR commit message", func() {
+				gitPath, err := os.MkdirTemp("", "*")
+				Expect(err).NotTo(HaveOccurred())
+				defer func() { _ = os.RemoveAll(gitPath) }()
+
+				const dryCommitSubject = "feat: my amazing feature from the original reporter"
+
+				By("Adding a pending commit with a known subject")
+				fullSha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, dryCommitSubject, "")
+
+				By("Waiting for the CTP to record the proposed dry sha")
+				Eventually(func(g Gomega) {
+					err = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
+					g.Expect(err).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(Equal(fullSha))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Verifying the PR commit message starts with the dry-commit subject")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      utils.KubeSafeUniqueName(prName),
+						Namespace: "default",
+					}, &pr)
+					g.Expect(err).To(Succeed())
+					g.Expect(pr.Spec.Commit.Message).To(ContainSubstring(dryCommitSubject))
+				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
 	})

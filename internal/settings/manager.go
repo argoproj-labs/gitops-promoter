@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -145,6 +146,27 @@ func (m *Manager) GetArgoCDCommitStatusControllersWatchLocalApplicationsDirect(c
 		return false, fmt.Errorf("failed to get controller configuration: %w", err)
 	}
 	return config.Spec.ArgoCDCommitStatus.WatchLocalApplications, nil
+}
+
+// GetChangeTransferPolicyCommitMessageTemplate retrieves the commit message template
+// from the ChangeTransferPolicy configuration.
+//
+// Parameters:
+//   - ctx: Context for the request, used for cancellation and deadlines
+//
+// Returns the commit message template string, or an error if the configuration cannot be retrieved.
+func (m *Manager) GetChangeTransferPolicyCommitMessageTemplate(ctx context.Context) (string, error) {
+	config, err := m.getControllerConfiguration(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to get controller configuration: %w", err)
+	}
+	template := config.Spec.ChangeTransferPolicy.CommitMessageTemplate
+	if strings.TrimSpace(template) == "" {
+		// TODO(1.0): Remove this runtime guard after the v1 upgrade path no longer needs to
+		// support pre-upgrade ControllerConfiguration resources that can exist without this field.
+		return "", errors.New("invalid ControllerConfiguration.spec.changeTransferPolicy.commitMessageTemplate: empty value; update the ControllerConfiguration CRD and apply the latest default ControllerConfiguration custom resource")
+	}
+	return template, nil
 }
 
 // GetPullRequestControllersTemplate retrieves the PullRequest template configuration.
