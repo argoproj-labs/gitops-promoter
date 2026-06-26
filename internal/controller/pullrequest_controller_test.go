@@ -1202,6 +1202,14 @@ var _ = Describe("PullRequest Controller", func() {
 			// PendingMergeSignals remains set on the spec — this is the race the guard must handle.
 			Expect(fakeProvider.DeletePullRequest(ctx, *pullRequest)).To(Succeed())
 
+			By("Triggering reconciliation by updating the PR spec")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				orig := pullRequest.DeepCopy()
+				pullRequest.Spec.Description = pullRequest.Spec.Description + " "
+				g.Expect(k8sClient.Patch(ctx, pullRequest, client.MergeFrom(orig))).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
 			By("Waiting for the reconciler to detect that the PR is no longer open")
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
