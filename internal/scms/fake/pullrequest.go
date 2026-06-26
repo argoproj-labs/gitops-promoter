@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 
 	ginkgov2 "github.com/onsi/ginkgo/v2"
@@ -57,6 +58,7 @@ func NewFakePullRequestProvider(k8sClient client.Client) *PullRequest {
 // Create creates a new pull request with the specified title, head, base, and description.
 func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest v1alpha1.PullRequest) (id string, err error) {
 	logger := log.FromContext(ctx)
+	start := time.Now()
 	mutexPR.Lock()
 	defer mutexPR.Unlock()
 	if pullRequests == nil {
@@ -72,11 +74,15 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 	if p, ok := pullRequests[pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)]; ok {
 		logger.Info("Pull request already exists", "id", p.id, "pullRequestSpec", pullRequest.Spec, "pullRequestStatus", pullRequest.Status)
 		if p.state == v1alpha1.PullRequestOpen {
-			return id, errors.New("pull request already exists and is open")
+			err = errors.New("pull request already exists and is open")
+			recordFakeSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, start, scmStatusFromError(err))
+			return id, err
 		}
 	}
 	if pullRequestCopy == nil {
-		return "", errors.New("pull request is nil")
+		err = errors.New("pull request is nil")
+		recordFakeSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, start, scmStatusFromError(err))
+		return "", err
 	}
 
 	id = strconv.Itoa(len(pullRequests) + 1)
@@ -85,19 +91,32 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 		state: v1alpha1.PullRequestOpen,
 	}
 
+	recordFakeSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, start, scmStatusFromError(nil))
 	return id, nil
 }
 
 // Update updates an existing pull request with the specified title and description.
 func (pr *PullRequest) Update(ctx context.Context, title, description string, pullRequest v1alpha1.PullRequest) error {
+	start := time.Now()
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+	recordFakeSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationUpdate, start, scmStatusFromError(nil))
 	return nil
 }
 
 // Close closes an existing pull request.
 func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullRequest) error {
+	start := time.Now()
 	// Simulate real SCM provider behavior: require status.id to close a PR
 	if pullRequest.Status.ID == "" {
-		return errors.New("cannot close pull request: status.id is empty")
+		err := errors.New("cannot close pull request: status.id is empty")
+		gitRepo, getErr := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+		if getErr == nil {
+			recordFakeSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationClose, start, scmStatusFromError(err))
+		}
+		return err
 	}
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
@@ -109,18 +128,30 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullReque
 	defer mutexPR.Unlock()
 	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
 	if _, ok := pullRequests[prKey]; !ok {
-		return errors.New("pull request not found")
+		err = errors.New("pull request not found")
+		recordFakeSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationClose, start, scmStatusFromError(err))
+		return err
 	}
 	pullRequests[prKey] = pullRequestProviderState{
 		id:    pullRequests[prKey].id,
 		state: v1alpha1.PullRequestClosed,
 	}
+	recordFakeSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationClose, start, scmStatusFromError(nil))
 	return nil
 }
 
 // Merge merges an existing pull request with the specified commit message.
-func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullRequest) error {
+func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullRequest) (err error) {
 	logger := log.FromContext(ctx)
+	start := time.Now()
+
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+	defer func() {
+		recordFakeSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, start, scmStatusFromError(err))
+	}()
 
 	if pullRequest.Status.ID == "" {
 		return errors.New("pull request ID is empty, cannot merge")
@@ -135,11 +166,6 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 	}()
 	if err != nil {
 		panic("could not make temp dir for repo server")
-	}
-
-	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
-	if err != nil {
-		return fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
 	gitServerPort := 5000 + ginkgov2.GinkgoParallelProcess()
@@ -265,12 +291,19 @@ func (pr *PullRequest) GetRecordedState(ctx context.Context, pullRequest v1alpha
 
 // FindOpen checks if a pull request is open and returns its status.
 func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string, time.Time, error) {
+	start := time.Now()
 	findOpenCallCount.Add(1)
+
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return false, "", time.Time{}, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
 
 	mutexPR.RLock()
 	found, id := pr.findOpen(ctx, pullRequest)
 	mutexPR.RUnlock()
 
+	recordFakeSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, start, scmStatusFromError(nil))
 	return found, id, time.Now(), nil
 }
 

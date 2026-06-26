@@ -15,7 +15,7 @@ Labels:
 * `git_repository`: The name of the GitRepository resource associated with the operation.
 * `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
 * `scm_provider_kind`: The kind of that reference: `ScmProvider` (namespaced) or `ClusterScmProvider` (cluster-scoped).
-* `operation`: The type of git operation (clone, fetch, pull, push, ls-remote).
+* `operation`: The git CLI subcommand name (for example `clone`, `fetch`, `push`, `ls-remote`, `rev-parse`, `interpret-trailers`). Fetch operations targeting hydrator notes are labeled `fetch-notes`.
 * `result`: Whether the operation succeeded (success, failure).
 
 ## git_operations_duration_seconds
@@ -27,7 +27,7 @@ Labels:
 * `git_repository`: The name of the GitRepository resource associated with the operation.
 * `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
 * `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
-* `operation`: The type of git operation (clone, fetch, pull, push, ls-remote).
+* `operation`: The git CLI subcommand name (for example `clone`, `fetch`, `push`, `ls-remote`, `rev-parse`, `interpret-trailers`). Fetch operations targeting hydrator notes are labeled `fetch-notes`.
 * `result`: Whether the operation succeeded (success, failure).
 
 ## scm_calls_total
@@ -41,7 +41,7 @@ Labels:
 * `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
 * `api`: The SCM API being called (CommitStatus, PullRequest)
 * `operation`: The type of SCM operation.
-  * For CommitStatus, this is always create.
+  * For CommitStatus, this is always set (via `CommitStatusProvider.Set`, regardless of whether the SCM creates or updates).
   * For PullRequest, this is create, update, merge, close, or list.
 * `response_code`: The HTTP response code.
 
@@ -56,7 +56,7 @@ Labels:
 * `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
 * `api`: The SCM API being called (CommitStatus, PullRequest)
 * `operation`: The type of SCM operation.
-  * For CommitStatus, this is always create.
+  * For CommitStatus, this is always set (via `CommitStatusProvider.Set`, regardless of whether the SCM creates or updates).
   * For PullRequest, this is create, update, merge, close, or list.
 * `response_code`: The HTTP response code.
 

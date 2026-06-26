@@ -478,8 +478,17 @@ func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promot
 func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
 	mergedTime := metav1.Now()
 
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, r.Client, client.ObjectKey{
+		Namespace: pr.Namespace,
+		Name:      pr.Spec.RepositoryReference.Name,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository for trailer update: %w", err)
+	}
+
 	updatedMessage, err := git.AddTrailerToCommitMessage(
 		ctx,
+		gitRepo,
 		pr.Spec.Commit.Message,
 		constants.TrailerPullRequestMergeTime,
 		mergedTime.Format(time.RFC3339),

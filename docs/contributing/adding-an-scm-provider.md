@@ -15,7 +15,7 @@ Do **not** skip this for “small” calls: if it hits the provider’s REST API
 
 - Use the `context.Context` passed into your provider method so logging inherits reconcile fields where applicable.
 - Pass the resolved [`GitRepository`](../crd-specs.md) object (same as other providers: load via `utils.GetGitRepositoryFromObjectKey` in `internal/utils/utils.go` or equivalent).
-- Set `api` to `metrics.SCMAPICommitStatus` or `metrics.SCMAPIPullRequest`, and `operation` to the closest `metrics.SCMOperation` value in `internal/metrics/metrics.go` (`create`, `update`, `merge`, `close`, `list`, `get`).
+- Set `api` to `metrics.SCMAPICommitStatus` or `metrics.SCMAPIPullRequest`, and `operation` to the closest `metrics.SCMOperation` value in `internal/metrics/metrics.go` (`set` for commit statuses, `create`, `update`, `merge`, `close`, `list`, `get` for pull requests).
 - If the client returns no response on error, map to a sensible status code (existing providers often use `500`) so the metric still has a code label.
 - **GitHub only:** you can pass non-nil `rateLimit` built from the GitHub client’s rate object (see `internal/scms/github/utils.go`); other providers usually pass `nil`.
 

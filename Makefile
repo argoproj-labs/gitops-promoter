@@ -178,6 +178,40 @@ test-e2e:
 .PHONY: test-deps
 test-deps: ginkgo manifests generate fmt vet envtest
 
+.PHONY: test-api-call-metrics
+test-api-call-metrics: test-deps ## Run API call metrics Ginkgo suite (long requeue, event-driven; TCS default 5m)
+	@PROMOTER_API_METRICS_REQUEUE=$${PROMOTER_API_METRICS_REQUEUE:-60m}; \
+	PROMOTER_API_METRICS_GINKGO_TIMEOUT=$${PROMOTER_API_METRICS_GINKGO_TIMEOUT:-45m}; \
+	KUBEBUILDER_ASSETS="$$(./bin/setup-envtest-release-0.24 use 1.31.0 --bin-dir $$PWD/bin -p path)"; \
+	go tool ginkgo -v --timeout $$PROMOTER_API_METRICS_GINKGO_TIMEOUT ./internal/controller/apicallmetrics/ \
+	> /tmp/api-metrics-test.log 2>&1; \
+	status=$$?; \
+	echo "Log: /tmp/api-metrics-test.log"; \
+	if [ -n "$$PROMOTER_API_METRICS_REPORT" ]; then \
+		if [ -d "$$PROMOTER_API_METRICS_REPORT" ]; then \
+			echo "Report dir: $$PROMOTER_API_METRICS_REPORT"; \
+		else \
+			echo "Report: $$PROMOTER_API_METRICS_REPORT"; \
+		fi; \
+	else \
+		report_dir="$${TMPDIR:-/tmp}"; report_dir="$${report_dir%/}"; \
+		echo "Reports: $$report_dir/promoter-api-metrics-<scenario>.json"; \
+	fi; \
+	echo "TCS duration (default 5m): $${PROMOTER_API_METRICS_TCS_DURATION:-5m}"; \
+	echo ""; \
+	echo "Suite:"; \
+	grep -E 'Ran [0-9]+ of [0-9]+ Specs|SUCCESS!|FAIL!' /tmp/api-metrics-test.log \
+		| sed 's/\x1b\[[0-9;]*m//g' | tail -2 || true; \
+	echo ""; \
+	echo "Scenarios:"; \
+	grep '"msg"="APICallMetrics report" "scenario"' /tmp/api-metrics-test.log \
+		| sed -n 's/.*"scenario"="\([^"]*\)".*"git_cli_total"=\([0-9]*\).*"git_cli_total_network"=\([0-9]*\).*"scm_total"=\([0-9]*\).*/  \1  git_cli=\2  git_cli_network=\3  scm=\4/p' || true; \
+	echo ""; \
+	echo "Report files:"; \
+	grep 'APICallMetrics report written' /tmp/api-metrics-test.log \
+		| sed -n 's/.*"path"="\([^"]*\)".*/  \1/p' || true; \
+	exit $$status
+
 .PHONY: test-parallel
 test-parallel: test-deps ## Run tests in parallel
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go tool ginkgo -p -procs=4 -r -v -cover -coverprofile=cover.out -coverpkg=./... --junit-report=junit.xml internal/

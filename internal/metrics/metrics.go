@@ -49,6 +49,18 @@ func GitOperationResultFromError(err error) GitOperationResult {
 	return GitOperationResultFailure
 }
 
+// GitOperationHitsNetwork reports whether a git CLI subcommand contacts the remote repository.
+// All other recorded subcommands (rev-parse, show, merge-tree, interpret-trailers, etc.) run locally
+// against an on-disk clone after prior fetch/clone work.
+func GitOperationHitsNetwork(operation GitOperation) bool {
+	switch operation {
+	case GitOperationClone, GitOperationFetch, GitOperationFetchNotes, GitOperationLsRemote, GitOperationPush, GitOperationPull:
+		return true
+	default:
+		return false
+	}
+}
+
 // SCMAPI represents the type of API being used in the SCM operations.
 type SCMAPI string
 
@@ -63,8 +75,10 @@ const (
 type SCMOperation string
 
 const (
-	// SCMOperationCreate is used when creating resources such as pull requests or commit statuses.
+	// SCMOperationCreate is used when creating resources such as pull requests.
 	SCMOperationCreate SCMOperation = "create"
+	// SCMOperationSet is used when setting commit statuses via CommitStatusProvider.Set (create-or-update at the SCM).
+	SCMOperationSet SCMOperation = "set"
 	// SCMOperationUpdate is used when updating resources such as pull requests.
 	SCMOperationUpdate SCMOperation = "update"
 	// SCMOperationMerge is used when merging pull requests.

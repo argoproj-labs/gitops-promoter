@@ -318,9 +318,17 @@ func (r *GitCommitStatusReconciler) getCommitData(ctx context.Context, gcs *prom
 		return nil, fmt.Errorf("SHA mismatch: expected %q from PromotionStrategy status but got %q", commitState.Sha, sha)
 	}
 
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, r.Client, client.ObjectKey{
+		Namespace: gcs.Namespace,
+		Name:      ps.Spec.RepositoryReference.Name,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GitRepository for trailer parsing: %w", err)
+	}
+
 	// Parse trailers from the commit body without needing git operations.
 	// The Body field contains everything after the subject line, including trailers.
-	trailers, err := git.ParseTrailersFromMessage(ctx, commitState.Body)
+	trailers, err := git.ParseTrailersFromMessage(ctx, gitRepo, commitState.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse trailers from commit message: %w", err)
 	}

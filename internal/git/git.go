@@ -155,9 +155,7 @@ func (g *EnvironmentOperations) CloneRepo(ctx context.Context) error {
 	}
 	logger.V(4).Info("Created directory", "directory", path)
 
-	start := time.Now()
 	stdout, stderr, err := g.runCmd(ctx, path, "clone", "--verbose", "--progress", "--filter=blob:none", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), path)
-	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationClone, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
 		logger.Error(err, "Cloned repo failed", "repo", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), "stdout", stdout, "stderr", stderr)
 		return err
@@ -216,9 +214,7 @@ func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch, activ
 	logger.V(4).Info("git path", "path", gitPath)
 
 	// Fetch the branch to ensure we have the latest remote ref
-	start := time.Now()
 	_, stderr, err := g.runCmd(ctx, gitPath, "fetch", "origin", branch)
-	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetch, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
 		logger.Error(err, "could not fetch branch", "gitError", stderr)
 		return BranchShas{}, fmt.Errorf("failed to fetch branch %q: %w", branch, err)
@@ -442,12 +438,10 @@ func (g *EnvironmentOperations) GetShaTime(ctx context.Context, sha string) (v1.
 func LsRemote(ctx context.Context, gap scms.GitOperationsProvider, gitRepo *v1alpha1.GitRepository, branches ...string) (map[string]string, error) {
 	logger := log.FromContext(ctx)
 
-	start := time.Now()
 	args := make([]string, 0, 3+len(branches))
 	args = append(args, "ls-remote", "--heads", gap.GetGitHttpsRepoUrl(*gitRepo))
 	args = append(args, branches...)
-	stdout, stderr, err := runCmd(ctx, gap, "", args...)
-	metrics.RecordGitOperation(gitRepo, metrics.GitOperationLsRemote, metrics.GitOperationResultFromError(err), time.Since(start))
+	stdout, stderr, err := runCmd(ctx, gap, gitRepo, "", args...)
 	if err != nil {
 		logger.Error(err, "could not git ls-remote", "gitError", stderr)
 		return nil, err
@@ -492,19 +486,19 @@ func LsRemote(ctx context.Context, gap scms.GitOperationsProvider, gitRepo *v1al
 
 // runCmd runs a git command in the given directory with the provided arguments and returns stdout, stderr, and error.
 func (g *EnvironmentOperations) runCmd(ctx context.Context, directory string, args ...string) (string, string, error) {
-	return runCmdWithEnv(ctx, g.gap, directory, nil, args...)
+	return runCmdWithEnv(ctx, g.gap, g.gitRepo, directory, nil, args...)
 }
 
 // runCmdWithEnv is like runCmd but sets additional environment variables (for example
 // GIT_INDEX_FILE) on top of the standard auth env. It is used by the plumbing-based merges, which
 // build trees in a temporary index so the clone's real index and worktree are never touched.
 func (g *EnvironmentOperations) runCmdWithEnv(ctx context.Context, directory string, extraEnv []string, args ...string) (string, string, error) {
-	return runCmdWithEnv(ctx, g.gap, directory, extraEnv, args...)
+	return runCmdWithEnv(ctx, g.gap, g.gitRepo, directory, extraEnv, args...)
 }
 
 // runCmd runs a git command with the provided arguments and returns stdout, stderr, and error.
-func runCmd(ctx context.Context, gap scms.GitOperationsProvider, directory string, args ...string) (string, string, error) {
-	return runCmdWithEnv(ctx, gap, directory, nil, args...)
+func runCmd(ctx context.Context, gap scms.GitOperationsProvider, gitRepo *v1alpha1.GitRepository, directory string, args ...string) (string, string, error) {
+	return runCmdWithEnv(ctx, gap, gitRepo, directory, nil, args...)
 }
 
 // proxyRelatedEnvVars returns proxy/TLS env vars from the current process so git subprocesses
@@ -525,9 +519,30 @@ func proxyRelatedEnvVars() []string {
 	return out
 }
 
+func classifyGitOperation(args []string) metrics.GitOperation {
+	if len(args) == 0 {
+		return metrics.GitOperation("")
+	}
+	if args[0] == "fetch" {
+		for _, a := range args[1:] {
+			if strings.Contains(a, HydratorNotesRef) {
+				return metrics.GitOperationFetchNotes
+			}
+		}
+	}
+	return metrics.GitOperation(args[0])
+}
+
+func recordGitSubcommand(gitRepo *v1alpha1.GitRepository, args []string, err error, start time.Time) {
+	if gitRepo == nil || len(args) == 0 {
+		return
+	}
+	metrics.RecordGitOperation(gitRepo, classifyGitOperation(args), metrics.GitOperationResultFromError(err), time.Since(start))
+}
+
 // runCmdWithEnv runs a git command, appending extraEnv to the standard auth environment, and
 // returns stdout, stderr, and error.
-func runCmdWithEnv(ctx context.Context, gap scms.GitOperationsProvider, directory string, extraEnv []string, args ...string) (string, string, error) {
+func runCmdWithEnv(ctx context.Context, gap scms.GitOperationsProvider, gitRepo *v1alpha1.GitRepository, directory string, extraEnv []string, args ...string) (string, string, error) {
 	user, err := gap.GetUser(ctx)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to get user: %w", err)
@@ -538,6 +553,7 @@ func runCmdWithEnv(ctx context.Context, gap scms.GitOperationsProvider, director
 		return "", "", fmt.Errorf("failed to get token: %w", err)
 	}
 
+	start := time.Now()
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Env = append([]string{
 		"GIT_ASKPASS=promoter_askpass.sh", // Needs to be on path
@@ -558,6 +574,7 @@ func runCmdWithEnv(ctx context.Context, gap scms.GitOperationsProvider, director
 	}
 
 	if err = cmd.Wait(); err != nil {
+		recordGitSubcommand(gitRepo, args, err, start)
 		stdErr := stderrBuf.String()
 		if stdErr != "" {
 			return stdoutBuf.String(), stdErr, fmt.Errorf("%w: %s", err, stdErr)
@@ -565,6 +582,7 @@ func runCmdWithEnv(ctx context.Context, gap scms.GitOperationsProvider, director
 		return stdoutBuf.String(), stdErr, err
 	}
 
+	recordGitSubcommand(gitRepo, args, nil, start)
 	return stdoutBuf.String(), stderrBuf.String(), nil
 }
 
@@ -764,9 +782,10 @@ func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, branc
 // flag only accepts general positions like 'after', 'before', 'start', 'end' relative to ALL trailers,
 // not a specific one), it's still the most reliable approach. The alternative would be maintaining
 // complex custom parsing logic, which is error-prone and doesn't handle all of Git's trailer edge cases.
-func AddTrailerToCommitMessage(ctx context.Context, commitMessage, trailerKey, trailerValue string) (string, error) {
+func AddTrailerToCommitMessage(ctx context.Context, gitRepo *v1alpha1.GitRepository, commitMessage, trailerKey, trailerValue string) (string, error) {
 	trailerLine := fmt.Sprintf("%s: %s", trailerKey, trailerValue)
 
+	start := time.Now()
 	cmd := exec.CommandContext(ctx, "git", "interpret-trailers", "--trailer", trailerLine)
 	cmd.Stdin = strings.NewReader(commitMessage)
 
@@ -775,7 +794,9 @@ func AddTrailerToCommitMessage(ctx context.Context, commitMessage, trailerKey, t
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
 
-	if err := cmd.Run(); err != nil {
+	err := cmd.Run()
+	recordGitSubcommand(gitRepo, []string{"interpret-trailers"}, err, start)
+	if err != nil {
 		return "", fmt.Errorf("failed to run git interpret-trailers: %w (stderr: %s)", err, stderrBuf.String())
 	}
 
@@ -793,20 +814,16 @@ func (g *EnvironmentOperations) FetchNotes(ctx context.Context) error {
 	}
 
 	// Fetch the notes ref from origin. We use + to force update in case of divergence.
-	start := time.Now()
 	_, stderr, err := g.runCmd(ctx, gitPath, "fetch", "origin", "+"+HydratorNotesRef+":"+HydratorNotesRef)
 	if err != nil {
 		// Notes ref might not exist yet, which is fine
 		if strings.Contains(stderr, "couldn't find remote ref") {
-			metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetchNotes, metrics.GitOperationResultSuccess, time.Since(start))
 			logger.V(4).Info("Git notes ref does not exist on remote", "ref", HydratorNotesRef)
 			return nil
 		}
-		metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetchNotes, metrics.GitOperationResultFailure, time.Since(start))
 		logger.Error(err, "Failed to fetch git notes", "stderr", stderr)
 		return fmt.Errorf("failed to fetch git notes: %w", err)
 	}
-	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetchNotes, metrics.GitOperationResultSuccess, time.Since(start))
 
 	logger.V(4).Info("Fetched git notes", "ref", HydratorNotesRef)
 	return nil
@@ -848,10 +865,11 @@ func (g *EnvironmentOperations) GetHydratorNote(ctx context.Context, sha string)
 // Returns a map where each key can have multiple values (e.g., multiple "Signed-off-by" trailers).
 //
 // ParseTrailersFromMessage is concurrency-safe: it operates only on the provided message via stdin and uses no clone.
-func ParseTrailersFromMessage(ctx context.Context, commitMessage string) (map[string][]string, error) {
+func ParseTrailersFromMessage(ctx context.Context, gitRepo *v1alpha1.GitRepository, commitMessage string) (map[string][]string, error) {
 	logger := log.FromContext(ctx)
 
 	// Pipe the message to git interpret-trailers using stdin
+	start := time.Now()
 	cmd := exec.CommandContext(ctx, "git", "interpret-trailers", "--only-trailers")
 	cmd.Stdin = strings.NewReader(commitMessage)
 
@@ -861,6 +879,7 @@ func ParseTrailersFromMessage(ctx context.Context, commitMessage string) (map[st
 	cmd.Stderr = &stderrBuf
 
 	err := cmd.Run()
+	recordGitSubcommand(gitRepo, []string{"interpret-trailers"}, err, start)
 	stderr := stderrBuf.String()
 	if err != nil {
 		logger.Error(err, "failed to run git interpret-trailers", "stderr", stderr)
@@ -912,5 +931,5 @@ func (g *EnvironmentOperations) GetTrailers(ctx context.Context, sha string) (ma
 	}
 
 	// Use the standalone parser
-	return ParseTrailersFromMessage(ctx, msgStdout)
+	return ParseTrailersFromMessage(ctx, g.gitRepo, msgStdout)
 }
