@@ -49,6 +49,12 @@ type PullRequestStatusApplyConfiguration struct {
 	// The PullRequest resource will be deleted after this flag is set when possible, but the status is
 	// preserved in the owning ChangeTransferPolicy to maintain a record.
 	ExternallyMergedOrClosed *bool `json:"externallyMergedOrClosed,omitempty"`
+	// PostedMergeCommentIDs maps each posted merge comment body to its SCM comment ID.
+	// Used to delete the comments (retraction) if merge conditions stop being met.
+	PostedMergeCommentIDs map[string]string `json:"postedMergeCommentIDs,omitempty"`
+	// AppliedMergeLabels lists the labels that were added to the PR by the controller.
+	// Used to remove them (retraction) if merge conditions stop being met.
+	AppliedMergeLabels []string `json:"appliedMergeLabels,omitempty"`
 	// Conditions Represents the observations of the current state.
 	Conditions []metav1.ConditionApplyConfiguration `json:"conditions,omitempty"`
 }
@@ -104,6 +110,30 @@ func (b *PullRequestStatusApplyConfiguration) WithUrl(value string) *PullRequest
 // If called multiple times, the ExternallyMergedOrClosed field is set to the value of the last call.
 func (b *PullRequestStatusApplyConfiguration) WithExternallyMergedOrClosed(value bool) *PullRequestStatusApplyConfiguration {
 	b.ExternallyMergedOrClosed = &value
+	return b
+}
+
+// WithPostedMergeCommentIDs puts the entries into the PostedMergeCommentIDs field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, the entries provided by each call will be put on the PostedMergeCommentIDs field,
+// overwriting an existing map entries in PostedMergeCommentIDs field with the same key.
+func (b *PullRequestStatusApplyConfiguration) WithPostedMergeCommentIDs(entries map[string]string) *PullRequestStatusApplyConfiguration {
+	if b.PostedMergeCommentIDs == nil && len(entries) > 0 {
+		b.PostedMergeCommentIDs = make(map[string]string, len(entries))
+	}
+	for k, v := range entries {
+		b.PostedMergeCommentIDs[k] = v
+	}
+	return b
+}
+
+// WithAppliedMergeLabels adds the given value to the AppliedMergeLabels field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the AppliedMergeLabels field.
+func (b *PullRequestStatusApplyConfiguration) WithAppliedMergeLabels(values ...string) *PullRequestStatusApplyConfiguration {
+	for i := range values {
+		b.AppliedMergeLabels = append(b.AppliedMergeLabels, values[i])
+	}
 	return b
 }
 
