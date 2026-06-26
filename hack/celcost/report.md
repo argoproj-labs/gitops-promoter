@@ -14,6 +14,7 @@ Estimated static CEL costs versus kube-apiserver limits, computed from `k8s.io/a
 | ClusterScmProvider | v1alpha1 | 135 | 0.00% |
 | CommitStatus | v1alpha1 | 3 | 0.00% |
 | ControllerConfiguration | v1alpha1 | 3,195 | 0.00% |
+| DAGCommitStatus | v1alpha1 | 0 | 0.00% |
 | GitCommitStatus | v1alpha1 | 0 | 0.00% |
 | GitRepository | v1alpha1 | 128 | 0.00% |
 | PreviousEnvironmentCommitStatus | v1alpha1 | 0 | 0.00% |
@@ -134,6 +135,14 @@ Source: `promoter.argoproj.io_controllerconfigurations.yaml`
 | `.spec.timedCommitStatus.workQueue.rateLimiter` | 68 | 0.00% | `[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size() <= 1` |
 | `.spec.webRequestCommitStatus.workQueue.rateLimiter` | 68 | 0.00% | `[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size() <= 1` |
 | **Total** | **3,195** | **0.00%** | |
+
+#### DAGCommitStatus
+
+Source: `promoter.argoproj.io_dagcommitstatuses.yaml`
+
+##### Version `v1alpha1`
+
+_No CEL validation rules._
 
 #### GitCommitStatus
 

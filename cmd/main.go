@@ -337,6 +337,15 @@ func runController(
 		setupLog.Error(err, "unable to create controller", "controller", "PreviousEnvironmentCommitStatus")
 		panic(fmt.Errorf("unable to create PreviousEnvironmentCommitStatus controller: %w", err))
 	}
+	if err := (&controller.DAGCommitStatusReconciler{
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorder("DAGCommitStatus"),
+		SettingsMgr: settingsMgr,
+	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "DAGCommitStatus")
+		panic(fmt.Errorf("unable to create DAGCommitStatus controller: %w", err))
+	}
 	//+kubebuilder:scaffold:builder
 
 	if err := localManager.AddHealthzCheck("healthz", healthz.Ping); err != nil {

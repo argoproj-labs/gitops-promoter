@@ -12,4 +12,5 @@ resources:
 - promoter_v1alpha1_timedcommitstatus.yaml
 - promoter_v1alpha1_gitcommitstatus.yaml
 - promoter_v1alpha1_previousenvironmentcommitstatus.yaml
+- promoter_v1alpha1_dagcommitstatus.yaml
 #+kubebuilder:scaffold:manifestskustomizesamples

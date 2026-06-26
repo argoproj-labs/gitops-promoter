@@ -89,6 +89,14 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ControllerConfigurationApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ControllerConfigurationSpec"):
 		return &apiv1alpha1.ControllerConfigurationSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DAGCommitStatus"):
+		return &apiv1alpha1.DAGCommitStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DAGCommitStatusSpec"):
+		return &apiv1alpha1.DAGCommitStatusSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DAGCommitStatusStatus"):
+		return &apiv1alpha1.DAGCommitStatusStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DAGEnvironment"):
+		return &apiv1alpha1.DAGEnvironmentApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("Environment"):
 		return &apiv1alpha1.EnvironmentApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("EnvironmentStatus"):

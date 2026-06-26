@@ -16,6 +16,7 @@ resources:
 - bases/promoter.argoproj.io_gitcommitstatuses.yaml
 - bases/promoter.argoproj.io_webrequestcommitstatuses.yaml
 - bases/promoter.argoproj.io_previousenvironmentcommitstatuses.yaml
+- bases/promoter.argoproj.io_dagcommitstatuses.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patches:
