@@ -25,6 +25,9 @@ package v1alpha1
 // Templates use Go template syntax and have access to Sprig functions for flexible string
 // manipulation and formatting.
 //
+// The optional CommitMessage template customizes the merge commit message; commit trailers required by the
+// promoter are appended automatically after the rendered message.
+//
 // Template data available when rendering (used by the ChangeTransferPolicy controller when creating/updating PRs):
 // - .ChangeTransferPolicy – the ChangeTransferPolicy for the managing this PullRequest
 // - .PromotionStrategy – the PromotionStrategy for the CTP
@@ -35,6 +38,13 @@ type PullRequestTemplateApplyConfiguration struct {
 	// Description is the template used to generate the body/description of the pull request.
 	// Uses Go template syntax with Sprig functions available for string manipulation.
 	Description *string `json:"description,omitempty"`
+	// CommitMessage is an optional template used to generate the merge commit message for the pull request.
+	// When set, it replaces the default commit message of "<title>\n\n<description>" (rendered from the Title
+	// and Description templates above). When unset, the default behavior is unchanged.
+	// Machine-read commit trailers used by the promoter to reconstruct promotion history are always appended
+	// after the rendered message; do not attempt to include them in the template.
+	// Uses Go template syntax with Sprig functions available for string manipulation.
+	CommitMessage *string `json:"commitMessage,omitempty"`
 }
 
 // PullRequestTemplateApplyConfiguration constructs a declarative configuration of the PullRequestTemplate type for use with
@@ -56,5 +66,13 @@ func (b *PullRequestTemplateApplyConfiguration) WithTitle(value string) *PullReq
 // If called multiple times, the Description field is set to the value of the last call.
 func (b *PullRequestTemplateApplyConfiguration) WithDescription(value string) *PullRequestTemplateApplyConfiguration {
 	b.Description = &value
+	return b
+}
+
+// WithCommitMessage sets the CommitMessage field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the CommitMessage field is set to the value of the last call.
+func (b *PullRequestTemplateApplyConfiguration) WithCommitMessage(value string) *PullRequestTemplateApplyConfiguration {
+	b.CommitMessage = &value
 	return b
 }
