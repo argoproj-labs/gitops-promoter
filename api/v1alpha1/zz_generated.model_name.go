@@ -201,6 +201,31 @@ func (in ControllerConfigurationStatus) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DAGCommitStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DAGCommitStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DAGCommitStatusList) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DAGCommitStatusList"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DAGCommitStatusSpec) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DAGCommitStatusSpec"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DAGCommitStatusStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DAGCommitStatusStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DAGEnvironment) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DAGEnvironment"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in Environment) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.Environment"
 }
@@ -368,6 +393,31 @@ func (in OutputSpec) OpenAPIModelName() string {
 // OpenAPIModelName returns the OpenAPI model name for this type.
 func (in PollingModeSpec) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.PollingModeSpec"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in PreviousEnvironmentCommitStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.PreviousEnvironmentCommitStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in PreviousEnvironmentCommitStatusConfiguration) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.PreviousEnvironmentCommitStatusConfiguration"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in PreviousEnvironmentCommitStatusList) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.PreviousEnvironmentCommitStatusList"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in PreviousEnvironmentCommitStatusSpec) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.PreviousEnvironmentCommitStatusSpec"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in PreviousEnvironmentCommitStatusStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.PreviousEnvironmentCommitStatusStatus"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
