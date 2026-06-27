@@ -121,6 +121,8 @@ func (r *PreviousEnvironmentCommitStatusReconciler) Reconcile(ctx context.Contex
 }
 
 // SetupWithManager sets up the controller with the Manager.
+//
+//nolint:dupl // Controller setup mirrors DAGCommitStatus by design; extracting it would couple the two controllers and require generics.
 func (r *PreviousEnvironmentCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	// Use Direct methods to read configuration from the API server without cache during setup.
 	// The cache is not started during SetupWithManager, so we must use the non-cached API reader.

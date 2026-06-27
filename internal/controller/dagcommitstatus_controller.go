@@ -29,8 +29,12 @@ import (
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
@@ -96,9 +100,13 @@ func (r *DAGCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, fmt.Errorf("failed to update DAG commit statuses: %w", err)
 	}
 
-	// 4. Requeue periodically. The configurable requeue duration (settings.Manager) is wired
-	// in alongside the controller configuration; for now use a fixed interval.
-	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	// 4. Requeue using the configured requeue duration.
+	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.DAGCommitStatusConfiguration](ctx, r.SettingsMgr)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get requeue duration for DAGCommitStatus %q: %w", dcs.Name, err)
+	}
+
+	return ctrl.Result{Requeue: true, RequeueAfter: requeueDuration}, nil
 }
 
 // updateDAGCommitStatus builds the dependency graph from the spec, validates it (unknown
@@ -228,15 +236,59 @@ func (r *DAGCommitStatusReconciler) createOrUpdateDAGCommitStatus(
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *DAGCommitStatusReconciler) SetupWithManager(_ context.Context, mgr ctrl.Manager) error {
-	err := ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.DAGCommitStatus{}).
+//
+//nolint:dupl // Controller setup mirrors PreviousEnvironmentCommitStatus by design; extracting it would couple the two controllers and require generics.
+func (r *DAGCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
+	// Use Direct methods to read configuration from the API server without cache during setup.
+	// The cache is not started during SetupWithManager, so we must use the non-cached API reader.
+	rateLimiter, err := settings.GetRateLimiterDirect[promoterv1alpha1.DAGCommitStatusConfiguration, ctrl.Request](ctx, r.SettingsMgr)
+	if err != nil {
+		return fmt.Errorf("failed to get DAGCommitStatus rate limiter: %w", err)
+	}
+
+	maxConcurrentReconciles, err := settings.GetMaxConcurrentReconcilesDirect[promoterv1alpha1.DAGCommitStatusConfiguration](ctx, r.SettingsMgr)
+	if err != nil {
+		return fmt.Errorf("failed to get DAGCommitStatus max concurrent reconciles: %w", err)
+	}
+
+	err = ctrl.NewControllerManagedBy(mgr).
+		For(&promoterv1alpha1.DAGCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueDAGCommitStatusForPromotionStrategy()).
+		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Named("dagcommitstatus").
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
 	}
 	return nil
+}
+
+// enqueueDAGCommitStatusForPromotionStrategy returns a handler that enqueues all
+// DAGCommitStatus resources that reference a PromotionStrategy when that PromotionStrategy changes.
+func (r *DAGCommitStatusReconciler) enqueueDAGCommitStatusForPromotionStrategy() handler.EventHandler {
+	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []ctrl.Request {
+		ps, ok := obj.(*promoterv1alpha1.PromotionStrategy)
+		if !ok {
+			return nil
+		}
+
+		var dcsList promoterv1alpha1.DAGCommitStatusList
+		if err := r.List(ctx, &dcsList, client.InNamespace(ps.Namespace)); err != nil {
+			logf.FromContext(ctx).Error(err, "failed to list DAGCommitStatus resources")
+			return nil
+		}
+
+		var requests []ctrl.Request
+		for i := range dcsList.Items {
+			if dcsList.Items[i].Spec.PromotionStrategyRef.Name == ps.Name {
+				requests = append(requests, ctrl.Request{
+					NamespacedName: client.ObjectKeyFromObject(&dcsList.Items[i]),
+				})
+			}
+		}
+
+		return requests
+	})
 }
 
 // dag is the in-memory dependency graph built from a DAGCommitStatus's environments.

@@ -227,6 +227,14 @@ var _ = BeforeSuite(func() {
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
+	err = (&DAGCommitStatusReconciler{
+		Client:      k8sManager.GetClient(),
+		Scheme:      k8sManager.GetScheme(),
+		Recorder:    k8sManager.GetEventRecorder("DAGCommitStatus"),
+		SettingsMgr: settingsMgr,
+	}).SetupWithManager(ctx, k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
 	err = (&PromotionStrategyReconciler{
 		Client:      k8sManager.GetClient(),
 		Scheme:      k8sManager.GetScheme(),

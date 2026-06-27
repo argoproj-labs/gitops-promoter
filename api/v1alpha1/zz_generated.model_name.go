@@ -206,6 +206,11 @@ func (in DAGCommitStatus) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DAGCommitStatusConfiguration) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DAGCommitStatusConfiguration"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in DAGCommitStatusList) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.DAGCommitStatusList"
 }

@@ -75,6 +75,11 @@ type ControllerConfigurationSpec struct {
 	// including WorkQueue settings that control reconciliation behavior.
 	// +required
 	PreviousEnvironmentCommitStatus PreviousEnvironmentCommitStatusConfiguration `json:"previousEnvironmentCommitStatus"`
+
+	// DAGCommitStatus contains the configuration for the DAGCommitStatus controller,
+	// including WorkQueue settings that control reconciliation behavior.
+	// +required
+	DAGCommitStatus DAGCommitStatusConfiguration `json:"dagCommitStatus"`
 }
 
 // PromotionStrategyConfiguration defines the configuration for the PromotionStrategy controller.
@@ -162,6 +167,17 @@ type TimedCommitStatusConfiguration struct {
 // requests, including requeue intervals, concurrency limits, and rate limiting behavior.
 type PreviousEnvironmentCommitStatusConfiguration struct {
 	// WorkQueue contains the work queue configuration for the PreviousEnvironmentCommitStatus controller.
+	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+	// +required
+	WorkQueue WorkQueue `json:"workQueue"`
+}
+
+// DAGCommitStatusConfiguration defines the configuration for the DAGCommitStatus controller.
+//
+// This configuration controls how the DAGCommitStatus controller processes reconciliation
+// requests, including requeue intervals, concurrency limits, and rate limiting behavior.
+type DAGCommitStatusConfiguration struct {
+	// WorkQueue contains the work queue configuration for the DAGCommitStatus controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
 	WorkQueue WorkQueue `json:"workQueue"`

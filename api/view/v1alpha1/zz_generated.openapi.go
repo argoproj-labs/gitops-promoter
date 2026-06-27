@@ -72,6 +72,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.ControllerConfigurationSpec{}.OpenAPIModelName():                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSpec(ref),
 		apiv1alpha1.ControllerConfigurationStatus{}.OpenAPIModelName():                        schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationStatus(ref),
 		apiv1alpha1.DAGCommitStatus{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatus(ref),
+		apiv1alpha1.DAGCommitStatusConfiguration{}.OpenAPIModelName():                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatusConfiguration(ref),
 		apiv1alpha1.DAGCommitStatusList{}.OpenAPIModelName():                                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatusList(ref),
 		apiv1alpha1.DAGCommitStatusSpec{}.OpenAPIModelName():                                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatusSpec(ref),
 		apiv1alpha1.DAGCommitStatusStatus{}.OpenAPIModelName():                                schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatusStatus(ref),
@@ -2056,12 +2057,19 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSp
 							Ref:         ref(apiv1alpha1.PreviousEnvironmentCommitStatusConfiguration{}.OpenAPIModelName()),
 						},
 					},
+					"dagCommitStatus": {
+						SchemaProps: spec.SchemaProps{
+							Description: "DAGCommitStatus contains the configuration for the DAGCommitStatus controller, including WorkQueue settings that control reconciliation behavior.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.DAGCommitStatusConfiguration{}.OpenAPIModelName()),
+						},
+					},
 				},
-				Required: []string{"promotionStrategy", "changeTransferPolicy", "pullRequest", "commitStatus", "argocdCommitStatus", "timedCommitStatus", "gitCommitStatus", "webRequestCommitStatus", "previousEnvironmentCommitStatus"},
+				Required: []string{"promotionStrategy", "changeTransferPolicy", "pullRequest", "commitStatus", "argocdCommitStatus", "timedCommitStatus", "gitCommitStatus", "webRequestCommitStatus", "previousEnvironmentCommitStatus", "dagCommitStatus"},
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.ArgoCDCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyConfiguration{}.OpenAPIModelName(), apiv1alpha1.CommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.PreviousEnvironmentCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategyConfiguration{}.OpenAPIModelName(), apiv1alpha1.PullRequestConfiguration{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName()},
+			apiv1alpha1.ArgoCDCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyConfiguration{}.OpenAPIModelName(), apiv1alpha1.CommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.DAGCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.PreviousEnvironmentCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategyConfiguration{}.OpenAPIModelName(), apiv1alpha1.PullRequestConfiguration{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName()},
 	}
 }
 
@@ -2124,6 +2132,29 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatus(ref commo
 		},
 		Dependencies: []string{
 			apiv1alpha1.DAGCommitStatusSpec{}.OpenAPIModelName(), apiv1alpha1.DAGCommitStatusStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatusConfiguration(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "DAGCommitStatusConfiguration defines the configuration for the DAGCommitStatus controller.\n\nThis configuration controls how the DAGCommitStatus controller processes reconciliation requests, including requeue intervals, concurrency limits, and rate limiting behavior.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"workQueue": {
+						SchemaProps: spec.SchemaProps{
+							Description: "WorkQueue contains the work queue configuration for the DAGCommitStatus controller. This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.WorkQueue{}.OpenAPIModelName()),
+						},
+					},
+				},
+				Required: []string{"workQueue"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.WorkQueue{}.OpenAPIModelName()},
 	}
 }
 
