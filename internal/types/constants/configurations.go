@@ -38,6 +38,10 @@ const (
 	// performed by the PreviousEnvironmentCommitStatus controller.
 	PreviousEnvironmentCommitStatusControllerFieldOwner = "promoter.argoproj.io/previousenvironmentcommitstatus-controller"
 
+	// DAGCommitStatusControllerFieldOwner is the field owner for Server-Side Apply operations
+	// performed by the DAGCommitStatus controller.
+	DAGCommitStatusControllerFieldOwner = "promoter.argoproj.io/dagcommitstatus-controller"
+
 	// ScmProviderControllerFieldOwner is the field owner for Server-Side Apply operations
 	// performed by the ScmProvider controller.
 	ScmProviderControllerFieldOwner = "promoter.argoproj.io/scmprovider-controller"

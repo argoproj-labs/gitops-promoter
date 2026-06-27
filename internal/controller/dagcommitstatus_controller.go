@@ -20,17 +20,23 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
 // DAGCommitStatusReconciler reconciles a DAGCommitStatus object
@@ -53,13 +59,18 @@ type DAGCommitStatusReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/reconcile
-func (r *DAGCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *DAGCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := logf.FromContext(ctx)
 	logger.Info("Reconciling DAGCommitStatus")
+	startTime := time.Now()
+
+	var dcs promoterv1alpha1.DAGCommitStatus
+	// This applies the resource status via Server-Side Apply at the end of reconciliation. Don't write status manually.
+	var previousReady *metav1.Condition
+	defer utils.HandleReconciliationResult(ctx, startTime, &dcs, r.Client, r.Recorder, constants.DAGCommitStatusControllerFieldOwner, &result, &err, &previousReady)
 
 	// 1. Fetch the DAGCommitStatus instance.
-	var dcs promoterv1alpha1.DAGCommitStatus
-	if err := r.Get(ctx, req.NamespacedName, &dcs); err != nil {
+	if err = r.Get(ctx, req.NamespacedName, &dcs); err != nil {
 		if k8serrors.IsNotFound(err) {
 			logger.Info("DAGCommitStatus not found")
 			return ctrl.Result{}, nil
@@ -67,33 +78,34 @@ func (r *DAGCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, fmt.Errorf("failed to get DAGCommitStatus %q: %w", req.Name, err)
 	}
 
+	// Start fresh on the Ready condition each reconcile.
+	previousReady = utils.RemoveReadyCondition(&dcs)
+
 	// 2. Fetch the referenced PromotionStrategy.
 	var ps promoterv1alpha1.PromotionStrategy
 	psKey := client.ObjectKey{Namespace: dcs.Namespace, Name: dcs.Spec.PromotionStrategyRef.Name}
-	if err := r.Get(ctx, psKey, &ps); err != nil {
+	if err = r.Get(ctx, psKey, &ps); err != nil {
 		if k8serrors.IsNotFound(err) {
 			return ctrl.Result{}, fmt.Errorf("referenced PromotionStrategy %q not found: %w", dcs.Spec.PromotionStrategyRef.Name, err)
 		}
 		return ctrl.Result{}, fmt.Errorf("failed to get PromotionStrategy %q: %w", dcs.Spec.PromotionStrategyRef.Name, err)
 	}
 
-	// 3. Evaluate the dependency graph against the PromotionStrategy state.
-	if err := r.updateDAGCommitStatus(ctx, &dcs, &ps); err != nil {
+	// 3. Evaluate the dependency graph against the PromotionStrategy state and write statuses.
+	if err = r.updateDAGCommitStatus(ctx, &dcs, &ps); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update DAG commit statuses: %w", err)
 	}
 
 	// 4. Requeue periodically. The configurable requeue duration (settings.Manager) is wired
-	// in alongside the commit status write-back; for now use a fixed interval.
+	// in alongside the controller configuration; for now use a fixed interval.
 	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 }
 
 // updateDAGCommitStatus builds the dependency graph from the spec, validates it (unknown
-// references, cycles), and computes which environments are currently eligible for promotion
-// given the satisfied set derived from the PromotionStrategy state. For now it logs the
-// result; writing the per-environment commit statuses back is added in a follow-up.
+// references, cycles), derives which environments are satisfied (synced and healthy) from the
+// PromotionStrategy state, and writes a per-environment CommitStatus: success once all of an
+// environment's dependsOn upstreams are satisfied, pending otherwise.
 func (r *DAGCommitStatusReconciler) updateDAGCommitStatus(ctx context.Context, dcs *promoterv1alpha1.DAGCommitStatus, ps *promoterv1alpha1.PromotionStrategy) error {
-	logger := logf.FromContext(ctx)
-
 	graph, err := buildDAG(dcs.Spec.Environments)
 	if err != nil {
 		return fmt.Errorf("failed to build dependency graph: %w", err)
@@ -101,19 +113,118 @@ func (r *DAGCommitStatusReconciler) updateDAGCommitStatus(ctx context.Context, d
 	if err := graph.validateDAG(); err != nil {
 		return fmt.Errorf("invalid dependency graph: %w", err)
 	}
-	order, err := graph.topologicalSort()
-	if err != nil {
+	if _, err := graph.topologicalSort(); err != nil {
 		return fmt.Errorf("invalid dependency graph: %w", err)
 	}
 
-	// satisfied[branch] is true when the environment is synced and healthy. Deriving this from
-	// the PromotionStrategy status is added in the write-back step; for now treat nothing as
-	// satisfied so only graph roots come back eligible.
-	satisfied := make(map[string]bool, len(ps.Status.Environments))
-	eligible := graph.eligibleEnvironments(satisfied)
+	// Index PromotionStrategy environment status by branch so each DAG node can look up its own
+	// and its upstreams' state in O(1).
+	statusByBranch := make(map[string]promoterv1alpha1.EnvironmentStatus, len(ps.Status.Environments))
+	for _, envStatus := range ps.Status.Environments {
+		statusByBranch[envStatus.Branch] = envStatus
+	}
 
-	logger.Info("Evaluated DAG", "order", order, "eligible", eligible)
+	satisfied := make(map[string]bool, len(graph.branches))
+	for _, branch := range graph.branches {
+		satisfied[branch] = environmentSatisfied(statusByBranch[branch])
+	}
+
+	eligibleSet := make(map[string]bool, len(graph.branches))
+	for _, branch := range graph.eligibleEnvironments(satisfied) {
+		eligibleSet[branch] = true
+	}
+
+	// Write a CommitStatus for every environment: eligible (all upstreams satisfied) is success,
+	// everything else is pending.
+	logger := logf.FromContext(ctx)
+	for _, branch := range graph.branches {
+		envStatus := statusByBranch[branch]
+
+		// Skip if there's no proposed change for this environment (active and proposed dry SHAs
+		// match): there is no in-flight PR to gate, so creating/updating a commit status would
+		// only churn an already-merged change. This mirrors the PreviousEnvironmentCommitStatus
+		// controller and, since a proposed change implies the hydrator has produced a SHA, also
+		// keeps us from writing a CommitStatus with an empty sha.
+		if envStatus.Active.Dry.Sha == envStatus.Proposed.Dry.Sha {
+			logger.V(4).Info("Skipping environment with no proposed change", "branch", branch)
+			continue
+		}
+
+		hydratedSha := getEffectiveHydratedDrySha(envStatus)
+		phase := promoterv1alpha1.CommitPhasePending
+		if eligibleSet[branch] || satisfied[branch] {
+			phase = promoterv1alpha1.CommitPhaseSuccess
+		}
+		if _, err := r.createOrUpdateDAGCommitStatus(ctx, dcs, ps, branch, hydratedSha, phase); err != nil {
+			return fmt.Errorf("failed to set DAG commit status for branch %q: %w", branch, err)
+		}
+	}
+
 	return nil
+}
+
+// environmentSatisfied reports whether an environment's active deployment is synced (the merged
+// dry SHA matches what the hydrator processed) and healthy (all of its active commit statuses
+// are passing).
+func environmentSatisfied(envStatus promoterv1alpha1.EnvironmentStatus) bool {
+	synced := envStatus.Active.Dry.Sha != "" && envStatus.Active.Dry.Sha == getEffectiveHydratedDrySha(envStatus)
+	healthy := utils.AreCommitStatusesPassing(envStatus.Active.CommitStatuses)
+	return synced && healthy
+}
+
+// createOrUpdateDAGCommitStatus upserts, via Server-Side Apply, the CommitStatus that reports
+// whether the given environment's DAG dependencies are satisfied.
+func (r *DAGCommitStatusReconciler) createOrUpdateDAGCommitStatus(
+	ctx context.Context,
+	dcs *promoterv1alpha1.DAGCommitStatus,
+	ps *promoterv1alpha1.PromotionStrategy,
+	branch string,
+	hydratedSha string,
+	phase promoterv1alpha1.CommitStatusPhase,
+) (*promoterv1alpha1.CommitStatus, error) {
+	key := dcs.Spec.Key
+	if key == "" {
+		// Spec.Key is defaulted by the CRD on the API-server write path; fall back here so
+		// objects built directly (e.g. in tests) still get the canonical gate key.
+		key = promoterv1alpha1.DAGCommitStatusKey
+	}
+	commitStatusName := utils.CommitStatusResourceName(ctx, dcs, branch)
+
+	kind := reflect.TypeOf(promoterv1alpha1.DAGCommitStatus{}).Name()
+	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
+
+	description := branch + " - dependencies satisfied"
+	if phase != promoterv1alpha1.CommitPhaseSuccess {
+		description = branch + " - waiting for dependencies"
+	}
+
+	labels := utils.CommitStatusStandardLabels(dcs, branch, key)
+
+	commitStatusApply := acv1alpha1.CommitStatus(commitStatusName, dcs.Namespace).
+		WithLabels(labels).
+		WithOwnerReferences(acmetav1.OwnerReference().
+			WithAPIVersion(gvk.GroupVersion().String()).
+			WithKind(gvk.Kind).
+			WithName(dcs.Name).
+			WithUID(dcs.UID).
+			WithController(true).
+			WithBlockOwnerDeletion(true)).
+		WithSpec(acv1alpha1.CommitStatusSpec().
+			WithRepositoryReference(acv1alpha1.ObjectReference().
+				WithName(ps.Spec.RepositoryReference.Name)).
+			WithSha(hydratedSha).
+			WithName(description).
+			WithDescription(description).
+			WithPhase(phase))
+
+	commitStatus := &promoterv1alpha1.CommitStatus{}
+	commitStatus.Name = commitStatusName
+	commitStatus.Namespace = dcs.Namespace
+	if err := r.Patch(ctx, commitStatus, utils.ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(constants.DAGCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
+		return nil, fmt.Errorf("failed to apply DAG CommitStatus: %w", err)
+	}
+
+	return commitStatus, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
