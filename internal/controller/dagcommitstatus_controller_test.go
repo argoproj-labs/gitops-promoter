@@ -43,6 +43,24 @@ var _ = Describe("DAGCommitStatus Controller", func() {
 		dagcommitstatus := &promoterv1alpha1.DAGCommitStatus{}
 
 		BeforeEach(func() {
+			By("creating the referenced PromotionStrategy")
+			ps := &promoterv1alpha1.PromotionStrategy{}
+			psKey := types.NamespacedName{Name: "test-promotion-strategy", Namespace: "default"}
+			if err := k8sClient.Get(ctx, psKey, ps); err != nil && errors.IsNotFound(err) {
+				Expect(k8sClient.Create(ctx, &promoterv1alpha1.PromotionStrategy{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-promotion-strategy",
+						Namespace: "default",
+					},
+					Spec: promoterv1alpha1.PromotionStrategySpec{
+						RepositoryReference: promoterv1alpha1.ObjectReference{Name: "test-repo"},
+						Environments: []promoterv1alpha1.Environment{
+							{Branch: "dev"},
+						},
+					},
+				})).To(Succeed())
+			}
+
 			By("creating the custom resource for the Kind DAGCommitStatus")
 			err := k8sClient.Get(ctx, typeNamespacedName, dagcommitstatus)
 			if err != nil && errors.IsNotFound(err) {
@@ -71,6 +89,13 @@ var _ = Describe("DAGCommitStatus Controller", func() {
 
 			By("Cleanup the specific resource instance DAGCommitStatus")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+
+			By("Cleanup the referenced PromotionStrategy")
+			ps := &promoterv1alpha1.PromotionStrategy{}
+			psKey := types.NamespacedName{Name: "test-promotion-strategy", Namespace: "default"}
+			if err := k8sClient.Get(ctx, psKey, ps); err == nil {
+				Expect(k8sClient.Delete(ctx, ps)).To(Succeed())
+			}
 		})
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
