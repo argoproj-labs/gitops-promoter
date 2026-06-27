@@ -26,7 +26,30 @@ The dashboard process watches `PromotionStrategyDetails` and forwards each bundl
 the browser over Server-Sent Events (SSE). SSE does not flow through the
 kube-aggregator proxy.
 
-## What gets deployed
+## In-cluster dashboard deployment
+
+In addition to running the dashboard locally via CLI, you can deploy it as an in-cluster
+Deployment + Service so that teams can access a shared, always-available dashboard through
+existing ingress infrastructure:
+
+```bash
+kubectl apply -k config/dashboard
+```
+
+This deploys:
+
+| Resource | Purpose |
+| --- | --- |
+| `ServiceAccount promoter-dashboard` | dedicated identity for the dashboard pod |
+| `ClusterRole / ClusterRoleBinding promoter-dashboard` | read-only access to `PromotionStrategyDetails` and `PromotionStrategies` |
+| `Deployment promoter-dashboard` | runs `gitops-promoter dashboard --port=8080` |
+| `Service promoter-dashboard` | `80 -> 8080` |
+
+Add your own Ingress, Gateway API HTTPRoute, or other routing and authentication
+resources on top of the Service. The dashboard requires the APIService (below) to be
+deployed and healthy.
+
+## What gets deployed (APIService)
 
 `config/apiserver` ships a self-contained kustomize base (under
 `config/apiserver/base`) plus cert overlays:
