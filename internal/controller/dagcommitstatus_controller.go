@@ -158,12 +158,16 @@ func (r *DAGCommitStatusReconciler) updateDAGCommitStatus(ctx context.Context, d
 			continue
 		}
 
-		hydratedSha := getEffectiveHydratedDrySha(envStatus)
+		// Bind the CommitStatus to the proposed branch's hydrated SHA: that is the commit the
+		// ChangeTransferPolicy inspects when gating the promotion PR. Binding to the dry SHA
+		// instead leaves the gate undetectable, so the promotion never advances. Mirrors the
+		// PreviousEnvironmentCommitStatus controller.
+		proposedHydratedSha := envStatus.Proposed.Hydrated.Sha
 		phase := promoterv1alpha1.CommitPhasePending
 		if eligibleSet[branch] || satisfied[branch] {
 			phase = promoterv1alpha1.CommitPhaseSuccess
 		}
-		if _, err := r.createOrUpdateDAGCommitStatus(ctx, dcs, ps, branch, hydratedSha, phase); err != nil {
+		if _, err := r.createOrUpdateDAGCommitStatus(ctx, dcs, ps, branch, proposedHydratedSha, phase); err != nil {
 			return fmt.Errorf("failed to set DAG commit status for branch %q: %w", branch, err)
 		}
 	}
