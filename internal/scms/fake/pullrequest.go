@@ -38,8 +38,9 @@ var (
 )
 
 type pullRequestProviderState struct {
-	id    string
-	state v1alpha1.PullRequestState
+	id        string
+	state     v1alpha1.PullRequestState
+	createdAt time.Time
 }
 
 // PullRequest implements the scms.PullRequestProvider interface for testing purposes.
@@ -81,8 +82,9 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 
 	id = strconv.Itoa(len(pullRequests) + 1)
 	pullRequests[pr.getMapKey(*pullRequestCopy, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)] = pullRequestProviderState{
-		id:    id,
-		state: v1alpha1.PullRequestOpen,
+		id:        id,
+		state:     v1alpha1.PullRequestOpen,
+		createdAt: time.Now(),
 	}
 
 	return id, nil
@@ -111,9 +113,11 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullReque
 	if _, ok := pullRequests[prKey]; !ok {
 		return errors.New("pull request not found")
 	}
+	prev := pullRequests[prKey]
 	pullRequests[prKey] = pullRequestProviderState{
-		id:    pullRequests[prKey].id,
-		state: v1alpha1.PullRequestClosed,
+		id:        prev.id,
+		state:     v1alpha1.PullRequestClosed,
+		createdAt: prev.createdAt,
 	}
 	return nil
 }
@@ -211,9 +215,11 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 	if _, ok := pullRequests[prKey]; !ok {
 		return errors.New("pull request not found")
 	}
+	prev := pullRequests[prKey]
 	pullRequests[prKey] = pullRequestProviderState{
-		id:    pullRequests[prKey].id,
-		state: v1alpha1.PullRequestMerged,
+		id:        prev.id,
+		state:     v1alpha1.PullRequestMerged,
+		createdAt: prev.createdAt,
 	}
 	return nil
 }
@@ -268,26 +274,29 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	findOpenCallCount.Add(1)
 
 	mutexPR.RLock()
-	found, id := pr.findOpen(ctx, pullRequest)
+	found, id, createdAt := pr.findOpen(ctx, pullRequest)
 	mutexPR.RUnlock()
 
-	return found, id, time.Now(), nil
+	return found, id, createdAt, nil
 }
 
-func (pr *PullRequest) findOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string) {
+func (pr *PullRequest) findOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string, time.Time) {
 	log.FromContext(ctx).Info("Finding open pull request", "pullRequest", pullRequest)
 	if pullRequests == nil {
-		return false, ""
+		return false, "", time.Time{}
 	}
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
 		log.FromContext(ctx).Error(err, "failed to get GitRepository")
-		return false, ""
+		return false, "", time.Time{}
 	}
 
 	pullRequestState, ok := pullRequests[pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)]
-	return ok && pullRequestState.state == v1alpha1.PullRequestOpen, pullRequestState.id
+	if !ok || pullRequestState.state != v1alpha1.PullRequestOpen {
+		return false, "", time.Time{}
+	}
+	return true, pullRequestState.id, pullRequestState.createdAt
 }
 
 func (pr *PullRequest) getMapKey(pullRequest v1alpha1.PullRequest, owner, name string) string {
