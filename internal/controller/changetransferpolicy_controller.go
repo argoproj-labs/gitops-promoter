@@ -1241,11 +1241,6 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 		prState = existingPR.Spec.State
 	}
 
-	if prExists && pullRequestManagedByCTPUnchanged(existingPR, title, description, commitMessage, ctp, prState) {
-		logger.V(4).Info("Pull request spec unchanged, skipping apply", "pullRequest", prName)
-		return existingPR, nil
-	}
-
 	// Build the apply configuration
 	prApply := acv1alpha1.PullRequest(prName, ctp.Namespace).
 		WithLabels(map[string]string{
@@ -1533,39 +1528,6 @@ func pullRequestUpdateEnqueuesChangeTransferPolicyPredicate() predicate.Predicat
 			return false
 		},
 	}
-}
-
-// pullRequestManagedByCTPUnchanged reports whether the PullRequest already matches the spec fields
-// createOrUpdatePullRequest would apply, so a Server-Side Apply patch can be skipped.
-func pullRequestManagedByCTPUnchanged(
-	existing *promoterv1alpha1.PullRequest,
-	title, description, commitMessage string,
-	ctp *promoterv1alpha1.ChangeTransferPolicy,
-	prState promoterv1alpha1.PullRequestState,
-) bool {
-	if existing.Spec.RepositoryReference.Name != ctp.Spec.RepositoryReference.Name ||
-		existing.Spec.Title != title ||
-		existing.Spec.Description != description ||
-		existing.Spec.TargetBranch != ctp.Spec.ActiveBranch ||
-		existing.Spec.SourceBranch != ctp.Spec.ProposedBranch ||
-		existing.Spec.MergeSha != ctp.Status.Proposed.Hydrated.Sha ||
-		existing.Spec.State != prState ||
-		existing.Spec.Commit.Message != commitMessage {
-		return false
-	}
-
-	expectedLabels := map[string]string{
-		promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
-		promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
-		promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
-	}
-	for key, want := range expectedLabels {
-		if existing.Labels[key] != want {
-			return false
-		}
-	}
-
-	return controllerutil.ContainsFinalizer(existing, promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer)
 }
 
 // boolPtrEqual compares two *bool pointers for equality.
