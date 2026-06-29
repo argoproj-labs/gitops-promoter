@@ -3217,6 +3217,15 @@ spec:
                       Template is the template configuration used to generate pull request titles and descriptions.
                       Uses Go template syntax with Sprig functions available.
                     properties:
+                      commitMessage:
+                        description: |-
+                          CommitMessage is an optional template used to generate the merge commit message for the pull request.
+                          When set, it replaces the default commit message of "<title>\n\n<description>" (rendered from the Title
+                          and Description templates above). When unset, the default behavior is unchanged.
+                          Machine-read commit trailers used by the promoter to reconstruct promotion history are always appended
+                          after the rendered message; do not attempt to include them in the template.
+                          Uses Go template syntax with Sprig functions available for string manipulation.
+                        type: string
                       description:
                         description: |-
                           Description is the template used to generate the body/description of the pull request.

@@ -1197,6 +1197,79 @@ var _ = Describe("TemplatePullRequest", func() {
 	})
 })
 
+var _ = Describe("TemplateCommitMessage", func() {
+	Context("Commit message template with ChangeTransferPolicy and optional PromotionStrategy", func() {
+		ctp := &promoterv1alpha1.ChangeTransferPolicy{
+			Spec: promoterv1alpha1.ChangeTransferPolicySpec{
+				ActiveBranch:   testBranchDevelopment,
+				ProposedBranch: testBranchDevelopmentNext,
+			},
+			Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+				Proposed: promoterv1alpha1.CommitBranchState{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha:     "abc1234def",
+						Subject: "feat: add new feature",
+					},
+				},
+			},
+		}
+
+		It("returns an empty string when no commit message template is configured", func() {
+			template := promoterv1alpha1.PullRequestTemplate{
+				Title:       "some title",
+				Description: "some description",
+			}
+			commitMessage, err := TemplateCommitMessage(template, map[string]any{"ChangeTransferPolicy": ctp})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(commitMessage).To(BeEmpty())
+		})
+
+		It("renders the commit message with only CTP when PromotionStrategy is absent", func() {
+			template := promoterv1alpha1.PullRequestTemplate{
+				Title:         "some title",
+				Description:   "some description",
+				CommitMessage: "{{ .ChangeTransferPolicy.Status.Proposed.Dry.Subject }} (dry: {{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}){{ if .PromotionStrategy }} Strategy: {{ .PromotionStrategy.Name }}{{ end }}",
+			}
+			commitMessage, err := TemplateCommitMessage(template, map[string]any{"ChangeTransferPolicy": ctp})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(commitMessage).To(Equal("feat: add new feature (dry: abc1234)"))
+		})
+
+		It("renders the commit message with CTP and PromotionStrategy when PromotionStrategy is present", func() {
+			psName := "my-promotion-strategy"
+			ps := &promoterv1alpha1.PromotionStrategy{
+				ObjectMeta: metav1.ObjectMeta{Name: psName, Namespace: "default"},
+				Spec: promoterv1alpha1.PromotionStrategySpec{
+					RepositoryReference: promoterv1alpha1.ObjectReference{Name: "test-repo"},
+					Environments:        []promoterv1alpha1.Environment{{Branch: testBranchDevelopment}},
+				},
+			}
+			template := promoterv1alpha1.PullRequestTemplate{
+				Title:         "some title",
+				Description:   "some description",
+				CommitMessage: "{{ .ChangeTransferPolicy.Status.Proposed.Dry.Subject }}{{ if .PromotionStrategy }} Strategy: {{ .PromotionStrategy.Name }}{{ end }}",
+			}
+			commitMessage, err := TemplateCommitMessage(template, map[string]any{
+				"ChangeTransferPolicy": ctp,
+				"PromotionStrategy":    ps,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(commitMessage).To(Equal("feat: add new feature Strategy: " + psName))
+		})
+
+		It("returns an error when the commit message template is invalid", func() {
+			template := promoterv1alpha1.PullRequestTemplate{
+				Title:         "some title",
+				Description:   "some description",
+				CommitMessage: "{{ .Invalid",
+			}
+			_, err := TemplateCommitMessage(template, map[string]any{"ChangeTransferPolicy": ctp})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("failed to render pull request commit message template"))
+		})
+	})
+})
+
 var _ = Describe("tooManyPRsError", func() {
 	Context("When formatting tooManyPRsError", func() {
 		It("returns an error listing all PR names if 3 or fewer", func() {
