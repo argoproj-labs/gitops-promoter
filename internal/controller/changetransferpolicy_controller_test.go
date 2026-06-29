@@ -889,7 +889,12 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					}, constants.EventuallyTimeout).Should(Succeed())
 				}
 
-				time.Sleep(500 * time.Millisecond)
+				By("Waiting for the last status poke to land on the PR")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+					g.Expect(pr.Status.Url).To(Equal(fmt.Sprintf("https://fake.example/pr/%s?poke=2", pr.Status.ID)))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
 				findOpenSnapshot := fake.FindOpenCallCount()
 				updateSnapshot := fake.UpdateCallCount()
 				scmSnapshot := fake.PullRequestSCMCallCount()
