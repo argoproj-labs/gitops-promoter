@@ -854,6 +854,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
 				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+				_ = os.RemoveAll(gitPath)
 			})
 
 			waitForOpenPRWithID := func() (promoterv1alpha1.PullRequest, int64) {
@@ -941,6 +942,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				fake.ResetPullRequestSCMCallCounts()
 				baselineFindOpen := fake.FindOpenCallCount()
+
 				baselineUpdate := fake.UpdateCallCount()
 
 				By("Changing PR spec so the PR controller must sync to SCM")
