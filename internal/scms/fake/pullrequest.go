@@ -32,6 +32,8 @@ var (
 
 	// findOpenCallCount is incremented on every FindOpen call (for tests).
 	findOpenCallCount atomic.Uint64
+	// updateCallCount is incremented on every Update call (for tests).
+	updateCallCount atomic.Uint64
 	// mergeShaMismatchCount is incremented every time Merge is called with a PR
 	// whose Spec.MergeSha does not match origin/<sourceBranch> (for tests).
 	mergeShaMismatchCount atomic.Uint64
@@ -90,6 +92,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 
 // Update updates an existing pull request with the specified title and description.
 func (pr *PullRequest) Update(ctx context.Context, title, description string, pullRequest v1alpha1.PullRequest) error {
+	updateCallCount.Add(1)
 	return nil
 }
 
@@ -223,9 +226,30 @@ func ResetFindOpenCallCount() {
 	findOpenCallCount.Store(0)
 }
 
+// ResetUpdateCallCount resets the test-only counter of Update invocations.
+func ResetUpdateCallCount() {
+	updateCallCount.Store(0)
+}
+
+// ResetPullRequestSCMCallCounts resets both FindOpen and Update test counters.
+func ResetPullRequestSCMCallCounts() {
+	findOpenCallCount.Store(0)
+	updateCallCount.Store(0)
+}
+
 // FindOpenCallCount returns how many times FindOpen has been invoked since the last reset.
 func FindOpenCallCount() uint64 {
 	return findOpenCallCount.Load()
+}
+
+// UpdateCallCount returns how many times Update has been invoked since the last reset.
+func UpdateCallCount() uint64 {
+	return updateCallCount.Load()
+}
+
+// PullRequestSCMCallCount returns FindOpen plus Update invocations since the last reset.
+func PullRequestSCMCallCount() uint64 {
+	return findOpenCallCount.Load() + updateCallCount.Load()
 }
 
 // ResetMergeShaMismatchCount resets the test-only counter of Merge calls that hit the

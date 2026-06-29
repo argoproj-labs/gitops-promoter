@@ -24,6 +24,7 @@ import (
 	"path"
 	"slices"
 	"strings"
+	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
@@ -809,6 +810,138 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					}, &createdPR)
 					// PR should be deleted (not found)
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+		})
+
+		Context("When an open PR is in steady state", func() {
+			var (
+				name                 string
+				scmSecret            *v1.Secret
+				scmProvider          *promoterv1alpha1.ScmProvider
+				gitRepo              *promoterv1alpha1.GitRepository
+				changeTransferPolicy *promoterv1alpha1.ChangeTransferPolicy
+				ctpKey               types.NamespacedName
+				prKey                types.NamespacedName
+				gitPath              string
+				prName               string
+			)
+
+			BeforeEach(func() {
+				var err error
+				name, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-open-pr-steady", "default")
+
+				ctpKey = types.NamespacedName{Name: name, Namespace: "default"}
+				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
+				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
+				changeTransferPolicy.Spec.AutoMerge = new(false)
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
+
+				prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+				prKey = types.NamespacedName{Name: utils.KubeSafeUniqueName(prName), Namespace: "default"}
+
+				gitPath, err = os.MkdirTemp("", "*")
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			AfterEach(func() {
+				Expect(ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, changeTransferPolicy))).To(Succeed())
+				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+			})
+
+			waitForOpenPRWithID := func() (promoterv1alpha1.PullRequest, int64) {
+				var pr promoterv1alpha1.PullRequest
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+					g.Expect(pr.Status.ID).NotTo(BeEmpty())
+					g.Expect(k8sClient.Get(ctx, ctpKey, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.PullRequest).NotTo(BeNil())
+					g.Expect(changeTransferPolicy.Status.PullRequest.ID).To(Equal(pr.Status.ID))
+				}, constants.EventuallyTimeout).Should(Succeed())
+				return pr, pr.Generation
+			}
+
+			It("should not poll SCM after status-only PR updates", func() {
+				By("Creating a pending promotion with an open PR")
+				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+				pr, stableGeneration := waitForOpenPRWithID()
+
+				fake.ResetPullRequestSCMCallCounts()
+
+				By("Simulating PR controller status-only writes (URL) that used to re-enqueue CTP")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+					pr.Status.Url = "https://fake.example/pr/" + pr.Status.ID
+					g.Expect(k8sClient.Status().Update(ctx, &pr)).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				time.Sleep(500 * time.Millisecond)
+				scmSnapshot := fake.PullRequestSCMCallCount()
+
+				By("Verifying status-only churn does not drive SCM polling")
+				Consistently(func(g Gomega) {
+					g.Expect(fake.PullRequestSCMCallCount()).To(BeNumerically("<=", scmSnapshot+1))
+				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
+
+				var afterPR promoterv1alpha1.PullRequest
+				Expect(k8sClient.Get(ctx, prKey, &afterPR)).To(Succeed())
+				Expect(afterPR.Generation).To(Equal(stableGeneration))
+			})
+
+			It("should not poll SCM in a loop after CTP nudges", func() {
+				By("Creating a pending promotion with an open PR")
+				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+				waitForOpenPRWithID()
+
+				fake.ResetPullRequestSCMCallCounts()
+
+				By("Nudging CTP via annotation change without changing PR spec")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, ctpKey, changeTransferPolicy)).To(Succeed())
+					base := changeTransferPolicy.DeepCopy()
+					if changeTransferPolicy.Annotations == nil {
+						changeTransferPolicy.Annotations = map[string]string{}
+					}
+					changeTransferPolicy.Annotations["promoter.argoproj.io/test-nudge"] = fmt.Sprintf("%d", time.Now().UnixNano())
+					g.Expect(k8sClient.Patch(ctx, changeTransferPolicy, ctrlclient.MergeFrom(base))).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Waiting for the nudge reconcile to settle")
+				time.Sleep(1 * time.Second)
+				scmSnapshot := fake.PullRequestSCMCallCount()
+				Expect(scmSnapshot).To(BeNumerically("<", 25),
+					"a regression reproduces dozens of SCM calls per nudge")
+
+				By("Verifying SCM is not polled in a tight loop after settle")
+				Consistently(func(g Gomega) {
+					g.Expect(fake.PullRequestSCMCallCount()).To(BeNumerically("<=", scmSnapshot+1))
+				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
+			})
+
+			It("should still hit SCM when the PR spec changes", func() {
+				By("Creating a pending promotion with an open PR")
+				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+				pr, _ := waitForOpenPRWithID()
+
+				fake.ResetPullRequestSCMCallCounts()
+				baseline := fake.PullRequestSCMCallCount()
+
+				By("Changing PR spec so the PR controller must sync to SCM")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+					pr.Spec.Title = pr.Spec.Title + "-updated"
+					g.Expect(k8sClient.Update(ctx, &pr)).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				Eventually(func(g Gomega) {
+					g.Expect(fake.PullRequestSCMCallCount()).To(BeNumerically(">", baseline))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
