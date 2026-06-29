@@ -881,7 +881,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				By("Simulating routine PR controller status-only writes that used to re-enqueue CTP")
 				for poke := 0; poke < 3; poke++ {
-					poke := poke
 					Eventually(func(g Gomega) {
 						g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
 						pr.Status.Url = fmt.Sprintf("https://fake.example/pr/%s?poke=%d", pr.Status.ID, poke)
