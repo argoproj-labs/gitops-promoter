@@ -528,7 +528,7 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 		// This controller intentionally doesn't have a .Owns for CommitStatuses. Every reconcile of a CommitStatus
 		// checks whether it needs to update a related ChangeTransferPolicy by setting an annotation. Avoiding .Owns
 		// here avoids duplicate reconciliations.
-		Owns(&promoterv1alpha1.PullRequest{}).
+		Owns(&promoterv1alpha1.PullRequest{}, builder.WithPredicates(pullRequestUpdateEnqueuesChangeTransferPolicyPredicate())).
 		// Watch for external enqueue requests from other controllers (e.g., PromotionStrategy).
 		// The handler.EnqueueRequestForObject extracts the namespace/name from the GenericEvent.
 		WatchesRawSource(source.Channel(externalEnqueueChan, &handler.EnqueueRequestForObject{})).
@@ -1241,6 +1241,11 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 		prState = existingPR.Spec.State
 	}
 
+	if prExists && pullRequestManagedByCTPUnchanged(existingPR, title, description, commitMessage, ctp, prState) {
+		logger.V(4).Info("Pull request spec unchanged, skipping apply", "pullRequest", prName)
+		return existingPR, nil
+	}
+
 	// Build the apply configuration
 	prApply := acv1alpha1.PullRequest(prName, ctp.Namespace).
 		WithLabels(map[string]string{
@@ -1477,6 +1482,75 @@ func TemplatePullRequest(prt promoterv1alpha1.PullRequestTemplate, data map[stri
 	}
 
 	return title, description, nil
+}
+
+// pullRequestUpdateEnqueuesChangeTransferPolicyPredicate limits CTP reconciles triggered by owned
+// PullRequests to spec changes and meaningful status transitions. Routine PR status writes (URL,
+// Ready, etc.) after SCM sync should not re-enqueue the CTP and drive a CTP→PR→CTP feedback loop.
+func pullRequestUpdateEnqueuesChangeTransferPolicyPredicate() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc: func(event.CreateEvent) bool { return true },
+		DeleteFunc: func(event.DeleteEvent) bool { return true },
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldPR, ok := e.ObjectOld.(*promoterv1alpha1.PullRequest)
+			if !ok || oldPR == nil {
+				return false
+			}
+			newPR, ok := e.ObjectNew.(*promoterv1alpha1.PullRequest)
+			if !ok || newPR == nil {
+				return false
+			}
+			if oldPR.Generation != newPR.Generation {
+				return true
+			}
+			if len(oldPR.Finalizers) != len(newPR.Finalizers) {
+				return true
+			}
+			if oldPR.Status.State != newPR.Status.State {
+				return true
+			}
+			if !boolPtrEqual(oldPR.Status.ExternallyMergedOrClosed, newPR.Status.ExternallyMergedOrClosed) {
+				return true
+			}
+			if oldPR.Status.ID == "" && newPR.Status.ID != "" {
+				return true
+			}
+			return false
+		},
+	}
+}
+
+// pullRequestManagedByCTPUnchanged reports whether the PullRequest already matches the spec fields
+// createOrUpdatePullRequest would apply, so a Server-Side Apply patch can be skipped.
+func pullRequestManagedByCTPUnchanged(
+	existing *promoterv1alpha1.PullRequest,
+	title, description, commitMessage string,
+	ctp *promoterv1alpha1.ChangeTransferPolicy,
+	prState promoterv1alpha1.PullRequestState,
+) bool {
+	if existing.Spec.RepositoryReference.Name != ctp.Spec.RepositoryReference.Name ||
+		existing.Spec.Title != title ||
+		existing.Spec.Description != description ||
+		existing.Spec.TargetBranch != ctp.Spec.ActiveBranch ||
+		existing.Spec.SourceBranch != ctp.Spec.ProposedBranch ||
+		existing.Spec.MergeSha != ctp.Status.Proposed.Hydrated.Sha ||
+		existing.Spec.State != prState ||
+		existing.Spec.Commit.Message != commitMessage {
+		return false
+	}
+
+	expectedLabels := map[string]string{
+		promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
+		promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
+		promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
+	}
+	for key, want := range expectedLabels {
+		if existing.Labels[key] != want {
+			return false
+		}
+	}
+
+	return controllerutil.ContainsFinalizer(existing, promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer)
 }
 
 // boolPtrEqual compares two *bool pointers for equality.

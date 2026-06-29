@@ -38,7 +38,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/utils/ptr"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 )
 
 //go:embed testdata/ChangeTransferPolicy.yaml
@@ -1194,6 +1196,120 @@ var _ = Describe("TemplatePullRequest", func() {
 			Expect(description).To(ContainSubstring("Strategy: " + psName))
 			Expect(description).To(ContainSubstring("Promote to " + testBranchDevelopment))
 		})
+	})
+})
+
+var _ = Describe("pullRequestManagedByCTPUnchanged", func() {
+	var (
+		ctp      *promoterv1alpha1.ChangeTransferPolicy
+		existing *promoterv1alpha1.PullRequest
+	)
+
+	BeforeEach(func() {
+		ctp = &promoterv1alpha1.ChangeTransferPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "ctp-prod",
+				Labels: map[string]string{
+					promoterv1alpha1.PromotionStrategyLabel: "my-ps",
+				},
+			},
+			Spec: promoterv1alpha1.ChangeTransferPolicySpec{
+				RepositoryReference: promoterv1alpha1.ObjectReference{Name: "repo"},
+				ProposedBranch:      "environment/staging-next",
+				ActiveBranch:        "environment/staging",
+			},
+			Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+				Proposed: promoterv1alpha1.CommitBranchState{
+					Hydrated: promoterv1alpha1.CommitShaState{Sha: "hydrated-sha"},
+				},
+			},
+		}
+		existing = &promoterv1alpha1.PullRequest{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "pr-1",
+				Labels: map[string]string{
+					promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel("my-ps"),
+					promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel("ctp-prod"),
+					promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel("environment/staging"),
+				},
+				Finalizers: []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
+			},
+			Spec: promoterv1alpha1.PullRequestSpec{
+				RepositoryReference: promoterv1alpha1.ObjectReference{Name: "repo"},
+				Title:               "title",
+				Description:         "description",
+				TargetBranch:        "environment/staging",
+				SourceBranch:        "environment/staging-next",
+				MergeSha:            "hydrated-sha",
+				State:               promoterv1alpha1.PullRequestOpen,
+				Commit:              promoterv1alpha1.CommitConfiguration{Message: "commit message"},
+			},
+		}
+	})
+
+	It("returns true when all managed fields match", func() {
+		Expect(pullRequestManagedByCTPUnchanged(existing, "title", "description", "commit message", ctp, promoterv1alpha1.PullRequestOpen)).To(BeTrue())
+	})
+
+	It("returns false when commit message differs", func() {
+		Expect(pullRequestManagedByCTPUnchanged(existing, "title", "description", "different message", ctp, promoterv1alpha1.PullRequestOpen)).To(BeFalse())
+	})
+
+	It("returns false when the CTP finalizer is missing", func() {
+		withoutFinalizer := existing.DeepCopy()
+		withoutFinalizer.Finalizers = nil
+		Expect(pullRequestManagedByCTPUnchanged(withoutFinalizer, "title", "description", "commit message", ctp, promoterv1alpha1.PullRequestOpen)).To(BeFalse())
+	})
+})
+
+var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func() {
+	var pred = pullRequestUpdateEnqueuesChangeTransferPolicyPredicate()
+
+	It("ignores status-only URL updates", func() {
+		oldPR := &promoterv1alpha1.PullRequest{
+			ObjectMeta: metav1.ObjectMeta{Generation: 1},
+			Status:     promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"},
+		}
+		newPR := oldPR.DeepCopy()
+		newPR.Status.Url = "https://example/pr/1"
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeFalse())
+	})
+
+	It("enqueues on spec generation change", func() {
+		oldPR := &promoterv1alpha1.PullRequest{ObjectMeta: metav1.ObjectMeta{Generation: 1}}
+		newPR := oldPR.DeepCopy()
+		newPR.Generation = 2
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+	})
+
+	It("enqueues when the PR ID is first set", func() {
+		oldPR := &promoterv1alpha1.PullRequest{
+			ObjectMeta: metav1.ObjectMeta{Generation: 1},
+			Status:     promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen},
+		}
+		newPR := oldPR.DeepCopy()
+		newPR.Status.ID = "42"
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+	})
+
+	It("enqueues on terminal state change", func() {
+		oldPR := &promoterv1alpha1.PullRequest{
+			ObjectMeta: metav1.ObjectMeta{Generation: 1},
+			Status:     promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"},
+		}
+		newPR := oldPR.DeepCopy()
+		newPR.Status.State = promoterv1alpha1.PullRequestMerged
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+	})
+
+	It("enqueues when externally merged flag changes", func() {
+		oldPR := &promoterv1alpha1.PullRequest{
+			ObjectMeta: metav1.ObjectMeta{Generation: 1},
+			Status:     promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"},
+		}
+		newPR := oldPR.DeepCopy()
+		newPR.Status.ExternallyMergedOrClosed = ptr.To(true)
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
 	})
 })
 
