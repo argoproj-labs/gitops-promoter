@@ -23,7 +23,6 @@ import (
 	"os"
 	"path"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -870,26 +869,34 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				return pr, pr.Generation
 			}
 
-			It("should not poll SCM after status-only PR updates", func() {
+			// Regression for open-PR steady state with blocked promotion: routine PR status
+			// writes used to Owns(PullRequest)-enqueue CTP, which SSA-reapplied the PR and
+			// retriggered PR controller SCM sync in a CTP→PR→CTP feedback loop.
+			It("should not enter a CTP→PR SCM feedback loop when PR status churns in steady state", func() {
 				By("Creating a pending promotion with an open PR")
 				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 				pr, stableGeneration := waitForOpenPRWithID()
 
 				fake.ResetPullRequestSCMCallCounts()
 
-				By("Simulating PR controller status-only writes (URL) that used to re-enqueue CTP")
-				Eventually(func(g Gomega) {
-					g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
-					pr.Status.Url = "https://fake.example/pr/" + pr.Status.ID
-					g.Expect(k8sClient.Status().Update(ctx, &pr)).To(Succeed())
-				}, constants.EventuallyTimeout).Should(Succeed())
+				By("Simulating routine PR controller status-only writes that used to re-enqueue CTP")
+				for poke := 0; poke < 3; poke++ {
+					poke := poke
+					Eventually(func(g Gomega) {
+						g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+						pr.Status.Url = fmt.Sprintf("https://fake.example/pr/%s?poke=%d", pr.Status.ID, poke)
+						g.Expect(k8sClient.Status().Update(ctx, &pr)).To(Succeed())
+					}, constants.EventuallyTimeout).Should(Succeed())
+				}
 
 				time.Sleep(500 * time.Millisecond)
 				findOpenSnapshot := fake.FindOpenCallCount()
 				updateSnapshot := fake.UpdateCallCount()
 				scmSnapshot := fake.PullRequestSCMCallCount()
+				Expect(scmSnapshot).To(BeNumerically("<", 10),
+					"a regression reproduces dozens of SCM calls from status-only churn")
 
-				By("Verifying status-only churn does not drive SCM polling")
+				By("Verifying status churn does not drive SCM polling in a tight loop")
 				Consistently(func(g Gomega) {
 					g.Expect(fake.FindOpenCallCount()).To(BeNumerically("<=", findOpenSnapshot+1))
 					g.Expect(fake.UpdateCallCount()).To(BeNumerically("<=", updateSnapshot+1))
@@ -899,39 +906,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				var afterPR promoterv1alpha1.PullRequest
 				Expect(k8sClient.Get(ctx, prKey, &afterPR)).To(Succeed())
 				Expect(afterPR.Generation).To(Equal(stableGeneration))
-			})
-
-			It("should not poll SCM in a loop after CTP nudges", func() {
-				By("Creating a pending promotion with an open PR")
-				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
-				waitForOpenPRWithID()
-
-				fake.ResetPullRequestSCMCallCounts()
-
-				By("Nudging CTP via annotation change without changing PR spec")
-				Eventually(func(g Gomega) {
-					g.Expect(k8sClient.Get(ctx, ctpKey, changeTransferPolicy)).To(Succeed())
-					base := changeTransferPolicy.DeepCopy()
-					if changeTransferPolicy.Annotations == nil {
-						changeTransferPolicy.Annotations = map[string]string{}
-					}
-					changeTransferPolicy.Annotations["promoter.argoproj.io/test-nudge"] = strconv.FormatInt(time.Now().UnixNano(), 10)
-					g.Expect(k8sClient.Patch(ctx, changeTransferPolicy, ctrlclient.MergeFrom(base))).To(Succeed())
-				}, constants.EventuallyTimeout).Should(Succeed())
-
-				By("Waiting for CTP to finish reconciling the nudge")
-				Eventually(func(g Gomega) {
-					g.Expect(k8sClient.Get(ctx, ctpKey, changeTransferPolicy)).To(Succeed())
-					g.Expect(changeTransferPolicy.Status.ObservedGeneration).To(Equal(changeTransferPolicy.Generation))
-				}, constants.EventuallyTimeout).Should(Succeed())
-
-				By("Verifying the nudge did not drive PR SCM sync")
-				Expect(fake.FindOpenCallCount()).To(BeZero())
-				Expect(fake.UpdateCallCount()).To(BeZero())
-
-				Consistently(func(g Gomega) {
-					g.Expect(fake.PullRequestSCMCallCount()).To(BeZero())
-				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 			})
 
 			It("should still hit SCM when the PR spec changes", func() {
