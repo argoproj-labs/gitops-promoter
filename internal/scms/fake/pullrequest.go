@@ -38,9 +38,9 @@ var (
 )
 
 type pullRequestProviderState struct {
+	createdAt time.Time
 	id        string
 	state     v1alpha1.PullRequestState
-	createdAt time.Time
 }
 
 // PullRequest implements the scms.PullRequestProvider interface for testing purposes.
