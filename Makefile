@@ -178,15 +178,61 @@ test-e2e:
 .PHONY: test-deps
 test-deps: ginkgo manifests generate fmt vet envtest
 
-.PHONY: test-api-call-metrics
-test-api-call-metrics: test-deps ## Run API call metrics Ginkgo suite (long requeue, event-driven; TCS default 5m)
+# Scenario names must match the suffix of each APICallMetrics It() description.
+API_CALL_METRICS_SCENARIOS := \
+	single_env_no_gates \
+	three_env_no_gates \
+	full_gate_stack_three_env \
+	full_gate_three_env_open_prs_soak \
+	full_gate_three_env_closed_prs_soak \
+	full_gate_three_env_open_prs_soak_60m_requeue \
+	full_gate_three_env_closed_prs_soak_60m_requeue
+
+API_CALL_METRICS_LOG_DIR := /tmp/api-metrics-test.d
+
+.PHONY: test-api-call-metrics-serial
+test-api-call-metrics-serial: test-deps ## Run API call metrics Ginkgo suite serially (one process, all specs)
 	@PROMOTER_API_METRICS_REQUEUE=$${PROMOTER_API_METRICS_REQUEUE:-60m}; \
 	PROMOTER_API_METRICS_GINKGO_TIMEOUT=$${PROMOTER_API_METRICS_GINKGO_TIMEOUT:-45m}; \
 	KUBEBUILDER_ASSETS="$$(./bin/setup-envtest-release-0.24 use 1.31.0 --bin-dir $$PWD/bin -p path)"; \
 	go tool ginkgo -v --timeout $$PROMOTER_API_METRICS_GINKGO_TIMEOUT ./internal/controller/apicallmetrics/ \
 	> /tmp/api-metrics-test.log 2>&1; \
 	status=$$?; \
-	echo "Log: /tmp/api-metrics-test.log"; \
+	$(MAKE) --no-print-directory test-api-call-metrics-summary \
+		API_CALL_METRICS_SUMMARY_LOG=/tmp/api-metrics-test.log \
+		API_CALL_METRICS_SUMMARY_MODE=serial \
+		API_CALL_METRICS_SUMMARY_STATUS=$$status
+
+.PHONY: test-api-call-metrics
+test-api-call-metrics: test-deps ## Run API call metrics scenarios in parallel (one ginkgo process each); combined summary
+	@rm -rf $(API_CALL_METRICS_LOG_DIR); mkdir -p $(API_CALL_METRICS_LOG_DIR); \
+	PROMOTER_API_METRICS_REQUEUE=$${PROMOTER_API_METRICS_REQUEUE:-60m}; \
+	PROMOTER_API_METRICS_GINKGO_TIMEOUT=$${PROMOTER_API_METRICS_GINKGO_TIMEOUT:-45m}; \
+	export PROMOTER_API_METRICS_REQUEUE PROMOTER_API_METRICS_GINKGO_TIMEOUT; \
+	KUBEBUILDER_ASSETS="$$(./bin/setup-envtest-release-0.24 use 1.31.0 --bin-dir $$PWD/bin -p path)"; \
+	export KUBEBUILDER_ASSETS; \
+	idx=0; \
+	for scenario in $(API_CALL_METRICS_SCENARIOS); do \
+		idx=$$((idx + 1)); \
+		( PROMOTER_API_METRICS_GIT_PORT=$$((5100 + idx)) \
+		  PROMOTER_API_METRICS_WEBHOOK_PORT=$$((3400 + idx)) \
+		  go tool ginkgo -v --timeout $$PROMOTER_API_METRICS_GINKGO_TIMEOUT \
+			--focus="collects git CLI metrics for $$scenario\$$" \
+			./internal/controller/apicallmetrics/ \
+			> $(API_CALL_METRICS_LOG_DIR)/$$scenario.log 2>&1; \
+		  echo $$? > $(API_CALL_METRICS_LOG_DIR)/$$scenario.exit ) & \
+	done; \
+	wait; \
+	cat $(API_CALL_METRICS_LOG_DIR)/*.log > /tmp/api-metrics-test.log 2>/dev/null || true; \
+	$(MAKE) --no-print-directory test-api-call-metrics-summary \
+		API_CALL_METRICS_SUMMARY_LOG=/tmp/api-metrics-test.log \
+		API_CALL_METRICS_SUMMARY_MODE=parallel
+
+.PHONY: test-api-call-metrics-summary
+test-api-call-metrics-summary:
+	@log="$(API_CALL_METRICS_SUMMARY_LOG)"; \
+	mode="$(API_CALL_METRICS_SUMMARY_MODE)"; \
+	echo "Log: $$log"; \
 	if [ -n "$$PROMOTER_API_METRICS_REPORT" ]; then \
 		if [ -d "$$PROMOTER_API_METRICS_REPORT" ]; then \
 			echo "Report dir: $$PROMOTER_API_METRICS_REPORT"; \
@@ -200,17 +246,42 @@ test-api-call-metrics: test-deps ## Run API call metrics Ginkgo suite (long requ
 	echo "TCS duration (default 5m): $${PROMOTER_API_METRICS_TCS_DURATION:-5m}"; \
 	echo ""; \
 	echo "Suite:"; \
-	grep -E 'Ran [0-9]+ of [0-9]+ Specs|SUCCESS!|FAIL!' /tmp/api-metrics-test.log \
-		| sed 's/\x1b\[[0-9;]*m//g' | tail -2 || true; \
+	if [ "$$mode" = "parallel" ]; then \
+		failed=0; passed=0; \
+		for scenario in $(API_CALL_METRICS_SCENARIOS); do \
+			exit_file="$(API_CALL_METRICS_LOG_DIR)/$$scenario.exit"; \
+			if [ ! -f "$$exit_file" ]; then \
+				failed=$$((failed + 1)); \
+				echo "  MISSING: $$scenario (no exit file)"; \
+				continue; \
+			fi; \
+			code=$$(cat "$$exit_file"); \
+			if [ "$$code" = "0" ]; then \
+				passed=$$((passed + 1)); \
+			else \
+				failed=$$((failed + 1)); \
+				echo "  FAILED: $$scenario (exit $$code) — see $(API_CALL_METRICS_LOG_DIR)/$$scenario.log"; \
+			fi; \
+		done; \
+		echo "Jobs: $(words $(API_CALL_METRICS_SCENARIOS)) parallel scenarios — $$passed passed, $$failed failed"; \
+		status=$$failed; \
+	else \
+		grep -E 'Ran [0-9]+ of [0-9]+ Specs|SUCCESS!|FAIL!' "$$log" \
+			| sed 's/\x1b\[[0-9;]*m//g' | tail -2 || true; \
+		status=$${API_CALL_METRICS_SUMMARY_STATUS:-0}; \
+	fi; \
 	echo ""; \
 	echo "Scenarios:"; \
-	grep '"msg"="APICallMetrics report" "scenario"' /tmp/api-metrics-test.log \
-		| sed -n 's/.*"scenario"="\([^"]*\)".*"git_cli_total"=\([0-9]*\).*"git_cli_total_network"=\([0-9]*\).*"scm_total"=\([0-9]*\).*/  \1  git_cli=\2  git_cli_network=\3  scm=\4/p' || true; \
+	grep '"msg"="APICallMetrics report" "scenario"' "$$log" \
+		| sed -n 's/.*"scenario"="\([^"]*\)".*"git_cli_total"=\([0-9]*\).*"git_cli_total_network"=\([0-9]*\).*"scm_total"=\([0-9]*\).*/  \1  git_cli=\2  git_cli_network=\3  scm=\4/p' \
+		| sort || true; \
 	echo ""; \
 	echo "Report files:"; \
-	grep 'APICallMetrics report written' /tmp/api-metrics-test.log \
-		| sed -n 's/.*"path"="\([^"]*\)".*/  \1/p' || true; \
-	exit $$status
+	grep 'APICallMetrics report written' "$$log" \
+		| sed -n 's/.*"path"="\([^"]*\)".*/  \1/p' \
+		| sort || true; \
+	if [ "$$mode" = "parallel" ] && [ "$$status" -ne 0 ]; then exit 1; fi; \
+	if [ "$$mode" = "serial" ] && [ "$$status" -ne 0 ]; then exit $$status; fi
 
 .PHONY: test-parallel
 test-parallel: test-deps ## Run tests in parallel

@@ -80,11 +80,23 @@ Phase snapshots store **cumulative deltas since `gitBefore`**, not increments be
 
 ### Makefile (recommended)
 
+**Parallel (default)** — one isolated ginkgo process per scenario; wall clock ≈ slowest scenario:
+
 ```bash
 make test-api-call-metrics
 ```
 
-Writes full output to `/tmp/api-metrics-test.log` and prints a per-scenario summary on stdout (suite result, git/scm/network totals, report paths). JSON reports default to `$TMPDIR/promoter-api-metrics-<scenario>.json` unless `PROMOTER_API_METRICS_REPORT` is set.
+Each subprocess gets its own git port (`5101`–`5107`) and webhook port (`3401`–`3407`) via `PROMOTER_API_METRICS_GIT_PORT` / `PROMOTER_API_METRICS_WEBHOOK_PORT` (read by both the apicallmetrics gitkit server and `internal/scms/fake` clone URLs). Ginkgo `--focus` uses a `$` suffix so `open_prs_soak` does not also run `open_prs_soak_60m_requeue`.
+
+Per-scenario logs: `/tmp/api-metrics-test.d/<scenario>.log`. Combined log: `/tmp/api-metrics-test.log`.
+
+**Serial** — one process, all specs in order (lower CPU/RAM):
+
+```bash
+make test-api-call-metrics-serial
+```
+
+Both print the same combined summary on stdout (suite result, git/scm/network totals, report paths). JSON reports default to `$TMPDIR/promoter-api-metrics-<scenario>.json` unless `PROMOTER_API_METRICS_REPORT` is set.
 
 ### Direct ginkgo
 

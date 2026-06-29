@@ -18,6 +18,7 @@ package apicallmetrics
 
 import (
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -69,6 +70,15 @@ func durationFromEnv(key string, fallback time.Duration) time.Duration {
 	if v := os.Getenv(key); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			return d
+		}
+	}
+	return fallback
+}
+
+func intFromEnv(key string, fallback int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
 		}
 	}
 	return fallback

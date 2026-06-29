@@ -65,6 +65,14 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
+func metricsGitServerPort() int {
+	return intFromEnv("PROMOTER_API_METRICS_GIT_PORT", 5000+GinkgoParallelProcess())
+}
+
+func metricsWebhookReceiverPort() int {
+	return intFromEnv("PROMOTER_API_METRICS_WEBHOOK_PORT", constants.WebhookReceiverPort+GinkgoParallelProcess())
+}
+
 var (
 	cfg                 *rest.Config
 	cfgDev              *rest.Config
@@ -186,7 +194,7 @@ var _ = BeforeSuite(func() {
 		EnqueueCTP: ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(ctx, k8sManager)).To(Succeed())
 
-	webhookReceiverPort = constants.WebhookReceiverPort + GinkgoParallelProcess()
+	webhookReceiverPort = metricsWebhookReceiverPort()
 	whr := webhookreceiver.NewWebhookReceiver(k8sManager, webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()))
 	go func() {
 		err = whr.Start(ctx, fmt.Sprintf(":%d", webhookReceiverPort))
@@ -226,7 +234,7 @@ func startGitServer(gitStoragePath string) (string, *http.Server) {
 		Hooks: &gitkit.HookScripts{PreReceive: `echo "Hello World!"`},
 	})
 	Expect(service.Setup()).To(Succeed())
-	port := 5000 + GinkgoParallelProcess()
+	port := metricsGitServerPort()
 	portStr := strconv.Itoa(port)
 	server := &http.Server{Addr: ":" + portStr, Handler: service}
 	log.SetOutput(&filterLogger{})

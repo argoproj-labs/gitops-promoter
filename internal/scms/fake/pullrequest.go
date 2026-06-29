@@ -18,8 +18,6 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 
-	ginkgov2 "github.com/onsi/ginkgo/v2"
-
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -168,8 +166,7 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 		panic("could not make temp dir for repo server")
 	}
 
-	gitServerPort := 5000 + ginkgov2.GinkgoParallelProcess()
-	gitServerPortStr := strconv.Itoa(gitServerPort)
+	gitServerPortStr := strconv.Itoa(gitServerPort())
 	_, err = pr.runGitCmd(ctx, gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", "-b", pullRequest.Spec.TargetBranch, fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPortStr, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name), ".")
 	if err != nil {
 		return err
@@ -349,13 +346,13 @@ func (pr *PullRequest) DeletePullRequest(ctx context.Context, pullRequest v1alph
 func (pr *PullRequest) sendWebhook(ctx context.Context, pullRequest v1alpha1.PullRequest, beforeSha string) {
 	// Get the webhook receiver port from the test environment
 	// This matches the port calculation in suite_test.go
-	webhookReceiverPort := 8082 + ginkgov2.GinkgoParallelProcess()
+	port := webhookReceiverPort()
 
 	// Build GitHub-style webhook payload with the beforeSha (SHA before the merge)
 	payload := pr.buildGitHubWebhookPayload(beforeSha, "refs/heads/"+pullRequest.Spec.TargetBranch)
 
 	// Send the webhook request
-	webhookURL := fmt.Sprintf("http://localhost:%d/", webhookReceiverPort)
+	webhookURL := fmt.Sprintf("http://localhost:%d/", port)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhookURL, bytes.NewBufferString(payload))
 	if err != nil {
 		// Don't fail the merge if webhook fails - log it instead
