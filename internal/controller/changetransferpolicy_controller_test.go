@@ -919,19 +919,18 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(k8sClient.Patch(ctx, changeTransferPolicy, ctrlclient.MergeFrom(base))).To(Succeed())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
-				By("Waiting for the nudge reconcile to settle")
-				time.Sleep(1 * time.Second)
-				findOpenSnapshot := fake.FindOpenCallCount()
-				updateSnapshot := fake.UpdateCallCount()
-				scmSnapshot := fake.PullRequestSCMCallCount()
-				Expect(scmSnapshot).To(BeNumerically("<", 25),
-					"a regression reproduces dozens of SCM calls per nudge")
+				By("Waiting for CTP to finish reconciling the nudge")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, ctpKey, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.ObservedGeneration).To(Equal(changeTransferPolicy.Generation))
+				}, constants.EventuallyTimeout).Should(Succeed())
 
-				By("Verifying SCM is not polled in a tight loop after settle")
+				By("Verifying the nudge did not drive PR SCM sync")
+				Expect(fake.FindOpenCallCount()).To(BeZero())
+				Expect(fake.UpdateCallCount()).To(BeZero())
+
 				Consistently(func(g Gomega) {
-					g.Expect(fake.FindOpenCallCount()).To(BeNumerically("<=", findOpenSnapshot+1))
-					g.Expect(fake.UpdateCallCount()).To(BeNumerically("<=", updateSnapshot+1))
-					g.Expect(fake.PullRequestSCMCallCount()).To(BeNumerically("<=", scmSnapshot+1))
+					g.Expect(fake.PullRequestSCMCallCount()).To(BeZero())
 				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 			})
 
