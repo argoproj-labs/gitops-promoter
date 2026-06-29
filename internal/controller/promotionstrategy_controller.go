@@ -219,23 +219,6 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 		proposedCommitStatuses = append(proposedCommitStatuses, acv1alpha1.CommitStatusSelector().WithKey(cs.Key))
 	}
 
-	// Add previous environment commit status if needed
-	environmentIndex, _ := utils.GetEnvironmentByBranch(*ps, environment.Branch)
-	previousEnvironmentIndex := environmentIndex - 1
-	if environmentIndex > 0 && len(ps.Spec.ActiveCommitStatuses) != 0 || (previousEnvironmentIndex >= 0 && len(ps.Spec.Environments[previousEnvironmentIndex].ActiveCommitStatuses) != 0) {
-		// Check if already present
-		found := false
-		for _, cs := range proposedCommitStatuses {
-			if cs.Key != nil && *cs.Key == promoterv1alpha1.PreviousEnvironmentCommitStatusKey {
-				found = true
-				break
-			}
-		}
-		if !found {
-			proposedCommitStatuses = append(proposedCommitStatuses, acv1alpha1.CommitStatusSelector().WithKey(promoterv1alpha1.PreviousEnvironmentCommitStatusKey))
-		}
-	}
-
 	activePath := ps.Spec.ActivePath
 	if environment.ActivePath != "" {
 		activePath = environment.ActivePath
