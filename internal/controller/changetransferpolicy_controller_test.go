@@ -895,17 +895,13 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(pr.Status.Url).To(Equal(fmt.Sprintf("https://fake.example/pr/%s?poke=2", pr.Status.ID)))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
-				findOpenSnapshot := fake.FindOpenCallCount()
-				updateSnapshot := fake.UpdateCallCount()
-				scmSnapshot := fake.PullRequestSCMCallCount()
-				Expect(scmSnapshot).To(BeNumerically("<", 10),
-					"a regression reproduces dozens of SCM calls from status-only churn")
-
 				By("Verifying status churn does not drive SCM polling in a tight loop")
+				// With the fix, three status-only pokes produce 0 SCM calls after reset.
+				// Without it, the loop reaches 1+ FindOpen/Update pairs within ~0.5s.
 				Consistently(func(g Gomega) {
-					g.Expect(fake.FindOpenCallCount()).To(BeNumerically("<=", findOpenSnapshot+1))
-					g.Expect(fake.UpdateCallCount()).To(BeNumerically("<=", updateSnapshot+1))
-					g.Expect(fake.PullRequestSCMCallCount()).To(BeNumerically("<=", scmSnapshot+1))
+					g.Expect(fake.FindOpenCallCount()).To(BeZero())
+					g.Expect(fake.UpdateCallCount()).To(BeZero())
+					g.Expect(fake.PullRequestSCMCallCount()).To(BeZero())
 				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 
 				var afterPR promoterv1alpha1.PullRequest
