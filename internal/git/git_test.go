@@ -3,6 +3,7 @@ package git_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -938,6 +939,69 @@ var _ = Describe("ActivePath support", func() {
 		content, err := os.ReadFile(filepath.Join(workDir, "config.yaml"))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(strings.TrimSpace(string(content))).To(Equal("version: proposed"), "ours strategy keeps proposed content")
+	})
+})
+
+var _ = Describe("Git subprocess proxy env", func() {
+	It("forwards proxy and TLS env vars via runCmd", func() {
+		want := map[string]string{
+			"HTTPS_PROXY":    "http://proxy.test:8443",
+			"HTTP_PROXY":     "http://proxy.test:8080",
+			"NO_PROXY":       "localhost,127.0.0.1",
+			"GIT_SSL_CAINFO": "/tmp/test-ca.pem",
+			"SSL_CERT_FILE":  "/tmp/test-cert.pem",
+		}
+		for key, val := range want {
+			GinkgoT().Setenv(key, val)
+		}
+
+		workDir := GinkgoT().TempDir()
+		envDump := filepath.Join(workDir, "proxy-env-dump")
+		gitBin := filepath.Join(workDir, "git")
+		script := fmt.Sprintf(`#!/bin/sh
+ENV_DUMP=%q
+if [ "$1" = "ls-remote" ] && [ "$2" = "--heads" ]; then
+  : > "$ENV_DUMP"
+  for key in HTTPS_PROXY HTTP_PROXY NO_PROXY GIT_SSL_CAINFO SSL_CERT_FILE; do
+    eval "val=\$$key"
+    echo "$key=$val" >> "$ENV_DUMP"
+  done
+  echo "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef	refs/heads/main"
+  exit 0
+fi
+echo "unexpected git args: $*" >&2
+exit 1
+`, envDump)
+		Expect(os.WriteFile(gitBin, []byte(script), 0o755)).To(Succeed())
+		GinkgoT().Setenv("PATH", workDir)
+
+		repo := &v1alpha1.GitRepository{
+			Spec: v1alpha1.GitRepositorySpec{
+				GitHub: &v1alpha1.GitHubRepo{Owner: "test-owner", Name: "testrepo"},
+				ScmProviderRef: v1alpha1.ScmProviderObjectReference{
+					Kind: "ScmProvider",
+					Name: "testprovider",
+				},
+			},
+			ObjectMeta: metav1.ObjectMeta{Name: "testrepo", Namespace: "default"},
+		}
+		gap := &fakeGitProvider{tempDirPath: filepath.Join(workDir, "ignored-repo")}
+
+		shas, err := git.LsRemote(context.Background(), gap, repo, "main")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(shas).To(HaveKeyWithValue("main", "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"))
+
+		dump, err := os.ReadFile(envDump)
+		Expect(err).NotTo(HaveOccurred())
+		got := map[string]string{}
+		for line := range strings.SplitSeq(strings.TrimSpace(string(dump)), "\n") {
+			key, val, ok := strings.Cut(line, "=")
+			Expect(ok).To(BeTrue(), "unexpected dump line %q", line)
+			got[key] = val
+		}
+		for key, val := range want {
+			Expect(got[key]).To(Equal(val), "proxy env var %s", key)
+		}
 	})
 })
 

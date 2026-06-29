@@ -12,6 +12,37 @@ and `make build-installer` compiles them into the CRD bases under `config/crd/`.
 RepoURL string `json:"repoURL,omitempty"`
 ```
 
+## Don't mix `+k8s:` markers with `XValidation` on one field
+
+controller-gen v0.21+ also understands [`+k8s:` declarative validation
+markers](https://www.kubernetes.dev/docs/code/declarative-validation/) (for example
+`+k8s:immutable`, `+k8s:minLength`). Like hand-written `XValidation` markers, these compile into
+`x-kubernetes-validations` CEL rules on the field.
+
+**Do not put both marker families on the same field.** When a field mixes `+k8s:` markers with
+`+kubebuilder:validation:XValidation`, controller-gen emits the rules from each family in
+declared order internally, but the *relative* order of the two families is
+[nondeterministic across
+runs](https://github.com/kubernetes-sigs/controller-tools/issues/1429). Committed CRD bases under
+`config/crd/bases/` then flap between equivalent orderings, which breaks CI checks that diff
+generated manifests.
+
+**Workaround:** keep all CEL rules on a field under one marker family. When a field needs both
+immutability and custom CEL checks, replace `+k8s:immutable` with an explicit immutability rule so
+every rule is an `XValidation` marker:
+
+```go
+// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="field is immutable"
+// +kubebuilder:validation:XValidation:rule="!self.startsWith('-')",message="branch must not start with '-'"
+Branch string `json:"branch"`
+```
+
+In-tree example: `PullRequest` `sourceBranch` / `targetBranch` in
+[`api/v1alpha1/pullrequest_types.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/api/v1alpha1/pullrequest_types.go).
+
+`+k8s:immutable` (and other `+k8s:` markers that emit CEL) is still fine on fields that have **no**
+other `XValidation` rules on the same field.
+
 ## The apiserver cost budget
 
 When a CRD is created or updated, the kube-apiserver estimates a **static worst-case cost** for

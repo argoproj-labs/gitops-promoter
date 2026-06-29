@@ -30,7 +30,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
@@ -97,12 +96,13 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 	// observed (SSA with our FieldOwner and ForceOwnership would revert our owned
 	// fields to the stale values).
 	skipStatusWrite := false
+	var previousReady *metav1.Condition
 	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
 	defer func() {
 		if skipStatusWrite {
 			return
 		}
-		utils.HandleReconciliationResult(ctx, startTime, &wrcs, r.Client, r.Recorder, constants.WebRequestCommitStatusControllerFieldOwner, &result, &err)
+		utils.HandleReconciliationResult(ctx, startTime, &wrcs, r.Client, r.Recorder, constants.WebRequestCommitStatusControllerFieldOwner, &result, &err, &previousReady)
 		// Record the post-patch ResourceVersion so the next reconcile for this key can
 		// detect a stale-cache read above. HandleReconciliationResult mutates wrcs in
 		// place with the patched object on success, so wrcs.ResourceVersion here is
@@ -144,7 +144,7 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 	}
 
 	// Remove any existing Ready condition. We want to start fresh.
-	meta.RemoveStatusCondition(wrcs.GetConditions(), string(promoterConditions.Ready))
+	previousReady = utils.RemoveReadyCondition(&wrcs)
 
 	// 2. Fetch the referenced PromotionStrategy
 	var ps promoterv1alpha1.PromotionStrategy
@@ -175,6 +175,9 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 		transitionedEnvironments []string
 		requeueAfter             time.Duration
 	)
+	// Snapshot the per-branch phases persisted by the previous reconcile before the webrequest
+	// reconcile overwrites wrcs.Status, so phase-change events stay transition-only.
+	previousPhases := wrcsPhasesByBranch(&wrcs.Status)
 	if wrcs.Spec.Mode.Context == promoterv1alpha1.ContextPromotionStrategy {
 		commitStatuses, transitionedEnvironments, requeueAfter, err = wr.ReconcileWebRequestCommitStatusPromotionStrategy(ctx, &wrcs, &ps, namespaceMeta)
 	} else {
@@ -182,6 +185,9 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 	}
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to process WebRequestCommitStatus: %w", err)
+	}
+	for branch, phase := range wrcsPhasesByBranch(&wrcs.Status) {
+		emitCommitStatusPhaseChangedEvent(r.Recorder, &wrcs, wrcs.Spec.Key, branch, previousPhases[branch], phase)
 	}
 
 	// 5. Clean up orphaned CommitStatus resources that are no longer in the environment list
@@ -251,9 +257,28 @@ func (e wrcsCommitUpserter) EmitCommitStatus(ctx context.Context, wrcs *promoter
 func (r *WebRequestCommitStatusReconciler) Execute(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, td webrequest.TemplateData) (webrequest.HTTPResponse, error) {
 	resp, err := r.makeHTTPRequest(ctx, wrcs, td)
 	if err != nil {
+		// Edge-triggered rather than transition-gated: repeated identical failures are
+		// aggregated server-side into an EventSeries, and this event is what keeps HTTP
+		// failures visible now that ReconciliationError events only fire on transitions.
+		r.Recorder.Eventf(wrcs, nil, "Warning", constants.WebRequestFailedReason, "MakingHTTPRequest", constants.WebRequestFailedMessage, wrcs.Spec.Key, err)
 		return webrequest.HTTPResponse{}, fmt.Errorf("failed to make HTTP request: %w", err)
 	}
 	return resp, nil
+}
+
+// wrcsPhasesByBranch flattens the per-branch phases out of a WebRequestCommitStatus status,
+// regardless of which context mode produced it (Environments or PromotionStrategyContext).
+func wrcsPhasesByBranch(status *promoterv1alpha1.WebRequestCommitStatusStatus) map[string]string {
+	phases := make(map[string]string)
+	for _, env := range status.Environments {
+		phases[env.Branch] = string(env.Phase)
+	}
+	if status.PromotionStrategyContext != nil {
+		for _, item := range status.PromotionStrategyContext.PhasePerBranch {
+			phases[item.Branch] = string(item.Phase)
+		}
+	}
+	return phases
 }
 
 // makeHTTPRequest builds and executes the HTTP request from the WebRequestCommitStatus spec. It renders
@@ -438,7 +463,7 @@ func (r *WebRequestCommitStatusReconciler) applySCMAuthentication(ctx context.Co
 // The phase (Success or Pending) and sha are set from the validation outcome; description and URL are rendered from templateData.
 // The created resource is owned by the WebRequestCommitStatus so it is cleaned up when the WebRequestCommitStatus is deleted.
 func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, repositoryRefName string, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, templateData webrequest.TemplateData) (*promoterv1alpha1.CommitStatus, error) {
-	kind := reflect.TypeOf(promoterv1alpha1.WebRequestCommitStatus{}).Name()
+	kind := reflect.TypeFor[promoterv1alpha1.WebRequestCommitStatus]().Name()
 	commitStatusName := utils.CommitStatusResourceName(ctx, wrcs, branch)
 
 	// Render description template
@@ -503,21 +528,20 @@ func (r *WebRequestCommitStatusReconciler) enqueueWebRequestCommitStatusForPromo
 			return nil
 		}
 
-		// List all WebRequestCommitStatus resources in the same namespace
 		var wrcsList promoterv1alpha1.WebRequestCommitStatusList
-		if err := r.List(ctx, &wrcsList, client.InNamespace(ps.Namespace)); err != nil {
+		if err := r.List(ctx, &wrcsList,
+			client.InNamespace(ps.Namespace),
+			client.MatchingFields{PromotionStrategyRefField: ps.Name},
+		); err != nil {
 			log.FromContext(ctx).Error(err, "failed to list WebRequestCommitStatus resources")
 			return nil
 		}
 
-		// Enqueue all WebRequestCommitStatus resources that reference this PromotionStrategy
-		var requests []ctrl.Request
-		for _, wrcs := range wrcsList.Items {
-			if wrcs.Spec.PromotionStrategyRef.Name == ps.Name {
-				requests = append(requests, ctrl.Request{
-					NamespacedName: client.ObjectKeyFromObject(&wrcs),
-				})
-			}
+		requests := make([]ctrl.Request, 0, len(wrcsList.Items))
+		for i := range wrcsList.Items {
+			requests = append(requests, ctrl.Request{
+				NamespacedName: client.ObjectKeyFromObject(&wrcsList.Items[i]),
+			})
 		}
 
 		return requests

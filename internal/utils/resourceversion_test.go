@@ -115,7 +115,7 @@ var _ = Describe("ResourceVersionTracker", func() {
 
 	It("is safe under concurrent Record + IsCacheStale across keys (-race must pass)", func() {
 		var wg sync.WaitGroup
-		for i := 0; i < 100; i++ {
+		for i := range 100 {
 			wg.Add(1)
 			go func(i int) {
 				defer wg.Done()

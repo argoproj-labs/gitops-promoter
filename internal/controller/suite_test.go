@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
@@ -45,7 +46,6 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/util/retry"
-	"k8s.io/utils/ptr"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
@@ -720,7 +720,7 @@ func makeChangeAndHydrateRepo(gitPath string, repo *promoterv1alpha1.GitReposito
 				{
 					Commit: &promoterv1alpha1.CommitMetadata{
 						Author:  "upstream <upstream@example.com>",
-						Date:    ptr.To(metav1.Now()),
+						Date:    new(metav1.Now()),
 						Subject: "This is a fix for an upstream issue",
 						Body:    "This is a body of the commit",
 						Sha:     "c4c862564afe56abf8cc8ac683eee3dc8bf96108",
@@ -1086,6 +1086,87 @@ func pushHydratedBranchForPath(ctx context.Context, gitPath, branch, activePath,
 	return beforeSha, hydratedSha, nil
 }
 
+// pushHydratedBranchWithMetadataAtOnly hydrates a branch but writes hydrator.metadata only at
+// metadataRelPath. Use this to simulate a hydrator that writes metadata outside the path
+// promoter reads (repo root when activePath is unset, or activePath when it is set).
+// The branch is always created from bootstrapBranch so an existing proposed branch cannot
+// inherit root hydrator.metadata from test fixture setup.
+func pushHydratedBranchWithMetadataAtOnly(ctx context.Context, gitPath, branch, bootstrapBranch, metadataRelPath, drySha, commitMessage string) (beforeSha, hydratedSha string, err error) {
+	if bootstrapBranch == "" {
+		return "", "", errors.New("bootstrapBranch is required")
+	}
+
+	_, err = runGitCmd(ctx, gitPath, "fetch", "origin")
+	if err != nil {
+		return "", "", fmt.Errorf("failed to fetch: %w", err)
+	}
+
+	_, err = runGitCmd(ctx, gitPath, "checkout", "-B", branch, "origin/"+bootstrapBranch)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to checkout branch %s from origin/%s: %w", branch, bootstrapBranch, err)
+	}
+
+	// Bootstrap branches from setupInitialTestGitRepoOnServer can carry root hydrator.metadata
+	// from the main branch when orphan environment branches were created. Drop it so the new
+	// commit contains metadata only at metadataRelPath.
+	if err := os.Remove(path.Join(gitPath, "hydrator.metadata")); err != nil && !os.IsNotExist(err) {
+		return "", "", fmt.Errorf("failed to remove root hydrator.metadata: %w", err)
+	}
+	_, _ = runGitCmd(ctx, gitPath, "rm", "--cached", "-f", "hydrator.metadata")
+
+	beforeSha, err = runGitCmd(ctx, gitPath, "rev-parse", branch)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to get before SHA: %w", err)
+	}
+	beforeSha = strings.TrimSpace(beforeSha)
+
+	metadata := git.HydratorMetadata{
+		DrySha:  drySha,
+		Author:  "testuser <testmail@test.com>",
+		Date:    metav1.Now(),
+		Subject: commitMessage,
+	}
+	m, err := json.MarshalIndent(metadata, "", "\t")
+	if err != nil {
+		return "", "", fmt.Errorf("failed to marshal metadata: %w", err)
+	}
+
+	if err := os.MkdirAll(path.Join(gitPath, path.Dir(metadataRelPath)), 0o755); err != nil {
+		return "", "", fmt.Errorf("failed to create metadata directory: %w", err)
+	}
+	if err := os.WriteFile(path.Join(gitPath, metadataRelPath), m, 0o644); err != nil {
+		return "", "", fmt.Errorf("failed to write %q: %w", metadataRelPath, err)
+	}
+	if err := os.WriteFile(path.Join(gitPath, "manifests-fake.yaml"), []byte("hydrated: true\n"), 0o644); err != nil {
+		return "", "", fmt.Errorf("failed to write manifests-fake.yaml: %w", err)
+	}
+
+	_, err = runGitCmd(ctx, gitPath, "add", metadataRelPath, "manifests-fake.yaml")
+	if err != nil {
+		return "", "", fmt.Errorf("failed to add hydrated files: %w", err)
+	}
+
+	if commitMessage == "" {
+		commitMessage = fmt.Sprintf("hydrate %s for dry sha %s", branch, drySha)
+	}
+	_, err = runGitCmd(ctx, gitPath, "commit", "-m", commitMessage)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to commit: %w", err)
+	}
+
+	_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", branch)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to push: %w", err)
+	}
+
+	hydratedSha, err = runGitCmd(ctx, gitPath, "rev-parse", branch)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to get hydrated SHA: %w", err)
+	}
+	hydratedSha = strings.TrimSpace(hydratedSha)
+	return beforeSha, hydratedSha, nil
+}
+
 // gitShowPathAtRef returns the contents of repoRelativePath at the given git revision (e.g. origin/branch).
 func gitShowPathAtRef(ctx context.Context, gitPath, revision, repoRelativePath string) (string, error) {
 	stdout, err := runGitCmd(ctx, gitPath, "show", revision+":"+repoRelativePath)
@@ -1382,7 +1463,7 @@ func createKubeconfigSecret(ctx context.Context, name string, namespace string, 
 
 func createAndStartTestEnv() (*envtest.Environment, *rest.Config, client.Client) {
 	env := &envtest.Environment{
-		UseExistingCluster: ptr.To(false),
+		UseExistingCluster: new(false),
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "..", "config", "crd", "bases"),
 			filepath.Join("..", "..", "test", "external_crds"),

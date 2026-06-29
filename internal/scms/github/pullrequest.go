@@ -2,11 +2,13 @@ package github
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"time"
 
-	"github.com/google/go-github/v71/github"
+	"github.com/google/go-github/v88/github"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -43,10 +45,10 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 	logger := log.FromContext(ctx)
 
 	newPR := &github.NewPullRequest{
-		Title: github.Ptr(title),
-		Head:  github.Ptr(head),
-		Base:  github.Ptr(base),
-		Body:  github.Ptr(description),
+		Title: new(title),
+		Head:  new(head),
+		Base:  new(base),
+		Body:  new(description),
 	}
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
@@ -61,6 +63,9 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 	}
 	if err != nil {
 		return "", err //nolint:wrapcheck // Error wrapping handled at top level
+	}
+	if githubPullRequest == nil || githubPullRequest.Number == nil {
+		return "", errors.New("GitHub returned empty pull request response")
 	}
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
@@ -77,8 +82,8 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pu
 	logger := log.FromContext(ctx)
 
 	newPR := &github.PullRequest{
-		Title: github.Ptr(title),
-		Body:  github.Ptr(description),
+		Title: new(title),
+		Body:  new(description),
 	}
 
 	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
@@ -115,7 +120,7 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullReque
 	logger := log.FromContext(ctx)
 
 	newPR := &github.PullRequest{
-		State: github.Ptr("closed"),
+		State: new("closed"),
 	}
 
 	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
@@ -236,9 +241,14 @@ func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequ
 		return "", fmt.Errorf("failed to convert PR number to int when generating pull request url: %w", err)
 	}
 
-	if pr.client.BaseURL.Host == "api.github.com" {
+	baseURL, err := url.Parse(pr.client.BaseURL())
+	if err != nil {
+		return "", fmt.Errorf("failed to parse GitHub base URL: %w", err)
+	}
+
+	if baseURL.Host == "api.github.com" {
 		return fmt.Sprintf("%s/%s/%s/pull/%d", "https://github.com", gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, prNumber), nil
 	}
 
-	return fmt.Sprintf("https://%s/%s/%s/pull/%d", pr.client.BaseURL.Host, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, prNumber), nil
+	return fmt.Sprintf("https://%s/%s/%s/pull/%d", baseURL.Host, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, prNumber), nil
 }

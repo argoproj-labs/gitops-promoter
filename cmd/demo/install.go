@@ -136,8 +136,8 @@ func (i *Installer) installCRDsFromURL(ctx context.Context, url string) error {
 
 	// Split into individual YAML documents and filter CRDs
 	var crds []string
-	docs := strings.Split(string(output), "\n---")
-	for _, doc := range docs {
+	docs := strings.SplitSeq(string(output), "\n---")
+	for doc := range docs {
 		doc = strings.TrimSpace(doc)
 		if doc == "" {
 			continue
@@ -230,8 +230,8 @@ func (i *Installer) RefreshAllApps(ctx context.Context) error {
 		return fmt.Errorf("failed to list applications: %w", err)
 	}
 
-	appNames := strings.Fields(string(output))
-	for _, appName := range appNames {
+	appNames := strings.FieldsSeq(string(output))
+	for appName := range appNames {
 		if err := i.RefreshApp(ctx, appName); err != nil {
 			return err
 		}

@@ -7,7 +7,7 @@ import (
 	"io/fs"
 	"strings"
 
-	"github.com/google/go-github/v71/github"
+	"github.com/google/go-github/v88/github"
 )
 
 //go:embed all:helm-guestbook
@@ -45,12 +45,12 @@ func CopyEmbeddedDirToRepo(
 		var opErr error
 		if existing != nil {
 			// File exists - update it
-			opts.Message = github.Ptr("Update " + destFilePath)
+			opts.Message = new("Update " + destFilePath)
 			opts.SHA = existing.SHA
 			_, _, opErr = client.Repositories.UpdateFile(ctx, destOwner, destRepo, destFilePath, opts)
 		} else {
 			// File doesn't exist - create it
-			opts.Message = github.Ptr("Add " + destFilePath)
+			opts.Message = new("Add " + destFilePath)
 			_, _, opErr = client.Repositories.CreateFile(ctx, destOwner, destRepo, destFilePath, opts)
 		}
 

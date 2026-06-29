@@ -99,8 +99,8 @@ const changeMgmtBaselineFingerprint = "environment/dev:aaaaaaaaaaaaaaaaaaaaaaaaa
 	"environments/production-eu:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 func loadChangeManagementWRCSByName(name string) *promoterv1alpha1.WebRequestCommitStatus {
-	docs := bytes.Split(changeManagementWebrequestsYAML, []byte("\n---\n"))
-	for _, doc := range docs {
+	docs := bytes.SplitSeq(changeManagementWebrequestsYAML, []byte("\n---\n"))
+	for doc := range docs {
 		doc = bytes.TrimSpace(doc)
 		if len(doc) == 0 {
 			continue

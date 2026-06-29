@@ -11,7 +11,7 @@ permissions:
 
 # this version will need to match the one in https://github.com/argoproj-labs/gitops-promoter-helm/
 env:
-  KUBEBUILDER_VERSION: v4.14.0
+  KUBEBUILDER_VERSION: v4.15.0
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -23,9 +23,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # pin@v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Set up Go
-        uses: actions/setup-go@4aaadf42668403795cdfdb15b1c4250e9fed12b9 # pin@v5
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: "1.26.4"
 
@@ -36,9 +36,9 @@ jobs:
           kubebuilder version
 
       - name: Set up Helm
-        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # pin v4.3
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
-          version: v4.2.0
+          version: v4.2.2
 
       - name: Generate Helm chart with Kubebuilder
         run: |

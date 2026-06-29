@@ -1,11 +1,11 @@
 # Image URL to use all building/pushing image targets
 IMG ?= quay.io/argoprojlabs/gitops-promoter:latest
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
-ENVTEST_K8S_VERSION = 1.36.0
+ENVTEST_K8S_VERSION = 1.36.2
 
 CURRENT_DIR=$(shell pwd)
 
-MKDOCS_DOCKER_IMAGE?=python:3.13-alpine
+MKDOCS_DOCKER_IMAGE?=python:3.14-alpine
 MKDOCS_RUN_ARGS?=
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
@@ -157,6 +157,10 @@ apiserver-certs: ## Generate self-signed serving certs for the dashboard apiserv
 .PHONY: fmt
 fmt: ## Run go fmt against code.
 	go fmt ./...
+
+.PHONY: go-fix
+go-fix: ## Apply stdlib go fix modernizations (e.g. after a Go version bump).
+	go fix ./...
 
 .PHONY: vet
 vet: ## Run go vet against code.
@@ -422,9 +426,9 @@ KUSTOMIZE_VERSION ?= v5.8.1
 CONTROLLER_TOOLS_VERSION ?= v0.21.0
 ENVTEST_VERSION ?= release-0.24
 GOLANGCI_LINT_VERSION ?= v2.12.2
-DEADCODE_VERSION ?= v0.45.0
+DEADCODE_VERSION ?= v0.47.0
 DEADCODE_FILTER ?= github.com/argoproj-labs/gitops-promoter/internal
-MOCKERY_VERSION ?= v2.53.6
+MOCKERY_VERSION ?= v3.7.1
 NILAWAY_VERSION ?= latest
 GORELEASER_VERSION ?= v2.16.0
 
@@ -457,7 +461,7 @@ $(DEADCODE): $(LOCALBIN)
 
 .PHONY: mockery
 mockery:
-	$(call go-install-tool,$(MOCKERY),github.com/vektra/mockery/v2,${MOCKERY_VERSION})
+	$(call go-install-tool,$(MOCKERY),github.com/vektra/mockery/v3,${MOCKERY_VERSION})
 
 .PHONY: nilaway
 nilaway:
