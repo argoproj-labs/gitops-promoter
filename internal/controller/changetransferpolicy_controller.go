@@ -1485,8 +1485,23 @@ func TemplatePullRequest(prt promoterv1alpha1.PullRequestTemplate, data map[stri
 }
 
 // pullRequestUpdateEnqueuesChangeTransferPolicyPredicate limits CTP reconciles triggered by owned
-// PullRequests to spec changes and meaningful status transitions. Routine PR status writes (URL,
-// Ready, etc.) after SCM sync should not re-enqueue the CTP and drive a CTP→PR→CTP feedback loop.
+// PullRequests. Without it, bare Owns(PullRequest) re-enqueues CTP on every PR status write and can
+// drive a CTP→PR→CTP feedback loop (PR SCM sync → status churn → CTP SSA → PR generation bump → repeat).
+//
+// Enqueues CTP on:
+//   - Create and Delete of the owned PullRequest
+//   - Update when metadata.generation changes (spec was patched — title, commit.message, state, etc.)
+//   - Update when finalizer count changes (CTP pull-request finalizer added or removed)
+//   - Update when status.state changes (open, merged, closed, or cleared on external close)
+//   - Update when status.externallyMergedOrClosed changes
+//   - Update when status.id is first set ("" → non-empty; PR now exists on the SCM)
+//
+// Does not enqueue CTP on status-only updates, including:
+//   - status.url (stable or changed)
+//   - status.prCreationTime (e.g. fake FindOpen returns time.Now() each sync)
+//   - status.conditions (Ready message, reason, lastTransitionTime)
+//   - status.observedGeneration
+//   - status.id changes after the ID is already populated
 func pullRequestUpdateEnqueuesChangeTransferPolicyPredicate() predicate.Predicate {
 	return predicate.Funcs{
 		CreateFunc: func(event.CreateEvent) bool { return true },
