@@ -233,8 +233,8 @@ func ResetUpdateCallCount() {
 
 // ResetPullRequestSCMCallCounts resets both FindOpen and Update test counters.
 func ResetPullRequestSCMCallCounts() {
-	findOpenCallCount.Store(0)
-	updateCallCount.Store(0)
+	ResetFindOpenCallCount()
+	ResetUpdateCallCount()
 }
 
 // FindOpenCallCount returns how many times FindOpen has been invoked since the last reset.
@@ -249,7 +249,7 @@ func UpdateCallCount() uint64 {
 
 // PullRequestSCMCallCount returns FindOpen plus Update invocations since the last reset.
 func PullRequestSCMCallCount() uint64 {
-	return findOpenCallCount.Load() + updateCallCount.Load()
+	return FindOpenCallCount() + UpdateCallCount()
 }
 
 // ResetMergeShaMismatchCount resets the test-only counter of Merge calls that hit the

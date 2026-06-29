@@ -23,6 +23,7 @@ import (
 	"os"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -883,10 +884,14 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				time.Sleep(500 * time.Millisecond)
+				findOpenSnapshot := fake.FindOpenCallCount()
+				updateSnapshot := fake.UpdateCallCount()
 				scmSnapshot := fake.PullRequestSCMCallCount()
 
 				By("Verifying status-only churn does not drive SCM polling")
 				Consistently(func(g Gomega) {
+					g.Expect(fake.FindOpenCallCount()).To(BeNumerically("<=", findOpenSnapshot+1))
+					g.Expect(fake.UpdateCallCount()).To(BeNumerically("<=", updateSnapshot+1))
 					g.Expect(fake.PullRequestSCMCallCount()).To(BeNumerically("<=", scmSnapshot+1))
 				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 
@@ -909,18 +914,22 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					if changeTransferPolicy.Annotations == nil {
 						changeTransferPolicy.Annotations = map[string]string{}
 					}
-					changeTransferPolicy.Annotations["promoter.argoproj.io/test-nudge"] = fmt.Sprintf("%d", time.Now().UnixNano())
+					changeTransferPolicy.Annotations["promoter.argoproj.io/test-nudge"] = strconv.FormatInt(time.Now().UnixNano(), 10)
 					g.Expect(k8sClient.Patch(ctx, changeTransferPolicy, ctrlclient.MergeFrom(base))).To(Succeed())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Waiting for the nudge reconcile to settle")
 				time.Sleep(1 * time.Second)
+				findOpenSnapshot := fake.FindOpenCallCount()
+				updateSnapshot := fake.UpdateCallCount()
 				scmSnapshot := fake.PullRequestSCMCallCount()
 				Expect(scmSnapshot).To(BeNumerically("<", 25),
 					"a regression reproduces dozens of SCM calls per nudge")
 
 				By("Verifying SCM is not polled in a tight loop after settle")
 				Consistently(func(g Gomega) {
+					g.Expect(fake.FindOpenCallCount()).To(BeNumerically("<=", findOpenSnapshot+1))
+					g.Expect(fake.UpdateCallCount()).To(BeNumerically("<=", updateSnapshot+1))
 					g.Expect(fake.PullRequestSCMCallCount()).To(BeNumerically("<=", scmSnapshot+1))
 				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 			})
@@ -931,7 +940,8 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				pr, _ := waitForOpenPRWithID()
 
 				fake.ResetPullRequestSCMCallCounts()
-				baseline := fake.PullRequestSCMCallCount()
+				baselineFindOpen := fake.FindOpenCallCount()
+				baselineUpdate := fake.UpdateCallCount()
 
 				By("Changing PR spec so the PR controller must sync to SCM")
 				Eventually(func(g Gomega) {
@@ -941,7 +951,8 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Eventually(func(g Gomega) {
-					g.Expect(fake.PullRequestSCMCallCount()).To(BeNumerically(">", baseline))
+					g.Expect(fake.FindOpenCallCount()).To(BeNumerically(">", baselineFindOpen))
+					g.Expect(fake.UpdateCallCount()).To(BeNumerically(">", baselineUpdate))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
