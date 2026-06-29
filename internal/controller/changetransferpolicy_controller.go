@@ -1486,7 +1486,7 @@ func TemplatePullRequest(prt promoterv1alpha1.PullRequestTemplate, data map[stri
 // Enqueues CTP on:
 //   - Create and Delete of the owned PullRequest
 //   - Update when metadata.generation changes (spec was patched — title, commit.message, state, etc.)
-//   - Update when finalizer count changes (CTP pull-request finalizer added or removed)
+//   - Update when the CTP pull-request finalizer is added or removed
 //   - Update when status.state changes (open, merged, closed, or cleared on external close)
 //   - Update when status.externallyMergedOrClosed changes
 //   - Update when status.id is first set ("" → non-empty; PR now exists on the SCM)
@@ -1513,7 +1513,9 @@ func pullRequestUpdateEnqueuesChangeTransferPolicyPredicate() predicate.Predicat
 			if oldPR.Generation != newPR.Generation {
 				return true
 			}
-			if len(oldPR.Finalizers) != len(newPR.Finalizers) {
+			oldHasCTPFinalizer := controllerutil.ContainsFinalizer(oldPR, promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer)
+			newHasCTPFinalizer := controllerutil.ContainsFinalizer(newPR, promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer)
+			if oldHasCTPFinalizer != newHasCTPFinalizer {
 				return true
 			}
 			if oldPR.Status.State != newPR.Status.State {

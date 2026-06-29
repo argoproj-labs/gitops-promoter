@@ -1367,6 +1367,31 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 		newPR.Status.ExternallyMergedOrClosed = ptr.To(true)
 		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
 	})
+
+	It("enqueues when the CTP finalizer is removed even if another finalizer is added", func() {
+		oldPR := &promoterv1alpha1.PullRequest{
+			ObjectMeta: metav1.ObjectMeta{
+				Generation: 1,
+				Finalizers: []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
+			},
+		}
+		newPR := oldPR.DeepCopy()
+		newPR.Finalizers = []string{promoterv1alpha1.PullRequestFinalizer}
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+	})
+
+	It("ignores unrelated finalizer changes when the CTP finalizer is unchanged", func() {
+		oldPR := &promoterv1alpha1.PullRequest{
+			ObjectMeta: metav1.ObjectMeta{
+				Generation: 1,
+				Finalizers: []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
+			},
+			Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"},
+		}
+		newPR := oldPR.DeepCopy()
+		newPR.Finalizers = append(slices.Clone(newPR.Finalizers), promoterv1alpha1.PullRequestFinalizer)
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeFalse())
+	})
 })
 
 var _ = Describe("tooManyPRsError", func() {
