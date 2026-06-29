@@ -1263,7 +1263,7 @@ var _ = Describe("pullRequestManagedByCTPUnchanged", func() {
 })
 
 var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func() {
-	var pred = pullRequestUpdateEnqueuesChangeTransferPolicyPredicate()
+	pred := pullRequestUpdateEnqueuesChangeTransferPolicyPredicate()
 
 	It("ignores status-only URL updates", func() {
 		oldPR := &promoterv1alpha1.PullRequest{
