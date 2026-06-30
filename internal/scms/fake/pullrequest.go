@@ -30,6 +30,13 @@ var (
 	pullRequests map[string]pullRequestProviderState
 	mutexPR      sync.RWMutex
 
+	// fakeComments tracks posted comments per PR: prKey → commentID → body
+	fakeComments map[string]map[string]string
+	// fakeLabels tracks added labels per PR: prKey → label → present
+	fakeLabels map[string]map[string]bool
+	// fakeCommentCounter is a monotonically increasing counter for comment IDs
+	fakeCommentCounter atomic.Uint64
+
 	// findOpenCallCount is incremented on every FindOpen call (for tests).
 	findOpenCallCount atomic.Uint64
 	// updateCallCount is incremented on every Update call (for tests).
@@ -432,6 +439,121 @@ func (pr *PullRequest) runGitCmd(ctx context.Context, gitPath string, args ...st
 	}
 
 	return stdoutBuf.String(), nil
+}
+
+// AddLabels adds labels to an existing pull request in the fake provider.
+func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labels []string) error {
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+	mutexPR.Lock()
+	defer mutexPR.Unlock()
+	if fakeLabels == nil {
+		fakeLabels = make(map[string]map[string]bool)
+	}
+	if fakeLabels[prKey] == nil {
+		fakeLabels[prKey] = make(map[string]bool)
+	}
+	for _, label := range labels {
+		fakeLabels[prKey][label] = true
+	}
+	return nil
+}
+
+// RemoveLabel removes a label from an existing pull request in the fake provider.
+func (pr *PullRequest) RemoveLabel(ctx context.Context, pullRequest v1alpha1.PullRequest, label string) error {
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+	mutexPR.Lock()
+	defer mutexPR.Unlock()
+	if fakeLabels != nil && fakeLabels[prKey] != nil {
+		delete(fakeLabels[prKey], label)
+	}
+	return nil
+}
+
+// CreateComment posts a comment on an existing pull request in the fake provider and returns a synthetic ID.
+func (pr *PullRequest) CreateComment(ctx context.Context, pullRequest v1alpha1.PullRequest, comment string) (string, error) {
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return "", fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	commentID := strconv.FormatUint(fakeCommentCounter.Add(1), 10)
+	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+	mutexPR.Lock()
+	defer mutexPR.Unlock()
+	if fakeComments == nil {
+		fakeComments = make(map[string]map[string]string)
+	}
+	if fakeComments[prKey] == nil {
+		fakeComments[prKey] = make(map[string]string)
+	}
+	fakeComments[prKey][commentID] = comment
+	return commentID, nil
+}
+
+// DeleteComment removes a comment from an existing pull request in the fake provider.
+func (pr *PullRequest) DeleteComment(ctx context.Context, pullRequest v1alpha1.PullRequest, commentID string) error {
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+	mutexPR.Lock()
+	defer mutexPR.Unlock()
+	if fakeComments != nil && fakeComments[prKey] != nil {
+		delete(fakeComments[prKey], commentID)
+	}
+	return nil
+}
+
+// GetFakeLabels returns the set of labels currently applied to a PR in the fake provider (for tests).
+func (pr *PullRequest) GetFakeLabels(ctx context.Context, pullRequest v1alpha1.PullRequest) (map[string]bool, error) {
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+	mutexPR.RLock()
+	defer mutexPR.RUnlock()
+	if fakeLabels == nil || fakeLabels[prKey] == nil {
+		return map[string]bool{}, nil
+	}
+	result := make(map[string]bool, len(fakeLabels[prKey]))
+	for k, v := range fakeLabels[prKey] {
+		result[k] = v
+	}
+	return result, nil
+}
+
+// GetFakeComments returns a copy of comments posted to a PR in the fake provider (for tests).
+func (pr *PullRequest) GetFakeComments(ctx context.Context, pullRequest v1alpha1.PullRequest) (map[string]string, error) {
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+	mutexPR.RLock()
+	defer mutexPR.RUnlock()
+	if fakeComments == nil || fakeComments[prKey] == nil {
+		return map[string]string{}, nil
+	}
+	result := make(map[string]string, len(fakeComments[prKey]))
+	for k, v := range fakeComments[prKey] {
+		result[k] = v
+	}
+	return result, nil
 }
 
 // GetUrl retrieves the URL of the pull request.

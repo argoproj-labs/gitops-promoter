@@ -288,6 +288,14 @@ func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *p
 func (r *PullRequestReconciler) handleStateTransitions(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider, previousReady *metav1.Condition) (bool, error) {
 	logger := log.FromContext(ctx)
 
+	// Reconcile merge signal delegation: post or retract comments/labels.
+	// Only when the PR has been created on the SCM and is currently open.
+	if pr.Status.ID != "" && pr.Status.State == promoterv1alpha1.PullRequestOpen {
+		if err := r.reconcileMergeSignals(ctx, pr, provider); err != nil {
+			return false, fmt.Errorf("failed to reconcile merge signals: %w", err)
+		}
+	}
+
 	logger.Info("Reconciling PullRequest state", "desired", pr.Spec.State, "current", pr.Status.State)
 
 	if pr.Status.State == pr.Spec.State {
@@ -310,6 +318,12 @@ func (r *PullRequestReconciler) handleStateTransitions(ctx context.Context, pr *
 					r.Recorder.Eventf(pr, nil, "Warning", constants.PullRequestCreateFailedReason, "CreatingPullRequest", constants.PullRequestCreateFailedMessage, pr.Name, err)
 				}
 				return false, fmt.Errorf("failed to create pull request: %w", err) // Top-level wrap for create errors
+			}
+			// Post any pending merge signals immediately — createPullRequest always sets Status.ID on
+			// success, so the guard at the top of this function was skipped on the way in. Without
+			// this call the signals would only be posted after the next periodic requeue (default 5m).
+			if err := r.reconcileMergeSignals(ctx, pr, provider); err != nil {
+				return false, fmt.Errorf("failed to reconcile merge signals after PR creation: %w", err)
 			}
 		}
 	case promoterv1alpha1.PullRequestMerged:
@@ -555,5 +569,83 @@ func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr *promot
 	}
 	pr.Status.State = promoterv1alpha1.PullRequestClosed
 	r.Recorder.Eventf(pr, nil, "Normal", constants.PullRequestClosedReason, "ClosingPullRequest", constants.PullRequestClosedMessage, pr.Name)
+	return nil
+}
+
+// reconcileMergeSignals posts or retracts merge signals (comments/labels) on an open PR.
+// Signals are posted when PendingMergeSignals is set (by the CTP controller) and retracted when cleared.
+// Status fields (PostedMergeCommentIDs, AppliedMergeLabels) are updated in memory;
+// the deferred HandleReconciliationResult persists them.
+func (r *PullRequestReconciler) reconcileMergeSignals(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
+	if pr.Spec.PendingMergeSignals != nil {
+		return r.postMergeSignals(ctx, pr, provider)
+	}
+	if len(pr.Status.PostedMergeCommentIDs) > 0 || len(pr.Status.AppliedMergeLabels) > 0 {
+		return r.retractMergeSignals(ctx, pr, provider)
+	}
+	return nil
+}
+
+// postMergeSignals posts any comments or labels from PendingMergeSignals that have not been posted yet.
+func (r *PullRequestReconciler) postMergeSignals(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
+	logger := log.FromContext(ctx)
+	signals := pr.Spec.PendingMergeSignals
+
+	for _, comment := range signals.Comments {
+		if _, alreadyPosted := pr.Status.PostedMergeCommentIDs[comment]; alreadyPosted {
+			continue
+		}
+		commentID, err := provider.CreateComment(ctx, *pr, comment)
+		if err != nil {
+			return fmt.Errorf("failed to create merge signal comment %q: %w", comment, err)
+		}
+		if pr.Status.PostedMergeCommentIDs == nil {
+			pr.Status.PostedMergeCommentIDs = make(map[string]string)
+		}
+		pr.Status.PostedMergeCommentIDs[comment] = commentID
+		logger.Info("Posted merge signal comment", "comment", comment, "commentID", commentID)
+	}
+
+	for _, label := range signals.Labels {
+		alreadyApplied := false
+		for _, existing := range pr.Status.AppliedMergeLabels {
+			if existing == label {
+				alreadyApplied = true
+				break
+			}
+		}
+		if alreadyApplied {
+			continue
+		}
+		if err := provider.AddLabels(ctx, *pr, []string{label}); err != nil {
+			return fmt.Errorf("failed to add merge signal label %q: %w", label, err)
+		}
+		pr.Status.AppliedMergeLabels = append(pr.Status.AppliedMergeLabels, label)
+		logger.Info("Posted merge signal label", "label", label)
+	}
+
+	return nil
+}
+
+// retractMergeSignals deletes previously posted merge signal comments and removes merge signal labels.
+func (r *PullRequestReconciler) retractMergeSignals(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
+	logger := log.FromContext(ctx)
+
+	for comment, commentID := range pr.Status.PostedMergeCommentIDs {
+		if err := provider.DeleteComment(ctx, *pr, commentID); err != nil {
+			return fmt.Errorf("failed to delete merge signal comment (id=%s): %w", commentID, err)
+		}
+		delete(pr.Status.PostedMergeCommentIDs, comment)
+		logger.Info("Retracted merge signal comment", "comment", comment)
+	}
+
+	for _, label := range pr.Status.AppliedMergeLabels {
+		if err := provider.RemoveLabel(ctx, *pr, label); err != nil {
+			return fmt.Errorf("failed to remove merge signal label %q: %w", label, err)
+		}
+		logger.Info("Retracted merge signal label", "label", label)
+	}
+	pr.Status.AppliedMergeLabels = nil
+
 	return nil
 }

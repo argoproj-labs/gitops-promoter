@@ -40,6 +40,16 @@ type ChangeTransferPolicySpecApplyConfiguration struct {
 	ActiveCommitStatuses []CommitStatusSelectorApplyConfiguration `json:"activeCommitStatuses,omitempty"`
 	// ProposedCommitStatuses lists the statuses to be monitored on the proposed branch
 	ProposedCommitStatuses []CommitStatusSelectorApplyConfiguration `json:"proposedCommitStatuses,omitempty"`
+	// MergeComments lists comments to post on the PR when all merge conditions are met,
+	// instead of merging the PR directly via the SCM API. An external system (e.g. Prow)
+	// is expected to perform the actual merge after seeing these comments.
+	// Requires autoMerge: true. Labels and comments may be combined.
+	MergeComments []string `json:"mergeComments,omitempty"`
+	// MergeLabels lists labels to add to the PR when all merge conditions are met,
+	// instead of merging the PR directly via the SCM API. An external system (e.g. Tide)
+	// is expected to perform the actual merge after seeing these labels.
+	// Requires autoMerge: true. Labels and comments may be combined.
+	MergeLabels []string `json:"mergeLabels,omitempty"`
 }
 
 // ChangeTransferPolicySpecApplyConfiguration constructs a declarative configuration of the ChangeTransferPolicySpec type for use with
@@ -110,6 +120,26 @@ func (b *ChangeTransferPolicySpecApplyConfiguration) WithProposedCommitStatuses(
 			panic("nil value passed to WithProposedCommitStatuses")
 		}
 		b.ProposedCommitStatuses = append(b.ProposedCommitStatuses, *values[i])
+	}
+	return b
+}
+
+// WithMergeComments adds the given value to the MergeComments field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the MergeComments field.
+func (b *ChangeTransferPolicySpecApplyConfiguration) WithMergeComments(values ...string) *ChangeTransferPolicySpecApplyConfiguration {
+	for i := range values {
+		b.MergeComments = append(b.MergeComments, values[i])
+	}
+	return b
+}
+
+// WithMergeLabels adds the given value to the MergeLabels field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the MergeLabels field.
+func (b *ChangeTransferPolicySpecApplyConfiguration) WithMergeLabels(values ...string) *ChangeTransferPolicySpecApplyConfiguration {
+	for i := range values {
+		b.MergeLabels = append(b.MergeLabels, values[i])
 	}
 	return b
 }

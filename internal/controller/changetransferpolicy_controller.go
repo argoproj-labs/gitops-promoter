@@ -1289,14 +1289,22 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) (*promoterv1alpha1.PullRequest, error) {
 	logger := log.FromContext(ctx)
 
+	usesSignalMerge := len(ctp.Spec.MergeComments) > 0 || len(ctp.Spec.MergeLabels) > 0
+
+	conditionsMet := true
 	for i, status := range ctp.Status.Proposed.CommitStatuses {
 		if status.Phase != string(promoterv1alpha1.CommitPhaseSuccess) {
 			logger.V(4).Info("Proposed commit status is not success", "key", ctp.Spec.ProposedCommitStatuses[i].Key, "sha", ctp.Status.Proposed.Hydrated.Sha, "phase", status.Phase)
-			return nil, nil
+			conditionsMet = false
+			break
 		}
 	}
 
-	if !*ctp.Spec.AutoMerge {
+	if !conditionsMet || !*ctp.Spec.AutoMerge {
+		if usesSignalMerge {
+			// Conditions not met: retract any pending merge signals from the PR.
+			return r.clearPendingMergeSignals(ctx, ctp)
+		}
 		return nil, nil
 	}
 
@@ -1356,6 +1364,41 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 		return &pullRequest, fmt.Errorf("cannot merge PullRequest %q without an ID", pullRequest.Name)
 	}
 
+	if usesSignalMerge {
+		// Signal-based merge: set PendingMergeSignals on the PR so the PR controller posts them.
+		signals := acv1alpha1.MergeSignals().
+			WithComments(ctp.Spec.MergeComments...).
+			WithLabels(ctp.Spec.MergeLabels...)
+		prSpec := acv1alpha1.PullRequestSpec().
+			WithRepositoryReference(acv1alpha1.ObjectReference().WithName(pullRequest.Spec.RepositoryReference.Name)).
+			WithTitle(pullRequest.Spec.Title).
+			WithTargetBranch(pullRequest.Spec.TargetBranch).
+			WithSourceBranch(pullRequest.Spec.SourceBranch).
+			WithMergeSha(pullRequest.Spec.MergeSha).
+			WithState(pullRequest.Spec.State).
+			WithPendingMergeSignals(signals)
+		if pullRequest.Spec.Description != "" {
+			prSpec = prSpec.WithDescription(pullRequest.Spec.Description)
+		}
+		if pullRequest.Spec.Commit.Message != "" {
+			prSpec = prSpec.WithCommit(acv1alpha1.CommitConfiguration().WithMessage(pullRequest.Spec.Commit.Message))
+		}
+		prApply := acv1alpha1.PullRequest(pullRequest.Name, pullRequest.Namespace).
+			WithLabels(pullRequest.Labels).
+			WithSpec(prSpec)
+		for i := range pullRequest.OwnerReferences {
+			prApply = prApply.WithOwnerReferences(ownerReferenceToApply(pullRequest.OwnerReferences[i]))
+		}
+		pr := &promoterv1alpha1.PullRequest{}
+		pr.Name = pullRequest.Name
+		pr.Namespace = pullRequest.Namespace
+		if err := r.Patch(ctx, pr, utils.ApplyPatch{ApplyConfig: prApply}, client.FieldOwner(constants.ChangeTransferPolicyControllerFieldOwner), client.ForceOwnership); err != nil {
+			return &pullRequest, fmt.Errorf("failed to set PendingMergeSignals on PR %q: %w", pullRequest.Name, err)
+		}
+		logger.Info("Set pending merge signals on pull request")
+		return pr, nil
+	}
+
 	// Update the PR state to merged using SSA.
 	// Re-specify labels, owner references, finalizers, and spec so this field manager stays consistent with createOrUpdatePullRequest.
 	prApply := pullRequestApplyOwnedByChangeTransferPolicy(&pullRequest, ptr.To(promoterv1alpha1.PullRequestMerged), true)
@@ -1370,6 +1413,64 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 	r.Recorder.Eventf(ctp, nil, "Normal", constants.PullRequestMergedReason, "MergingPullRequest", constants.PullRequestMergedMessage, pr.Name)
 	logger.Info("Merged pull request")
 	return pr, nil
+}
+
+// clearPendingMergeSignals clears PendingMergeSignals from the PR owned by this CTP, if any.
+// Called when merge conditions are no longer met; the PR controller will retract the signals.
+func (r *ChangeTransferPolicyReconciler) clearPendingMergeSignals(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) (*promoterv1alpha1.PullRequest, error) {
+	prl := promoterv1alpha1.PullRequestList{}
+	err := r.List(ctx, &prl, &client.ListOptions{
+		Namespace: ctp.Namespace,
+		LabelSelector: labels.SelectorFromSet(map[string]string{
+			promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
+			promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
+			promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
+		}),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list PullRequests for signal retraction: %w", err)
+	}
+
+	if len(prl.Items) > 1 {
+		return nil, tooManyPRsError(&prl)
+	}
+
+	for i := range prl.Items {
+		pullRequest := &prl.Items[i]
+		if pullRequest.Spec.PendingMergeSignals == nil {
+			continue
+		}
+		// Clear PendingMergeSignals by setting it to nil via SSA.
+		prSpec := acv1alpha1.PullRequestSpec().
+			WithRepositoryReference(acv1alpha1.ObjectReference().WithName(pullRequest.Spec.RepositoryReference.Name)).
+			WithTitle(pullRequest.Spec.Title).
+			WithTargetBranch(pullRequest.Spec.TargetBranch).
+			WithSourceBranch(pullRequest.Spec.SourceBranch).
+			WithMergeSha(pullRequest.Spec.MergeSha).
+			WithState(pullRequest.Spec.State)
+		if pullRequest.Spec.Description != "" {
+			prSpec = prSpec.WithDescription(pullRequest.Spec.Description)
+		}
+		if pullRequest.Spec.Commit.Message != "" {
+			prSpec = prSpec.WithCommit(acv1alpha1.CommitConfiguration().WithMessage(pullRequest.Spec.Commit.Message))
+		}
+		prApply := acv1alpha1.PullRequest(pullRequest.Name, pullRequest.Namespace).
+			WithLabels(pullRequest.Labels).
+			WithSpec(prSpec)
+		for i := range pullRequest.OwnerReferences {
+			prApply = prApply.WithOwnerReferences(ownerReferenceToApply(pullRequest.OwnerReferences[i]))
+		}
+		pr := &promoterv1alpha1.PullRequest{}
+		pr.Name = pullRequest.Name
+		pr.Namespace = pullRequest.Namespace
+		if err := r.Patch(ctx, pr, utils.ApplyPatch{ApplyConfig: prApply}, client.FieldOwner(constants.ChangeTransferPolicyControllerFieldOwner), client.ForceOwnership); err != nil {
+			return pullRequest, fmt.Errorf("failed to clear PendingMergeSignals on PR %q: %w", pullRequest.Name, err)
+		}
+		log.FromContext(ctx).Info("Cleared pending merge signals from pull request (conditions no longer met)", "pr", pullRequest.Name)
+		return pr, nil
+	}
+
+	return nil, nil
 }
 
 // gitMergeStrategyOurs tests if there is a conflict between the active and proposed branches. If there is, we

@@ -1252,6 +1252,153 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 						"the SCM to merge a sha origin no longer has on the source branch")
 			})
 		})
+
+		// Merge-signal delegation: the CTP posts comments/labels to the PR and lets an external
+		// bot (e.g. Prow/Tide) perform the actual merge. Direct merging must NOT happen when
+		// MergeComments or MergeLabels are configured.
+		Context("When using merge signal delegation", func() {
+			const signalCSKey = "promotion-gate-signals"
+
+			var name string
+			var scmSecret *v1.Secret
+			var scmProvider *promoterv1alpha1.ScmProvider
+			var gitRepo *promoterv1alpha1.GitRepository
+			var commitStatus *promoterv1alpha1.CommitStatus
+			var changeTransferPolicy *promoterv1alpha1.ChangeTransferPolicy
+			var typeNamespacedName types.NamespacedName
+			var gitPath string
+			var err error
+
+			BeforeEach(func() {
+				name, scmSecret, scmProvider, gitRepo, commitStatus, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-signal-merge", "default")
+
+				typeNamespacedName = types.NamespacedName{Name: name, Namespace: "default"}
+
+				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
+				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
+				changeTransferPolicy.Spec.AutoMerge = new(true)
+				changeTransferPolicy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{{Key: signalCSKey}}
+				changeTransferPolicy.Spec.MergeComments = []string{"/lgtm"}
+				changeTransferPolicy.Spec.MergeLabels = []string{"approved"}
+
+				commitStatus.Spec.Name = signalCSKey
+				commitStatus.Labels = map[string]string{promoterv1alpha1.CommitStatusLabel: signalCSKey}
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
+
+				gitPath, err = os.MkdirTemp("", "*")
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			AfterEach(func() {
+				By("Cleaning up signal-merge resources")
+				Expect(k8sClient.Delete(ctx, changeTransferPolicy)).To(Succeed())
+				Expect(ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, commitStatus))).To(Succeed())
+				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+				_ = os.RemoveAll(gitPath)
+			})
+
+			It("posts signals to the PR instead of merging directly", func() {
+				By("Making a commit and hydrating the proposed branch")
+				makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+
+				prName := utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+				prNSN := types.NamespacedName{Name: utils.KubeSafeUniqueName(prName), Namespace: "default"}
+
+				By("Waiting for a PR to be created")
+				var pr promoterv1alpha1.PullRequest
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, prNSN, &pr)).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Passing the proposed commit status gate")
+				Eventually(func(g Gomega) {
+					sha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+changeTransferPolicy.Spec.ProposedBranch)
+					g.Expect(err).NotTo(HaveOccurred())
+					commitStatus.Spec.Sha = strings.TrimSpace(sha)
+					commitStatus.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+					g.Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Verifying merge signals are posted to the PR")
+				fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, prNSN, &pr)).To(Succeed())
+
+					comments, err := fakeProvider.GetFakeComments(ctx, pr)
+					g.Expect(err).NotTo(HaveOccurred())
+					labels, err := fakeProvider.GetFakeLabels(ctx, pr)
+					g.Expect(err).NotTo(HaveOccurred())
+
+					commentBodies := make([]string, 0, len(comments))
+					for _, body := range comments {
+						commentBodies = append(commentBodies, body)
+					}
+					g.Expect(commentBodies).To(ContainElement("/lgtm"), "expected /lgtm comment to be posted")
+					g.Expect(labels).To(HaveKeyWithValue("approved", true), "expected approved label to be applied")
+					g.Expect(pr.Status.PostedMergeCommentIDs).To(HaveKey("/lgtm"), "comment ID must be tracked in status for future retraction")
+					g.Expect(pr.Status.AppliedMergeLabels).To(ContainElement("approved"), "label must be tracked in status for future retraction")
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Verifying the PR is not merged directly (external bot is responsible)")
+				Expect(k8sClient.Get(ctx, prNSN, &pr)).To(Succeed())
+				Expect(pr.Status.State).NotTo(Equal(promoterv1alpha1.PullRequestMerged),
+					"PR must remain open — merge-signal mode must not directly merge via SCM API")
+			})
+
+			It("retracts posted signals when merge conditions stop being met", func() {
+				By("Making a commit and hydrating the proposed branch")
+				makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+
+				prName := utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+				prNSN := types.NamespacedName{Name: utils.KubeSafeUniqueName(prName), Namespace: "default"}
+
+				By("Passing the proposed commit status gate")
+				Eventually(func(g Gomega) {
+					sha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+changeTransferPolicy.Spec.ProposedBranch)
+					g.Expect(err).NotTo(HaveOccurred())
+					commitStatus.Spec.Sha = strings.TrimSpace(sha)
+					commitStatus.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+					g.Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
+				var pr promoterv1alpha1.PullRequest
+
+				By("Waiting for signals to appear on the PR")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, prNSN, &pr)).To(Succeed())
+					labels, err := fakeProvider.GetFakeLabels(ctx, pr)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(labels).To(HaveKeyWithValue("approved", true))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Disabling AutoMerge so merge conditions are no longer met")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					changeTransferPolicy.Spec.AutoMerge = new(false)
+					g.Expect(k8sClient.Update(ctx, changeTransferPolicy)).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Verifying all signals are retracted from the PR")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, prNSN, &pr)).To(Succeed())
+					comments, err := fakeProvider.GetFakeComments(ctx, pr)
+					g.Expect(err).NotTo(HaveOccurred())
+					labels, err := fakeProvider.GetFakeLabels(ctx, pr)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(comments).To(BeEmpty(), "posted comments must be deleted on retraction")
+					g.Expect(labels).To(BeEmpty(), "applied labels must be removed on retraction")
+					g.Expect(pr.Status.PostedMergeCommentIDs).To(BeEmpty(), "status must clear comment IDs after retraction")
+					g.Expect(pr.Status.AppliedMergeLabels).To(BeEmpty(), "status must clear label list after retraction")
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+		})
 	})
 })
 
