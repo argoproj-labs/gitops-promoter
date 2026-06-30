@@ -38,15 +38,12 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitea"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
-	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/util/retry"
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -80,10 +77,11 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	var pr promoterv1alpha1.PullRequest
 	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &pr, r.Client, r.Recorder, constants.PullRequestControllerFieldOwner, &result, &err)
+	var previousReady *metav1.Condition
+	defer utils.HandleReconciliationResult(ctx, startTime, &pr, r.Client, r.Recorder, constants.PullRequestControllerFieldOwner, &result, &err, &previousReady)
 
 	if err := r.Get(ctx, req.NamespacedName, &pr); err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			logger.Info("PullRequest not found", "namespace", req.Namespace, "name", req.Name)
 			return ctrl.Result{}, nil
 		}
@@ -91,7 +89,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Remove any existing Ready condition. We want to start fresh.
-	meta.RemoveStatusCondition(pr.GetConditions(), string(promoterConditions.Ready))
+	previousReady = utils.RemoveReadyCondition(&pr)
 
 	// Handle deletion early - if being deleted and status.ID is empty, we can skip provider setup
 	if handled, err := r.handleEmptyIDDeletion(ctx, &pr); handled || err != nil {
@@ -100,6 +98,11 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	provider, err := r.getPullRequestProvider(ctx, pr)
 	if err != nil {
+		if !pr.DeletionTimestamp.IsZero() {
+			if blockedErr := deletionBlockedByMissingDependencyError(err); blockedErr != nil {
+				return ctrl.Result{}, blockedErr
+			}
+		}
 		return ctrl.Result{}, fmt.Errorf("failed to get PullRequest provider: %w", err)
 	}
 
@@ -134,7 +137,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Handle state transitions
-	cleanupRequired, err := r.handleStateTransitions(ctx, &pr, provider)
+	cleanupRequired, err := r.handleStateTransitions(ctx, &pr, provider, previousReady)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -197,7 +200,19 @@ func (r *PullRequestReconciler) cleanupTerminalStates(ctx context.Context, pr *p
 	} else {
 		logger.Info("Cleaning up closed and merged pull request", "pullRequestID", pr.Status.ID)
 	}
-	if err := r.Delete(ctx, pr); err != nil && !errors.IsNotFound(err) {
+
+	// TODO: The PullRequest finalizer could be removed immediately after a successful merge/close on the SCM
+	// (when we first know SCM cleanup is done), and optionally initiate Delete in that same reconciliation, to
+	// save an extra reconcile. We remove it here alongside Delete instead to keep the terminal-cleanup path
+	// simple and reliable.
+	if controllerutil.ContainsFinalizer(pr, promoterv1alpha1.PullRequestFinalizer) {
+		controllerutil.RemoveFinalizer(pr, promoterv1alpha1.PullRequestFinalizer)
+		if err := r.Update(ctx, pr); err != nil {
+			return false, fmt.Errorf("failed to remove finalizer before cleanup delete: %w", err)
+		}
+	}
+
+	if err := r.Delete(ctx, pr); err != nil && !k8serrors.IsNotFound(err) {
 		logger.Error(err, "Failed to delete PullRequest")
 		return false, fmt.Errorf("failed to delete PullRequest: %w", err)
 	}
@@ -234,7 +249,12 @@ func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *p
 			// Controller still thinks PR should be open, but it's not found on provider. That includes a
 			// human or another system closing/merging the PR, and also our own deletion finalizer having
 			// closed it on the SCM: the next sync cannot tell those apart, so we set ExternallyMergedOrClosed.
-			pr.Status.ExternallyMergedOrClosed = ptr.To(true)
+			// The persisted previous value gates the event so a lost status write retries the
+			// emission but a persisted one never repeats it.
+			if pr.Status.ExternallyMergedOrClosed == nil || !*pr.Status.ExternallyMergedOrClosed {
+				r.Recorder.Eventf(pr, nil, "Warning", constants.PullRequestExternallyMergedOrClosedReason, "SyncingPullRequestState", constants.PullRequestExternallyMergedOrClosedMessage, pr.Name, pr.Status.ID)
+			}
+			pr.Status.ExternallyMergedOrClosed = new(true)
 			// Don't set State since we don't know if it was merged or closed externally.
 			// The ExternallyMergedOrClosed flag means this PR is no longer open on the provider while we still
 			// desired open; that includes true external action and indistinguishable cases such as our delete finalizer
@@ -263,7 +283,10 @@ func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *p
 
 // handleStateTransitions handles transitions between PullRequest states.
 // Returns (done=true, nil) if a terminal state was reached, (false, nil) otherwise, or (false, err) on error.
-func (r *PullRequestReconciler) handleStateTransitions(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) (bool, error) {
+// previousReady is the Ready condition from the previous reconcile; SCM create/merge failure events
+// are emitted only on the first failure after a healthy reconcile so backoff retries don't spam
+// events (the evolving error stays visible on the Ready condition).
+func (r *PullRequestReconciler) handleStateTransitions(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider, previousReady *metav1.Condition) (bool, error) {
 	logger := log.FromContext(ctx)
 
 	logger.Info("Reconciling PullRequest state", "desired", pr.Spec.State, "current", pr.Status.State)
@@ -276,18 +299,26 @@ func (r *PullRequestReconciler) handleStateTransitions(ctx context.Context, pr *
 		return false, nil
 	}
 
+	wasHealthy := previousReady == nil || previousReady.Status == metav1.ConditionTrue
+
 	switch pr.Spec.State {
 	case promoterv1alpha1.PullRequestOpen:
 		if pr.Status.ID == "" {
 			// Because status id is empty, we need to create a new pull request
 			logger.Info("Creating PullRequest")
 			if err := r.createPullRequest(ctx, pr, provider); err != nil {
+				if wasHealthy {
+					r.Recorder.Eventf(pr, nil, "Warning", constants.PullRequestCreateFailedReason, "CreatingPullRequest", constants.PullRequestCreateFailedMessage, pr.Name, err)
+				}
 				return false, fmt.Errorf("failed to create pull request: %w", err) // Top-level wrap for create errors
 			}
 		}
 	case promoterv1alpha1.PullRequestMerged:
 		logger.Info("Merging PullRequest")
 		if err := r.mergePullRequest(ctx, pr, provider); err != nil {
+			if wasHealthy {
+				r.Recorder.Eventf(pr, nil, "Warning", constants.PullRequestMergeFailedReason, "MergingPullRequest", constants.PullRequestMergeFailedMessage, pr.Name, err)
+			}
 			return false, fmt.Errorf("failed to merge pull request: %w", err) // Top-level wrap for merge errors
 		}
 		return true, nil
@@ -358,14 +389,11 @@ func (r *PullRequestReconciler) SetupWithManager(ctx context.Context, mgr ctrl.M
 }
 
 func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr promoterv1alpha1.PullRequest) (scms.PullRequestProvider, error) {
-	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), pr.Spec.RepositoryReference, &pr)
+	scmProvider, secret, gitRepository, err := utils.GetScmProviderSecretAndGitRepositoryFromRepositoryReference(
+		ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), pr.Spec.RepositoryReference, &pr,
+	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get ScmProvider and secret: %w", err)
-	}
-
-	gitRepository, err := utils.GetGitRepositoryFromObjectKey(ctx, r.Client, client.ObjectKey{Namespace: pr.Namespace, Name: pr.Spec.RepositoryReference.Name})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
+		return nil, err //nolint:wrapcheck // Reconcile adds "failed to get PullRequest provider"
 	}
 
 	switch {
@@ -496,6 +524,37 @@ func (t trailers) String() string {
 	return result.String()
 }
 
+// deletionBlockedByMissingDependencyError returns an operator-facing error when provider resolution
+// fails during PullRequest deletion because a dependency is missing. Nil means err is not that case.
+func deletionBlockedByMissingDependencyError(err error) error {
+	details, isNotFound := utils.NotFoundInErrorChain(err)
+	if !isNotFound {
+		return nil
+	}
+
+	var msg string
+	if details == nil {
+		msg = fmt.Sprintf(
+			"this PullRequest cannot close its SCM pull request because a required dependency was not found - "+
+				"either restore the missing resource or remove the %s finalizer from this PullRequest and manually close the SCM pull request if it is not already closed",
+			promoterv1alpha1.PullRequestFinalizer,
+		)
+	} else {
+		typeRef := details.Kind
+		if details.Group != "" {
+			typeRef = details.Group + "/" + details.Kind
+		}
+		msg = fmt.Sprintf(
+			"this PullRequest cannot close its SCM pull request because %s %q is missing - "+
+				"either restore that resource or remove the %s finalizer from this PullRequest and manually close the SCM pull request if it is not already closed",
+			typeRef,
+			details.Name,
+			promoterv1alpha1.PullRequestFinalizer,
+		)
+	}
+	return fmt.Errorf("%s: %w", msg, err)
+}
+
 func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
 	if pr.Status.State == promoterv1alpha1.PullRequestMerged {
 		return nil
@@ -504,5 +563,6 @@ func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr *promot
 		return err //nolint:wrapcheck // Error wrapping handled at top level
 	}
 	pr.Status.State = promoterv1alpha1.PullRequestClosed
+	r.Recorder.Eventf(pr, nil, "Normal", constants.PullRequestClosedReason, "ClosingPullRequest", constants.PullRequestClosedMessage, pr.Name)
 	return nil
 }

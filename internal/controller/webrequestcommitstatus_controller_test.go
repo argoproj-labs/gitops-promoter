@@ -37,6 +37,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -83,7 +84,7 @@ const (
 // via Server-Side Apply at the end of a reconcile and read from the
 // controller's informer cache at the start of the next reconcile, so the
 // controller offers AT-LEAST-ONCE HTTP delivery, not exactly-once — see the
-// "Delivery semantics" section in docs/commit-status-controllers/web-request.md
+// "Delivery semantics" section in docs/gating-promotions/built-in-gates/web-request-commit-status/index.md
 // and the godoc on TriggerModeSpec. A correct controller still converges to no
 // further HTTP under steady inputs; a regression where dedup is broken keeps
 // firing on every requeue and never stabilizes.
@@ -281,6 +282,71 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying a CommitStatusPhaseChanged event was emitted")
+			Eventually(func(g Gomega) {
+				var eventList corev1.EventList
+				g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
+				g.Expect(hasEventWithReasonAndMessage(eventList, name+"-polling-success", constants.CommitStatusPhaseChangedReason, "to success")).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	Describe("Polling Mode - Unreachable URL", func() {
+		var webRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
+
+		BeforeEach(func() {
+			By("Creating a test HTTP server and closing it immediately so the URL refuses connections")
+			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}))
+			unreachableURL := testServer.URL
+			testServer.Close()
+			testServer = nil
+
+			By("Creating a WebRequestCommitStatus resource pointing at the unreachable URL")
+			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-unreachable-url",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key:      "external-approval",
+					ReportOn: constants.CommitRefProposed,
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate:    unreachableURL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 5 * time.Second},
+					},
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
+							Expression: `Response != nil && Response.StatusCode == 200`,
+						},
+					},
+					Mode: promoterv1alpha1.ModeSpec{
+						Polling: &promoterv1alpha1.PollingModeSpec{
+							Interval: metav1.Duration{Duration: 30 * time.Second},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			By("Cleaning up WebRequestCommitStatus")
+			_ = k8sClient.Delete(ctx, webRequestCommitStatus)
+		})
+
+		It("should emit a WebRequestFailed event when the HTTP request cannot be made", func() {
+			Eventually(func(g Gomega) {
+				var eventList corev1.EventList
+				g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
+				g.Expect(hasEventWithReason(eventList, name+"-unreachable-url", constants.WebRequestFailedReason)).To(BeTrue())
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})

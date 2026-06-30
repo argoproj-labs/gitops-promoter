@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.1
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: promotionstrategies.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -22,6 +22,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: PromotionStrategy is the Schema for the promotionstrategies API
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#promotionstrategy
         properties:
           apiVersion:
             description: |-
@@ -66,6 +69,13 @@ spec:
                 x-kubernetes-list-map-keys:
                 - key
                 x-kubernetes-list-type: map
+              activePath:
+                description: |-
+                  ActivePath is the default repository subpath for this strategy's active state.
+                  When set, proposed branches are created as <environment-branch>-next/<activePath>.
+                  Individual environments can override this value via their own activePath field.
+                minLength: 1
+                type: string
               environments:
                 description: Environments is the sequence of environments that a dry
                   commit will be promoted through.
@@ -96,6 +106,12 @@ spec:
                       x-kubernetes-list-map-keys:
                       - key
                       x-kubernetes-list-type: map
+                    activePath:
+                      description: |-
+                        ActivePath optionally overrides the strategy-level activePath for this environment.
+                        When set, this environment's CTP uses this path instead of spec.activePath.
+                      minLength: 1
+                      type: string
                     autoMerge:
                       default: true
                       description: |-
@@ -103,10 +119,19 @@ spec:
                         If false, the dry commit will be proposed but not merged.
                       type: boolean
                     branch:
-                      description: Branch is the name of the active branch for the
-                        environment.
+                      description: |-
+                        Branch is the name of the active branch for the environment.
+                        Must not start with '-', contain ':', or contain '..'.
+                      maxLength: 100
                       minLength: 1
                       type: string
+                      x-kubernetes-validations:
+                      - message: branch must not start with '-'
+                        rule: '!self.startsWith(''-'')'
+                      - message: branch must not contain ':'
+                        rule: '!self.contains('':'')'
+                      - message: branch must not contain '..'
+                        rule: '!self.contains(''..'')'
                     proposedCommitStatuses:
                       description: |-
                         ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running
@@ -134,6 +159,7 @@ spec:
                   required:
                   - branch
                   type: object
+                maxItems: 1000
                 minItems: 1
                 type: array
                 x-kubernetes-list-map-keys:

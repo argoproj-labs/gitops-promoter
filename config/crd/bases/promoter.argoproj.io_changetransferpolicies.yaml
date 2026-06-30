@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.1
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: changetransferpolicies.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -35,6 +35,9 @@ spec:
       openAPIV3Schema:
         description: ChangeTransferPolicy is the Schema for the changetransferpolicies
           API
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#changetransferpolicy
         properties:
           apiVersion:
             description: |-
@@ -57,9 +60,19 @@ spec:
             description: ChangeTransferPolicySpec defines the desired state of ChangeTransferPolicy
             properties:
               activeBranch:
-                description: ActiveBranch staging hydrated branch
+                description: |-
+                  ActiveBranch staging hydrated branch
+                  Must not start with '-', contain ':', or contain '..'.
+                maxLength: 100
                 minLength: 1
                 type: string
+                x-kubernetes-validations:
+                - message: branch must not start with '-'
+                  rule: '!self.startsWith(''-'')'
+                - message: branch must not contain ':'
+                  rule: '!self.contains('':'')'
+                - message: branch must not contain '..'
+                  rule: '!self.contains(''..'')'
               activeCommitStatuses:
                 description: ActiveCommitStatuses lists the statuses to be monitored
                   on the active branch
@@ -79,6 +92,12 @@ spec:
                 x-kubernetes-list-map-keys:
                 - key
                 x-kubernetes-list-type: map
+              activePath:
+                description: |-
+                  ActivePath is an optional repository subpath for this policy's active state.
+                  When set, hydrator metadata is read from <activePath>/hydrator.metadata.
+                minLength: 1
+                type: string
               autoMerge:
                 default: true
                 type: boolean
@@ -95,9 +114,19 @@ spec:
                 - name
                 type: object
               proposedBranch:
-                description: ProposedBranch staging hydrated branch
+                description: |-
+                  ProposedBranch staging hydrated branch
+                  Must not start with '-', contain ':', or contain '..'.
+                maxLength: 100
                 minLength: 1
                 type: string
+                x-kubernetes-validations:
+                - message: branch must not start with '-'
+                  rule: '!self.startsWith(''-'')'
+                - message: branch must not contain ':'
+                  rule: '!self.contains('':'')'
+                - message: branch must not contain '..'
+                  rule: '!self.contains(''..'')'
               proposedCommitStatuses:
                 description: ProposedCommitStatuses lists the statuses to be monitored
                   on the proposed branch

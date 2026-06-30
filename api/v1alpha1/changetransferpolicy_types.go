@@ -34,14 +34,30 @@ type ChangeTransferPolicySpec struct {
 	RepositoryReference ObjectReference `json:"gitRepositoryRef"`
 
 	// ProposedBranch staging hydrated branch
+	// Must not start with '-', contain ':', or contain '..'.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=100
+	// +kubebuilder:validation:XValidation:rule="!self.startsWith('-')",message="branch must not start with '-'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains(':')",message="branch must not contain ':'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains('..')",message="branch must not contain '..'"
 	ProposedBranch string `json:"proposedBranch"`
 
 	// ActiveBranch staging hydrated branch
+	// Must not start with '-', contain ':', or contain '..'.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=100
+	// +kubebuilder:validation:XValidation:rule="!self.startsWith('-')",message="branch must not start with '-'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains(':')",message="branch must not contain ':'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains('..')",message="branch must not contain '..'"
 	ActiveBranch string `json:"activeBranch"`
+
+	// ActivePath is an optional repository subpath for this policy's active state.
+	// When set, hydrator metadata is read from <activePath>/hydrator.metadata.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MinLength=1
+	ActivePath string `json:"activePath,omitempty"`
 
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default:=true
@@ -245,6 +261,7 @@ func (ps *ChangeTransferPolicy) SetObservedGeneration(generation int64) {
 }
 
 // +kubebuilder:ac:generate=true
+// +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#changetransferpolicy",description="CRD reference (examples and behavior)"
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 

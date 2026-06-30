@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Set up Git
         run: |
           git config user.name "${GITHUB_ACTOR}"
@@ -28,7 +28,7 @@ jobs:
         run: |
           chmod +x hack/bump-docs-manifests.sh
           ./hack/bump-docs-manifests.sh ${GITHUB_EVENT_INPUTS_NEW_VERSION}
-          git add docs/getting-started.md docs/tutorial-argocd-apps.md docs/argocd-integrations/index.md
+          git add docs/getting-started.md docs/integrating-with-argocd/tutorial.md docs/integrating-with-argocd/index.md cmd/demo/config/promoter_version cmd/demo/config/argocd-extension.yaml cmd/demo/config/config.yaml
         env:
           GITHUB_EVENT_INPUTS_NEW_VERSION: ${{ github.event.inputs.new_version }}
       - name: Create Pull Request

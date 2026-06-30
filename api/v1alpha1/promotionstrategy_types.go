@@ -56,16 +56,29 @@ type PromotionStrategySpec struct {
 
 	// Environments is the sequence of environments that a dry commit will be promoted through.
 	// +kubebuilder:validation:MinItems:=1
+	// +kubebuilder:validation:MaxItems:=1000
 	// +listType:=map
 	// +listMapKey=branch
 	Environments []Environment `json:"environments"`
+
+	// ActivePath is the default repository subpath for this strategy's active state.
+	// When set, proposed branches are created as <environment-branch>-next/<activePath>.
+	// Individual environments can override this value via their own activePath field.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MinLength=1
+	ActivePath string `json:"activePath,omitempty"`
 }
 
 // Environment defines a single environment in the promotion sequence.
 type Environment struct {
 	// Branch is the name of the active branch for the environment.
+	// Must not start with '-', contain ':', or contain '..'.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=100
+	// +kubebuilder:validation:XValidation:rule="!self.startsWith('-')",message="branch must not start with '-'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains(':')",message="branch must not contain ':'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains('..')",message="branch must not contain '..'"
 	Branch string `json:"branch"`
 	// AutoMerge determines whether the dry commit should be automatically merged into the next branch in the sequence.
 	// If false, the dry commit will be proposed but not merged.
@@ -91,6 +104,12 @@ type Environment struct {
 	// +listType:=map
 	// +listMapKey=key
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses,omitempty"`
+
+	// ActivePath optionally overrides the strategy-level activePath for this environment.
+	// When set, this environment's CTP uses this path instead of spec.activePath.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MinLength=1
+	ActivePath string `json:"activePath,omitempty"`
 }
 
 // GetAutoMerge returns the value of the AutoMerge field, defaulting to true if the field is nil.
@@ -179,6 +198,7 @@ type HealthyDryShas struct {
 }
 
 // +kubebuilder:ac:generate=true
+// +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#promotionstrategy",description="CRD reference (examples and behavior)"
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 

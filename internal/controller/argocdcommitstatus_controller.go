@@ -29,7 +29,6 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"k8s.io/client-go/tools/events"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/multicluster-runtime/pkg/controller"
 
@@ -55,7 +54,6 @@ import (
 	"sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
 
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
@@ -115,7 +113,8 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 
 	var argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
 	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &argoCDCommitStatus, r.localClient, r.Recorder, constants.ArgoCDCommitStatusControllerFieldOwner, &result, &err)
+	var previousReady *metav1.Condition
+	defer utils.HandleReconciliationResult(ctx, startTime, &argoCDCommitStatus, r.localClient, r.Recorder, constants.ArgoCDCommitStatusControllerFieldOwner, &result, &err, &previousReady)
 
 	err = r.localClient.Get(ctx, req.NamespacedName, &argoCDCommitStatus, &client.GetOptions{})
 	if err != nil {
@@ -129,7 +128,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	}
 
 	// Remove any existing Ready condition. We want to start fresh.
-	meta.RemoveStatusCondition(argoCDCommitStatus.GetConditions(), string(promoterConditions.Ready))
+	previousReady = utils.RemoveReadyCondition(&argoCDCommitStatus)
 
 	ls, err := metav1.LabelSelectorAsSelector(argoCDCommitStatus.Spec.ApplicationSelector)
 	if err != nil {
@@ -447,18 +446,18 @@ func enqueueArgoCDCommitStatusForPromotionStrategy(mcMgr mcmanager.Manager) mcha
 		}
 		logger := log.FromContext(ctx)
 		var list promoterv1alpha1.ArgoCDCommitStatusList
-		if err := mcMgr.GetLocalManager().GetClient().List(ctx, &list, client.InNamespace(ps.Namespace)); err != nil {
+		if err := mcMgr.GetLocalManager().GetClient().List(ctx, &list,
+			client.InNamespace(ps.Namespace),
+			client.MatchingFields{PromotionStrategyRefField: ps.Name},
+		); err != nil {
 			logger.Error(err, "failed to list ArgoCDCommitStatus resources for PromotionStrategy watch")
 			return nil
 		}
-		var reqs []mcreconcile.Request
+		reqs := make([]mcreconcile.Request, 0, len(list.Items))
 		for i := range list.Items {
-			acs := &list.Items[i]
-			if acs.Spec.PromotionStrategyRef.Name == ps.Name {
-				reqs = append(reqs, mcreconcile.Request{
-					Request: reconcile.Request{NamespacedName: client.ObjectKeyFromObject(acs)},
-				})
-			}
+			reqs = append(reqs, mcreconcile.Request{
+				Request: reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])},
+			})
 		}
 		return reqs
 	})
@@ -550,7 +549,7 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: maxConcurrentReconciles,
 			RateLimiter:             rateLimiter,
-			UsePriorityQueue:        ptr.To(true),
+			UsePriorityQueue:        new(true),
 		}).
 		Watches(&argocd.Application{}, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
 			mcbuilder.WithEngageWithLocalCluster(watchLocalApplications),
@@ -685,12 +684,11 @@ func (r *ArgoCDCommitStatusReconciler) cleanupLegacyOrphanedCommitStatusesWithou
 // If err is nil, the returned CommitStatus is guaranteed to be non-nil.
 func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.Context, promotionStrategy *promoterv1alpha1.PromotionStrategy, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, targetBranch string, sha string, phase promoterv1alpha1.CommitStatusPhase, desc string) (*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
-
 	key := argoCDCommitStatus.Spec.CommitStatusKey() //nolint:staticcheck // SA1019: #1465 use spec.Key directly in v1.0
 	commitStatusName := key + "/" + targetBranch
 
 	resourceName := utils.CommitStatusResourceName(ctx, &argoCDCommitStatus, targetBranch)
-	kind := reflect.TypeOf(promoterv1alpha1.ArgoCDCommitStatus{}).Name()
+	kind := reflect.TypeFor[promoterv1alpha1.ArgoCDCommitStatus]().Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
 	// Build the spec
@@ -746,6 +744,19 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 			WithBlockOwnerDeletion(true)).
 		WithSpec(commitStatusSpec)
 
+	// Read the previously persisted phase from the child CommitStatus (cache read; NotFound means
+	// the gate is reporting for this branch for the first time) so the phase-change event below
+	// stays transition-only. The aggregated phase is not stored on the ArgoCDCommitStatus itself,
+	// only on the child. Since the post-hysteresis phase is compared, the anti-flap window in
+	// getRequeueTimeAndPhase also debounces events.
+	previousPhase := ""
+	existingCommitStatus := &promoterv1alpha1.CommitStatus{}
+	if err := r.localClient.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: resourceName}, existingCommitStatus); err == nil {
+		previousPhase = string(existingCommitStatus.Spec.Phase)
+	} else if !k8s_errors.IsNotFound(err) {
+		return nil, fmt.Errorf("failed to get existing CommitStatus %q: %w", resourceName, err)
+	}
+
 	// Apply using Server-Side Apply with Patch to get the result directly
 	commitStatus := &promoterv1alpha1.CommitStatus{}
 	commitStatus.Name = resourceName
@@ -753,6 +764,8 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 	if err := r.localClient.Patch(ctx, commitStatus, utils.ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(constants.ArgoCDCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
 		return nil, fmt.Errorf("failed to apply CommitStatus object: %w", err)
 	}
+
+	emitCommitStatusPhaseChangedEvent(r.Recorder, &argoCDCommitStatus, key, targetBranch, previousPhase, string(phase))
 
 	logger.Info("Applied CommitStatus", "name", resourceName, "targetBranch", targetBranch, "sha", sha, "phase", phase, "description", desc)
 

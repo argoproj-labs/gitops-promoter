@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/google/go-github/v71/github"
+	"github.com/google/go-github/v88/github"
 	"github.com/spf13/cobra"
 	"golang.org/x/oauth2"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -59,7 +59,10 @@ func NewDemoCommand() *cobra.Command {
 
 			ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: credentials.Token})
 			tc := oauth2.NewClient(ctx, ts)
-			client := github.NewClient(tc)
+			client, err := github.NewClient(github.WithHTTPClient(tc))
+			if err != nil {
+				return fmt.Errorf("failed to create GitHub client: %w", err)
+			}
 
 			// Get current user
 			user, _, err := client.Users.Get(ctx, "")
@@ -76,10 +79,10 @@ func NewDemoCommand() *cobra.Command {
 			// 3. Create the repository
 			color.Green("Creating repository %s/%s...\n", username, repoName)
 			repo, _, err := client.Repositories.Create(ctx, "", &github.Repository{
-				Name:        github.Ptr(repoName),
-				Description: github.Ptr("GitOps Promoter demo repository"),
-				Private:     github.Ptr(true),
-				AutoInit:    github.Ptr(true), // Creates with README
+				Name:        new(repoName),
+				Description: new("GitOps Promoter demo repository"),
+				Private:     new(true),
+				AutoInit:    new(true), // Creates with README
 			})
 			if err != nil {
 				// Check if repo already exists

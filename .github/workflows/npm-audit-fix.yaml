@@ -21,20 +21,25 @@ jobs:
       pull-requests: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: '24'
+          node-version: '24.18.0'
 
       - name: Run npm audit fix
         env:
           FORCE_FLAG: ${{ inputs.force == true && '--force' || '' }}
         run: |
-          cd "$GITHUB_WORKSPACE/ui/dashboard" && npm install && npm audit fix $FORCE_FLAG
-          cd "$GITHUB_WORKSPACE/ui/extension" && npm install && npm audit fix $FORCE_FLAG
-          cd "$GITHUB_WORKSPACE/ui/components-lib" && npm install && npm audit fix $FORCE_FLAG
+          for pkg in ui/dashboard ui/extension ui/components-lib; do
+            cd "$GITHUB_WORKSPACE/$pkg"
+            npm install
+            # npm audit fix exits 1 when devDependency vulns remain; CI only checks prod deps.
+            npm audit fix $FORCE_FLAG || true
+          done
+          cd "$GITHUB_WORKSPACE/ui/dashboard" && npm audit --omit=dev
+          cd "$GITHUB_WORKSPACE/ui/extension" && npm audit --omit=dev
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1

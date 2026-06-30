@@ -6,10 +6,6 @@
 
 - **DAG-style promotion strategies** — Model promotion flows beyond a linear environment chain, including environment dependencies and parallel branch targets within a step ([#1364](https://github.com/argoproj-labs/gitops-promoter/issues/1364)).
 
-### Monorepo and branch management
-
-- **[Shared active branch across PromotionStrategies](https://github.com/argoproj-labs/gitops-promoter/issues/1336)** — Use one live branch per environment when multiple promotion pipelines share the same monorepo branches.
-
 ### Commit status and gating
 
 - **Deployment window gates** — Gate promotions on allowed time-of-day or calendar windows.
@@ -71,7 +67,7 @@ spec:
 
 Use the same key in `PromotionStrategy` `activeCommitStatuses` for ArgoCDCommitStatus, or in `activeCommitStatuses` / `proposedCommitStatuses` for TimedCommitStatus as appropriate.
 
-See also: [Argo CD Commit Status](commit-status-controllers/argocd.md), [Timed Commit Status](commit-status-controllers/timed.md), and [Development Best Practices](commit-status-controllers/development-best-practices.md).
+See also: [Argo CD Commit Status](gating-promotions/built-in-gates/argocd-commit-status.md), [Timed Commit Status](gating-promotions/built-in-gates/timed-commit-status.md), and [Developing a CommitStatus](contributing/developing-a-commitstatus.md).
 
 ### ArgoCDCommitStatus legacy CommitStatus cleanup (planned for v1.0)
 

@@ -1,9 +1,53 @@
 import { create } from 'zustand';
 import { enrichFromCRD } from '@shared/utils/PSData';
 import type { PromotionStrategy } from '@shared/utils/PSData';
+import type { Environment } from '@shared/types/promotion';
+import type { ChangeTransferPolicy, PromotionStrategyBundle } from '@shared/types/bundle';
 
 interface CRDItem extends PromotionStrategy {
   enriched?: unknown;
+}
+
+// Reconstruct the per-environment status the UI renders. The bundle no longer carries
+// the PromotionStrategy status (it was a duplicate aggregation); instead we build the
+// environment list from the embedded ChangeTransferPolicies, one per environment keyed
+// by spec.activeBranch, in the order declared by the PromotionStrategy spec.
+function environmentsFromCTPs(ps: PromotionStrategy, ctps: ChangeTransferPolicy[]): Environment[] {
+  const byBranch = new Map<string, ChangeTransferPolicy>();
+  for (const ctp of ctps) {
+    const branch = ctp.spec?.activeBranch;
+    if (branch) byBranch.set(branch, ctp);
+  }
+
+  const specEnvironments = ps.spec?.environments ?? [];
+  return specEnvironments.map((env) => {
+    const status = byBranch.get(env.branch)?.status ?? {};
+    return {
+      branch: env.branch,
+      active: status.active ?? {},
+      proposed: status.proposed ?? {},
+      pullRequest: status.pullRequest,
+      history: status.history,
+    };
+  });
+}
+
+// The dashboard consumes a single, server-computed PromotionStrategyDetails bundle
+// (group view.promoter.argoproj.io) instead of four raw CRD streams. The bundle
+// embeds the PromotionStrategy (metadata + spec only) plus its ChangeTransferPolicies;
+// we rebuild status.environments from those CTPs so the existing enrichment/components
+// keep working.
+function bundleToItem<T extends CRDItem>(bundle: PromotionStrategyBundle): T {
+  const ps = bundle.promotionStrategy;
+  const environments = environmentsFromCTPs(ps, bundle.changeTransferPolicies ?? []);
+  const psWithEnvironments: PromotionStrategy = {
+    ...ps,
+    status: { ...ps.status, environments },
+  };
+  return {
+    ...psWithEnvironments,
+    enriched: enrichFromCRD(psWithEnvironments),
+  } as T;
 }
 
 export function createCRDStore<T extends CRDItem>(kind: string, eventName: string) {
@@ -24,34 +68,32 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
     error: null,
     connectionStatus: 'connecting',
 
-    // Fetch items from via /list endpoint
+    // Fetch the current set of bundles via the /list endpoint.
     fetchItems: async (namespace: string) => {
       set({ loading: true, error: null });
       try {
         const res = await fetch(`/list?kind=${kind}&namespace=${namespace}`);
 
         if (!res.ok) throw new Error(`Error: ${res.status}`);
-        const data = await res.json();
+        const data: PromotionStrategyBundle[] = await res.json();
 
-        set({ items: data, loading: false });
+        set({ items: (data || []).map((b) => bundleToItem<T>(b)), loading: false });
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         set({ error: errorMessage, loading: false });
       }
     },
 
-    // Subscribing to SSE
+    // Subscribe to bundle updates over SSE.
     subscribe: (namespace: string) => {
       if (eventSource) eventSource.close();
 
-      // Real-Time fetch via /watch endpoint
       eventSource = new EventSource(`/watch?kind=${kind}&namespace=${namespace}`);
 
-      // Handle PromotionStrategy SSE events
       eventSource.addEventListener(eventName, async (evt: MessageEvent) => {
         try {
-          const updated = JSON.parse(evt.data);
-          const enriched = enrichFromCRD(updated);
+          const bundle: PromotionStrategyBundle = JSON.parse(evt.data);
+          const updated = bundleToItem<T>(bundle);
           set((state) => {
             const idx = state.items.findIndex(
               (item: T) =>
@@ -61,9 +103,9 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
             let newItems: T[];
             if (idx >= 0) {
               newItems = [...state.items];
-              newItems[idx] = { ...updated, enriched };
+              newItems[idx] = updated;
             } else {
-              newItems = [...state.items, { ...updated, enriched }];
+              newItems = [...state.items, updated];
             }
             return { items: newItems };
           });
