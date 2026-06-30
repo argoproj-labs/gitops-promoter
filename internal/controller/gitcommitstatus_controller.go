@@ -25,7 +25,6 @@ import (
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
-	promoterpredicate "github.com/argoproj-labs/gitops-promoter/internal/predicate"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -149,20 +148,9 @@ func (r *GitCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ct
 		return fmt.Errorf("failed to get GitCommitStatus max concurrent reconciles: %w", err)
 	}
 
-	instanceID, err := r.SettingsMgr.GetInstanceIDDirect(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get InstanceID from ControllerConfiguration: %w", err)
-	}
-
 	err = ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.GitCommitStatus{}, builder.WithPredicates(predicate.And(
-			predicate.GenerationChangedPredicate{},
-			promoterpredicate.InstanceID(instanceID),
-		))).
-		Watches(&promoterv1alpha1.PromotionStrategy{},
-			r.enqueueGitCommitStatusForPromotionStrategy(),
-			builder.WithPredicates(promoterpredicate.InstanceID(instanceID)),
-		).
+		For(&promoterv1alpha1.GitCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueGitCommitStatusForPromotionStrategy()).
 		Named("gitcommitstatus").
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: maxConcurrentReconciles,
@@ -416,8 +404,7 @@ func (r *GitCommitStatusReconciler) upsertCommitStatus(ctx context.Context, gcs 
 	commitStatusName := utils.CommitStatusResourceName(ctx, gcs, branch)
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
-	// Build the apply configuration. Compose main's standard-labels helper with
-	// our instance-id propagation (ARGO-3085).
+	// Build the apply configuration
 	commitStatusLabels := utils.CopyInstanceIDLabelToMap(
 		gcs,
 		utils.CommitStatusStandardLabels(gcs, branch, validationName),

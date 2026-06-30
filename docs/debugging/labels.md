@@ -11,6 +11,7 @@ GitOps Promoter controllers set Kubernetes labels to associate resources, filter
 
 | Label key | Kind(s) | Set by | Value | Purpose |
 | --------- | ------- | ------ | ----- | ------- |
+| `promoter.argoproj.io/instance-id` | All Promoter CRs in a multi-install deployment | Operator on root resources (`PromotionStrategy`, gate CRs); controllers propagate to children | Matches `ControllerConfiguration.spec.instanceID` for that install | Partitions which controller install caches and reconciles the object. See [Multiple Controller Installs](../multi-install.md). |
 | `promoter.argoproj.io/promotion-strategy` | `ChangeTransferPolicy`, `PullRequest` | PromotionStrategy / ChangeTransferPolicy controllers | `KubeSafeLabel` of the owning `PromotionStrategy` name | Links CTPs and PRs to a promotion strategy; used to list and correlate objects per strategy. |
 | `promoter.argoproj.io/environment` | `ChangeTransferPolicy`, `PullRequest` | PromotionStrategy, ChangeTransferPolicy controllers | `KubeSafeLabel` of the environment branch (for example `environment/development` → `environment-development`) | Identifies which environment branch the object applies to. (Also the second standard label on gate-created `CommitStatus`; see [CommitStatus gating](#commitstatus-gating).) |
 | `promoter.argoproj.io/change-transfer-policy` | `PullRequest` | ChangeTransferPolicy controller | `KubeSafeLabel` of the owning `ChangeTransferPolicy` name | Finds PRs for a specific CTP. |
@@ -87,6 +88,17 @@ List PullRequests for a change transfer policy:
 kubectl get pullrequest -n <namespace> \
   -l promoter.argoproj.io/change-transfer-policy=<ctp-name>,promoter.argoproj.io/promotion-strategy=<strategy-name>
 ```
+
+### Instance ID (multi-install)
+
+List Promoter resources for a specific controller install:
+
+```bash
+kubectl get promotionstrategy,changetransferpolicy,commitstatus -A \
+  -l promoter.argoproj.io/instance-id=wave-0
+```
+
+If gating fails after enabling multi-install, confirm the gate CR and its `CommitStatus` children carry the same `instance-id` label as `ControllerConfiguration.spec.instanceID`.
 
 ## Troubleshooting
 

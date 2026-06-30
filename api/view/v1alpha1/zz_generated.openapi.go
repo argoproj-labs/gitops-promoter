@@ -1983,6 +1983,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSp
 				Description: "ControllerConfigurationSpec defines the desired state of ControllerConfiguration.\n\nThis spec contains the global configuration for all controllers in the promoter system. Each controller has its own configuration section that specifies WorkQueue settings, rate limiters, and other controller-specific parameters. All fields should be required, with defaults set in manifests rather than in code.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
+					"instanceID": {
+						SchemaProps: spec.SchemaProps{
+							Description: "InstanceID, when non-empty, scopes this controller install to resources carrying promoter.argoproj.io/instance-id with the same value. Leave empty for single-install mode (reconcile all resources in scope). Changing this value requires a controller restart.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 					"promotionStrategy": {
 						SchemaProps: spec.SchemaProps{
 							Description: "PromotionStrategy contains the configuration for the PromotionStrategy controller, including WorkQueue settings that control reconciliation behavior.",

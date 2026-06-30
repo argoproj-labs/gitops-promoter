@@ -7,10 +7,6 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: controller-configuration
 spec:
-  # InstanceID scopes this install to resources carrying the matching
-  # promoter.argoproj.io/instance-id label. Empty means reconcile everything
-  # (single-install / backwards-compatible default). Set to a distinct value
-  # per install when running multiple Promoter installs on one cluster.
   instanceID: ""
   promotionStrategy:
     workQueue:

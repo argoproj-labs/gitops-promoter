@@ -32,6 +32,8 @@ import (
 	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/cmd/demo"
 	"github.com/argoproj-labs/gitops-promoter/internal/apiserver"
+	"github.com/argoproj-labs/gitops-promoter/internal/bootstrap"
+	promotercache "github.com/argoproj-labs/gitops-promoter/internal/cache"
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -51,6 +53,7 @@ import (
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 
@@ -104,6 +107,19 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 
 	return cmd
+}
+
+func readInstanceIDForCache(ctx context.Context, cfg *rest.Config, namespace string) string {
+	instanceID, err := bootstrap.ReadInstanceID(ctx, cfg, namespace)
+	if err != nil {
+		setupLog.Error(err,
+			"failed to read instanceID from ControllerConfiguration; continuing with single-install mode")
+		return ""
+	}
+	if instanceID != "" {
+		setupLog.Info("multi-install mode: scoping informer cache to instanceID", "instanceID", instanceID)
+	}
+	return instanceID
 }
 
 func runController(
@@ -170,8 +186,14 @@ func runController(
 	// Create the provider first, then the manager with the provider
 	provider := kubeconfigprovider.New(providerOpts)
 
-	mcMgr, err := mcmanager.New(ctrl.GetConfigOrDie(), provider, ctrl.Options{
+	restConfig := ctrl.GetConfigOrDie()
+	processSignalsCtx := ctrl.SetupSignalHandler()
+
+	instanceID := readInstanceIDForCache(processSignalsCtx, restConfig, controllerNamespace)
+
+	mcMgr, err := mcmanager.New(restConfig, provider, ctrl.Options{
 		Scheme: scheme,
+		Cache:  promotercache.OptionsForInstanceID(instanceID),
 		Metrics: metricsserver.Options{
 			BindAddress:    metricsAddr,
 			SecureServing:  secureMetrics,
@@ -212,8 +234,6 @@ func runController(
 		ControllerNamespace: controllerNamespace,
 	})
 
-	processSignalsCtx := ctrl.SetupSignalHandler()
-
 	if err = (&controller.PullRequestReconciler{
 		Client:      localManager.GetClient(),
 		Scheme:      localManager.GetScheme(),
@@ -223,10 +243,9 @@ func runController(
 		panic(fmt.Errorf("unable to create PullRequest controller: %w", err))
 	}
 	if err = (&controller.RevertCommitReconciler{
-		Client:      localManager.GetClient(),
-		Scheme:      localManager.GetScheme(),
-		Recorder:    localManager.GetEventRecorder("RevertCommit"),
-		SettingsMgr: settingsMgr,
+		Client:   localManager.GetClient(),
+		Scheme:   localManager.GetScheme(),
+		Recorder: localManager.GetEventRecorder("RevertCommit"),
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create RevertCommit controller: %w", err))
 	}
@@ -263,18 +282,16 @@ func runController(
 		panic(fmt.Errorf("unable to create PromotionStrategy controller: %w", err))
 	}
 	if err = (&controller.ScmProviderReconciler{
-		Client:      localManager.GetClient(),
-		Scheme:      localManager.GetScheme(),
-		Recorder:    localManager.GetEventRecorder("ScmProvider"),
-		SettingsMgr: settingsMgr,
+		Client:   localManager.GetClient(),
+		Scheme:   localManager.GetScheme(),
+		Recorder: localManager.GetEventRecorder("ScmProvider"),
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ScmProvider controller: %w", err))
 	}
 	if err = (&controller.GitRepositoryReconciler{
-		Client:      localManager.GetClient(),
-		Scheme:      localManager.GetScheme(),
-		Recorder:    localManager.GetEventRecorder("GitRepository"),
-		SettingsMgr: settingsMgr,
+		Client:   localManager.GetClient(),
+		Scheme:   localManager.GetScheme(),
+		Recorder: localManager.GetEventRecorder("GitRepository"),
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create GitRepository controller: %w", err))
 	}
@@ -339,11 +356,7 @@ func runController(
 		panic(fmt.Errorf("unable to set up ready check: %w", err))
 	}
 
-	whr := webhookreceiver.NewWebhookReceiver(
-		localManager,
-		webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()),
-		settingsMgr,
-	)
+	whr := webhookreceiver.NewWebhookReceiver(localManager, webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()))
 
 	g, ctx := errgroup.WithContext(processSignalsCtx)
 

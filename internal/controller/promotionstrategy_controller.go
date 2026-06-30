@@ -33,7 +33,6 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
-	promoterpredicate "github.com/argoproj-labs/gitops-promoter/internal/predicate"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -56,8 +55,8 @@ type ctpEnqueueState struct {
 // PromotionStrategyReconciler reconciles a PromotionStrategy object
 type PromotionStrategyReconciler struct {
 	client.Client
-	Recorder    events.EventRecorder
 	Scheme      *runtime.Scheme
+	Recorder    events.EventRecorder
 	SettingsMgr *settings.Manager
 
 	// EnqueueCTP is a function to enqueue CTP reconcile requests without modifying the CTP object.
@@ -65,8 +64,7 @@ type PromotionStrategyReconciler struct {
 
 	// enqueueStates tracks rate limiting state for out-of-sync CTP enqueues.
 	// Key is client.ObjectKey of the CTP. Protected by enqueueStateMutex.
-	enqueueStates map[client.ObjectKey]*ctpEnqueueState
-
+	enqueueStates     map[client.ObjectKey]*ctpEnqueueState
 	enqueueStateMutex sync.Mutex
 }
 
@@ -193,16 +191,8 @@ func (r *PromotionStrategyReconciler) SetupWithManager(ctx context.Context, mgr 
 		return fmt.Errorf("failed to get PromotionStrategy max concurrent reconciles: %w", err)
 	}
 
-	instanceID, err := r.SettingsMgr.GetInstanceIDDirect(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get InstanceID from ControllerConfiguration: %w", err)
-	}
-
 	err = ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.PromotionStrategy{}, builder.WithPredicates(predicate.And(
-			predicate.GenerationChangedPredicate{},
-			promoterpredicate.InstanceID(instanceID),
-		))).
+		For(&promoterv1alpha1.PromotionStrategy{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Owns(&promoterv1alpha1.ChangeTransferPolicy{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Complete(r)
@@ -283,11 +273,10 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 	}
 
 	// Build the apply configuration
-	ctpLabels := map[string]string{
+	ctpLabels := utils.CopyInstanceIDLabelToMap(ps, map[string]string{
 		promoterv1alpha1.PromotionStrategyLabel: utils.KubeSafeLabel(ps.Name),
 		promoterv1alpha1.EnvironmentLabel:       utils.KubeSafeLabel(environment.Branch),
-	}
-	ctpLabels = utils.CopyInstanceIDLabelToMap(ps, ctpLabels)
+	})
 	ctpApply := acv1alpha1.ChangeTransferPolicy(ctpName, ps.Namespace).
 		WithLabels(ctpLabels).
 		WithOwnerReferences(acmetav1.OwnerReference().
@@ -622,10 +611,9 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 	}
 
 	// Build the apply configuration
-	commitStatusLabels := map[string]string{
+	commitStatusLabels := utils.CopyInstanceIDLabelToMap(ctp, map[string]string{
 		promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
-	}
-	commitStatusLabels = utils.CopyInstanceIDLabelToMap(ctp, commitStatusLabels)
+	})
 	commitStatusApply := acv1alpha1.CommitStatus(csName, ctp.Namespace).
 		WithLabels(commitStatusLabels).
 		WithAnnotations(map[string]string{

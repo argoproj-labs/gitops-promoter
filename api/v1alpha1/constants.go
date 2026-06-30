@@ -26,11 +26,6 @@ const ArgoCDCommitStatusDefaultKey = "argocd-health"
 // TimedCommitStatusDefaultKey is the default commit status key for TimedCommitStatus when spec.key is omitted.
 const TimedCommitStatusDefaultKey = "timer"
 
-// InstanceIDLabel partitions resources between multiple controller installs sharing an API server.
-// When the controller is started with --instance-id, it reconciles only resources carrying this label
-// with the matching value. Empty/unset on the controller side means reconcile everything (backwards-compat).
-const InstanceIDLabel = "promoter.argoproj.io/instance-id"
-
 // PreviousEnvironmentCommitStatusKey the commit status key name used to indicate the previous environment health
 const PreviousEnvironmentCommitStatusKey = "promoter-previous-environment"
 
@@ -64,3 +59,8 @@ const ScmProviderSecretFinalizer = "scmprovider.promoter.argoproj.io/secret-fina
 
 // ClusterScmProviderSecretFinalizer prevents deletion of Secret while ClusterScmProvider references it
 const ClusterScmProviderSecretFinalizer = "clusterscmprovider.promoter.argoproj.io/secret-finalizer"
+
+// InstanceIDLabel partitions resources between multiple controller installs sharing an API server.
+// When ControllerConfiguration.spec.instanceID is non-empty, the controller's informer cache only
+// watches resources carrying this label with the matching value.
+const InstanceIDLabel = "promoter.argoproj.io/instance-id"

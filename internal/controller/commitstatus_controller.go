@@ -31,7 +31,6 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	promoterpredicate "github.com/argoproj-labs/gitops-promoter/internal/predicate"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/azuredevops"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
@@ -127,16 +126,8 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *CommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
-	instanceID, err := r.SettingsMgr.GetInstanceIDDirect(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get InstanceID from ControllerConfiguration: %w", err)
-	}
-
-	err = ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.CommitStatus{}, builder.WithPredicates(predicate.And(
-			predicate.GenerationChangedPredicate{},
-			promoterpredicate.InstanceID(instanceID),
-		))).
+	err := ctrl.NewControllerManagedBy(mgr).
+		For(&promoterv1alpha1.CommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)

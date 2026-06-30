@@ -36,7 +36,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	promoterpredicate "github.com/argoproj-labs/gitops-promoter/internal/predicate"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -92,16 +91,8 @@ func (r *ClusterScmProviderReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ClusterScmProviderReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
-	instanceID, err := r.SettingsMgr.GetInstanceIDDirect(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get InstanceID from ControllerConfiguration: %w", err)
-	}
-
-	err = ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.ClusterScmProvider{}, builder.WithPredicates(predicate.And(
-			predicate.GenerationChangedPredicate{},
-			promoterpredicate.InstanceID(instanceID),
-		))).
+	err := ctrl.NewControllerManagedBy(mgr).
+		For(&promoterv1alpha1.ClusterScmProvider{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Named("clusterscmprovider").
 		Watches(
 			&promoterv1alpha1.GitRepository{},

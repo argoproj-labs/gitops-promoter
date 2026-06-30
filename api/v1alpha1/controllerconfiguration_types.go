@@ -32,20 +32,12 @@ import (
 // with defaults set in manifests rather than in code.
 type ControllerConfigurationSpec struct {
 	// InstanceID, when non-empty, scopes this controller install to resources carrying
-	// the matching promoter.argoproj.io/instance-id label. Empty (the default) means
-	// reconcile every resource in scope, preserving single-install behavior for
-	// backwards compatibility. To run multiple Promoter installs side-by-side on the
-	// same cluster (one per namespace), give each install's ControllerConfiguration a
-	// distinct InstanceID and label the resources each install should manage.
-	//
-	// Must follow Kubernetes label-value rules: RFC 1123 (lowercase alphanumeric plus
-	// hyphens, starting and ending with alphanumeric), max 63 characters. Empty string
-	// is also permitted.
-	// +required
-	// +kubebuilder:default=""
+	// promoter.argoproj.io/instance-id with the same value. Leave empty for single-install
+	// mode (reconcile all resources in scope). Changing this value requires a controller restart.
+	// +optional
 	// +kubebuilder:validation:MaxLength=63
-	// +kubebuilder:validation:Pattern=`^([a-z0-9]([-a-z0-9]*[a-z0-9])?)?$`
-	InstanceID string `json:"instanceID"`
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$`
+	InstanceID string `json:"instanceID,omitempty"`
 
 	// PromotionStrategy contains the configuration for the PromotionStrategy controller,
 	// including WorkQueue settings that control reconciliation behavior.

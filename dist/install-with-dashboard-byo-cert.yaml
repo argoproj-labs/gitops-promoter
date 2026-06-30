@@ -2998,6 +2998,14 @@ spec:
                 required:
                 - workQueue
                 type: object
+              instanceID:
+                description: |-
+                  InstanceID, when non-empty, scopes this controller install to resources carrying
+                  promoter.argoproj.io/instance-id with the same value. Leave empty for single-install
+                  mode (reconcile all resources in scope). Changing this value requires a controller restart.
+                maxLength: 63
+                pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
+                type: string
               promotionStrategy:
                 description: |-
                   PromotionStrategy contains the configuration for the PromotionStrategy controller,
@@ -8720,6 +8728,7 @@ spec:
             maxFastAttempts: 3
             slowDelay: 5m
       requeueDuration: 5m
+  instanceID: ""
   promotionStrategy:
     workQueue:
       maxConcurrentReconciles: 10

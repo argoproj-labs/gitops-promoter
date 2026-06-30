@@ -27,6 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	promotercache "github.com/argoproj-labs/gitops-promoter/internal/cache"
 )
 
 //go:embed testdata/ControllerConfiguration.yaml
@@ -84,5 +85,28 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
 			// Example: If you expect a certain status condition after reconciliation, verify it here.
 		})
+	})
+})
+
+var _ = Describe("OptionsForInstanceID", func() {
+	It("returns empty ByObject when instanceID is empty", func() {
+		opts := promotercache.OptionsForInstanceID("")
+		Expect(opts.ByObject).To(BeNil())
+	})
+
+	It("scopes all promotor CRDs when instanceID is set", func() {
+		opts := promotercache.OptionsForInstanceID("wave-0")
+		Expect(opts.ByObject).To(HaveLen(len(promotercache.PromotorCRDObjects())))
+		for _, obj := range promotercache.PromotorCRDObjects() {
+			byObj, ok := opts.ByObject[obj]
+			Expect(ok).To(BeTrue(), "missing ByObject for %T", obj)
+			Expect(byObj.Label.String()).To(Equal("promoter.argoproj.io/instance-id=wave-0"))
+		}
+	})
+
+	It("does not include ControllerConfiguration", func() {
+		opts := promotercache.OptionsForInstanceID("wave-0")
+		_, ok := opts.ByObject[&promoterv1alpha1.ControllerConfiguration{}]
+		Expect(ok).To(BeFalse())
 	})
 })

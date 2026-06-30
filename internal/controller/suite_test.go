@@ -238,26 +238,23 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&RevertCommitReconciler{
-		Client:      k8sManager.GetClient(),
-		Scheme:      k8sManager.GetScheme(),
-		Recorder:    k8sManager.GetEventRecorder("RevertCommit"),
-		SettingsMgr: settingsMgr,
+		Client:   k8sManager.GetClient(),
+		Scheme:   k8sManager.GetScheme(),
+		Recorder: k8sManager.GetEventRecorder("RevertCommit"),
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&ScmProviderReconciler{
-		Client:      k8sManager.GetClient(),
-		Scheme:      k8sManager.GetScheme(),
-		Recorder:    k8sManager.GetEventRecorder("ScmProvider"),
-		SettingsMgr: settingsMgr,
+		Client:   k8sManager.GetClient(),
+		Scheme:   k8sManager.GetScheme(),
+		Recorder: k8sManager.GetEventRecorder("ScmProvider"),
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&GitRepositoryReconciler{
-		Client:      k8sManager.GetClient(),
-		Scheme:      k8sManager.GetScheme(),
-		Recorder:    k8sManager.GetEventRecorder("GitRepository"),
-		SettingsMgr: settingsMgr,
+		Client:   k8sManager.GetClient(),
+		Scheme:   k8sManager.GetScheme(),
+		Recorder: k8sManager.GetEventRecorder("GitRepository"),
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
@@ -296,7 +293,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	webhookReceiverPort = constants.WebhookReceiverPort + GinkgoParallelProcess()
-	whr := webhookreceiver.NewWebhookReceiver(k8sManager, webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()), settingsMgr)
+	whr := webhookreceiver.NewWebhookReceiver(k8sManager, webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()))
 	go func() {
 		err = whr.Start(ctx, fmt.Sprintf(":%d", webhookReceiverPort))
 		Expect(err).ToNot(HaveOccurred(), "failed to start webhook receiver")
