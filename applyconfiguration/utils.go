@@ -89,6 +89,16 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ControllerConfigurationApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ControllerConfigurationSpec"):
 		return &apiv1alpha1.ControllerConfigurationSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DAGCommitStatus"):
+		return &apiv1alpha1.DAGCommitStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DAGCommitStatusConfiguration"):
+		return &apiv1alpha1.DAGCommitStatusConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DAGCommitStatusSpec"):
+		return &apiv1alpha1.DAGCommitStatusSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DAGCommitStatusStatus"):
+		return &apiv1alpha1.DAGCommitStatusStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DAGEnvironment"):
+		return &apiv1alpha1.DAGEnvironmentApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("Environment"):
 		return &apiv1alpha1.EnvironmentApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("EnvironmentStatus"):
@@ -153,6 +163,14 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.OutputSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PollingModeSpec"):
 		return &apiv1alpha1.PollingModeSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("PreviousEnvironmentCommitStatus"):
+		return &apiv1alpha1.PreviousEnvironmentCommitStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("PreviousEnvironmentCommitStatusConfiguration"):
+		return &apiv1alpha1.PreviousEnvironmentCommitStatusConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("PreviousEnvironmentCommitStatusSpec"):
+		return &apiv1alpha1.PreviousEnvironmentCommitStatusSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("PreviousEnvironmentCommitStatusStatus"):
+		return &apiv1alpha1.PreviousEnvironmentCommitStatusStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PromotionStrategy"):
 		return &apiv1alpha1.PromotionStrategyApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PromotionStrategyConfiguration"):

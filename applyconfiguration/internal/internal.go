@@ -117,6 +117,16 @@ var schemaYAML = typed.YAMLObject(`types:
     elementType:
       namedType: __untyped_deduced_
     elementRelationship: separable
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DAGCommitStatus
+  scalar: untyped
+  list:
+    elementType:
+      namedType: __untyped_atomic_
+    elementRelationship: atomic
+  map:
+    elementType:
+      namedType: __untyped_deduced_
+    elementRelationship: separable
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.Fake
   map:
     fields:
@@ -173,6 +183,16 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: domain
       type:
         scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PreviousEnvironmentCommitStatus
+  scalar: untyped
+  list:
+    elementType:
+      namedType: __untyped_atomic_
+    elementRelationship: atomic
+  map:
+    elementType:
+      namedType: __untyped_deduced_
+    elementRelationship: separable
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PromotionStrategy
   scalar: untyped
   list:

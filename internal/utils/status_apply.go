@@ -65,6 +65,10 @@ func statusApplyConfig(obj client.Object, conditionsOnly bool) (any, error) {
 		return webRequestCommitStatusStatusApply(o, conditionsOnly)
 	case *promoterv1alpha1.TimedCommitStatus:
 		return timedCommitStatusStatusApply(o, conditionsOnly)
+	case *promoterv1alpha1.PreviousEnvironmentCommitStatus:
+		return previousEnvironmentCommitStatusStatusApply(o, conditionsOnly)
+	case *promoterv1alpha1.DAGCommitStatus:
+		return dagCommitStatusStatusApply(o, conditionsOnly)
 	case *promoterv1alpha1.GitCommitStatus:
 		return gitCommitStatusStatusApply(o, conditionsOnly)
 	case *promoterv1alpha1.ArgoCDCommitStatus:
@@ -130,6 +134,26 @@ func timedCommitStatusStatusApply(o *promoterv1alpha1.TimedCommitStatus, conditi
 		return nil, err
 	}
 	return acv1alpha1.TimedCommitStatus(o.Name, o.Namespace).WithStatus(statusAC), nil
+}
+
+func previousEnvironmentCommitStatusStatusApply(o *promoterv1alpha1.PreviousEnvironmentCommitStatus, conditionsOnly bool) (any, error) {
+	statusAC := acv1alpha1.PreviousEnvironmentCommitStatusStatus()
+	if conditionsOnly {
+		statusAC = statusAC.WithConditions(ConditionsToApply(o.Status.Conditions)...)
+	} else if err := jsonRoundTrip(&o.Status, statusAC); err != nil {
+		return nil, err
+	}
+	return acv1alpha1.PreviousEnvironmentCommitStatus(o.Name, o.Namespace).WithStatus(statusAC), nil
+}
+
+func dagCommitStatusStatusApply(o *promoterv1alpha1.DAGCommitStatus, conditionsOnly bool) (any, error) {
+	statusAC := acv1alpha1.DAGCommitStatusStatus()
+	if conditionsOnly {
+		statusAC = statusAC.WithConditions(ConditionsToApply(o.Status.Conditions)...)
+	} else if err := jsonRoundTrip(&o.Status, statusAC); err != nil {
+		return nil, err
+	}
+	return acv1alpha1.DAGCommitStatus(o.Name, o.Namespace).WithStatus(statusAC), nil
 }
 
 func gitCommitStatusStatusApply(o *promoterv1alpha1.GitCommitStatus, conditionsOnly bool) (any, error) {

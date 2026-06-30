@@ -46,8 +46,10 @@ rules:
   - clusterscmproviders
   - commitstatuses
   - controllerconfigurations
+  - dagcommitstatuses
   - gitcommitstatuses
   - gitrepositories
+  - previousenvironmentcommitstatuses
   - promotionstrategies
   - pullrequests
   - revertcommits
@@ -70,8 +72,10 @@ rules:
   - clusterscmproviders/finalizers
   - commitstatuses/finalizers
   - controllerconfigurations/finalizers
+  - dagcommitstatuses/finalizers
   - gitcommitstatuses/finalizers
   - gitrepositories/finalizers
+  - previousenvironmentcommitstatuses/finalizers
   - promotionstrategies/finalizers
   - pullrequests/finalizers
   - revertcommits/finalizers
@@ -88,8 +92,10 @@ rules:
   - clusterscmproviders/status
   - commitstatuses/status
   - controllerconfigurations/status
+  - dagcommitstatuses/status
   - gitcommitstatuses/status
   - gitrepositories/status
+  - previousenvironmentcommitstatuses/status
   - promotionstrategies/status
   - pullrequests/status
   - revertcommits/status
