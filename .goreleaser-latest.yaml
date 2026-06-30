@@ -33,37 +33,22 @@ builds:
       - -X github.com/argoproj-labs/gitops-promoter/common.buildDate={{ .Date }}
       - -extldflags="-static"
 
-dockers:
-  - image_templates:
-      - quay.io/argoprojlabs/gitops-promoter:latest-amd64
+dockers_v2:
+  - images:
+      - quay.io/argoprojlabs/gitops-promoter
+    tags:
+      - latest
     dockerfile: release.Dockerfile
-    use: buildx
-    goarch: amd64
+    platforms:
+      - linux/amd64
+      - linux/arm64
     extra_files:
       - hack/git/promoter_askpass.sh
-    build_flag_templates:
-      - "--pull"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.version=latest"
-      - "--platform=linux/amd64"
-      - "--provenance=false"
-  - image_templates:
-      - quay.io/argoprojlabs/gitops-promoter:latest-arm64
-    dockerfile: release.Dockerfile
-    use: buildx
-    goarch: arm64
-    extra_files:
-      - hack/git/promoter_askpass.sh
-    build_flag_templates:
-      - "--pull"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.version=latest"
-      - "--platform=linux/arm64"
-      - "--provenance=false"
+    labels:
+      "org.opencontainers.image.created": "{{.Date}}"
+      "org.opencontainers.image.title": "{{.ProjectName}}"
+      "org.opencontainers.image.revision": "{{.FullCommit}}"
+      "org.opencontainers.image.version": "latest"
 
 # No archives for latest builds
 archives: []
