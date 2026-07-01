@@ -19,9 +19,12 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -30,13 +33,16 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
 // ControllerConfigurationReconciler reconciles a ControllerConfiguration object
 // revive:disable:exported // The name starting with "Controller" is fine. That's the kind name.
 type ControllerConfigurationReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme   *runtime.Scheme
+	Recorder events.EventRecorder
 
 	Shutdown            context.CancelFunc
 	StartupInstanceID   *string
@@ -49,20 +55,40 @@ type ControllerConfigurationReconciler struct {
 
 // Reconcile detects spec.instanceID drift from the startup bootstrap value and shuts down the
 // controller so the informer cache partition is rebuilt on restart.
-func (r *ControllerConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *ControllerConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
+	logger.Info("Reconciling ControllerConfiguration")
+	startTime := time.Now()
 
+	// Only the shipped configuration in the install namespace drives partition management; ignore
+	// any other ControllerConfiguration objects entirely (no status is written for them).
 	if req.Namespace != r.ControllerNamespace || req.Name != settings.ControllerConfigurationName {
 		return ctrl.Result{}, nil
 	}
 
-	cc := &promoterv1alpha1.ControllerConfiguration{}
-	if err := r.Get(ctx, req.NamespacedName, cc); err != nil {
+	var cc promoterv1alpha1.ControllerConfiguration
+	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
+	var previousReady *metav1.Condition
+	shutdownForDrift := false
+	// Registered first so it runs LAST (after HandleReconciliationResult below has persisted the
+	// status). Shutdown cancels the manager context, so triggering it before the status apply would
+	// abort that apply with a context-cancelled error.
+	defer func() {
+		if shutdownForDrift && r.Shutdown != nil {
+			r.Shutdown()
+		}
+	}()
+	defer utils.HandleReconciliationResult(ctx, startTime, &cc, r.Client, r.Recorder, constants.ControllerConfigurationControllerFieldOwner, &result, &err, &previousReady)
+
+	if err := r.Get(ctx, req.NamespacedName, &cc); err != nil {
 		if errors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("get ControllerConfiguration: %w", err)
 	}
+
+	// Remove any existing Ready condition. We want to start fresh.
+	previousReady = utils.RemoveReadyCondition(&cc)
 
 	if settings.InstanceIDsEqual(r.StartupInstanceID, cc.Spec.InstanceID) {
 		return ctrl.Result{}, nil
@@ -72,9 +98,7 @@ func (r *ControllerConfigurationReconciler) Reconcile(ctx context.Context, req c
 		"startupInstanceID", r.StartupInstanceID,
 		"specInstanceID", cc.Spec.InstanceID,
 	)
-	if r.Shutdown != nil {
-		r.Shutdown()
-	}
+	shutdownForDrift = true
 
 	return ctrl.Result{}, nil
 }

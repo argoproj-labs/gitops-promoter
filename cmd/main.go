@@ -308,6 +308,7 @@ func runController(
 	if err = (&controller.ControllerConfigurationReconciler{
 		Client:              localManager.GetClient(),
 		Scheme:              localManager.GetScheme(),
+		Recorder:            localManager.GetEventRecorder("ControllerConfiguration"),
 		ControllerNamespace: controllerNamespace,
 		StartupInstanceID:   instanceID,
 		Shutdown:            shutdown,

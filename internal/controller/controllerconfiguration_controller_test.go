@@ -25,6 +25,7 @@ import (
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -79,6 +80,7 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 			controllerReconciler := &ControllerConfigurationReconciler{
 				Client:              k8sClient,
 				Scheme:              k8sClient.Scheme(),
+				Recorder:            events.NewFakeRecorder(100),
 				ControllerNamespace: "default",
 				StartupInstanceID:   nil,
 			}
@@ -125,6 +127,7 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 			reconciler := &ControllerConfigurationReconciler{
 				Client:              k8sClient,
 				Scheme:              k8sClient.Scheme(),
+				Recorder:            events.NewFakeRecorder(100),
 				ControllerNamespace: "default",
 				StartupInstanceID:   nil,
 				Shutdown: func() {
@@ -143,6 +146,7 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 			reconciler := &ControllerConfigurationReconciler{
 				Client:              k8sClient,
 				Scheme:              k8sClient.Scheme(),
+				Recorder:            events.NewFakeRecorder(100),
 				ControllerNamespace: "default",
 				StartupInstanceID:   nil,
 				Shutdown: func() {
@@ -167,6 +171,7 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 			reconciler := &ControllerConfigurationReconciler{
 				Client:              k8sClient,
 				Scheme:              k8sClient.Scheme(),
+				Recorder:            events.NewFakeRecorder(100),
 				ControllerNamespace: "default",
 				StartupInstanceID:   nil,
 				Shutdown: func() {
