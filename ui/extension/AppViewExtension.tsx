@@ -1,9 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Select, { SingleValue } from 'react-select';
 import Card from '@components-lib/components/Card';
+import HistoryView from '@components-lib/components/HistoryView/HistoryView';
 import { PromotionStrategy } from '@shared/types/promotion';
 import { AppViewComponentProps } from '@shared/types/extension';
 import './StrategyDropdown.scss';
+
+type ViewMode = 'card' | 'history';
 
 const GROUP = 'promoter.argoproj.io';
 const KIND = 'PromotionStrategy';
@@ -62,6 +65,30 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
     () => getParam() || getStored(application.metadata.namespace, application.metadata.name),
   );
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [view, setView] = useState<ViewMode>('card');
+
+  // The HistoryView clamps itself to `calc(100vh - var(--hp-offset-top))`. In
+  // the dashboard that offset is a fixed 48px, but here the view is mounted
+  // below Argo's chrome and tab strip, so we measure the wrapper's actual
+  // distance from the top of the viewport and feed it in. Re-measured on
+  // resize and whenever the History view is shown.
+  const historyWrapperRef = useRef<HTMLDivElement | null>(null);
+  const syncHistoryOffset = useCallback(() => {
+    const el = historyWrapperRef.current;
+    if (!el) return;
+    const top = el.getBoundingClientRect().top;
+    // Round the offset UP: rounding down would let `.hp` (height 100vh - offset)
+    // exceed the remaining space by a sub-pixel and produce a stray outer
+    // scrollbar. Ceiling keeps it clamped at or just under the viewport bottom.
+    el.style.setProperty('--hp-offset-top', `${Math.max(0, Math.ceil(top))}px`);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (view !== 'history') return;
+    syncHistoryOffset();
+    window.addEventListener('resize', syncHistoryOffset);
+    return () => window.removeEventListener('resize', syncHistoryOffset);
+  }, [view, selectedKey, syncHistoryOffset]);
 
   useEffect(() => {
     const appName = application.metadata.name;
@@ -151,25 +178,56 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
 
   return (
     <div className="extension-container">
-      {strategies.length > 1 && (
-        <div className="strategy-dropdown-wrapper">
-          <Select<SelectOption>
-            classNamePrefix="strategy-dropdown"
-            options={options}
-            placeholder="Select a PromotionStrategy"
-            value={options.find((opt) => opt.value === selectedKey) || null}
-            menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
-            styles={{ menuPortal: (base) => ({ ...base, zIndex: 2000 }) }}
-            onChange={(option: SingleValue<SelectOption>) => {
-              const key = option ? option.value : '';
-              setSelectedKey(key);
-              setParam(key);
-              setStored(application.metadata.namespace, application.metadata.name, key);
-            }}
-          />
+      <div className="gp-controls">
+        {strategies.length > 1 && (
+          <div className="strategy-dropdown-wrapper">
+            <Select<SelectOption>
+              classNamePrefix="strategy-dropdown"
+              options={options}
+              placeholder="Select a PromotionStrategy"
+              value={options.find((opt) => opt.value === selectedKey) || null}
+              menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+              styles={{ menuPortal: (base) => ({ ...base, zIndex: 2000 }) }}
+              onChange={(option: SingleValue<SelectOption>) => {
+                const key = option ? option.value : '';
+                setSelectedKey(key);
+                setParam(key);
+                setStored(application.metadata.namespace, application.metadata.name, key);
+              }}
+            />
+          </div>
+        )}
+        {selected && (
+          <div className="gp-view-toggle" role="tablist" aria-label="View">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === 'card'}
+              className={`gp-view-toggle__btn ${view === 'card' ? 'gp-view-toggle__btn--active' : ''}`}
+              onClick={() => setView('card')}
+            >
+              Overview
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === 'history'}
+              className={`gp-view-toggle__btn ${view === 'history' ? 'gp-view-toggle__btn--active' : ''}`}
+              onClick={() => setView('history')}
+            >
+              History
+            </button>
+          </div>
+        )}
+      </div>
+      {selected && view === 'card' && (
+        <Card environments={selected.status?.environments || []} />
+      )}
+      {selected && view === 'history' && (
+        <div ref={historyWrapperRef} className="gp-history-wrapper">
+          <HistoryView strategy={selected} />
         </div>
       )}
-      {selected && <Card environments={selected.status?.environments || []} />}
     </div>
   );
 };

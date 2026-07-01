@@ -1,5 +1,5 @@
 @use 'sass:color';
-@use '@lib/styles/colors' as *;
+@use '../../styles/colors' as *;
 
 /* ─── Tokens (local — keeps the page self-contained) ─────────────── */
 $bg-page: #eef1f6;
@@ -93,7 +93,11 @@ $radius-lg: 8px;
 .hp {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 48px);
+  // Clamp to the viewport space below wherever the view is mounted. The
+  // dashboard renders it 48px from the top; hosts that mount it lower (e.g.
+  // the ArgoCD extension, below Argo's chrome and tab strip) override
+  // `--hp-offset-top` so the matrix still ends at the bottom of the screen.
+  height: calc(100vh - var(--hp-offset-top, 48px));
   background: $bg-page;
   overflow: hidden;
 }
@@ -117,7 +121,7 @@ $radius-lg: 8px;
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 9px 20px;
+  padding: 10px 16px 10px 20px;
   background: $bg-surface;
   border-bottom: 1px solid $stroke;
   flex-shrink: 0;
@@ -207,7 +211,7 @@ $radius-lg: 8px;
   align-items: center;
   justify-content: center;
   gap: 12px;
-  height: calc(100vh - 48px);
+  height: calc(100vh - var(--hp-offset-top, 48px));
   color: $text-secondary;
   font-size: 14px;
 }
@@ -440,38 +444,134 @@ $radius-lg: 8px;
 /* ═══════════════════════════════════════
    Filter / sort controls
    ═══════════════════════════════════════ */
+// Lives inline on the right side of the merged header (title on the left).
 .hp-controls {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
+  gap: 10px;
   align-items: center;
-  padding: 13px 16px;
-  background: $bg-surface;
-  border-bottom: 1px solid $stroke;
+  justify-content: flex-end;
   flex-shrink: 0;
-  z-index: 2;
 }
 
-/* Vertical divider between filter and sort groups. */
-.hp-controls__group + .hp-controls__group {
-  padding-left: 14px;
-  border-left: 1px solid $stroke;
+/* ─── Control-bar dropdowns ──────────────────────────────────────── */
+.hp-dd {
+  display: inline-flex;
 }
 
-.hp-controls__group {
+.hp-dd__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: $text-secondary;
+  background: $bg-surface;
+  border: 1px solid $stroke-strong;
+  border-radius: $radius-md;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1.45;
+  transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+
+  &:hover { background: $bg-softer; }
+  &--open { border-color: $accent; background: $bg-softer; }
+
+  // A filter that has departed from its default gets a solid accent fill so it
+  // stands out clearly against the other (unset) controls.
+  &--active {
+    color: #ffffff;
+    border-color: $accent;
+    background: $accent;
+
+    &:hover { background: color.adjust($accent, $lightness: -4%); }
+  }
+}
+
+.hp-dd__icon {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  color: $text-muted;
+}
+
+.hp-dd__trigger--active .hp-dd__icon { color: rgba(255, 255, 255, 0.92); }
+
+.hp-dd__value {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hp-dd__caret {
+  font-size: 9px;
+  color: $text-muted;
+  margin-left: 1px;
+}
+
+.hp-dd__trigger--active .hp-dd__caret { color: rgba(255, 255, 255, 0.85); }
+
+.hp-dd__menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 180px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 4px;
+  background: $bg-surface;
+  border: 1px solid $stroke-strong;
+  border-radius: $radius-md;
+  box-shadow: 0 8px 24px rgba(15, 35, 60, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.hp-dd__item {
   display: flex;
   align-items: center;
-  gap: 4px;
-  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: $text-secondary;
+  background: transparent;
+  border: none;
+  border-radius: $radius-sm;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+
+  &:hover { background: $bg-softer; }
+
+  &--selected {
+    color: $accent;
+    background: rgba(31, 79, 94, 0.08);
+  }
 }
 
-.hp-controls__label {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: $text-muted;
-  margin-right: 2px;
+.hp-dd__item-label { flex: 1; }
+
+/* Checkbox affordance for multi-select menu items. */
+.hp-dd__check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border: 1px solid $stroke-strong;
+  border-radius: $radius-sm;
+  font-size: 8px;
+  color: #ffffff;
+  background: $bg-surface;
+}
+
+.hp-dd__item--selected .hp-dd__check {
+  background: $accent;
+  border-color: $accent;
 }
 
 .hp-chip {
@@ -533,22 +633,38 @@ $radius-lg: 8px;
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 16px 16px 16px;
+  // No top padding: the sticky header must sit flush with the scroll
+  // container's top edge. With top padding, scrolled-up rows show through the
+  // gap above where the header sticks. The header supplies its own top spacing.
+  padding: 0 16px 16px;
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
+// Banner + column header stick together as one unit at the top of the scroll
+// container, so both stay pinned as rows scroll under them.
+.hp-matrix__sticky {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: $bg-page;
+  border-bottom: 1px solid $stroke;
+  margin-bottom: 6px;
+  // The banner supplies its own bottom spacing before the column header.
+  .hp-env-banner { margin: 16px 0 8px; }
+}
+
 .hp-matrix__head {
   display: grid;
   gap: 6px;
-  padding: 8px 10px 10px;
-  position: sticky;
-  top: 0;
-  background: $bg-page;
-  border-bottom: 1px solid $stroke;
-  z-index: 2;
-  margin-bottom: 6px;
+  padding: 16px 10px 10px;
+}
+
+// When the banner is present it already provides the top spacing, so the
+// header drops its own to avoid a double gap.
+.hp-env-banner + .hp-matrix__head {
+  padding-top: 0;
 }
 
 .hp-matrix__head-label {
@@ -591,23 +707,18 @@ $radius-lg: 8px;
   background: $bg-surface;
 }
 
-/* ─── Env focus banner ─── */
+/* ─── Env filter banner ─── */
 .hp-env-banner {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 5px 10px;
-  border: 1px solid;
+  border: 1px solid $stroke;
   border-radius: $radius-md;
+  background: $bg-surface;
+  color: $text-muted;
   font-size: 11.5px;
   font-weight: 500;
-}
-
-.hp-env-banner__dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  flex-shrink: 0;
 }
 
 .hp-env-banner__text {
@@ -617,16 +728,6 @@ $radius-lg: 8px;
   gap: 8px;
   flex-wrap: wrap;
   strong { font-weight: 700; }
-}
-
-.hp-env-banner__count {
-  font-size: 10px;
-  font-weight: 600;
-  background: currentColor;
-  color: $bg-surface;
-  padding: 0 6px;
-  border-radius: 999px;
-  opacity: 0.92;
 }
 
 .hp-env-banner__clear {
@@ -658,17 +759,14 @@ $radius-lg: 8px;
   outline-offset: -1px;
 }
 
-.hp-row__env-slot--dim {
-  opacity: 0.45;
-  filter: saturate(0.7);
-}
-
 /* ─── Row ─── */
 .hp-row {
   display: grid;
   gap: 8px;
   padding: 7px 8px;
-  background: $bg-surface;
+  // The env-column region is tinted down (a faint cool wash) so the eye lands
+  // on the Commit column first — that column re-asserts the bright surface.
+  background: $bg-softer;
   border: 1px solid $stroke;
   border-radius: $radius-md;
   align-items: stretch;
@@ -689,6 +787,15 @@ $radius-lg: 8px;
   padding: 4px 10px 4px 8px;
   min-width: 0;
   position: relative;
+
+  // Bright surface that pops out of the tinted env region — the first thing
+  // the eye is drawn to. Bleeds to the row's top/bottom/left edges via
+  // negative margins so it reads as a solid lit column, not a padded card.
+  background: $bg-surface;
+  margin: -7px 0 -7px -8px;
+  padding: 11px 10px 11px 16px;
+  border-top-left-radius: $radius-md;
+  border-bottom-left-radius: $radius-md;
 
   // Hairline divider separating the commit identity from its env cells.
   border-right: 1px solid $stroke;
