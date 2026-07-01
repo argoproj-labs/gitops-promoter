@@ -22,12 +22,6 @@
   &.single-commit-group {
     min-height: 250px;
   }
-
-  &.history-mode {
-    border: 1px dashed $argo-color-gray-5;
-    background: $argo-color-gray-4;
-    box-shadow: none;
-  }
 }
 
 .env-cards-wrapper {

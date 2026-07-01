@@ -48,8 +48,7 @@ $radius-lg: 8px;
 /* Visible keyboard focus for the page's custom controls (buttons styled as
    cards/chips, SHA/PR links). Uses :focus-visible so it only shows for
    keyboard/AT navigation, not mouse clicks. WCAG 2.4.7. */
-.hp,
-.live-strip {
+.hp {
   :focus-visible {
     outline: 2px solid $accent;
     outline-offset: 2px;
@@ -60,8 +59,7 @@ $radius-lg: 8px;
 /* Respect the user's reduced-motion preference: stop the infinite spinner and
    the pulsing filter dot, and neutralize transitions. WCAG 2.3.3. */
 @media (prefers-reduced-motion: reduce) {
-  .hp,
-  .live-strip {
+  .hp {
     *,
     *::before,
     *::after {
@@ -235,211 +233,6 @@ $radius-lg: 8px;
   cursor: pointer;
   &:hover { background: $bg-softer; }
 }
-
-/* ═══════════════════════════════════════
-   Live pipeline strip
-   ═══════════════════════════════════════ */
-.live-strip {
-  display: flex;
-  align-items: stretch;
-  gap: 0;
-  padding: 16px;
-  background: $bg-surface;
-  border-bottom: 1px solid $stroke;
-  overflow-x: auto;
-  scrollbar-width: thin;
-  z-index: 3;
-}
-
-.live-station {
-  flex: 1 1 0;
-  min-width: 200px;
-  text-align: left;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px 14px;
-  border: 1px solid $stroke;
-  border-radius: $radius-md;
-  background: $bg-surface;
-  position: relative;
-  overflow: hidden;
-
-  // Flat env-tinted wash — solid, no gradient.
-  &::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    background: var(--env-color, transparent);
-    opacity: 0.05;
-    pointer-events: none;
-  }
-}
-
-.live-station__accent {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: var(--env-color, $accent);
-  border-top-left-radius: $radius-md;
-  border-top-right-radius: $radius-md;
-  pointer-events: none;
-}
-
-.live-station__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  position: relative;
-}
-
-.live-station__branch {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  white-space: nowrap;
-  // Color set inline via env palette.
-}
-
-.live-station__subject-row {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-}
-
-.live-station__live-tag {
-  display: inline-flex;
-  align-items: center;
-  flex: none;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  color: #fff;
-  background: $success-ink;
-  padding: 1px 6px;
-  border-radius: 999px;
-  white-space: nowrap;
-}
-
-.live-station__subject {
-  font-size: 13px;
-  font-weight: 600;
-  color: $text-primary;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  position: relative;
-  line-height: 1.4;
-  min-width: 0;
-}
-
-.live-station__pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 10.5px;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 999px;
-  border: 1px solid transparent;
-  svg { font-size: 10px; }
-  &--success { background: $success-soft; color: $success-ink; border-color: $success-border; }
-  &--failure { background: $failure-soft; color: $failure-ink; border-color: $failure-border; }
-  &--pending { background: $pending-soft; color: $pending-ink; border-color: $pending-border; }
-  &--unknown { background: $bg-softer; color: $text-muted; border-color: $stroke-strong; }
-}
-
-.live-station__empty {
-  font-size: 11.5px;
-  color: $text-muted;
-}
-
-.live-connector {
-  flex: 0 0 72px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 0 6px;
-}
-
-.live-connector__line {
-  position: relative;
-  width: 100%;
-  height: 2px;
-  border-radius: 999px;
-  background: $stroke-strong;
-
-  // Directional arrowhead at the right end of the line.
-  &::after {
-    content: '';
-    position: absolute;
-    right: -1px;
-    top: 50%;
-    width: 6px;
-    height: 6px;
-    border-top: 2px solid currentColor;
-    border-right: 2px solid currentColor;
-    transform: translateY(-50%) rotate(45deg);
-    color: $stroke-strong;
-  }
-}
-
-.live-connector__label {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 10px;
-  font-weight: 700;
-  color: $text-muted;
-  svg { font-size: 9px; }
-}
-
-.live-connector--promoting {
-  .live-connector__line {
-    background: $pending;
-    &::after { color: $pending-ink; }
-  }
-  .live-connector__label { color: $pending-ink; }
-}
-
-.live-connector--in-sync {
-  .live-connector__line {
-    background: $success;
-    &::after { color: $success-ink; }
-  }
-  .live-connector__label { color: $success-ink; }
-}
-
-.live-connector--idle {
-  .live-connector__line {
-    background: $stroke;
-    &::after { color: $stroke-strong; }
-  }
-  .live-connector__label { color: $text-muted; }
-}
-
-.live-connector__pr {
-  color: inherit;
-  text-decoration: none;
-  border: 1px solid currentColor;
-  padding: 0 5px;
-  border-radius: $radius-sm;
-  font-size: 10.5px;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  &:hover { background: currentColor; color: $bg-surface; }
-}
-
-.live-connector__idle { font-size: 14px; line-height: 1; color: $text-muted; }
 
 /* ═══════════════════════════════════════
    Filter / sort controls
@@ -1061,33 +854,6 @@ $radius-lg: 8px;
   &:hover { color: $text-primary; text-decoration: underline; }
   svg { font-size: 8px; }
 }
-
-.checks-dots {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.checks-dots__item {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 10px;
-  font-weight: 600;
-  color: $text-muted;
-}
-
-.checks-dots__dot {
-  display: inline-block;
-  width: 5px;
-  height: 5px;
-  border-radius: 999px;
-  background: currentColor;
-}
-
-.checks-dots__item--pass { color: $success-ink; }
-.checks-dots__item--fail { color: $failure-ink; }
-.checks-dots__item--pend { color: $pending-ink; }
 
 /* ═══════════════════════════════════════
    Detail drawer

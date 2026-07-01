@@ -3,7 +3,6 @@ export { default as Card } from './Card';
 export { default as CommitInfo } from './CommitInfo';
 export { default as HeaderBar } from './HeaderBar';
 export { default as HealthSummary } from './HealthSummary';
-export { default as HistoryNavigation } from './HistoryNavigation';
 export { default as HistoryView } from './HistoryView/HistoryView';
 export { LiveManifestView } from './LiveManifestView';
 export { default as Modal } from './Modal';

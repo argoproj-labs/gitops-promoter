@@ -21,6 +21,7 @@
     "./*.test.ts",
     "./*.test.tsx",
     "./hasOnePromotionStrategy.ts",
-    "./AppViewExtension.tsx"
+    "./AppViewExtension.tsx",
+    "./mockData.ts"
   ]
 }

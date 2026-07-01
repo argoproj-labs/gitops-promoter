@@ -3,7 +3,6 @@ import { StatusIcon, StatusType } from './StatusIcon';
 import { Tooltip } from './Tooltip';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import CommitInfo from './CommitInfo';
-import HistoryNavigation from './HistoryNavigation';
 import {
   EnrichedEnvDetails,
   enrichFromEnvironments,
@@ -15,17 +14,16 @@ import './Card.scss';
 export interface CardProps {
   environments: Environment[];
   /**
-   * Optional handler invoked when the per-environment History button is
-   * clicked. When provided, the card delegates to the parent (e.g. to push
-   * a route to the full-page History view). When omitted, the card opens
-   * an in-place side panel via {@link HistoryNavigation}.
+   * Handler invoked when a per-environment History button is clicked. The card
+   * delegates history to the parent (e.g. to route to the full-page History
+   * view). When omitted, the History button is not rendered — history is
+   * reached through the surrounding UI instead (e.g. the extension's
+   * Overview/History toggle).
    */
   onHistoryNavigate?: (_branch: string) => void;
 }
 
 const Card: React.FC<CardProps> = ({ environments, onHistoryNavigate }) => {
-  const [historyMode, setHistoryMode] = useState<{ [branch: string]: number }>({});
-  const [panelBranch, setPanelBranch] = useState<string | null>(null);
   const [isVerticalLayout, setIsVerticalLayout] = useState<boolean>(true);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -43,27 +41,11 @@ const Card: React.FC<CardProps> = ({ environments, onHistoryNavigate }) => {
     return () => window.removeEventListener('resize', detectFlexDirection);
   }, []);
 
-  const selectHistoryEntry = (branch: string, index: number) => {
-    setHistoryMode((prev) => ({ ...prev, [branch]: index }));
-  };
-
-  const getHistoryIndex = (branch: string) => {
-    return historyMode[branch] || 0;
-  };
-
-  const isInHistoryMode = (branch: string) => {
-    return (historyMode[branch] || 0) > 0;
-  };
-
   const processingEnvs = useMemo(() => getProcessingEnvs(environments), [environments]);
 
-  // Get enriched environments with current history index
   const enrichedEnvs = useMemo(() => {
-    return environments.map((env) => {
-      const historyIndex = getHistoryIndex(env.branch);
-      return enrichFromEnvironments([env], historyIndex)[0];
-    });
-  }, [environments, historyMode]);
+    return environments.map((env) => enrichFromEnvironments([env], 0)[0]);
+  }, [environments]);
 
   return (
     <div className="env-cards-container">
@@ -72,7 +54,6 @@ const Card: React.FC<CardProps> = ({ environments, onHistoryNavigate }) => {
           const branch = env.branch;
           const proposedStatus = env.promotionStatus;
           const isProcessing = processingEnvs.has(branch);
-          const inHistoryMode = isInHistoryMode(branch);
           const environment = environments.find((e) => e.branch === branch);
           const history = environment?.history || [];
 
@@ -93,17 +74,13 @@ const Card: React.FC<CardProps> = ({ environments, onHistoryNavigate }) => {
             date: env.proposedDryCommitDate,
           };
 
-          const mergeTimeAgo = inHistoryMode
-            ? (env.historyMergeTimeAgo ?? undefined)
-            : (env.activeMergeTimeAgo ?? undefined);
+          const mergeTimeAgo = env.activeMergeTimeAgo ?? undefined;
 
           const hasPendingProposal =
-            !inHistoryMode &&
             proposedStatus !== undefined &&
             ['pending', 'failure'].includes(proposedStatus);
           const cardClassName = [
             'env-card',
-            inHistoryMode ? 'history-mode' : '',
             hasPendingProposal ? '' : 'single-commit-group',
           ]
             .filter(Boolean)
@@ -129,28 +106,20 @@ const Card: React.FC<CardProps> = ({ environments, onHistoryNavigate }) => {
                       </div>
                     </div>
 
-                    <div className="history-controls">
-                      {history.length > 0 && (
+                    {onHistoryNavigate && history.length > 0 && (
+                      <div className="history-controls">
                         <Tooltip content="View promotion history">
                           <button
                             type="button"
-                            className={`history-toggle ${
-                              panelBranch === branch || inHistoryMode ? 'active' : ''
-                            }`}
-                            onClick={() => {
-                              if (onHistoryNavigate) {
-                                onHistoryNavigate(branch);
-                              } else {
-                                setPanelBranch((prev) => (prev === branch ? null : branch));
-                              }
-                            }}
+                            className="history-toggle"
+                            onClick={() => onHistoryNavigate(branch)}
                           >
                             <FaHistory />
                             <span className="history-toggle__label">History</span>
                           </button>
                         </Tooltip>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Active Commits Section */}
@@ -166,25 +135,11 @@ const Card: React.FC<CardProps> = ({ environments, onHistoryNavigate }) => {
                     healthSummary={env.activeChecksSummary}
                     prUrl={env.activePrUrl}
                     prNumber={env.activePrNumber?.toString()}
-                    additionalChecks={inHistoryMode ? env.proposedChecks : undefined}
-                    additionalChecksTitle={inHistoryMode ? 'Proposed' : undefined}
-                    additionalChecksTitleTooltip={
-                      inHistoryMode
-                        ? 'State of proposed checks at the time the promotion PR was merged'
-                        : undefined
-                    }
-                    primaryChecksTitle={inHistoryMode ? 'Active' : undefined}
-                    primaryChecksTitleTooltip={
-                      inHistoryMode
-                        ? 'State of active checks when this promotion was superseded'
-                        : undefined
-                    }
                     mergeTimeAgo={mergeTimeAgo}
                   />
 
-                  {/* Proposed Commits Section (normal mode only) */}
-                  {!inHistoryMode &&
-                    (isProcessing ? (
+                  {/* Proposed Commits Section */}
+                  {isProcessing ? (
                       // Processing: stand in for the Proposed section with a labeled
                       // loading placeholder while the newer commit is hydrated.
                       <div className="commit-group env-card__proposed-loading">
@@ -216,7 +171,7 @@ const Card: React.FC<CardProps> = ({ environments, onHistoryNavigate }) => {
                         prUrl={env.prUrl}
                         prNumber={env.prNumber?.toString()}
                       />
-                    ) : null)}
+                    ) : null}
                 </div>
               </div>
               {index < enrichedEnvs.length - 1 && (
@@ -243,29 +198,6 @@ const Card: React.FC<CardProps> = ({ environments, onHistoryNavigate }) => {
           );
         })}
       </div>
-
-      {/* Fallback in-place side panel: only used when the parent has not
-          wired an `onHistoryNavigate` handler. With a handler set (e.g. on
-          PromotionStrategyDetailsView), the History button routes to the
-          full-page HistoryPage instead. */}
-      {panelBranch &&
-        !onHistoryNavigate &&
-        (() => {
-          const env = environments.find((e) => e.branch === panelBranch);
-          const hist = env?.history || [];
-          if (!hist.length) return null;
-          return (
-            <HistoryNavigation
-              history={hist}
-              currentIndex={getHistoryIndex(panelBranch)}
-              onHistorySelect={(index) => selectHistoryEntry(panelBranch, index)}
-              branch={panelBranch}
-              environment={env}
-              startInPanel
-              onClose={() => setPanelBranch(null)}
-            />
-          );
-        })()}
     </div>
   );
 };
