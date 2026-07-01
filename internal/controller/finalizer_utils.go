@@ -78,7 +78,7 @@ func ensureSecretFinalizerForProvider(
 			return nil
 		}
 		if controllerutil.AddFinalizer(&secret, finalizer) {
-			return c.Update(ctx, &secret)
+			return c.SubResource("finalizers").Update(ctx, &secret) //nolint:wrapcheck // RetryOnConflict returns wrapped error
 		}
 		return nil
 	})
@@ -131,7 +131,7 @@ func removeSecretFinalizerForProvider(
 			return err //nolint:wrapcheck // error will be wrapped by caller
 		}
 		if controllerutil.RemoveFinalizer(&secret, finalizer) {
-			return c.Update(ctx, &secret)
+			return c.SubResource("finalizers").Update(ctx, &secret) //nolint:wrapcheck // RetryOnConflict returns wrapped error
 		}
 		return nil
 	})
@@ -166,7 +166,7 @@ func handleResourceFinalizerWithDependencies(
 				return err //nolint:wrapcheck // error will be wrapped by caller
 			}
 			if controllerutil.AddFinalizer(obj, finalizer) {
-				return c.Update(ctx, obj)
+				return c.SubResource("finalizers").Update(ctx, obj) //nolint:wrapcheck // RetryOnConflict returns wrapped error
 			}
 			return nil
 		})
@@ -215,7 +215,7 @@ func handleResourceFinalizerWithDependencies(
 			return err //nolint:wrapcheck // error will be wrapped by caller
 		}
 		if controllerutil.RemoveFinalizer(obj, finalizer) {
-			return c.Update(ctx, obj)
+			return c.SubResource("finalizers").Update(ctx, obj) //nolint:wrapcheck // error will be wrapped by caller
 		}
 		return nil
 	})
