@@ -32,7 +32,7 @@
   // the { releases: [ { version } ] } structure Renovate expects.
   customDatasources: {
     'envtest-k8s': {
-      defaultRegistryUrlTemplate: 'https://raw.githubusercontent.com/kubernetes-sigs/controller-tools/HEAD/envtest-releases.yaml',
+      defaultRegistryUrlTemplate: 'https://raw.githubusercontent.com/kubernetes-sigs/controller-tools/main/envtest-releases.yaml',
       format: 'yaml',
       transformTemplates: [
         '{ "releases": $map($keys(releases), function($v) { { "version": $v } }) }',
@@ -473,7 +473,7 @@
       customType: 'regex',
       description: 'Update golangci-lint version in Makefile',
       managerFilePatterns: [
-        '/^Makefile$/',
+        '^Makefile$',
       ],
       matchStrings: [
         'GOLANGCI_LINT_VERSION\\s*\\??=\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
@@ -488,7 +488,7 @@
       customType: 'regex',
       description: 'Update golangci-lint version in GitHub Actions (handles SHA-pinned action)',
       managerFilePatterns: [
-        '/^\\.github/workflows/.*\\.ya?ml$/',
+        '^\\.github/workflows/.*\\.ya?ml$',
       ],
       matchStrings: [
         'golangci/golangci-lint-action@(?:[0-9a-f]{7,40}|v\\d+)[\\s\\S]*?version:\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
