@@ -1,8 +1,8 @@
 import { FaServer, FaHistory } from 'react-icons/fa';
 import { StatusIcon, StatusType } from './StatusIcon';
+import { Tooltip } from './Tooltip';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import CommitInfo from './CommitInfo';
-import HistoryNavigation from './HistoryNavigation';
 import {
   EnrichedEnvDetails,
   enrichFromEnvironments,
@@ -13,11 +13,17 @@ import './Card.scss';
 
 export interface CardProps {
   environments: Environment[];
+  /**
+   * Handler invoked when a per-environment History button is clicked. The card
+   * delegates history to the parent (e.g. to route to the full-page History
+   * view). When omitted, the History button is not rendered — history is
+   * reached through the surrounding UI instead (e.g. the extension's
+   * Overview/History toggle).
+   */
+  onHistoryNavigate?: (_branch: string) => void;
 }
 
-const Card: React.FC<CardProps> = ({ environments }) => {
-  const [historyMode, setHistoryMode] = useState<{ [branch: string]: number }>({});
-  const [hoveredIcon, setHoveredIcon] = useState<string | null>(null);
+const Card: React.FC<CardProps> = ({ environments, onHistoryNavigate }) => {
   const [isVerticalLayout, setIsVerticalLayout] = useState<boolean>(true);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -35,27 +41,11 @@ const Card: React.FC<CardProps> = ({ environments }) => {
     return () => window.removeEventListener('resize', detectFlexDirection);
   }, []);
 
-  const selectHistoryEntry = (branch: string, index: number) => {
-    setHistoryMode((prev) => ({ ...prev, [branch]: index }));
-  };
-
-  const getHistoryIndex = (branch: string) => {
-    return historyMode[branch] || 0;
-  };
-
-  const isInHistoryMode = (branch: string) => {
-    return (historyMode[branch] || 0) > 0;
-  };
-
   const processingEnvs = useMemo(() => getProcessingEnvs(environments), [environments]);
 
-  // Get enriched environments with current history index
   const enrichedEnvs = useMemo(() => {
-    return environments.map((env) => {
-      const historyIndex = getHistoryIndex(env.branch);
-      return enrichFromEnvironments([env], historyIndex)[0];
-    });
-  }, [environments, historyMode]);
+    return environments.map((env) => enrichFromEnvironments([env], 0)[0]);
+  }, [environments]);
 
   return (
     <div className="env-cards-container">
@@ -64,8 +54,6 @@ const Card: React.FC<CardProps> = ({ environments }) => {
           const branch = env.branch;
           const proposedStatus = env.promotionStatus;
           const isProcessing = processingEnvs.has(branch);
-          const inHistoryMode = isInHistoryMode(branch);
-          const isNavigationVisible = hoveredIcon === branch;
           const environment = environments.find((e) => e.branch === branch);
           const history = environment?.history || [];
 
@@ -86,17 +74,13 @@ const Card: React.FC<CardProps> = ({ environments }) => {
             date: env.proposedDryCommitDate,
           };
 
-          const mergeTimeAgo = inHistoryMode
-            ? (env.historyMergeTimeAgo ?? undefined)
-            : (env.activeMergeTimeAgo ?? undefined);
+          const mergeTimeAgo = env.activeMergeTimeAgo ?? undefined;
 
           const hasPendingProposal =
-            !inHistoryMode &&
             proposedStatus !== undefined &&
             ['pending', 'failure'].includes(proposedStatus);
           const cardClassName = [
             'env-card',
-            inHistoryMode ? 'history-mode' : '',
             hasPendingProposal ? '' : 'single-commit-group',
           ]
             .filter(Boolean)
@@ -122,23 +106,20 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                       </div>
                     </div>
 
-                    <div className="history-controls" onMouseLeave={() => setHoveredIcon(null)}>
-                      {isNavigationVisible && history.length > 0 ? (
-                        <HistoryNavigation
-                          history={history}
-                          currentIndex={getHistoryIndex(branch)}
-                          onHistorySelect={(index) => selectHistoryEntry(branch, index)}
-                        />
-                      ) : (
-                        <button
-                          className={`history-toggle ${inHistoryMode ? 'active' : ''}`}
-                          onMouseEnter={() => setHoveredIcon(branch)}
-                          title={inHistoryMode ? 'View history' : 'View history'}
-                        >
-                          <FaHistory />
-                        </button>
-                      )}
-                    </div>
+                    {onHistoryNavigate && history.length > 0 && (
+                      <div className="history-controls">
+                        <Tooltip content="View promotion history">
+                          <button
+                            type="button"
+                            className="history-toggle"
+                            onClick={() => onHistoryNavigate(branch)}
+                          >
+                            <FaHistory />
+                            <span className="history-toggle__label">History</span>
+                          </button>
+                        </Tooltip>
+                      </div>
+                    )}
                   </div>
 
                   {/* Active Commits Section */}
@@ -154,25 +135,11 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                     healthSummary={env.activeChecksSummary}
                     prUrl={env.activePrUrl}
                     prNumber={env.activePrNumber?.toString()}
-                    additionalChecks={inHistoryMode ? env.proposedChecks : undefined}
-                    additionalChecksTitle={inHistoryMode ? 'Proposed' : undefined}
-                    additionalChecksTitleTooltip={
-                      inHistoryMode
-                        ? 'State of proposed checks at the time the promotion PR was merged'
-                        : undefined
-                    }
-                    primaryChecksTitle={inHistoryMode ? 'Active' : undefined}
-                    primaryChecksTitleTooltip={
-                      inHistoryMode
-                        ? 'State of active checks when this promotion was superseded'
-                        : undefined
-                    }
                     mergeTimeAgo={mergeTimeAgo}
                   />
 
-                  {/* Proposed Commits Section (normal mode only) */}
-                  {!inHistoryMode &&
-                    (isProcessing ? (
+                  {/* Proposed Commits Section */}
+                  {isProcessing ? (
                       // Processing: stand in for the Proposed section with a labeled
                       // loading placeholder while the newer commit is hydrated.
                       <div className="commit-group env-card__proposed-loading">
@@ -204,7 +171,7 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                         prUrl={env.prUrl}
                         prNumber={env.prNumber?.toString()}
                       />
-                    ) : null)}
+                    ) : null}
                 </div>
               </div>
               {index < enrichedEnvs.length - 1 && (

@@ -80,12 +80,91 @@
     background: linear-gradient(135deg, rgba(13, 173, 234, 0.06) 0%, rgba(13, 173, 234, 0.03) 100%);
     border-radius: 8px;
     padding: 24px 24px 0 24px;
+    box-shadow:
+      0 -7px 16px rgba(15, 23, 42, 0.14),
+      0 -2px 5px rgba(15, 23, 42, 0.11),
+      0 1px 2px rgba(15, 23, 42, 0.04),
+      0 4px 12px rgba(15, 23, 42, 0.06);
+    position: relative;
+  }
+
+  /* Bright streak that flows horizontally across the proposed card's
+     blue top border, reinforcing that a promotion is actively moving
+     through this environment. Pure visual sugar — no live data. */
+  &.proposed .promote-flow {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 2;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    margin-top: -3px;
+  }
+
+  &.proposed .promote-banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin: -24px -24px 14px;
+    padding: 6px 16px;
+    background: rgba(13, 173, 234, 0.14);
+    border-bottom: 1px solid rgba(13, 173, 234, 0.35);
+    color: $argo-running;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    line-height: 1;
+  }
+
+  &.proposed .promote-banner__icon {
+    width: 12px;
+    height: 6px;
+    margin-right: 10px;
+    animation: promote-banner-bob 2s ease-in-out infinite;
+  }
+
+  &.proposed .promote-flow::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 35%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0.95) 50%,
+      rgba(255, 255, 255, 0) 100%
+    );
+    animation: promote-flow-streak 2.2s linear infinite;
   }
 }
 
-.history-mode .commit-group.proposed {
-  border-top-color: $argo-color-gray-4;
-  background: linear-gradient(135deg, rgba(108, 117, 125, 0.06) 0%, rgba(108, 117, 125, 0.03) 100%);
+@keyframes promote-flow-streak {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+@keyframes promote-banner-bob {
+  0%,
+  100% {
+    transform: translateY(1px);
+    opacity: 0.75;
+  }
+  50% {
+    transform: translateY(-2px);
+    opacity: 1;
+  }
 }
 
 .commit-group-header {

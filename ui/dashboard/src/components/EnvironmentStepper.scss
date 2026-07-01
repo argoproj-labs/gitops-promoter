@@ -1,0 +1,146 @@
+.env-stepper {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 16px 0;
+  width: 100%;
+  box-sizing: border-box;
+  background: #f5f7fa;
+  border: 1px solid #e2e6ec;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  gap: 44px; /* 10 + 24 (arrow-separator) + 10, to match card column spacing */
+}
+
+.env-stepper__step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 0 0 425px; /* matches card column width */
+  max-width: 425px;
+  position: relative;
+}
+
+.env-stepper__circle {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid #c5cad3;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 14px;
+  line-height: 1;
+  box-sizing: border-box;
+  position: relative;
+  z-index: 1;
+}
+
+.env-stepper__circle--complete {
+  background: #2e7d6b;
+  border-color: #2e7d6b;
+}
+
+.env-stepper__circle--current {
+  /* Sweeping conic ring: the ::before paints the rotating gradient,
+     an inner white disc (::after) masks it into a ring, and the
+     centered dot sits on top. */
+  border: none;
+  background: transparent;
+  position: relative;
+  padding: 0;
+  overflow: visible;
+}
+
+.env-stepper__circle--current::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    #2e7d6b 0deg,
+    #2e7d6b 90deg,
+    rgba(46, 125, 107, 0.18) 90deg,
+    rgba(46, 125, 107, 0.18) 360deg
+  );
+  animation: env-stepper-spin 1s linear infinite;
+  z-index: 0;
+}
+
+.env-stepper__circle--current::after {
+  /* inner white disc turns the conic into a ring */
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: #ffffff;
+  z-index: 1;
+}
+
+.env-stepper__circle--current > .env-stepper__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #2e7d6b;
+  position: relative;
+  z-index: 2;
+}
+
+@keyframes env-stepper-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.env-stepper__label {
+  margin-top: 8px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: #1f2d3d;
+  text-transform: uppercase;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Connector line: from this step's circle to next step's circle.
+   Step width = 425px, gap = 10px → circle-to-circle distance = 469px.
+   Line starts at 50% + 20px (just past this circle's 14px radius + padding)
+   and ends 20px before next circle center. */
+.env-stepper__step:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  top: 13px; /* circle vertical center within the step column */
+  left: calc(50% + 20px);
+  width: calc(469px - 40px - 7px); /* distance − padding on both sides − arrowhead */
+  height: 2px;
+  background: #c5cad3;
+  z-index: 0;
+}
+
+.env-stepper__step--complete:not(:last-child)::before {
+  background: #2e7d6b;
+}
+
+.env-stepper__step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 9px;
+  left: calc(50% + 20px + 469px - 40px - 7px); /* right end of the line */
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 7px solid #c5cad3;
+}
+
+.env-stepper__step--complete:not(:last-child)::after {
+  border-left-color: #2e7d6b;
+}
+
+/* Hide legacy connector node (kept for backward-compat) */
+.env-stepper__connector {
+  display: none;
+}
