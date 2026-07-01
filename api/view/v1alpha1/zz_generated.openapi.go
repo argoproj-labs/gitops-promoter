@@ -2006,7 +2006,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSp
 				Properties: map[string]spec.Schema{
 					"instanceID": {
 						SchemaProps: spec.SchemaProps{
-							Description: "InstanceID scopes which Promoter CRs this install reconciles. When set, only resources labeled promoter.argoproj.io/instance-id with this exact value enter the informer cache. When unset (nil), only resources without that label are reconciled. There is no mode that reconciles labeled and unlabeled resources together. Changing this value requires a controller restart.",
+							Description: "InstanceID scopes which Promoter CRs this install reconciles. When set, only resources labeled promoter.argoproj.io/instance-id with this exact value enter the informer cache. When unset (nil), only resources without that label are reconciled. There is no mode that reconciles labeled and unlabeled resources together. Changing this value rebuilds the informer cache partition: a single-replica install shuts down and restarts automatically; HA installs (multiple replicas with leader election) require a rolling restart of all pods.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -2080,10 +2080,51 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSt
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "ControllerConfigurationStatus defines the observed state of ControllerConfiguration.\n\nCurrently, this resource does not maintain any status information as it is a configuration-only resource. Status fields may be added in the future to track configuration validation or controller health metrics.",
+				Description: "ControllerConfigurationStatus defines the observed state of ControllerConfiguration.",
 				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"observedGeneration": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.",
+							Type:        []string{"integer"},
+							Format:      "int64",
+						},
+					},
+					"conditions": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-map-keys": []interface{}{
+									"type",
+								},
+								"x-kubernetes-list-type":       "map",
+								"x-kubernetes-patch-merge-key": "type",
+								"x-kubernetes-patch-strategy":  "merge",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "Conditions Represents the observations of the current state.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(metav1.Condition{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+					"instanceID": {
+						SchemaProps: spec.SchemaProps{
+							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last successful reconcile; omitted when the resource has no instance-id label (default install).",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
 			},
 		},
+		Dependencies: []string{
+			metav1.Condition{}.OpenAPIModelName()},
 	}
 }
 
@@ -4357,15 +4398,6 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommitStatus(ref co
 			SchemaProps: spec.SchemaProps{
 				Description: "RevertCommitStatus defines the observed state of RevertCommit",
 				Type:        []string{"object"},
-				Properties: map[string]spec.Schema{
-					"instanceID": {
-						SchemaProps: spec.SchemaProps{
-							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last successful reconcile; omitted when the resource has no instance-id label (default install).",
-							Type:        []string{"string"},
-							Format:      "",
-						},
-					},
-				},
 			},
 		},
 	}
