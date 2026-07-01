@@ -206,9 +206,17 @@ func runController(
 		PprofBindAddress:       pprofAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "b21a50c7.argoproj.io",
-		// Release the lease promptly when the manager stops (for example after an
-		// instanceID-driven shutdown) so another replica can become leader quickly.
-		LeaderElectionReleaseOnCancel: enableLeaderElection,
+		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
+		// when the Manager ends. This requires the binary to immediately end when the
+		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
+		// speeds up voluntary leader transitions as the new leader don't have to wait
+		// LeaseDuration time first.
+		//
+		// In the default scaffold provided, the program ends immediately after
+		// the manager stops, so would be fine to enable this option. However,
+		// if you are doing or is intended to do any operation such as perform cleanups
+		// after the manager stops then its usage might be unsafe.
+		// LeaderElectionReleaseOnCancel: true,
 	})
 	if err != nil {
 		panic(fmt.Errorf("unable to start manager: %w", err))
