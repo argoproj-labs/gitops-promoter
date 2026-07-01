@@ -2,7 +2,9 @@ package cache
 
 import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -50,6 +52,7 @@ func OptionsForInstanceID(instanceID *string, controllerNamespace string) cache.
 		Namespaces: map[string]cache.Config{
 			controllerNamespace: {},
 		},
+		Field: fields.OneTermEqualSelector("metadata.name", settings.ControllerConfigurationName),
 	}
 	return cache.Options{ByObject: byObject}
 }

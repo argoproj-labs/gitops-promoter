@@ -224,7 +224,9 @@ var _ = Describe("OptionsForInstanceID", func() {
 		opts := promotercache.OptionsForInstanceID(nil, controllerNamespace)
 		byObj, ok := opts.ByObject[promotercache.PartitionedControllerConfigurationObject()]
 		Expect(ok).To(BeTrue())
+		Expect(byObj.Namespaces).To(HaveLen(1))
 		Expect(byObj.Namespaces).To(HaveKey(controllerNamespace))
 		Expect(byObj.Label).To(BeNil())
+		Expect(byObj.Field.String()).To(Equal("metadata.name=" + settings.ControllerConfigurationName))
 	})
 })

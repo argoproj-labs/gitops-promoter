@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	promotercache "github.com/argoproj-labs/gitops-promoter/internal/cache"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -45,11 +46,13 @@ var _ = Describe("OptionsForInstanceID", func() {
 		Expect(ok).To(BeTrue())
 	})
 
-	It("scopes ControllerConfiguration to the install namespace", func() {
+	It("scopes ControllerConfiguration to the install namespace and shipped name", func() {
 		opts := promotercache.OptionsForInstanceID(nil, testControllerNamespace)
 		byObj, ok := opts.ByObject[promotercache.PartitionedControllerConfigurationObject()]
 		Expect(ok).To(BeTrue())
+		Expect(byObj.Namespaces).To(HaveLen(1))
 		Expect(byObj.Namespaces).To(HaveKey(testControllerNamespace))
 		Expect(byObj.Label).To(BeNil())
+		Expect(byObj.Field.String()).To(Equal("metadata.name=" + settings.ControllerConfigurationName))
 	})
 })
