@@ -56,14 +56,6 @@ func instanceIDSelector(instanceID *string) labels.Selector {
 	})
 }
 
-// PromotorCRDObjects returns the slice of Promoter CR types included in instance-id cache filtering.
-// Exported for tests.
-func PromotorCRDObjects() []client.Object {
-	out := make([]client.Object, len(promotorCRDObjects))
-	copy(out, promotorCRDObjects)
-	return out
-}
-
 // PartitionedObjects returns every type whose informer cache is scoped by instance-id label,
 // including Promoter CRDs and Secrets referenced for SCM, HTTP auth, and kubeconfig credentials.
 // Exported for tests.
