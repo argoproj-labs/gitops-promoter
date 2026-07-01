@@ -7,6 +7,7 @@ import "testing"
 // after your change, update documentation and migration guides before merging.
 
 func TestPreviousEnvironmentCommitStatusKey(t *testing.T) {
+	t.Parallel()
 	if PreviousEnvironmentCommitStatusKey != "promoter-previous-environment" {
 		t.Errorf("PreviousEnvironmentCommitStatusKey changed to %q — this is a public API used as the SCM commit status context (e.g. GitHub check run name). Users may reference this value in branch protection rules. Update documentation and migration guides before merging.", PreviousEnvironmentCommitStatusKey)
 	}
