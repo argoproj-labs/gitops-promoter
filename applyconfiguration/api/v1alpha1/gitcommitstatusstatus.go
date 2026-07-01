@@ -43,8 +43,9 @@ type GitCommitStatusStatusApplyConfiguration struct {
 	// Conditions represent the latest available observations of the GitCommitStatus's state.
 	// Standard condition types include "Ready" which aggregates the status of all environments.
 	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
-	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
-	// successful reconcile; omitted when the resource has no instance-id label (default install).
+	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+	// reconcile attempt by this install's controller, including when Ready=False; omitted
+	// when the resource has no instance-id label (default install).
 	InstanceID *string `json:"instanceID,omitempty"`
 }
 

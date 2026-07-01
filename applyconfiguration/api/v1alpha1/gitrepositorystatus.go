@@ -33,8 +33,9 @@ type GitRepositoryStatusApplyConfiguration struct {
 	ObservedGeneration *int64 `json:"observedGeneration,omitempty"`
 	// Conditions Represents the observations of the current state.
 	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
-	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
-	// successful reconcile; omitted when the resource has no instance-id label (default install).
+	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+	// reconcile attempt by this install's controller, including when Ready=False; omitted
+	// when the resource has no instance-id label (default install).
 	InstanceID *string `json:"instanceID,omitempty"`
 }
 

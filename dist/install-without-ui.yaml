@@ -308,8 +308,9 @@ spec:
                 x-kubernetes-list-type: map
               instanceID:
                 description: |-
-                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
-                  successful reconcile; omitted when the resource has no instance-id label (default install).
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+                  reconcile attempt by this install's controller, including when Ready=False; omitted
+                  when the resource has no instance-id label (default install).
                 type: string
               observedGeneration:
                 description: |-
@@ -1301,8 +1302,9 @@ spec:
                 type: array
               instanceID:
                 description: |-
-                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
-                  successful reconcile; omitted when the resource has no instance-id label (default install).
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+                  reconcile attempt by this install's controller, including when Ready=False; omitted
+                  when the resource has no instance-id label (default install).
                 type: string
               observedGeneration:
                 description: |-
@@ -1883,8 +1885,9 @@ spec:
                 x-kubernetes-list-type: map
               instanceID:
                 description: |-
-                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
-                  successful reconcile; omitted when the resource has no instance-id label (default install).
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+                  reconcile attempt by this install's controller, including when Ready=False; omitted
+                  when the resource has no instance-id label (default install).
                 type: string
               observedGeneration:
                 description: |-
@@ -2088,8 +2091,9 @@ spec:
                 type: string
               instanceID:
                 description: |-
-                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
-                  successful reconcile; omitted when the resource has no instance-id label (default install).
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+                  reconcile attempt by this install's controller, including when Ready=False; omitted
+                  when the resource has no instance-id label (default install).
                 type: string
               observedGeneration:
                 description: |-
@@ -3963,8 +3967,9 @@ spec:
                 x-kubernetes-list-type: map
               instanceID:
                 description: |-
-                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
-                  successful reconcile; omitted when the resource has no instance-id label (default install).
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+                  reconcile attempt by this install's controller, including when Ready=False; omitted
+                  when the resource has no instance-id label (default install).
                 type: string
               observedGeneration:
                 description: |-
@@ -4287,8 +4292,9 @@ spec:
                 x-kubernetes-list-type: map
               instanceID:
                 description: |-
-                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
-                  successful reconcile; omitted when the resource has no instance-id label (default install).
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+                  reconcile attempt by this install's controller, including when Ready=False; omitted
+                  when the resource has no instance-id label (default install).
                 type: string
               observedGeneration:
                 description: |-
@@ -4582,8 +4588,9 @@ spec:
                 x-kubernetes-list-type: map
               instanceID:
                 description: |-
-                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
-                  successful reconcile; omitted when the resource has no instance-id label (default install).
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+                  reconcile attempt by this install's controller, including when Ready=False; omitted
+                  when the resource has no instance-id label (default install).
                 type: string
               observedGeneration:
                 description: |-
@@ -6043,8 +6050,9 @@ spec:
                 x-kubernetes-list-type: map
               instanceID:
                 description: |-
-                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
-                  successful reconcile; omitted when the resource has no instance-id label (default install).
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+                  reconcile attempt by this install's controller, including when Ready=False; omitted
+                  when the resource has no instance-id label (default install).
                 type: string
               observedGeneration:
                 description: |-
@@ -6298,8 +6306,9 @@ spec:
                 type: string
               instanceID:
                 description: |-
-                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
-                  successful reconcile; omitted when the resource has no instance-id label (default install).
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+                  reconcile attempt by this install's controller, including when Ready=False; omitted
+                  when the resource has no instance-id label (default install).
                 type: string
               observedGeneration:
                 description: |-
@@ -6630,8 +6639,9 @@ spec:
                 x-kubernetes-list-type: map
               instanceID:
                 description: |-
-                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
-                  successful reconcile; omitted when the resource has no instance-id label (default install).
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+                  reconcile attempt by this install's controller, including when Ready=False; omitted
+                  when the resource has no instance-id label (default install).
                 type: string
               observedGeneration:
                 description: |-
@@ -6864,8 +6874,9 @@ spec:
                 x-kubernetes-list-type: map
               instanceID:
                 description: |-
-                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
-                  successful reconcile; omitted when the resource has no instance-id label (default install).
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+                  reconcile attempt by this install's controller, including when Ready=False; omitted
+                  when the resource has no instance-id label (default install).
                 type: string
               observedGeneration:
                 description: |-
@@ -7630,8 +7641,9 @@ spec:
                 x-kubernetes-list-type: map
               instanceID:
                 description: |-
-                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
-                  successful reconcile; omitted when the resource has no instance-id label (default install).
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+                  reconcile attempt by this install's controller, including when Ready=False; omitted
+                  when the resource has no instance-id label (default install).
                 type: string
               observedGeneration:
                 description: |-
@@ -8099,7 +8111,6 @@ rules:
   - changetransferpolicies
   - clusterscmproviders
   - commitstatuses
-  - controllerconfigurations
   - gitcommitstatuses
   - gitrepositories
   - promotionstrategies
@@ -8123,7 +8134,6 @@ rules:
   - changetransferpolicies/finalizers
   - clusterscmproviders/finalizers
   - commitstatuses/finalizers
-  - controllerconfigurations/finalizers
   - gitcommitstatuses/finalizers
   - gitrepositories/finalizers
   - promotionstrategies/finalizers
@@ -8154,6 +8164,14 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - controllerconfigurations
+  verbs:
+  - get
+  - list
+  - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

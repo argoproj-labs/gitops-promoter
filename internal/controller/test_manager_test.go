@@ -69,7 +69,7 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 	})
 	Expect(err).NotTo(HaveOccurred())
 
-	Expect(provider.SetupWithManager(ctx, mcMgr)).To(Succeed())
+	Expect(provider.SetupWithManager(mgrCtx, mcMgr)).To(Succeed())
 
 	localMgr := mcMgr.GetLocalManager()
 
@@ -83,7 +83,7 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 		Recorder:    localMgr.GetEventRecorder("ChangeTransferPolicy"),
 		SettingsMgr: settingsMgr,
 	}
-	Expect(ctpReconciler.SetupWithManager(ctx, localMgr)).To(Succeed())
+	Expect(ctpReconciler.SetupWithManager(mgrCtx, localMgr)).To(Succeed())
 
 	Expect((&CommitStatusReconciler{
 		Client:      localMgr.GetClient(),
@@ -91,7 +91,7 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 		Recorder:    localMgr.GetEventRecorder("CommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
-	}).SetupWithManager(ctx, localMgr)).To(Succeed())
+	}).SetupWithManager(mgrCtx, localMgr)).To(Succeed())
 
 	Expect((&TimedCommitStatusReconciler{
 		Client:      localMgr.GetClient(),
@@ -99,7 +99,7 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 		Recorder:    localMgr.GetEventRecorder("TimedCommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
-	}).SetupWithManager(ctx, localMgr)).To(Succeed())
+	}).SetupWithManager(mgrCtx, localMgr)).To(Succeed())
 
 	Expect((&GitCommitStatusReconciler{
 		Client:      localMgr.GetClient(),
@@ -107,7 +107,7 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 		Recorder:    localMgr.GetEventRecorder("GitCommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
-	}).SetupWithManager(ctx, localMgr)).To(Succeed())
+	}).SetupWithManager(mgrCtx, localMgr)).To(Succeed())
 
 	Expect((&WebRequestCommitStatusReconciler{
 		Client:      localMgr.GetClient(),
@@ -115,14 +115,14 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 		Recorder:    localMgr.GetEventRecorder("WebRequestCommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
-	}).SetupWithManager(ctx, localMgr)).To(Succeed())
+	}).SetupWithManager(mgrCtx, localMgr)).To(Succeed())
 
 	Expect((&ArgoCDCommitStatusReconciler{
 		Manager:            mcMgr,
 		SettingsMgr:        settingsMgr,
 		KubeConfigProvider: provider,
 		Recorder:           localMgr.GetEventRecorder("ArgoCDCommitStatus"),
-	}).SetupWithManager(ctx, mcMgr)).To(Succeed())
+	}).SetupWithManager(mgrCtx, mcMgr)).To(Succeed())
 
 	Expect((&PromotionStrategyReconciler{
 		Client:      localMgr.GetClient(),
@@ -130,26 +130,26 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 		Recorder:    localMgr.GetEventRecorder("PromotionStrategy"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
-	}).SetupWithManager(ctx, localMgr)).To(Succeed())
+	}).SetupWithManager(mgrCtx, localMgr)).To(Succeed())
 
 	Expect((&PullRequestReconciler{
 		Client:      localMgr.GetClient(),
 		Scheme:      localMgr.GetScheme(),
 		Recorder:    localMgr.GetEventRecorder("PullRequest"),
 		SettingsMgr: settingsMgr,
-	}).SetupWithManager(ctx, localMgr)).To(Succeed())
+	}).SetupWithManager(mgrCtx, localMgr)).To(Succeed())
 
 	Expect((&ScmProviderReconciler{
 		Client:   localMgr.GetClient(),
 		Scheme:   localMgr.GetScheme(),
 		Recorder: localMgr.GetEventRecorder("ScmProvider"),
-	}).SetupWithManager(ctx, localMgr)).To(Succeed())
+	}).SetupWithManager(mgrCtx, localMgr)).To(Succeed())
 
 	Expect((&GitRepositoryReconciler{
 		Client:   localMgr.GetClient(),
 		Scheme:   localMgr.GetScheme(),
 		Recorder: localMgr.GetEventRecorder("GitRepository"),
-	}).SetupWithManager(ctx, localMgr)).To(Succeed())
+	}).SetupWithManager(mgrCtx, localMgr)).To(Succeed())
 
 	Expect(localMgr.AddHealthzCheck("healthz", healthz.Ping)).To(Succeed())
 

@@ -771,7 +771,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusStatus(
 					},
 					"instanceID": {
 						SchemaProps: spec.SchemaProps{
-							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last successful reconcile; omitted when the resource has no instance-id label (default install).",
+							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install).",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -1284,7 +1284,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyStatu
 					},
 					"instanceID": {
 						SchemaProps: spec.SchemaProps{
-							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last successful reconcile; omitted when the resource has no instance-id label (default install).",
+							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install).",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -1889,7 +1889,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitStatusStatus(ref co
 					},
 					"instanceID": {
 						SchemaProps: spec.SchemaProps{
-							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last successful reconcile; omitted when the resource has no instance-id label (default install).",
+							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install).",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -2115,7 +2115,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSt
 					},
 					"instanceID": {
 						SchemaProps: spec.SchemaProps{
-							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last successful reconcile; omitted when the resource has no instance-id label (default install).",
+							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install).",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -2734,7 +2734,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusStatus(ref
 					},
 					"instanceID": {
 						SchemaProps: spec.SchemaProps{
-							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last successful reconcile; omitted when the resource has no instance-id label (default install).",
+							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install).",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -3062,7 +3062,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitRepositoryStatus(ref c
 					},
 					"instanceID": {
 						SchemaProps: spec.SchemaProps{
-							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last successful reconcile; omitted when the resource has no instance-id label (default install).",
+							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install).",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -3788,7 +3788,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategyStatus(r
 					},
 					"instanceID": {
 						SchemaProps: spec.SchemaProps{
-							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last successful reconcile; omitted when the resource has no instance-id label (default install).",
+							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install).",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -4132,7 +4132,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestStatus(ref com
 					},
 					"instanceID": {
 						SchemaProps: spec.SchemaProps{
-							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last successful reconcile; omitted when the resource has no instance-id label (default install).",
+							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install).",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -4662,7 +4662,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderStatus(ref com
 					},
 					"instanceID": {
 						SchemaProps: spec.SchemaProps{
-							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last successful reconcile; omitted when the resource has no instance-id label (default install).",
+							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install).",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -5030,7 +5030,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatusStatus(r
 					},
 					"instanceID": {
 						SchemaProps: spec.SchemaProps{
-							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last successful reconcile; omitted when the resource has no instance-id label (default install).",
+							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install).",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -5595,7 +5595,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusSta
 					},
 					"instanceID": {
 						SchemaProps: spec.SchemaProps{
-							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last successful reconcile; omitted when the resource has no instance-id label (default install).",
+							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install).",
 							Type:        []string{"string"},
 							Format:      "",
 						},

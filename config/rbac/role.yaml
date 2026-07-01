@@ -45,7 +45,6 @@ rules:
   - changetransferpolicies
   - clusterscmproviders
   - commitstatuses
-  - controllerconfigurations
   - gitcommitstatuses
   - gitrepositories
   - promotionstrategies
@@ -69,7 +68,6 @@ rules:
   - changetransferpolicies/finalizers
   - clusterscmproviders/finalizers
   - commitstatuses/finalizers
-  - controllerconfigurations/finalizers
   - gitcommitstatuses/finalizers
   - gitrepositories/finalizers
   - promotionstrategies/finalizers
@@ -100,3 +98,11 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - controllerconfigurations
+  verbs:
+  - get
+  - list
+  - watch

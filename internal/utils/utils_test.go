@@ -267,6 +267,25 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 		Expect(err.Error()).To(ContainSubstring("test error message"))
 	})
 
+	It("should mirror instance-id into status.instanceID when reconciliation returns an error", func() {
+		var err error
+		const instanceID = "wave-0"
+		obj.Labels = map[string]string{promoterv1alpha1.InstanceIDLabel: instanceID}
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(obj).Build()
+		Expect(fakeClient.Create(ctx, obj)).To(Succeed())
+
+		func() {
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err, nil)
+			err = errors.New("reconcile failed")
+		}()
+
+		Expect(err).To(HaveOccurred())
+		updated := &promoterv1alpha1.PromotionStrategy{}
+		Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(obj), updated)).To(Succeed())
+		Expect(updated.Status.InstanceID).NotTo(BeNil())
+		Expect(*updated.Status.InstanceID).To(Equal(instanceID))
+	})
+
 	It("should handle successful reconciliation without error", func() {
 		var err error
 		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(obj).Build()

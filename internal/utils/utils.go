@@ -474,13 +474,13 @@ func HandleReconciliationResult(
 		recorder.Eventf(obj, nil, eventType, persistedReady.Reason, "Reconciling", persistedReady.Message)
 	}()
 
+	// Stamp status.instanceID on every reconcile attempt so consumers can see which install
+	// is actively reconciling this resource, including when Ready=False.
+	obj.SetStatusInstanceID(InstanceIDStatusValue(obj))
 	// Stamp status.observedGeneration before building the apply configuration so the SSA
 	// patch records which spec generation produced this status. SSA with ForceOwnership
 	// has no optimistic-concurrency guard, so observedGeneration is the only signal a
 	// consumer can use to tell whether a status reflects the current spec.
-	if *err == nil {
-		obj.SetStatusInstanceID(InstanceIDStatusValue(obj))
-	}
 	obj.SetObservedGeneration(obj.GetGeneration())
 
 	// Build the full status apply configuration and SSA-patch the status subresource.

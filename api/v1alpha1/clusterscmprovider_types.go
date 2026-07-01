@@ -54,7 +54,7 @@ func (s *ClusterScmProvider) SetObservedGeneration(generation int64) {
 	s.Status.ObservedGeneration = generation
 }
 
-// SetStatusInstanceID records the instance-id label mirrored into status on successful reconcile.
+// SetStatusInstanceID records the instance-id label mirrored into status on each reconcile attempt.
 func (s *ClusterScmProvider) SetStatusInstanceID(v *string) {
 	s.Status.InstanceID = v
 }

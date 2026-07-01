@@ -51,8 +51,9 @@ type PullRequestStatusApplyConfiguration struct {
 	ExternallyMergedOrClosed *bool `json:"externallyMergedOrClosed,omitempty"`
 	// Conditions Represents the observations of the current state.
 	Conditions []metav1.ConditionApplyConfiguration `json:"conditions,omitempty"`
-	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
-	// successful reconcile; omitted when the resource has no instance-id label (default install).
+	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+	// reconcile attempt by this install's controller, including when Ready=False; omitted
+	// when the resource has no instance-id label (default install).
 	InstanceID *string `json:"instanceID,omitempty"`
 }
 

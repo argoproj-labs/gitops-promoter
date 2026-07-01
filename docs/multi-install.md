@@ -152,17 +152,17 @@ Built-in controllers use `GenerationChangedPredicate` on roots such as `Promotio
 | Field | Meaning |
 | ----- | ------- |
 | `metadata.labels[promoter.argoproj.io/instance-id]` | Operator intent — which install should own this object |
-| `status.instanceID` | Mirrors `metadata.labels[promoter.argoproj.io/instance-id]` on the last successful reconcile (set on every Promoter CR type) |
+| `status.instanceID` | Mirrors `metadata.labels[promoter.argoproj.io/instance-id]` on each reconcile attempt by this install's controller (set on every Promoter CR type), including when `Ready=False` |
 | Child label checks | Ground truth for the cluster — catches drift, orphans, or hand-edited children |
 
-`status.instanceID` matching the metadata label means the controller finished a successful reconcile pass for that resource. It does **not** guarantee there are no stale orphans or that every Promoter CR in the namespace is labeled.
+`status.instanceID` matching the metadata label means this install's controller is actively reconciling that resource (including failed attempts). It does **not** guarantee there are no stale orphans or that every Promoter CR in the namespace is labeled.
 
 #### What to check
 
 | Check | Meaning |
 | ----- | ------- |
 | Child `metadata.labels[promoter.argoproj.io/instance-id]` | Primary success criterion — CTPs, gate `CommitStatus`es, PRs match install ID |
-| `status.instanceID` on labeled Promoter CRs | Last successful reconcile mirrored the metadata label into status |
+| `status.instanceID` on labeled Promoter CRs | Active reconcile mirrored the metadata label into status |
 | `status.conditions[Ready=True]` on PS / gates | Healthy reconcile after restart |
 | Gating behavior | CTP commit status phases not stuck at pending for gate keys |
 | No stray unlabeled Promoter CRs in scope | Objects that should be in the partition are not missing the label |

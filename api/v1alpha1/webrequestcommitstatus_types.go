@@ -414,8 +414,9 @@ type WebRequestCommitStatusStatus struct {
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
-	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
-	// successful reconcile; omitted when the resource has no instance-id label (default install).
+	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+	// reconcile attempt by this install's controller, including when Ready=False; omitted
+	// when the resource has no instance-id label (default install).
 	// +optional
 	InstanceID *string `json:"instanceID,omitempty"`
 }
@@ -600,7 +601,7 @@ func (wrcs *WebRequestCommitStatus) SetObservedGeneration(generation int64) {
 	wrcs.Status.ObservedGeneration = generation
 }
 
-// SetStatusInstanceID records the instance-id label mirrored into status on successful reconcile.
+// SetStatusInstanceID records the instance-id label mirrored into status on each reconcile attempt.
 func (wrcs *WebRequestCommitStatus) SetStatusInstanceID(v *string) {
 	wrcs.Status.InstanceID = v
 }

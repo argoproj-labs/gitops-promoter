@@ -114,9 +114,10 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 		AfterEach(func() {
 			cc := &promoterv1alpha1.ControllerConfiguration{}
 			err := k8sClient.Get(ctx, typeNamespacedName, cc)
-			if err != nil {
+			if errors.IsNotFound(err) {
 				return
 			}
+			Expect(err).NotTo(HaveOccurred())
 			base := cc.DeepCopy()
 			cc.Spec.InstanceID = nil
 			Expect(k8sClient.Patch(ctx, cc, client.MergeFrom(base))).To(Succeed())
@@ -220,7 +221,10 @@ var _ = Describe("OptionsForInstanceID", func() {
 	It("does not include ControllerConfiguration", func() {
 		instanceID := "wave-0"
 		opts := promotercache.OptionsForInstanceID(&instanceID)
-		_, ok := opts.ByObject[&promoterv1alpha1.ControllerConfiguration{}]
-		Expect(ok).To(BeFalse())
+		for obj := range opts.ByObject {
+			_, isControllerConfiguration := obj.(*promoterv1alpha1.ControllerConfiguration)
+			Expect(isControllerConfiguration).To(BeFalse(),
+				"ControllerConfiguration must not be cache-partitioned, found %T", obj)
+		}
 	})
 })

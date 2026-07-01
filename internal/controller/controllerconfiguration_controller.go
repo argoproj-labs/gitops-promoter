@@ -49,9 +49,8 @@ type ControllerConfigurationReconciler struct {
 	ControllerNamespace string
 }
 
-// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=controllerconfigurations,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=controllerconfigurations,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=controllerconfigurations/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=controllerconfigurations/finalizers,verbs=update
 
 // Reconcile detects spec.instanceID drift from the startup bootstrap value and shuts down the
 // controller so the informer cache partition is rebuilt on restart.
