@@ -488,7 +488,7 @@
       customType: 'regex',
       description: 'Update golangci-lint version in GitHub Actions (handles SHA-pinned action)',
       managerFilePatterns: [
-        '/^\\.github/workflows/.*\\.ya?ml$/',
+        '^\\.github/workflows/.*\\.ya?ml$',
       ],
       matchStrings: [
         'golangci/golangci-lint-action@(?:[0-9a-f]{7,40}|v\\d+)[\\s\\S]*?version:\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
