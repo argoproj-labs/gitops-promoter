@@ -311,6 +311,9 @@ spec:
                   InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
                   reconcile attempt by this install's controller, including when Ready=False; omitted
                   when the resource has no instance-id label (default install).
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
                 type: string
               observedGeneration:
                 description: |-
@@ -1305,6 +1308,9 @@ spec:
                   InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
                   reconcile attempt by this install's controller, including when Ready=False; omitted
                   when the resource has no instance-id label (default install).
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
                 type: string
               observedGeneration:
                 description: |-
@@ -1888,6 +1894,9 @@ spec:
                   InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
                   reconcile attempt by this install's controller, including when Ready=False; omitted
                   when the resource has no instance-id label (default install).
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
                 type: string
               observedGeneration:
                 description: |-
@@ -2094,6 +2103,9 @@ spec:
                   InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
                   reconcile attempt by this install's controller, including when Ready=False; omitted
                   when the resource has no instance-id label (default install).
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
                 type: string
               observedGeneration:
                 description: |-
@@ -3970,6 +3982,9 @@ spec:
                   InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
                   reconcile attempt by this install's controller, including when Ready=False; omitted
                   when the resource has no instance-id label (default install).
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
                 type: string
               observedGeneration:
                 description: |-
@@ -4295,6 +4310,9 @@ spec:
                   InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
                   reconcile attempt by this install's controller, including when Ready=False; omitted
                   when the resource has no instance-id label (default install).
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
                 type: string
               observedGeneration:
                 description: |-
@@ -4591,6 +4609,9 @@ spec:
                   InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
                   reconcile attempt by this install's controller, including when Ready=False; omitted
                   when the resource has no instance-id label (default install).
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
                 type: string
               observedGeneration:
                 description: |-
@@ -6053,6 +6074,9 @@ spec:
                   InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
                   reconcile attempt by this install's controller, including when Ready=False; omitted
                   when the resource has no instance-id label (default install).
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
                 type: string
               observedGeneration:
                 description: |-
@@ -6309,6 +6333,9 @@ spec:
                   InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
                   reconcile attempt by this install's controller, including when Ready=False; omitted
                   when the resource has no instance-id label (default install).
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
                 type: string
               observedGeneration:
                 description: |-
@@ -6642,6 +6669,9 @@ spec:
                   InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
                   reconcile attempt by this install's controller, including when Ready=False; omitted
                   when the resource has no instance-id label (default install).
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
                 type: string
               observedGeneration:
                 description: |-
@@ -6877,6 +6907,9 @@ spec:
                   InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
                   reconcile attempt by this install's controller, including when Ready=False; omitted
                   when the resource has no instance-id label (default install).
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
                 type: string
               observedGeneration:
                 description: |-
@@ -7644,6 +7677,9 @@ spec:
                   InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
                   reconcile attempt by this install's controller, including when Ready=False; omitted
                   when the resource has no instance-id label (default install).
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
                 type: string
               observedGeneration:
                 description: |-

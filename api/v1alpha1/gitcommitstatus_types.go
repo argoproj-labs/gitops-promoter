@@ -132,6 +132,9 @@ type GitCommitStatusStatus struct {
 	// reconcile attempt by this install's controller, including when Ready=False; omitted
 	// when the resource has no instance-id label (default install).
 	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$`
 	InstanceID *string `json:"instanceID,omitempty"`
 }
 
