@@ -207,6 +207,34 @@ func buildHydratorMetadataPath(activePath string) string {
 // Read-only: fetches the branch ref and reads from refs/object DB; never mutates the clone's
 // index/worktree/HEAD.
 func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch, activePath string) (BranchShas, error) {
+	return g.getBranchShas(ctx, branch, activePath, false)
+}
+
+// LsRemoteBranches returns the current remote SHAs for the given branches without touching this
+// environment's local clone. It's a thin wrapper around the package-level LsRemote using this
+// environment's own GitOperationsProvider and GitRepository, for callers that want to cheaply
+// check whether a branch changed before paying for a full fetch (see
+// GetBranchShasSkipFetchIfUnchanged).
+func (g *EnvironmentOperations) LsRemoteBranches(ctx context.Context, branches ...string) (map[string]string, error) {
+	return LsRemote(ctx, g.gap, g.gitRepo, branches...)
+}
+
+// GetBranchShasSkipFetchIfUnchanged behaves exactly like GetBranchShas, except the network fetch
+// is skipped when skipFetch is true.
+//
+// Callers must only pass skipFetch=true after confirming, via a cheap LsRemoteBranches probe
+// against THIS SAME clone's identity, that the branch's current remote SHA equals the
+// lastKnownHydratedSha this same GetBranchShas(SkipFetchIfUnchanged) call returned on a previous,
+// successful invocation. That equality guarantees the commit object is already present in this
+// clone (it was fetched the last time we observed that SHA), so rev-parse/ls-tree below can
+// resolve it without fetching again. Passing skipFetch=true speculatively, or based on a SHA
+// observed by a different clone/identity, can make this method silently return stale or
+// unresolvable data.
+func (g *EnvironmentOperations) GetBranchShasSkipFetchIfUnchanged(ctx context.Context, branch, activePath string, skipFetch bool) (BranchShas, error) {
+	return g.getBranchShas(ctx, branch, activePath, skipFetch)
+}
+
+func (g *EnvironmentOperations) getBranchShas(ctx context.Context, branch, activePath string, skipFetch bool) (BranchShas, error) {
 	logger := log.FromContext(ctx)
 	gitPath := g.ClonePath()
 	if gitPath == "" {
@@ -215,15 +243,19 @@ func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch, activ
 
 	logger.V(4).Info("git path", "path", gitPath)
 
-	// Fetch the branch to ensure we have the latest remote ref
-	start := time.Now()
-	_, stderr, err := g.runCmd(ctx, gitPath, "fetch", "origin", branch)
-	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetch, metrics.GitOperationResultFromError(err), time.Since(start))
-	if err != nil {
-		logger.Error(err, "could not fetch branch", "gitError", stderr)
-		return BranchShas{}, fmt.Errorf("failed to fetch branch %q: %w", branch, err)
+	if skipFetch {
+		logger.V(4).Info("branch unchanged on remote since last reconcile, skipping fetch", "branch", branch)
+	} else {
+		// Fetch the branch to ensure we have the latest remote ref
+		start := time.Now()
+		_, stderr, err := g.runCmd(ctx, gitPath, "fetch", "origin", branch)
+		metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetch, metrics.GitOperationResultFromError(err), time.Since(start))
+		if err != nil {
+			logger.Error(err, "could not fetch branch", "gitError", stderr)
+			return BranchShas{}, fmt.Errorf("failed to fetch branch %q: %w", branch, err)
+		}
+		logger.V(4).Info("Fetched branch", "branch", branch)
 	}
-	logger.V(4).Info("Fetched branch", "branch", branch)
 
 	// Get the SHA of the remote branch
 	stdout, stderr, err := g.runCmd(ctx, gitPath, "rev-parse", "origin/"+branch)
