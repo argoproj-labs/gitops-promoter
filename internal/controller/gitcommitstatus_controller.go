@@ -405,8 +405,12 @@ func (r *GitCommitStatusReconciler) upsertCommitStatus(ctx context.Context, gcs 
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
 	// Build the apply configuration
+	commitStatusLabels := utils.CopyInstanceIDLabelToMap(
+		gcs,
+		utils.CommitStatusStandardLabels(gcs, branch, validationName),
+	)
 	commitStatusApply := acv1alpha1.CommitStatus(commitStatusName, gcs.Namespace).
-		WithLabels(utils.CommitStatusStandardLabels(gcs, branch, validationName)).
+		WithLabels(commitStatusLabels).
 		WithOwnerReferences(acmetav1.OwnerReference().
 			WithAPIVersion(gvk.GroupVersion().String()).
 			WithKind(gvk.Kind).

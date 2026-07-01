@@ -71,6 +71,12 @@ type GitRepositoryStatus struct {
 	// +listType=map
 	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+
+	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+	// reconcile attempt by this install's controller, including when Ready=False; omitted
+	// when the resource has no instance-id label (default install).
+	// +optional
+	InstanceID *string `json:"instanceID,omitempty"`
 }
 
 // +kubebuilder:ac:generate=true
@@ -97,6 +103,11 @@ func (gr *GitRepository) GetConditions() *[]metav1.Condition {
 // SetObservedGeneration records the object generation that produced the current status.
 func (gr *GitRepository) SetObservedGeneration(generation int64) {
 	gr.Status.ObservedGeneration = generation
+}
+
+// SetStatusInstanceID records the instance-id label mirrored into status on each reconcile attempt.
+func (gr *GitRepository) SetStatusInstanceID(v *string) {
+	gr.Status.InstanceID = v
 }
 
 //+kubebuilder:object:root=true

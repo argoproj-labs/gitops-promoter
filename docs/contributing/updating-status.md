@@ -56,11 +56,17 @@ that consumers use to detect this:
   racing against each other (check leader election).
 
 `HandleReconciliationResult` stamps `status.observedGeneration` on every **successful**
-full apply via `StatusConditionUpdater.SetObservedGeneration`. When the fallback path
-runs, it deliberately does **not** advance the top-level field; consumers then see a
-stale `status.observedGeneration` alongside a `Ready=False` condition whose own
+full apply via `PromoterResource.SetObservedGeneration`, and mirrors
+`metadata.labels[promoter.argoproj.io/instance-id]` into `status.instanceID` via
+`PromoterResource.SetStatusInstanceID` on **every** reconcile attempt (including when
+the reconcile returns an error), so consumers can see which install is actively
+reconciling the resource. When the fallback path runs, it deliberately does **not**
+advance the top-level `observedGeneration` field; consumers then see a stale
+`status.observedGeneration` alongside a `Ready=False` condition whose own
 `observedGeneration` records the generation the controller tried to reconcile. New CRDs
-must implement `SetObservedGeneration` and include the field in their `Status` struct.
+must implement `PromoterResource` (`GetConditions`, `SetObservedGeneration`,
+`SetStatusInstanceID`) and include `observedGeneration`, `conditions`, and `instanceID`
+in their `Status` struct.
 
 ## Per-controller `FieldOwner`
 

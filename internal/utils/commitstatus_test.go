@@ -138,3 +138,77 @@ var _ = Describe("CleanupOrphanedCommitStatuses", func() {
 		Expect(names).To(ConsistOf("valid-cs", "other-owner-cs"))
 	})
 })
+
+var _ = Describe("CopyInstanceIDLabel", func() {
+	It("no-ops when parent has no instance-id label", func() {
+		parent := &promoterv1alpha1.PromotionStrategy{
+			ObjectMeta: metav1.ObjectMeta{Name: "ps", Namespace: "ns"},
+		}
+		child := &promoterv1alpha1.ChangeTransferPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "ctp",
+				Namespace: "ns",
+				Labels:    map[string]string{"existing": "value"},
+			},
+		}
+		utils.CopyInstanceIDLabel(parent, child)
+		Expect(child.GetLabels()).To(Equal(map[string]string{"existing": "value"}))
+	})
+
+	It("copies instance-id from parent to child", func() {
+		parent := &promoterv1alpha1.PromotionStrategy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "ps",
+				Namespace: "ns",
+				Labels:    map[string]string{promoterv1alpha1.InstanceIDLabel: "wave-0"},
+			},
+		}
+		child := &promoterv1alpha1.CommitStatus{
+			ObjectMeta: metav1.ObjectMeta{Name: "cs", Namespace: "ns"},
+		}
+		utils.CopyInstanceIDLabel(parent, child)
+		Expect(child.GetLabels()[promoterv1alpha1.InstanceIDLabel]).To(Equal("wave-0"))
+	})
+
+	It("overwrites stale instance-id on child", func() {
+		parent := &promoterv1alpha1.PromotionStrategy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "ps",
+				Namespace: "ns",
+				Labels:    map[string]string{promoterv1alpha1.InstanceIDLabel: "wave-1"},
+			},
+		}
+		child := &promoterv1alpha1.CommitStatus{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "cs",
+				Namespace: "ns",
+				Labels:    map[string]string{promoterv1alpha1.InstanceIDLabel: "wave-0"},
+			},
+		}
+		utils.CopyInstanceIDLabel(parent, child)
+		Expect(child.GetLabels()[promoterv1alpha1.InstanceIDLabel]).To(Equal("wave-1"))
+	})
+})
+
+var _ = Describe("CopyInstanceIDLabelToMap", func() {
+	It("no-ops when parent has no instance-id label", func() {
+		parent := &promoterv1alpha1.TimedCommitStatus{
+			ObjectMeta: metav1.ObjectMeta{Name: "tcs", Namespace: "ns"},
+		}
+		labels := utils.CopyInstanceIDLabelToMap(parent, map[string]string{"k": "v"})
+		Expect(labels).To(Equal(map[string]string{"k": "v"}))
+	})
+
+	It("adds instance-id to the labels map", func() {
+		parent := &promoterv1alpha1.WebRequestCommitStatus{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "wrcs",
+				Namespace: "ns",
+				Labels:    map[string]string{promoterv1alpha1.InstanceIDLabel: "a"},
+			},
+		}
+		labels := utils.CopyInstanceIDLabelToMap(parent, utils.CommitStatusStandardLabels(parent, "env/dev", "key"))
+		Expect(labels[promoterv1alpha1.InstanceIDLabel]).To(Equal("a"))
+		Expect(labels[promoterv1alpha1.CommitStatusLabel]).To(Equal("key"))
+	})
+})
