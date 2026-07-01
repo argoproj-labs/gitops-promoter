@@ -31,13 +31,7 @@ spec:
   # … other controller settings unchanged
 ```
 
-**Default install** — omit `instanceID` (do not set it to `""`):
-
-```yaml
-spec:
-  promotionStrategy:
-    # …
-```
+**Default install** — leave `spec.instanceID` unset (do not set it to `""`).
 
 | `spec.instanceID` | Behavior |
 | ----------------- | -------- |
