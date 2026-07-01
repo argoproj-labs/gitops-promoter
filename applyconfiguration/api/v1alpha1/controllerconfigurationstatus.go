@@ -21,11 +21,11 @@ import (
 	v1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
-// GitRepositoryStatusApplyConfiguration represents a declarative configuration of the GitRepositoryStatus type for use
+// ControllerConfigurationStatusApplyConfiguration represents a declarative configuration of the ControllerConfigurationStatus type for use
 // with apply.
 //
-// GitRepositoryStatus defines the observed state of GitRepository
-type GitRepositoryStatusApplyConfiguration struct {
+// ControllerConfigurationStatus defines the observed state of ControllerConfiguration.
+type ControllerConfigurationStatusApplyConfiguration struct {
 	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
 	// Because status is written via Server-Side Apply with ForceOwnership (which has no
 	// optimistic-concurrency check), this field is the canonical way to detect stale
@@ -39,16 +39,16 @@ type GitRepositoryStatusApplyConfiguration struct {
 	InstanceID *string `json:"instanceID,omitempty"`
 }
 
-// GitRepositoryStatusApplyConfiguration constructs a declarative configuration of the GitRepositoryStatus type for use with
+// ControllerConfigurationStatusApplyConfiguration constructs a declarative configuration of the ControllerConfigurationStatus type for use with
 // apply.
-func GitRepositoryStatus() *GitRepositoryStatusApplyConfiguration {
-	return &GitRepositoryStatusApplyConfiguration{}
+func ControllerConfigurationStatus() *ControllerConfigurationStatusApplyConfiguration {
+	return &ControllerConfigurationStatusApplyConfiguration{}
 }
 
 // WithObservedGeneration sets the ObservedGeneration field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ObservedGeneration field is set to the value of the last call.
-func (b *GitRepositoryStatusApplyConfiguration) WithObservedGeneration(value int64) *GitRepositoryStatusApplyConfiguration {
+func (b *ControllerConfigurationStatusApplyConfiguration) WithObservedGeneration(value int64) *ControllerConfigurationStatusApplyConfiguration {
 	b.ObservedGeneration = &value
 	return b
 }
@@ -56,7 +56,7 @@ func (b *GitRepositoryStatusApplyConfiguration) WithObservedGeneration(value int
 // WithConditions adds the given value to the Conditions field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the Conditions field.
-func (b *GitRepositoryStatusApplyConfiguration) WithConditions(values ...*v1.ConditionApplyConfiguration) *GitRepositoryStatusApplyConfiguration {
+func (b *ControllerConfigurationStatusApplyConfiguration) WithConditions(values ...*v1.ConditionApplyConfiguration) *ControllerConfigurationStatusApplyConfiguration {
 	for i := range values {
 		if values[i] == nil {
 			panic("nil value passed to WithConditions")
@@ -69,7 +69,7 @@ func (b *GitRepositoryStatusApplyConfiguration) WithConditions(values ...*v1.Con
 // WithInstanceID sets the InstanceID field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the InstanceID field is set to the value of the last call.
-func (b *GitRepositoryStatusApplyConfiguration) WithInstanceID(value string) *GitRepositoryStatusApplyConfiguration {
+func (b *ControllerConfigurationStatusApplyConfiguration) WithInstanceID(value string) *ControllerConfigurationStatusApplyConfiguration {
 	b.InstanceID = &value
 	return b
 }

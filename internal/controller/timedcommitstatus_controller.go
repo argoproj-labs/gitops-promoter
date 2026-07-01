@@ -287,8 +287,12 @@ func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tc
 	key := tcs.Spec.CommitStatusKey() //nolint:staticcheck // SA1019: #1465 use spec.Key directly in v1.0
 
 	// Build the apply configuration
+	commitStatusLabels := utils.CopyInstanceIDLabelToMap(
+		tcs,
+		utils.CommitStatusStandardLabels(tcs, branch, key),
+	)
 	commitStatusApply := acv1alpha1.CommitStatus(commitStatusName, tcs.Namespace).
-		WithLabels(utils.CommitStatusStandardLabels(tcs, branch, key)).
+		WithLabels(commitStatusLabels).
 		WithOwnerReferences(acmetav1.OwnerReference().
 			WithAPIVersion(gvk.GroupVersion().String()).
 			WithKind(gvk.Kind).

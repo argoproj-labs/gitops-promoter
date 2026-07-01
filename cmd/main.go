@@ -32,6 +32,7 @@ import (
 	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/cmd/demo"
 	"github.com/argoproj-labs/gitops-promoter/internal/apiserver"
+	promotercache "github.com/argoproj-labs/gitops-promoter/internal/cache"
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -51,6 +52,7 @@ import (
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 
@@ -104,6 +106,20 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 
 	return cmd
+}
+
+func readInstanceIDForCache(ctx context.Context, cfg *rest.Config, namespace string) *string {
+	instanceID, err := settings.ReadInstanceID(ctx, cfg, namespace)
+	if err != nil {
+		setupLog.Error(err, "failed to read instanceID from ControllerConfiguration")
+		os.Exit(1)
+	}
+	if instanceID != nil {
+		setupLog.Info("multi-install mode: scoping informer cache to instanceID", "instanceID", *instanceID)
+	} else {
+		setupLog.Info("default install mode: scoping informer cache to resources without instance-id label")
+	}
+	return instanceID
 }
 
 func runController(
@@ -170,8 +186,15 @@ func runController(
 	// Create the provider first, then the manager with the provider
 	provider := kubeconfigprovider.New(providerOpts)
 
-	mcMgr, err := mcmanager.New(ctrl.GetConfigOrDie(), provider, ctrl.Options{
+	restConfig := ctrl.GetConfigOrDie()
+	processSignalsCtx := ctrl.SetupSignalHandler()
+	runCtx, shutdown := context.WithCancel(processSignalsCtx)
+
+	instanceID := readInstanceIDForCache(runCtx, restConfig, controllerNamespace)
+
+	mcMgr, err := mcmanager.New(restConfig, provider, ctrl.Options{
 		Scheme: scheme,
+		Cache:  promotercache.OptionsForInstanceID(instanceID, controllerNamespace),
 		Metrics: metricsserver.Options{
 			BindAddress:    metricsAddr,
 			SecureServing:  secureMetrics,
@@ -212,21 +235,19 @@ func runController(
 		ControllerNamespace: controllerNamespace,
 	})
 
-	processSignalsCtx := ctrl.SetupSignalHandler()
-
 	if err = (&controller.PullRequestReconciler{
 		Client:      localManager.GetClient(),
 		Scheme:      localManager.GetScheme(),
 		Recorder:    localManager.GetEventRecorder("PullRequest"),
 		SettingsMgr: settingsMgr,
-	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create PullRequest controller: %w", err))
 	}
 	if err = (&controller.RevertCommitReconciler{
 		Client:   localManager.GetClient(),
 		Scheme:   localManager.GetScheme(),
 		Recorder: localManager.GetEventRecorder("RevertCommit"),
-	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create RevertCommit controller: %w", err))
 	}
 
@@ -238,7 +259,7 @@ func runController(
 		Recorder:    localManager.GetEventRecorder("ChangeTransferPolicy"),
 		SettingsMgr: settingsMgr,
 	}
-	if err = ctpReconciler.SetupWithManager(processSignalsCtx, localManager); err != nil {
+	if err = ctpReconciler.SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ChangeTransferPolicy controller: %w", err))
 	}
 
@@ -248,7 +269,7 @@ func runController(
 		Recorder:    localManager.GetEventRecorder("CommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
-	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create CommitStatus controller: %w", err))
 	}
 
@@ -258,21 +279,21 @@ func runController(
 		Recorder:    localManager.GetEventRecorder("PromotionStrategy"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
-	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create PromotionStrategy controller: %w", err))
 	}
 	if err = (&controller.ScmProviderReconciler{
 		Client:   localManager.GetClient(),
 		Scheme:   localManager.GetScheme(),
 		Recorder: localManager.GetEventRecorder("ScmProvider"),
-	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ScmProvider controller: %w", err))
 	}
 	if err = (&controller.GitRepositoryReconciler{
 		Client:   localManager.GetClient(),
 		Scheme:   localManager.GetScheme(),
 		Recorder: localManager.GetEventRecorder("GitRepository"),
-	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create GitRepository controller: %w", err))
 	}
 
@@ -281,13 +302,17 @@ func runController(
 		SettingsMgr:        settingsMgr,
 		KubeConfigProvider: provider,
 		Recorder:           localManager.GetEventRecorder("ArgoCDCommitStatus"),
-	}).SetupWithManager(processSignalsCtx, mcMgr); err != nil {
+	}).SetupWithManager(runCtx, mcMgr); err != nil {
 		panic(fmt.Errorf("unable to create ArgoCDCommitStatus controller: %w", err))
 	}
 	if err = (&controller.ControllerConfigurationReconciler{
-		Client: localManager.GetClient(),
-		Scheme: localManager.GetScheme(),
-	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+		Client:              localManager.GetClient(),
+		Scheme:              localManager.GetScheme(),
+		Recorder:            localManager.GetEventRecorder("ControllerConfiguration"),
+		ControllerNamespace: controllerNamespace,
+		StartupInstanceID:   instanceID,
+		Shutdown:            shutdown,
+	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ControllerConfiguration controller: %w", err))
 	}
 	if err = (&controller.ClusterScmProviderReconciler{
@@ -295,7 +320,7 @@ func runController(
 		Scheme:      localManager.GetScheme(),
 		Recorder:    localManager.GetEventRecorder("ClusterScmProvider"),
 		SettingsMgr: settingsMgr,
-	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ClusterScmProvider controller: %w", err))
 	}
 	if err := (&controller.TimedCommitStatusReconciler{
@@ -304,7 +329,7 @@ func runController(
 		Recorder:    localManager.GetEventRecorder("TimedCommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
-	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic("unable to create TimedCommitStatus controller")
 	}
 	if err := (&controller.GitCommitStatusReconciler{
@@ -313,7 +338,7 @@ func runController(
 		Recorder:    localManager.GetEventRecorder("GitCommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
-	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+	}).SetupWithManager(runCtx, localManager); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GitCommitStatus")
 		panic(fmt.Errorf("unable to create GitCommitStatus controller: %w", err))
 	}
@@ -323,7 +348,7 @@ func runController(
 		Recorder:    localManager.GetEventRecorder("WebRequestCommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
-	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+	}).SetupWithManager(runCtx, localManager); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "WebRequestCommitStatus")
 		panic(fmt.Errorf("unable to create WebRequestCommitStatus controller: %w", err))
 	}
@@ -338,7 +363,7 @@ func runController(
 
 	whr := webhookreceiver.NewWebhookReceiver(localManager, webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()))
 
-	g, ctx := errgroup.WithContext(processSignalsCtx)
+	g, ctx := errgroup.WithContext(runCtx)
 
 	// Initialize the provider controller with the manager
 	if err := provider.SetupWithManager(ctx, mcMgr); err != nil {
@@ -356,7 +381,7 @@ func runController(
 
 	g.Go(func() error {
 		//nolint:lll // long line due to function call with multiple parameters
-		if err := ignoreCanceled(whr.Start(processSignalsCtx, fmt.Sprintf(":%d", constants.WebhookReceiverPort))); err != nil {
+		if err := ignoreCanceled(whr.Start(ctx, fmt.Sprintf(":%d", constants.WebhookReceiverPort))); err != nil {
 			setupLog.Error(err, "unable to start webhook receiver")
 			return err
 		}

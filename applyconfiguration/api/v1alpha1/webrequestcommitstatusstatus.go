@@ -39,6 +39,10 @@ type WebRequestCommitStatusStatusApplyConfiguration struct {
 	PromotionStrategyContext *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration `json:"promotionStrategyContext,omitempty"`
 	// Conditions represent the latest available observations of an object's state
 	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
+	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+	// reconcile attempt by this install's controller, including when Ready=False; omitted
+	// when the resource has no instance-id label (default install).
+	InstanceID *string `json:"instanceID,omitempty"`
 }
 
 // WebRequestCommitStatusStatusApplyConfiguration constructs a declarative configuration of the WebRequestCommitStatusStatus type for use with
@@ -86,5 +90,13 @@ func (b *WebRequestCommitStatusStatusApplyConfiguration) WithConditions(values .
 		}
 		b.Conditions = append(b.Conditions, *values[i])
 	}
+	return b
+}
+
+// WithInstanceID sets the InstanceID field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the InstanceID field is set to the value of the last call.
+func (b *WebRequestCommitStatusStatusApplyConfiguration) WithInstanceID(value string) *WebRequestCommitStatusStatusApplyConfiguration {
+	b.InstanceID = &value
 	return b
 }

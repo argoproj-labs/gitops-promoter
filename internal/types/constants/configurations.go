@@ -57,4 +57,8 @@ const (
 	// CommitStatusControllerFieldOwner is the field owner for Server-Side Apply operations
 	// performed by the CommitStatus controller.
 	CommitStatusControllerFieldOwner = "promoter.argoproj.io/commitstatus-controller"
+
+	// ControllerConfigurationControllerFieldOwner is the field owner for Server-Side Apply operations
+	// performed by the ControllerConfiguration controller.
+	ControllerConfigurationControllerFieldOwner = "promoter.argoproj.io/controllerconfiguration-controller"
 )

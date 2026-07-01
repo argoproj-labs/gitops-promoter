@@ -25,6 +25,21 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+var (
+	_ utils.PromoterResource = &promoterv1alpha1.PromotionStrategy{}
+	_ utils.PromoterResource = &promoterv1alpha1.ChangeTransferPolicy{}
+	_ utils.PromoterResource = &promoterv1alpha1.CommitStatus{}
+	_ utils.PromoterResource = &promoterv1alpha1.PullRequest{}
+	_ utils.PromoterResource = &promoterv1alpha1.ScmProvider{}
+	_ utils.PromoterResource = &promoterv1alpha1.ClusterScmProvider{}
+	_ utils.PromoterResource = &promoterv1alpha1.GitRepository{}
+	_ utils.PromoterResource = &promoterv1alpha1.TimedCommitStatus{}
+	_ utils.PromoterResource = &promoterv1alpha1.GitCommitStatus{}
+	_ utils.PromoterResource = &promoterv1alpha1.WebRequestCommitStatus{}
+	_ utils.PromoterResource = &promoterv1alpha1.ArgoCDCommitStatus{}
+	_ utils.PromoterResource = &promoterv1alpha1.ControllerConfiguration{}
+)
+
 var _ = Describe("test rendering a template", func() {
 	tests := map[string]struct {
 		testdata []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase
@@ -250,6 +265,25 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 		// The error should be preserved
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("test error message"))
+	})
+
+	It("should mirror instance-id into status.instanceID when reconciliation returns an error", func() {
+		var err error
+		const instanceID = "wave-0"
+		obj.Labels = map[string]string{promoterv1alpha1.InstanceIDLabel: instanceID}
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(obj).Build()
+		Expect(fakeClient.Create(ctx, obj)).To(Succeed())
+
+		func() {
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err, nil)
+			err = errors.New("reconcile failed")
+		}()
+
+		Expect(err).To(HaveOccurred())
+		updated := &promoterv1alpha1.PromotionStrategy{}
+		Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(obj), updated)).To(Succeed())
+		Expect(updated.Status.InstanceID).NotTo(BeNil())
+		Expect(*updated.Status.InstanceID).To(Equal(instanceID))
 	})
 
 	It("should handle successful reconciliation without error", func() {

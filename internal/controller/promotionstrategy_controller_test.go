@@ -20,10 +20,15 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
@@ -5852,3 +5857,72 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		})
 	})
 })
+
+// childLabelPropagationSites lists controller files that must call CopyInstanceIDLabelToMap
+// at child-creation sites for multi-install label propagation.
+var childLabelPropagationSites = []string{
+	"promotionstrategy_controller.go",
+	"changetransferpolicy_controller.go",
+	"argocdcommitstatus_controller.go",
+	"gitcommitstatus_controller.go",
+	"timedcommitstatus_controller.go",
+	"webrequestcommitstatus_controller.go",
+}
+
+func TestChildCreationPropagatesInstanceIDLabel(t *testing.T) {
+	t.Parallel()
+	for _, file := range childLabelPropagationSites {
+		t.Run(file, func(t *testing.T) {
+			t.Parallel()
+			path := filepath.Join(".", file)
+			src, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read %s: %v", path, err)
+			}
+			fset := token.NewFileSet()
+			f, err := parser.ParseFile(fset, path, src, 0)
+			if err != nil {
+				t.Fatalf("parse %s: %v", path, err)
+			}
+			found := false
+			ast.Inspect(f, func(n ast.Node) bool {
+				call, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				sel, ok := call.Fun.(*ast.SelectorExpr)
+				if !ok {
+					return true
+				}
+				if id, ok := sel.X.(*ast.Ident); ok && id.Name == "utils" && sel.Sel.Name == "CopyInstanceIDLabelToMap" {
+					found = true
+					return false
+				}
+				return true
+			})
+			if !found {
+				t.Fatalf("%s must call utils.CopyInstanceIDLabelToMap for instance-id label propagation", file)
+			}
+		})
+	}
+}
+
+func TestNoInstanceIDPredicateOnControllers(t *testing.T) {
+	t.Parallel()
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), "_controller.go") {
+			continue
+		}
+		src, err := os.ReadFile(filepath.Join(".", e.Name()))
+		if err != nil {
+			t.Fatalf("read %s: %v", e.Name(), err)
+		}
+		if strings.Contains(string(src), "promoterpredicate.InstanceID") {
+			t.Errorf("%s must not use promoterpredicate.InstanceID (cache ByObject is the partition boundary)", e.Name())
+		}
+	}
+}
