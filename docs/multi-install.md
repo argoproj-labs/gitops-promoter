@@ -48,7 +48,7 @@ There is **no match-all mode**. Labeled and unlabeled resources are never reconc
 
 The value must be a valid Kubernetes label value (min length 1, max 63 characters; alphanumeric, `.`, `_`, `-`).
 
-**Changing `instanceID` requires a controller restart.** The value is read once at startup before the manager cache is built.
+**Changing `instanceID` rebuilds the informer cache partition.** The value is read once at startup before the manager cache is built. In the default single-replica install, the controller detects `spec.instanceID` drift and exits so Kubernetes restarts the pod with the new partition. With **multiple replicas and leader election**, only the leader observes the change and restarts itself; follower pods keep the old partition until you roll the deployment (for example `kubectl rollout restart deployment/<controller>`).
 
 ## How partitioning works
 
@@ -107,23 +107,161 @@ In the default install (`instanceID` unset), gating only sees unlabeled `CommitS
 
 When `instanceID` is set, gating is **scoped to that install**. The ChangeTransferPolicy controller lists `CommitStatus` objects through the filtered cache, so CommitStatuses from other installs never block or satisfy gates for this install.
 
-## Migration
+## Migration runbook
+
+Follow these principles whenever you add, change, or remove `promoter.argoproj.io/instance-id` or `ControllerConfiguration.spec.instanceID`:
+
+### Principles
+
+- **One concern per change** — change `metadata.labels[promoter.argoproj.io/instance-id]` in a separate apply from any `spec` edits. Combining both in one request is discouraged: orphan cleanup can miss stale children if topology shrinks during the migration window.
+- **Coordinate across resources** — label all roots (`PromotionStrategy`, gate CRs, and any other Promoter CRs this install owns) with the **same** value before restart. Do not relabel a `PromotionStrategy` while shrinking a gate's `spec` in parallel.
+- **Install config is separate** — set `ControllerConfiguration.spec.instanceID` in its own step. Single-replica installs restart automatically; HA installs need a rolling restart of all controller pods afterward.
+- **Cross-CR coordination is runbook-only** — the API does not enforce ordering across multiple resources; follow the steps below deliberately.
 
 ### Default install → multi-install
 
-1. **Label existing resources** — Add `promoter.argoproj.io/instance-id: <your-id>` to every Promoter CR the install should manage (start with `PromotionStrategy` resources; reconcile will propagate to children on the next pass).
-2. **Set `spec.instanceID`** on `ControllerConfiguration` to the same value.
-3. **Restart the controller** so the filtered cache is built.
+1. **Label roots only** — add `promoter.argoproj.io/instance-id: <your-id>` to every Promoter CR this install should manage (`PromotionStrategy`, `TimedCommitStatus`, `GitCommitStatus`, `WebRequestCommitStatus`, `ArgoCDCommitStatus`, and others as needed). Use metadata-only patches.
+2. **Expect the gap** — the currently running default install stops reconciling relabeled parents immediately (they leave its informer cache). **Children are not relabeled until after restart** on the new partition. This is expected, not a failure.
+3. **Set `spec.instanceID`** on `ControllerConfiguration` to the same value (non-empty). The controller pod restarts automatically in a single-replica install.
+4. **Wait for propagation** — confirm children carry the label and labeled resources report `status.instanceID` (see [Verification](#verification) below).
+6. **Edit spec only after propagation** — environment removal, selector changes, Argo CD selector tightening, and similar topology edits.
 
 Unlabeled resources become **invisible** to the multi-install controller. Resources labeled for another instance ID are also invisible.
 
 ### Multi-install → default install
 
-1. **Remove `promoter.argoproj.io/instance-id`** from all Promoter CRs the default install should manage.
-2. **Remove `spec.instanceID`** from `ControllerConfiguration` (omit the field; do not set `""`).
-3. **Restart the controller**.
+1. **Remove `promoter.argoproj.io/instance-id`** from all Promoter CRs the default install should manage (metadata-only patches).
+2. **Remove `spec.instanceID`** from `ControllerConfiguration` (omit the field; do not set `""`). The controller pod restarts automatically in a single-replica install.
+3. **Wait for propagation** — children should have the label removed and `status.instanceID` cleared on labeled resources.
+4. **Edit spec only after propagation**.
 
 Labeled resources become invisible to the default install until the label is removed.
+
+### Verification
+
+#### `metadata.generation` and `status.observedGeneration`
+
+**Label changes do not affect `metadata.generation`.** For Promoter CRDs (which have a `/status` subresource), Kubernetes increments `.metadata.generation` only when **`.spec`** changes. A metadata-only patch that adds, removes, or changes `promoter.argoproj.io/instance-id` leaves `generation` unchanged.
+
+**Do not use `status.observedGeneration` as the primary migration signal.** It is stamped to match `metadata.generation` on each successful status write and exists to detect stale status after **spec** changes. Because label-only edits do not bump `generation`, `observedGeneration == generation` may already have been true before relabeling and does not prove children were relabeled.
+
+Built-in controllers use `GenerationChangedPredicate` on roots such as `PromotionStrategy`, so a label-only update does not enqueue a reconcile on the **currently running** install. Propagation happens on the **first reconcile after restart** (informer resync), not because `generation` changed.
+
+#### `status.instanceID`
+
+| Field | Meaning |
+| ----- | ------- |
+| `metadata.labels[promoter.argoproj.io/instance-id]` | Operator intent — which install should own this object |
+| `status.instanceID` | Mirrors `metadata.labels[promoter.argoproj.io/instance-id]` on the last successful reconcile (set on every Promoter CR type) |
+| Child label checks | Ground truth for the cluster — catches drift, orphans, or hand-edited children |
+
+`status.instanceID` matching the metadata label means the controller finished a successful reconcile pass for that resource. It does **not** guarantee there are no stale orphans or that every Promoter CR in the namespace is labeled.
+
+#### What to check
+
+| Check | Meaning |
+| ----- | ------- |
+| Child `metadata.labels[promoter.argoproj.io/instance-id]` | Primary success criterion — CTPs, gate `CommitStatus`es, PRs match install ID |
+| `status.instanceID` on labeled Promoter CRs | Last successful reconcile mirrored the metadata label into status |
+| `status.conditions[Ready=True]` on PS / gates | Healthy reconcile after restart |
+| Gating behavior | CTP commit status phases not stuck at pending for gate keys |
+| No stray unlabeled Promoter CRs in scope | Objects that should be in the partition are not missing the label |
+
+### kubectl examples
+
+**Label-only patch on a root** (separate apply from any spec edit):
+
+```bash
+kubectl label promotionstrategy my-app -n team-a \
+  promoter.argoproj.io/instance-id=wave-0 --overwrite
+```
+
+**Set install partition** (single-replica installs restart automatically; roll the deployment in HA):
+
+```bash
+kubectl patch controllerconfiguration promoter-controller-configuration -n gitops-promoter \
+  --type=merge -p '{"spec":{"instanceID":"wave-0"}}'
+```
+
+**Rolling restart after instanceID change in HA** (all replicas must restart to pick up the new partition):
+
+```bash
+kubectl rollout restart deployment/<controller-deployment> -n gitops-promoter
+```
+
+**Confirm roots are labeled**:
+
+```bash
+kubectl get promotionstrategy,timedcommitstatus,gitcommitstatus,webrequestcommitstatus,argocdcommitstatus \
+  -n team-a -l promoter.argoproj.io/instance-id=wave-0
+```
+
+**Parent acknowledges propagation**:
+
+```bash
+kubectl get promotionstrategy my-app -n team-a \
+  -o jsonpath='{.metadata.labels.promoter\.argoproj\.io/instance-id}{" -> "}{.status.instanceID}{"\n"}'
+
+kubectl wait promotionstrategy/my-app -n team-a \
+  --for=jsonpath='{.status.instanceID}'=wave-0 --timeout=120s
+```
+
+**Confirm children inherited the label**:
+
+```bash
+# CTPs for a strategy
+kubectl get changetransferpolicy -n team-a \
+  -l promoter.argoproj.io/promotion-strategy=my-app,promoter.argoproj.io/instance-id=wave-0
+
+# Gate CommitStatuses for a timed gate
+kubectl get commitstatus -n team-a \
+  -l promoter.argoproj.io/timed-commit-status=my-timer,promoter.argoproj.io/instance-id=wave-0
+```
+
+**Find Promoter CRs still missing the label** (should be empty in scope after propagation):
+
+```bash
+kubectl get promotionstrategy,changetransferpolicy,commitstatus,pullrequest \
+  -n team-a -l '!promoter.argoproj.io/instance-id'
+```
+
+**Ready condition after restart** (secondary health signal):
+
+```bash
+kubectl get promotionstrategy my-app -n team-a \
+  -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}{"\n"}'
+```
+
+**ControllerConfiguration matches labels**:
+
+```bash
+kubectl get controllerconfiguration promoter-controller-configuration -n gitops-promoter \
+  -o jsonpath='{.spec.instanceID}{"\n"}'
+```
+
+**Do not rely on generation for migration** — this output is often unchanged after label-only patches:
+
+```bash
+kubectl get promotionstrategy my-app -n team-a \
+  -o jsonpath='{.metadata.generation}{" "}{.status.observedGeneration}{"\n"}'
+```
+
+See also [Labels — Instance ID](debugging/labels.md#instance-id-multi-install) for broader label debugging.
+
+### Avoid during migration
+
+- Same apply: `instance-id` label + any `spec` change on a root CR (discouraged — can strand orphans if topology shrinks before children relabel).
+- Topology shrink (remove environments, drop selector keys, tighten Argo CD selectors) before propagation completes.
+- Setting `instanceID: ""` on `ControllerConfiguration` — omit the field for the default install.
+- Hand-editing `instance-id` on child objects (`ChangeTransferPolicy`, `CommitStatus`, `PullRequest`).
+- Changing `ControllerConfiguration.spec.instanceID` in HA without rolling all controller pods — followers keep the old cache partition and reconcile the wrong resources on failover.
+
+### Troubleshooting
+
+- Gates pending / "Waiting for status to be reported" — `CommitStatus` label mismatch with `ControllerConfiguration.spec.instanceID`.
+- Promotion stuck after migration — confirm gate `CommitStatus` and CTP labels match the install partition.
+- `status.instanceID` empty while metadata label is set — controller has not reconciled since restart; check that the install partition matches the label.
+- Stranded orphans — topology shrink coincided with label migration; delete orphans manually by name.
 
 ## Operations
 

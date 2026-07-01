@@ -80,8 +80,8 @@ type ArgoCDCommitStatusReconciler struct {
 
 // URLTemplateData is the data passed to the URLTemplate in the ArgoCDCommitStatus.
 type URLTemplateData struct {
-	Environment        string
 	ArgoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
+	Environment        string
 }
 
 // ApplicationsInEnvironment is a list of applications in an environment.
@@ -532,17 +532,22 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 
 	r.watchLocalApplications = watchLocalApplications
 
+	controllerOpts := controller.Options{
+		MaxConcurrentReconciles: maxConcurrentReconciles,
+		RateLimiter:             rateLimiter,
+		UsePriorityQueue:        new(true),
+	}
+	if skip := mcMgr.GetLocalManager().GetControllerOptions().SkipNameValidation; skip != nil {
+		controllerOpts.SkipNameValidation = skip
+	}
+
 	err = mcbuilder.ControllerManagedBy(mcMgr).
 		For(&promoterv1alpha1.ArgoCDCommitStatus{},
 			mcbuilder.WithEngageWithLocalCluster(true),
 			mcbuilder.WithEngageWithProviderClusters(false),
 			mcbuilder.WithPredicates(predicate.GenerationChangedPredicate{}),
 		).
-		WithOptions(controller.Options{
-			MaxConcurrentReconciles: maxConcurrentReconciles,
-			RateLimiter:             rateLimiter,
-			UsePriorityQueue:        new(true),
-		}).
+		WithOptions(controllerOpts).
 		Watches(&argocd.Application{}, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
 			mcbuilder.WithEngageWithLocalCluster(watchLocalApplications),
 			mcbuilder.WithEngageWithProviderClusters(true),

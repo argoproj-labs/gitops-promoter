@@ -32,8 +32,9 @@ type ControllerConfigurationSpecApplyConfiguration struct {
 	// InstanceID scopes which Promoter CRs this install reconciles. When set, only resources
 	// labeled promoter.argoproj.io/instance-id with this exact value enter the informer cache.
 	// When unset (nil), only resources without that label are reconciled. There is no mode that
-	// reconciles labeled and unlabeled resources together. Changing this value requires a
-	// controller restart.
+	// reconciles labeled and unlabeled resources together. Changing this value rebuilds the
+	// informer cache partition: a single-replica install shuts down and restarts automatically;
+	// HA installs (multiple replicas with leader election) require a rolling restart of all pods.
 	InstanceID *string `json:"instanceID,omitempty"`
 	// PromotionStrategy contains the configuration for the PromotionStrategy controller,
 	// including WorkQueue settings that control reconciliation behavior.

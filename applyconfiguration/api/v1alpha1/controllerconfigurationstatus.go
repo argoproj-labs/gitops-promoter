@@ -21,56 +21,41 @@ import (
 	v1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
-// TimedCommitStatusStatusApplyConfiguration represents a declarative configuration of the TimedCommitStatusStatus type for use
+// ControllerConfigurationStatusApplyConfiguration represents a declarative configuration of the ControllerConfigurationStatus type for use
 // with apply.
 //
-// TimedCommitStatusStatus defines the observed state of TimedCommitStatus.
-type TimedCommitStatusStatusApplyConfiguration struct {
+// ControllerConfigurationStatus defines the observed state of ControllerConfiguration.
+type ControllerConfigurationStatusApplyConfiguration struct {
 	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
 	// Because status is written via Server-Side Apply with ForceOwnership (which has no
 	// optimistic-concurrency check), this field is the canonical way to detect stale
 	// status writes: compare status.observedGeneration with metadata.generation.
 	ObservedGeneration *int64 `json:"observedGeneration,omitempty"`
-	// Environments holds the status of each environment being tracked.
-	Environments []TimedCommitStatusEnvironmentsStatusApplyConfiguration `json:"environments,omitempty"`
-	// Conditions represent the latest available observations of an object's state
+	// Conditions Represents the observations of the current state.
 	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
 	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
 	// successful reconcile; omitted when the resource has no instance-id label (default install).
 	InstanceID *string `json:"instanceID,omitempty"`
 }
 
-// TimedCommitStatusStatusApplyConfiguration constructs a declarative configuration of the TimedCommitStatusStatus type for use with
+// ControllerConfigurationStatusApplyConfiguration constructs a declarative configuration of the ControllerConfigurationStatus type for use with
 // apply.
-func TimedCommitStatusStatus() *TimedCommitStatusStatusApplyConfiguration {
-	return &TimedCommitStatusStatusApplyConfiguration{}
+func ControllerConfigurationStatus() *ControllerConfigurationStatusApplyConfiguration {
+	return &ControllerConfigurationStatusApplyConfiguration{}
 }
 
 // WithObservedGeneration sets the ObservedGeneration field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ObservedGeneration field is set to the value of the last call.
-func (b *TimedCommitStatusStatusApplyConfiguration) WithObservedGeneration(value int64) *TimedCommitStatusStatusApplyConfiguration {
+func (b *ControllerConfigurationStatusApplyConfiguration) WithObservedGeneration(value int64) *ControllerConfigurationStatusApplyConfiguration {
 	b.ObservedGeneration = &value
-	return b
-}
-
-// WithEnvironments adds the given value to the Environments field in the declarative configuration
-// and returns the receiver, so that objects can be build by chaining "With" function invocations.
-// If called multiple times, values provided by each call will be appended to the Environments field.
-func (b *TimedCommitStatusStatusApplyConfiguration) WithEnvironments(values ...*TimedCommitStatusEnvironmentsStatusApplyConfiguration) *TimedCommitStatusStatusApplyConfiguration {
-	for i := range values {
-		if values[i] == nil {
-			panic("nil value passed to WithEnvironments")
-		}
-		b.Environments = append(b.Environments, *values[i])
-	}
 	return b
 }
 
 // WithConditions adds the given value to the Conditions field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the Conditions field.
-func (b *TimedCommitStatusStatusApplyConfiguration) WithConditions(values ...*v1.ConditionApplyConfiguration) *TimedCommitStatusStatusApplyConfiguration {
+func (b *ControllerConfigurationStatusApplyConfiguration) WithConditions(values ...*v1.ConditionApplyConfiguration) *ControllerConfigurationStatusApplyConfiguration {
 	for i := range values {
 		if values[i] == nil {
 			panic("nil value passed to WithConditions")
@@ -83,7 +68,7 @@ func (b *TimedCommitStatusStatusApplyConfiguration) WithConditions(values ...*v1
 // WithInstanceID sets the InstanceID field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the InstanceID field is set to the value of the last call.
-func (b *TimedCommitStatusStatusApplyConfiguration) WithInstanceID(value string) *TimedCommitStatusStatusApplyConfiguration {
+func (b *ControllerConfigurationStatusApplyConfiguration) WithInstanceID(value string) *ControllerConfigurationStatusApplyConfiguration {
 	b.InstanceID = &value
 	return b
 }

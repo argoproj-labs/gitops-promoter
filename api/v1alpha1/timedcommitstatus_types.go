@@ -97,6 +97,11 @@ type TimedCommitStatusStatus struct {
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
+	// successful reconcile; omitted when the resource has no instance-id label (default install).
+	// +optional
+	InstanceID *string `json:"instanceID,omitempty"`
 }
 
 // TimedCommitStatusEnvironmentsStatus defines the observed timing status for a specific environment.
@@ -175,6 +180,11 @@ func (tcs *TimedCommitStatus) GetConditions() *[]metav1.Condition {
 // SetObservedGeneration records the object generation that produced the current status.
 func (tcs *TimedCommitStatus) SetObservedGeneration(generation int64) {
 	tcs.Status.ObservedGeneration = generation
+}
+
+// SetStatusInstanceID records the instance-id label mirrored into status on successful reconcile.
+func (tcs *TimedCommitStatus) SetStatusInstanceID(v *string) {
+	tcs.Status.InstanceID = v
 }
 
 func init() {

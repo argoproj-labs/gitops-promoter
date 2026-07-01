@@ -251,6 +251,9 @@ var schemaYAML = typed.YAMLObject(`types:
           elementRelationship: associative
           keys:
           - type
+    - name: instanceID
+      type:
+        scalar: string
     - name: observedGeneration
       type:
         scalar: numeric

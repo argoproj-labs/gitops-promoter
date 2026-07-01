@@ -54,6 +54,11 @@ func (s *ClusterScmProvider) SetObservedGeneration(generation int64) {
 	s.Status.ObservedGeneration = generation
 }
 
+// SetStatusInstanceID records the instance-id label mirrored into status on successful reconcile.
+func (s *ClusterScmProvider) SetStatusInstanceID(v *string) {
+	s.Status.InstanceID = v
+}
+
 // +kubebuilder:object:root=true
 
 // ClusterScmProviderList contains a list of ClusterScmProvider.

@@ -314,16 +314,13 @@ func AreCommitStatusesPassing(commitStatuses []promoterv1alpha1.ChangeRequestPol
 	return true
 }
 
-// StatusConditionUpdater defines the interface for objects that can have their status conditions updated.
-// Implementers must also expose SetObservedGeneration so the generic reconciliation helper can stamp
-// status.observedGeneration before the SSA status patch. This is the primary mechanism for detecting
-// stale status writes: SSA with ForceOwnership performs no optimistic-concurrency check, so a stale
-// cached reconcile could otherwise silently overwrite a newer status. Consumers should compare
-// status.observedGeneration with metadata.generation.
-type StatusConditionUpdater interface {
+// PromoterResource is implemented by Promoter CRs reconciled through HandleReconciliationResult.
+// It combines status condition updates, observedGeneration stamping, and status.instanceID mirroring.
+type PromoterResource interface {
 	client.Object
 	GetConditions() *[]metav1.Condition
 	SetObservedGeneration(generation int64)
+	SetStatusInstanceID(*string)
 }
 
 // RemoveReadyCondition removes the Ready condition from obj's status conditions and returns a deep
@@ -331,7 +328,7 @@ type StatusConditionUpdater interface {
 // Reconcile (instead of meta.RemoveStatusCondition) so stale conditions from a previous reconcile
 // don't bleed into this one, and pass the returned condition to HandleReconciliationResult so it
 // can emit an event only when the Ready condition actually transitions.
-func RemoveReadyCondition(obj StatusConditionUpdater) *metav1.Condition {
+func RemoveReadyCondition(obj PromoterResource) *metav1.Condition {
 	conditions := obj.GetConditions()
 	prev := meta.FindStatusCondition(*conditions, string(promoterConditions.Ready))
 	if prev != nil {
@@ -381,7 +378,7 @@ func readyConditionTransitioned(prev, current *metav1.Condition) bool {
 func HandleReconciliationResult(
 	ctx context.Context,
 	startTime time.Time,
-	obj StatusConditionUpdater,
+	obj PromoterResource,
 	c client.Client,
 	recorder events.EventRecorder,
 	fieldOwner string,
@@ -481,6 +478,9 @@ func HandleReconciliationResult(
 	// patch records which spec generation produced this status. SSA with ForceOwnership
 	// has no optimistic-concurrency guard, so observedGeneration is the only signal a
 	// consumer can use to tell whether a status reflects the current spec.
+	if *err == nil {
+		obj.SetStatusInstanceID(InstanceIDStatusValue(obj))
+	}
 	obj.SetObservedGeneration(obj.GetGeneration())
 
 	// Build the full status apply configuration and SSA-patch the status subresource.
@@ -564,7 +564,7 @@ func HandleReconciliationResult(
 	}
 
 	//nolint:forcetypeassert // Type assertion is guaranteed to succeed for all CRDs in this codebase.
-	fallbackObj := obj.DeepCopyObject().(StatusConditionUpdater)
+	fallbackObj := obj.DeepCopyObject().(PromoterResource)
 	fallbackErr := c.Status().Patch(ctx, fallbackObj, ApplyPatch{ApplyConfig: condCfg},
 		client.FieldOwner(fallbackFieldOwner), client.ForceOwnership)
 	if fallbackErr != nil {
@@ -603,7 +603,7 @@ func HandleReconciliationResult(
 // This will override any existing Ready condition on the parent.
 //
 // All child objects must be non-nil.
-func InheritNotReadyConditionFromObjects[T StatusConditionUpdater](parent StatusConditionUpdater, notReadyReason promoterConditions.CommonReason, childObjs ...T) {
+func InheritNotReadyConditionFromObjects[T PromoterResource](parent PromoterResource, notReadyReason promoterConditions.CommonReason, childObjs ...T) {
 	// This function does not nil-check the result of GetConditions() for either the parent or child objects. This is
 	// because all our CRDs have non-nilable status.conditions fields. The return value of GetConditions() is a pointer
 	// only to facilitate mutations on the referenced slice.

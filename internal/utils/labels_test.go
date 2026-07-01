@@ -85,3 +85,74 @@ var _ = Describe("CopyInstanceIDLabel", func() {
 		Expect(child.GetLabels()).To(HaveKeyWithValue(promoterv1alpha1.EnvironmentLabel, testEnvBranch))
 	})
 })
+
+var _ = Describe("InstanceIDStatusValue", func() {
+	It("returns a pointer to the parent's instance-id label value", func() {
+		parent := &promoterv1alpha1.PromotionStrategy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   "parent",
+				Labels: map[string]string{promoterv1alpha1.InstanceIDLabel: testInstanceID},
+			},
+		}
+
+		got := utils.InstanceIDStatusValue(parent)
+		Expect(got).NotTo(BeNil())
+		Expect(*got).To(Equal(testInstanceID))
+	})
+
+	It("returns nil when the parent has no instance-id label", func() {
+		parent := &promoterv1alpha1.PromotionStrategy{
+			ObjectMeta: metav1.ObjectMeta{Name: "parent"},
+		}
+
+		Expect(utils.InstanceIDStatusValue(parent)).To(BeNil())
+	})
+
+	It("returns nil when the parent's instance-id label is empty", func() {
+		parent := &promoterv1alpha1.PromotionStrategy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   "parent",
+				Labels: map[string]string{promoterv1alpha1.InstanceIDLabel: ""},
+			},
+		}
+
+		Expect(utils.InstanceIDStatusValue(parent)).To(BeNil())
+	})
+})
+
+var _ = Describe("status.instanceID stamping", func() {
+	It("sets status.instanceID on Promoter CRs from metadata labels", func() {
+		ps := &promoterv1alpha1.PromotionStrategy{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels: map[string]string{promoterv1alpha1.InstanceIDLabel: testInstanceID},
+			},
+		}
+		cs := &promoterv1alpha1.CommitStatus{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels: map[string]string{promoterv1alpha1.InstanceIDLabel: testInstanceID},
+			},
+		}
+
+		ps.SetStatusInstanceID(utils.InstanceIDStatusValue(ps))
+		cs.SetStatusInstanceID(utils.InstanceIDStatusValue(cs))
+
+		Expect(ps.Status.InstanceID).NotTo(BeNil())
+		Expect(*ps.Status.InstanceID).To(Equal(testInstanceID))
+		Expect(cs.Status.InstanceID).NotTo(BeNil())
+		Expect(*cs.Status.InstanceID).To(Equal(testInstanceID))
+	})
+
+	It("clears status.instanceID when the parent has no instance-id label", func() {
+		stale := testInstanceID
+		ps := &promoterv1alpha1.PromotionStrategy{
+			ObjectMeta: metav1.ObjectMeta{Name: "ps"},
+			Status: promoterv1alpha1.PromotionStrategyStatus{
+				InstanceID: &stale,
+			},
+		}
+
+		ps.SetStatusInstanceID(utils.InstanceIDStatusValue(ps))
+
+		Expect(ps.Status.InstanceID).To(BeNil())
+	})
+})

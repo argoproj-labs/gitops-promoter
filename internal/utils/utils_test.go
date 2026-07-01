@@ -25,6 +25,21 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+var (
+	_ utils.PromoterResource = &promoterv1alpha1.PromotionStrategy{}
+	_ utils.PromoterResource = &promoterv1alpha1.ChangeTransferPolicy{}
+	_ utils.PromoterResource = &promoterv1alpha1.CommitStatus{}
+	_ utils.PromoterResource = &promoterv1alpha1.PullRequest{}
+	_ utils.PromoterResource = &promoterv1alpha1.ScmProvider{}
+	_ utils.PromoterResource = &promoterv1alpha1.ClusterScmProvider{}
+	_ utils.PromoterResource = &promoterv1alpha1.GitRepository{}
+	_ utils.PromoterResource = &promoterv1alpha1.TimedCommitStatus{}
+	_ utils.PromoterResource = &promoterv1alpha1.GitCommitStatus{}
+	_ utils.PromoterResource = &promoterv1alpha1.WebRequestCommitStatus{}
+	_ utils.PromoterResource = &promoterv1alpha1.ArgoCDCommitStatus{}
+	_ utils.PromoterResource = &promoterv1alpha1.ControllerConfiguration{}
+)
+
 var _ = Describe("test rendering a template", func() {
 	tests := map[string]struct {
 		testdata []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase

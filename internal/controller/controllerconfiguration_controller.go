@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -28,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 )
 
 // ControllerConfigurationReconciler reconciles a ControllerConfiguration object
@@ -35,25 +37,44 @@ import (
 type ControllerConfigurationReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+
+	Shutdown            context.CancelFunc
+	StartupInstanceID   *string
+	ControllerNamespace string
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=controllerconfigurations,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=controllerconfigurations/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=controllerconfigurations/finalizers,verbs=update
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the ControllerConfiguration object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.20.2/pkg/reconcile
+// Reconcile detects spec.instanceID drift from the startup bootstrap value and shuts down the
+// controller so the informer cache partition is rebuilt on restart.
 func (r *ControllerConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
-	// TODO(user): your logic here
+	if req.Namespace != r.ControllerNamespace || req.Name != settings.ControllerConfigurationName {
+		return ctrl.Result{}, nil
+	}
+
+	cc := &promoterv1alpha1.ControllerConfiguration{}
+	if err := r.Get(ctx, req.NamespacedName, cc); err != nil {
+		if errors.IsNotFound(err) {
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{}, fmt.Errorf("get ControllerConfiguration: %w", err)
+	}
+
+	if settings.InstanceIDsEqual(r.StartupInstanceID, cc.Spec.InstanceID) {
+		return ctrl.Result{}, nil
+	}
+
+	logger.Info("spec.instanceID changed since startup; shutting down controller to reload informer cache partition",
+		"startupInstanceID", r.StartupInstanceID,
+		"specInstanceID", cc.Spec.InstanceID,
+	)
+	if r.Shutdown != nil {
+		r.Shutdown()
+	}
 
 	return ctrl.Result{}, nil
 }

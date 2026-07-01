@@ -134,7 +134,7 @@ successfully, and 2) all child resources also had a `Ready` condition of `True`.
 
 ### Observed generation
 
-Reconciled CRDs (all resources in this document except `ControllerConfiguration`) set `status.observedGeneration`
+Reconciled CRDs set `status.observedGeneration`
 to the `metadata.generation` that produced the current status. When it equals `metadata.generation`, status is current;
 when it is lower, reconciliation has not caught up yet (or the last apply failed — see the `Ready` condition). Each
 `Ready` condition also has its own `observedGeneration` for the generation that condition reflects; on a failed apply,

@@ -184,6 +184,11 @@ spec:
                 description: Id is the unique identifier of the commit status, set
                   by the SCM
                 type: string
+              instanceID:
+                description: |-
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
+                  successful reconcile; omitted when the resource has no instance-id label (default install).
+                type: string
               observedGeneration:
                 description: |-
                   ObservedGeneration is the .metadata.generation that this status was reconciled from.

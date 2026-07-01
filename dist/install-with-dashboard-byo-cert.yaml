@@ -306,6 +306,11 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              instanceID:
+                description: |-
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
+                  successful reconcile; omitted when the resource has no instance-id label (default install).
+                type: string
               observedGeneration:
                 description: |-
                   ObservedGeneration is the .metadata.generation that this status was reconciled from.
@@ -1294,6 +1299,11 @@ spec:
                       type: object
                   type: object
                 type: array
+              instanceID:
+                description: |-
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
+                  successful reconcile; omitted when the resource has no instance-id label (default install).
+                type: string
               observedGeneration:
                 description: |-
                   ObservedGeneration is the .metadata.generation that this status was reconciled from.
@@ -1871,6 +1881,11 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              instanceID:
+                description: |-
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
+                  successful reconcile; omitted when the resource has no instance-id label (default install).
+                type: string
               observedGeneration:
                 description: |-
                   ObservedGeneration is the .metadata.generation that this status was reconciled from.
@@ -2070,6 +2085,11 @@ spec:
               id:
                 description: Id is the unique identifier of the commit status, set
                   by the SCM
+                type: string
+              instanceID:
+                description: |-
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
+                  successful reconcile; omitted when the resource has no instance-id label (default install).
                 type: string
               observedGeneration:
                 description: |-
@@ -4193,6 +4213,11 @@ spec:
                 x-kubernetes-list-map-keys:
                 - branch
                 x-kubernetes-list-type: map
+              instanceID:
+                description: |-
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
+                  successful reconcile; omitted when the resource has no instance-id label (default install).
+                type: string
               observedGeneration:
                 description: |-
                   ObservedGeneration is the .metadata.generation that this status was reconciled from.
@@ -4483,6 +4508,11 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              instanceID:
+                description: |-
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
+                  successful reconcile; omitted when the resource has no instance-id label (default install).
+                type: string
               observedGeneration:
                 description: |-
                   ObservedGeneration is the .metadata.generation that this status was reconciled from.
@@ -5939,6 +5969,11 @@ spec:
                 x-kubernetes-list-map-keys:
                 - branch
                 x-kubernetes-list-type: map
+              instanceID:
+                description: |-
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
+                  successful reconcile; omitted when the resource has no instance-id label (default install).
+                type: string
               observedGeneration:
                 description: |-
                   ObservedGeneration is the .metadata.generation that this status was reconciled from.
@@ -6189,6 +6224,11 @@ spec:
               id:
                 description: ID the id of the pull request
                 type: string
+              instanceID:
+                description: |-
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
+                  successful reconcile; omitted when the resource has no instance-id label (default install).
+                type: string
               observedGeneration:
                 description: |-
                   ObservedGeneration is the .metadata.generation that this status was reconciled from.
@@ -6275,6 +6315,12 @@ spec:
             type: object
           status:
             description: RevertCommitStatus defines the observed state of RevertCommit
+            properties:
+              instanceID:
+                description: |-
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
+                  successful reconcile; omitted when the resource has no instance-id label (default install).
+                type: string
             type: object
         type: object
     served: true
@@ -6516,6 +6562,11 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              instanceID:
+                description: |-
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
+                  successful reconcile; omitted when the resource has no instance-id label (default install).
+                type: string
               observedGeneration:
                 description: |-
                   ObservedGeneration is the .metadata.generation that this status was reconciled from.
@@ -6745,6 +6796,11 @@ spec:
                 x-kubernetes-list-map-keys:
                 - branch
                 x-kubernetes-list-type: map
+              instanceID:
+                description: |-
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
+                  successful reconcile; omitted when the resource has no instance-id label (default install).
+                type: string
               observedGeneration:
                 description: |-
                   ObservedGeneration is the .metadata.generation that this status was reconciled from.
@@ -7506,6 +7562,11 @@ spec:
                 x-kubernetes-list-map-keys:
                 - branch
                 x-kubernetes-list-type: map
+              instanceID:
+                description: |-
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
+                  successful reconcile; omitted when the resource has no instance-id label (default install).
+                type: string
               observedGeneration:
                 description: |-
                   ObservedGeneration is the .metadata.generation that this status was reconciled from.

@@ -127,6 +127,11 @@ type GitCommitStatusStatus struct {
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] on the last
+	// successful reconcile; omitted when the resource has no instance-id label (default install).
+	// +optional
+	InstanceID *string `json:"instanceID,omitempty"`
 }
 
 // GitCommitStatusEnvironmentStatus defines the observed validation status for a specific environment.
@@ -247,6 +252,11 @@ func (g *GitCommitStatus) GetConditions() *[]metav1.Condition {
 // SetObservedGeneration records the object generation that produced the current status.
 func (g *GitCommitStatus) SetObservedGeneration(generation int64) {
 	g.Status.ObservedGeneration = generation
+}
+
+// SetStatusInstanceID records the instance-id label mirrored into status on successful reconcile.
+func (g *GitCommitStatus) SetStatusInstanceID(v *string) {
+	g.Status.InstanceID = v
 }
 
 func init() {
