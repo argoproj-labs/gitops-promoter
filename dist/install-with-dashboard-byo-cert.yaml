@@ -7971,7 +7971,6 @@ rules:
   - ""
   resources:
   - namespaces
-  - secrets
   verbs:
   - get
   - list
@@ -7979,9 +7978,12 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - secrets/finalizers
+  - secrets
   verbs:
+  - get
+  - list
   - update
+  - watch
 - apiGroups:
   - ""
   - events.k8s.io
