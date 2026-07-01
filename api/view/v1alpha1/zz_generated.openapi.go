@@ -1985,7 +1985,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSp
 				Properties: map[string]spec.Schema{
 					"instanceID": {
 						SchemaProps: spec.SchemaProps{
-							Description: "InstanceID, when non-empty, scopes this controller install to resources carrying promoter.argoproj.io/instance-id with the same value. Leave empty for single-install mode (reconcile all resources in scope). Changing this value requires a controller restart.",
+							Description: "InstanceID scopes which Promoter CRs this install reconciles. When set, only resources labeled promoter.argoproj.io/instance-id with this exact value enter the informer cache. When unset (nil), only resources without that label are reconciled. There is no mode that reconciles labeled and unlabeled resources together. Changing this value requires a controller restart.",
 							Type:        []string{"string"},
 							Format:      "",
 						},

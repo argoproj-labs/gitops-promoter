@@ -3,6 +3,7 @@ package cache
 import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -24,22 +25,29 @@ var promotorCRDObjects = []client.Object{
 	&promoterv1alpha1.RevertCommit{},
 }
 
-// OptionsForInstanceID returns controller-runtime cache options that scope informer watches to
-// resources carrying promoter.argoproj.io/instance-id matching instanceID. When instanceID is
-// empty, returns default options (single-install: no label filter).
-func OptionsForInstanceID(instanceID string) cache.Options {
-	if instanceID == "" {
-		return cache.Options{}
-	}
-
-	sel := labels.SelectorFromSet(labels.Set{
-		promoterv1alpha1.InstanceIDLabel: instanceID,
-	})
+// OptionsForInstanceID returns controller-runtime cache options that partition informer watches by
+// instance-id label. When instanceID is nil, only resources without the label are cached. When
+// set, only resources with promoter.argoproj.io/instance-id equal to *instanceID are cached.
+func OptionsForInstanceID(instanceID *string) cache.Options {
+	sel := instanceIDSelector(instanceID)
 	byObject := make(map[client.Object]cache.ByObject, len(promotorCRDObjects))
 	for _, obj := range promotorCRDObjects {
 		byObject[obj] = cache.ByObject{Label: sel}
 	}
 	return cache.Options{ByObject: byObject}
+}
+
+func instanceIDSelector(instanceID *string) labels.Selector {
+	if instanceID == nil {
+		req, err := labels.NewRequirement(promoterv1alpha1.InstanceIDLabel, selection.DoesNotExist, nil)
+		if err != nil {
+			panic(err)
+		}
+		return labels.NewSelector().Add(*req)
+	}
+	return labels.SelectorFromSet(labels.Set{
+		promoterv1alpha1.InstanceIDLabel: *instanceID,
+	})
 }
 
 // PromotorCRDObjects returns the slice of types included in instance-id cache filtering.

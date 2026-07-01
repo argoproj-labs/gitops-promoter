@@ -3000,10 +3000,13 @@ spec:
                 type: object
               instanceID:
                 description: |-
-                  InstanceID, when non-empty, scopes this controller install to resources carrying
-                  promoter.argoproj.io/instance-id with the same value. Leave empty for single-install
-                  mode (reconcile all resources in scope). Changing this value requires a controller restart.
+                  InstanceID scopes which Promoter CRs this install reconciles. When set, only resources
+                  labeled promoter.argoproj.io/instance-id with this exact value enter the informer cache.
+                  When unset (nil), only resources without that label are reconciled. There is no mode that
+                  reconciles labeled and unlabeled resources together. Changing this value requires a
+                  controller restart.
                 maxLength: 63
+                minLength: 1
                 pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
                 type: string
               promotionStrategy:
@@ -8728,7 +8731,6 @@ spec:
             maxFastAttempts: 3
             slowDelay: 5m
       requeueDuration: 5m
-  instanceID: ""
   promotionStrategy:
     workQueue:
       maxConcurrentReconciles: 10

@@ -6,7 +6,7 @@ import (
 )
 
 // CopyInstanceIDLabel copies promoter.argoproj.io/instance-id from parent to child when the
-// parent carries a non-empty value. No-op when the parent label is missing or empty (single-install).
+// parent carries a non-empty value. No-op when the parent label is missing or empty.
 func CopyInstanceIDLabel(parent, child client.Object) {
 	v, ok := parent.GetLabels()[promoterv1alpha1.InstanceIDLabel]
 	if !ok || v == "" {

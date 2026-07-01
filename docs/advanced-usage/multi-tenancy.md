@@ -47,7 +47,7 @@ A given PromotionStrategy may need to reference CommitStatuses from any or all o
 
 ### Cluster-scoped gating (single install)
 
-To facilitate cross-team communication in a **single** controller install (`ControllerConfiguration.spec.instanceID` empty), _PromotionStrategy references to CommitStatuses are cluster-scoped_. If any CommitStatus on a cluster matches the key specified in a PromotionStrategy, then the PromotionStrategy controller will take that CommitStatus into account for the promotion process. This allows different actors to host CommitStatuses in their own namespaces, using their own SCM credentials.
+To facilitate cross-team communication in the **default** controller install (`ControllerConfiguration.spec.instanceID` unset), _PromotionStrategy references to CommitStatuses are cluster-scoped within that partition_. The default install's cache only holds unlabeled Promoter CRs, so only unlabeled CommitStatuses on the cluster match. This allows different actors to host CommitStatuses in their own namespaces, using their own SCM credentials, as long as those CommitStatuses are not labeled for another install.
 
 This cluster-scoped reference is reasonably safe in a multi-tenant setup because:
 

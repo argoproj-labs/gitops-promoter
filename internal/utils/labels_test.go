@@ -75,9 +75,7 @@ var _ = Describe("CopyInstanceIDLabel", func() {
 	})
 
 	It("is a no-op when the parent's instance-id value is empty", func() {
-		// An empty parent value carries no useful identity and must not be
-		// propagated, otherwise children would acquire an "empty" instance-id
-		// label that conflicts with the empty-id allow-all predicate.
+		// An empty parent value carries no useful identity and must not be propagated.
 		parent.SetLabels(map[string]string{promoterv1alpha1.InstanceIDLabel: ""})
 		child.SetLabels(map[string]string{promoterv1alpha1.EnvironmentLabel: testEnvBranch})
 

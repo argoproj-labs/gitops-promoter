@@ -109,15 +109,16 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	return cmd
 }
 
-func readInstanceIDForCache(ctx context.Context, cfg *rest.Config, namespace string) string {
+func readInstanceIDForCache(ctx context.Context, cfg *rest.Config, namespace string) *string {
 	instanceID, err := bootstrap.ReadInstanceID(ctx, cfg, namespace)
 	if err != nil {
-		setupLog.Error(err,
-			"failed to read instanceID from ControllerConfiguration; continuing with single-install mode")
-		return ""
+		setupLog.Error(err, "failed to read instanceID from ControllerConfiguration")
+		os.Exit(1)
 	}
-	if instanceID != "" {
-		setupLog.Info("multi-install mode: scoping informer cache to instanceID", "instanceID", instanceID)
+	if instanceID != nil {
+		setupLog.Info("multi-install mode: scoping informer cache to instanceID", "instanceID", *instanceID)
+	} else {
+		setupLog.Info("default install mode: scoping informer cache to resources without instance-id label")
 	}
 	return instanceID
 }

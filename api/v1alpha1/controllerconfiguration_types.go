@@ -31,13 +31,16 @@ import (
 // rate limiters, and other controller-specific parameters. All fields should be required,
 // with defaults set in manifests rather than in code.
 type ControllerConfigurationSpec struct {
-	// InstanceID, when non-empty, scopes this controller install to resources carrying
-	// promoter.argoproj.io/instance-id with the same value. Leave empty for single-install
-	// mode (reconcile all resources in scope). Changing this value requires a controller restart.
+	// InstanceID scopes which Promoter CRs this install reconciles. When set, only resources
+	// labeled promoter.argoproj.io/instance-id with this exact value enter the informer cache.
+	// When unset (nil), only resources without that label are reconciled. There is no mode that
+	// reconciles labeled and unlabeled resources together. Changing this value requires a
+	// controller restart.
 	// +optional
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$`
-	InstanceID string `json:"instanceID,omitempty"`
+	InstanceID *string `json:"instanceID,omitempty"`
 
 	// PromotionStrategy contains the configuration for the PromotionStrategy controller,
 	// including WorkQueue settings that control reconciliation behavior.

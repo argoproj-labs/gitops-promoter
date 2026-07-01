@@ -89,13 +89,19 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 })
 
 var _ = Describe("OptionsForInstanceID", func() {
-	It("returns empty ByObject when instanceID is empty", func() {
-		opts := promotercache.OptionsForInstanceID("")
-		Expect(opts.ByObject).To(BeNil())
+	It("scopes all promotor CRDs to resources without instance-id when nil", func() {
+		opts := promotercache.OptionsForInstanceID(nil)
+		Expect(opts.ByObject).To(HaveLen(len(promotercache.PromotorCRDObjects())))
+		for _, obj := range promotercache.PromotorCRDObjects() {
+			byObj, ok := opts.ByObject[obj]
+			Expect(ok).To(BeTrue(), "missing ByObject for %T", obj)
+			Expect(byObj.Label.String()).To(Equal("!promoter.argoproj.io/instance-id"))
+		}
 	})
 
-	It("scopes all promotor CRDs when instanceID is set", func() {
-		opts := promotercache.OptionsForInstanceID("wave-0")
+	It("scopes all promotor CRDs to matching instance-id when set", func() {
+		instanceID := "wave-0"
+		opts := promotercache.OptionsForInstanceID(&instanceID)
 		Expect(opts.ByObject).To(HaveLen(len(promotercache.PromotorCRDObjects())))
 		for _, obj := range promotercache.PromotorCRDObjects() {
 			byObj, ok := opts.ByObject[obj]
@@ -105,7 +111,8 @@ var _ = Describe("OptionsForInstanceID", func() {
 	})
 
 	It("does not include ControllerConfiguration", func() {
-		opts := promotercache.OptionsForInstanceID("wave-0")
+		instanceID := "wave-0"
+		opts := promotercache.OptionsForInstanceID(&instanceID)
 		_, ok := opts.ByObject[&promoterv1alpha1.ControllerConfiguration{}]
 		Expect(ok).To(BeFalse())
 	})

@@ -53,7 +53,7 @@ for different apps can target the same active commit SHA. In this setup, control
 
 ### 4. Instance ID Label (multi-install)
 
-When the cluster runs multiple Promoter controller installs, each install only caches resources labeled with its configured `ControllerConfiguration.spec.instanceID`. Gate-created `CommitStatus` objects must carry the same label as their parent gate or they never enter that install's cache and gating silently fails.
+When the cluster runs multiple Promoter controller installs, each install only caches resources labeled with its configured `ControllerConfiguration.spec.instanceID`. In the default install (`instanceID` unset), only **unlabeled** resources are cached—do not add this label to gate CRs or PromotionStrategies managed by the default install.
 
 Copy the label from the parent gate CR after building the standard labels:
 

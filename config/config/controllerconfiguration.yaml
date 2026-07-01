@@ -7,7 +7,6 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: controller-configuration
 spec:
-  instanceID: ""
   promotionStrategy:
     workQueue:
       maxConcurrentReconciles: 10
