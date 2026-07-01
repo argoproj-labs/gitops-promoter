@@ -32,7 +32,7 @@
   // the { releases: [ { version } ] } structure Renovate expects.
   customDatasources: {
     'envtest-k8s': {
-      defaultRegistryUrlTemplate: 'https://raw.githubusercontent.com/kubernetes-sigs/controller-tools/HEAD/envtest-releases.yaml',
+      defaultRegistryUrlTemplate: 'https://raw.githubusercontent.com/kubernetes-sigs/controller-tools/main/envtest-releases.yaml',
       format: 'yaml',
       transformTemplates: [
         '{ "releases": $map($keys(releases), function($v) { { "version": $v } }) }',
