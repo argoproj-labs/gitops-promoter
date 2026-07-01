@@ -85,7 +85,6 @@ rules:
   - changetransferpolicies/status
   - clusterscmproviders/status
   - commitstatuses/status
-  - controllerconfigurations/status
   - gitcommitstatuses/status
   - gitrepositories/status
   - promotionstrategies/status
@@ -100,9 +99,21 @@ rules:
   - update
 - apiGroups:
   - promoter.argoproj.io
+  resourceNames:
+  - promoter-controller-configuration
   resources:
   - controllerconfigurations
   verbs:
   - get
   - list
   - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resourceNames:
+  - promoter-controller-configuration
+  resources:
+  - controllerconfigurations/status
+  verbs:
+  - get
+  - patch
+  - update

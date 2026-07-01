@@ -194,7 +194,7 @@ func runController(
 
 	mcMgr, err := mcmanager.New(restConfig, provider, ctrl.Options{
 		Scheme: scheme,
-		Cache:  promotercache.OptionsForInstanceID(instanceID),
+		Cache:  promotercache.OptionsForInstanceID(instanceID, controllerNamespace),
 		Metrics: metricsserver.Options{
 			BindAddress:    metricsAddr,
 			SecureServing:  secureMetrics,

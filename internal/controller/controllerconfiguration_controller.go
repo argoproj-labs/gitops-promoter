@@ -49,8 +49,8 @@ type ControllerConfigurationReconciler struct {
 	ControllerNamespace string
 }
 
-// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=controllerconfigurations,verbs=get;list;watch
-// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=controllerconfigurations/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=controllerconfigurations,resourceNames=promoter-controller-configuration,verbs=get;list;watch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=controllerconfigurations/status,resourceNames=promoter-controller-configuration,verbs=get;update;patch
 
 // Reconcile detects spec.instanceID drift from the startup bootstrap value and shuts down the
 // controller so the informer cache partition is rebuilt on restart.
@@ -58,12 +58,6 @@ func (r *ControllerConfigurationReconciler) Reconcile(ctx context.Context, req c
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling ControllerConfiguration")
 	startTime := time.Now()
-
-	// Only the shipped configuration in the install namespace drives partition management; ignore
-	// any other ControllerConfiguration objects entirely (no status is written for them).
-	if req.Namespace != r.ControllerNamespace || req.Name != settings.ControllerConfigurationName {
-		return ctrl.Result{}, nil
-	}
 
 	var cc promoterv1alpha1.ControllerConfiguration
 	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
@@ -105,7 +99,10 @@ func (r *ControllerConfigurationReconciler) Reconcile(ctx context.Context, req c
 // SetupWithManager sets up the controller with the Manager.
 func (r *ControllerConfigurationReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.ControllerConfiguration{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		For(&promoterv1alpha1.ControllerConfiguration{}, builder.WithPredicates(predicate.And(
+			predicate.GenerationChangedPredicate{},
+			controllerConfigurationInstallNamespacePredicate(r.ControllerNamespace),
+		))).
 		Named("controllerconfiguration").
 		Complete(r)
 	if err != nil {
@@ -113,4 +110,10 @@ func (r *ControllerConfigurationReconciler) SetupWithManager(ctx context.Context
 	}
 
 	return nil
+}
+
+func controllerConfigurationInstallNamespacePredicate(namespace string) predicate.Predicate {
+	return predicate.NewPredicateFuncs(func(obj client.Object) bool {
+		return obj.GetNamespace() == namespace
+	})
 }

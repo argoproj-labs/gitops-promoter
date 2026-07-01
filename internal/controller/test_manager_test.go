@@ -62,7 +62,7 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 			BindAddress: "0",
 		},
 		HealthProbeBindAddress: "0",
-		Cache:                  promotercache.OptionsForInstanceID(instanceID),
+		Cache:                  promotercache.OptionsForInstanceID(instanceID, namespace),
 		Controller: config.Controller{
 			SkipNameValidation: &skipNameValidation,
 		},

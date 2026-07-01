@@ -197,9 +197,11 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 })
 
 var _ = Describe("OptionsForInstanceID", func() {
+	const controllerNamespace = "default"
+
 	It("scopes all partitioned types to resources without instance-id when nil", func() {
-		opts := promotercache.OptionsForInstanceID(nil)
-		Expect(opts.ByObject).To(HaveLen(len(promotercache.PartitionedObjects())))
+		opts := promotercache.OptionsForInstanceID(nil, controllerNamespace)
+		Expect(opts.ByObject).To(HaveLen(len(promotercache.PartitionedObjects()) + 1))
 		for _, obj := range promotercache.PartitionedObjects() {
 			byObj, ok := opts.ByObject[obj]
 			Expect(ok).To(BeTrue(), "missing ByObject for %T", obj)
@@ -209,8 +211,8 @@ var _ = Describe("OptionsForInstanceID", func() {
 
 	It("scopes all partitioned types to matching instance-id when set", func() {
 		instanceID := "wave-0"
-		opts := promotercache.OptionsForInstanceID(&instanceID)
-		Expect(opts.ByObject).To(HaveLen(len(promotercache.PartitionedObjects())))
+		opts := promotercache.OptionsForInstanceID(&instanceID, controllerNamespace)
+		Expect(opts.ByObject).To(HaveLen(len(promotercache.PartitionedObjects()) + 1))
 		for _, obj := range promotercache.PartitionedObjects() {
 			byObj, ok := opts.ByObject[obj]
 			Expect(ok).To(BeTrue(), "missing ByObject for %T", obj)
@@ -218,13 +220,11 @@ var _ = Describe("OptionsForInstanceID", func() {
 		}
 	})
 
-	It("does not include ControllerConfiguration", func() {
-		instanceID := "wave-0"
-		opts := promotercache.OptionsForInstanceID(&instanceID)
-		for obj := range opts.ByObject {
-			_, isControllerConfiguration := obj.(*promoterv1alpha1.ControllerConfiguration)
-			Expect(isControllerConfiguration).To(BeFalse(),
-				"ControllerConfiguration must not be cache-partitioned, found %T", obj)
-		}
+	It("scopes ControllerConfiguration to the install namespace", func() {
+		opts := promotercache.OptionsForInstanceID(nil, controllerNamespace)
+		byObj, ok := opts.ByObject[promotercache.PartitionedControllerConfigurationObject()]
+		Expect(ok).To(BeTrue())
+		Expect(byObj.Namespaces).To(HaveKey(controllerNamespace))
+		Expect(byObj.Label).To(BeNil())
 	})
 })

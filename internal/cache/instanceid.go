@@ -10,7 +10,8 @@ import (
 )
 
 // promotorCRDObjects lists every promoter.argoproj.io type reconciled by the controller that
-// participates in instance-id partitioning. ControllerConfiguration is excluded (source of truth).
+// participates in instance-id partitioning. ControllerConfiguration is scoped separately by
+// install namespace (see partitionedControllerConfigurationObject).
 var promotorCRDObjects = []client.Object{
 	&promoterv1alpha1.PromotionStrategy{},
 	&promoterv1alpha1.ChangeTransferPolicy{},
@@ -30,15 +31,25 @@ var promotorCRDObjects = []client.Object{
 // is required because controller-runtime matches ByObject map keys by pointer identity.
 var partitionedSecretObject client.Object = &corev1.Secret{}
 
+// partitionedControllerConfigurationObject is the cache.ByObject key for ControllerConfiguration.
+var partitionedControllerConfigurationObject client.Object = &promoterv1alpha1.ControllerConfiguration{}
+
 // OptionsForInstanceID returns controller-runtime cache options that partition informer watches by
 // instance-id label. When instanceID is nil, only resources without the label are cached. When
 // set, only resources with promoter.argoproj.io/instance-id equal to *instanceID are cached.
-func OptionsForInstanceID(instanceID *string) cache.Options {
+//
+// ControllerConfiguration is scoped to controllerNamespace only (not instance-id partitioned).
+func OptionsForInstanceID(instanceID *string, controllerNamespace string) cache.Options {
 	sel := instanceIDSelector(instanceID)
 	objs := PartitionedObjects()
-	byObject := make(map[client.Object]cache.ByObject, len(objs))
+	byObject := make(map[client.Object]cache.ByObject, len(objs)+1)
 	for _, obj := range objs {
 		byObject[obj] = cache.ByObject{Label: sel}
+	}
+	byObject[partitionedControllerConfigurationObject] = cache.ByObject{
+		Namespaces: map[string]cache.Config{
+			controllerNamespace: {},
+		},
 	}
 	return cache.Options{ByObject: byObject}
 }
@@ -70,4 +81,10 @@ func PartitionedObjects() []client.Object {
 // Exported for tests.
 func PartitionedSecretObject() client.Object {
 	return partitionedSecretObject
+}
+
+// PartitionedControllerConfigurationObject returns the ControllerConfiguration type key used in
+// cache.ByObject install-namespace scoping. Exported for tests.
+func PartitionedControllerConfigurationObject() client.Object {
+	return partitionedControllerConfigurationObject
 }
