@@ -605,9 +605,14 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 		return nil, fmt.Errorf("failed to marshal previous environment commit statuses: %w", err)
 	}
 
-	description := previousEnvironmentBranch + " - synced and healthy"
-	if phase == promoterv1alpha1.CommitPhasePending && pendingReason != "" {
+	var description string
+	switch {
+	case phase == promoterv1alpha1.CommitPhasePending && pendingReason != "":
 		description = pendingReason
+	case phase == promoterv1alpha1.CommitPhasePending:
+		description = previousEnvironmentBranch + " - waiting for active commit statuses"
+	default:
+		description = previousEnvironmentBranch + " - all active commit statuses passed"
 	}
 
 	// Build the apply configuration
@@ -630,7 +635,7 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 			WithRepositoryReference(acv1alpha1.ObjectReference().
 				WithName(ctp.Spec.RepositoryReference.Name)).
 			WithSha(ctp.Status.Proposed.Hydrated.Sha).
-			WithName(previousEnvironmentBranch + " - synced and healthy").
+			WithName(promoterv1alpha1.PreviousEnvironmentCommitStatusKey).
 			WithDescription(description).
 			WithPhase(phase).
 			WithUrl(url))
