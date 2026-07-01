@@ -166,7 +166,83 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 			Expect(shutdowns.Load()).To(Equal(int32(1)))
 		})
 
-		It("ignores other ControllerConfiguration resources", func() {
+		It("does not shut down when startup and spec instanceID are the same non-empty value", func() {
+			var shutdowns atomic.Int32
+			wave0 := "wave-0"
+			reconciler := &ControllerConfigurationReconciler{
+				Client:              k8sClient,
+				Scheme:              k8sClient.Scheme(),
+				Recorder:            events.NewFakeRecorder(100),
+				ControllerNamespace: "default",
+				StartupInstanceID:   &wave0,
+				Shutdown: func() {
+					shutdowns.Add(1)
+				},
+			}
+
+			cc := &promoterv1alpha1.ControllerConfiguration{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, cc)).To(Succeed())
+			base := cc.DeepCopy()
+			cc.Spec.InstanceID = &wave0
+			Expect(k8sClient.Patch(ctx, cc, client.MergeFrom(base))).To(Succeed())
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(shutdowns.Load()).To(Equal(int32(0)))
+		})
+
+		It("shuts down when spec.instanceID changes between non-empty values", func() {
+			var shutdowns atomic.Int32
+			wave0 := "wave-0"
+			wave1 := "wave-1"
+			reconciler := &ControllerConfigurationReconciler{
+				Client:              k8sClient,
+				Scheme:              k8sClient.Scheme(),
+				Recorder:            events.NewFakeRecorder(100),
+				ControllerNamespace: "default",
+				StartupInstanceID:   &wave0,
+				Shutdown: func() {
+					shutdowns.Add(1)
+				},
+			}
+
+			cc := &promoterv1alpha1.ControllerConfiguration{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, cc)).To(Succeed())
+			base := cc.DeepCopy()
+			cc.Spec.InstanceID = &wave1
+			Expect(k8sClient.Patch(ctx, cc, client.MergeFrom(base))).To(Succeed())
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(shutdowns.Load()).To(Equal(int32(1)))
+		})
+
+		It("shuts down when spec.instanceID is cleared after multi-install startup", func() {
+			var shutdowns atomic.Int32
+			wave0 := "wave-0"
+			reconciler := &ControllerConfigurationReconciler{
+				Client:              k8sClient,
+				Scheme:              k8sClient.Scheme(),
+				Recorder:            events.NewFakeRecorder(100),
+				ControllerNamespace: "default",
+				StartupInstanceID:   &wave0,
+				Shutdown: func() {
+					shutdowns.Add(1)
+				},
+			}
+
+			cc := &promoterv1alpha1.ControllerConfiguration{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, cc)).To(Succeed())
+			base := cc.DeepCopy()
+			cc.Spec.InstanceID = nil
+			Expect(k8sClient.Patch(ctx, cc, client.MergeFrom(base))).To(Succeed())
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(shutdowns.Load()).To(Equal(int32(1)))
+		})
+
+		It("no-ops when the shipped ControllerConfiguration does not exist", func() {
 			var shutdowns atomic.Int32
 			wave0 := "wave-0"
 			reconciler := &ControllerConfigurationReconciler{
