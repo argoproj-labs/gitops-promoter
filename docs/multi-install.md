@@ -54,12 +54,13 @@ The value must be a valid Kubernetes label value (min length 1, max 63 character
 
 ### Read path: informer cache filtering
 
-At startup the controller reads `instanceID` from `ControllerConfiguration` (via a direct API read, not the informer cache) and configures `cache.ByObject` label selectors for every reconciled Promoter CRD:
+At startup the controller reads `instanceID` from `ControllerConfiguration` (via a direct API read, not the informer cache) and configures `cache.ByObject` label selectors for every reconciled Promoter CRD and for `Secret` objects:
 
 - `PromotionStrategy`, `ChangeTransferPolicy`, `CommitStatus`, `PullRequest`
 - `ScmProvider`, `ClusterScmProvider`, `GitRepository`
 - `GitCommitStatus`, `TimedCommitStatus`, `WebRequestCommitStatus`, `ArgoCDCommitStatus`
 - `RevertCommit`
+- `Secret` (SCM credentials, HTTP auth, kubeconfig, and other secrets fetched through the manager client)
 
 `ControllerConfiguration` itself is **not** filtered—the install must always read its own configuration.
 
@@ -93,6 +94,8 @@ spec:
 
 Default-install resources must **not** carry `promoter.argoproj.io/instance-id`. If a parent lacks the label in multi-install mode, children created without it will not enter the cache and gates will silently fail.
 
+**Secrets are not auto-labeled.** Label every `Secret` this install reads (for example `ScmProvider.spec.secretRef`, `WebRequestCommitStatus` HTTP auth `secretRef`, and multicluster kubeconfig secrets in the controller namespace) with the same `promoter.argoproj.io/instance-id` value before or during migration. Unlabeled secrets are invisible to a multi-install controller; labeled secrets are invisible to the default install.
+
 ### Reconcile behavior for foreign objects
 
 Watches on unfiltered types (for example Argo CD `Application`) or stale queue entries may still enqueue work for names this install does not own. A `Get` against the filtered cache returns `NotFound`, and existing reconcilers treat that as a no-op.
@@ -120,7 +123,7 @@ Follow these principles whenever you add, change, or remove `promoter.argoproj.i
 
 ### Default install → multi-install
 
-1. **Label roots only** — add `promoter.argoproj.io/instance-id: <your-id>` to every Promoter CR this install should manage (`PromotionStrategy`, `TimedCommitStatus`, `GitCommitStatus`, `WebRequestCommitStatus`, `ArgoCDCommitStatus`, and others as needed). Use metadata-only patches.
+1. **Label roots only** — add `promoter.argoproj.io/instance-id: <your-id>` to every Promoter CR this install should manage (`PromotionStrategy`, `TimedCommitStatus`, `GitCommitStatus`, `WebRequestCommitStatus`, `ArgoCDCommitStatus`, and others as needed). Label referenced `Secret` objects (SCM, HTTP auth, kubeconfig) with the same value. Use metadata-only patches.
 2. **Expect the gap** — the currently running default install stops reconciling relabeled parents immediately (they leave its informer cache). **Children are not relabeled until after restart** on the new partition. This is expected, not a failure.
 3. **Set `spec.instanceID`** on `ControllerConfiguration` to the same value (non-empty). The controller pod restarts automatically in a single-replica install.
 4. **Wait for propagation** — confirm children carry the label and labeled resources report `status.instanceID` (see [Verification](#verification) below).
@@ -130,7 +133,7 @@ Unlabeled resources become **invisible** to the multi-install controller. Resour
 
 ### Multi-install → default install
 
-1. **Remove `promoter.argoproj.io/instance-id`** from all Promoter CRs the default install should manage (metadata-only patches).
+1. **Remove `promoter.argoproj.io/instance-id`** from all Promoter CRs the default install should manage (metadata-only patches). Remove the label from referenced `Secret` objects as well.
 2. **Remove `spec.instanceID`** from `ControllerConfiguration` (omit the field; do not set `""`). The controller pod restarts automatically in a single-replica install.
 3. **Wait for propagation** — children should have the label removed and `status.instanceID` cleared on labeled resources.
 4. **Edit spec only after propagation**.
@@ -162,6 +165,7 @@ Built-in controllers use `GenerationChangedPredicate` on roots such as `Promotio
 | Check | Meaning |
 | ----- | ------- |
 | Child `metadata.labels[promoter.argoproj.io/instance-id]` | Primary success criterion — CTPs, gate `CommitStatus`es, PRs match install ID |
+| Referenced `Secret` labels | SCM, HTTP auth, and kubeconfig secrets match install ID |
 | `status.instanceID` on labeled Promoter CRs | Active reconcile mirrored the metadata label into status |
 | `status.conditions[Ready=True]` on PS / gates | Healthy reconcile after restart |
 | Gating behavior | CTP commit status phases not stuck at pending for gate keys |

@@ -293,6 +293,7 @@ var _ = Describe("Instance ID migration", Ordered, func() {
 		cancelDefault()
 
 		patchInstanceIDLabel(ctx, migClient, promotionStrategy, wave0)
+		patchInstanceIDLabel(ctx, migClient, scmSecret, wave0)
 		for _, gate := range migrationGates {
 			patchInstanceIDLabel(ctx, migClient, gate, wave0)
 		}

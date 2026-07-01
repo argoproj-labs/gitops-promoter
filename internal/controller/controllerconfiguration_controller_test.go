@@ -197,21 +197,21 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 })
 
 var _ = Describe("OptionsForInstanceID", func() {
-	It("scopes all promotor CRDs to resources without instance-id when nil", func() {
+	It("scopes all partitioned types to resources without instance-id when nil", func() {
 		opts := promotercache.OptionsForInstanceID(nil)
-		Expect(opts.ByObject).To(HaveLen(len(promotercache.PromotorCRDObjects())))
-		for _, obj := range promotercache.PromotorCRDObjects() {
+		Expect(opts.ByObject).To(HaveLen(len(promotercache.PartitionedObjects())))
+		for _, obj := range promotercache.PartitionedObjects() {
 			byObj, ok := opts.ByObject[obj]
 			Expect(ok).To(BeTrue(), "missing ByObject for %T", obj)
 			Expect(byObj.Label.String()).To(Equal("!promoter.argoproj.io/instance-id"))
 		}
 	})
 
-	It("scopes all promotor CRDs to matching instance-id when set", func() {
+	It("scopes all partitioned types to matching instance-id when set", func() {
 		instanceID := "wave-0"
 		opts := promotercache.OptionsForInstanceID(&instanceID)
-		Expect(opts.ByObject).To(HaveLen(len(promotercache.PromotorCRDObjects())))
-		for _, obj := range promotercache.PromotorCRDObjects() {
+		Expect(opts.ByObject).To(HaveLen(len(promotercache.PartitionedObjects())))
+		for _, obj := range promotercache.PartitionedObjects() {
 			byObj, ok := opts.ByObject[obj]
 			Expect(ok).To(BeTrue(), "missing ByObject for %T", obj)
 			Expect(byObj.Label.String()).To(Equal("promoter.argoproj.io/instance-id=wave-0"))
