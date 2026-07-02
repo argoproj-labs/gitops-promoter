@@ -1,4 +1,3 @@
-// Main components
 export { default as Card } from './Card';
 export { default as CommitInfo } from './CommitInfo';
 export { default as HeaderBar } from './HeaderBar';
@@ -9,7 +8,6 @@ export { default as Modal } from './Modal';
 export { StatusIcon } from './StatusIcon';
 export { default as TimeAgo } from './TimeAgo';
 
-// Types
 export type { StatusType } from './StatusIcon';
 export type { CardProps } from './Card';
 export type { CommitInfoProps } from './CommitInfo';

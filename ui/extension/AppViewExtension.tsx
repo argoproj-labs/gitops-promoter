@@ -4,7 +4,6 @@ import Card from '@components-lib/components/Card';
 import HistoryView from '@components-lib/components/HistoryView/HistoryView';
 import { PromotionStrategy } from '@shared/types/promotion';
 import { AppViewComponentProps } from '@shared/types/extension';
-// TEMP-MOCK: local visual review only. REVERT before commit.
 import { getDemoStrategies } from './mockData';
 import './StrategyDropdown.scss';
 
@@ -102,7 +101,6 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
     const appName = application.metadata.name;
     const appNamespace = application.metadata.namespace;
 
-    // TEMP-MOCK: local visual review only. REVERT before commit.
     if (USE_MOCK) {
       const mocked = getDemoStrategies();
       setFetchError(null);
@@ -151,7 +149,7 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
           try {
             errorText = await response.text();
           } catch {
-            // ignore errors while reading error body
+            // best-effort: a failed body read shouldn't mask the status error
           }
           const messageParts = [
             `Request failed with status ${response.status} ${response.statusText}`,

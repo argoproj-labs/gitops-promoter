@@ -31,7 +31,6 @@ export interface CommitInfoProps {
   mergeTimeAgo?: string;
 }
 
-// Combined component to display commit information and groups
 const CommitInfo: React.FC<CommitInfoProps> = ({
   title,
   deploymentCommit,
@@ -82,7 +81,6 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
     return <span className="commit-sha">{sha}</span>;
   };
 
-  // Create tooltip on subject and body
   const getTooltipContent = (commit: any) => {
     const subject = commit.subject || '';
     const body = commit.body || '';
@@ -195,7 +193,6 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
     );
   }
 
-  // Render with group structure
   const isProposed = className.includes('proposed');
 
   return (
@@ -244,7 +241,6 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
         </div>
       )}
 
-      {/* Display checks for this section */}
       {(healthSummary?.shouldDisplay || (additionalChecks && additionalChecks.length > 0)) &&
         checks && (
           <HealthSummary

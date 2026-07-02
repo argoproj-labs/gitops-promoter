@@ -57,7 +57,6 @@ const Card: React.FC<CardProps> = ({ environments, onHistoryNavigate }) => {
           const environment = environments.find((e) => e.branch === branch);
           const history = environment?.history || [];
 
-          // Active/Proposed deployment and code commits
           const activeDeploymentCommit = {
             sha: env.activeSha,
             author: env.activeCommitAuthor,
@@ -118,7 +117,6 @@ const Card: React.FC<CardProps> = ({ environments, onHistoryNavigate }) => {
                     )}
                   </div>
 
-                  {/* Active Commits Section */}
                   <CommitInfo
                     title="Active"
                     deploymentCommit={activeDeploymentCommit}
@@ -134,7 +132,6 @@ const Card: React.FC<CardProps> = ({ environments, onHistoryNavigate }) => {
                     mergeTimeAgo={mergeTimeAgo}
                   />
 
-                  {/* Proposed Commits Section */}
                   {isProcessing ? (
                     // Processing: stand in for the Proposed section with a labeled
                     // loading placeholder while the newer commit is hydrated.

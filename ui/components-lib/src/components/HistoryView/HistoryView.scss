@@ -1,7 +1,6 @@
 @use 'sass:color';
 @use '../../styles/colors' as *;
 
-/* ─── Tokens (local — keeps the page self-contained) ─────────────── */
 $bg-page: #eef1f6;
 $bg-surface: #ffffff;
 $bg-soft: #f9fafb;
@@ -90,9 +89,6 @@ $radius-lg: 8px;
   border: 0;
 }
 
-/* ═══════════════════════════════════════
-   Page chrome
-   ═══════════════════════════════════════ */
 .hp {
   display: flex;
   flex-direction: column;
@@ -286,9 +282,6 @@ $radius-lg: 8px;
   }
 }
 
-/* ═══════════════════════════════════════
-   Filter / sort controls
-   ═══════════════════════════════════════ */
 // Lives inline on the right side of the merged header (title on the left).
 .hp-controls {
   display: flex;
@@ -299,7 +292,6 @@ $radius-lg: 8px;
   flex-shrink: 0;
 }
 
-/* ─── Control-bar dropdowns ──────────────────────────────────────── */
 .hp-dd {
   display: inline-flex;
 }
@@ -498,9 +490,6 @@ $radius-lg: 8px;
   flex: none;
 }
 
-/* ═══════════════════════════════════════
-   Matrix
-   ═══════════════════════════════════════ */
 .hp-matrix {
   flex: 1;
   min-height: 0;
@@ -581,7 +570,6 @@ $radius-lg: 8px;
   background: $bg-surface;
 }
 
-/* ─── Env filter banner ─── */
 .hp-env-banner {
   display: flex;
   align-items: center;
@@ -623,7 +611,6 @@ $radius-lg: 8px;
   }
 }
 
-/* ─── Env focus / dim on matrix cells ─── */
 .hp-row__env-slot {
   display: flex;
   min-width: 0;
@@ -646,7 +633,6 @@ $radius-lg: 8px;
   outline-offset: -1px;
 }
 
-/* ─── Row ─── */
 .hp-row {
   display: grid;
   gap: 8px;
@@ -761,9 +747,6 @@ $radius-lg: 8px;
   color: $text-muted;
 }
 
-/* ═══════════════════════════════════════
-   Flow cell
-   ═══════════════════════════════════════ */
 .cell {
   appearance: none;
   background: transparent;
@@ -992,9 +975,6 @@ $radius-lg: 8px;
   }
 }
 
-/* ═══════════════════════════════════════
-   Detail drawer
-   ═══════════════════════════════════════ */
 .hp-drawer {
   width: 0;
   min-width: 0;
@@ -1400,10 +1380,8 @@ $radius-lg: 8px;
   }
 }
 
-/* ═══════════════════════════════════════
-   Portal tooltip (rendered into <body> so it isn't clipped by cells'
-   overflow:hidden or the scrolling matrix)
-   ═══════════════════════════════════════ */
+/* Portal tooltip: rendered into <body> so it isn't clipped by cells'
+   overflow:hidden or the scrolling matrix. */
 .hp-tip {
   position: fixed;
   z-index: 1000;

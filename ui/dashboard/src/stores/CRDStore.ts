@@ -68,7 +68,6 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
     error: null,
     connectionStatus: 'connecting',
 
-    // Fetch the current set of bundles via the /list endpoint.
     fetchItems: async (namespace: string) => {
       set({ loading: true, error: null });
 
@@ -85,7 +84,6 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
       }
     },
 
-    // Subscribe to bundle updates over SSE.
     subscribe: (namespace: string) => {
       if (eventSource) eventSource.close();
 
@@ -116,7 +114,6 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
       });
     },
 
-    // Unsubscribe from SSE
     unsubscribe: () => {
       if (eventSource) {
         eventSource.close();
@@ -124,7 +121,6 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
       }
     },
 
-    // Reset items
     reset: () => set({ items: [] }),
   }));
 }

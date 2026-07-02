@@ -35,7 +35,6 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
 
   const { items, fetchItems, subscribe, unsubscribe } = PromotionStrategyStore();
 
-  // Find the selected strategy
   const selectedStrategy = items.find(
     (ps: PromotionStrategy) => ps.metadata?.name === strategyName,
   );
@@ -70,14 +69,12 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
     navigate('/promotion-strategies');
   };
 
-  // Loading State
   if (items.length === 0) {
     return (
       <div style={{ textAlign: 'center', marginTop: '20px' }}>Loading promotion strategies…</div>
     );
   }
 
-  // Not found state
   if (!selectedStrategy) {
     return (
       <div style={{ textAlign: 'center', marginTop: '20px' }}>
