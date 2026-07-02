@@ -132,6 +132,105 @@ var _ = Describe("GetBranchShas", func() {
 	})
 })
 
+var _ = Describe("GetBranchShasIfUnchanged", func() {
+	var tempRepoDir string
+	var workDir string
+	var branch string
+	var repo *v1alpha1.GitRepository
+	var gap *fakeGitProvider
+	var g *git.EnvironmentOperations
+
+	BeforeEach(func() {
+		var err error
+		tempRepoDir, err = os.MkdirTemp("", "git-test-*")
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Setting up a bare git repository with a commit and hydrator.metadata")
+		_, err = runGitCmd(tempRepoDir, "init", "--bare")
+		Expect(err).NotTo(HaveOccurred())
+
+		workDir, err = os.MkdirTemp("", "git-work-*")
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = runGitCmd(workDir, "clone", tempRepoDir, ".")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "config", "user.name", "Test User")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "config", "user.email", "test@example.com")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "config", "commit.gpgsign", "false")
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), []byte(`{"drySha": "dry-sha-1"}`), 0o644)).To(Succeed())
+		_, err = runGitCmd(workDir, "add", "hydrator.metadata")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", "Initial commit")
+		Expect(err).NotTo(HaveOccurred())
+
+		defaultBranch, err := runGitCmd(workDir, "rev-parse", "--abbrev-ref", "HEAD")
+		Expect(err).NotTo(HaveOccurred())
+		branch = strings.TrimSpace(defaultBranch)
+
+		_, err = runGitCmd(workDir, "push", "origin", branch)
+		Expect(err).NotTo(HaveOccurred())
+
+		repo = &v1alpha1.GitRepository{
+			Spec: v1alpha1.GitRepositorySpec{
+				GitHub: &v1alpha1.GitHubRepo{
+					Owner: "test-owner",
+					Name:  "testrepo",
+				},
+				ScmProviderRef: v1alpha1.ScmProviderObjectReference{
+					Kind: "ScmProvider",
+					Name: "testprovider",
+				},
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "testrepo",
+				Namespace: "default",
+			},
+		}
+		gap = &fakeGitProvider{tempDirPath: tempRepoDir}
+		g = git.NewEnvironmentOperations(repo, gap, "default/skip-fetch-test")
+		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
+	})
+
+	AfterEach(func() {
+		if tempRepoDir != "" {
+			Expect(os.RemoveAll(tempRepoDir)).To(Succeed())
+		}
+		if workDir != "" {
+			Expect(os.RemoveAll(workDir)).To(Succeed())
+		}
+	})
+
+	It("skips the fetch only when a live ls-remote confirms the remote SHA is unchanged", func() {
+		By("Fetching normally once to establish the baseline hydrated SHA (this is the only real fetch)")
+		baseline, err := g.GetBranchShas(GinkgoT().Context(), branch, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(baseline.Hydrated).NotTo(BeEmpty())
+		Expect(baseline.Dry).To(Equal("dry-sha-1"))
+
+		By("Breaking the clone's configured 'origin' remote so a real `git fetch` fails, while gap still points ls-remote at the real, reachable repo (they resolve independently: fetch uses the clone's local git config, ls-remote uses gap.GetGitHttpsRepoUrl directly)")
+		_, err = runGitCmd(g.ClonePath(), "remote", "set-url", "origin", filepath.Join(tempRepoDir, "does-not-exist"))
+		Expect(err).NotTo(HaveOccurred())
+
+		By("An empty lastKnownHydratedSha always attempts a real fetch, which now fails (control case)")
+		_, err = g.GetBranchShasIfUnchanged(GinkgoT().Context(), branch, "", "")
+		Expect(err).To(HaveOccurred(), "an unconditional fetch against the broken origin must fail, proving the control case actually exercises git fetch")
+
+		By("A mismatched lastKnownHydratedSha also triggers a real fetch, which fails the same way")
+		_, err = g.GetBranchShasIfUnchanged(GinkgoT().Context(), branch, "", "not-the-real-sha")
+		Expect(err).To(HaveOccurred(), "a stale lastKnownHydratedSha must not skip the fetch")
+
+		By("A matching lastKnownHydratedSha skips the fetch entirely, so the broken origin is never used")
+		shas, err := g.GetBranchShasIfUnchanged(GinkgoT().Context(), branch, "", baseline.Hydrated)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(shas.Hydrated).To(Equal(baseline.Hydrated))
+		Expect(shas.Dry).To(Equal(baseline.Dry))
+	})
+})
+
 var _ = Describe("LsRemote", func() {
 	var tempRepoDir string
 	var workDir string
