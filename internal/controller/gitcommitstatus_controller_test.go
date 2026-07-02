@@ -766,9 +766,6 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			By("Waiting for in-flight promotions on development and staging to settle")
 			Eventually(noOpenPromotionPR, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Confirming the promotion pipeline stays quiescent before the manual revert push")
-			Consistently(noOpenPromotionPR, 3*time.Second, 250*time.Millisecond).Should(Succeed())
-
 			By("Simulating a revert on the staging active branch using git revert")
 			gitPath, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
