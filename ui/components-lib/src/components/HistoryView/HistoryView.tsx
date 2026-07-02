@@ -115,8 +115,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
     [envs, rowsById],
   );
 
-  if (!strategy)
-    return <div className={`hp-loading ${rootClass}`}>Loading promotion history…</div>;
+  if (!strategy) return <div className={`hp-loading ${rootClass}`}>Loading promotion history…</div>;
 
   if (envs.length === 0) {
     return (
