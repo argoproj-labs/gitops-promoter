@@ -132,18 +132,9 @@ func (r *DAGCommitStatusReconciler) updateDAGCommitStatus(ctx context.Context, d
 		statusByBranch[envStatus.Branch] = envStatus
 	}
 
-	satisfied := make(map[string]bool, len(graph.branches))
-	for _, branch := range graph.branches {
-		satisfied[branch] = environmentSatisfied(statusByBranch[branch])
-	}
-
-	eligibleSet := make(map[string]bool, len(graph.branches))
-	for _, branch := range graph.eligibleEnvironments(satisfied) {
-		eligibleSet[branch] = true
-	}
-
-	// Write a CommitStatus for every environment: eligible (all upstreams satisfied) is success,
-	// everything else is pending.
+	// Write a CommitStatus for every environment: success once every one of its dependsOn
+	// upstreams has promoted and become healthy for the SAME dry SHA this environment is
+	// promoting, pending otherwise.
 	logger := logf.FromContext(ctx)
 	for _, branch := range graph.branches {
 		envStatus := statusByBranch[branch]
@@ -158,15 +149,32 @@ func (r *DAGCommitStatusReconciler) updateDAGCommitStatus(ctx context.Context, d
 			continue
 		}
 
+		// The gate is keyed to the dry SHA this environment is promoting. An upstream counts as
+		// satisfied only when it has itself promoted and become healthy for that SAME dry SHA —
+		// not merely because it is in some healthy state from a previous round. Checking upstreams
+		// against the target dry SHA (rather than a target-less "is it healthy") is what prevents a
+		// downstream from merging a new change ahead of upstreams that have not yet taken it.
+		targetDrySha := getEffectiveHydratedDrySha(envStatus)
+		isPending, reason := upstreamsPending(graph, branch, targetDrySha, envStatus.Active.Dry.CommitTime, statusByBranch)
+
+		phase := promoterv1alpha1.CommitPhaseSuccess
+		if isPending {
+			phase = promoterv1alpha1.CommitPhasePending
+		}
+
+		logger.V(4).Info("Evaluated DAG gate for environment",
+			"branch", branch,
+			"dependsOn", graph.dependsOn[branch],
+			"targetDrySha", targetDrySha,
+			"pending", isPending,
+			"reason", reason,
+			"phase", phase)
+
 		// Bind the CommitStatus to the proposed branch's hydrated SHA: that is the commit the
 		// ChangeTransferPolicy inspects when gating the promotion PR. Binding to the dry SHA
 		// instead leaves the gate undetectable, so the promotion never advances. Mirrors the
 		// PreviousEnvironmentCommitStatus controller.
 		proposedHydratedSha := envStatus.Proposed.Hydrated.Sha
-		phase := promoterv1alpha1.CommitPhasePending
-		if eligibleSet[branch] || satisfied[branch] {
-			phase = promoterv1alpha1.CommitPhaseSuccess
-		}
 		if _, err := r.createOrUpdateDAGCommitStatus(ctx, dcs, ps, branch, proposedHydratedSha, phase); err != nil {
 			return fmt.Errorf("failed to set DAG commit status for branch %q: %w", branch, err)
 		}
@@ -175,13 +183,79 @@ func (r *DAGCommitStatusReconciler) updateDAGCommitStatus(ctx context.Context, d
 	return nil
 }
 
-// environmentSatisfied reports whether an environment's active deployment is synced (the merged
-// dry SHA matches what the hydrator processed) and healthy (all of its active commit statuses
-// are passing).
-func environmentSatisfied(envStatus promoterv1alpha1.EnvironmentStatus) bool {
-	synced := envStatus.Active.Dry.Sha != "" && envStatus.Active.Dry.Sha == getEffectiveHydratedDrySha(envStatus)
-	healthy := utils.AreCommitStatusesPassing(envStatus.Active.CommitStatuses)
-	return synced && healthy
+// upstreamsPending reports whether ANY of branch's direct dependsOn upstreams is not yet ready for
+// targetDrySha. An upstream is ready when it has hydrated and merged the target dry SHA (with a
+// commit time no older than the current environment's) and is healthy. Upstreams for which the
+// target dry SHA is a no-op (git note advanced without a new commit) are transparently skipped by
+// recursing into their own upstreams. This mirrors the per-environment checks in the
+// PreviousEnvironmentCommitStatus controller's isPreviousEnvironmentPending, adapted from a linear
+// chain to the DAG's dependsOn edges (all upstreams must be ready for a fan-in to pass).
+func upstreamsPending(g *dag, branch, targetDrySha string, currentActiveCommitTime metav1.Time, statusByBranch map[string]promoterv1alpha1.EnvironmentStatus) (isPending bool, reason string) {
+	for _, upstream := range g.dependsOn[branch] {
+		if pending, r := upstreamPending(g, upstream, targetDrySha, currentActiveCommitTime, statusByBranch); pending {
+			return true, r
+		}
+	}
+	return false, ""
+}
+
+// upstreamPending checks a single upstream (and, for no-op upstreams, its own upstreams) against
+// targetDrySha. The checks are a direct port of isPreviousEnvironmentPending's per-environment
+// logic.
+func upstreamPending(g *dag, branch, targetDrySha string, currentActiveCommitTime metav1.Time, statusByBranch map[string]promoterv1alpha1.EnvironmentStatus) (isPending bool, reason string) {
+	envStatus := statusByBranch[branch]
+	envHydratedForDrySha := getEffectiveHydratedDrySha(envStatus)
+	envProposedDrySha := envStatus.Proposed.Dry.Sha
+
+	// The upstream's hydrator must have processed the same dry SHA the current environment is
+	// promoting.
+	if envHydratedForDrySha != targetDrySha {
+		return true, "Waiting for the hydrator to finish processing the proposed dry commit"
+	}
+
+	// If the upstream has merged the target dry SHA, verify commit-time ordering and health.
+	if envStatus.Active.Dry.Sha == targetDrySha {
+		envDryShaEqualOrNewer := envStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: currentActiveCommitTime.Time}) ||
+			envStatus.Active.Dry.CommitTime.After(currentActiveCommitTime.Time)
+		if !envDryShaEqualOrNewer {
+			// This should basically never happen.
+			return true, "Previous environment's commit is older than current environment's commit"
+		}
+		return checkCommitStatusesPassing(envStatus.Active.CommitStatuses, envStatus.Branch)
+	}
+
+	// The upstream has not merged the target. It is only skippable if it is a clean no-op (git note
+	// advanced without a new commit) with no pending changes of its own.
+	envIsNoOp := envHydratedForDrySha != envProposedDrySha
+	envHasPendingChanges := envStatus.Active.Dry.Sha != envProposedDrySha
+	if !envIsNoOp || envHasPendingChanges {
+		return true, "Waiting for previous environment to be promoted"
+	}
+
+	// Even a clean no-op must be healthy before we look past it.
+	if isPend, r := checkCommitStatusesPassing(envStatus.Active.CommitStatuses, envStatus.Branch); isPend {
+		return isPend, r
+	}
+
+	// Clean, healthy no-op: recurse into this upstream's own upstreams.
+	return upstreamsPending(g, branch, targetDrySha, currentActiveCommitTime, statusByBranch)
+}
+
+// checkCommitStatusesPassing reports whether an environment's active commit statuses are all
+// passing, returning a pending reason if not. Ported unchanged from the
+// PreviousEnvironmentCommitStatus controller.
+func checkCommitStatusesPassing(commitStatuses []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase, branch string) (isPending bool, reason string) {
+	if utils.AreCommitStatusesPassing(commitStatuses) {
+		return false, ""
+	}
+	envDesc := fmt.Sprintf("%q environment's", branch)
+	if branch == "" {
+		envDesc = "previous environment's"
+	}
+	if len(commitStatuses) == 1 {
+		return true, fmt.Sprintf("Waiting for %s %q commit status to be successful", envDesc, commitStatuses[0].Key)
+	}
+	return true, fmt.Sprintf("Waiting for %s commit statuses to be successful", envDesc)
 }
 
 // createOrUpdateDAGCommitStatus upserts, via Server-Side Apply, the CommitStatus that reports
@@ -269,6 +343,8 @@ func (r *DAGCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ct
 
 // enqueueDAGCommitStatusForPromotionStrategy returns a handler that enqueues all
 // DAGCommitStatus resources that reference a PromotionStrategy when that PromotionStrategy changes.
+//
+//nolint:dupl // Mirrors PreviousEnvironmentCommitStatus's enqueue handler by design; extracting it would couple the two controllers and require generics.
 func (r *DAGCommitStatusReconciler) enqueueDAGCommitStatusForPromotionStrategy() handler.EventHandler {
 	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []ctrl.Request {
 		ps, ok := obj.(*promoterv1alpha1.PromotionStrategy)
@@ -387,29 +463,4 @@ func (g *dag) topologicalSort() ([]string, error) {
 		return nil, errors.New("environments contain a dependency cycle")
 	}
 	return sorted, nil
-}
-
-// eligibleEnvironments returns the branches that are ready to be promoted given the set of
-// already-satisfied branches: every one of their dependsOn upstreams is satisfied and they
-// are not themselves satisfied yet. Roots (no dependsOn) are eligible immediately. The
-// result is in spec order. Unlike the build/validate/sort steps, this is evaluated every
-// reconcile against live environment state.
-func (g *dag) eligibleEnvironments(satisfied map[string]bool) []string {
-	eligible := make([]string, 0, len(g.branches))
-	for _, branch := range g.branches {
-		if satisfied[branch] {
-			continue
-		}
-		ready := true
-		for _, upstream := range g.dependsOn[branch] {
-			if !satisfied[upstream] {
-				ready = false
-				break
-			}
-		}
-		if ready {
-			eligible = append(eligible, branch)
-		}
-	}
-	return eligible
 }

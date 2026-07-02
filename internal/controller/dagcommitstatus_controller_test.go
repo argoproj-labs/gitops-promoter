@@ -18,9 +18,11 @@ package controller
 
 import (
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
@@ -39,12 +41,26 @@ func dagEnvs(pairs ...string) []promoterv1alpha1.DAGEnvironment {
 	return out
 }
 
-func satisfiedSet(branches ...string) map[string]bool {
-	m := make(map[string]bool, len(branches))
-	for _, b := range branches {
-		m[b] = true
+// dagEnvStatus builds an EnvironmentStatus for the upstreamsPending tests. activeDry is the dry SHA
+// the branch has merged and deployed; hydratedDry is the dry SHA its hydrator has processed
+// (Proposed.Dry.Sha); healthy toggles the active argocd-health commit status.
+func dagEnvStatus(branch, activeDry, hydratedDry string, healthy bool, commitTime time.Time) promoterv1alpha1.EnvironmentStatus {
+	phase := "success"
+	if !healthy {
+		phase = "pending"
 	}
-	return m
+	return promoterv1alpha1.EnvironmentStatus{
+		Branch: branch,
+		Active: promoterv1alpha1.CommitBranchState{
+			Dry: promoterv1alpha1.CommitShaState{Sha: activeDry, CommitTime: metav1.NewTime(commitTime)},
+			CommitStatuses: []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+				{Key: "argocd-health", Phase: phase},
+			},
+		},
+		Proposed: promoterv1alpha1.CommitBranchState{
+			Dry: promoterv1alpha1.CommitShaState{Sha: hydratedDry},
+		},
+	}
 }
 
 var _ = Describe("DAG graph logic", func() {
@@ -105,46 +121,80 @@ var _ = Describe("DAG graph logic", func() {
 		})
 	})
 
-	Describe("eligibleEnvironments", func() {
-		It("makes a root eligible when nothing is satisfied", func() {
-			g, _ := buildDAG(dagEnvs("dev", "", "stg", "dev"))
-			Expect(g.eligibleEnvironments(satisfiedSet())).To(Equal([]string{"dev"}))
+	Describe("upstreamsPending", func() {
+		const (
+			oldDry = "old-dry-sha"
+			newDry = "new-dry-sha"
+		)
+		old := time.Date(2026, 6, 30, 10, 0, 0, 0, time.UTC)
+		newer := time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC)
+
+		// linear chain: dev -> stg -> prd
+		linear := func() *dag { g, _ := buildDAG(dagEnvs("dev", "", "stg", "dev", "prd", "stg")); return g }
+		// diamond: dev -> {e2e, perf} -> prd
+		diamond := func() *dag {
+			g, _ := buildDAG(dagEnvs("dev", "", "e2e", "dev", "perf", "dev", "prd", "e2e,perf"))
+			return g
+		}
+
+		// prd is promoting newDry, but its upstream stg is still on oldDry (healthy from a prior
+		// round) and has NOT taken newDry. prd must stay pending — otherwise the new change merges
+		// ahead of its upstream, breaking DAG ordering.
+		It("holds pending when an upstream is healthy on an OLD dry and has not promoted the target", func() {
+			status := map[string]promoterv1alpha1.EnvironmentStatus{
+				"stg": dagEnvStatus("stg", oldDry, newDry, true, old),
+			}
+			pending, _ := upstreamsPending(linear(), "prd", newDry, metav1.NewTime(newer), status)
+			Expect(pending).To(BeTrue())
 		})
 
-		It("fan-out: one satisfied upstream makes all its downstreams eligible", func() {
-			g, _ := buildDAG(dagEnvs("dev", "", "stg-us", "dev", "stg-eu", "dev"))
-			Expect(g.eligibleEnvironments(satisfiedSet("dev"))).To(Equal([]string{"stg-us", "stg-eu"}))
+		It("holds pending when the upstream's hydrator has not yet processed the target dry", func() {
+			// stg's hydrator is still on oldDry (Proposed.Dry = oldDry), so it has not even
+			// produced the target dry yet.
+			status := map[string]promoterv1alpha1.EnvironmentStatus{
+				"stg": dagEnvStatus("stg", oldDry, oldDry, true, old),
+			}
+			pending, _ := upstreamsPending(linear(), "prd", newDry, metav1.NewTime(newer), status)
+			Expect(pending).To(BeTrue())
 		})
 
-		It("fan-in: downstream stays ineligible until ALL upstreams are satisfied", func() {
-			g, _ := buildDAG(dagEnvs("stg-us", "", "stg-eu", "", "prd", "stg-us,stg-eu"))
-
-			// Only one upstream satisfied: prd must NOT be eligible, but the other root is.
-			eligible := g.eligibleEnvironments(satisfiedSet("stg-us"))
-			Expect(eligible).NotTo(ContainElement("prd"))
-			Expect(eligible).To(ContainElement("stg-eu"))
-
-			// Both upstreams satisfied: prd becomes eligible.
-			Expect(g.eligibleEnvironments(satisfiedSet("stg-us", "stg-eu"))).To(Equal([]string{"prd"}))
+		It("is ready when the upstream merged the target dry and is healthy", func() {
+			status := map[string]promoterv1alpha1.EnvironmentStatus{
+				"stg": dagEnvStatus("stg", newDry, newDry, true, newer),
+			}
+			pending, _ := upstreamsPending(linear(), "prd", newDry, metav1.NewTime(newer), status)
+			Expect(pending).To(BeFalse())
 		})
 
-		It("excludes branches that are already satisfied", func() {
-			g, _ := buildDAG(dagEnvs("dev", "", "stg", "dev"))
-			// dev satisfied -> stg now eligible; dev itself is not returned.
-			Expect(g.eligibleEnvironments(satisfiedSet("dev"))).To(Equal([]string{"stg"}))
+		It("holds pending when the upstream merged the target dry but is not healthy", func() {
+			status := map[string]promoterv1alpha1.EnvironmentStatus{
+				"stg": dagEnvStatus("stg", newDry, newDry, false, newer),
+			}
+			pending, _ := upstreamsPending(linear(), "prd", newDry, metav1.NewTime(newer), status)
+			Expect(pending).To(BeTrue())
 		})
 
-		It("diamond: the join is eligible only after both middle environments are satisfied", func() {
-			g, _ := buildDAG(dagEnvs("dev", "", "stg-us", "dev", "stg-eu", "dev", "prd", "stg-us,stg-eu"))
+		It("is ready for a root that has no upstreams", func() {
+			pending, _ := upstreamsPending(linear(), "dev", newDry, metav1.NewTime(newer), map[string]promoterv1alpha1.EnvironmentStatus{})
+			Expect(pending).To(BeFalse())
+		})
 
-			// dev satisfied -> both middles eligible, prd not.
-			Expect(g.eligibleEnvironments(satisfiedSet("dev"))).To(Equal([]string{"stg-us", "stg-eu"}))
+		It("fan-in: holds pending when one upstream has not promoted the target", func() {
+			status := map[string]promoterv1alpha1.EnvironmentStatus{
+				"e2e":  dagEnvStatus("e2e", newDry, newDry, true, newer),
+				"perf": dagEnvStatus("perf", oldDry, newDry, true, old),
+			}
+			pending, _ := upstreamsPending(diamond(), "prd", newDry, metav1.NewTime(newer), status)
+			Expect(pending).To(BeTrue())
+		})
 
-			// dev + one middle satisfied -> prd still not eligible.
-			Expect(g.eligibleEnvironments(satisfiedSet("dev", "stg-us"))).NotTo(ContainElement("prd"))
-
-			// dev + both middles satisfied -> prd eligible.
-			Expect(g.eligibleEnvironments(satisfiedSet("dev", "stg-us", "stg-eu"))).To(Equal([]string{"prd"}))
+		It("fan-in: is ready when both upstreams merged the target dry and are healthy", func() {
+			status := map[string]promoterv1alpha1.EnvironmentStatus{
+				"e2e":  dagEnvStatus("e2e", newDry, newDry, true, newer),
+				"perf": dagEnvStatus("perf", newDry, newDry, true, newer),
+			}
+			pending, _ := upstreamsPending(diamond(), "prd", newDry, metav1.NewTime(newer), status)
+			Expect(pending).To(BeFalse())
 		})
 	})
 })
