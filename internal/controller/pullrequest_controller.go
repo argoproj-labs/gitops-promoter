@@ -299,6 +299,13 @@ func (r *PullRequestReconciler) handleStateTransitions(ctx context.Context, pr *
 		// latter is stamped on every reconcile attempt, success or failure (see
 		// utils.HandleReconciliationResult), so it can't distinguish "already synced" from
 		// "already tried and failed" — using it here would silently stop retrying a failed Update.
+		//
+		// Tradeoff (intentional): this only tracks whether *our* spec was pushed, not whether the SCM
+		// still reflects it. If the title/description are edited out-of-band on the SCM itself (e.g. a
+		// human edits the PR on GitHub) while pr.Spec is unchanged, we will not notice or correct that
+		// drift until pr.Generation next changes. We accept this because Title/Description are the
+		// only fields this method pushes, and they change only via pr.Spec, which is exactly what
+		// bumps Generation and re-enables the sync below.
 		if previousReady != nil && previousReady.Status == metav1.ConditionTrue && previousReady.ObservedGeneration == pr.Generation {
 			logger.V(4).Info("PullRequest already synced with the SCM for this generation, skipping redundant update")
 			return false, nil

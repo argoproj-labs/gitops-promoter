@@ -547,24 +547,12 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 	// to be made concurrency-safe for a single identity first; today its EnvironmentOperations methods share one
 	// on-disk clone and must be called sequentially (see the internal/git package documentation).
 
-	// Probe both branches with a single ls-remote before paying for two full fetches. If a
-	// branch's remote SHA still matches what we observed last reconcile, the commit is already
-	// present in this identity's clone (from the fetch that first observed it), so we can skip
-	// fetching it again. In the common steady state (nothing changed since the last reconcile)
-	// this turns 2 fetches into 1 ls-remote. A failed or partial probe (for example one branch not
-	// existing yet) just falls back to fetching both branches exactly as before.
-	skipProposedFetch, skipActiveFetch := false, false
-	if ctp.Status.Proposed.Hydrated.Sha != "" && ctp.Status.Active.Hydrated.Sha != "" {
-		remoteHeads, lsRemoteErr := gitOperations.LsRemoteBranches(ctx, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
-		if lsRemoteErr != nil {
-			logger.V(4).Info("ls-remote probe failed, falling back to unconditional fetch for both branches", "error", lsRemoteErr)
-		} else {
-			skipProposedFetch = remoteHeads[ctp.Spec.ProposedBranch] == ctp.Status.Proposed.Hydrated.Sha
-			skipActiveFetch = remoteHeads[ctp.Spec.ActiveBranch] == ctp.Status.Active.Hydrated.Sha
-		}
-	}
-
-	proposedShas, err := gitOperations.GetBranchShasSkipFetchIfUnchanged(ctx, ctp.Spec.ProposedBranch, ctp.Spec.ActivePath, skipProposedFetch)
+	// GetBranchShasIfUnchanged skips the network fetch for a branch when a live ls-remote confirms
+	// its remote SHA still matches what we observed last reconcile - the commit is then guaranteed
+	// already present in this identity's clone. In the common steady state (nothing changed since
+	// the last reconcile) this avoids paying for a full fetch on either branch. A failed probe (for
+	// example a branch not existing yet) just falls back to a real fetch, exactly as before.
+	proposedShas, err := gitOperations.GetBranchShasIfUnchanged(ctx, ctp.Spec.ProposedBranch, ctp.Spec.ActivePath, ctp.Status.Proposed.Hydrated.Sha)
 	if err != nil {
 		// If the proposed branch doesn't exist, it's likely because the hydrator hasn't run yet
 		if strings.Contains(err.Error(), "couldn't find remote ref") {
@@ -573,7 +561,7 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 		return fmt.Errorf("failed to get SHAs for proposed branch %q: %w", ctp.Spec.ProposedBranch, err)
 	}
 
-	activeShas, err := gitOperations.GetBranchShasSkipFetchIfUnchanged(ctx, ctp.Spec.ActiveBranch, ctp.Spec.ActivePath, skipActiveFetch)
+	activeShas, err := gitOperations.GetBranchShasIfUnchanged(ctx, ctp.Spec.ActiveBranch, ctp.Spec.ActivePath, ctp.Status.Active.Hydrated.Sha)
 	if err != nil {
 		return fmt.Errorf("failed to get SHAs for active branch %q: %w", ctp.Spec.ActiveBranch, err)
 	}

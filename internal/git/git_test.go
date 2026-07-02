@@ -132,7 +132,7 @@ var _ = Describe("GetBranchShas", func() {
 	})
 })
 
-var _ = Describe("GetBranchShasSkipFetchIfUnchanged", func() {
+var _ = Describe("GetBranchShasIfUnchanged", func() {
 	var tempRepoDir string
 	var workDir string
 	var branch string
@@ -204,28 +204,27 @@ var _ = Describe("GetBranchShasSkipFetchIfUnchanged", func() {
 		}
 	})
 
-	It("returns correct SHAs without touching the network when skipFetch=true and the remote is unreachable", func() {
+	It("skips the fetch only when a live ls-remote confirms the remote SHA is unchanged", func() {
 		By("Fetching normally once to establish the baseline hydrated SHA (this is the only real fetch)")
 		baseline, err := g.GetBranchShas(GinkgoT().Context(), branch, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(baseline.Hydrated).NotTo(BeEmpty())
 		Expect(baseline.Dry).To(Equal("dry-sha-1"))
 
-		By("Confirming ls-remote currently reports the same SHA we already have")
-		remoteHeads, err := g.LsRemoteBranches(GinkgoT().Context(), branch)
+		By("Breaking the clone's configured 'origin' remote so a real `git fetch` fails, while gap still points ls-remote at the real, reachable repo (they resolve independently: fetch uses the clone's local git config, ls-remote uses gap.GetGitHttpsRepoUrl directly)")
+		_, err = runGitCmd(g.ClonePath(), "remote", "set-url", "origin", filepath.Join(tempRepoDir, "does-not-exist"))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(remoteHeads[branch]).To(Equal(baseline.Hydrated))
 
-		By("Making the remote unreachable, simulating a repo that hasn't changed and shouldn't need a new fetch")
-		Expect(os.RemoveAll(tempRepoDir)).To(Succeed())
-		tempRepoDir = ""
+		By("An empty lastKnownHydratedSha always attempts a real fetch, which now fails (control case)")
+		_, err = g.GetBranchShasIfUnchanged(GinkgoT().Context(), branch, "", "")
+		Expect(err).To(HaveOccurred(), "an unconditional fetch against the broken origin must fail, proving the control case actually exercises git fetch")
 
-		By("skipFetch=false still tries to fetch and fails now that the remote is gone (control case)")
-		_, err = g.GetBranchShasSkipFetchIfUnchanged(GinkgoT().Context(), branch, "", false)
-		Expect(err).To(HaveOccurred(), "a real fetch against the now-missing remote must fail, proving the control case actually exercises the network")
+		By("A mismatched lastKnownHydratedSha also triggers a real fetch, which fails the same way")
+		_, err = g.GetBranchShasIfUnchanged(GinkgoT().Context(), branch, "", "not-the-real-sha")
+		Expect(err).To(HaveOccurred(), "a stale lastKnownHydratedSha must not skip the fetch")
 
-		By("skipFetch=true succeeds by reading only the already-fetched local objects")
-		shas, err := g.GetBranchShasSkipFetchIfUnchanged(GinkgoT().Context(), branch, "", true)
+		By("A matching lastKnownHydratedSha skips the fetch entirely, so the broken origin is never used")
+		shas, err := g.GetBranchShasIfUnchanged(GinkgoT().Context(), branch, "", baseline.Hydrated)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(shas.Hydrated).To(Equal(baseline.Hydrated))
 		Expect(shas.Dry).To(Equal(baseline.Dry))

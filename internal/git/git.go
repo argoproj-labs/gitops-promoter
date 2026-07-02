@@ -210,27 +210,31 @@ func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch, activ
 	return g.getBranchShas(ctx, branch, activePath, false)
 }
 
-// LsRemoteBranches returns the current remote SHAs for the given branches without touching this
-// environment's local clone. It's a thin wrapper around the package-level LsRemote using this
-// environment's own GitOperationsProvider and GitRepository, for callers that want to cheaply
-// check whether a branch changed before paying for a full fetch (see
-// GetBranchShasSkipFetchIfUnchanged).
-func (g *EnvironmentOperations) LsRemoteBranches(ctx context.Context, branches ...string) (map[string]string, error) {
-	return LsRemote(ctx, g.gap, g.gitRepo, branches...)
-}
-
-// GetBranchShasSkipFetchIfUnchanged behaves exactly like GetBranchShas, except the network fetch
-// is skipped when skipFetch is true.
+// GetBranchShasIfUnchanged behaves like GetBranchShas, except it first checks - via a cheap, live
+// ls-remote against this same clone's repository - whether the branch's current remote SHA still
+// matches lastKnownHydratedSha (the Hydrated SHA this same branch/identity returned on a previous,
+// successful call). If it matches, the commit is guaranteed to already be present in this clone (it
+// was fetched the last time this identity observed that SHA), so the network fetch is skipped and
+// rev-parse/ls-tree resolve it from the existing local objects instead.
 //
-// Callers must only pass skipFetch=true after confirming, via a cheap LsRemoteBranches probe
-// against THIS SAME clone's identity, that the branch's current remote SHA equals the
-// lastKnownHydratedSha this same GetBranchShas(SkipFetchIfUnchanged) call returned on a previous,
-// successful invocation. That equality guarantees the commit object is already present in this
-// clone (it was fetched the last time we observed that SHA), so rev-parse/ls-tree below can
-// resolve it without fetching again. Passing skipFetch=true speculatively, or based on a SHA
-// observed by a different clone/identity, can make this method silently return stale or
-// unresolvable data.
-func (g *EnvironmentOperations) GetBranchShasSkipFetchIfUnchanged(ctx context.Context, branch, activePath string, skipFetch bool) (BranchShas, error) {
+// Unlike a caller-supplied skip flag, there is no way to skip the fetch without this method having
+// just confirmed the SHA is unchanged, so callers cannot accidentally skip based on a stale probe or
+// a SHA observed by a different clone/identity. Pass an empty lastKnownHydratedSha (e.g. before any
+// SHA has been observed for this branch) to always fetch; the probe is skipped in that case since
+// there's nothing to compare against.
+func (g *EnvironmentOperations) GetBranchShasIfUnchanged(ctx context.Context, branch, activePath, lastKnownHydratedSha string) (BranchShas, error) {
+	logger := log.FromContext(ctx)
+
+	skipFetch := false
+	if lastKnownHydratedSha != "" {
+		remoteHeads, err := LsRemote(ctx, g.gap, g.gitRepo, branch)
+		if err != nil {
+			logger.V(4).Info("ls-remote probe failed, falling back to unconditional fetch", "branch", branch, "error", err)
+		} else {
+			skipFetch = remoteHeads[branch] == lastKnownHydratedSha
+		}
+	}
+
 	return g.getBranchShas(ctx, branch, activePath, skipFetch)
 }
 
