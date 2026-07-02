@@ -745,6 +745,31 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				}
 			}, constants.EventuallyTimeout).Should(Succeed())
 
+			By("Disabling auto-merge on development and staging so manual git operations are not overwritten")
+			stagingCTPName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(name, testBranchStaging))
+			devCTPName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(name, testBranchDevelopment))
+			Eventually(func(g Gomega) {
+				var ps promoterv1alpha1.PromotionStrategy
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, &ps)).To(Succeed())
+				ps.Spec.Environments[0].AutoMerge = new(false) // development
+				ps.Spec.Environments[1].AutoMerge = new(false) // staging
+				g.Expect(k8sClient.Update(ctx, &ps)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Waiting for in-flight promotions into staging to settle before manual git push")
+			Eventually(func(g Gomega) {
+				for _, ctpName := range []string{devCTPName, stagingCTPName} {
+					var ctp promoterv1alpha1.ChangeTransferPolicy
+					g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: ctpName, Namespace: "default"}, &ctp)).To(Succeed())
+					g.Expect(ctp.Spec.AutoMerge).NotTo(BeNil())
+					g.Expect(*ctp.Spec.AutoMerge).To(BeFalse(), "CTP %s should have auto-merge disabled", ctpName)
+					if ctp.Status.PullRequest != nil {
+						g.Expect(ctp.Status.PullRequest.State).NotTo(Equal(promoterv1alpha1.PullRequestOpen),
+							"CTP %s should have no open promotion PR", ctpName)
+					}
+				}
+			}, constants.EventuallyTimeout).Should(Succeed())
+
 			By("Simulating a revert on the staging active branch using git revert")
 			gitPath, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
