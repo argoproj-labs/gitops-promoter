@@ -725,10 +725,7 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 	}
 
 	// Build the apply configuration
-	commitStatusLabels := utils.CopyInstanceIDLabelToMap(
-		&argoCDCommitStatus,
-		utils.CommitStatusStandardLabels(&argoCDCommitStatus, targetBranch, key),
-	)
+	commitStatusLabels := utils.CommitStatusStandardLabels(&argoCDCommitStatus, targetBranch, key)
 	commitStatusApply := acv1alpha1.CommitStatus(resourceName, argoCDCommitStatus.Namespace).
 		WithLabels(commitStatusLabels).
 		WithOwnerReferences(acmetav1.OwnerReference().

@@ -496,10 +496,7 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 	}
 
 	// Build the apply configuration
-	commitStatusLabels := utils.CopyInstanceIDLabelToMap(
-		wrcs,
-		utils.CommitStatusStandardLabels(wrcs, branch, wrcs.Spec.Key),
-	)
+	commitStatusLabels := utils.CommitStatusStandardLabels(wrcs, branch, wrcs.Spec.Key)
 	commitStatusApply := acv1alpha1.CommitStatus(commitStatusName, wrcs.Namespace).
 		WithLabels(commitStatusLabels).
 		WithOwnerReferences(acmetav1.OwnerReference().

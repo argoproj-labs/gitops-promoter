@@ -40,6 +40,19 @@ var _ = Describe("CommitStatusStandardLabels", func() {
 			promoterv1alpha1.CommitStatusLabel:         "timer",
 		}))
 	})
+
+	It("copies instance-id from parent when present", func() {
+		parent := &promoterv1alpha1.WebRequestCommitStatus{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "wrcs",
+				Namespace: "ns",
+				Labels:    map[string]string{promoterv1alpha1.InstanceIDLabel: "wave-0"},
+			},
+		}
+		labels := utils.CommitStatusStandardLabels(parent, "env/dev", "key")
+		Expect(labels[promoterv1alpha1.InstanceIDLabel]).To(Equal("wave-0"))
+		Expect(labels[promoterv1alpha1.CommitStatusLabel]).To(Equal("key"))
+	})
 })
 
 var _ = Describe("CommitStatusResourceName", func() {
@@ -207,8 +220,8 @@ var _ = Describe("CopyInstanceIDLabelToMap", func() {
 				Labels:    map[string]string{promoterv1alpha1.InstanceIDLabel: "a"},
 			},
 		}
-		labels := utils.CopyInstanceIDLabelToMap(parent, utils.CommitStatusStandardLabels(parent, "env/dev", "key"))
+		labels := utils.CopyInstanceIDLabelToMap(parent, map[string]string{"k": "v"})
 		Expect(labels[promoterv1alpha1.InstanceIDLabel]).To(Equal("a"))
-		Expect(labels[promoterv1alpha1.CommitStatusLabel]).To(Equal("key"))
+		Expect(labels["k"]).To(Equal("v"))
 	})
 })

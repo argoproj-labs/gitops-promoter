@@ -5859,14 +5859,11 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 })
 
 // childLabelPropagationSites lists controller files that must call CopyInstanceIDLabelToMap
-// at child-creation sites for multi-install label propagation.
+// at child-creation sites for multi-install label propagation (not gate CommitStatus paths,
+// which use CommitStatusStandardLabels).
 var childLabelPropagationSites = []string{
 	"promotionstrategy_controller.go",
 	"changetransferpolicy_controller.go",
-	"argocdcommitstatus_controller.go",
-	"gitcommitstatus_controller.go",
-	"timedcommitstatus_controller.go",
-	"webrequestcommitstatus_controller.go",
 }
 
 func TestChildCreationPropagatesInstanceIDLabel(t *testing.T) {
