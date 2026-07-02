@@ -5,10 +5,10 @@ import { timeAgo, formatDate, getCommitUrl } from '@shared/utils/util';
 import type { PromotionStrategy } from '@shared/types/promotion';
 import type { CommitRow, FilterId, SortId } from './types';
 import { buildMatrix } from './buildMatrix';
-import { Dropdown, DropdownItem } from './Dropdown';
-import Tooltip from './Tooltip';
-import FlowCell from './FlowCell';
-import DetailDrawer from './DetailDrawer';
+import { Dropdown, DropdownItem } from './Dropdown/Dropdown';
+import Tooltip from './Tooltip/Tooltip';
+import FlowCell from './FlowCell/FlowCell';
+import DetailDrawer from './DetailDrawer/DetailDrawer';
 import { useDrawerWidth } from './useDrawerWidth';
 import './index.scss';
 

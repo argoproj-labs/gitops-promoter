@@ -2,8 +2,8 @@ import React from 'react';
 import { FaTimesCircle, FaTimes, FaBan, FaArrowRight } from 'react-icons/fa';
 import { GoGitPullRequest } from 'react-icons/go';
 import { timeAgo, formatDate, getCommitUrl } from '@shared/utils/util';
-import type { CellState, CommitRow, EnvColumn, HealthKey } from './types';
-import { DRAWER_MIN_WIDTH, DRAWER_MAX_WIDTH, HEALTH_LABELS, healthIcon } from './presentation';
+import type { CellState, CommitRow, EnvColumn, HealthKey } from '../types';
+import { DRAWER_MIN_WIDTH, DRAWER_MAX_WIDTH, HEALTH_LABELS, healthIcon } from '../presentation';
 
 const DetailDrawer: React.FC<{
   row: CommitRow | null;

@@ -2,10 +2,10 @@ import React from 'react';
 import { FaBan, FaArrowRight } from 'react-icons/fa';
 import { GoGitPullRequest } from 'react-icons/go';
 import { timeAgo, formatDate } from '@shared/utils/util';
-import type { CellState, CommitRow } from './types';
-import { commitKey } from './helpers';
-import { CELL_KIND_LABELS, cellPillTooltip } from './presentation';
-import Tooltip from './Tooltip';
+import type { CellState, CommitRow } from '../types';
+import { commitKey } from '../helpers';
+import { CELL_KIND_LABELS, cellPillTooltip } from '../presentation';
+import Tooltip from '../Tooltip/Tooltip';
 
 const FlowCell: React.FC<{
   cell: CellState;

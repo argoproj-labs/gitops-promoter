@@ -1,5 +1,5 @@
 @use 'sass:color';
-@use 'tokens' as *;
+@use '../tokens' as *;
 
 .hp-dd {
   display: inline-flex;

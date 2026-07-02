@@ -1,6 +1,6 @@
 @use 'tokens';
 @use 'HistoryView';
-@use 'Dropdown';
-@use 'FlowCell';
-@use 'DetailDrawer';
-@use 'Tooltip';
+@use 'Dropdown/Dropdown';
+@use 'FlowCell/FlowCell';
+@use 'DetailDrawer/DetailDrawer';
+@use 'Tooltip/Tooltip';

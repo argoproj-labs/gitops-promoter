@@ -1,4 +1,4 @@
-@use 'tokens' as *;
+@use '../tokens' as *;
 
 /* Portal tooltip: rendered into <body> so it isn't clipped by cells'
    overflow:hidden or the scrolling matrix. */
