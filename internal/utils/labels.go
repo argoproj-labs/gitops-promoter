@@ -5,23 +5,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// CopyInstanceIDLabel copies promoter.argoproj.io/instance-id from parent to child when the
-// parent carries a non-empty value. No-op when the parent label is missing or empty.
-func CopyInstanceIDLabel(parent, child client.Object) {
-	v, ok := parent.GetLabels()[promoterv1alpha1.InstanceIDLabel]
-	if !ok || v == "" {
-		return
-	}
-	labels := child.GetLabels()
-	if labels == nil {
-		labels = make(map[string]string)
-	}
-	labels[promoterv1alpha1.InstanceIDLabel] = v
-	child.SetLabels(labels)
-}
-
-// CopyInstanceIDLabelToMap mirrors CopyInstanceIDLabel for SSA apply-config call sites that
-// build a labels map locally. Returns labels (never nil).
+// CopyInstanceIDLabelToMap copies promoter.argoproj.io/instance-id from parent into labels when the
+// parent carries a non-empty value. Returns labels (never nil).
 func CopyInstanceIDLabelToMap(parent client.Object, labels map[string]string) map[string]string {
 	if labels == nil {
 		labels = make(map[string]string)

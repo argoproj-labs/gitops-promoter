@@ -3,10 +3,14 @@ package cache_test
 import (
 	"testing"
 
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	promotercache "github.com/argoproj-labs/gitops-promoter/internal/cache"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
+	corev1 "k8s.io/api/core/v1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 )
 
 func TestCache(t *testing.T) {
@@ -54,5 +58,39 @@ var _ = Describe("OptionsForInstanceID", func() {
 		Expect(byObj.Namespaces).To(HaveKey(testControllerNamespace))
 		Expect(byObj.Label).To(BeNil())
 		Expect(byObj.Field.String()).To(Equal("metadata.name=" + settings.ControllerConfigurationName))
+	})
+})
+
+var _ = Describe("Partitioned promoter CRDs", func() {
+	It("includes every reconciled Promoter CRD kind except ControllerConfiguration", func() {
+		scheme := runtime.NewScheme()
+		Expect(promoterv1alpha1.AddToScheme(scheme)).To(Succeed())
+
+		wantKinds := map[string]struct{}{
+			"PromotionStrategy":        {},
+			"ChangeTransferPolicy":     {},
+			"CommitStatus":             {},
+			"PullRequest":              {},
+			"ScmProvider":              {},
+			"ClusterScmProvider":       {},
+			"GitRepository":            {},
+			"GitCommitStatus":          {},
+			"TimedCommitStatus":        {},
+			"WebRequestCommitStatus":   {},
+			"ArgoCDCommitStatus":       {},
+			"RevertCommit":             {},
+		}
+
+		gotKinds := map[string]struct{}{}
+		for _, obj := range promotercache.PartitionedObjects() {
+			if _, isSecret := obj.(*corev1.Secret); isSecret {
+				continue
+			}
+			gvk, err := apiutil.GVKForObject(obj, scheme)
+			Expect(err).NotTo(HaveOccurred(), "resolve GVK for %T", obj)
+			gotKinds[gvk.Kind] = struct{}{}
+		}
+
+		Expect(gotKinds).To(Equal(wantKinds))
 	})
 })

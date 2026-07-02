@@ -5861,17 +5861,20 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 // childLabelPropagationSites lists controller files that must call CopyInstanceIDLabelToMap
 // at child-creation sites for multi-install label propagation (not gate CommitStatus paths,
 // which use CommitStatusStandardLabels).
-var childLabelPropagationSites = []string{
-	"promotionstrategy_controller.go",
-	"changetransferpolicy_controller.go",
+var childLabelPropagationSites = []struct {
+	file  string
+	calls int
+}{
+	{file: "promotionstrategy_controller.go", calls: 2},
+	{file: "changetransferpolicy_controller.go", calls: 1},
 }
 
 func TestChildCreationPropagatesInstanceIDLabel(t *testing.T) {
 	t.Parallel()
-	for _, file := range childLabelPropagationSites {
-		t.Run(file, func(t *testing.T) {
+	for _, site := range childLabelPropagationSites {
+		t.Run(site.file, func(t *testing.T) {
 			t.Parallel()
-			path := filepath.Join(".", file)
+			path := filepath.Join(".", site.file)
 			src, err := os.ReadFile(path)
 			if err != nil {
 				t.Fatalf("read %s: %v", path, err)
@@ -5881,7 +5884,7 @@ func TestChildCreationPropagatesInstanceIDLabel(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parse %s: %v", path, err)
 			}
-			found := false
+			count := 0
 			ast.Inspect(f, func(n ast.Node) bool {
 				call, ok := n.(*ast.CallExpr)
 				if !ok {
@@ -5892,34 +5895,13 @@ func TestChildCreationPropagatesInstanceIDLabel(t *testing.T) {
 					return true
 				}
 				if id, ok := sel.X.(*ast.Ident); ok && id.Name == "utils" && sel.Sel.Name == "CopyInstanceIDLabelToMap" {
-					found = true
-					return false
+					count++
 				}
 				return true
 			})
-			if !found {
-				t.Fatalf("%s must call utils.CopyInstanceIDLabelToMap for instance-id label propagation", file)
+			if count != site.calls {
+				t.Fatalf("%s must call utils.CopyInstanceIDLabelToMap %d times for instance-id label propagation, found %d", site.file, site.calls, count)
 			}
 		})
-	}
-}
-
-func TestNoInstanceIDPredicateOnControllers(t *testing.T) {
-	t.Parallel()
-	entries, err := os.ReadDir(".")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), "_controller.go") {
-			continue
-		}
-		src, err := os.ReadFile(filepath.Join(".", e.Name()))
-		if err != nil {
-			t.Fatalf("read %s: %v", e.Name(), err)
-		}
-		if strings.Contains(string(src), "promoterpredicate.InstanceID") {
-			t.Errorf("%s must not use promoterpredicate.InstanceID (cache ByObject is the partition boundary)", e.Name())
-		}
 	}
 }

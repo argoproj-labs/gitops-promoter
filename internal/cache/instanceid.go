@@ -11,10 +11,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// promotorCRDObjects lists every promoter.argoproj.io type reconciled by the controller that
+// promoterCRDObjects lists every promoter.argoproj.io type reconciled by the controller that
 // participates in instance-id partitioning. ControllerConfiguration is scoped separately by
 // install namespace (see partitionedControllerConfigurationObject).
-var promotorCRDObjects = []client.Object{
+var promoterCRDObjects = []client.Object{
 	&promoterv1alpha1.PromotionStrategy{},
 	&promoterv1alpha1.ChangeTransferPolicy{},
 	&promoterv1alpha1.CommitStatus{},
@@ -74,8 +74,8 @@ func instanceIDSelector(instanceID *string) labels.Selector {
 // including Promoter CRDs and Secrets referenced for SCM, HTTP auth, and kubeconfig credentials.
 // Exported for tests.
 func PartitionedObjects() []client.Object {
-	out := make([]client.Object, 0, len(promotorCRDObjects)+1)
-	out = append(out, promotorCRDObjects...)
+	out := make([]client.Object, 0, len(promoterCRDObjects)+1)
+	out = append(out, promoterCRDObjects...)
 	out = append(out, partitionedSecretObject)
 	return out
 }

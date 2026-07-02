@@ -14,75 +14,37 @@ const (
 	testEnvBranch  = "main"
 )
 
-var _ = Describe("CopyInstanceIDLabel", func() {
-	var (
-		parent *promoterv1alpha1.PromotionStrategy
-		child  *promoterv1alpha1.ChangeTransferPolicy
-	)
-
-	BeforeEach(func() {
-		parent = &promoterv1alpha1.PromotionStrategy{
-			ObjectMeta: metav1.ObjectMeta{Name: "parent"},
+var _ = Describe("CopyInstanceIDLabelToMap", func() {
+	It("returns an empty map when labels is nil and parent has no instance-id", func() {
+		parent := &promoterv1alpha1.TimedCommitStatus{
+			ObjectMeta: metav1.ObjectMeta{Name: "tcs", Namespace: "ns"},
 		}
-		child = &promoterv1alpha1.ChangeTransferPolicy{
-			ObjectMeta: metav1.ObjectMeta{Name: "child"},
+
+		labels := utils.CopyInstanceIDLabelToMap(parent, nil)
+
+		Expect(labels).NotTo(BeNil())
+		Expect(labels).To(BeEmpty())
+	})
+
+	It("no-ops when parent has no instance-id label", func() {
+		parent := &promoterv1alpha1.TimedCommitStatus{
+			ObjectMeta: metav1.ObjectMeta{Name: "tcs", Namespace: "ns"},
 		}
+		labels := utils.CopyInstanceIDLabelToMap(parent, map[string]string{"k": "v"})
+		Expect(labels).To(Equal(map[string]string{"k": "v"}))
 	})
 
-	It("copies the instance-id label from parent to a child with nil labels", func() {
-		parent.SetLabels(map[string]string{promoterv1alpha1.InstanceIDLabel: testInstanceID})
-
-		utils.CopyInstanceIDLabel(parent, child)
-
-		Expect(child.GetLabels()).To(HaveKeyWithValue(promoterv1alpha1.InstanceIDLabel, testInstanceID))
-	})
-
-	It("copies the instance-id label without clobbering existing child labels", func() {
-		parent.SetLabels(map[string]string{promoterv1alpha1.InstanceIDLabel: testInstanceID})
-		child.SetLabels(map[string]string{
-			promoterv1alpha1.EnvironmentLabel:       testEnvBranch,
-			promoterv1alpha1.PromotionStrategyLabel: "ps",
-		})
-
-		utils.CopyInstanceIDLabel(parent, child)
-
-		Expect(child.GetLabels()).To(HaveKeyWithValue(promoterv1alpha1.InstanceIDLabel, testInstanceID))
-		Expect(child.GetLabels()).To(HaveKeyWithValue(promoterv1alpha1.EnvironmentLabel, testEnvBranch))
-		Expect(child.GetLabels()).To(HaveKeyWithValue(promoterv1alpha1.PromotionStrategyLabel, "ps"))
-	})
-
-	It("overwrites the child's existing instance-id label with the parent's value", func() {
-		parent.SetLabels(map[string]string{promoterv1alpha1.InstanceIDLabel: testInstanceID})
-		child.SetLabels(map[string]string{promoterv1alpha1.InstanceIDLabel: "wave-stale"})
-
-		utils.CopyInstanceIDLabel(parent, child)
-
-		Expect(child.GetLabels()).To(HaveKeyWithValue(promoterv1alpha1.InstanceIDLabel, testInstanceID))
-	})
-
-	It("is a no-op when the parent has no labels", func() {
-		// nil labels on parent
-		utils.CopyInstanceIDLabel(parent, child)
-		Expect(child.GetLabels()).To(BeNil())
-	})
-
-	It("is a no-op when the parent has labels but no instance-id key", func() {
-		parent.SetLabels(map[string]string{promoterv1alpha1.EnvironmentLabel: testEnvBranch})
-
-		utils.CopyInstanceIDLabel(parent, child)
-
-		Expect(child.GetLabels()).To(BeNil())
-	})
-
-	It("is a no-op when the parent's instance-id value is empty", func() {
-		// An empty parent value carries no useful identity and must not be propagated.
-		parent.SetLabels(map[string]string{promoterv1alpha1.InstanceIDLabel: ""})
-		child.SetLabels(map[string]string{promoterv1alpha1.EnvironmentLabel: testEnvBranch})
-
-		utils.CopyInstanceIDLabel(parent, child)
-
-		Expect(child.GetLabels()).NotTo(HaveKey(promoterv1alpha1.InstanceIDLabel))
-		Expect(child.GetLabels()).To(HaveKeyWithValue(promoterv1alpha1.EnvironmentLabel, testEnvBranch))
+	It("adds instance-id to the labels map", func() {
+		parent := &promoterv1alpha1.WebRequestCommitStatus{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "wrcs",
+				Namespace: "ns",
+				Labels:    map[string]string{promoterv1alpha1.InstanceIDLabel: "a"},
+			},
+		}
+		labels := utils.CopyInstanceIDLabelToMap(parent, map[string]string{"k": "v"})
+		Expect(labels[promoterv1alpha1.InstanceIDLabel]).To(Equal("a"))
+		Expect(labels["k"]).To(Equal("v"))
 	})
 })
 

@@ -30,7 +30,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	promotercache "github.com/argoproj-labs/gitops-promoter/internal/cache"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 )
 
@@ -269,40 +268,5 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(shutdowns.Load()).To(Equal(int32(0)))
 		})
-	})
-})
-
-var _ = Describe("OptionsForInstanceID", func() {
-	const controllerNamespace = "default"
-
-	It("scopes all partitioned types to resources without instance-id when nil", func() {
-		opts := promotercache.OptionsForInstanceID(nil, controllerNamespace)
-		Expect(opts.ByObject).To(HaveLen(len(promotercache.PartitionedObjects()) + 1))
-		for _, obj := range promotercache.PartitionedObjects() {
-			byObj, ok := opts.ByObject[obj]
-			Expect(ok).To(BeTrue(), "missing ByObject for %T", obj)
-			Expect(byObj.Label.String()).To(Equal("!promoter.argoproj.io/instance-id"))
-		}
-	})
-
-	It("scopes all partitioned types to matching instance-id when set", func() {
-		instanceID := "wave-0"
-		opts := promotercache.OptionsForInstanceID(&instanceID, controllerNamespace)
-		Expect(opts.ByObject).To(HaveLen(len(promotercache.PartitionedObjects()) + 1))
-		for _, obj := range promotercache.PartitionedObjects() {
-			byObj, ok := opts.ByObject[obj]
-			Expect(ok).To(BeTrue(), "missing ByObject for %T", obj)
-			Expect(byObj.Label.String()).To(Equal("promoter.argoproj.io/instance-id=wave-0"))
-		}
-	})
-
-	It("scopes ControllerConfiguration to the install namespace", func() {
-		opts := promotercache.OptionsForInstanceID(nil, controllerNamespace)
-		byObj, ok := opts.ByObject[promotercache.PartitionedControllerConfigurationObject()]
-		Expect(ok).To(BeTrue())
-		Expect(byObj.Namespaces).To(HaveLen(1))
-		Expect(byObj.Namespaces).To(HaveKey(controllerNamespace))
-		Expect(byObj.Label).To(BeNil())
-		Expect(byObj.Field.String()).To(Equal("metadata.name=" + settings.ControllerConfigurationName))
 	})
 })

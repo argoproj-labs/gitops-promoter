@@ -42,18 +42,6 @@ func ReadInstanceID(ctx context.Context, cfg *rest.Config, namespace string) (*s
 	return cc.Spec.InstanceID, nil
 }
 
-// InstanceIDsEqual reports whether two optional instance ID values are equivalent.
-// Both nil means default install; one nil and one non-nil are different.
-func InstanceIDsEqual(a, b *string) bool {
-	if a == nil && b == nil {
-		return true
-	}
-	if a == nil || b == nil {
-		return false
-	}
-	return *a == *b
-}
-
 // ControllerConfigurationTypes is a constraint that defines the set of controller configuration types
 // that include a WorkQueue specification. This type constraint is used with generic functions to
 // provide type-safe access to WorkQueue configurations across different controller types.
