@@ -12,10 +12,6 @@ export default defineConfig({
       host: 'localhost',
       port: 5173,
     },
-    // Allow Cloudflare quick tunnels (*.trycloudflare.com) to reach the dev
-    // server when sharing a public preview. Vite 7 blocks unknown Host headers
-    // by default. This is a no-op for normal localhost development.
-    allowedHosts: ['.trycloudflare.com', '.ngrok-free.app', '.loca.lt', '.lhr.life'],
     proxy: {
       '/list': {
         target: 'http://localhost:8080',

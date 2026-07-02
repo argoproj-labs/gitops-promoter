@@ -7,13 +7,21 @@
   margin-bottom: 16px;
 }
 
-// The wrapper, not just the inner .hp, owns the viewport clamp. --hp-offset-top
-// is its measured distance from the top of the viewport (set in
-// AppViewExtension); capping the wrapper to the remaining height with
-// overflow: hidden contains the inner .hp even if it computes a sub-pixel too
-// tall, so no stray outer scrollbar appears.
+// ArgoCD mounts the extension into `application-details__tree`, a
+// definite-height, scroll-capable flex child. We fill it with a flex column so
+// the History view's `height: 100%` resolves natively — no viewport
+// measurement. The toggle/controls take their natural height; the history
+// wrapper flexes to the remaining space and contains the inner `.hp`.
+.extension-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
 .gp-history-wrapper {
-  max-height: calc(100vh - var(--hp-offset-top, 0px));
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 

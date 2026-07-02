@@ -21,6 +21,7 @@ const HistoryPage: React.FC = () => {
       name={name}
       namespace={namespace}
       onBack={() => navigate(`/promotion-strategies/${namespace}/${name}`)}
+      fillViewport
     />
   );
 };

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Select, { SingleValue } from 'react-select';
 import Card from '@components-lib/components/Card';
 import HistoryView from '@components-lib/components/HistoryView/HistoryView';
@@ -71,29 +71,6 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode>('card');
 
-  // The HistoryView clamps itself to `calc(100vh - var(--hp-offset-top))`. In
-  // the dashboard that offset is a fixed 48px, but here the view is mounted
-  // below Argo's chrome and tab strip, so we measure the wrapper's actual
-  // distance from the top of the viewport and feed it in. Re-measured on
-  // resize and whenever the History view is shown.
-  const historyWrapperRef = useRef<HTMLDivElement | null>(null);
-  const syncHistoryOffset = useCallback(() => {
-    const el = historyWrapperRef.current;
-    if (!el) return;
-    const top = el.getBoundingClientRect().top;
-    // Round the offset UP: rounding down would let `.hp` (height 100vh - offset)
-    // exceed the remaining space by a sub-pixel and produce a stray outer
-    // scrollbar. Ceiling keeps it clamped at or just under the viewport bottom.
-    el.style.setProperty('--hp-offset-top', `${Math.max(0, Math.ceil(top))}px`);
-  }, []);
-
-  useLayoutEffect(() => {
-    if (view !== 'history') return;
-    syncHistoryOffset();
-    window.addEventListener('resize', syncHistoryOffset);
-    return () => window.removeEventListener('resize', syncHistoryOffset);
-  }, [view, selectedKey, syncHistoryOffset]);
-
   useEffect(() => {
     const appName = application.metadata.name;
     const appNamespace = application.metadata.namespace;
@@ -146,7 +123,7 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
           try {
             errorText = await response.text();
           } catch {
-            // best-effort: a failed body read shouldn't mask the status error
+            // ignore errors while reading error body
           }
           const messageParts = [
             `Request failed with status ${response.status} ${response.statusText}`,
@@ -244,7 +221,7 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
       </div>
       {selected && view === 'card' && <Card environments={selected.status?.environments || []} />}
       {selected && view === 'history' && (
-        <div ref={historyWrapperRef} className="gp-history-wrapper">
+        <div className="gp-history-wrapper">
           <HistoryView strategy={selected} />
         </div>
       )}

@@ -3,13 +3,22 @@
 .hp {
   display: flex;
   flex-direction: column;
-  // Clamp to the viewport space below wherever the view is mounted. The
-  // dashboard renders it 48px from the top; hosts that mount it lower (e.g.
-  // the ArgoCD extension, below Argo's chrome and tab strip) override
-  // `--hp-offset-top` so the matrix still ends at the bottom of the screen.
-  height: calc(100vh - var(--hp-offset-top, 48px));
+  // Fill the host's already-sized container. In the ArgoCD extension the view
+  // mounts inside `application-details__tree`, a definite-height, scroll-capable
+  // flex child, so `height: 100%` resolves to the space below Argo's chrome
+  // with no measurement. Hosts without a sized ancestor (the dashboard, whose
+  // #root/body/html are auto-height) opt into viewport clamping via
+  // `.hp--viewport`.
+  height: 100%;
   background: $bg-page;
   overflow: hidden;
+}
+
+// Dashboard: no sized ancestor to fill, so anchor to the viewport instead,
+// leaving room for the 48px TopBar. `dvh` (not `vh`) excludes mobile browser
+// chrome so the matrix ends at the true viewport bottom.
+.hp--viewport {
+  height: calc(100dvh - 48px);
 }
 
 .hp-body {
@@ -166,7 +175,9 @@
   align-items: center;
   justify-content: center;
   gap: 12px;
-  height: calc(100vh - var(--hp-offset-top, 48px));
+  // Same host-fill contract as `.hp`: fill a sized ancestor by default, or
+  // clamp to the viewport when the host adds `.hp--viewport`.
+  height: 100%;
   color: $text-secondary;
   font-size: 14px;
 }

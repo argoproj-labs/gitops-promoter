@@ -17,6 +17,11 @@ export interface HistoryViewProps {
   name?: string;
   namespace?: string;
   onBack?: () => void;
+  // By default the view fills its host container (`height: 100%`), which is
+  // correct when mounted inside a sized ancestor like ArgoCD's
+  // `application-details__tree`. Hosts with no sized ancestor (the dashboard)
+  // set this to clamp the root to the viewport instead.
+  fillViewport?: boolean;
 }
 
 const HistoryView: React.FC<HistoryViewProps> = ({
@@ -24,7 +29,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   name: nameProp,
   namespace: namespaceProp,
   onBack,
+  fillViewport = false,
 }) => {
+  const rootClass = fillViewport ? 'hp--viewport' : '';
   const name = nameProp ?? strategy?.metadata?.name;
   const namespace = namespaceProp ?? strategy?.metadata?.namespace;
 
@@ -108,11 +115,12 @@ const HistoryView: React.FC<HistoryViewProps> = ({
     [envs, rowsById],
   );
 
-  if (!strategy) return <div className="hp-loading">Loading promotion history…</div>;
+  if (!strategy)
+    return <div className={`hp-loading ${rootClass}`}>Loading promotion history…</div>;
 
   if (envs.length === 0) {
     return (
-      <div className="hp-empty">
+      <div className={`hp-empty ${rootClass}`}>
         <h2 className="hp-empty__title">No promotion history yet</h2>
         <p className="hp-empty__body">
           This promotion strategy doesn't have any environments with history to show.
@@ -150,7 +158,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   const gridTemplate = `minmax(280px, 420px) repeat(${visibleEnvs.length}, minmax(180px, 260px)) 1fr`;
 
   return (
-    <div className="hp">
+    <div className={`hp ${rootClass}`}>
       <header className="hp-header">
         {handleBack && (
           <button className="hp-header__back" onClick={handleBack} type="button">
