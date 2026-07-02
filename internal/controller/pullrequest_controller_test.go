@@ -152,7 +152,6 @@ var _ = Describe("PullRequest Controller", func() {
 
 			AfterEach(func() {
 				Expect(k8sClient.Delete(ctx, pullRequest)).To(Succeed())
-				restorePullRequestRequeueDuration(ctx)
 			})
 
 			It("should not repeat SCM Update calls on every periodic requeue once synced", func() {
@@ -1247,33 +1246,23 @@ func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret,
 	return name, scmSecret, scmProvider, gitRepo, pullRequest
 }
 
-// originalPullRequestRequeueDuration caches the shipped default so setPullRequestRequeueDuration
-// can be called more than once per spec (e.g. a future retry) without losing the real default.
-var originalPullRequestRequeueDuration metav1.Duration
-
 // setPullRequestRequeueDuration patches the singleton ControllerConfiguration's
-// pullRequest.workQueue.requeueDuration for the current test. Call restorePullRequestRequeueDuration
-// (typically via AfterEach) to put the shipped default back so later specs aren't affected.
+// pullRequest.workQueue.requeueDuration for the current test and registers a DeferCleanup that
+// restores the shipped default afterward, so later specs aren't affected.
 func setPullRequestRequeueDuration(ctx context.Context, d time.Duration) {
 	var cc promoterv1alpha1.ControllerConfiguration
 	key := types.NamespacedName{Namespace: "default", Name: settings.ControllerConfigurationName}
 	Expect(k8sClient.Get(ctx, key, &cc)).To(Succeed())
-	originalPullRequestRequeueDuration = cc.Spec.PullRequest.WorkQueue.RequeueDuration
+	original := cc.Spec.PullRequest.WorkQueue.RequeueDuration
 	cc.Spec.PullRequest.WorkQueue.RequeueDuration = metav1.Duration{Duration: d}
 	Expect(k8sClient.Update(ctx, &cc)).To(Succeed())
-}
 
-// restorePullRequestRequeueDuration undoes setPullRequestRequeueDuration.
-func restorePullRequestRequeueDuration(ctx context.Context) {
-	if originalPullRequestRequeueDuration.Duration == 0 {
-		return
-	}
-	var cc promoterv1alpha1.ControllerConfiguration
-	key := types.NamespacedName{Namespace: "default", Name: settings.ControllerConfigurationName}
-	Expect(k8sClient.Get(ctx, key, &cc)).To(Succeed())
-	cc.Spec.PullRequest.WorkQueue.RequeueDuration = originalPullRequestRequeueDuration
-	Expect(k8sClient.Update(ctx, &cc)).To(Succeed())
-	originalPullRequestRequeueDuration = metav1.Duration{}
+	DeferCleanup(func() {
+		var cc promoterv1alpha1.ControllerConfiguration
+		Expect(k8sClient.Get(ctx, key, &cc)).To(Succeed())
+		cc.Spec.PullRequest.WorkQueue.RequeueDuration = original
+		Expect(k8sClient.Update(ctx, &cc)).To(Succeed())
+	})
 }
 
 func getGitBranchSHA(ctx context.Context, owner, name, branch string) string {
