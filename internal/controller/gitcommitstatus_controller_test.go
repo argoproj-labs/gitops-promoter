@@ -746,21 +746,20 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			stagingCTPName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(name, testBranchStaging))
-			// setPromotionStrategyGlobalProposedCommitStatusKey above can unblock a promotion that
-			// was pending from an earlier spec under a different gating key. Wait until staging
-			// has no in-flight promotion (no open PR, nothing left to merge) immediately before
-			// creating the revert merge commit, so a real "Promote ... to environment/staging"
-			// merge cannot race the manual push below.
-			By("Verifying staging has no open promotion PR and active dry sha matches proposed dry sha before the revert merge")
+			// This Ordered suite shares one PromotionStrategy. Prior specs may have left staging
+			// mid-promotion, and switching the proposed commit status key above can trigger another
+			// reconcile. Wait until staging is idle before we push a revert commit to its active
+			// branch so a controller-driven promotion PR does not race the manual push below.
+			By("Verifying staging is idle before pushing a revert commit to its active branch")
 			Eventually(func(g Gomega) {
 				var ctp promoterv1alpha1.ChangeTransferPolicy
 				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: stagingCTPName, Namespace: "default"}, &ctp)).To(Succeed())
 				if ctp.Status.PullRequest != nil {
 					g.Expect(ctp.Status.PullRequest.State).NotTo(Equal(promoterv1alpha1.PullRequestOpen),
-						"staging should have no open promotion PR before the revert merge")
+						"staging should have no open promotion PR before the revert commit push")
 				}
 				g.Expect(ctp.Status.Active.Dry.Sha).To(Equal(ctp.Status.Proposed.Dry.Sha),
-					"staging active dry sha should match proposed dry sha before the revert merge")
+					"staging active dry sha should match proposed dry sha before the revert commit push")
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Simulating a revert on the staging active branch using git revert")
