@@ -91,6 +91,38 @@ function setCell(row: CommitRow, branch: string, next: CellState) {
   }
 }
 
+function processHistory(rowsById: Map<string, CommitRow>, env: StatusEnvironment) {
+  const branch = env.branch;
+  const history = env.history ?? [];
+  history.forEach((entry, idx) => {
+    const commit = entry.active?.dry;
+    if (!commit) return;
+    const statuses = entry.active?.commitStatuses ?? [];
+    const health = healthFromStatuses(statuses);
+    const olderSha = history[idx + 1]?.active?.dry?.sha;
+    const isNoop = !!commit.sha && !!olderSha && commit.sha === olderSha;
+    const kind: CellKind = isNoop ? 'no-op' : health === 'failure' ? 'failed' : 'was-here';
+
+    const row = getRow(rowsById, commit, '', entry.pullRequest);
+    if (!row) return;
+
+    const supersededById =
+      idx > 0 ? (commitKey(history[idx - 1]?.active?.dry) ?? undefined) : undefined;
+    setCell(row, branch, {
+      kind,
+      commit,
+      commitStatuses: statuses,
+      health,
+      pullRequest: entry.pullRequest,
+      noopNote: isNoop
+        ? `Same dry SHA as the previous entry, so ${branch} didn't change.`
+        : undefined,
+      supersededById,
+      at: commit.commitTime ?? entry.pullRequest?.prMergeTime ?? undefined,
+    });
+  });
+}
+
 function finalizeRow(row: CommitRow, envs: StatusEnvironment[]): CommitRow {
   const times: number[] = [];
   for (const branch of envs.map((e) => e.branch)) {
@@ -187,34 +219,7 @@ export function buildMatrix(strategy: PromotionStrategy): {
       }
     }
 
-    const history = env.history ?? [];
-    history.forEach((entry, idx) => {
-      const commit = entry.active?.dry;
-      if (!commit) return;
-      const statuses = entry.active?.commitStatuses ?? [];
-      const health = healthFromStatuses(statuses);
-      const olderSha = history[idx + 1]?.active?.dry?.sha;
-      const isNoop = !!commit.sha && !!olderSha && commit.sha === olderSha;
-      let kind: CellKind = isNoop ? 'no-op' : health === 'failure' ? 'failed' : 'was-here';
-
-      const row = getRow(rowsById, commit, '', entry.pullRequest);
-      if (!row) return;
-
-      const supersededById =
-        idx > 0 ? (commitKey(history[idx - 1]?.active?.dry) ?? undefined) : undefined;
-      setCell(row, branch, {
-        kind,
-        commit,
-        commitStatuses: statuses,
-        health,
-        pullRequest: entry.pullRequest,
-        noopNote: isNoop
-          ? `Same dry SHA as the previous entry, so ${branch} didn't change.`
-          : undefined,
-        supersededById,
-        at: commit.commitTime ?? entry.pullRequest?.prMergeTime ?? undefined,
-      });
-    });
+    processHistory(rowsById, env);
   });
 
   const rows = Array.from(rowsById.values()).map((row) => finalizeRow(row, envs));
