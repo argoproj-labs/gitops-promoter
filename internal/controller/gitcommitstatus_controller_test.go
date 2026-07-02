@@ -746,25 +746,22 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			stagingCTPName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(name, testBranchStaging))
-			devCTPName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(name, testBranchDevelopment))
-
 			// setPromotionStrategyGlobalProposedCommitStatusKey above can unblock a promotion that
-			// was pending from an earlier spec under a different gating key, racing the manual
-			// revert push below with a real "Promote ... to environment/staging" merge (the CI
-			// flake this guards against). Wait for that to fully drain, then require it to stay
-			// drained for a few seconds before doing any git operations.
-			noOpenPromotionPR := func(g Gomega) {
-				for _, ctpName := range []string{devCTPName, stagingCTPName} {
-					var ctp promoterv1alpha1.ChangeTransferPolicy
-					g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: ctpName, Namespace: "default"}, &ctp)).To(Succeed())
-					if ctp.Status.PullRequest != nil {
-						g.Expect(ctp.Status.PullRequest.State).NotTo(Equal(promoterv1alpha1.PullRequestOpen),
-							"CTP %s should have no open promotion PR", ctpName)
-					}
+			// was pending from an earlier spec under a different gating key. Wait until staging
+			// has no in-flight promotion (no open PR, nothing left to merge) immediately before
+			// creating the revert merge commit, so a real "Promote ... to environment/staging"
+			// merge cannot race the manual push below.
+			By("Verifying staging has no open promotion PR and active dry sha matches proposed dry sha before the revert merge")
+			Eventually(func(g Gomega) {
+				var ctp promoterv1alpha1.ChangeTransferPolicy
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: stagingCTPName, Namespace: "default"}, &ctp)).To(Succeed())
+				if ctp.Status.PullRequest != nil {
+					g.Expect(ctp.Status.PullRequest.State).NotTo(Equal(promoterv1alpha1.PullRequestOpen),
+						"staging should have no open promotion PR before the revert merge")
 				}
-			}
-			By("Waiting for in-flight promotions on development and staging to settle")
-			Eventually(noOpenPromotionPR, constants.EventuallyTimeout).Should(Succeed())
+				g.Expect(ctp.Status.Active.Dry.Sha).To(Equal(ctp.Status.Proposed.Dry.Sha),
+					"staging active dry sha should match proposed dry sha before the revert merge")
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Simulating a revert on the staging active branch using git revert")
 			gitPath, err := os.MkdirTemp("", "*")
