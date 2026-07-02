@@ -4,100 +4,161 @@ import { LANE_COLORS } from './types';
 import type { CellKind, CellState, CommitRow, EnvColumn } from './types';
 import { healthFromStatuses, shortSha, commitKey } from './helpers';
 
+type StatusEnvironment = NonNullable<
+  NonNullable<PromotionStrategy['status']>['environments']
+>[number];
+
 /* ═════════════════════════════════════════════════════════════════
    Build the commit-first matrix
    ═════════════════════════════════════════════════════════════════ */
+
+/** Keep only envs that have some history or a current live commit. */
+function envHasContent(env: StatusEnvironment): boolean {
+  return (env.history?.length ?? 0) > 0 || !!env.active?.dry;
+}
+
+/** Build the display column (color, health, proposed diff) for one env. */
+function buildEnvColumn(
+  env: StatusEnvironment,
+  i: number,
+  specByBranch: Map<string, { autoMerge?: boolean }>,
+): EnvColumn {
+  const liveStatuses = env.active?.commitStatuses ?? [];
+  const proposedStatuses = env.proposed?.commitStatuses ?? [];
+  const liveSha = env.active?.dry?.sha;
+  const proposedSha = env.proposed?.dry?.sha;
+  const proposedDistinct =
+    env.proposed?.dry && proposedSha && proposedSha !== liveSha ? env.proposed.dry : undefined;
+
+  return {
+    branch: env.branch,
+    autoMerge: specByBranch.get(env.branch)?.autoMerge ?? false,
+    color: LANE_COLORS[i % LANE_COLORS.length]!,
+    liveCommit: env.active?.dry,
+    liveStatuses,
+    liveHealth: healthFromStatuses(liveStatuses),
+    proposedCommit: proposedDistinct,
+    proposedStatuses: proposedDistinct ? proposedStatuses : [],
+    proposedHealth: proposedDistinct ? healthFromStatuses(proposedStatuses) : 'unknown',
+    proposedPR: proposedDistinct ? env.pullRequest : undefined,
+  };
+}
+
+/** Look up or insert a row for this commit in the given map. */
+function getRow(
+  rowsById: Map<string, CommitRow>,
+  commit: Commit | undefined,
+  repoUrlFallback: string,
+  pr?: PullRequest,
+): CommitRow | null {
+  const key = commitKey(commit);
+  if (!key || !commit) return null;
+  let row = rowsById.get(key);
+  if (!row) {
+    row = {
+      id: key,
+      dryShaFull: commit.sha ?? '',
+      dryShaShort: shortSha(commit.sha),
+      subject: (commit.subject ?? '').trim() || '(no subject)',
+      author: commit.author ? extractNameOnly(commit.author) : '—',
+      body: commit.body ? extractBodyPreTrailer(commit.body) : undefined,
+      prId: pr?.id,
+      prUrl: pr?.url,
+      repoUrl: commit.repoURL ?? repoUrlFallback,
+      freshestAt: 0,
+      earliestAt: 0,
+      cells: {},
+      hasLive: false,
+      hasInFlight: false,
+      hasFailed: false,
+      hasNoop: false,
+    };
+    rowsById.set(key, row);
+  }
+  if (pr?.id && !row.prId) {
+    row.prId = pr.id;
+    row.prUrl = pr.url;
+  }
+  return row;
+}
+
+/** Rank of each cell kind; later cells overwrite when they have stronger
+ *  semantics (live > in-flight > failed > was-here > no-op). */
+const cellRank: Record<CellKind, number> = {
+  live: 6,
+  'in-flight': 5,
+  failed: 4,
+  'was-here': 3,
+  'no-op': 2,
+  'not-reached': 1,
+};
+
+/** Insert / upgrade a cell, keeping the stronger of the existing and next. */
+function setCell(row: CommitRow, branch: string, next: CellState) {
+  const prev = row.cells[branch];
+  if (!prev || cellRank[next.kind] >= cellRank[prev.kind]) {
+    row.cells[branch] = next;
+  }
+}
+
+/** Finalize one row: compute timestamps, fill missing cells, roll up flags. */
+function finalizeRow(row: CommitRow, envs: StatusEnvironment[]): CommitRow {
+  const times: number[] = [];
+  for (const branch of envs.map((e) => e.branch)) {
+    const c = row.cells[branch];
+    if (c?.at) {
+      const t = new Date(c.at).getTime();
+      if (Number.isFinite(t)) times.push(t);
+    }
+    if (c?.commit?.commitTime) {
+      const t = new Date(c.commit.commitTime).getTime();
+      if (Number.isFinite(t)) times.push(t);
+    }
+  }
+  if (times.length === 0 && row.dryShaFull) {
+    // last-ditch: hold sort stable by pushing missing-time rows to the bottom
+    times.push(0);
+  }
+  row.freshestAt = times.length ? Math.max(...times) : 0;
+  row.earliestAt = times.length
+    ? Math.min(...times.filter((t) => t > 0), ...(times.includes(0) ? [Infinity] : []))
+    : 0;
+  if (!Number.isFinite(row.earliestAt)) row.earliestAt = row.freshestAt;
+
+  // Fill missing cells as 'not-reached'
+  for (const e of envs) {
+    if (!row.cells[e.branch]) {
+      row.cells[e.branch] = {
+        kind: 'not-reached',
+        commitStatuses: [],
+        health: 'unknown',
+      };
+    }
+  }
+
+  const branches = envs.map((e) => e.branch);
+  const states = branches.map((b) => row.cells[b].kind);
+  row.hasLive = states.includes('live');
+  row.hasInFlight = states.includes('in-flight');
+  row.hasFailed = states.includes('failed');
+  row.hasNoop = states.includes('no-op');
+
+  return row;
+}
 
 export function buildMatrix(strategy: PromotionStrategy): {
   envs: EnvColumn[];
   rows: CommitRow[];
 } {
-  const envs = (strategy.status?.environments ?? []).filter(
-    (e) => (e.history?.length ?? 0) > 0 || e.active?.dry,
-  );
+  const envs = (strategy.status?.environments ?? []).filter(envHasContent);
 
   const specByBranch = new Map<string, { autoMerge?: boolean }>();
   for (const e of strategy.spec.environments ?? []) specByBranch.set(e.branch, e);
 
-  const envColumns: EnvColumn[] = envs.map((env, i) => {
-    const liveStatuses = env.active?.commitStatuses ?? [];
-    const proposedStatuses = env.proposed?.commitStatuses ?? [];
-    const liveSha = env.active?.dry?.sha;
-    const proposedSha = env.proposed?.dry?.sha;
-    const proposedDistinct =
-      env.proposed?.dry && proposedSha && proposedSha !== liveSha ? env.proposed.dry : undefined;
-
-    return {
-      branch: env.branch,
-      autoMerge: specByBranch.get(env.branch)?.autoMerge ?? false,
-      color: LANE_COLORS[i % LANE_COLORS.length]!,
-      liveCommit: env.active?.dry,
-      liveStatuses,
-      liveHealth: healthFromStatuses(liveStatuses),
-      proposedCommit: proposedDistinct,
-      proposedStatuses: proposedDistinct ? proposedStatuses : [],
-      proposedHealth: proposedDistinct ? healthFromStatuses(proposedStatuses) : 'unknown',
-      proposedPR: proposedDistinct ? env.pullRequest : undefined,
-    };
-  });
+  const envColumns: EnvColumn[] = envs.map((env, i) => buildEnvColumn(env, i, specByBranch));
 
   // rowsById holds the merged matrix; we'll fill cells as we walk envs.
   const rowsById = new Map<string, CommitRow>();
-
-  /** Look up or insert a row for this commit. */
-  const getRow = (
-    c: Commit | undefined,
-    repoUrlFallback: string,
-    pr?: PullRequest,
-  ): CommitRow | null => {
-    const key = commitKey(c);
-    if (!key || !c) return null;
-    let row = rowsById.get(key);
-    if (!row) {
-      row = {
-        id: key,
-        dryShaFull: c.sha ?? '',
-        dryShaShort: shortSha(c.sha),
-        subject: (c.subject ?? '').trim() || '(no subject)',
-        author: c.author ? extractNameOnly(c.author) : '—',
-        body: c.body ? extractBodyPreTrailer(c.body) : undefined,
-        prId: pr?.id,
-        prUrl: pr?.url,
-        repoUrl: c.repoURL ?? repoUrlFallback,
-        freshestAt: 0,
-        earliestAt: 0,
-        cells: {},
-        hasLive: false,
-        hasInFlight: false,
-        hasFailed: false,
-        hasNoop: false,
-        isStuckUpstream: false,
-      };
-      rowsById.set(key, row);
-    }
-    if (pr?.id && !row.prId) {
-      row.prId = pr.id;
-      row.prUrl = pr.url;
-    }
-    return row;
-  };
-
-  /** Insert / upgrade a cell. Later cells overwrite when they have stronger
-   *  semantics (live > in-flight > failed > was-here > no-op). */
-  const cellRank: Record<CellKind, number> = {
-    live: 6,
-    'in-flight': 5,
-    failed: 4,
-    'was-here': 3,
-    'no-op': 2,
-    'not-reached': 1,
-  };
-  const setCell = (row: CommitRow, branch: string, next: CellState) => {
-    const prev = row.cells[branch];
-    if (!prev || cellRank[next.kind] >= cellRank[prev.kind]) {
-      row.cells[branch] = next;
-    }
-  };
 
   envs.forEach((env) => {
     const branch = env.branch;
@@ -109,7 +170,7 @@ export function buildMatrix(strategy: PromotionStrategy): {
     if (env.active?.dry) {
       const statuses = env.active.commitStatuses ?? [];
       const health = healthFromStatuses(statuses);
-      const row = getRow(env.active.dry, '', env.pullRequest);
+      const row = getRow(rowsById, env.active.dry, '', env.pullRequest);
       if (row) {
         const kind: CellKind = health === 'failure' ? 'failed' : 'live';
         setCell(row, branch, {
@@ -127,7 +188,7 @@ export function buildMatrix(strategy: PromotionStrategy): {
     if (proposedIsDistinct && env.proposed?.dry) {
       const statuses = env.proposed.commitStatuses ?? [];
       const health = healthFromStatuses(statuses);
-      const row = getRow(env.proposed.dry, '', env.pullRequest);
+      const row = getRow(rowsById, env.proposed.dry, '', env.pullRequest);
       if (row) {
         const kind: CellKind = health === 'failure' ? 'failed' : 'in-flight';
         setCell(row, branch, {
@@ -155,7 +216,7 @@ export function buildMatrix(strategy: PromotionStrategy): {
       const isNoop = !!commit.sha && !!olderSha && commit.sha === olderSha;
       let kind: CellKind = isNoop ? 'no-op' : health === 'failure' ? 'failed' : 'was-here';
 
-      const row = getRow(commit, '', entry.pullRequest);
+      const row = getRow(rowsById, commit, '', entry.pullRequest);
       if (!row) return;
 
       const supersededById =
@@ -176,68 +237,7 @@ export function buildMatrix(strategy: PromotionStrategy): {
   });
 
   // Finalize rollups + timestamps
-  const rows = Array.from(rowsById.values()).map((row) => {
-    const times: number[] = [];
-    for (const branch of envs.map((e) => e.branch)) {
-      const c = row.cells[branch];
-      if (c?.at) {
-        const t = new Date(c.at).getTime();
-        if (Number.isFinite(t)) times.push(t);
-      }
-      if (c?.commit?.commitTime) {
-        const t = new Date(c.commit.commitTime).getTime();
-        if (Number.isFinite(t)) times.push(t);
-      }
-    }
-    if (times.length === 0 && row.dryShaFull) {
-      // last-ditch: hold sort stable by pushing missing-time rows to the bottom
-      times.push(0);
-    }
-    row.freshestAt = times.length ? Math.max(...times) : 0;
-    row.earliestAt = times.length
-      ? Math.min(...times.filter((t) => t > 0), ...(times.includes(0) ? [Infinity] : []))
-      : 0;
-    if (!Number.isFinite(row.earliestAt)) row.earliestAt = row.freshestAt;
-
-    // Fill missing cells as 'not-reached'
-    for (const e of envs) {
-      if (!row.cells[e.branch]) {
-        row.cells[e.branch] = {
-          kind: 'not-reached',
-          commitStatuses: [],
-          health: 'unknown',
-        };
-      }
-    }
-
-    const branches = envs.map((e) => e.branch);
-    const states = branches.map((b) => row.cells[b].kind);
-    row.hasLive = states.includes('live');
-    row.hasInFlight = states.includes('in-flight');
-    row.hasFailed = states.includes('failed');
-    row.hasNoop = states.includes('no-op');
-    // "Stuck upstream" calls out a real problem: a change that landed in the
-    // first env, isn't moving anymore, and never reached the rest of the
-    // pipeline. We deliberately exclude:
-    //  • `live` — current head in the first env; promotion may simply not
-    //    have happened yet, so calling it stuck is alarmist.
-    //  • `in-flight` — already on its way, just not arrived.
-    //  • `no-op` — by definition didn't change anything.
-    // Stuck only makes sense in a multi-env pipeline: there must be a
-    // downstream env that the commit failed to reach.
-    if (branches.length < 2) {
-      row.isStuckUpstream = false;
-    } else {
-      const firstBranch = branches[0];
-      const firstCellKind = row.cells[firstBranch].kind;
-      const stuckEligibleKinds: CellKind[] = ['was-here', 'failed'];
-      const appearsInFirstAsStuck = stuckEligibleKinds.includes(firstCellKind);
-      const appearsLater = branches.slice(1).some((b) => row.cells[b].kind !== 'not-reached');
-      row.isStuckUpstream = appearsInFirstAsStuck && !appearsLater;
-    }
-
-    return row;
-  });
+  const rows = Array.from(rowsById.values()).map((row) => finalizeRow(row, envs));
 
   // Default sort: newest first
   rows.sort((a, b) => b.freshestAt - a.freshestAt);

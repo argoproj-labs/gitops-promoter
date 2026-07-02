@@ -26,7 +26,6 @@ $pending: $argo-running; // #0dadea
 $success-ink: #12805a; // white-on 4.9:1 / on-white 5.0:1
 $failure-ink: #c0392b; // white-on 5.4:1
 $pending-ink: #0b78a6; // white-on 4.9:1
-$warning-ink: #8a5a00; // amber text, 5.4:1 on amber-soft
 
 $success-soft: rgba(45, 153, 96, 0.12);
 $success-border: rgba(18, 128, 90, 0.55);
@@ -737,26 +736,6 @@ $radius-lg: 8px;
   border: 1px solid rgba(31, 79, 94, 0.3);
   &:hover {
     background: rgba(31, 79, 94, 0.08);
-  }
-  svg {
-    font-size: 9px;
-  }
-}
-
-.hp-row__flag {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 9.5px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 0 5px;
-  border-radius: 999px;
-  &--stuck {
-    background: rgba(255, 176, 32, 0.16);
-    color: $warning-ink;
-    border: 1px solid rgba(138, 90, 0, 0.35);
   }
   svg {
     font-size: 9px;

@@ -68,9 +68,7 @@ export interface CommitRow {
   hasInFlight: boolean;
   hasFailed: boolean;
   hasNoop: boolean;
-  /** Appears in first env only — never propagated downstream. */
-  isStuckUpstream: boolean;
 }
 
-export type FilterId = 'all' | 'live' | 'in-flight' | 'failed' | 'stuck' | 'no-op';
-export type SortId = 'newest' | 'oldest' | 'stuck-first';
+export type FilterId = 'all' | 'live' | 'in-flight' | 'failed' | 'no-op';
+export type SortId = 'newest' | 'oldest';

@@ -1,11 +1,5 @@
 import React, { useMemo, useState, useCallback } from 'react';
-import {
-  FaChevronLeft,
-  FaExclamationTriangle,
-  FaFilter,
-  FaSort,
-  FaLayerGroup,
-} from 'react-icons/fa';
+import { FaChevronLeft, FaFilter, FaSort, FaLayerGroup } from 'react-icons/fa';
 import { GoGitPullRequest } from 'react-icons/go';
 import { timeAgo, formatDate, getCommitUrl } from '@shared/utils/util';
 import type { PromotionStrategy } from '@shared/types/promotion';
@@ -92,19 +86,11 @@ const HistoryView: React.FC<HistoryViewProps> = ({
           return r.hasFailed;
         case 'no-op':
           return r.hasNoop;
-        case 'stuck':
-          return r.isStuckUpstream;
       }
     };
     const list = envScopedRows.filter(apply);
-    if (sort === 'newest') return [...list].sort((a, b) => b.freshestAt - a.freshestAt);
     if (sort === 'oldest') return [...list].sort((a, b) => a.freshestAt - b.freshestAt);
-    return [...list].sort((a, b) => {
-      const sa = a.isStuckUpstream ? 0 : 1;
-      const sb = b.isStuckUpstream ? 0 : 1;
-      if (sa !== sb) return sa - sb;
-      return b.freshestAt - a.freshestAt;
-    });
+    return [...list].sort((a, b) => b.freshestAt - a.freshestAt);
   }, [envScopedRows, filter, sort]);
 
   const counts = useMemo(() => {
@@ -113,7 +99,6 @@ const HistoryView: React.FC<HistoryViewProps> = ({
       live: envScopedRows.filter((r) => r.hasLive).length,
       'in-flight': envScopedRows.filter((r) => r.hasInFlight).length,
       failed: envScopedRows.filter((r) => r.hasFailed).length,
-      stuck: envScopedRows.filter((r) => r.isStuckUpstream).length,
       'no-op': envScopedRows.filter((r) => r.hasNoop).length,
     } satisfies Record<FilterId, number>;
   }, [envScopedRows]);
@@ -160,21 +145,18 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   const selectedRow = selected ? (rowsById.get(selected.rowId) ?? null) : null;
   const selectedCell = selectedRow && selected ? selectedRow.cells[selected.branch] : null;
   const hasMultipleEnvs = envs.length > 1;
-  const stuckLabel = envs.length > 0 ? `Stuck in ${envs[0].branch}` : 'Stuck';
 
   const FILTERS: { id: FilterId; label: string }[] = [
     { id: 'all', label: 'All commits' },
     { id: 'live', label: 'Live' },
     { id: 'in-flight', label: 'In flight' },
     { id: 'failed', label: 'Failed' },
-    ...(hasMultipleEnvs ? [{ id: 'stuck' as FilterId, label: stuckLabel }] : []),
     { id: 'no-op', label: 'No-op' },
   ];
 
   const SORTS: { id: SortId; label: string }[] = [
     { id: 'newest', label: 'Newest first' },
     { id: 'oldest', label: 'Oldest first' },
-    { id: 'stuck-first', label: 'Stuck first' },
   ];
 
   // Env-scope filter hides the unselected columns entirely; an empty selection
@@ -434,13 +416,6 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                             </span>
                           </Tooltip>
                         </>
-                      )}
-                      {row.isStuckUpstream && (
-                        <Tooltip label="This commit never reached the downstream environments">
-                          <span className="hp-row__flag hp-row__flag--stuck">
-                            <FaExclamationTriangle aria-hidden="true" /> stuck
-                          </span>
-                        </Tooltip>
                       )}
                     </div>
                   </div>
