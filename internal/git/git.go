@@ -204,25 +204,22 @@ func buildHydratorMetadataPath(activePath string) string {
 
 // GetBranchShas fetches the given branch and returns its hydrated and dry SHAs.
 //
+// Before fetching, it first checks - via a cheap, live ls-remote against this same clone's
+// repository - whether the branch's current remote SHA still matches lastKnownHydratedSha (the
+// Hydrated SHA this same branch/identity returned on a previous, successful call). If it matches,
+// the commit is guaranteed to already be present in this clone (it was fetched the last time this
+// identity observed that SHA), so the network fetch is skipped and rev-parse/ls-tree resolve it from
+// the existing local objects instead. This keeps the skip decision self-contained: callers cannot
+// accidentally skip the fetch based on a stale probe or a SHA observed by a different clone/identity,
+// since the check against the live remote happens inside this call, right before the fetch would.
+//
+// Pass an empty lastKnownHydratedSha (e.g. before any SHA has been observed for this branch, or when
+// the caller doesn't track one) to always fetch; the probe is skipped in that case since there's
+// nothing to compare against.
+//
 // Read-only: fetches the branch ref and reads from refs/object DB; never mutates the clone's
 // index/worktree/HEAD.
-func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch, activePath string) (BranchShas, error) {
-	return g.getBranchShas(ctx, branch, activePath, false)
-}
-
-// GetBranchShasIfUnchanged behaves like GetBranchShas, except it first checks - via a cheap, live
-// ls-remote against this same clone's repository - whether the branch's current remote SHA still
-// matches lastKnownHydratedSha (the Hydrated SHA this same branch/identity returned on a previous,
-// successful call). If it matches, the commit is guaranteed to already be present in this clone (it
-// was fetched the last time this identity observed that SHA), so the network fetch is skipped and
-// rev-parse/ls-tree resolve it from the existing local objects instead.
-//
-// Unlike a caller-supplied skip flag, there is no way to skip the fetch without this method having
-// just confirmed the SHA is unchanged, so callers cannot accidentally skip based on a stale probe or
-// a SHA observed by a different clone/identity. Pass an empty lastKnownHydratedSha (e.g. before any
-// SHA has been observed for this branch) to always fetch; the probe is skipped in that case since
-// there's nothing to compare against.
-func (g *EnvironmentOperations) GetBranchShasIfUnchanged(ctx context.Context, branch, activePath, lastKnownHydratedSha string) (BranchShas, error) {
+func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch, activePath, lastKnownHydratedSha string) (BranchShas, error) {
 	logger := log.FromContext(ctx)
 
 	skipFetch := false
@@ -235,11 +232,6 @@ func (g *EnvironmentOperations) GetBranchShasIfUnchanged(ctx context.Context, br
 		}
 	}
 
-	return g.getBranchShas(ctx, branch, activePath, skipFetch)
-}
-
-func (g *EnvironmentOperations) getBranchShas(ctx context.Context, branch, activePath string, skipFetch bool) (BranchShas, error) {
-	logger := log.FromContext(ctx)
 	gitPath := g.ClonePath()
 	if gitPath == "" {
 		return BranchShas{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
