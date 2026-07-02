@@ -75,8 +75,6 @@ function getRow(
   return row;
 }
 
-// Higher rank wins when two cells collide on the same env: a stronger state
-// (live) overwrites a weaker one (was-here) regardless of processing order.
 const cellRank: Record<CellKind, number> = {
   live: 6,
   'in-flight': 5,
@@ -107,7 +105,6 @@ function finalizeRow(row: CommitRow, envs: StatusEnvironment[]): CommitRow {
     }
   }
   if (times.length === 0 && row.dryShaFull) {
-    // last-ditch: hold sort stable by pushing missing-time rows to the bottom
     times.push(0);
   }
   row.freshestAt = times.length ? Math.max(...times) : 0;
@@ -116,7 +113,6 @@ function finalizeRow(row: CommitRow, envs: StatusEnvironment[]): CommitRow {
     : 0;
   if (!Number.isFinite(row.earliestAt)) row.earliestAt = row.freshestAt;
 
-  // Fill missing cells as 'not-reached'
   for (const e of envs) {
     if (!row.cells[e.branch]) {
       row.cells[e.branch] = {
@@ -191,8 +187,6 @@ export function buildMatrix(strategy: PromotionStrategy): {
       }
     }
 
-    // No-op detection: an entry whose dry SHA equals the next-older entry's
-    // means this env didn't actually change on that promotion.
     const history = env.history ?? [];
     history.forEach((entry, idx) => {
       const commit = entry.active?.dry;
@@ -225,7 +219,6 @@ export function buildMatrix(strategy: PromotionStrategy): {
 
   const rows = Array.from(rowsById.values()).map((row) => finalizeRow(row, envs));
 
-  // Newest first.
   rows.sort((a, b) => b.freshestAt - a.freshestAt);
 
   return { envs: envColumns, rows };

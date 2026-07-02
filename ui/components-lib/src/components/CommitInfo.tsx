@@ -121,7 +121,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
 
     timeoutRef.current = setTimeout(() => {
       setShowTooltip(false);
-    }, 100); // Small delay to prevent flickering
+    }, 100);
   }, []);
 
   const renderCommit = (commit: any, type: 'deployment' | 'code', commitUrl?: string) => {

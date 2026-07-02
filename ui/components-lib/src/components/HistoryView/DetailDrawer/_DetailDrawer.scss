@@ -28,8 +28,6 @@
   user-select: none;
 }
 
-// Scrollable content area — keeps the resize handle and close button pinned
-// to the drawer edges while the body scrolls independently.
 .hp-drawer__scroll {
   flex: 1;
   min-height: 0;
@@ -40,8 +38,6 @@
   gap: 18px;
 }
 
-// Left-edge drag handle. A slim hit area that widens its visual grip on hover
-// or keyboard focus; the accent line signals it's interactive.
 .hp-drawer__resizer {
   position: absolute;
   top: 0;

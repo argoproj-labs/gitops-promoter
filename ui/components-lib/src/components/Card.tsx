@@ -13,13 +13,6 @@ import './Card.scss';
 
 export interface CardProps {
   environments: Environment[];
-  /**
-   * Handler invoked when a per-environment History button is clicked. The card
-   * delegates history to the parent (e.g. to route to the full-page History
-   * view). When omitted, the History button is not rendered — history is
-   * reached through the surrounding UI instead (e.g. the extension's
-   * Overview/History toggle).
-   */
   onHistoryNavigate?: (_branch: string) => void;
 }
 
@@ -133,8 +126,6 @@ const Card: React.FC<CardProps> = ({ environments, onHistoryNavigate }) => {
                   />
 
                   {isProcessing ? (
-                    // Processing: stand in for the Proposed section with a labeled
-                    // loading placeholder while the newer commit is hydrated.
                     <div className="commit-group env-card__proposed-loading">
                       <div className="commit-group-header">
                         <StatusIcon phase="pending" type="health" />

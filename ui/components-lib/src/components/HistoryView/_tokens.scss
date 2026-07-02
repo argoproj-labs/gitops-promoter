@@ -10,14 +10,13 @@ $bg-softer: #f3f5f8;
 $text-primary: $argo-color-gray-7; // #4b4b4b — 8.7:1 on white
 $text-secondary: #586773; // 5.8:1 on white (was gray-6 3.5:1)
 $text-muted: #677483; // 4.8:1 on white (was gray-5 2.1:1)
-$stroke: rgba(15, 35, 60, 0.14); // decorative dividers
+$stroke: rgba(15, 35, 60, 0.14);
 $stroke-strong: rgba(15, 35, 60, 0.5); // 3.19:1 vs white — UI/control boundaries (1.4.11)
 $accent: #1f4f5e;
 
-// Brand status hues — used for fills, rails, dots, borders (non-text, 3:1).
-$success: $argo-success; // #18be94
-$failure: $argo-failed; // #e96d76
-$pending: $argo-running; // #0dadea
+$success: $argo-success;
+$failure: $argo-failed;
+$pending: $argo-running;
 
 // Accessible text/solid-fill variants — meet 4.5:1 for white-on-fill pill
 // labels and colored-text-on-tint. Keep separate from brand hues so other

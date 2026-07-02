@@ -13,14 +13,9 @@ import { useDrawerWidth } from './useDrawerWidth';
 import './index.scss';
 
 export interface HistoryViewProps {
-  /** The PromotionStrategy whose history is rendered. */
   strategy?: PromotionStrategy;
-  /** Display name shown in the header (defaults to the strategy's name). */
   name?: string;
-  /** Namespace shown in the header subtitle (defaults to the strategy's namespace). */
   namespace?: string;
-  /** When provided, a "Back" button is rendered that calls this handler.
-   *  Omit it (e.g. in the ArgoCD extension, which has no router) to hide it. */
   onBack?: () => void;
 }
 
@@ -45,22 +40,17 @@ const HistoryView: React.FC<HistoryViewProps> = ({
 
   const [filter, setFilter] = useState<FilterId>('all');
   const [sort, setSort] = useState<SortId>('newest');
-  /** Env-scope filter: the set of selected env branches. Empty = all envs. */
   const [envFilter, setEnvFilter] = useState<string[]>([]);
   const [selected, setSelected] = useState<{ rowId: string; branch: string } | null>(null);
 
   const drawer = useDrawerWidth();
 
-  /** Toggle one env in the multi-select env-scope filter. */
   const handleToggleEnvFilter = useCallback((branch: string) => {
     setEnvFilter((prev) =>
       prev.includes(branch) ? prev.filter((b) => b !== branch) : [...prev, branch],
     );
   }, []);
 
-  /** Env-scope filter applied first; status-scope filter applied second.
-   *  Counts below respect the env filter so the chips stay truthful. A row
-   *  passes if it touched ANY of the selected envs; empty selection = all. */
   const envScopedRows = useMemo(
     () =>
       envFilter.length
@@ -153,16 +143,10 @@ const HistoryView: React.FC<HistoryViewProps> = ({
     { id: 'oldest', label: 'Oldest first' },
   ];
 
-  // Env-scope filter hides the unselected columns entirely; an empty selection
-  // shows them all. The matrix header, grid and cells all render off this list;
-  // the full `envs` is still used for the dropdown, banner, pipeline strip and
-  // drawer, which describe the whole strategy regardless of the filter.
   const visibleEnvs = envFilter.length ? envs.filter((e) => envFilter.includes(e.branch)) : envs;
 
-  // CSS grid template: commit col + one col per visible env, each width-bounded
-  // so columns don't stretch to fill the row. A trailing 1fr spacer track (no
-  // cell placed in it) soaks up any leftover width as empty gap on the right;
-  // when the columns overflow it collapses to 0 and the matrix scrolls.
+  // Trailing 1fr spacer track (no cell placed in it) soaks up leftover width as
+  // empty gap; when columns overflow it collapses to 0 and the matrix scrolls.
   const gridTemplate = `minmax(280px, 420px) repeat(${visibleEnvs.length}, minmax(180px, 260px)) 1fr`;
 
   return (

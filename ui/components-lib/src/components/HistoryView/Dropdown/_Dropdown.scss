@@ -32,8 +32,6 @@
     background: $bg-softer;
   }
 
-  // A filter that has departed from its default gets a solid accent fill so it
-  // stands out clearly against the other (unset) controls.
   &--active {
     color: #ffffff;
     border-color: $accent;
@@ -118,7 +116,6 @@
   flex: 1;
 }
 
-/* Checkbox affordance for multi-select menu items. */
 .hp-dd__check {
   display: inline-flex;
   align-items: center;

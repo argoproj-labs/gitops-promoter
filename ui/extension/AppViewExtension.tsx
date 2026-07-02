@@ -8,9 +8,6 @@ import { getDemoStrategies } from './mockData';
 import './StrategyDropdown.scss';
 
 // TEMP-MOCK: local visual review only. REVERT before commit.
-// Flip to true to render the three demo PromotionStrategies (orders-api,
-// storefront, catalog-service) instead of the live data discovered from Argo's
-// resource tree. All three are surfaced through the strategy dropdown.
 const USE_MOCK = true;
 
 type ViewMode = 'card' | 'history';

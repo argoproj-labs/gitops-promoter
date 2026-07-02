@@ -18,7 +18,6 @@
   text-align: center;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
   pointer-events: none;
-  // Fade/slide in so it reads as instant but not jarring.
   animation: hp-tip-in 0.09s ease-out;
 
   code {
@@ -27,7 +26,6 @@
     word-break: break-all;
   }
 
-  // Arrow
   &::after {
     content: '';
     position: absolute;

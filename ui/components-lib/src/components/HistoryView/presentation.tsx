@@ -10,7 +10,6 @@ export const HEALTH_LABELS: Record<HealthKey, string> = {
   unknown: 'Unknown',
 };
 
-// Human-readable status words for screen readers, mirroring the visible pills.
 export const CELL_KIND_LABELS: Record<CellKind, string> = {
   live: 'Live',
   'in-flight': 'In flight',
@@ -32,8 +31,6 @@ export const healthIcon: Record<HealthKey, React.ReactNode> = {
   unknown: <FaQuestionCircle aria-hidden="true" />,
 };
 
-/** Plain-language explanation of what a cell's status means in a given env,
- *  shown as the hover tooltip on the status pill. */
 export function cellPillTooltip(cell: CellState, branch: string): string {
   switch (cell.kind) {
     case 'live':
@@ -55,9 +52,6 @@ export function cellPillTooltip(cell: CellState, branch: string): string {
   }
 }
 
-/** One-line health status for the live strip: the health word plus the most
- *  relevant check count (failures > pending > passing), e.g. "Healthy · 2 passing"
- *  or "Failed · 1 failing". Falls back to just the health word when no checks. */
 export function healthSummary(health: HealthKey, statuses: CommitStatus[]): string {
   const label = HEALTH_LABELS[health];
   if (statuses.length === 0) return label;

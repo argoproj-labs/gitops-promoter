@@ -83,7 +83,6 @@ const DetailDrawer: React.FC<{
         onKeyDown={(e) => {
           if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
             e.preventDefault();
-            // Left arrow widens (panel is right-anchored), right arrow narrows.
             const step = e.shiftKey ? 48 : 16;
             const dir = e.key === 'ArrowLeft' ? 1 : -1;
             onResizeTo(Math.min(DRAWER_MAX_WIDTH, Math.max(DRAWER_MIN_WIDTH, width + dir * step)));

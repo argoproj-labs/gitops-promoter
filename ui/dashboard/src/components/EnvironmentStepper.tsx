@@ -9,13 +9,6 @@ interface EnvironmentStepperProps {
 
 type StepState = 'complete' | 'current' | 'upcoming';
 
-/**
- * Horizontal stepper visualizing promotion progress across environments.
- *
- * A step is "complete" when the environment's active state matches the
- * latest proposed commit (no pending promotion). The first non-complete
- * step is marked "current". Remaining steps are "upcoming".
- */
 const EnvironmentStepper: React.FC<EnvironmentStepperProps> = ({ environments }) => {
   if (!environments?.length) return null;
 
@@ -43,8 +36,6 @@ const EnvironmentStepper: React.FC<EnvironmentStepperProps> = ({ environments })
         const circleClass = `env-stepper__circle env-stepper__circle--${state}`;
 
         const isLast = idx === environments.length - 1;
-        // Connector reflects the current step's progression: green (complete)
-        // when THIS step is done, gray otherwise.
         const connectorComplete = state === 'complete';
 
         return (

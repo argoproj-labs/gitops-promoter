@@ -1,12 +1,8 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
-/**
- * Portal-based tooltip. Renders the bubble into document.body so it escapes the
- * matrix cells' `overflow: hidden` (a CSS-only tooltip would be clipped). Shows
- * instantly on hover/focus; positioned above the trigger, flipping below when
- * there isn't room. Accessible via keyboard focus.
- */
+// Renders the bubble into document.body so it escapes the matrix cells'
+// `overflow: hidden` (a CSS-only tooltip would be clipped).
 const Tooltip: React.FC<{
   label: React.ReactNode;
   children: React.ReactElement;
@@ -18,7 +14,6 @@ const Tooltip: React.FC<{
     const el = triggerRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    // Prefer above; flip below if the trigger is near the top of the viewport.
     const below = r.top < 64;
     setCoords({
       x: r.left + r.width / 2,
@@ -29,8 +24,7 @@ const Tooltip: React.FC<{
 
   const hide = useCallback(() => setCoords(null), []);
 
-  // Clone the child to attach ref + handlers directly — no wrapper element, so
-  // the trigger keeps its exact place in the surrounding flex layout.
+  // No wrapper element, so the trigger keeps its exact place in the surrounding flex layout.
   const child = children as React.ReactElement<Record<string, unknown>>;
   const childProps = child.props;
   const trigger = React.cloneElement(child, {

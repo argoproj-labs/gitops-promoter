@@ -44,9 +44,6 @@
 }
 
 .env-stepper__circle--current {
-  /* Sweeping conic ring: the ::before paints the rotating gradient,
-     an inner white disc (::after) masks it into a ring, and the
-     centered dot sits on top. */
   border: none;
   background: transparent;
   position: relative;
@@ -71,7 +68,6 @@
 }
 
 .env-stepper__circle--current::after {
-  /* inner white disc turns the conic into a ring */
   content: '';
   position: absolute;
   inset: 3px;

@@ -193,7 +193,6 @@
   }
 }
 
-// Lives inline on the right side of the merged header (title on the left).
 .hp-controls {
   display: flex;
   flex-wrap: wrap;
@@ -247,12 +246,6 @@
   border-radius: 999px;
 }
 
-/* Environment filter chips: env-colored identity (dot + tinted active state)
-   set inline via the env palette, so the count pill stays readable rather
-   than the white-on-accent treatment used by the default active chip. */
-// When an env chip is active it adopts the standard solid-accent chip look
-// (same as the Filter/Sort chips); the identity dot turns white so it stays
-// visible on the dark fill.
 .hp-chip--env.hp-chip--active .hp-chip__dot {
   background: #fff;
 }
@@ -277,8 +270,6 @@
   gap: 4px;
 }
 
-// Banner + column header stick together as one unit at the top of the scroll
-// container, so both stay pinned as rows scroll under them.
 .hp-matrix__sticky {
   position: sticky;
   top: 0;
@@ -286,7 +277,6 @@
   background: $bg-page;
   border-bottom: 1px solid $stroke;
   margin-bottom: 6px;
-  // The banner supplies its own bottom spacing before the column header.
   .hp-env-banner {
     margin: 16px 0 8px;
   }
@@ -411,8 +401,6 @@
   display: grid;
   gap: 8px;
   padding: 7px 8px;
-  // The env-column region is tinted down (a faint cool wash) so the eye lands
-  // on the Commit column first — that column re-asserts the bright surface.
   background: $bg-softer;
   border: 1px solid $stroke;
   border-radius: $radius-md;
@@ -437,16 +425,12 @@
   min-width: 0;
   position: relative;
 
-  // Bright surface that pops out of the tinted env region — the first thing
-  // the eye is drawn to. Bleeds to the row's top/bottom/left edges via
-  // negative margins so it reads as a solid lit column, not a padded card.
   background: $bg-surface;
   margin: -7px 0 -7px -8px;
   padding: 11px 10px 11px 16px;
   border-top-left-radius: $radius-md;
   border-bottom-left-radius: $radius-md;
 
-  // Hairline divider separating the commit identity from its env cells.
   border-right: 1px solid $stroke;
 }
 

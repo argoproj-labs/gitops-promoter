@@ -10,26 +10,19 @@ export interface CellState {
   commitStatuses: CommitStatus[];
   health: HealthKey;
   pullRequest?: PullRequest;
-  /** True when in-flight cell originates from the env's `proposed` block. */
   isProposed?: boolean;
-  /** For no-op cells: human-readable explanation. */
   noopNote?: string;
-  /** For was-here cells: the commit row id that replaced this one. */
   supersededById?: string;
-  /** Timestamp this cell represents (for sort). */
   at?: string;
 }
 
 export interface EnvColumn {
   branch: string;
   autoMerge: boolean;
-  /** Env identity color. Assigned positionally from `LANE_COLORS`. */
   color: string;
-  /** Current live commit (env.active.dry). */
   liveCommit?: Commit;
   liveStatuses: CommitStatus[];
   liveHealth: HealthKey;
-  /** Current proposed (in-flight) commit, if distinct from live. */
   proposedCommit?: Commit;
   proposedStatuses: CommitStatus[];
   proposedHealth: HealthKey;
@@ -55,11 +48,9 @@ export interface CommitRow {
   prId?: string;
   prUrl?: string;
   repoUrl: string;
-  /** ms; most-recent cell time across all envs — used for default sort. */
   freshestAt: number;
-  /** ms; earliest cell time across all envs — used as "introduced" label. */
   earliestAt: number;
-  cells: Record<string /* env.branch */, CellState>;
+  cells: Record<string, CellState>;
   hasLive: boolean;
   hasInFlight: boolean;
   hasFailed: boolean;

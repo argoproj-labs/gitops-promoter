@@ -2,21 +2,10 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { FaChevronDown, FaCheck } from 'react-icons/fa';
 
-/** A control-bar dropdown: a chip-styled trigger showing the group's label and
- *  current selection, opening a portal menu positioned under the trigger so it
- *  escapes the controls row's overflow/stacking (same approach as Tooltip). The
- *  menu closes on outside-click, Escape, or when a child calls `close()`. */
 export const Dropdown: React.FC<{
-  /** Icon shown at the start of the trigger, standing in for the group name. */
   icon: React.ReactNode;
-  /** Accessible name for the group (e.g. "Filter") — used for the trigger's
-   *  aria-label/title since the icon carries no text. */
   label: string;
-  /** The current selection, rendered inside the trigger (text or a colored
-   *  swatch + name for the env dropdown). */
   value: React.ReactNode;
-  /** True when a non-default option is selected — gives the trigger the active
-   *  accent treatment so an applied filter reads at a glance. */
   active?: boolean;
   children: (close: () => void) => React.ReactNode;
 }> = ({ icon, label, value, active, children }) => {
@@ -91,9 +80,6 @@ export const Dropdown: React.FC<{
   );
 };
 
-/** One selectable row inside a Dropdown menu. Pass `multi` for options in a
- *  multi-select group — it renders a leading checkbox so it's clear more than
- *  one can be picked and the menu stays open on select. */
 export const DropdownItem: React.FC<{
   selected: boolean;
   onSelect: () => void;

@@ -30,10 +30,6 @@ const FlowCell: React.FC<{
   const time = cell.at ? timeAgo(cell.at) : '';
   const exact = cell.at ? formatDate(cell.at) : '';
 
-  // Each cell shows only what is specific to *this env*: the promotion PR.
-  // The commit identity (subject, SHA, author) is identical for every reached
-  // cell in the row — it's the same commit promoted across envs — so it lives
-  // once in the row label rather than being repeated here.
   const rowForCell = cell.commit ? rowsById.get(commitKey(cell.commit) ?? '') : undefined;
   const prId = cell.pullRequest?.id ?? rowForCell?.prId;
   const prUrl = cell.pullRequest?.url ?? rowForCell?.prUrl;
