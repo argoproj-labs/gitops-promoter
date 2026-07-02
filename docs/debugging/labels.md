@@ -11,7 +11,7 @@ GitOps Promoter controllers set Kubernetes labels to associate resources, filter
 
 | Label key | Kind(s) | Set by | Value | Purpose |
 | --------- | ------- | ------ | ----- | ------- |
-| `promoter.argoproj.io/instance-id` | All Promoter CRs in a multi-install deployment; `Secret` objects referenced for SCM, HTTP auth, or kubeconfig | Operator on root resources (`PromotionStrategy`, gate CRs), referenced secrets, and kubeconfig secrets; controllers propagate to children | Matches `ControllerConfiguration.spec.instanceID` for that install | Partitions which controller install caches and reconciles the object. Omit the label for the default install (when `instanceID` is unset). See [Multiple Controller Installs](../multi-install.md) and the [migration runbook](../multi-install.md#migration-runbook). After reconcile, Promoter CRs expose the applied value in `status.instanceID` (including when `Ready=False`). |
+| `promoter.argoproj.io/instance-id` | All Promoter CRs in a multi-install deployment; `Secret` objects referenced for SCM, HTTP auth, or kubeconfig | Operator on root resources (`PromotionStrategy`, `GitRepository`, `ScmProvider`, `ClusterScmProvider`, gate CRs), referenced secrets, and kubeconfig secrets; controllers propagate to children (`ChangeTransferPolicy`, `CommitStatus`, `PullRequest`) | Matches `ControllerConfiguration.spec.instanceID` for that install | Partitions which controller install caches and reconciles the object. Omit the label for the default install (when `instanceID` is unset). `GitRepository` and SCM providers are **not** propagated from parents — label them explicitly during migration. See [Multiple Controller Installs](../multi-install.md) and the [migration runbook](../multi-install.md#migration-runbook). After reconcile, Promoter CRs expose the applied value in `status.instanceID` (including when `Ready=False`). |
 | `promoter.argoproj.io/promotion-strategy` | `ChangeTransferPolicy`, `PullRequest` | PromotionStrategy / ChangeTransferPolicy controllers | `KubeSafeLabel` of the owning `PromotionStrategy` name | Links CTPs and PRs to a promotion strategy; used to list and correlate objects per strategy. |
 | `promoter.argoproj.io/environment` | `ChangeTransferPolicy`, `PullRequest` | PromotionStrategy, ChangeTransferPolicy controllers | `KubeSafeLabel` of the environment branch (for example `environment/development` → `environment-development`) | Identifies which environment branch the object applies to. (Also the second standard label on gate-created `CommitStatus`; see [CommitStatus gating](#commitstatus-gating).) |
 | `promoter.argoproj.io/change-transfer-policy` | `PullRequest` | ChangeTransferPolicy controller | `KubeSafeLabel` of the owning `ChangeTransferPolicy` name | Finds PRs for a specific CTP. |
@@ -94,11 +94,24 @@ kubectl get pullrequest -n <namespace> \
 List Promoter resources for a specific controller install:
 
 ```bash
-kubectl get promotionstrategy,changetransferpolicy,commitstatus -A \
-  -l promoter.argoproj.io/instance-id=wave-0
+# All Promoter CRs in a partition (roots + propagated children)
+kubectl get promotionstrategy,gitrepository,scmprovider,clusterscmprovider,changetransferpolicy,commitstatus,pullrequest \
+  -n team-a -l promoter.argoproj.io/instance-id=wave-0
+
+# User-created roots only (not propagated from parents)
+kubectl get promotionstrategy,gitrepository,scmprovider,clusterscmprovider \
+  -n team-a -l promoter.argoproj.io/instance-id=wave-0
+
+# CRs missing the label (default install scope)
+kubectl get promotionstrategy,gitrepository,scmprovider,clusterscmprovider,changetransferpolicy,commitstatus,pullrequest \
+  -n team-a -l '!promoter.argoproj.io/instance-id'
+
+# Orphan instance-id (empty, typo, or decommissioned install — matches no running partition)
+kubectl get promotionstrategy,gitrepository,scmprovider,clusterscmprovider,changetransferpolicy,commitstatus,pullrequest -A \
+  -l 'promoter.argoproj.io/instance-id,promoter.argoproj.io/instance-id notin (wave-0,wave-1)'
 ```
 
-If gating fails after enabling multi-install, confirm the gate CR and its `CommitStatus` children carry the same `instance-id` label as `ControllerConfiguration.spec.instanceID`.
+If gating fails after enabling multi-install, confirm the gate CR and its `CommitStatus` children carry the same `instance-id` label as `ControllerConfiguration.spec.instanceID`. If promotion fails with `NotFound` on a `GitRepository` or `ScmProvider` that exists in the API, confirm those user-created roots are labeled — they are not propagated from `PromotionStrategy` or gate CRs.
 
 ## Troubleshooting
 
@@ -115,6 +128,10 @@ Branch labels use `KubeSafeLabel` (for example `environment/staging` → `enviro
 **Missing labels on CommitStatus**
 
 If a third party creates `CommitStatus` objects by hand, they must set at least `promoter.argoproj.io/commit-status` (and usually `promoter.argoproj.io/environment`) or the ChangeTransferPolicy controller will not find them. Built-in gates set all three standard labels automatically via `CommitStatusStandardLabels`.
+
+**Orphan `instance-id` label value**
+
+A Promoter CR labeled with `promoter.argoproj.io/instance-id=""`, a typo, or a decommissioned install ID matches no running controller partition. The object is never reconciled and may show no status or events. Remove the label (default install) or set a value served by a running install. See [Multiple Controller Installs — Troubleshooting](../multi-install.md#troubleshooting) for kubectl examples.
 
 ## Reporting a bug: labels missing or wrong
 

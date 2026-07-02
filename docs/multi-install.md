@@ -90,6 +90,18 @@ Default-install resources must **not** carry `promoter.argoproj.io/instance-id`.
 
 **Secrets are not auto-labeled.** Label every `Secret` this install reads (for example `ScmProvider.spec.secretRef`, `WebRequestCommitStatus` HTTP auth `secretRef`, and multicluster kubeconfig secrets in the controller namespace) with the same `promoter.argoproj.io/instance-id` value before or during migration. Unlabeled secrets are invisible to a multi-install controller; labeled secrets are invisible to the default install.
 
+**Shared credentials are not supported across installs.** `ClusterScmProvider`, `ScmProvider` secret refs, and kubeconfig `Secret` objects can carry only one `instance-id` value. Labeling a shared Secret or cluster-scoped provider for `wave-0` makes it invisible to the default install (and vice versa). Duplicate providers and secrets per install instead of relabeling shared objects between partitions.
+
+### User-created roots (not propagated)
+
+Controllers propagate `instance-id` from parent to child for `PromotionStrategy` → `ChangeTransferPolicy` → `PullRequest` / `CommitStatus`, and from gate CRs → `CommitStatus`. These **user-created** resources are partitioned by label but **never receive the label from a parent** — you must label them explicitly during migration:
+
+- `GitRepository`
+- `ScmProvider`
+- `ClusterScmProvider`
+
+If a `PromotionStrategy` is labeled but its `GitRepository` is not, promotion fails with confusing `NotFound` errors even though the repository exists in the API.
+
 ### Reconcile behavior for foreign objects
 
 Watches on unfiltered types (for example Argo CD `Application`) or stale queue entries may still enqueue work for names this install does not own. A `Get` against the filtered cache returns `NotFound`, and existing reconcilers treat that as a no-op.
@@ -110,18 +122,18 @@ Follow these principles whenever you add, change, or remove `promoter.argoproj.i
 
 ### Principles
 
-- **One concern per change** — change `metadata.labels[promoter.argoproj.io/instance-id]` in a separate apply from any `spec` edits. Combining both in one request is discouraged: orphan cleanup can miss stale children if topology shrinks during the migration window.
-- **Coordinate across resources** — label all roots (`PromotionStrategy`, gate CRs, and any other Promoter CRs this install owns) with the **same** value before restart. Do not relabel a `PromotionStrategy` while shrinking a gate's `spec` in parallel.
+- **One concern per change** — change `metadata.labels[promoter.argoproj.io/instance-id]` in a separate apply from any `spec` edits. See [Orphans during migration](#orphans-during-migration) for why combining them is risky.
+- **Coordinate across resources** — label all roots (`PromotionStrategy`, `GitRepository`, `ScmProvider` / `ClusterScmProvider`, gate CRs, and any other Promoter CRs this install owns) with the **same** value before restart.
 - **Install config is separate** — set `ControllerConfiguration.spec.instanceID` in its own step. Single-replica installs restart automatically; HA installs need a rolling restart of all controller pods afterward.
 - **Cross-CR coordination is runbook-only** — the API does not enforce ordering across multiple resources; follow the steps below deliberately.
 
 ### Default install → multi-install
 
-1. **Label roots only** — add `promoter.argoproj.io/instance-id: <your-id>` to every Promoter CR this install should manage (`PromotionStrategy`, `TimedCommitStatus`, `GitCommitStatus`, `WebRequestCommitStatus`, `ArgoCDCommitStatus`, and others as needed). Label referenced `Secret` objects (SCM, HTTP auth, kubeconfig) with the same value. Use metadata-only patches.
+1. **Label roots only** — add `promoter.argoproj.io/instance-id: <your-id>` to every Promoter CR this install should manage (`PromotionStrategy`, `GitRepository`, `ScmProvider` / `ClusterScmProvider`, `TimedCommitStatus`, `GitCommitStatus`, `WebRequestCommitStatus`, `ArgoCDCommitStatus`, and others as needed). Label referenced `Secret` objects (SCM, HTTP auth, kubeconfig) with the same value. Use metadata-only patches.
 2. **Expect the gap** — the currently running default install stops reconciling relabeled parents immediately (they leave its informer cache). **Children are not relabeled until after restart** on the new partition. This is expected, not a failure.
 3. **Set `spec.instanceID`** on `ControllerConfiguration` to the same value (non-empty). The controller pod restarts automatically in a single-replica install.
 4. **Wait for propagation** — confirm children carry the label and labeled resources report `status.instanceID` (see [Verification](#verification) below).
-6. **Edit spec only after propagation** — environment removal, selector changes, Argo CD selector tightening, and similar topology edits.
+5. **Edit spec only after propagation** — environment removal, selector changes, Argo CD selector tightening, and similar topology edits.
 
 Unlabeled resources become **invisible** to the multi-install controller. Resources labeled for another instance ID are also invisible.
 
@@ -133,6 +145,20 @@ Unlabeled resources become **invisible** to the multi-install controller. Resour
 4. **Edit spec only after propagation**.
 
 Labeled resources become invisible to the default install until the label is removed.
+
+### Orphans during migration
+
+Controllers delete stale children during normal reconciles — for example, a `ChangeTransferPolicy` left behind after an environment is removed from `PromotionStrategy.spec.environments`, or a gate `CommitStatus` no longer covered by the gate's environment list. That orphan cleanup lists children through the **install's filtered cache**.
+
+During instance-id migration there is a window where parent and child labels are out of sync:
+
+1. You relabel a root (for example `PromotionStrategy`) — the **currently running** install stops seeing it immediately.
+2. Children (`ChangeTransferPolicy`, `CommitStatus`, `PullRequest`) still carry the **old** label (or none) until the **new** install reconciles them after restart.
+3. Neither install has a consistent view of the full parent→child tree.
+
+If you change **spec** in that window — removing environments from a `PromotionStrategy`, dropping branches from a gate CR, tightening an `ArgoCDCommitStatus` Application selector, and similar topology shrinks — orphan cleanup may not run against the children that should be deleted. The old install no longer sees the relabeled parent; the new install may not yet see unlabeled or mismatched children. Stale objects are **stranded** until you delete them manually.
+
+**Rule:** complete label migration and wait for child label propagation (runbook step 4) before any topology-shrinking spec edits (runbook step 5). Keep label patches and spec patches in separate applies even if you are past the migration window.
 
 ### Verification
 
@@ -163,7 +189,7 @@ Built-in controllers use `GenerationChangedPredicate` on roots such as `Promotio
 | `status.instanceID` on labeled Promoter CRs | Active reconcile mirrored the metadata label into status |
 | `status.conditions[Ready=True]` on PS / gates | Healthy reconcile after restart |
 | Gating behavior | CTP commit status phases not stuck at pending for gate keys |
-| No stray unlabeled Promoter CRs in scope | Objects that should be in the partition are not missing the label |
+| No stray unlabeled Promoter CRs in scope | Objects that should be in the partition are not missing the label — including `GitRepository` and `ScmProvider` / `ClusterScmProvider` |
 
 ### kubectl examples
 
@@ -190,7 +216,7 @@ kubectl rollout restart deployment/<controller-deployment> -n gitops-promoter
 **Confirm roots are labeled**:
 
 ```bash
-kubectl get promotionstrategy,timedcommitstatus,gitcommitstatus,webrequestcommitstatus,argocdcommitstatus \
+kubectl get promotionstrategy,gitrepository,scmprovider,clusterscmprovider,timedcommitstatus,gitcommitstatus,webrequestcommitstatus,argocdcommitstatus \
   -n team-a -l promoter.argoproj.io/instance-id=wave-0
 ```
 
@@ -219,7 +245,7 @@ kubectl get commitstatus -n team-a \
 **Find Promoter CRs still missing the label** (should be empty in scope after propagation):
 
 ```bash
-kubectl get promotionstrategy,changetransferpolicy,commitstatus,pullrequest \
+kubectl get promotionstrategy,gitrepository,scmprovider,clusterscmprovider,changetransferpolicy,commitstatus,pullrequest \
   -n team-a -l '!promoter.argoproj.io/instance-id'
 ```
 
@@ -248,18 +274,28 @@ See also [Labels — Instance ID](debugging/labels.md#instance-id-multi-install)
 
 ### Avoid during migration
 
-- Same apply: `instance-id` label + any `spec` change on a root CR (discouraged — can strand orphans if topology shrinks before children relabel).
-- Topology shrink (remove environments, drop selector keys, tighten Argo CD selectors) before propagation completes.
+- Same apply: `instance-id` label + any `spec` change on a root CR — see [Orphans during migration](#orphans-during-migration).
+- Topology shrink before propagation completes — remove environments from `PromotionStrategy`, drop branches from gate CRs, tighten Argo CD Application selectors, and similar edits belong in runbook step 5 only.
 - Setting `instanceID: ""` on `ControllerConfiguration` — omit the field for the default install.
 - Hand-editing `instance-id` on child objects (`ChangeTransferPolicy`, `CommitStatus`, `PullRequest`).
+- Relabeling a `Secret` while another install's `ScmProvider` or `ClusterScmProvider` still holds a secret finalizer on it — finish provider deletion on that install first, or remove the finalizer after verifying no provider still references the Secret. See [Finalizers](debugging/finalizers.md#scmprovider--clusterscmprovider).
 - Changing `ControllerConfiguration.spec.instanceID` in HA without rolling all controller pods — followers keep the old cache partition and reconcile the wrong resources on failover.
 
 ### Troubleshooting
 
 - Gates pending / "Waiting for status to be reported" — `CommitStatus` label mismatch with `ControllerConfiguration.spec.instanceID`.
-- Promotion stuck after migration — confirm gate `CommitStatus` and CTP labels match the install partition.
+- Promotion stuck after migration — confirm gate `CommitStatus` and CTP labels match the install partition; confirm `GitRepository` and `ScmProvider` / `ClusterScmProvider` roots are labeled (they are not propagated from children).
 - `status.instanceID` empty while metadata label is set — controller has not reconciled since restart; check that the install partition matches the label.
-- Stranded orphans — topology shrink coincided with label migration; delete orphans manually by name.
+- Stranded orphans — a topology-shrinking spec edit overlapped with instance-id migration; see [Orphans during migration](#orphans-during-migration). Delete stale `ChangeTransferPolicy`, `CommitStatus`, or `PullRequest` objects manually by name.
+- **Orphan `instance-id` value** — a resource labeled with `promoter.argoproj.io/instance-id=""`, a typo, or a decommissioned install ID matches no running partition. The object is never reconciled, may show no status or events, and `PullRequest` objects with finalizers can hang on delete. Remove the label (default install) or set a value served by a running install. Kubernetes allows empty label values; CRD validation cannot reject them on `metadata.labels`.
+
+  ```bash
+  # CRs whose instance-id is present but not served by any known install (empty value included)
+  kubectl get promotionstrategy,gitrepository,scmprovider,clusterscmprovider,changetransferpolicy,commitstatus,pullrequest -A \
+    -l 'promoter.argoproj.io/instance-id,promoter.argoproj.io/instance-id notin (wave-0,wave-1)'
+  ```
+
+- **Secret stuck `Terminating` after migration** — a provider secret finalizer may have been left on a Secret relabeled out of the deleting install's cache partition. Confirm finalizers with `kubectl get secret <name> -o yaml`, then delete the owning provider from the install that added the finalizer or remove the finalizer manually after verifying no provider still references the Secret.
 
 ## Operations
 

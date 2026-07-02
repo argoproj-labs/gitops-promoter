@@ -2,7 +2,7 @@
 
 Most environment promotion strategies will involve enforcing some kind of "gates" between promotions.
 
-> **Multiple controller installs:** When more than one Promoter controller runs in the same cluster, label gate CRs and `PromotionStrategy` resources with `promoter.argoproj.io/instance-id` so each install only reconciles its own gates and CommitStatuses. See [Multiple Controller Installs](../multi-install.md).
+> **Multiple controller installs:** When more than one Promoter controller runs in the same cluster, label gate CRs, `PromotionStrategy` resources, and user-created roots (`GitRepository`, `ScmProvider`, `ClusterScmProvider`) with `promoter.argoproj.io/instance-id` so each install only reconciles its own gates and CommitStatuses. See [Multiple Controller Installs](../multi-install.md).
 
 GitOps promoter uses the [PromotionStrategy API](../crd-specs.md#promotionstrategy) to configure checks that must pass
 between environments. It uses the [CommitStatus API](../crd-specs.md#commitstatus) to understand the state of the checks.
