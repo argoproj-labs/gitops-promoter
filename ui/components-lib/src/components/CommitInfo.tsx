@@ -73,12 +73,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
     if (commitUrl && commit.sha) {
       return (
         <Tooltip content={`Open commit ${sha} on GitHub`}>
-          <a
-            href={commitUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="commit-sha-link"
-          >
+          <a href={commitUrl} target="_blank" rel="noopener noreferrer" className="commit-sha-link">
             {sha}
           </a>
         </Tooltip>
@@ -209,12 +204,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
         <>
           <div className="promote-flow" aria-hidden="true" />
           <div className="promote-banner">
-            <svg
-              className="promote-banner__icon"
-              viewBox="0 0 16 7"
-              fill="none"
-              aria-hidden="true"
-            >
+            <svg className="promote-banner__icon" viewBox="0 0 16 7" fill="none" aria-hidden="true">
               <path
                 d="M1 6 L8 1 L15 6"
                 stroke="currentColor"

@@ -35,10 +35,7 @@ export function useDrawerWidth() {
       const onMove = (ev: PointerEvent) => {
         // Drawer is anchored right, so dragging left (smaller clientX) widens it.
         const delta = startX - ev.clientX;
-        const next = Math.min(
-          DRAWER_MAX_WIDTH,
-          Math.max(DRAWER_MIN_WIDTH, startWidth + delta),
-        );
+        const next = Math.min(DRAWER_MAX_WIDTH, Math.max(DRAWER_MIN_WIDTH, startWidth + delta));
         setWidth(next);
       };
       const onUp = () => {

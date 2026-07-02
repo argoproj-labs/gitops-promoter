@@ -8,29 +8,29 @@ $bg-soft: #f9fafb;
 $bg-softer: #f3f5f8;
 // Text colors tuned for WCAG 2.2 AA (4.5:1 on white/soft surfaces).
 // The shared $argo-color-gray-5/6 are too light (2.1:1 / 3.5:1) for text.
-$text-primary: $argo-color-gray-7;          // #4b4b4b — 8.7:1 on white
-$text-secondary: #586773;                   // 5.8:1 on white (was gray-6 3.5:1)
-$text-muted: #677483;                        // 4.8:1 on white (was gray-5 2.1:1)
-$stroke: rgba(15, 35, 60, 0.14);             // decorative dividers
-$stroke-strong: rgba(15, 35, 60, 0.50);      // 3.19:1 vs white — UI/control boundaries (1.4.11)
+$text-primary: $argo-color-gray-7; // #4b4b4b — 8.7:1 on white
+$text-secondary: #586773; // 5.8:1 on white (was gray-6 3.5:1)
+$text-muted: #677483; // 4.8:1 on white (was gray-5 2.1:1)
+$stroke: rgba(15, 35, 60, 0.14); // decorative dividers
+$stroke-strong: rgba(15, 35, 60, 0.5); // 3.19:1 vs white — UI/control boundaries (1.4.11)
 $accent: #1f4f5e;
 
 // Brand status hues — used for fills, rails, dots, borders (non-text, 3:1).
-$success: $argo-success;                     // #18be94
-$failure: $argo-failed;                      // #e96d76
-$pending: $argo-running;                     // #0dadea
+$success: $argo-success; // #18be94
+$failure: $argo-failed; // #e96d76
+$pending: $argo-running; // #0dadea
 
 // Accessible text/solid-fill variants — meet 4.5:1 for white-on-fill pill
 // labels and colored-text-on-tint. Keep separate from brand hues so other
 // components are unaffected.
-$success-ink: #12805a;                       // white-on 4.9:1 / on-white 5.0:1
-$failure-ink: #c0392b;                        // white-on 5.4:1
-$pending-ink: #0b78a6;                        // white-on 4.9:1
-$warning-ink: #8a5a00;                        // amber text, 5.4:1 on amber-soft
+$success-ink: #12805a; // white-on 4.9:1 / on-white 5.0:1
+$failure-ink: #c0392b; // white-on 5.4:1
+$pending-ink: #0b78a6; // white-on 4.9:1
+$warning-ink: #8a5a00; // amber text, 5.4:1 on amber-soft
 
 $success-soft: rgba(45, 153, 96, 0.12);
 $success-border: rgba(18, 128, 90, 0.55);
-$failure-soft: rgba(220, 67, 67, 0.10);
+$failure-soft: rgba(220, 67, 67, 0.1);
 $failure-border: rgba(192, 57, 43, 0.55);
 $pending-soft: rgba(13, 173, 234, 0.14);
 $pending-border: rgba(11, 120, 166, 0.55);
@@ -39,10 +39,16 @@ $radius-sm: 4px;
 $radius-md: 6px;
 $radius-lg: 8px;
 
-.fa-spin { animation: fa-spin 2s infinite linear; }
+.fa-spin {
+  animation: fa-spin 2s infinite linear;
+}
 @keyframes fa-spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 /* Visible keyboard focus for the page's custom controls (buttons styled as
@@ -138,9 +144,16 @@ $radius-lg: 8px;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
-  svg { font-size: 10px; }
-  &:hover { background: $bg-softer; border-color: $stroke-strong; }
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+  svg {
+    font-size: 10px;
+  }
+  &:hover {
+    background: $bg-softer;
+    border-color: $stroke-strong;
+  }
 }
 
 .hp-header__title {
@@ -165,7 +178,9 @@ $radius-lg: 8px;
   color: $text-muted;
 }
 
-.hp-header__spacer { flex: 1; }
+.hp-header__spacer {
+  flex: 1;
+}
 
 .hp-header__stats {
   display: flex;
@@ -196,10 +211,46 @@ $radius-lg: 8px;
     border-radius: 999px;
     flex-shrink: 0;
   }
-  &--success { &::before { background: $success-ink; } strong { color: $success-ink; } background: $success-soft; border-color: $success-border; }
-  &--warning { &::before { background: $pending-ink; } strong { color: $pending-ink; } background: $pending-soft; border-color: $pending-border; }
-  &--danger  { &::before { background: $failure-ink; } strong { color: $failure-ink; } background: $failure-soft; border-color: $failure-border; }
-  &--info    { &::before { background: $accent;  } strong { color: $accent;  } background: rgba(31, 79, 94, 0.08); border-color: rgba(31, 79, 94, 0.30); }
+  &--success {
+    &::before {
+      background: $success-ink;
+    }
+    strong {
+      color: $success-ink;
+    }
+    background: $success-soft;
+    border-color: $success-border;
+  }
+  &--warning {
+    &::before {
+      background: $pending-ink;
+    }
+    strong {
+      color: $pending-ink;
+    }
+    background: $pending-soft;
+    border-color: $pending-border;
+  }
+  &--danger {
+    &::before {
+      background: $failure-ink;
+    }
+    strong {
+      color: $failure-ink;
+    }
+    background: $failure-soft;
+    border-color: $failure-border;
+  }
+  &--info {
+    &::before {
+      background: $accent;
+    }
+    strong {
+      color: $accent;
+    }
+    background: rgba(31, 79, 94, 0.08);
+    border-color: rgba(31, 79, 94, 0.3);
+  }
 }
 
 .hp-loading,
@@ -231,7 +282,9 @@ $radius-lg: 8px;
   border-radius: $radius-md;
   background: $bg-surface;
   cursor: pointer;
-  &:hover { background: $bg-softer; }
+  &:hover {
+    background: $bg-softer;
+  }
 }
 
 /* ═══════════════════════════════════════
@@ -266,10 +319,18 @@ $radius-lg: 8px;
   cursor: pointer;
   font-family: inherit;
   line-height: 1.45;
-  transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+  transition:
+    background 0.14s ease,
+    color 0.14s ease,
+    border-color 0.14s ease;
 
-  &:hover { background: $bg-softer; }
-  &--open { border-color: $accent; background: $bg-softer; }
+  &:hover {
+    background: $bg-softer;
+  }
+  &--open {
+    border-color: $accent;
+    background: $bg-softer;
+  }
 
   // A filter that has departed from its default gets a solid accent fill so it
   // stands out clearly against the other (unset) controls.
@@ -278,7 +339,9 @@ $radius-lg: 8px;
     border-color: $accent;
     background: $accent;
 
-    &:hover { background: color.adjust($accent, $lightness: -4%); }
+    &:hover {
+      background: color.adjust($accent, $lightness: -4%);
+    }
   }
 }
 
@@ -289,7 +352,9 @@ $radius-lg: 8px;
   color: $text-muted;
 }
 
-.hp-dd__trigger--active .hp-dd__icon { color: rgba(255, 255, 255, 0.92); }
+.hp-dd__trigger--active .hp-dd__icon {
+  color: rgba(255, 255, 255, 0.92);
+}
 
 .hp-dd__value {
   display: inline-flex;
@@ -303,7 +368,9 @@ $radius-lg: 8px;
   margin-left: 1px;
 }
 
-.hp-dd__trigger--active .hp-dd__caret { color: rgba(255, 255, 255, 0.85); }
+.hp-dd__trigger--active .hp-dd__caret {
+  color: rgba(255, 255, 255, 0.85);
+}
 
 .hp-dd__menu {
   position: fixed;
@@ -337,7 +404,9 @@ $radius-lg: 8px;
   font-family: inherit;
   text-align: left;
 
-  &:hover { background: $bg-softer; }
+  &:hover {
+    background: $bg-softer;
+  }
 
   &--selected {
     color: $accent;
@@ -345,7 +414,9 @@ $radius-lg: 8px;
   }
 }
 
-.hp-dd__item-label { flex: 1; }
+.hp-dd__item-label {
+  flex: 1;
+}
 
 /* Checkbox affordance for multi-select menu items. */
 .hp-dd__check {
@@ -381,15 +452,24 @@ $radius-lg: 8px;
   cursor: pointer;
   font-family: inherit;
   line-height: 1.45;
-  transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+  transition:
+    background 0.14s ease,
+    color 0.14s ease,
+    border-color 0.14s ease;
 
-  &:hover { background: $bg-softer; border-color: $stroke-strong; }
+  &:hover {
+    background: $bg-softer;
+    border-color: $stroke-strong;
+  }
 
   &--active {
     background: $accent;
     color: #ffffff;
     border-color: $accent;
-    .hp-chip__count { color: rgba(255,255,255,0.92); background: rgba(255,255,255,0.18); }
+    .hp-chip__count {
+      color: rgba(255, 255, 255, 0.92);
+      background: rgba(255, 255, 255, 0.18);
+    }
   }
 }
 
@@ -445,7 +525,9 @@ $radius-lg: 8px;
   border-bottom: 1px solid $stroke;
   margin-bottom: 6px;
   // The banner supplies its own bottom spacing before the column header.
-  .hp-env-banner { margin: 16px 0 8px; }
+  .hp-env-banner {
+    margin: 16px 0 8px;
+  }
 }
 
 .hp-matrix__head {
@@ -520,7 +602,9 @@ $radius-lg: 8px;
   align-items: baseline;
   gap: 8px;
   flex-wrap: wrap;
-  strong { font-weight: 700; }
+  strong {
+    font-weight: 700;
+  }
 }
 
 .hp-env-banner__clear {
@@ -534,21 +618,32 @@ $radius-lg: 8px;
   padding: 1px 8px;
   border-radius: $radius-sm;
   cursor: pointer;
-  &:hover { background: currentColor; color: $bg-surface; }
+  &:hover {
+    background: currentColor;
+    color: $bg-surface;
+  }
 }
 
 /* ─── Env focus / dim on matrix cells ─── */
 .hp-row__env-slot {
   display: flex;
   min-width: 0;
-  transition: opacity 0.18s ease, filter 0.18s ease;
+  transition:
+    opacity 0.18s ease,
+    filter 0.18s ease;
 
-  > .cell { flex: 1; min-width: 0; }
-  > .cell--not-reached { flex: 1; min-width: 0; }
+  > .cell {
+    flex: 1;
+    min-width: 0;
+  }
+  > .cell--not-reached {
+    flex: 1;
+    min-width: 0;
+  }
 }
 
 .hp-row__env-slot--focus > .cell:not(.cell--not-reached) {
-  outline: 2px solid rgba(31, 79, 94, 0.30);
+  outline: 2px solid rgba(31, 79, 94, 0.3);
   outline-offset: -1px;
 }
 
@@ -565,7 +660,9 @@ $radius-lg: 8px;
   align-items: stretch;
   transition: border-color 0.14s ease;
 
-  &:hover { border-color: $stroke-strong; }
+  &:hover {
+    border-color: $stroke-strong;
+  }
   &--selected {
     border-color: $accent;
     background: rgba(31, 79, 94, 0.04);
@@ -622,7 +719,9 @@ $radius-lg: 8px;
   padding: 0 5px;
   border-radius: $radius-sm;
   text-decoration: none;
-  &:hover { background: rgba(31, 79, 94, 0.16); }
+  &:hover {
+    background: rgba(31, 79, 94, 0.16);
+  }
 }
 
 .hp-row__pr {
@@ -635,9 +734,13 @@ $radius-lg: 8px;
   text-decoration: none;
   padding: 0 5px;
   border-radius: $radius-sm;
-  border: 1px solid rgba(31, 79, 94, 0.30);
-  &:hover { background: rgba(31, 79, 94, 0.08); }
-  svg { font-size: 9px; }
+  border: 1px solid rgba(31, 79, 94, 0.3);
+  &:hover {
+    background: rgba(31, 79, 94, 0.08);
+  }
+  svg {
+    font-size: 9px;
+  }
 }
 
 .hp-row__flag {
@@ -655,7 +758,9 @@ $radius-lg: 8px;
     color: $warning-ink;
     border: 1px solid rgba(138, 90, 0, 0.35);
   }
-  svg { font-size: 9px; }
+  svg {
+    font-size: 9px;
+  }
 }
 
 .hp-row__author {
@@ -673,7 +778,9 @@ $radius-lg: 8px;
   color: $text-muted;
 }
 
-.hp-row__sep { color: $text-muted; }
+.hp-row__sep {
+  color: $text-muted;
+}
 
 /* ═══════════════════════════════════════
    Flow cell
@@ -694,7 +801,9 @@ $radius-lg: 8px;
   gap: 4px;
   position: relative;
   overflow: hidden;
-  transition: border-color 0.12s ease, background 0.12s ease;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease;
 
   // Left status rail — a thin colored bar that signals the cell's state
   // without relying on the fill alone.
@@ -708,7 +817,9 @@ $radius-lg: 8px;
     background: transparent;
   }
 
-  &:hover { border-color: $stroke-strong; }
+  &:hover {
+    border-color: $stroke-strong;
+  }
   &--selected {
     border-color: $accent !important;
   }
@@ -717,27 +828,37 @@ $radius-lg: 8px;
 .cell--live {
   background: $success-soft;
   border-color: $success-border;
-  &::before { background: $success-ink; }
+  &::before {
+    background: $success-ink;
+  }
 }
 .cell--was-here {
   background: $bg-soft;
   border-color: $stroke-strong;
-  &::before { background: $stroke-strong; }
+  &::before {
+    background: $stroke-strong;
+  }
 }
 .cell--in-flight {
   background: $pending-soft;
   border-color: $pending-border;
-  &::before { background: $pending-ink; }
+  &::before {
+    background: $pending-ink;
+  }
 }
 .cell--failed {
   background: $failure-soft;
   border-color: $failure-border;
-  &::before { background: $failure-ink; }
+  &::before {
+    background: $failure-ink;
+  }
 }
 .cell--no-op {
   background: $bg-soft;
   border: 1px dashed $stroke-strong;
-  &::before { background: transparent; }
+  &::before {
+    background: transparent;
+  }
 }
 .cell--not-reached {
   border: 1px dashed $stroke;
@@ -751,7 +872,9 @@ $radius-lg: 8px;
   min-height: 54px;
   border-radius: $radius-md;
   padding: 6px;
-  &:hover { border-color: $stroke; }
+  &:hover {
+    border-color: $stroke;
+  }
 }
 
 .cell__top {
@@ -771,14 +894,37 @@ $radius-lg: 8px;
   letter-spacing: 0.05em;
   padding: 2px 7px;
   border-radius: 999px;
-  svg { font-size: 9px; }
+  svg {
+    font-size: 9px;
+  }
 
-  &--live      { background: $success-ink; color: #fff; }
-  &--was-here  { background: $bg-surface; color: $text-secondary; border: 1px solid $stroke-strong; }
-  &--in-flight { background: $pending-ink; color: #fff; }
-  &--failed    { background: $failure-ink; color: #fff; }
-  &--no-op     { background: $bg-surface; color: $text-secondary; border: 1px dashed $stroke-strong; }
-  &--not-reached { background: transparent; color: $text-muted; border: 1px dashed $stroke-strong; }
+  &--live {
+    background: $success-ink;
+    color: #fff;
+  }
+  &--was-here {
+    background: $bg-surface;
+    color: $text-secondary;
+    border: 1px solid $stroke-strong;
+  }
+  &--in-flight {
+    background: $pending-ink;
+    color: #fff;
+  }
+  &--failed {
+    background: $failure-ink;
+    color: #fff;
+  }
+  &--no-op {
+    background: $bg-surface;
+    color: $text-secondary;
+    border: 1px dashed $stroke-strong;
+  }
+  &--not-reached {
+    background: transparent;
+    color: $text-muted;
+    border: 1px dashed $stroke-strong;
+  }
 }
 
 .cell__time {
@@ -824,7 +970,10 @@ $radius-lg: 8px;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  &--muted { color: $text-muted; font-style: italic; }
+  &--muted {
+    color: $text-muted;
+    font-style: italic;
+  }
 }
 
 .cell__pr {
@@ -836,8 +985,12 @@ $radius-lg: 8px;
   text-decoration: none;
   flex: none;
   margin-left: auto;
-  &:hover { text-decoration: underline; }
-  svg { font-size: 9px; }
+  &:hover {
+    text-decoration: underline;
+  }
+  svg {
+    font-size: 9px;
+  }
 }
 
 .cell__superseded {
@@ -851,8 +1004,13 @@ $radius-lg: 8px;
   cursor: pointer;
   padding: 0;
   font-family: inherit;
-  &:hover { color: $text-primary; text-decoration: underline; }
-  svg { font-size: 8px; }
+  &:hover {
+    color: $text-primary;
+    text-decoration: underline;
+  }
+  svg {
+    font-size: 8px;
+  }
 }
 
 /* ═══════════════════════════════════════
@@ -864,7 +1022,9 @@ $radius-lg: 8px;
   background: $bg-surface;
   border-left: 1px solid $stroke;
   overflow: hidden;
-  transition: width 0.18s ease, min-width 0.18s ease;
+  transition:
+    width 0.18s ease,
+    min-width 0.18s ease;
   position: relative;
 }
 
@@ -930,7 +1090,10 @@ $radius-lg: 8px;
 
   &:focus-visible {
     outline: none;
-    &::before { background: $accent; width: 3px; }
+    &::before {
+      background: $accent;
+      width: 3px;
+    }
   }
 }
 
@@ -971,8 +1134,13 @@ $radius-lg: 8px;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  svg { font-size: 11px; }
-  &:hover { background: $bg-softer; color: $text-primary; }
+  svg {
+    font-size: 11px;
+  }
+  &:hover {
+    background: $bg-softer;
+    color: $text-primary;
+  }
 }
 
 .hp-drawer__header {
@@ -996,12 +1164,26 @@ $radius-lg: 8px;
   padding: 3px 8px;
   border-radius: $radius-sm;
   color: #fff;
-  &--live      { background: $success-ink; }
-  &--in-flight { background: $pending-ink; }
-  &--was-here  { background: $text-secondary; }
-  &--failed    { background: $failure-ink; }
-  &--no-op     { background: $text-muted; }
-  &--not-reached { background: $bg-softer; color: $text-secondary; border: 1px solid $stroke-strong; }
+  &--live {
+    background: $success-ink;
+  }
+  &--in-flight {
+    background: $pending-ink;
+  }
+  &--was-here {
+    background: $text-secondary;
+  }
+  &--failed {
+    background: $failure-ink;
+  }
+  &--no-op {
+    background: $text-muted;
+  }
+  &--not-reached {
+    background: $bg-softer;
+    color: $text-secondary;
+    border: 1px solid $stroke-strong;
+  }
 }
 
 .hp-drawer__branch {
@@ -1029,8 +1211,12 @@ $radius-lg: 8px;
   font-size: 12px;
   color: $text-secondary;
 }
-.hp-drawer__author { color: $text-secondary; }
-.hp-drawer__sep { color: $text-muted; }
+.hp-drawer__author {
+  color: $text-secondary;
+}
+.hp-drawer__sep {
+  color: $text-muted;
+}
 
 .hp-drawer__sha {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -1050,7 +1236,9 @@ $radius-lg: 8px;
   font-size: 12px;
   color: $accent;
   text-decoration: none;
-  &:hover { text-decoration: underline; }
+  &:hover {
+    text-decoration: underline;
+  }
 }
 
 .hp-drawer__section {
@@ -1064,16 +1252,31 @@ $radius-lg: 8px;
     letter-spacing: 0.06em;
     color: $text-muted;
   }
-  p { margin: 0; font-size: 13px; color: $text-secondary; line-height: 1.45; }
-  ul { margin: 0; padding-left: 18px; font-size: 13px; color: $text-secondary; line-height: 1.5; }
+  p {
+    margin: 0;
+    font-size: 13px;
+    color: $text-secondary;
+    line-height: 1.45;
+  }
+  ul {
+    margin: 0;
+    padding-left: 18px;
+    font-size: 13px;
+    color: $text-secondary;
+    line-height: 1.5;
+  }
 
   &--danger {
     background: $failure-soft;
     border-top: 1px solid $failure-border;
     border-radius: $radius-md;
     padding: 12px 14px;
-    h3 { color: $failure-ink; }
-    strong { color: $failure-ink; }
+    h3 {
+      color: $failure-ink;
+    }
+    strong {
+      color: $failure-ink;
+    }
   }
 
   &--muted {
@@ -1113,15 +1316,34 @@ $radius-lg: 8px;
   padding: 4px 8px;
   border-radius: $radius-sm;
 
-  &--success { color: $success-ink; background: $success-soft; }
-  &--failure { color: $failure-ink; background: $failure-soft; }
-  &--pending { color: $pending-ink; background: $pending-soft; }
-  &--unknown { color: $text-muted; background: $bg-softer; }
+  &--success {
+    color: $success-ink;
+    background: $success-soft;
+  }
+  &--failure {
+    color: $failure-ink;
+    background: $failure-soft;
+  }
+  &--pending {
+    color: $pending-ink;
+    background: $pending-soft;
+  }
+  &--unknown {
+    color: $text-muted;
+    background: $bg-softer;
+  }
 }
 
-.hp-drawer__check-icon { display: inline-flex; }
-.hp-drawer__check-key  { font-weight: 600; }
-.hp-drawer__check-desc { color: $text-secondary; font-weight: 400; }
+.hp-drawer__check-icon {
+  display: inline-flex;
+}
+.hp-drawer__check-key {
+  font-weight: 600;
+}
+.hp-drawer__check-desc {
+  color: $text-secondary;
+  font-weight: 400;
+}
 
 .hp-drawer__presence {
   list-style: none;
@@ -1141,8 +1363,14 @@ $radius-lg: 8px;
   border-radius: $radius-md;
   background: $bg-soft;
 
-  &--current { border-color: $accent; background: rgba(31, 79, 94, 0.06); }
-  &--not-reached { opacity: 0.6; border-style: dashed; }
+  &--current {
+    border-color: $accent;
+    background: rgba(31, 79, 94, 0.06);
+  }
+  &--not-reached {
+    opacity: 0.6;
+    border-style: dashed;
+  }
 }
 
 .hp-drawer__presence-branch {
@@ -1161,7 +1389,10 @@ $radius-lg: 8px;
   font-size: 12px;
   color: $text-muted;
   font-style: italic;
-  strong { color: $text-secondary; font-style: normal; }
+  strong {
+    color: $text-secondary;
+    font-style: normal;
+  }
 }
 
 .hp-drawer__replaced {
@@ -1179,8 +1410,15 @@ $radius-lg: 8px;
   font-weight: 500;
   cursor: pointer;
   font-family: inherit;
-  &:hover { border-color: $accent; background: rgba(31, 79, 94, 0.06); }
-  svg { color: $accent; font-size: 11px; flex-shrink: 0; }
+  &:hover {
+    border-color: $accent;
+    background: rgba(31, 79, 94, 0.06);
+  }
+  svg {
+    color: $accent;
+    font-size: 11px;
+    flex-shrink: 0;
+  }
 }
 
 /* ═══════════════════════════════════════
@@ -1225,19 +1463,29 @@ $radius-lg: 8px;
 
   &--above {
     transform: translate(-50%, -100%);
-    &::after { bottom: -3px; }
+    &::after {
+      bottom: -3px;
+    }
   }
   &--below {
     transform: translate(-50%, 0);
-    &::after { top: -3px; }
+    &::after {
+      top: -3px;
+    }
   }
 }
 
 @keyframes hp-tip-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hp-tip { animation: none; }
+  .hp-tip {
+    animation: none;
+  }
 }

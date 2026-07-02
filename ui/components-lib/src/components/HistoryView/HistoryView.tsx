@@ -74,9 +74,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   const envScopedRows = useMemo(
     () =>
       envFilter.length
-        ? rows.filter((r) =>
-            envFilter.some((b) => r.cells[b]?.kind !== 'not-reached'),
-          )
+        ? rows.filter((r) => envFilter.some((b) => r.cells[b]?.kind !== 'not-reached'))
         : rows,
     [rows, envFilter],
   );
@@ -84,12 +82,18 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   const filteredRows = useMemo(() => {
     const apply = (r: CommitRow): boolean => {
       switch (filter) {
-        case 'all': return true;
-        case 'live': return r.hasLive;
-        case 'in-flight': return r.hasInFlight;
-        case 'failed': return r.hasFailed;
-        case 'no-op': return r.hasNoop;
-        case 'stuck': return r.isStuckUpstream;
+        case 'all':
+          return true;
+        case 'live':
+          return r.hasLive;
+        case 'in-flight':
+          return r.hasInFlight;
+        case 'failed':
+          return r.hasFailed;
+        case 'no-op':
+          return r.hasNoop;
+        case 'stuck':
+          return r.isStuckUpstream;
       }
     };
     const list = envScopedRows.filter(apply);
@@ -116,19 +120,24 @@ const HistoryView: React.FC<HistoryViewProps> = ({
 
   const handleBack = onBack;
 
-  const handleJumpToRow = useCallback((rowId: string) => {
-    const row = rowsById.get(rowId);
-    if (!row) return;
-    // Prefer a "live" cell, otherwise the first non-not-reached cell.
-    const branches = envs.map((e) => e.branch);
-    const liveBranch = branches.find((b) => row.cells[b].kind === 'live');
-    const branch = liveBranch ?? branches.find((b) => row.cells[b].kind !== 'not-reached');
-    if (branch) setSelected({ rowId, branch });
-    // scroll into view
-    requestAnimationFrame(() => {
-      document.getElementById(`row-${rowId}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    });
-  }, [envs, rowsById]);
+  const handleJumpToRow = useCallback(
+    (rowId: string) => {
+      const row = rowsById.get(rowId);
+      if (!row) return;
+      // Prefer a "live" cell, otherwise the first non-not-reached cell.
+      const branches = envs.map((e) => e.branch);
+      const liveBranch = branches.find((b) => row.cells[b].kind === 'live');
+      const branch = liveBranch ?? branches.find((b) => row.cells[b].kind !== 'not-reached');
+      if (branch) setSelected({ rowId, branch });
+      // scroll into view
+      requestAnimationFrame(() => {
+        document
+          .getElementById(`row-${rowId}`)
+          ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      });
+    },
+    [envs, rowsById],
+  );
 
   if (!strategy) return <div className="hp-loading">Loading promotion history…</div>;
 
@@ -140,13 +149,15 @@ const HistoryView: React.FC<HistoryViewProps> = ({
           This promotion strategy doesn't have any environments with history to show.
         </p>
         {handleBack && (
-          <button onClick={handleBack} className="hp-empty__back">Back to {name}</button>
+          <button onClick={handleBack} className="hp-empty__back">
+            Back to {name}
+          </button>
         )}
       </div>
     );
   }
 
-  const selectedRow = selected ? rowsById.get(selected.rowId) ?? null : null;
+  const selectedRow = selected ? (rowsById.get(selected.rowId) ?? null) : null;
   const selectedCell = selectedRow && selected ? selectedRow.cells[selected.branch] : null;
   const hasMultipleEnvs = envs.length > 1;
   const stuckLabel = envs.length > 0 ? `Stuck in ${envs[0].branch}` : 'Stuck';
@@ -193,109 +204,109 @@ const HistoryView: React.FC<HistoryViewProps> = ({
         </div>
         <div className="hp-header__spacer" />
         <div className="hp-controls">
-            <Dropdown
-              icon={<FaFilter />}
-              label="Filter"
-              active={filter !== 'all'}
-              value={FILTERS.find((f) => f.id === filter)?.label ?? 'All commits'}
-            >
-              {(close) =>
-                FILTERS.map((f) => (
-                  <DropdownItem
-                    key={f.id}
-                    selected={filter === f.id}
-                    onSelect={() => {
-                      setFilter(f.id);
-                      close();
-                    }}
-                  >
-                    <span className="hp-dd__item-label">{f.label}</span>
-                    <span className="hp-chip__count">{counts[f.id]}</span>
-                  </DropdownItem>
-                ))
-              }
-            </Dropdown>
+          <Dropdown
+            icon={<FaFilter />}
+            label="Filter"
+            active={filter !== 'all'}
+            value={FILTERS.find((f) => f.id === filter)?.label ?? 'All commits'}
+          >
+            {(close) =>
+              FILTERS.map((f) => (
+                <DropdownItem
+                  key={f.id}
+                  selected={filter === f.id}
+                  onSelect={() => {
+                    setFilter(f.id);
+                    close();
+                  }}
+                >
+                  <span className="hp-dd__item-label">{f.label}</span>
+                  <span className="hp-chip__count">{counts[f.id]}</span>
+                </DropdownItem>
+              ))
+            }
+          </Dropdown>
 
-            {hasMultipleEnvs && (
-              <Dropdown
-                icon={<FaLayerGroup />}
-                label="Environment"
-                active={envFilter.length > 0}
-                value={
-                  envFilter.length === 0 ? (
-                    'All environments'
-                  ) : envFilter.length === 1 ? (
-                    <>
-                      <span
-                        className="hp-chip__dot"
-                        style={{ background: envs.find((e) => e.branch === envFilter[0])?.color }}
-                        aria-hidden="true"
-                      />
-                      {envFilter[0]}
-                    </>
-                  ) : (
-                    `${envFilter.length} environments`
-                  )
-                }
-              >
-                {() => (
+          {hasMultipleEnvs && (
+            <Dropdown
+              icon={<FaLayerGroup />}
+              label="Environment"
+              active={envFilter.length > 0}
+              value={
+                envFilter.length === 0 ? (
+                  'All environments'
+                ) : envFilter.length === 1 ? (
                   <>
-                    <DropdownItem
-                      multi
-                      selected={envFilter.length === 0}
-                      onSelect={() => setEnvFilter([])}
-                    >
-                      <span className="hp-dd__item-label">All environments</span>
-                    </DropdownItem>
-                    {envs.map((env) => {
-                      const envCount = rows.filter(
-                        (r) => r.cells[env.branch]?.kind !== 'not-reached',
-                      ).length;
-                      return (
-                        <DropdownItem
-                          key={env.branch}
-                          multi
-                          selected={envFilter.includes(env.branch)}
-                          onSelect={() => handleToggleEnvFilter(env.branch)}
-                        >
-                          <span
-                            className="hp-chip__dot"
-                            style={{ background: env.color }}
-                            aria-hidden="true"
-                          />
-                          <span className="hp-dd__item-label">{env.branch}</span>
-                          <span className="hp-chip__count">{envCount}</span>
-                        </DropdownItem>
-                      );
-                    })}
+                    <span
+                      className="hp-chip__dot"
+                      style={{ background: envs.find((e) => e.branch === envFilter[0])?.color }}
+                      aria-hidden="true"
+                    />
+                    {envFilter[0]}
                   </>
-                )}
-              </Dropdown>
-            )}
-
-            <Dropdown
-              icon={<FaSort />}
-              label="Sort"
-              active={sort !== 'newest'}
-              value={SORTS.find((s) => s.id === sort)?.label ?? 'Newest first'}
-            >
-              {(close) =>
-                SORTS.map((s) => (
-                  <DropdownItem
-                    key={s.id}
-                    selected={sort === s.id}
-                    onSelect={() => {
-                      setSort(s.id);
-                      close();
-                    }}
-                  >
-                    <span className="hp-dd__item-label">{s.label}</span>
-                  </DropdownItem>
-                ))
+                ) : (
+                  `${envFilter.length} environments`
+                )
               }
+            >
+              {() => (
+                <>
+                  <DropdownItem
+                    multi
+                    selected={envFilter.length === 0}
+                    onSelect={() => setEnvFilter([])}
+                  >
+                    <span className="hp-dd__item-label">All environments</span>
+                  </DropdownItem>
+                  {envs.map((env) => {
+                    const envCount = rows.filter(
+                      (r) => r.cells[env.branch]?.kind !== 'not-reached',
+                    ).length;
+                    return (
+                      <DropdownItem
+                        key={env.branch}
+                        multi
+                        selected={envFilter.includes(env.branch)}
+                        onSelect={() => handleToggleEnvFilter(env.branch)}
+                      >
+                        <span
+                          className="hp-chip__dot"
+                          style={{ background: env.color }}
+                          aria-hidden="true"
+                        />
+                        <span className="hp-dd__item-label">{env.branch}</span>
+                        <span className="hp-chip__count">{envCount}</span>
+                      </DropdownItem>
+                    );
+                  })}
+                </>
+              )}
             </Dropdown>
-          </div>
-        </header>
+          )}
+
+          <Dropdown
+            icon={<FaSort />}
+            label="Sort"
+            active={sort !== 'newest'}
+            value={SORTS.find((s) => s.id === sort)?.label ?? 'Newest first'}
+          >
+            {(close) =>
+              SORTS.map((s) => (
+                <DropdownItem
+                  key={s.id}
+                  selected={sort === s.id}
+                  onSelect={() => {
+                    setSort(s.id);
+                    close();
+                  }}
+                >
+                  <span className="hp-dd__item-label">{s.label}</span>
+                </DropdownItem>
+              ))
+            }
+          </Dropdown>
+        </div>
+      </header>
 
       <div className="hp-body">
         <div className="hp-main">
@@ -319,14 +330,14 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                   </button>
                 </div>
               )}
-              <div
-                className="hp-matrix__head"
-                style={{ gridTemplateColumns: gridTemplate }}
-              >
+              <div className="hp-matrix__head" style={{ gridTemplateColumns: gridTemplate }}>
                 <span className="hp-matrix__head-label">Commit</span>
                 {visibleEnvs.map((env) => (
                   <span key={env.branch} className="hp-matrix__head-env">
-                    <span className="hp-matrix__head-env-swatch" style={{ background: env.color }} />
+                    <span
+                      className="hp-matrix__head-env-swatch"
+                      style={{ background: env.color }}
+                    />
                     <span className="hp-matrix__head-env-branch" style={{ color: env.color }}>
                       {env.branch}
                     </span>
@@ -336,7 +347,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({
             </div>
 
             {filteredRows.length === 0 ? (
-              <div className="hp-matrix__empty">No commits match these filters. Try adjusting them.</div>
+              <div className="hp-matrix__empty">
+                No commits match these filters. Try adjusting them.
+              </div>
             ) : (
               filteredRows.map((row) => (
                 <div
@@ -346,10 +359,20 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                   style={{ gridTemplateColumns: gridTemplate }}
                 >
                   <div className="hp-row__commit">
-                    <div className="hp-row__subject" title={row.subject}>{row.subject}</div>
+                    <div className="hp-row__subject" title={row.subject}>
+                      {row.subject}
+                    </div>
                     <div className="hp-row__meta">
                       {row.repoUrl && row.dryShaFull ? (
-                        <Tooltip label={<>Commit <code>{row.dryShaFull}</code><br />Open on remote</>}>
+                        <Tooltip
+                          label={
+                            <>
+                              Commit <code>{row.dryShaFull}</code>
+                              <br />
+                              Open on remote
+                            </>
+                          }
+                        >
                           <a
                             className="hp-row__sha"
                             href={getCommitUrl(row.repoUrl, row.dryShaFull)}
@@ -362,12 +385,26 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                           </a>
                         </Tooltip>
                       ) : (
-                        <Tooltip label={<>Commit <code>{row.dryShaFull || row.dryShaShort}</code></>}>
+                        <Tooltip
+                          label={
+                            <>
+                              Commit <code>{row.dryShaFull || row.dryShaShort}</code>
+                            </>
+                          }
+                        >
                           <span className="hp-row__sha">{row.dryShaShort}</span>
                         </Tooltip>
                       )}
                       {row.prId && (
-                        <Tooltip label={<>Pull request #{row.prId}<br />Open on remote</>}>
+                        <Tooltip
+                          label={
+                            <>
+                              Pull request #{row.prId}
+                              <br />
+                              Open on remote
+                            </>
+                          }
+                        >
                           <a
                             className="hp-row__pr"
                             href={row.prUrl}
@@ -380,7 +417,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                           </a>
                         </Tooltip>
                       )}
-                      <span className="hp-row__sep" aria-hidden="true">·</span>
+                      <span className="hp-row__sep" aria-hidden="true">
+                        ·
+                      </span>
                       <Tooltip label={`Authored by ${row.author}`}>
                         <span className="hp-row__author-inline">{row.author}</span>
                       </Tooltip>
@@ -413,7 +452,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                         className={[
                           'hp-row__env-slot',
                           isFocusedEnv ? 'hp-row__env-slot--focus' : '',
-                        ].filter(Boolean).join(' ')}
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
                       >
                         <FlowCell
                           cell={row.cells[env.branch]}

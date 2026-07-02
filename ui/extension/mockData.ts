@@ -1,12 +1,6 @@
 import type { PromotionStrategy } from '@shared/types/promotion';
 
-export const MOCK_NAMESPACES: string[] = [
-  'production',
-  'staging',
-  'dev',
-  'demo',
-  'demo-scenarios',
-];
+export const MOCK_NAMESPACES: string[] = ['production', 'staging', 'dev', 'demo', 'demo-scenarios'];
 
 const now = new Date();
 const hoursAgo = (h: number) => new Date(now.getTime() - h * 3600_000).toISOString();
@@ -27,12 +21,66 @@ const STANDARD_RELEASES: Array<{
   staging: number; // days ago it reached staging
   prod: number; // days ago it reached production
 }> = [
-  { n: 6, sha: 's6d00006000000000000000000000000release6', author: 'Umar Khan <umar@example.com>', subject: 'feat: bulk price import', body: 'Adds a bulk price import that accepts a CSV and updates catalog\nprices in batches, validating each row before committing.', dev: 1, staging: 1, prod: 0 },
-  { n: 5, sha: 's5d00005000000000000000000000000release5', author: 'Vera Lopez <vera@example.com>', subject: 'feat: per-region catalog availability', body: 'Catalog availability can now vary by region, so a product can be\nlisted in one market and hidden in another.', dev: 3, staging: 2, prod: 2 },
-  { n: 4, sha: 's4d00004000000000000000000000000release4', author: 'Tara Singh <tara@example.com>', subject: 'fix: stale cache on price updates', body: "Price updates didn't invalidate the cache, so shoppers saw stale\nprices. The cache entry is now busted on every price write.", dev: 5, staging: 4, prod: 3 },
-  { n: 3, sha: 's3d00003000000000000000000000000release3', author: 'Umar Khan <umar@example.com>', subject: 'feat: product variant grouping', body: 'Groups product variants (size, colour) under a single listing so\nshoppers pick options instead of seeing duplicate products.', dev: 8, staging: 7, prod: 6 },
-  { n: 2, sha: 's2d00002000000000000000000000000release2', author: 'Vera Lopez <vera@example.com>', subject: 'chore: migrate catalog to postgres 16', body: 'Moves the catalog database from Postgres 14 to 16. Includes the\nupgrade runbook and a tested rollback path.', dev: 12, staging: 11, prod: 10 },
-  { n: 1, sha: 's1d00001000000000000000000000000release1', author: 'Tara Singh <tara@example.com>', subject: 'feat: initial catalog service', body: 'First cut of the catalog service: product CRUD, search and the\nbaseline schema. Enough to stand the service up.', dev: 20, staging: 19, prod: 18 },
+  {
+    n: 6,
+    sha: 's6d00006000000000000000000000000release6',
+    author: 'Umar Khan <umar@example.com>',
+    subject: 'feat: bulk price import',
+    body: 'Adds a bulk price import that accepts a CSV and updates catalog\nprices in batches, validating each row before committing.',
+    dev: 1,
+    staging: 1,
+    prod: 0,
+  },
+  {
+    n: 5,
+    sha: 's5d00005000000000000000000000000release5',
+    author: 'Vera Lopez <vera@example.com>',
+    subject: 'feat: per-region catalog availability',
+    body: 'Catalog availability can now vary by region, so a product can be\nlisted in one market and hidden in another.',
+    dev: 3,
+    staging: 2,
+    prod: 2,
+  },
+  {
+    n: 4,
+    sha: 's4d00004000000000000000000000000release4',
+    author: 'Tara Singh <tara@example.com>',
+    subject: 'fix: stale cache on price updates',
+    body: "Price updates didn't invalidate the cache, so shoppers saw stale\nprices. The cache entry is now busted on every price write.",
+    dev: 5,
+    staging: 4,
+    prod: 3,
+  },
+  {
+    n: 3,
+    sha: 's3d00003000000000000000000000000release3',
+    author: 'Umar Khan <umar@example.com>',
+    subject: 'feat: product variant grouping',
+    body: 'Groups product variants (size, colour) under a single listing so\nshoppers pick options instead of seeing duplicate products.',
+    dev: 8,
+    staging: 7,
+    prod: 6,
+  },
+  {
+    n: 2,
+    sha: 's2d00002000000000000000000000000release2',
+    author: 'Vera Lopez <vera@example.com>',
+    subject: 'chore: migrate catalog to postgres 16',
+    body: 'Moves the catalog database from Postgres 14 to 16. Includes the\nupgrade runbook and a tested rollback path.',
+    dev: 12,
+    staging: 11,
+    prod: 10,
+  },
+  {
+    n: 1,
+    sha: 's1d00001000000000000000000000000release1',
+    author: 'Tara Singh <tara@example.com>',
+    subject: 'feat: initial catalog service',
+    body: 'First cut of the catalog service: product CRUD, search and the\nbaseline schema. Enough to stand the service up.',
+    dev: 20,
+    staging: 19,
+    prod: 18,
+  },
 ];
 
 // Realistic-looking commit content to draw from when synthesizing a release
@@ -45,14 +93,38 @@ const WIDE_AUTHORS = [
   'Ivy Patel <ivy@example.com>',
 ];
 const WIDE_SUBJECTS = [
-  { subject: 'feat: connection pool warmup', body: 'Pre-warms upstream connection pools on boot so the first requests\nafter a deploy no longer eat cold-start latency.' },
-  { subject: 'fix: retry budget leak under load', body: 'The retry budget was not being released on early cancellation,\nstarving healthy routes during spikes. Now released in all paths.' },
-  { subject: 'feat: per-route rate limiting', body: 'Adds configurable per-route rate limits with a token-bucket\nlimiter, so a noisy route can be capped without touching others.' },
-  { subject: 'chore: bump envoy sidecar to 1.31', body: 'Routine sidecar upgrade. Picks up the upstream h2 keepalive fix\nand drops a patched CVE from the base image.' },
-  { subject: 'feat: circuit breaker per upstream', body: 'Each upstream now trips independently, so one failing backend no\nlonger opens the breaker for the whole mesh.' },
-  { subject: 'fix: header casing on forwarded reqs', body: 'Forwarded requests lower-cased a header some legacy backends\nrequired verbatim. Original casing is now preserved.' },
-  { subject: 'feat: mTLS cert auto-rotation', body: 'Mesh certs rotate automatically ahead of expiry with a staggered\nschedule so rotations never align across the fleet.' },
-  { subject: 'perf: zero-copy body streaming', body: 'Large request bodies now stream without an intermediate buffer,\ncutting p99 memory on upload-heavy routes.' },
+  {
+    subject: 'feat: connection pool warmup',
+    body: 'Pre-warms upstream connection pools on boot so the first requests\nafter a deploy no longer eat cold-start latency.',
+  },
+  {
+    subject: 'fix: retry budget leak under load',
+    body: 'The retry budget was not being released on early cancellation,\nstarving healthy routes during spikes. Now released in all paths.',
+  },
+  {
+    subject: 'feat: per-route rate limiting',
+    body: 'Adds configurable per-route rate limits with a token-bucket\nlimiter, so a noisy route can be capped without touching others.',
+  },
+  {
+    subject: 'chore: bump envoy sidecar to 1.31',
+    body: 'Routine sidecar upgrade. Picks up the upstream h2 keepalive fix\nand drops a patched CVE from the base image.',
+  },
+  {
+    subject: 'feat: circuit breaker per upstream',
+    body: 'Each upstream now trips independently, so one failing backend no\nlonger opens the breaker for the whole mesh.',
+  },
+  {
+    subject: 'fix: header casing on forwarded reqs',
+    body: 'Forwarded requests lower-cased a header some legacy backends\nrequired verbatim. Original casing is now preserved.',
+  },
+  {
+    subject: 'feat: mTLS cert auto-rotation',
+    body: 'Mesh certs rotate automatically ahead of expiry with a staggered\nschedule so rotations never align across the fleet.',
+  },
+  {
+    subject: 'perf: zero-copy body streaming',
+    body: 'Large request bodies now stream without an intermediate buffer,\ncutting p99 memory on upload-heavy routes.',
+  },
 ];
 
 /**
@@ -224,19 +296,21 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                   'Layout is responsive and each widget loads independently.',
                 commitTime: hoursAgo(2),
                 repoURL: 'https://github.com/example/web-app',
-                references: [{
-                  commit: {
-                    sha: 'ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00',
-                    author: 'Alice Chen <alice@example.com>',
-                    subject: 'feat: add user dashboard widgets',
-                    body:
-                      'Adds the first set of dashboard widgets for user-facing metrics.\n' +
-                      'Layout is responsive and each widget loads independently.',
-                    date: hoursAgo(3),
-                    url: 'https://github.com/example/web-app/commit/ff00ff00',
-                    repoURL: 'https://github.com/example/web-app',
+                references: [
+                  {
+                    commit: {
+                      sha: 'ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00',
+                      author: 'Alice Chen <alice@example.com>',
+                      subject: 'feat: add user dashboard widgets',
+                      body:
+                        'Adds the first set of dashboard widgets for user-facing metrics.\n' +
+                        'Layout is responsive and each widget loads independently.',
+                      date: hoursAgo(3),
+                      url: 'https://github.com/example/web-app/commit/ff00ff00',
+                      repoURL: 'https://github.com/example/web-app',
+                    },
                   },
-                }],
+                ],
               },
               hydrated: {
                 sha: 'b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3',
@@ -313,7 +387,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/test', phase: 'success' },
                   ],
                 },
-                pullRequest: { id: '101', url: 'https://github.com/example/web-app/pull/101', prMergeTime: daysAgo(1) },
+                pullRequest: {
+                  id: '101',
+                  url: 'https://github.com/example/web-app/pull/101',
+                  prMergeTime: daysAgo(1),
+                },
               },
               {
                 active: {
@@ -348,7 +426,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/test', phase: 'failure' },
                   ],
                 },
-                pullRequest: { id: '98', url: 'https://github.com/example/web-app/pull/98', prMergeTime: daysAgo(3) },
+                pullRequest: {
+                  id: '98',
+                  url: 'https://github.com/example/web-app/pull/98',
+                  prMergeTime: daysAgo(3),
+                },
               },
               {
                 active: {
@@ -383,7 +465,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/test', phase: 'success' },
                   ],
                 },
-                pullRequest: { id: '95', url: 'https://github.com/example/web-app/pull/95', prMergeTime: daysAgo(5) },
+                pullRequest: {
+                  id: '95',
+                  url: 'https://github.com/example/web-app/pull/95',
+                  prMergeTime: daysAgo(5),
+                },
               },
               // NO-OP: same active dry SHA as next entry — this commit didn't change env/dev
               {
@@ -419,7 +505,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/test', phase: 'success' },
                   ],
                 },
-                pullRequest: { id: '92', url: 'https://github.com/example/web-app/pull/92', prMergeTime: daysAgo(6) },
+                pullRequest: {
+                  id: '92',
+                  url: 'https://github.com/example/web-app/pull/92',
+                  prMergeTime: daysAgo(6),
+                },
               },
               // INTERRUPTED: had pending proposed checks, but a newer commit superseded it
               {
@@ -455,7 +545,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/test', phase: 'pending', description: 'Waiting for build' },
                   ],
                 },
-                pullRequest: { id: '91', url: 'https://github.com/example/web-app/pull/91', prMergeTime: daysAgo(7) },
+                pullRequest: {
+                  id: '91',
+                  url: 'https://github.com/example/web-app/pull/91',
+                  prMergeTime: daysAgo(7),
+                },
               },
               {
                 active: {
@@ -490,7 +584,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/test', phase: 'success' },
                   ],
                 },
-                pullRequest: { id: '90', url: 'https://github.com/example/web-app/pull/90', prMergeTime: daysAgo(9) },
+                pullRequest: {
+                  id: '90',
+                  url: 'https://github.com/example/web-app/pull/90',
+                  prMergeTime: daysAgo(9),
+                },
               },
             ],
           },
@@ -563,7 +661,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/test', phase: 'success' },
                   ],
                 },
-                pullRequest: { id: '40', url: 'https://github.com/example/web-app/pull/40', prMergeTime: daysAgo(1) },
+                pullRequest: {
+                  id: '40',
+                  url: 'https://github.com/example/web-app/pull/40',
+                  prMergeTime: daysAgo(1),
+                },
               },
               {
                 active: {
@@ -598,7 +700,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/test', phase: 'pending' },
                   ],
                 },
-                pullRequest: { id: '38', url: 'https://github.com/example/web-app/pull/38', prMergeTime: daysAgo(4) },
+                pullRequest: {
+                  id: '38',
+                  url: 'https://github.com/example/web-app/pull/38',
+                  prMergeTime: daysAgo(4),
+                },
               },
               {
                 active: {
@@ -613,7 +719,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     repoURL: 'https://github.com/example/web-app',
                   },
                   commitStatuses: [
-                    { key: 'ci/build', phase: 'failure', description: 'Compilation error in pool.ts' },
+                    {
+                      key: 'ci/build',
+                      phase: 'failure',
+                      description: 'Compilation error in pool.ts',
+                    },
                     { key: 'ci/test', phase: 'failure', description: 'Blocked by build failure' },
                   ],
                 },
@@ -633,7 +743,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/test', phase: 'failure' },
                   ],
                 },
-                pullRequest: { id: '35', url: 'https://github.com/example/web-app/pull/35', prMergeTime: daysAgo(6) },
+                pullRequest: {
+                  id: '35',
+                  url: 'https://github.com/example/web-app/pull/35',
+                  prMergeTime: daysAgo(6),
+                },
               },
               {
                 active: {
@@ -668,7 +782,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/test', phase: 'success' },
                   ],
                 },
-                pullRequest: { id: '30', url: 'https://github.com/example/web-app/pull/30', prMergeTime: daysAgo(10) },
+                pullRequest: {
+                  id: '30',
+                  url: 'https://github.com/example/web-app/pull/30',
+                  prMergeTime: daysAgo(10),
+                },
               },
               // Shared SHA with env/dev — demonstrates cross-env SHA tracing
               {
@@ -704,7 +822,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/test', phase: 'success' },
                   ],
                 },
-                pullRequest: { id: '28', url: 'https://github.com/example/web-app/pull/28', prMergeTime: daysAgo(12) },
+                pullRequest: {
+                  id: '28',
+                  url: 'https://github.com/example/web-app/pull/28',
+                  prMergeTime: daysAgo(12),
+                },
               },
               {
                 active: {
@@ -739,7 +861,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/test', phase: 'success' },
                   ],
                 },
-                pullRequest: { id: '25', url: 'https://github.com/example/web-app/pull/25', prMergeTime: daysAgo(14) },
+                pullRequest: {
+                  id: '25',
+                  url: 'https://github.com/example/web-app/pull/25',
+                  prMergeTime: daysAgo(14),
+                },
               },
             ],
           },
@@ -811,7 +937,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/test', phase: 'success' },
                   ],
                 },
-                pullRequest: { id: '55', url: 'https://github.com/example/web-app/pull/55', prMergeTime: daysAgo(3) },
+                pullRequest: {
+                  id: '55',
+                  url: 'https://github.com/example/web-app/pull/55',
+                  prMergeTime: daysAgo(3),
+                },
               },
               {
                 active: {
@@ -846,7 +976,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/test', phase: 'success' },
                   ],
                 },
-                pullRequest: { id: '50', url: 'https://github.com/example/web-app/pull/50', prMergeTime: daysAgo(7) },
+                pullRequest: {
+                  id: '50',
+                  url: 'https://github.com/example/web-app/pull/50',
+                  prMergeTime: daysAgo(7),
+                },
               },
               {
                 active: {
@@ -924,7 +1058,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
               },
               commitStatuses: [
                 { key: 'ci/build', phase: 'success', description: 'Build passed' },
-                { key: 'ci/security-scan', phase: 'failure', description: 'Found 2 critical vulnerabilities' },
+                {
+                  key: 'ci/security-scan',
+                  phase: 'failure',
+                  description: 'Found 2 critical vulnerabilities',
+                },
               ],
             },
             proposed: {
@@ -940,7 +1078,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
               },
               commitStatuses: [
                 { key: 'ci/build', phase: 'success', description: 'Build passed' },
-                { key: 'ci/security-scan', phase: 'failure', description: 'Found 2 critical vulnerabilities' },
+                {
+                  key: 'ci/security-scan',
+                  phase: 'failure',
+                  description: 'Found 2 critical vulnerabilities',
+                },
               ],
             },
           },
@@ -986,7 +1128,7 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     author: 'Diana Lee <diana@example.com>',
                     subject: 'fix: retry logic for failed transactions',
                     body:
-                      'Failed transactions weren\'t retried, so transient errors looked\n' +
+                      "Failed transactions weren't retried, so transient errors looked\n" +
                       'like hard failures. Adds bounded retries with backoff.',
                     commitTime: daysAgo(5),
                     repoURL: 'https://github.com/example/payment-service',
@@ -1002,7 +1144,7 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     author: 'Diana Lee <diana@example.com>',
                     subject: 'fix: retry logic for failed transactions',
                     body:
-                      'Failed transactions weren\'t retried, so transient errors looked\n' +
+                      "Failed transactions weren't retried, so transient errors looked\n" +
                       'like hard failures. Adds bounded retries with backoff.',
                     commitTime: daysAgo(5),
                     repoURL: 'https://github.com/example/payment-service',
@@ -1012,7 +1154,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/security-scan', phase: 'success' },
                   ],
                 },
-                pullRequest: { id: '22', url: 'https://github.com/example/payment-service/pull/22', prMergeTime: daysAgo(5) },
+                pullRequest: {
+                  id: '22',
+                  url: 'https://github.com/example/payment-service/pull/22',
+                  prMergeTime: daysAgo(5),
+                },
               },
               {
                 active: {
@@ -1047,7 +1193,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/security-scan', phase: 'success' },
                   ],
                 },
-                pullRequest: { id: '19', url: 'https://github.com/example/payment-service/pull/19', prMergeTime: daysAgo(8) },
+                pullRequest: {
+                  id: '19',
+                  url: 'https://github.com/example/payment-service/pull/19',
+                  prMergeTime: daysAgo(8),
+                },
               },
               {
                 active: {
@@ -1063,7 +1213,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                   },
                   commitStatuses: [
                     { key: 'ci/build', phase: 'failure', description: 'Build failed' },
-                    { key: 'ci/security-scan', phase: 'failure', description: 'Security scan failed' },
+                    {
+                      key: 'ci/security-scan',
+                      phase: 'failure',
+                      description: 'Security scan failed',
+                    },
                   ],
                 },
                 proposed: {
@@ -1082,7 +1236,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/security-scan', phase: 'failure' },
                   ],
                 },
-                pullRequest: { id: '15', url: 'https://github.com/example/payment-service/pull/15', prMergeTime: daysAgo(12) },
+                pullRequest: {
+                  id: '15',
+                  url: 'https://github.com/example/payment-service/pull/15',
+                  prMergeTime: daysAgo(12),
+                },
               },
               {
                 active: {
@@ -1145,7 +1303,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/security-scan', phase: 'success' },
                   ],
                 },
-                pullRequest: { id: '10', url: 'https://github.com/example/payment-service/pull/10', prMergeTime: daysAgo(18) },
+                pullRequest: {
+                  id: '10',
+                  url: 'https://github.com/example/payment-service/pull/10',
+                  prMergeTime: daysAgo(18),
+                },
               },
             ],
           },
@@ -1202,7 +1364,10 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
               },
               commitStatuses: [],
             },
-            pullRequest: { id: '88', url: 'https://github.com/example/notification-service/pull/88' },
+            pullRequest: {
+              id: '88',
+              url: 'https://github.com/example/notification-service/pull/88',
+            },
           },
           {
             branch: 'env/staging',
@@ -1303,9 +1468,7 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                 commitTime: hoursAgo(4),
                 repoURL: 'https://github.com/example/api-gateway',
               },
-              commitStatuses: [
-                { key: 'ci/build', phase: 'success', description: 'Build passed' },
-              ],
+              commitStatuses: [{ key: 'ci/build', phase: 'success', description: 'Build passed' }],
             },
             proposed: {
               dry: {
@@ -1318,9 +1481,7 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                 commitTime: hoursAgo(4),
                 repoURL: 'https://github.com/example/api-gateway',
               },
-              commitStatuses: [
-                { key: 'ci/build', phase: 'success', description: 'Build passed' },
-              ],
+              commitStatuses: [{ key: 'ci/build', phase: 'success', description: 'Build passed' }],
             },
             history: [
               {
@@ -1335,9 +1496,7 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     commitTime: daysAgo(1),
                     repoURL: 'https://github.com/example/api-gateway',
                   },
-                  commitStatuses: [
-                    { key: 'ci/build', phase: 'success' },
-                  ],
+                  commitStatuses: [{ key: 'ci/build', phase: 'success' }],
                 },
                 proposed: {
                   hydrated: {
@@ -1350,11 +1509,13 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     commitTime: daysAgo(1),
                     repoURL: 'https://github.com/example/api-gateway',
                   },
-                  commitStatuses: [
-                    { key: 'ci/build', phase: 'success' },
-                  ],
+                  commitStatuses: [{ key: 'ci/build', phase: 'success' }],
                 },
-                pullRequest: { id: '60', url: 'https://github.com/example/api-gateway/pull/60', prMergeTime: daysAgo(1) },
+                pullRequest: {
+                  id: '60',
+                  url: 'https://github.com/example/api-gateway/pull/60',
+                  prMergeTime: daysAgo(1),
+                },
               },
               {
                 active: {
@@ -1383,11 +1544,13 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     commitTime: daysAgo(3),
                     repoURL: 'https://github.com/example/api-gateway',
                   },
-                  commitStatuses: [
-                    { key: 'ci/build', phase: 'failure' },
-                  ],
+                  commitStatuses: [{ key: 'ci/build', phase: 'failure' }],
                 },
-                pullRequest: { id: '58', url: 'https://github.com/example/api-gateway/pull/58', prMergeTime: daysAgo(3) },
+                pullRequest: {
+                  id: '58',
+                  url: 'https://github.com/example/api-gateway/pull/58',
+                  prMergeTime: daysAgo(3),
+                },
               },
               {
                 active: {
@@ -1401,9 +1564,7 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     commitTime: daysAgo(5),
                     repoURL: 'https://github.com/example/api-gateway',
                   },
-                  commitStatuses: [
-                    { key: 'ci/build', phase: 'success' },
-                  ],
+                  commitStatuses: [{ key: 'ci/build', phase: 'success' }],
                 },
                 proposed: {
                   hydrated: {
@@ -1416,11 +1577,13 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     commitTime: daysAgo(5),
                     repoURL: 'https://github.com/example/api-gateway',
                   },
-                  commitStatuses: [
-                    { key: 'ci/build', phase: 'success' },
-                  ],
+                  commitStatuses: [{ key: 'ci/build', phase: 'success' }],
                 },
-                pullRequest: { id: '55', url: 'https://github.com/example/api-gateway/pull/55', prMergeTime: daysAgo(5) },
+                pullRequest: {
+                  id: '55',
+                  url: 'https://github.com/example/api-gateway/pull/55',
+                  prMergeTime: daysAgo(5),
+                },
               },
               {
                 active: {
@@ -1434,9 +1597,7 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     commitTime: daysAgo(7),
                     repoURL: 'https://github.com/example/api-gateway',
                   },
-                  commitStatuses: [
-                    { key: 'ci/build', phase: 'success' },
-                  ],
+                  commitStatuses: [{ key: 'ci/build', phase: 'success' }],
                 },
                 proposed: {
                   hydrated: {
@@ -1449,11 +1610,13 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     commitTime: daysAgo(7),
                     repoURL: 'https://github.com/example/api-gateway',
                   },
-                  commitStatuses: [
-                    { key: 'ci/build', phase: 'success' },
-                  ],
+                  commitStatuses: [{ key: 'ci/build', phase: 'success' }],
                 },
-                pullRequest: { id: '52', url: 'https://github.com/example/api-gateway/pull/52', prMergeTime: daysAgo(7) },
+                pullRequest: {
+                  id: '52',
+                  url: 'https://github.com/example/api-gateway/pull/52',
+                  prMergeTime: daysAgo(7),
+                },
               },
               {
                 active: {
@@ -1482,11 +1645,13 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     commitTime: daysAgo(9),
                     repoURL: 'https://github.com/example/api-gateway',
                   },
-                  commitStatuses: [
-                    { key: 'ci/build', phase: 'failure' },
-                  ],
+                  commitStatuses: [{ key: 'ci/build', phase: 'failure' }],
                 },
-                pullRequest: { id: '48', url: 'https://github.com/example/api-gateway/pull/48', prMergeTime: daysAgo(9) },
+                pullRequest: {
+                  id: '48',
+                  url: 'https://github.com/example/api-gateway/pull/48',
+                  prMergeTime: daysAgo(9),
+                },
               },
               {
                 active: {
@@ -1515,11 +1680,13 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     commitTime: daysAgo(11),
                     repoURL: 'https://github.com/example/api-gateway',
                   },
-                  commitStatuses: [
-                    { key: 'ci/build', phase: 'failure' },
-                  ],
+                  commitStatuses: [{ key: 'ci/build', phase: 'failure' }],
                 },
-                pullRequest: { id: '45', url: 'https://github.com/example/api-gateway/pull/45', prMergeTime: daysAgo(11) },
+                pullRequest: {
+                  id: '45',
+                  url: 'https://github.com/example/api-gateway/pull/45',
+                  prMergeTime: daysAgo(11),
+                },
               },
               {
                 active: {
@@ -1533,9 +1700,7 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     commitTime: daysAgo(14),
                     repoURL: 'https://github.com/example/api-gateway',
                   },
-                  commitStatuses: [
-                    { key: 'ci/build', phase: 'success' },
-                  ],
+                  commitStatuses: [{ key: 'ci/build', phase: 'success' }],
                 },
                 proposed: {
                   hydrated: {
@@ -1548,11 +1713,13 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     commitTime: daysAgo(14),
                     repoURL: 'https://github.com/example/api-gateway',
                   },
-                  commitStatuses: [
-                    { key: 'ci/build', phase: 'success' },
-                  ],
+                  commitStatuses: [{ key: 'ci/build', phase: 'success' }],
                 },
-                pullRequest: { id: '40', url: 'https://github.com/example/api-gateway/pull/40', prMergeTime: daysAgo(14) },
+                pullRequest: {
+                  id: '40',
+                  url: 'https://github.com/example/api-gateway/pull/40',
+                  prMergeTime: daysAgo(14),
+                },
               },
               {
                 active: {
@@ -1566,9 +1733,7 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     commitTime: daysAgo(20),
                     repoURL: 'https://github.com/example/api-gateway',
                   },
-                  commitStatuses: [
-                    { key: 'ci/build', phase: 'success' },
-                  ],
+                  commitStatuses: [{ key: 'ci/build', phase: 'success' }],
                 },
                 proposed: {
                   hydrated: {
@@ -1581,11 +1746,13 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     commitTime: daysAgo(20),
                     repoURL: 'https://github.com/example/api-gateway',
                   },
-                  commitStatuses: [
-                    { key: 'ci/build', phase: 'success' },
-                  ],
+                  commitStatuses: [{ key: 'ci/build', phase: 'success' }],
                 },
-                pullRequest: { id: '35', url: 'https://github.com/example/api-gateway/pull/35', prMergeTime: daysAgo(20) },
+                pullRequest: {
+                  id: '35',
+                  url: 'https://github.com/example/api-gateway/pull/35',
+                  prMergeTime: daysAgo(20),
+                },
               },
             ],
           },
@@ -1602,9 +1769,7 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                 commitTime: daysAgo(5),
                 repoURL: 'https://github.com/example/api-gateway',
               },
-              commitStatuses: [
-                { key: 'ci/build', phase: 'success' },
-              ],
+              commitStatuses: [{ key: 'ci/build', phase: 'success' }],
             },
             proposed: {
               dry: {
@@ -1617,9 +1782,7 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                 commitTime: daysAgo(5),
                 repoURL: 'https://github.com/example/api-gateway',
               },
-              commitStatuses: [
-                { key: 'ci/build', phase: 'success' },
-              ],
+              commitStatuses: [{ key: 'ci/build', phase: 'success' }],
             },
           },
         ],
@@ -1643,9 +1806,7 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
       spec: {
         gitRepositoryRef: { name: 'ml-pipeline-repo' },
         activeCommitStatuses: [{ key: 'ci/build' }, { key: 'ci/model-validation' }],
-        environments: [
-          { branch: 'env/dev', autoMerge: true },
-        ],
+        environments: [{ branch: 'env/dev', autoMerge: true }],
       },
       status: {
         environments: [
@@ -1664,7 +1825,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
               },
               commitStatuses: [
                 { key: 'ci/build', phase: 'success', description: 'Build passed' },
-                { key: 'ci/model-validation', phase: 'pending', description: 'Validating model accuracy...' },
+                {
+                  key: 'ci/model-validation',
+                  phase: 'pending',
+                  description: 'Validating model accuracy...',
+                },
               ],
             },
             proposed: {
@@ -1680,7 +1845,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
               },
               commitStatuses: [
                 { key: 'ci/build', phase: 'pending', description: 'Building...' },
-                { key: 'ci/model-validation', phase: 'pending', description: 'Waiting for build...' },
+                {
+                  key: 'ci/model-validation',
+                  phase: 'pending',
+                  description: 'Waiting for build...',
+                },
               ],
             },
             pullRequest: { id: '7', url: 'https://github.com/example/ml-pipeline/pull/7' },
@@ -1699,7 +1868,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                   },
                   commitStatuses: [
                     { key: 'ci/build', phase: 'pending', description: 'Build queued' },
-                    { key: 'ci/model-validation', phase: 'pending', description: 'Waiting for build' },
+                    {
+                      key: 'ci/model-validation',
+                      phase: 'pending',
+                      description: 'Waiting for build',
+                    },
                   ],
                 },
                 proposed: {
@@ -1718,7 +1891,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/model-validation', phase: 'pending' },
                   ],
                 },
-                pullRequest: { id: '5', url: 'https://github.com/example/ml-pipeline/pull/5', prMergeTime: daysAgo(1) },
+                pullRequest: {
+                  id: '5',
+                  url: 'https://github.com/example/ml-pipeline/pull/5',
+                  prMergeTime: daysAgo(1),
+                },
               },
               {
                 active: {
@@ -1734,7 +1911,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                   },
                   commitStatuses: [
                     { key: 'ci/build', phase: 'success' },
-                    { key: 'ci/model-validation', phase: 'success', description: 'Baseline accuracy 91.5%' },
+                    {
+                      key: 'ci/model-validation',
+                      phase: 'success',
+                      description: 'Baseline accuracy 91.5%',
+                    },
                   ],
                 },
                 proposed: {
@@ -1753,7 +1934,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/model-validation', phase: 'success' },
                   ],
                 },
-                pullRequest: { id: '3', url: 'https://github.com/example/ml-pipeline/pull/3', prMergeTime: daysAgo(2) },
+                pullRequest: {
+                  id: '3',
+                  url: 'https://github.com/example/ml-pipeline/pull/3',
+                  prMergeTime: daysAgo(2),
+                },
               },
               {
                 active: {
@@ -1769,7 +1954,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                   },
                   commitStatuses: [
                     { key: 'ci/build', phase: 'success' },
-                    { key: 'ci/model-validation', phase: 'success', description: 'Smoke test passed' },
+                    {
+                      key: 'ci/model-validation',
+                      phase: 'success',
+                      description: 'Smoke test passed',
+                    },
                   ],
                 },
                 proposed: {
@@ -1788,7 +1977,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/model-validation', phase: 'success' },
                   ],
                 },
-                pullRequest: { id: '1', url: 'https://github.com/example/ml-pipeline/pull/1', prMergeTime: daysAgo(2) },
+                pullRequest: {
+                  id: '1',
+                  url: 'https://github.com/example/ml-pipeline/pull/1',
+                  prMergeTime: daysAgo(2),
+                },
               },
             ],
           },
@@ -1837,19 +2030,21 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                   'payment method, falling back to the full flow on any error.',
                 commitTime: hoursAgo(1),
                 repoURL: 'https://github.com/example/checkout-service',
-                references: [{
-                  commit: {
-                    sha: 'src1111aaaa2222bbbb3333cccc4444dddd5555',
-                    author: 'Mei Lin <mei@example.com>',
-                    subject: 'feat: one-click checkout for returning customers',
-                    body:
-                      'Returning customers can check out in one click using their saved\n' +
-                      'payment method, falling back to the full flow on any error.',
-                    date: hoursAgo(2),
-                    url: 'https://github.com/example/checkout-app/commit/src1111aaaa',
-                    repoURL: 'https://github.com/example/checkout-app',
+                references: [
+                  {
+                    commit: {
+                      sha: 'src1111aaaa2222bbbb3333cccc4444dddd5555',
+                      author: 'Mei Lin <mei@example.com>',
+                      subject: 'feat: one-click checkout for returning customers',
+                      body:
+                        'Returning customers can check out in one click using their saved\n' +
+                        'payment method, falling back to the full flow on any error.',
+                      date: hoursAgo(2),
+                      url: 'https://github.com/example/checkout-app/commit/src1111aaaa',
+                      repoURL: 'https://github.com/example/checkout-app',
+                    },
                   },
-                }],
+                ],
               },
               hydrated: {
                 sha: 'd00d2222e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2',
@@ -1922,7 +2117,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                 { key: 'ci/e2e', phase: 'failure', description: 'End-to-end tests failed' },
               ],
             },
-            pullRequest: { id: '204', url: 'https://github.com/example/checkout-service/pull/204', state: 'open' },
+            pullRequest: {
+              id: '204',
+              url: 'https://github.com/example/checkout-service/pull/204',
+              state: 'open',
+            },
             history: [
               {
                 active: {
@@ -1959,7 +2158,12 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/e2e', phase: 'success' },
                   ],
                 },
-                pullRequest: { id: '200', url: 'https://github.com/example/checkout-service/pull/200', prMergeTime: daysAgo(1), state: 'merged' },
+                pullRequest: {
+                  id: '200',
+                  url: 'https://github.com/example/checkout-service/pull/200',
+                  prMergeTime: daysAgo(1),
+                  state: 'merged',
+                },
               },
             ],
           },
@@ -2000,7 +2204,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                 { key: 'ci/e2e', phase: 'pending', description: 'Queued' },
               ],
             },
-            pullRequest: { id: '198', url: 'https://github.com/example/checkout-service/pull/198', state: 'open' },
+            pullRequest: {
+              id: '198',
+              url: 'https://github.com/example/checkout-service/pull/198',
+              state: 'open',
+            },
             history: [
               {
                 active: {
@@ -2037,7 +2245,12 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/e2e', phase: 'success' },
                   ],
                 },
-                pullRequest: { id: '190', url: 'https://github.com/example/checkout-service/pull/190', prMergeTime: daysAgo(4), state: 'merged' },
+                pullRequest: {
+                  id: '190',
+                  url: 'https://github.com/example/checkout-service/pull/190',
+                  prMergeTime: daysAgo(4),
+                  state: 'merged',
+                },
               },
             ],
           },
@@ -2078,7 +2291,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                 { key: 'ci/e2e', phase: 'success', description: 'All 24 e2e flows passed' },
               ],
             },
-            pullRequest: { id: '205', url: 'https://github.com/example/checkout-service/pull/205', state: 'open' },
+            pullRequest: {
+              id: '205',
+              url: 'https://github.com/example/checkout-service/pull/205',
+              state: 'open',
+            },
             history: [
               {
                 active: {
@@ -2115,7 +2332,12 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/e2e', phase: 'success' },
                   ],
                 },
-                pullRequest: { id: '185', url: 'https://github.com/example/checkout-service/pull/185', prMergeTime: daysAgo(3), state: 'merged' },
+                pullRequest: {
+                  id: '185',
+                  url: 'https://github.com/example/checkout-service/pull/185',
+                  prMergeTime: daysAgo(3),
+                  state: 'merged',
+                },
               },
               // Emergency hotfix merged directly on GitHub, outside the promoter
               {
@@ -2218,8 +2440,16 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
       },
       spec: {
         gitRepositoryRef: { name: 'orders-api-repo' },
-        activeCommitStatuses: [{ key: 'ci/build' }, { key: 'ci/test' }, { key: 'ci/migration-check' }],
-        proposedCommitStatuses: [{ key: 'ci/build' }, { key: 'ci/test' }, { key: 'ci/migration-check' }],
+        activeCommitStatuses: [
+          { key: 'ci/build' },
+          { key: 'ci/test' },
+          { key: 'ci/migration-check' },
+        ],
+        proposedCommitStatuses: [
+          { key: 'ci/build' },
+          { key: 'ci/test' },
+          { key: 'ci/migration-check' },
+        ],
         environments: [
           { branch: 'env/dev', autoMerge: true },
           { branch: 'env/staging', autoMerge: true },
@@ -2245,7 +2475,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
               commitStatuses: [
                 { key: 'ci/build', phase: 'success', description: 'Build passed' },
                 { key: 'ci/test', phase: 'success', description: '210 tests passed' },
-                { key: 'ci/migration-check', phase: 'failure', description: 'Migration check failed' },
+                {
+                  key: 'ci/migration-check',
+                  phase: 'failure',
+                  description: 'Migration check failed',
+                },
               ],
             },
             proposed: {
@@ -2262,7 +2496,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
               commitStatuses: [
                 { key: 'ci/build', phase: 'success', description: 'Build passed' },
                 { key: 'ci/test', phase: 'success', description: '210 tests passed' },
-                { key: 'ci/migration-check', phase: 'failure', description: 'Migration check failed' },
+                {
+                  key: 'ci/migration-check',
+                  phase: 'failure',
+                  description: 'Migration check failed',
+                },
               ],
             },
             history: [
@@ -2282,7 +2520,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                   commitStatuses: [
                     { key: 'ci/build', phase: 'success' },
                     { key: 'ci/test', phase: 'success' },
-                    { key: 'ci/migration-check', phase: 'failure', description: 'Migration check failed' },
+                    {
+                      key: 'ci/migration-check',
+                      phase: 'failure',
+                      description: 'Migration check failed',
+                    },
                   ],
                 },
                 proposed: {
@@ -2302,7 +2544,12 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/migration-check', phase: 'failure' },
                   ],
                 },
-                pullRequest: { id: '320', url: 'https://github.com/example/orders-api/pull/320', prMergeTime: hoursAgo(6), state: 'merged' },
+                pullRequest: {
+                  id: '320',
+                  url: 'https://github.com/example/orders-api/pull/320',
+                  prMergeTime: hoursAgo(6),
+                  state: 'merged',
+                },
               },
               // attempt #2 — failed on tests
               {
@@ -2320,7 +2567,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                   commitStatuses: [
                     { key: 'ci/build', phase: 'success' },
                     { key: 'ci/test', phase: 'failure', description: '3 tests failed' },
-                    { key: 'ci/migration-check', phase: 'failure', description: 'Blocked by earlier failure' },
+                    {
+                      key: 'ci/migration-check',
+                      phase: 'failure',
+                      description: 'Blocked by earlier failure',
+                    },
                   ],
                 },
                 proposed: {
@@ -2340,7 +2591,12 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/migration-check', phase: 'failure' },
                   ],
                 },
-                pullRequest: { id: '317', url: 'https://github.com/example/orders-api/pull/317', prMergeTime: hoursAgo(20), state: 'merged' },
+                pullRequest: {
+                  id: '317',
+                  url: 'https://github.com/example/orders-api/pull/317',
+                  prMergeTime: hoursAgo(20),
+                  state: 'merged',
+                },
               },
               // attempt #1 — the original change that broke everything
               {
@@ -2358,7 +2614,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                   commitStatuses: [
                     { key: 'ci/build', phase: 'failure', description: 'Build failed' },
                     { key: 'ci/test', phase: 'failure', description: 'Blocked by build failure' },
-                    { key: 'ci/migration-check', phase: 'failure', description: 'Blocked by build failure' },
+                    {
+                      key: 'ci/migration-check',
+                      phase: 'failure',
+                      description: 'Blocked by build failure',
+                    },
                   ],
                 },
                 proposed: {
@@ -2378,7 +2638,12 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/migration-check', phase: 'failure' },
                   ],
                 },
-                pullRequest: { id: '312', url: 'https://github.com/example/orders-api/pull/312', prMergeTime: daysAgo(2), state: 'merged' },
+                pullRequest: {
+                  id: '312',
+                  url: 'https://github.com/example/orders-api/pull/312',
+                  prMergeTime: daysAgo(2),
+                  state: 'merged',
+                },
               },
               // last known-good before the saga began
               {
@@ -2416,7 +2681,12 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/migration-check', phase: 'success' },
                   ],
                 },
-                pullRequest: { id: '305', url: 'https://github.com/example/orders-api/pull/305', prMergeTime: daysAgo(3), state: 'merged' },
+                pullRequest: {
+                  id: '305',
+                  url: 'https://github.com/example/orders-api/pull/305',
+                  prMergeTime: daysAgo(3),
+                  state: 'merged',
+                },
               },
             ],
           },
@@ -2453,12 +2723,20 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                 repoURL: 'https://github.com/example/orders-api',
               },
               commitStatuses: [
-                { key: 'ci/build', phase: 'failure', description: 'Waiting on the previous environment' },
+                {
+                  key: 'ci/build',
+                  phase: 'failure',
+                  description: 'Waiting on the previous environment',
+                },
                 { key: 'ci/test', phase: 'failure', description: 'Blocked' },
                 { key: 'ci/migration-check', phase: 'failure', description: 'Blocked' },
               ],
             },
-            pullRequest: { id: '313', url: 'https://github.com/example/orders-api/pull/313', state: 'open' },
+            pullRequest: {
+              id: '313',
+              url: 'https://github.com/example/orders-api/pull/313',
+              state: 'open',
+            },
             history: [
               {
                 active: {
@@ -2495,7 +2773,12 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/migration-check', phase: 'success' },
                   ],
                 },
-                pullRequest: { id: '300', url: 'https://github.com/example/orders-api/pull/300', prMergeTime: daysAgo(8), state: 'merged' },
+                pullRequest: {
+                  id: '300',
+                  url: 'https://github.com/example/orders-api/pull/300',
+                  prMergeTime: daysAgo(8),
+                  state: 'merged',
+                },
               },
             ],
           },
@@ -2640,7 +2923,12 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/test', phase: 'success' },
                   ],
                 },
-                pullRequest: { id: '410', url: 'https://github.com/example/storefront/pull/410', prMergeTime: hoursAgo(10), state: 'merged' },
+                pullRequest: {
+                  id: '410',
+                  url: 'https://github.com/example/storefront/pull/410',
+                  prMergeTime: hoursAgo(10),
+                  state: 'merged',
+                },
               },
               // SHARED feature SHA, earlier promotion — ties dev row to staging/prod
               {
@@ -2676,7 +2964,12 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/test', phase: 'success' },
                   ],
                 },
-                pullRequest: { id: '402', url: 'https://github.com/example/storefront/pull/402', prMergeTime: daysAgo(3), state: 'merged' },
+                pullRequest: {
+                  id: '402',
+                  url: 'https://github.com/example/storefront/pull/402',
+                  prMergeTime: daysAgo(3),
+                  state: 'merged',
+                },
               },
             ],
           },
@@ -2750,7 +3043,12 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/test', phase: 'success' },
                   ],
                 },
-                pullRequest: { id: '408', url: 'https://github.com/example/storefront/pull/408', prMergeTime: hoursAgo(8), state: 'merged' },
+                pullRequest: {
+                  id: '408',
+                  url: 'https://github.com/example/storefront/pull/408',
+                  prMergeTime: hoursAgo(8),
+                  state: 'merged',
+                },
               },
               // shared feature SHA — same as dev/prod
               {
@@ -2786,7 +3084,12 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/test', phase: 'success' },
                   ],
                 },
-                pullRequest: { id: '400', url: 'https://github.com/example/storefront/pull/400', prMergeTime: daysAgo(4), state: 'merged' },
+                pullRequest: {
+                  id: '400',
+                  url: 'https://github.com/example/storefront/pull/400',
+                  prMergeTime: daysAgo(4),
+                  state: 'merged',
+                },
               },
             ],
           },
@@ -2826,7 +3129,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                 { key: 'ci/test', phase: 'success' },
               ],
             },
-            pullRequest: { id: '412', url: 'https://github.com/example/storefront/pull/412', state: 'open' },
+            pullRequest: {
+              id: '412',
+              url: 'https://github.com/example/storefront/pull/412',
+              state: 'open',
+            },
             history: [
               // PROD-ONLY config commit — appears only in this column. It landed
               // before the live gift-wrapping commit, then gift wrapping was
@@ -2864,7 +3171,12 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                     { key: 'ci/test', phase: 'success' },
                   ],
                 },
-                pullRequest: { id: '405', url: 'https://github.com/example/storefront/pull/405', prMergeTime: daysAgo(4), state: 'merged' },
+                pullRequest: {
+                  id: '405',
+                  url: 'https://github.com/example/storefront/pull/405',
+                  prMergeTime: daysAgo(4),
+                  state: 'merged',
+                },
               },
             ],
           },
@@ -2963,7 +3275,12 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                   { key: 'ci/test', phase: 'success' },
                 ],
               },
-              pullRequest: { id: `${600 + r.n}`, url: `https://github.com/example/catalog-service/pull/${600 + r.n}`, prMergeTime: daysAgo(r.dev), state: 'merged' },
+              pullRequest: {
+                id: `${600 + r.n}`,
+                url: `https://github.com/example/catalog-service/pull/${600 + r.n}`,
+                prMergeTime: daysAgo(r.dev),
+                state: 'merged',
+              },
             })),
           },
           {
@@ -3000,7 +3317,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                 { key: 'ci/test', phase: 'success' },
               ],
             },
-            pullRequest: { id: '607', url: 'https://github.com/example/catalog-service/pull/607', state: 'open' },
+            pullRequest: {
+              id: '607',
+              url: 'https://github.com/example/catalog-service/pull/607',
+              state: 'open',
+            },
             history: STANDARD_RELEASES.slice(1).map((r) => ({
               active: {
                 dry: {
@@ -3030,7 +3351,12 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                   { key: 'ci/test', phase: 'success' },
                 ],
               },
-              pullRequest: { id: `${620 + r.n}`, url: `https://github.com/example/catalog-service/pull/${620 + r.n}`, prMergeTime: daysAgo(r.staging), state: 'merged' },
+              pullRequest: {
+                id: `${620 + r.n}`,
+                url: `https://github.com/example/catalog-service/pull/${620 + r.n}`,
+                prMergeTime: daysAgo(r.staging),
+                state: 'merged',
+              },
             })),
           },
           {
@@ -3067,7 +3393,11 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                 { key: 'ci/test', phase: 'success' },
               ],
             },
-            pullRequest: { id: '626', url: 'https://github.com/example/catalog-service/pull/626', state: 'open' },
+            pullRequest: {
+              id: '626',
+              url: 'https://github.com/example/catalog-service/pull/626',
+              state: 'open',
+            },
             history: STANDARD_RELEASES.slice(2).map((r) => ({
               active: {
                 dry: {
@@ -3097,7 +3427,12 @@ const MOCK_STRATEGIES: Record<string, PromotionStrategy[]> = {
                   { key: 'ci/test', phase: 'success' },
                 ],
               },
-              pullRequest: { id: `${640 + r.n}`, url: `https://github.com/example/catalog-service/pull/${640 + r.n}`, prMergeTime: daysAgo(r.prod), state: 'merged' },
+              pullRequest: {
+                id: `${640 + r.n}`,
+                url: `https://github.com/example/catalog-service/pull/${640 + r.n}`,
+                prMergeTime: daysAgo(r.prod),
+                state: 'merged',
+              },
             })),
           },
         ],

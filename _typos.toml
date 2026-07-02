@@ -1,3 +1,7 @@
+[default.extend-words]
+# ".loca.lt" is localtunnel's public dev-preview domain, not a typo of "local".
+loca = "loca"
+
 [files]
 extend-exclude = [
     "docs/assets/**",

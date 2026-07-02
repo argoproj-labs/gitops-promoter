@@ -18,12 +18,16 @@ const FlowCell: React.FC<{
   onJumpToRow?: (rowId: string) => void;
 }> = ({ cell, branch, isSelected, onSelect, rowsById, onJumpToRow }) => {
   if (cell.kind === 'not-reached') {
-    return <div className="cell cell--not-reached" aria-label={`Not reached in ${branch}`}>Not reached</div>;
+    return (
+      <div className="cell cell--not-reached" aria-label={`Not reached in ${branch}`}>
+        Not reached
+      </div>
+    );
   }
 
   const failingChecks = cell.commitStatuses
     .filter((s) => s.phase === 'failure')
-    .map((s) => s.description ? `${s.key}: ${s.description}` : s.key);
+    .map((s) => (s.description ? `${s.key}: ${s.description}` : s.key));
 
   const time = cell.at ? timeAgo(cell.at) : '';
   const exact = cell.at ? formatDate(cell.at) : '';
@@ -39,11 +43,9 @@ const FlowCell: React.FC<{
   return (
     <button
       type="button"
-      className={[
-        'cell',
-        `cell--${cell.kind}`,
-        isSelected ? 'cell--selected' : '',
-      ].filter(Boolean).join(' ')}
+      className={['cell', `cell--${cell.kind}`, isSelected ? 'cell--selected' : '']
+        .filter(Boolean)
+        .join(' ')}
       onClick={onSelect}
       aria-label={`${
         cell.kind === 'in-flight'
@@ -74,7 +76,15 @@ const FlowCell: React.FC<{
       {prId && (
         <div className="cell__commit">
           <div className="cell__commit-meta">
-            <Tooltip label={<>Promotion PR into {branch}: #{prId}<br />Open on remote</>}>
+            <Tooltip
+              label={
+                <>
+                  Promotion PR into {branch}: #{prId}
+                  <br />
+                  Open on remote
+                </>
+              }
+            >
               <a
                 className="cell__pr"
                 href={prUrl}
@@ -94,22 +104,27 @@ const FlowCell: React.FC<{
         {cell.kind === 'failed' && failingChecks.length > 0 && (
           <span className="cell__reason">{failingChecks[0]}</span>
         )}
-        {cell.kind === 'no-op' && <span className="cell__reason cell__reason--muted">{cell.noopNote}</span>}
-        {cell.kind === 'was-here' && cell.supersededById && onJumpToRow && rowsById.get(cell.supersededById) && (
-          <div className="cell__bottom-row">
-            <button
-              type="button"
-              className="cell__superseded"
-              onClick={(e) => {
-                e.stopPropagation();
-                onJumpToRow(cell.supersededById!);
-              }}
-              title={`Replaced by ${rowsById.get(cell.supersededById)!.subject}`}
-            >
-              <FaArrowRight aria-hidden="true" /> Replaced
-            </button>
-          </div>
+        {cell.kind === 'no-op' && (
+          <span className="cell__reason cell__reason--muted">{cell.noopNote}</span>
         )}
+        {cell.kind === 'was-here' &&
+          cell.supersededById &&
+          onJumpToRow &&
+          rowsById.get(cell.supersededById) && (
+            <div className="cell__bottom-row">
+              <button
+                type="button"
+                className="cell__superseded"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onJumpToRow(cell.supersededById!);
+                }}
+                title={`Replaced by ${rowsById.get(cell.supersededById)!.subject}`}
+              >
+                <FaArrowRight aria-hidden="true" /> Replaced
+              </button>
+            </div>
+          )}
       </div>
     </button>
   );

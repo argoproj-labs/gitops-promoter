@@ -77,12 +77,8 @@ const Card: React.FC<CardProps> = ({ environments, onHistoryNavigate }) => {
           const mergeTimeAgo = env.activeMergeTimeAgo ?? undefined;
 
           const hasPendingProposal =
-            proposedStatus !== undefined &&
-            ['pending', 'failure'].includes(proposedStatus);
-          const cardClassName = [
-            'env-card',
-            hasPendingProposal ? '' : 'single-commit-group',
-          ]
+            proposedStatus !== undefined && ['pending', 'failure'].includes(proposedStatus);
+          const cardClassName = ['env-card', hasPendingProposal ? '' : 'single-commit-group']
             .filter(Boolean)
             .join(' ');
 
@@ -140,38 +136,38 @@ const Card: React.FC<CardProps> = ({ environments, onHistoryNavigate }) => {
 
                   {/* Proposed Commits Section */}
                   {isProcessing ? (
-                      // Processing: stand in for the Proposed section with a labeled
-                      // loading placeholder while the newer commit is hydrated.
-                      <div className="commit-group env-card__proposed-loading">
-                        <div className="commit-group-header">
-                          <StatusIcon phase="pending" type="health" />
-                          <h4 className="commit-group-title">Proposed</h4>
-                        </div>
-                        <div
-                          className="env-card__proposed-loading-bar"
-                          role="progressbar"
-                          aria-label="Preparing newer commit"
-                        />
-                        <div className="env-card__proposed-loading-text">
-                          preparing newer commit&hellip;
-                        </div>
+                    // Processing: stand in for the Proposed section with a labeled
+                    // loading placeholder while the newer commit is hydrated.
+                    <div className="commit-group env-card__proposed-loading">
+                      <div className="commit-group-header">
+                        <StatusIcon phase="pending" type="health" />
+                        <h4 className="commit-group-title">Proposed</h4>
                       </div>
-                    ) : proposedStatus !== 'promoted' && proposedStatus !== 'success' ? (
-                      <CommitInfo
-                        title="Proposed"
-                        deploymentCommit={proposedDeploymentCommit}
-                        codeCommit={env.proposedReferenceCommit}
-                        isActive={false}
-                        status={env.proposedStatus as StatusType}
-                        className="proposed"
-                        deploymentCommitUrl={env.proposedDryCommitUrl}
-                        codeCommitUrl={env.proposedReferenceCommitUrl}
-                        checks={env.proposedChecks}
-                        healthSummary={env.proposedChecksSummary}
-                        prUrl={env.prUrl}
-                        prNumber={env.prNumber?.toString()}
+                      <div
+                        className="env-card__proposed-loading-bar"
+                        role="progressbar"
+                        aria-label="Preparing newer commit"
                       />
-                    ) : null}
+                      <div className="env-card__proposed-loading-text">
+                        preparing newer commit&hellip;
+                      </div>
+                    </div>
+                  ) : proposedStatus !== 'promoted' && proposedStatus !== 'success' ? (
+                    <CommitInfo
+                      title="Proposed"
+                      deploymentCommit={proposedDeploymentCommit}
+                      codeCommit={env.proposedReferenceCommit}
+                      isActive={false}
+                      status={env.proposedStatus as StatusType}
+                      className="proposed"
+                      deploymentCommitUrl={env.proposedDryCommitUrl}
+                      codeCommitUrl={env.proposedReferenceCommitUrl}
+                      checks={env.proposedChecks}
+                      healthSummary={env.proposedChecksSummary}
+                      prUrl={env.prUrl}
+                      prNumber={env.prNumber?.toString()}
+                    />
+                  ) : null}
                 </div>
               </div>
               {index < enrichedEnvs.length - 1 && (

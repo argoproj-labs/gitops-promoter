@@ -1,10 +1,5 @@
 import React from 'react';
-import {
-  FaCheckCircle,
-  FaTimesCircle,
-  FaSpinner,
-  FaQuestionCircle,
-} from 'react-icons/fa';
+import { FaCheckCircle, FaTimesCircle, FaSpinner, FaQuestionCircle } from 'react-icons/fa';
 import type { CommitStatus } from '@shared/types/promotion';
 import type { CellKind, CellState, HealthKey } from './types';
 
@@ -71,7 +66,9 @@ export function cellPillTooltip(cell: CellState, branch: string): string {
 export function healthSummary(health: HealthKey, statuses: CommitStatus[]): string {
   const label = HEALTH_LABELS[health];
   if (statuses.length === 0) return label;
-  let pass = 0, fail = 0, pend = 0;
+  let pass = 0,
+    fail = 0,
+    pend = 0;
   for (const s of statuses) {
     if (s.phase === 'success') pass++;
     else if (s.phase === 'failure') fail++;

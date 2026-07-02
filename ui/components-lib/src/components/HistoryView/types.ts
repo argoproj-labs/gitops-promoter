@@ -6,13 +6,7 @@ import type { Commit, CommitStatus, PullRequest } from '@shared/types/promotion'
 
 export type HealthKey = 'success' | 'failure' | 'pending' | 'unknown';
 
-export type CellKind =
-  | 'live'
-  | 'in-flight'
-  | 'was-here'
-  | 'failed'
-  | 'no-op'
-  | 'not-reached';
+export type CellKind = 'live' | 'in-flight' | 'was-here' | 'failed' | 'no-op' | 'not-reached';
 
 export interface CellState {
   kind: CellKind;

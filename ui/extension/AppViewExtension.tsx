@@ -247,9 +247,7 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
           </div>
         )}
       </div>
-      {selected && view === 'card' && (
-        <Card environments={selected.status?.environments || []} />
-      )}
+      {selected && view === 'card' && <Card environments={selected.status?.environments || []} />}
       {selected && view === 'history' && (
         <div ref={historyWrapperRef} className="gp-history-wrapper">
           <HistoryView strategy={selected} />

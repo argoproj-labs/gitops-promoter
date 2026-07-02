@@ -68,7 +68,9 @@ export const Dropdown: React.FC<{
         aria-label={label}
         title={label}
       >
-        <span className="hp-dd__icon" aria-hidden="true">{icon}</span>
+        <span className="hp-dd__icon" aria-hidden="true">
+          {icon}
+        </span>
         <span className="hp-dd__value">{value}</span>
         <FaChevronDown className="hp-dd__caret" aria-hidden="true" />
       </button>

@@ -25,9 +25,7 @@ export function buildMatrix(strategy: PromotionStrategy): {
     const liveSha = env.active?.dry?.sha;
     const proposedSha = env.proposed?.dry?.sha;
     const proposedDistinct =
-      env.proposed?.dry && proposedSha && proposedSha !== liveSha
-        ? env.proposed.dry
-        : undefined;
+      env.proposed?.dry && proposedSha && proposedSha !== liveSha ? env.proposed.dry : undefined;
 
     return {
       branch: env.branch,
@@ -38,9 +36,7 @@ export function buildMatrix(strategy: PromotionStrategy): {
       liveHealth: healthFromStatuses(liveStatuses),
       proposedCommit: proposedDistinct,
       proposedStatuses: proposedDistinct ? proposedStatuses : [],
-      proposedHealth: proposedDistinct
-        ? healthFromStatuses(proposedStatuses)
-        : 'unknown',
+      proposedHealth: proposedDistinct ? healthFromStatuses(proposedStatuses) : 'unknown',
       proposedPR: proposedDistinct ? env.pullRequest : undefined,
     };
   });
@@ -156,25 +152,23 @@ export function buildMatrix(strategy: PromotionStrategy): {
       const statuses = entry.active?.commitStatuses ?? [];
       const health = healthFromStatuses(statuses);
       const olderSha = history[idx + 1]?.active?.dry?.sha;
-      const isNoop =
-        !!commit.sha && !!olderSha && commit.sha === olderSha;
-      let kind: CellKind = isNoop
-        ? 'no-op'
-        : health === 'failure'
-          ? 'failed'
-          : 'was-here';
+      const isNoop = !!commit.sha && !!olderSha && commit.sha === olderSha;
+      let kind: CellKind = isNoop ? 'no-op' : health === 'failure' ? 'failed' : 'was-here';
 
       const row = getRow(commit, '', entry.pullRequest);
       if (!row) return;
 
-      const supersededById = idx > 0 ? commitKey(history[idx - 1]?.active?.dry) ?? undefined : undefined;
+      const supersededById =
+        idx > 0 ? (commitKey(history[idx - 1]?.active?.dry) ?? undefined) : undefined;
       setCell(row, branch, {
         kind,
         commit,
         commitStatuses: statuses,
         health,
         pullRequest: entry.pullRequest,
-        noopNote: isNoop ? `Same dry SHA as the previous entry, so ${branch} didn't change.` : undefined,
+        noopNote: isNoop
+          ? `Same dry SHA as the previous entry, so ${branch} didn't change.`
+          : undefined,
         supersededById,
         at: commit.commitTime ?? entry.pullRequest?.prMergeTime ?? undefined,
       });
@@ -200,7 +194,9 @@ export function buildMatrix(strategy: PromotionStrategy): {
       times.push(0);
     }
     row.freshestAt = times.length ? Math.max(...times) : 0;
-    row.earliestAt = times.length ? Math.min(...times.filter((t) => t > 0), ...(times.includes(0) ? [Infinity] : [])) : 0;
+    row.earliestAt = times.length
+      ? Math.min(...times.filter((t) => t > 0), ...(times.includes(0) ? [Infinity] : []))
+      : 0;
     if (!Number.isFinite(row.earliestAt)) row.earliestAt = row.freshestAt;
 
     // Fill missing cells as 'not-reached'
@@ -236,9 +232,7 @@ export function buildMatrix(strategy: PromotionStrategy): {
       const firstCellKind = row.cells[firstBranch].kind;
       const stuckEligibleKinds: CellKind[] = ['was-here', 'failed'];
       const appearsInFirstAsStuck = stuckEligibleKinds.includes(firstCellKind);
-      const appearsLater = branches.slice(1).some(
-        (b) => row.cells[b].kind !== 'not-reached',
-      );
+      const appearsLater = branches.slice(1).some((b) => row.cells[b].kind !== 'not-reached');
       row.isStuckUpstream = appearsInFirstAsStuck && !appearsLater;
     }
 
