@@ -4,11 +4,7 @@ import Card from '@components-lib/components/Card';
 import HistoryView from '@components-lib/components/HistoryView/HistoryView';
 import { PromotionStrategy } from '@shared/types/promotion';
 import { AppViewComponentProps } from '@shared/types/extension';
-import { getDemoStrategies } from './mockData';
 import './StrategyDropdown.scss';
-
-// TEMP-MOCK: local visual review only. REVERT before commit.
-const USE_MOCK = true;
 
 type ViewMode = 'card' | 'history';
 
@@ -74,24 +70,6 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
   useEffect(() => {
     const appName = application.metadata.name;
     const appNamespace = application.metadata.namespace;
-
-    if (USE_MOCK) {
-      const mocked = getDemoStrategies();
-      setFetchError(null);
-      setStrategies(mocked);
-      const keys = mocked.map(strategyKey);
-      const fromUrl = getParam();
-      const fromStored = getStored(appNamespace, appName);
-      const initial =
-        (keys.includes(fromUrl) && fromUrl) ||
-        (keys.includes(fromStored) && fromStored) ||
-        keys[0] ||
-        '';
-      setSelectedKey(initial);
-      setParam(initial);
-      setStored(appNamespace, appName, initial);
-      return;
-    }
 
     const strategyNodes = (tree.nodes || []).filter(
       (node) => node.group === GROUP && node.kind === KIND,
