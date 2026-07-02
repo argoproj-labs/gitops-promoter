@@ -10,7 +10,7 @@ import Tooltip from './Tooltip';
 import FlowCell from './FlowCell';
 import DetailDrawer from './DetailDrawer';
 import { useDrawerWidth } from './useDrawerWidth';
-import './HistoryView.scss';
+import './index.scss';
 
 export interface HistoryViewProps {
   /** The PromotionStrategy whose history is rendered. */

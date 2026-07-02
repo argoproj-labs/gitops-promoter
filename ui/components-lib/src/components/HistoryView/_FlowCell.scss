@@ -1,0 +1,229 @@
+@use 'tokens' as *;
+
+.cell {
+  appearance: none;
+  background: transparent;
+  border: 1px solid $stroke;
+  border-radius: $radius-md;
+  padding: 6px 9px;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+  min-height: 54px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 4px;
+  position: relative;
+  overflow: hidden;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease;
+
+  // Left status rail — a thin colored bar that signals the cell's state
+  // without relying on the fill alone.
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 3px;
+    background: transparent;
+  }
+
+  &:hover {
+    border-color: $stroke-strong;
+  }
+  &--selected {
+    border-color: $accent !important;
+  }
+}
+
+.cell--live {
+  background: $success-soft;
+  border-color: $success-border;
+  &::before {
+    background: $success-ink;
+  }
+}
+.cell--was-here {
+  background: $bg-soft;
+  border-color: $stroke-strong;
+  &::before {
+    background: $stroke-strong;
+  }
+}
+.cell--in-flight {
+  background: $pending-soft;
+  border-color: $pending-border;
+  &::before {
+    background: $pending-ink;
+  }
+}
+.cell--failed {
+  background: $failure-soft;
+  border-color: $failure-border;
+  &::before {
+    background: $failure-ink;
+  }
+}
+.cell--no-op {
+  background: $bg-soft;
+  border: 1px dashed $stroke-strong;
+  &::before {
+    background: transparent;
+  }
+}
+.cell--not-reached {
+  border: 1px dashed $stroke;
+  background: transparent;
+  color: $text-muted;
+  font-size: 10.5px;
+  font-style: italic;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 54px;
+  border-radius: $radius-md;
+  padding: 6px;
+  &:hover {
+    border-color: $stroke;
+  }
+}
+
+.cell__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+}
+
+.cell__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 9.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  svg {
+    font-size: 9px;
+  }
+
+  &--live {
+    background: $success-ink;
+    color: #fff;
+  }
+  &--was-here {
+    background: $bg-surface;
+    color: $text-secondary;
+    border: 1px solid $stroke-strong;
+  }
+  &--in-flight {
+    background: $pending-ink;
+    color: #fff;
+  }
+  &--failed {
+    background: $failure-ink;
+    color: #fff;
+  }
+  &--no-op {
+    background: $bg-surface;
+    color: $text-secondary;
+    border: 1px dashed $stroke-strong;
+  }
+  &--not-reached {
+    background: transparent;
+    color: $text-muted;
+    border: 1px dashed $stroke-strong;
+  }
+}
+
+.cell__time {
+  font-size: 10.5px;
+  color: $text-muted;
+  white-space: nowrap;
+}
+
+/* Commit identity inside each cell — SHA pill + author + PR. The subject is
+   intentionally omitted: the row label already identifies the commit. */
+.cell__commit {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.cell__commit-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cell__bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cell__bottom-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+}
+
+.cell__reason {
+  font-size: 11px;
+  color: $text-secondary;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  &--muted {
+    color: $text-muted;
+    font-style: italic;
+  }
+}
+
+.cell__pr {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: $accent;
+  text-decoration: none;
+  flex: none;
+  margin-left: auto;
+  &:hover {
+    text-decoration: underline;
+  }
+  svg {
+    font-size: 9px;
+  }
+}
+
+.cell__superseded {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: $text-muted;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+  &:hover {
+    color: $text-primary;
+    text-decoration: underline;
+  }
+  svg {
+    font-size: 8px;
+  }
+}

@@ -1,0 +1,522 @@
+@use 'tokens' as *;
+
+.hp {
+  display: flex;
+  flex-direction: column;
+  // Clamp to the viewport space below wherever the view is mounted. The
+  // dashboard renders it 48px from the top; hosts that mount it lower (e.g.
+  // the ArgoCD extension, below Argo's chrome and tab strip) override
+  // `--hp-offset-top` so the matrix still ends at the bottom of the screen.
+  height: calc(100vh - var(--hp-offset-top, 48px));
+  background: $bg-page;
+  overflow: hidden;
+}
+
+.hp-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.hp-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.hp-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px 10px 20px;
+  background: $bg-surface;
+  border-bottom: 1px solid $stroke;
+  flex-shrink: 0;
+  z-index: 4;
+}
+
+.hp-header__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid $stroke;
+  border-radius: $radius-md;
+  background: $bg-surface;
+  color: $text-primary;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+  svg {
+    font-size: 10px;
+  }
+  &:hover {
+    background: $bg-softer;
+    border-color: $stroke-strong;
+  }
+}
+
+.hp-header__title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  h1 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 700;
+    color: $text-primary;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+.hp-header__subtitle {
+  font-size: 12px;
+  font-weight: 500;
+  color: $text-muted;
+}
+
+.hp-header__spacer {
+  flex: 1;
+}
+
+.hp-header__stats {
+  display: flex;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.hp-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: $text-secondary;
+  padding: 3px 9px 3px 7px;
+  border-radius: 999px;
+  border: 1px solid $stroke;
+  background: $bg-surface;
+  strong {
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1;
+  }
+  &::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    flex-shrink: 0;
+  }
+  &--success {
+    &::before {
+      background: $success-ink;
+    }
+    strong {
+      color: $success-ink;
+    }
+    background: $success-soft;
+    border-color: $success-border;
+  }
+  &--warning {
+    &::before {
+      background: $pending-ink;
+    }
+    strong {
+      color: $pending-ink;
+    }
+    background: $pending-soft;
+    border-color: $pending-border;
+  }
+  &--danger {
+    &::before {
+      background: $failure-ink;
+    }
+    strong {
+      color: $failure-ink;
+    }
+    background: $failure-soft;
+    border-color: $failure-border;
+  }
+  &--info {
+    &::before {
+      background: $accent;
+    }
+    strong {
+      color: $accent;
+    }
+    background: rgba(31, 79, 94, 0.08);
+    border-color: rgba(31, 79, 94, 0.3);
+  }
+}
+
+.hp-loading,
+.hp-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: calc(100vh - var(--hp-offset-top, 48px));
+  color: $text-secondary;
+  font-size: 14px;
+}
+.hp-empty__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: $text-primary;
+}
+.hp-empty__body {
+  margin: 0;
+  max-width: 360px;
+  text-align: center;
+  color: $text-secondary;
+}
+.hp-empty__back {
+  padding: 6px 14px;
+  border: 1px solid $stroke;
+  border-radius: $radius-md;
+  background: $bg-surface;
+  cursor: pointer;
+  &:hover {
+    background: $bg-softer;
+  }
+}
+
+// Lives inline on the right side of the merged header (title on the left).
+.hp-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.hp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: $text-secondary;
+  background: $bg-surface;
+  border: 1px solid $stroke;
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1.45;
+  transition:
+    background 0.14s ease,
+    color 0.14s ease,
+    border-color 0.14s ease;
+
+  &:hover {
+    background: $bg-softer;
+    border-color: $stroke-strong;
+  }
+
+  &--active {
+    background: $accent;
+    color: #ffffff;
+    border-color: $accent;
+    .hp-chip__count {
+      color: rgba(255, 255, 255, 0.92);
+      background: rgba(255, 255, 255, 0.18);
+    }
+  }
+}
+
+.hp-chip__count {
+  font-size: 10px;
+  font-weight: 700;
+  background: $bg-softer;
+  color: $text-muted;
+  padding: 0 5px;
+  border-radius: 999px;
+}
+
+/* Environment filter chips: env-colored identity (dot + tinted active state)
+   set inline via the env palette, so the count pill stays readable rather
+   than the white-on-accent treatment used by the default active chip. */
+// When an env chip is active it adopts the standard solid-accent chip look
+// (same as the Filter/Sort chips); the identity dot turns white so it stays
+// visible on the dark fill.
+.hp-chip--env.hp-chip--active .hp-chip__dot {
+  background: #fff;
+}
+
+.hp-chip__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: none;
+}
+
+.hp-matrix {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  // No top padding: the sticky header must sit flush with the scroll
+  // container's top edge. With top padding, scrolled-up rows show through the
+  // gap above where the header sticks. The header supplies its own top spacing.
+  padding: 0 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+// Banner + column header stick together as one unit at the top of the scroll
+// container, so both stay pinned as rows scroll under them.
+.hp-matrix__sticky {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: $bg-page;
+  border-bottom: 1px solid $stroke;
+  margin-bottom: 6px;
+  // The banner supplies its own bottom spacing before the column header.
+  .hp-env-banner {
+    margin: 16px 0 8px;
+  }
+}
+
+.hp-matrix__head {
+  display: grid;
+  gap: 6px;
+  padding: 16px 10px 10px;
+}
+
+// When the banner is present it already provides the top spacing, so the
+// header drops its own to avoid a double gap.
+.hp-env-banner + .hp-matrix__head {
+  padding-top: 0;
+}
+
+.hp-matrix__head-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: $text-muted;
+}
+
+.hp-matrix__head-env {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hp-matrix__head-env-swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.hp-matrix__head-env-branch {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  // Color set inline via env palette.
+}
+
+.hp-matrix__empty {
+  padding: 32px;
+  text-align: center;
+  color: $text-muted;
+  font-size: 13px;
+  border: 1px dashed $stroke;
+  border-radius: $radius-lg;
+  background: $bg-surface;
+}
+
+.hp-env-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border: 1px solid $stroke;
+  border-radius: $radius-md;
+  background: $bg-surface;
+  color: $text-muted;
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.hp-env-banner__text {
+  flex: 1;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  strong {
+    font-weight: 700;
+  }
+}
+
+.hp-env-banner__clear {
+  appearance: none;
+  background: transparent;
+  border: 1px solid currentColor;
+  color: inherit;
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: $radius-sm;
+  cursor: pointer;
+  &:hover {
+    background: currentColor;
+    color: $bg-surface;
+  }
+}
+
+.hp-row__env-slot {
+  display: flex;
+  min-width: 0;
+  transition:
+    opacity 0.18s ease,
+    filter 0.18s ease;
+
+  > .cell {
+    flex: 1;
+    min-width: 0;
+  }
+  > .cell--not-reached {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+.hp-row__env-slot--focus > .cell:not(.cell--not-reached) {
+  outline: 2px solid rgba(31, 79, 94, 0.3);
+  outline-offset: -1px;
+}
+
+.hp-row {
+  display: grid;
+  gap: 8px;
+  padding: 7px 8px;
+  // The env-column region is tinted down (a faint cool wash) so the eye lands
+  // on the Commit column first — that column re-asserts the bright surface.
+  background: $bg-softer;
+  border: 1px solid $stroke;
+  border-radius: $radius-md;
+  align-items: stretch;
+  transition: border-color 0.14s ease;
+
+  &:hover {
+    border-color: $stroke-strong;
+  }
+  &--selected {
+    border-color: $accent;
+    background: rgba(31, 79, 94, 0.04);
+  }
+}
+
+.hp-row__commit {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: 4px 10px 4px 8px;
+  min-width: 0;
+  position: relative;
+
+  // Bright surface that pops out of the tinted env region — the first thing
+  // the eye is drawn to. Bleeds to the row's top/bottom/left edges via
+  // negative margins so it reads as a solid lit column, not a padded card.
+  background: $bg-surface;
+  margin: -7px 0 -7px -8px;
+  padding: 11px 10px 11px 16px;
+  border-top-left-radius: $radius-md;
+  border-bottom-left-radius: $radius-md;
+
+  // Hairline divider separating the commit identity from its env cells.
+  border-right: 1px solid $stroke;
+}
+
+.hp-row__subject {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: $text-primary;
+  line-height: 1.3;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.hp-row__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.hp-row__sha {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: $accent;
+  background: rgba(31, 79, 94, 0.08);
+  padding: 0 5px;
+  border-radius: $radius-sm;
+  text-decoration: none;
+  &:hover {
+    background: rgba(31, 79, 94, 0.16);
+  }
+}
+
+.hp-row__pr {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: $accent;
+  text-decoration: none;
+  padding: 0 5px;
+  border-radius: $radius-sm;
+  border: 1px solid rgba(31, 79, 94, 0.3);
+  &:hover {
+    background: rgba(31, 79, 94, 0.08);
+  }
+  svg {
+    font-size: 9px;
+  }
+}
+
+.hp-row__author {
+  font-size: 11px;
+  color: $text-muted;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.hp-row__author-inline,
+.hp-row__time-inline {
+  font-size: 11px;
+  color: $text-muted;
+}
+
+.hp-row__sep {
+  color: $text-muted;
+}

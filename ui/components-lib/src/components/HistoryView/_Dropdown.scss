@@ -1,0 +1,139 @@
+@use 'sass:color';
+@use 'tokens' as *;
+
+.hp-dd {
+  display: inline-flex;
+}
+
+.hp-dd__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: $text-secondary;
+  background: $bg-surface;
+  border: 1px solid $stroke-strong;
+  border-radius: $radius-md;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1.45;
+  transition:
+    background 0.14s ease,
+    color 0.14s ease,
+    border-color 0.14s ease;
+
+  &:hover {
+    background: $bg-softer;
+  }
+  &--open {
+    border-color: $accent;
+    background: $bg-softer;
+  }
+
+  // A filter that has departed from its default gets a solid accent fill so it
+  // stands out clearly against the other (unset) controls.
+  &--active {
+    color: #ffffff;
+    border-color: $accent;
+    background: $accent;
+
+    &:hover {
+      background: color.adjust($accent, $lightness: -4%);
+    }
+  }
+}
+
+.hp-dd__icon {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  color: $text-muted;
+}
+
+.hp-dd__trigger--active .hp-dd__icon {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.hp-dd__value {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hp-dd__caret {
+  font-size: 9px;
+  color: $text-muted;
+  margin-left: 1px;
+}
+
+.hp-dd__trigger--active .hp-dd__caret {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.hp-dd__menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 180px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 4px;
+  background: $bg-surface;
+  border: 1px solid $stroke-strong;
+  border-radius: $radius-md;
+  box-shadow: 0 8px 24px rgba(15, 35, 60, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.hp-dd__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: $text-secondary;
+  background: transparent;
+  border: none;
+  border-radius: $radius-sm;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+
+  &:hover {
+    background: $bg-softer;
+  }
+
+  &--selected {
+    color: $accent;
+    background: rgba(31, 79, 94, 0.08);
+  }
+}
+
+.hp-dd__item-label {
+  flex: 1;
+}
+
+/* Checkbox affordance for multi-select menu items. */
+.hp-dd__check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border: 1px solid $stroke-strong;
+  border-radius: $radius-sm;
+  font-size: 8px;
+  color: #ffffff;
+  background: $bg-surface;
+}
+
+.hp-dd__item--selected .hp-dd__check {
+  background: $accent;
+  border-color: $accent;
+}
