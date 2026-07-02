@@ -12,10 +12,6 @@ import DetailDrawer from './DetailDrawer';
 import { useDrawerWidth } from './useDrawerWidth';
 import './HistoryView.scss';
 
-/* ═════════════════════════════════════════════════════════════════
-   Main view
-   ═════════════════════════════════════════════════════════════════ */
-
 export interface HistoryViewProps {
   /** The PromotionStrategy whose history is rendered. */
   strategy?: PromotionStrategy;
@@ -109,12 +105,10 @@ const HistoryView: React.FC<HistoryViewProps> = ({
     (rowId: string) => {
       const row = rowsById.get(rowId);
       if (!row) return;
-      // Prefer a "live" cell, otherwise the first non-not-reached cell.
       const branches = envs.map((e) => e.branch);
       const liveBranch = branches.find((b) => row.cells[b].kind === 'live');
       const branch = liveBranch ?? branches.find((b) => row.cells[b].kind !== 'not-reached');
       if (branch) setSelected({ rowId, branch });
-      // scroll into view
       requestAnimationFrame(() => {
         document
           .getElementById(`row-${rowId}`)

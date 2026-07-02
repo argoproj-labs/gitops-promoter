@@ -3,10 +3,6 @@ import { FaCheckCircle, FaTimesCircle, FaSpinner, FaQuestionCircle } from 'react
 import type { CommitStatus } from '@shared/types/promotion';
 import type { CellKind, CellState, HealthKey } from './types';
 
-/* ═════════════════════════════════════════════════════════════════
-   Presentation constants + label helpers
-   ═════════════════════════════════════════════════════════════════ */
-
 export const HEALTH_LABELS: Record<HealthKey, string> = {
   success: 'Healthy',
   failure: 'Failed',
@@ -24,7 +20,6 @@ export const CELL_KIND_LABELS: Record<CellKind, string> = {
   'not-reached': 'Not reached',
 };
 
-/* Detail drawer resize bounds (px) and the localStorage key for persistence. */
 export const DRAWER_MIN_WIDTH = 320;
 export const DRAWER_MAX_WIDTH = 760;
 export const DRAWER_DEFAULT_WIDTH = 420;

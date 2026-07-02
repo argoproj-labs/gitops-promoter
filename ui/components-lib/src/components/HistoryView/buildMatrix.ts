@@ -8,16 +8,10 @@ type StatusEnvironment = NonNullable<
   NonNullable<PromotionStrategy['status']>['environments']
 >[number];
 
-/* ═════════════════════════════════════════════════════════════════
-   Build the commit-first matrix
-   ═════════════════════════════════════════════════════════════════ */
-
-/** Keep only envs that have some history or a current live commit. */
 function envHasContent(env: StatusEnvironment): boolean {
   return (env.history?.length ?? 0) > 0 || !!env.active?.dry;
 }
 
-/** Build the display column (color, health, proposed diff) for one env. */
 function buildEnvColumn(
   env: StatusEnvironment,
   i: number,
@@ -44,7 +38,6 @@ function buildEnvColumn(
   };
 }
 
-/** Look up or insert a row for this commit in the given map. */
 function getRow(
   rowsById: Map<string, CommitRow>,
   commit: Commit | undefined,
@@ -82,8 +75,8 @@ function getRow(
   return row;
 }
 
-/** Rank of each cell kind; later cells overwrite when they have stronger
- *  semantics (live > in-flight > failed > was-here > no-op). */
+// Higher rank wins when two cells collide on the same env: a stronger state
+// (live) overwrites a weaker one (was-here) regardless of processing order.
 const cellRank: Record<CellKind, number> = {
   live: 6,
   'in-flight': 5,
@@ -93,7 +86,6 @@ const cellRank: Record<CellKind, number> = {
   'not-reached': 1,
 };
 
-/** Insert / upgrade a cell, keeping the stronger of the existing and next. */
 function setCell(row: CommitRow, branch: string, next: CellState) {
   const prev = row.cells[branch];
   if (!prev || cellRank[next.kind] >= cellRank[prev.kind]) {
@@ -101,7 +93,6 @@ function setCell(row: CommitRow, branch: string, next: CellState) {
   }
 }
 
-/** Finalize one row: compute timestamps, fill missing cells, roll up flags. */
 function finalizeRow(row: CommitRow, envs: StatusEnvironment[]): CommitRow {
   const times: number[] = [];
   for (const branch of envs.map((e) => e.branch)) {
@@ -157,7 +148,6 @@ export function buildMatrix(strategy: PromotionStrategy): {
 
   const envColumns: EnvColumn[] = envs.map((env, i) => buildEnvColumn(env, i, specByBranch));
 
-  // rowsById holds the merged matrix; we'll fill cells as we walk envs.
   const rowsById = new Map<string, CommitRow>();
 
   envs.forEach((env) => {
@@ -166,7 +156,6 @@ export function buildMatrix(strategy: PromotionStrategy): {
     const proposedSha = env.proposed?.dry?.sha;
     const proposedIsDistinct = !!proposedSha && proposedSha !== liveSha;
 
-    // 1) Live cell
     if (env.active?.dry) {
       const statuses = env.active.commitStatuses ?? [];
       const health = healthFromStatuses(statuses);
@@ -184,7 +173,6 @@ export function buildMatrix(strategy: PromotionStrategy): {
       }
     }
 
-    // 2) In-flight cell (distinct proposed)
     if (proposedIsDistinct && env.proposed?.dry) {
       const statuses = env.proposed.commitStatuses ?? [];
       const health = healthFromStatuses(statuses);
@@ -203,9 +191,8 @@ export function buildMatrix(strategy: PromotionStrategy): {
       }
     }
 
-    // 3) History cells — walk newest → oldest. Detect no-op by comparing each
-    // entry's dry SHA against the next-older entry's dry SHA (same heuristic
-    // used in the previous design).
+    // No-op detection: an entry whose dry SHA equals the next-older entry's
+    // means this env didn't actually change on that promotion.
     const history = env.history ?? [];
     history.forEach((entry, idx) => {
       const commit = entry.active?.dry;
@@ -236,10 +223,9 @@ export function buildMatrix(strategy: PromotionStrategy): {
     });
   });
 
-  // Finalize rollups + timestamps
   const rows = Array.from(rowsById.values()).map((row) => finalizeRow(row, envs));
 
-  // Default sort: newest first
+  // Newest first.
   rows.sort((a, b) => b.freshestAt - a.freshestAt);
 
   return { envs: envColumns, rows };

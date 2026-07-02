@@ -5,10 +5,6 @@ import { timeAgo, formatDate, getCommitUrl } from '@shared/utils/util';
 import type { CellState, CommitRow, EnvColumn, HealthKey } from './types';
 import { DRAWER_MIN_WIDTH, DRAWER_MAX_WIDTH, HEALTH_LABELS, healthIcon } from './presentation';
 
-/* ═════════════════════════════════════════════════════════════════
-   Detail drawer
-   ═════════════════════════════════════════════════════════════════ */
-
 const DetailDrawer: React.FC<{
   row: CommitRow | null;
   cell: CellState | null;
@@ -52,12 +48,10 @@ const DetailDrawer: React.FC<{
   const passingChecks = cell.commitStatuses.filter((s) => s.phase === 'success');
   const pendingChecks = cell.commitStatuses.filter((s) => s.phase === 'pending');
 
-  // Cross-env story: which other envs did this same commit reach?
   const presence = envs
     .map((e) => ({ env: e, cell: row.cells[e.branch] }))
     .filter((x) => x.cell.kind !== 'not-reached');
 
-  // Find where it came from (closest upstream env where this commit was live/was-here)
   const envIdx = envs.findIndex((e) => e.branch === branch);
   const upstream = envs
     .slice(0, envIdx)

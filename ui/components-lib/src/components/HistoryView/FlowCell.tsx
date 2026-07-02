@@ -7,8 +7,6 @@ import { commitKey } from './helpers';
 import { CELL_KIND_LABELS, cellPillTooltip } from './presentation';
 import Tooltip from './Tooltip';
 
-/* ─── one matrix cell ─────────────────────────────────────────────── */
-
 const FlowCell: React.FC<{
   cell: CellState;
   branch: string;

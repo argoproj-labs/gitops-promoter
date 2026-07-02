@@ -1,9 +1,5 @@
 import type { Commit, CommitStatus, PullRequest } from '@shared/types/promotion';
 
-/* ═════════════════════════════════════════════════════════════════
-   Data model
-   ═════════════════════════════════════════════════════════════════ */
-
 export type HealthKey = 'success' | 'failure' | 'pending' | 'unknown';
 
 export type CellKind = 'live' | 'in-flight' | 'was-here' | 'failed' | 'no-op' | 'not-reached';

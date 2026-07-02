@@ -1,8 +1,6 @@
 import type { Commit, CommitStatus } from '@shared/types/promotion';
 import type { HealthKey } from './types';
 
-/* ─── small helpers ───────────────────────────────────────────────── */
-
 export function healthFromStatuses(statuses: CommitStatus[] | undefined): HealthKey {
   if (!statuses || statuses.length === 0) return 'unknown';
   if (statuses.some((s) => s.phase === 'failure')) return 'failure';
