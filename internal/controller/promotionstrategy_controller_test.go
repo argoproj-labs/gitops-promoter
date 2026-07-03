@@ -5199,6 +5199,17 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		})
 	})
 
+	// Changing PreviousEnvironmentCommitStatusKey is a breaking change for users who reference it
+	// in branch protection rules, rulesets, or automation. If this test fails after your change,
+	// update documentation and migration guides before merging.
+	Context("PreviousEnvironmentCommitStatusKey", func() {
+		It("should remain a stable public API value", func() {
+			Expect(promoterv1alpha1.PreviousEnvironmentCommitStatusKey).To(Equal("promoter-previous-environment"),
+				"PreviousEnvironmentCommitStatusKey is a public API used as the SCM commit status context (e.g. GitHub check run name). "+
+					"Users may reference this value in branch protection rules. Update documentation and migration guides before merging.")
+		})
+	})
+
 	/* isPreviousEnvironmentPending has moved: the PreviousEnvironmentCommitStatus controller now
 	   delegates gating to the DAGCommitStatus controller, so these unit tests are commented out
 	   pending a rewrite that targets the DAG controller's upstream-readiness logic instead.

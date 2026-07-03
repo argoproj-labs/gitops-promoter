@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/google/go-github/v71/github"
+	"github.com/google/go-github/v88/github"
 	"github.com/spf13/cobra"
 	"golang.org/x/oauth2"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -59,7 +59,10 @@ func NewDemoCommand() *cobra.Command {
 
 			ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: credentials.Token})
 			tc := oauth2.NewClient(ctx, ts)
-			client := github.NewClient(tc)
+			client, err := github.NewClient(github.WithHTTPClient(tc))
+			if err != nil {
+				return fmt.Errorf("failed to create GitHub client: %w", err)
+			}
 
 			// Get current user
 			user, _, err := client.Users.Get(ctx, "")

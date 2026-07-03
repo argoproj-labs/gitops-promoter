@@ -169,6 +169,10 @@ func (r *PromotionStrategyReconciler) SetupWithManager(ctx context.Context, mgr 
 		return fmt.Errorf("failed to set field index for .spec.sha: %w", err)
 	}
 
+	if err := RegisterGatePromotionStrategyRefFieldIndexes(ctx, mgr.GetFieldIndexer()); err != nil {
+		return err
+	}
+
 	// Use Direct methods to read configuration from the API server without cache during setup.
 	// The cache is not started during SetupWithManager, so we must use the non-cached API reader.
 	rateLimiter, err := settings.GetRateLimiterDirect[promoterv1alpha1.PromotionStrategyConfiguration, ctrl.Request](ctx, r.SettingsMgr)

@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path"
 	"reflect"
 	"slices"
 	"strings"
@@ -527,7 +528,7 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 		// This controller intentionally doesn't have a .Owns for CommitStatuses. Every reconcile of a CommitStatus
 		// checks whether it needs to update a related ChangeTransferPolicy by setting an annotation. Avoiding .Owns
 		// here avoids duplicate reconciliations.
-		Owns(&promoterv1alpha1.PullRequest{}).
+		Owns(&promoterv1alpha1.PullRequest{}, builder.WithPredicates(pullRequestUpdateEnqueuesChangeTransferPolicyPredicate())).
 		// Watch for external enqueue requests from other controllers (e.g., PromotionStrategy).
 		// The handler.EnqueueRequestForObject extracts the namespace/name from the GenericEvent.
 		WatchesRawSource(source.Channel(externalEnqueueChan, &handler.EnqueueRequestForObject{})).
@@ -546,7 +547,12 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 	// to be made concurrency-safe for a single identity first; today its EnvironmentOperations methods share one
 	// on-disk clone and must be called sequentially (see the internal/git package documentation).
 
-	proposedShas, err := gitOperations.GetBranchShas(ctx, ctp.Spec.ProposedBranch, ctp.Spec.ActivePath)
+	// GetBranchShas skips the network fetch for a branch when a live ls-remote confirms its remote
+	// SHA still matches what we observed last reconcile - the commit is then guaranteed already
+	// present in this identity's clone. In the common steady state (nothing changed since the last
+	// reconcile) this avoids paying for a full fetch on either branch. A failed probe (for example a
+	// branch not existing yet) just falls back to a real fetch, exactly as before.
+	proposedShas, err := gitOperations.GetBranchShas(ctx, ctp.Spec.ProposedBranch, ctp.Spec.ActivePath, ctp.Status.Proposed.Hydrated.Sha)
 	if err != nil {
 		// If the proposed branch doesn't exist, it's likely because the hydrator hasn't run yet
 		if strings.Contains(err.Error(), "couldn't find remote ref") {
@@ -555,7 +561,7 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 		return fmt.Errorf("failed to get SHAs for proposed branch %q: %w", ctp.Spec.ProposedBranch, err)
 	}
 
-	activeShas, err := gitOperations.GetBranchShas(ctx, ctp.Spec.ActiveBranch, ctp.Spec.ActivePath)
+	activeShas, err := gitOperations.GetBranchShas(ctx, ctp.Spec.ActiveBranch, ctp.Spec.ActivePath, ctp.Status.Active.Hydrated.Sha)
 	if err != nil {
 		return fmt.Errorf("failed to get SHAs for active branch %q: %w", ctp.Spec.ActiveBranch, err)
 	}
@@ -568,6 +574,13 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 	err = r.setCommitMetadata(ctx, ctp, gitOperations, activeShas.Hydrated, proposedShas.Hydrated)
 	if err != nil {
 		return fmt.Errorf("failed to set commit metadata: %w", err)
+	}
+
+	if err := validateProposedDryMetadata(ctp); err != nil {
+		metadataPath := hydratorMetadataPath(ctp.Spec.ActivePath)
+		r.Recorder.Eventf(ctp, nil, "Warning", constants.MissingProposedHydratorMetadataReason, "EvaluatingPromotion",
+			constants.MissingProposedHydratorMetadataMessage, ctp.Spec.ProposedBranch, ctp.Status.Proposed.Hydrated.Sha, metadataPath)
+		return err
 	}
 
 	err = r.setCommitStatusState(ctx, &ctp.Status.Active, ctp.Spec.ActiveCommitStatuses)
@@ -592,6 +605,44 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 	}
 
 	return nil
+}
+
+func hydratorMetadataPath(activePath string) string {
+	if activePath == "" {
+		return "hydrator.metadata"
+	}
+	return path.Join(activePath, "hydrator.metadata")
+}
+
+// validateProposedDryMetadata returns an error when the proposed branch has clearly moved ahead of
+// active but promoter could not read a dry SHA from hydrator.metadata at activePath. An empty active
+// dry SHA is normal before the first promotion; an empty proposed dry SHA is not once the proposed
+// branch tip differs from active. A git note dry SHA that differs from proposed dry SHA is fine.
+//
+// This function assumes ctp.Status.Proposed.Hydrated.Sha is non-empty. That should already be
+// confirmed by this point in the reconcile.
+func validateProposedDryMetadata(ctp *promoterv1alpha1.ChangeTransferPolicy) error {
+	if ctp.Status.Proposed.Dry.Sha != "" {
+		return nil
+	}
+
+	proposedHydratedSha := ctp.Status.Proposed.Hydrated.Sha
+
+	if proposedHydratedSha == ctp.Status.Active.Hydrated.Sha {
+		return nil
+	}
+
+	metadataPath := hydratorMetadataPath(ctp.Spec.ActivePath)
+	msg := fmt.Sprintf("proposed branch %q has hydrated commit %s but no dry SHA from %q on that commit",
+		ctp.Spec.ProposedBranch, proposedHydratedSha, metadataPath)
+	if ctp.Spec.ActivePath != "" {
+		msg += fmt.Sprintf("; ensure the hydrator writes hydrator.metadata under activePath %q", ctp.Spec.ActivePath)
+	}
+	if noteDrySha := getNoteDrySha(ctp.Status.Proposed.Note); noteDrySha != "" {
+		msg += fmt.Sprintf(" (git note reports dry SHA %s, confirming hydration ran)", noteDrySha)
+	}
+
+	return errors.New(msg)
 }
 
 // NewTooManyMatchingShaError creates a new TooManyMatchingShaError. This error indicates that there are too many
@@ -1431,6 +1482,59 @@ func TemplatePullRequest(prt promoterv1alpha1.PullRequestTemplate, data map[stri
 	}
 
 	return title, description, nil
+}
+
+// pullRequestUpdateEnqueuesChangeTransferPolicyPredicate limits CTP reconciles triggered by owned
+// PullRequests. Without it, bare Owns(PullRequest) re-enqueues CTP on every PR status write and can
+// drive a CTP→PR→CTP feedback loop (PR SCM sync → status churn → CTP SSA → PR generation bump → repeat).
+//
+// Enqueues CTP on:
+//   - Create and Delete of the owned PullRequest
+//   - Update when metadata.generation changes (spec was patched — title, commit.message, state, etc.)
+//   - Update when the CTP pull-request finalizer is added or removed
+//   - Update when status.state changes (open, merged, closed, or cleared on external close)
+//   - Update when status.externallyMergedOrClosed changes
+//   - Update when status.id is first set ("" → non-empty; PR now exists on the SCM)
+//
+// Does not enqueue CTP on status-only updates, including:
+//   - status.url (stable or changed)
+//   - status.prCreationTime (e.g. fake FindOpen returns time.Now() each sync)
+//   - status.conditions (Ready message, reason, lastTransitionTime)
+//   - status.observedGeneration
+//   - status.id changes after the ID is already populated
+func pullRequestUpdateEnqueuesChangeTransferPolicyPredicate() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc: func(event.CreateEvent) bool { return true },
+		DeleteFunc: func(event.DeleteEvent) bool { return true },
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldPR, ok := e.ObjectOld.(*promoterv1alpha1.PullRequest)
+			if !ok || oldPR == nil {
+				return false
+			}
+			newPR, ok := e.ObjectNew.(*promoterv1alpha1.PullRequest)
+			if !ok || newPR == nil {
+				return false
+			}
+			if oldPR.Generation != newPR.Generation {
+				return true
+			}
+			oldHasCTPFinalizer := controllerutil.ContainsFinalizer(oldPR, promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer)
+			newHasCTPFinalizer := controllerutil.ContainsFinalizer(newPR, promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer)
+			if oldHasCTPFinalizer != newHasCTPFinalizer {
+				return true
+			}
+			if oldPR.Status.State != newPR.Status.State {
+				return true
+			}
+			if !boolPtrEqual(oldPR.Status.ExternallyMergedOrClosed, newPR.Status.ExternallyMergedOrClosed) {
+				return true
+			}
+			if oldPR.Status.ID == "" && newPR.Status.ID != "" {
+				return true
+			}
+			return false
+		},
+	}
 }
 
 // boolPtrEqual compares two *bool pointers for equality.

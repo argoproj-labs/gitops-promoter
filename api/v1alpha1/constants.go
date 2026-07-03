@@ -26,7 +26,9 @@ const ArgoCDCommitStatusDefaultKey = "argocd-health"
 // TimedCommitStatusDefaultKey is the default commit status key for TimedCommitStatus when spec.key is omitted.
 const TimedCommitStatusDefaultKey = "timer"
 
-// PreviousEnvironmentCommitStatusKey the commit status key name used to indicate the previous environment health
+// PreviousEnvironmentCommitStatusKey is the commit status name used to indicate the previous environment health.
+// This value is used as the SCM commit status context (e.g. GitHub check run name) and is part of the public API.
+// Changing it will break branch protection rules and rulesets that reference this name.
 const PreviousEnvironmentCommitStatusKey = "promoter-previous-environment"
 
 // DAGCommitStatusKey is the commit status key name used to indicate that an environment's
