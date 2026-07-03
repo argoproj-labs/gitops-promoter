@@ -299,7 +299,11 @@ func (r *DAGCommitStatusReconciler) createOrUpdateDAGCommitStatus(
 			WithRepositoryReference(acv1alpha1.ObjectReference().
 				WithName(ps.Spec.RepositoryReference.Name)).
 			WithSha(hydratedSha).
-			WithName(description).
+			// Use the stable gate key as the SCM commit status context (spec.Name) so users can
+			// reference a single predictable name in branch protection rules, regardless of which
+			// environment or phase produced the status. The human-readable, per-environment detail
+			// goes in the description instead.
+			WithName(key).
 			WithDescription(description).
 			WithPhase(phase))
 
