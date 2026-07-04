@@ -1731,6 +1731,14 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Key: healthCheckCSKey,
 					},
 				}
+				// The previous-environment gate must be declared explicitly on the PromotionStrategy;
+				// the controller no longer auto-injects it. The PreviousEnvironmentCommitStatus CR
+				// (created below) delegates to a DAGCommitStatus that reports this gate key.
+				promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+					{
+						Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+					},
+				}
 				activeCommitStatusDevelopment.Spec.Name = healthCheckCSKey
 				activeCommitStatusDevelopment.Labels = map[string]string{
 					promoterv1alpha1.CommitStatusLabel: healthCheckCSKey,
@@ -2203,6 +2211,15 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 					{
 						Key: healthCheckCSKey,
+					},
+				}
+
+				// The previous-environment gate must be declared explicitly on the PromotionStrategy;
+				// the controller no longer auto-injects it. The PreviousEnvironmentCommitStatus CR
+				// (created below) delegates to a DAGCommitStatus that reports this gate key.
+				promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+					{
+						Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
 					},
 				}
 				activeCommitStatusDevelopment.Spec.Name = healthCheckCSKey
@@ -2853,6 +2870,15 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					},
 				}
 
+				// The previous-environment gate must be declared explicitly on the PromotionStrategy;
+				// the controller no longer auto-injects it. The PreviousEnvironmentCommitStatus CR
+				// (created below) delegates to a DAGCommitStatus that reports this gate key.
+				promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+					{
+						Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+					},
+				}
+
 				argocdCommitStatus = promoterv1alpha1.ArgoCDCommitStatus{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      name,
@@ -3118,6 +3144,15 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 					{
 						Key: argocdCSLabel,
+					},
+				}
+
+				// The previous-environment gate must be declared explicitly on the PromotionStrategy;
+				// the controller no longer auto-injects it. The PreviousEnvironmentCommitStatus CR
+				// (created below) delegates to a DAGCommitStatus that reports this gate key.
+				promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+					{
+						Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
 					},
 				}
 
@@ -3889,6 +3924,15 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 						Key: healthCheckCSKey,
 					},
 				}
+
+				// The previous-environment gate must be declared explicitly on the PromotionStrategy;
+				// the controller no longer auto-injects it. The PreviousEnvironmentCommitStatus CR
+				// (created below) delegates to a DAGCommitStatus that reports this gate key.
+				promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+					{
+						Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+					},
+				}
 				activeCommitStatusDevelopment.Spec.Name = healthCheckCSKey
 				activeCommitStatusDevelopment.Labels = map[string]string{
 					promoterv1alpha1.CommitStatusLabel: healthCheckCSKey,
@@ -3999,17 +4043,23 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				}, time.Second*5, time.Millisecond*500).Should(Succeed())
 
 				By("Capturing baseline: previous-environment commit status should be at success")
-				csName := utils.KubeSafeUniqueName(name + "-" + ctpStaging.Spec.ActiveBranch + "-previous-environment")
+				// The gate CommitStatus is produced by the DAGCommitStatus that the
+				// PreviousEnvironmentCommitStatus controller generates. Look it up by its gate-key
+				// and environment labels rather than reconstructing the resource name, so the test
+				// does not depend on the naming scheme.
 				commitStatus := &promoterv1alpha1.CommitStatus{}
 				var commitStatusOriginalSha string
 				var commitStatusOriginalPhase promoterv1alpha1.CommitStatusPhase
 
+				gateLabels := client.MatchingLabels{
+					promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+					promoterv1alpha1.EnvironmentLabel:  utils.KubeSafeLabel(ctpStaging.Spec.ActiveBranch),
+				}
 				Eventually(func(g Gomega) {
-					err := k8sClient.Get(ctx, types.NamespacedName{
-						Name:      csName,
-						Namespace: ctpStaging.Namespace,
-					}, commitStatus)
-					g.Expect(err).To(Succeed())
+					csList := promoterv1alpha1.CommitStatusList{}
+					g.Expect(k8sClient.List(ctx, &csList, gateLabels)).To(Succeed())
+					g.Expect(csList.Items).To(HaveLen(1))
+					*commitStatus = csList.Items[0]
 					g.Expect(commitStatus.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -4055,11 +4105,10 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				// Prevent this by skipping the update when active == proposed
 				// Use Consistently (not Eventually) since we're checking that something DOESN'T change
 				Consistently(func(g Gomega) {
-					err := k8sClient.Get(ctx, types.NamespacedName{
-						Name:      csName,
-						Namespace: ctpStaging.Namespace,
-					}, commitStatus)
-					g.Expect(err).To(Succeed())
+					csList := promoterv1alpha1.CommitStatusList{}
+					g.Expect(k8sClient.List(ctx, &csList, gateLabels)).To(Succeed())
+					g.Expect(csList.Items).To(HaveLen(1))
+					commitStatus := &csList.Items[0]
 
 					// Phase should stay at success
 					g.Expect(commitStatus.Spec.Phase).To(Equal(commitStatusOriginalPhase),
