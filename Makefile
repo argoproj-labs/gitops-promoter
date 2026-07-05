@@ -430,7 +430,7 @@ DEADCODE_VERSION ?= v0.47.0
 DEADCODE_FILTER ?= github.com/argoproj-labs/gitops-promoter/internal
 MOCKERY_VERSION ?= v3.7.1
 NILAWAY_VERSION ?= latest
-GORELEASER_VERSION ?= v2.16.0
+GORELEASER_VERSION ?= v2.17.0
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
