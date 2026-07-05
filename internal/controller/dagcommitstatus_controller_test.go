@@ -63,6 +63,19 @@ func dagEnvStatus(branch, activeDry, hydratedDry string, healthy bool, commitTim
 	}
 }
 
+// dagEnvStatusWithNote is like dagEnvStatus but also sets the hydrator git note. The note dry SHA
+// is what getEffectiveHydratedDrySha treats as the branch's effective hydrated dry, so when it
+// differs from Proposed.Dry.Sha the branch is a no-op for that SHA (the note advanced without a new
+// hydrated commit). This is required to exercise upstreamPending's no-op recursion, which the
+// note-less dagEnvStatus cannot reach.
+func dagEnvStatusWithNote(branch, activeDry, proposedDry, noteDry string, healthy bool, commitTime time.Time) promoterv1alpha1.EnvironmentStatus {
+	envStatus := dagEnvStatus(branch, activeDry, proposedDry, healthy, commitTime)
+	if noteDry != "" {
+		envStatus.Proposed.Note = &promoterv1alpha1.HydratorMetadata{DrySha: noteDry}
+	}
+	return envStatus
+}
+
 var _ = Describe("DAG graph logic", func() {
 	Describe("buildDAG", func() {
 		It("builds a graph preserving spec order", func() {
@@ -194,6 +207,98 @@ var _ = Describe("DAG graph logic", func() {
 				"perf": dagEnvStatus("perf", newDry, newDry, true, newer),
 			}
 			pending, _ := upstreamsPending(diamond(), "prd", newDry, metav1.NewTime(newer), status)
+			Expect(pending).To(BeFalse())
+		})
+
+		// The fan-in cases above only assert the boolean. Verify the pending reason names the
+		// upstream that is actually blocking, so users can see which one to look at.
+		It("fan-in: pending reason names the upstream that has not promoted the target", func() {
+			status := map[string]promoterv1alpha1.EnvironmentStatus{
+				"e2e":  dagEnvStatus("e2e", newDry, newDry, true, newer),
+				"perf": dagEnvStatus("perf", oldDry, newDry, true, old),
+			}
+			pending, reason := upstreamsPending(diamond(), "prd", newDry, metav1.NewTime(newer), status)
+			Expect(pending).To(BeTrue())
+			Expect(reason).To(Equal("Waiting for previous environment to be promoted"))
+		})
+
+		// A clean no-op upstream (its git note advanced to the target dry without a new
+		// hydrated commit, and it is healthy) must be transparently skipped by recursing into its
+		// own upstreams. Here stg is a healthy no-op for newDry and its upstream dev has merged
+		// newDry and is healthy, so prd is ready.
+		It("no-op recursion: ready when a healthy no-op upstream's own upstream is ready", func() {
+			status := map[string]promoterv1alpha1.EnvironmentStatus{
+				// stg: note advanced to newDry, but active == proposed == oldDry (no new commit).
+				"stg": dagEnvStatusWithNote("stg", oldDry, oldDry, newDry, true, old),
+				"dev": dagEnvStatus("dev", newDry, newDry, true, newer),
+			}
+			pending, _ := upstreamsPending(linear(), "prd", newDry, metav1.NewTime(newer), status)
+			Expect(pending).To(BeFalse())
+		})
+
+		// Recursion through a healthy no-op still blocks when the deeper upstream is not ready:
+		// stg is a healthy no-op, but dev has not promoted newDry yet.
+		It("no-op recursion: pending when a healthy no-op upstream's own upstream is not ready", func() {
+			status := map[string]promoterv1alpha1.EnvironmentStatus{
+				"stg": dagEnvStatusWithNote("stg", oldDry, oldDry, newDry, true, old),
+				"dev": dagEnvStatus("dev", oldDry, newDry, true, old),
+			}
+			pending, _ := upstreamsPending(linear(), "prd", newDry, metav1.NewTime(newer), status)
+			Expect(pending).To(BeTrue())
+		})
+
+		// A no-op upstream is only skippable if it is itself healthy. An unhealthy no-op blocks
+		// even though it carries no real change of its own — this is the scenario that previously
+		// caused premature promotions.
+		It("no-op recursion: pending when the no-op upstream itself is unhealthy", func() {
+			status := map[string]promoterv1alpha1.EnvironmentStatus{
+				"stg": dagEnvStatusWithNote("stg", oldDry, oldDry, newDry, false, old),
+				"dev": dagEnvStatus("dev", newDry, newDry, true, newer),
+			}
+			pending, reason := upstreamsPending(linear(), "prd", newDry, metav1.NewTime(newer), status)
+			Expect(pending).To(BeTrue())
+			Expect(reason).To(ContainSubstring("argocd-health"))
+		})
+
+		// An upstream that has merged the target dry but whose commit is older than the current
+		// environment's active commit must block — otherwise the current environment would
+		// promote ahead of an upstream that has not caught up in time ordering.
+		It("commit-time ordering: pending when the upstream's merged commit is older than current", func() {
+			status := map[string]promoterv1alpha1.EnvironmentStatus{
+				"stg": dagEnvStatus("stg", newDry, newDry, true, old),
+			}
+			pending, reason := upstreamsPending(linear(), "prd", newDry, metav1.NewTime(newer), status)
+			Expect(pending).To(BeTrue())
+			Expect(reason).To(ContainSubstring("older"))
+		})
+
+		// Uneven-length diamond: dev -> fast -> prd (short path) and dev -> canary -> soak -> prd
+		// (long path). prd must wait for the SLOW path: even when the short path (fast) is
+		// fully ready, an unready node on the long path (soak) keeps prd pending.
+		unevenDiamond := func() *dag {
+			g, _ := buildDAG(dagEnvs(
+				"dev", "",
+				"fast", "dev",
+				"canary", "dev",
+				"soak", "canary",
+				"prd", "fast,soak",
+			))
+			return g
+		}
+		It("uneven diamond: pending when the long path is not ready even though the short path is", func() {
+			status := map[string]promoterv1alpha1.EnvironmentStatus{
+				"fast": dagEnvStatus("fast", newDry, newDry, true, newer),
+				"soak": dagEnvStatus("soak", oldDry, newDry, true, old),
+			}
+			pending, _ := upstreamsPending(unevenDiamond(), "prd", newDry, metav1.NewTime(newer), status)
+			Expect(pending).To(BeTrue())
+		})
+		It("uneven diamond: ready when both paths have promoted the target and are healthy", func() {
+			status := map[string]promoterv1alpha1.EnvironmentStatus{
+				"fast": dagEnvStatus("fast", newDry, newDry, true, newer),
+				"soak": dagEnvStatus("soak", newDry, newDry, true, newer),
+			}
+			pending, _ := upstreamsPending(unevenDiamond(), "prd", newDry, metav1.NewTime(newer), status)
 			Expect(pending).To(BeFalse())
 		})
 	})
