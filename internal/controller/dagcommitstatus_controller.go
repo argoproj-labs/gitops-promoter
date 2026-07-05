@@ -175,7 +175,7 @@ func (r *DAGCommitStatusReconciler) updateDAGCommitStatus(ctx context.Context, d
 		// instead leaves the gate undetectable, so the promotion never advances. Mirrors the
 		// PreviousEnvironmentCommitStatus controller.
 		proposedHydratedSha := envStatus.Proposed.Hydrated.Sha
-		if _, err := r.createOrUpdateDAGCommitStatus(ctx, dcs, ps, branch, proposedHydratedSha, phase); err != nil {
+		if _, err := r.createOrUpdateDAGCommitStatus(ctx, dcs, ps, branch, proposedHydratedSha, phase, reason); err != nil {
 			return fmt.Errorf("failed to set DAG commit status for branch %q: %w", branch, err)
 		}
 	}
@@ -267,6 +267,7 @@ func (r *DAGCommitStatusReconciler) createOrUpdateDAGCommitStatus(
 	branch string,
 	hydratedSha string,
 	phase promoterv1alpha1.CommitStatusPhase,
+	pendingReason string,
 ) (*promoterv1alpha1.CommitStatus, error) {
 	key := dcs.Spec.Key
 	if key == "" {
@@ -279,9 +280,15 @@ func (r *DAGCommitStatusReconciler) createOrUpdateDAGCommitStatus(
 	kind := reflect.TypeOf(promoterv1alpha1.DAGCommitStatus{}).Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
-	description := branch + " - dependencies satisfied"
-	if phase != promoterv1alpha1.CommitPhaseSuccess {
-		description = branch + " - waiting for dependencies"
+	// Describe what the gate aggregates. When pending, surface the specific reason (e.g. which
+	// upstream is being waited on) so users can see what is blocking the promotion; fall back to a
+	// generic message if none was provided.
+	description := branch + " - all upstream environments promoted and healthy"
+	if phase == promoterv1alpha1.CommitPhasePending {
+		description = branch + " - waiting for upstream environments"
+		if pendingReason != "" {
+			description = pendingReason
+		}
 	}
 
 	labels := utils.CommitStatusStandardLabels(dcs, branch, key)

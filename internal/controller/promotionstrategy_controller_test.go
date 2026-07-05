@@ -4055,11 +4055,26 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 					promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
 					promoterv1alpha1.EnvironmentLabel:  utils.KubeSafeLabel(ctpStaging.Spec.ActiveBranch),
 				}
-				Eventually(func(g Gomega) {
+				// The gate is owned by the generated DAGCommitStatus (named after this test's
+				// resources), so filter by owner name to isolate this test's gate from other tests
+				// that may have a gate on the same environment branch.
+				getPreviousEnvGate := func(g Gomega) promoterv1alpha1.CommitStatus {
 					csList := promoterv1alpha1.CommitStatusList{}
 					g.Expect(k8sClient.List(ctx, &csList, gateLabels)).To(Succeed())
-					g.Expect(csList.Items).To(HaveLen(1))
-					*commitStatus = csList.Items[0]
+					var matches []promoterv1alpha1.CommitStatus
+					for _, cs := range csList.Items {
+						for _, owner := range cs.OwnerReferences {
+							if owner.Name == name {
+								matches = append(matches, cs)
+								break
+							}
+						}
+					}
+					g.Expect(matches).To(HaveLen(1))
+					return matches[0]
+				}
+				Eventually(func(g Gomega) {
+					*commitStatus = getPreviousEnvGate(g)
 					g.Expect(commitStatus.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -4105,10 +4120,8 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				// Prevent this by skipping the update when active == proposed
 				// Use Consistently (not Eventually) since we're checking that something DOESN'T change
 				Consistently(func(g Gomega) {
-					csList := promoterv1alpha1.CommitStatusList{}
-					g.Expect(k8sClient.List(ctx, &csList, gateLabels)).To(Succeed())
-					g.Expect(csList.Items).To(HaveLen(1))
-					commitStatus := &csList.Items[0]
+					gate := getPreviousEnvGate(g)
+					commitStatus := &gate
 
 					// Phase should stay at success
 					g.Expect(commitStatus.Spec.Phase).To(Equal(commitStatusOriginalPhase),
@@ -4498,6 +4511,29 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		var typeNamespacedName types.NamespacedName
 		var ctpDev, ctpStaging promoterv1alpha1.ChangeTransferPolicy
 
+		// getPreviousEnvGate returns the previous-environment gate CommitStatus for the given
+		// environment branch. The gate is produced by the DAGCommitStatus that the
+		// PreviousEnvironmentCommitStatus controller generates (named after this test's resources),
+		// so filter by owner name to isolate this test's gate from any other test's.
+		getPreviousEnvGate := func(g Gomega, branch string) promoterv1alpha1.CommitStatus {
+			csList := promoterv1alpha1.CommitStatusList{}
+			g.Expect(k8sClient.List(ctx, &csList, client.MatchingLabels{
+				promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+				promoterv1alpha1.EnvironmentLabel:  utils.KubeSafeLabel(branch),
+			})).To(Succeed())
+			var matches []promoterv1alpha1.CommitStatus
+			for _, cs := range csList.Items {
+				for _, owner := range cs.OwnerReferences {
+					if owner.Name == name {
+						matches = append(matches, cs)
+						break
+					}
+				}
+			}
+			g.Expect(matches).To(HaveLen(1))
+			return matches[0]
+		}
+
 		BeforeEach(func() {
 			By("Creating the resources with active commit statuses to enable previous environment checks")
 			var scmSecret *v1.Secret
@@ -4514,6 +4550,14 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 				{
 					Key: healthCheckCSKey,
+				},
+			}
+			// The previous-environment gate must be declared explicitly on the PromotionStrategy;
+			// the controller no longer auto-injects it. The PreviousEnvironmentCommitStatus CR
+			// (created below) delegates to a DAGCommitStatus that reports this gate key.
+			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{
+					Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
 				},
 			}
 			activeCommitStatusDevelopment.Spec.Name = healthCheckCSKey
@@ -4669,13 +4713,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				g.Expect(stagingEnv.Proposed.Dry.Sha).To(Equal(secondDrySha))
 
 				// The previous environment commit status should exist and be pending
-				var prevEnvCS promoterv1alpha1.CommitStatus
-				csName := utils.KubeSafeUniqueName(name + "-" + ctpStaging.Spec.ActiveBranch + "-previous-environment")
-				err = k8sClient.Get(ctx, types.NamespacedName{
-					Name:      csName,
-					Namespace: "default",
-				}, &prevEnvCS)
-				g.Expect(err).To(Succeed())
+				prevEnvCS := getPreviousEnvGate(g, ctpStaging.Spec.ActiveBranch)
 				g.Expect(prevEnvCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
 				g.Expect(prevEnvCS.Spec.Description).To(ContainSubstring("hydrator to finish processing"))
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -4720,13 +4758,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 			By("Verifying staging can now be promoted (previous environment check passes)")
 			Eventually(func(g Gomega) {
-				var prevEnvCS promoterv1alpha1.CommitStatus
-				csName := utils.KubeSafeUniqueName(name + "-" + ctpStaging.Spec.ActiveBranch + "-previous-environment")
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      csName,
-					Namespace: "default",
-				}, &prevEnvCS)
-				g.Expect(err).To(Succeed())
+				prevEnvCS := getPreviousEnvGate(g, ctpStaging.Spec.ActiveBranch)
 				g.Expect(prevEnvCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -4834,13 +4866,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 			By("Verifying the previous environment commit status is pending (blocking staging)")
 			Eventually(func(g Gomega) {
-				var prevEnvCS promoterv1alpha1.CommitStatus
-				csName := utils.KubeSafeUniqueName(name + "-" + ctpStaging.Spec.ActiveBranch + "-previous-environment")
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      csName,
-					Namespace: "default",
-				}, &prevEnvCS)
-				g.Expect(err).To(Succeed())
+				prevEnvCS := getPreviousEnvGate(g, ctpStaging.Spec.ActiveBranch)
 				g.Expect(prevEnvCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
 				g.Expect(prevEnvCS.Spec.Description).To(ContainSubstring("hydrator to finish processing"))
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -4866,13 +4892,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 			By("Verifying staging is now unblocked (previous env check passes due to git note)")
 			Eventually(func(g Gomega) {
-				var prevEnvCS promoterv1alpha1.CommitStatus
-				csName := utils.KubeSafeUniqueName(name + "-" + ctpStaging.Spec.ActiveBranch + "-previous-environment")
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      csName,
-					Namespace: "default",
-				}, &prevEnvCS)
-				g.Expect(err).To(Succeed())
+				prevEnvCS := getPreviousEnvGate(g, ctpStaging.Spec.ActiveBranch)
 				g.Expect(prevEnvCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -5056,13 +5076,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 			By("Verifying production's previous environment check passes (staging is ahead with matching Note.DrySha)")
 			Eventually(func(g Gomega) {
-				var prevEnvCS promoterv1alpha1.CommitStatus
-				csName := utils.KubeSafeUniqueName(name + "-" + ctpProd.Spec.ActiveBranch + "-previous-environment")
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      csName,
-					Namespace: "default",
-				}, &prevEnvCS)
-				g.Expect(err).To(Succeed())
+				prevEnvCS := getPreviousEnvGate(g, ctpProd.Spec.ActiveBranch)
 				g.Expect(prevEnvCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -5174,13 +5188,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			By("Verifying production's previous environment check is PENDING (waiting for dev)")
 			// At this point, dev hasn't merged yet, so prod should be blocked
 			Eventually(func(g Gomega) {
-				var prevEnvCS promoterv1alpha1.CommitStatus
-				csName := utils.KubeSafeUniqueName(name + "-" + ctpProd.Spec.ActiveBranch + "-previous-environment")
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      csName,
-					Namespace: "default",
-				}, &prevEnvCS)
-				g.Expect(err).To(Succeed())
+				prevEnvCS := getPreviousEnvGate(g, ctpProd.Spec.ActiveBranch)
 				g.Expect(prevEnvCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending), "prod should be blocked while dev hasn't merged")
 			}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -5220,13 +5228,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 			By("Verifying production's previous environment check is now SUCCESS")
 			Eventually(func(g Gomega) {
-				var prevEnvCS promoterv1alpha1.CommitStatus
-				csName := utils.KubeSafeUniqueName(name + "-" + ctpProd.Spec.ActiveBranch + "-previous-environment")
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      csName,
-					Namespace: "default",
-				}, &prevEnvCS)
-				g.Expect(err).To(Succeed())
+				prevEnvCS := getPreviousEnvGate(g, ctpProd.Spec.ActiveBranch)
 				g.Expect(prevEnvCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess), "prod should be unblocked after dev is healthy")
 			}, constants.EventuallyTimeout).Should(Succeed())
 
