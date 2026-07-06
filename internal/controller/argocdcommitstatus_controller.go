@@ -29,7 +29,6 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"k8s.io/client-go/tools/events"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/multicluster-runtime/pkg/controller"
 
@@ -446,18 +445,18 @@ func enqueueArgoCDCommitStatusForPromotionStrategy(mcMgr mcmanager.Manager) mcha
 		}
 		logger := log.FromContext(ctx)
 		var list promoterv1alpha1.ArgoCDCommitStatusList
-		if err := mcMgr.GetLocalManager().GetClient().List(ctx, &list, client.InNamespace(ps.Namespace)); err != nil {
+		if err := mcMgr.GetLocalManager().GetClient().List(ctx, &list,
+			client.InNamespace(ps.Namespace),
+			client.MatchingFields{PromotionStrategyRefField: ps.Name},
+		); err != nil {
 			logger.Error(err, "failed to list ArgoCDCommitStatus resources for PromotionStrategy watch")
 			return nil
 		}
-		var reqs []mcreconcile.Request
+		reqs := make([]mcreconcile.Request, 0, len(list.Items))
 		for i := range list.Items {
-			acs := &list.Items[i]
-			if acs.Spec.PromotionStrategyRef.Name == ps.Name {
-				reqs = append(reqs, mcreconcile.Request{
-					Request: reconcile.Request{NamespacedName: client.ObjectKeyFromObject(acs)},
-				})
-			}
+			reqs = append(reqs, mcreconcile.Request{
+				Request: reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])},
+			})
 		}
 		return reqs
 	})
@@ -542,7 +541,7 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: maxConcurrentReconciles,
 			RateLimiter:             rateLimiter,
-			UsePriorityQueue:        ptr.To(true),
+			UsePriorityQueue:        new(true),
 		}).
 		Watches(&argocd.Application{}, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
 			mcbuilder.WithEngageWithLocalCluster(watchLocalApplications),
@@ -681,7 +680,7 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 	commitStatusName := key + "/" + targetBranch
 
 	resourceName := utils.CommitStatusResourceName(ctx, &argoCDCommitStatus, targetBranch)
-	kind := reflect.TypeOf(promoterv1alpha1.ArgoCDCommitStatus{}).Name()
+	kind := reflect.TypeFor[promoterv1alpha1.ArgoCDCommitStatus]().Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
 	// Build the spec

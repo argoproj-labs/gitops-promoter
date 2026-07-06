@@ -175,6 +175,10 @@ func (r *PromotionStrategyReconciler) SetupWithManager(ctx context.Context, mgr 
 		return fmt.Errorf("failed to set field index for .spec.sha: %w", err)
 	}
 
+	if err := RegisterGatePromotionStrategyRefFieldIndexes(ctx, mgr.GetFieldIndexer()); err != nil {
+		return err
+	}
+
 	// Use Direct methods to read configuration from the API server without cache during setup.
 	// The cache is not started during SetupWithManager, so we must use the non-cached API reader.
 	rateLimiter, err := settings.GetRateLimiterDirect[promoterv1alpha1.PromotionStrategyConfiguration, ctrl.Request](ctx, r.SettingsMgr)
@@ -204,7 +208,7 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 	ctpName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(ps.Name, environment.Branch))
 
 	// Build owner reference
-	kind := reflect.TypeOf(promoterv1alpha1.PromotionStrategy{}).Name()
+	kind := reflect.TypeFor[promoterv1alpha1.PromotionStrategy]().Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
 	// Build active commit status selectors
@@ -582,7 +586,7 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 	// TODO: do we like this name proposed-<name>?
 	csName := utils.KubeSafeUniqueName(promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel + ctp.Name)
 
-	kind := reflect.TypeOf(promoterv1alpha1.ChangeTransferPolicy{}).Name()
+	kind := reflect.TypeFor[promoterv1alpha1.ChangeTransferPolicy]().Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
 	// If there is only one commit status, use the URL from that commit status.
@@ -600,9 +604,14 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 		return nil, fmt.Errorf("failed to marshal previous environment commit statuses: %w", err)
 	}
 
-	description := previousEnvironmentBranch + " - synced and healthy"
-	if phase == promoterv1alpha1.CommitPhasePending && pendingReason != "" {
+	var description string
+	switch {
+	case phase == promoterv1alpha1.CommitPhasePending && pendingReason != "":
 		description = pendingReason
+	case phase == promoterv1alpha1.CommitPhasePending:
+		description = previousEnvironmentBranch + " - waiting for active commit statuses"
+	default:
+		description = previousEnvironmentBranch + " - all active commit statuses passed"
 	}
 
 	// Build the apply configuration
@@ -624,7 +633,7 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 			WithRepositoryReference(acv1alpha1.ObjectReference().
 				WithName(ctp.Spec.RepositoryReference.Name)).
 			WithSha(ctp.Status.Proposed.Hydrated.Sha).
-			WithName(previousEnvironmentBranch + " - synced and healthy").
+			WithName(promoterv1alpha1.PreviousEnvironmentCommitStatusKey).
 			WithDescription(description).
 			WithPhase(phase).
 			WithUrl(url))

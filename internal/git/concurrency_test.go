@@ -64,10 +64,10 @@ var _ = Describe("Concurrency (gitops-promoter#1495)", func() {
 			env := envs[i]
 			proposed := proposedBranches[i]
 			for range iterations {
-				if _, err := env.GetBranchShas(ctx, proposed, ""); err != nil {
+				if _, err := env.GetBranchShas(ctx, proposed, "", ""); err != nil {
 					return fmt.Errorf("get proposed shas: %w", err)
 				}
-				if _, err := env.GetBranchShas(ctx, s.active, ""); err != nil {
+				if _, err := env.GetBranchShas(ctx, s.active, "", ""); err != nil {
 					return fmt.Errorf("get active shas: %w", err)
 				}
 				if err := env.MergeWithOursStrategy(ctx, proposed, s.active); err != nil {
@@ -129,9 +129,7 @@ var _ = Describe("Concurrency (gitops-promoter#1495)", func() {
 		readerErrs := make([]error, readers)
 
 		// Writer: advance the proposed tip on the remote, recording each published pair.
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			<-start
 			for n := 1; n <= writes; n++ {
 				sha, err := s.advanceProposed(n)
@@ -141,7 +139,7 @@ var _ = Describe("Concurrency (gitops-promoter#1495)", func() {
 				}
 				record(sha, fmt.Sprintf("dry-proposed-%d", n))
 			}
-		}()
+		})
 
 		// Readers: fetch and verify each GetBranchShas snapshot is self-consistent.
 		for i := range readers {
@@ -155,7 +153,7 @@ var _ = Describe("Concurrency (gitops-promoter#1495)", func() {
 						readerErrs[i] = err
 						return
 					}
-					shas, err := env.GetBranchShas(ctx, s.proposed, "")
+					shas, err := env.GetBranchShas(ctx, s.proposed, "", "")
 					if err != nil {
 						readerErrs[i] = err
 						return

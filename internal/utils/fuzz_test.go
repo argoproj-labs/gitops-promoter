@@ -33,10 +33,7 @@ func FuzzTruncateStringFromBeginning(f *testing.F) {
 		}
 		inRunes := utf8.RuneCountInString(s)
 		outRunes := utf8.RuneCountInString(out)
-		want := inRunes
-		if length < want {
-			want = length
-		}
+		want := min(length, inRunes)
 		if outRunes != want {
 			t.Fatalf("rune count: in=%d length=%d want out runes %d got %d out=%q",
 				inRunes, length, want, outRunes, out)

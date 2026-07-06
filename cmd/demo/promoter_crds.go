@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/google/go-github/v71/github"
+	"github.com/google/go-github/v88/github"
 )
 
 //go:embed manifests/*.yaml
@@ -68,7 +68,7 @@ func UploadManifests(
 		existingFile, _, _, _ := client.Repositories.GetContents(ctx, owner, repoName, targetPath, nil)
 
 		opts := &github.RepositoryContentFileOptions{
-			Message: github.Ptr("Add " + filename),
+			Message: new("Add " + filename),
 			Content: []byte(contentStr),
 		}
 

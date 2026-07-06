@@ -66,6 +66,17 @@ Follow an existing controller test as a template, for example [`promotionstrateg
 
 If the type is reconciled and has status SSA behavior, also follow [Maintaining resource status](updating-status.md) for field owners, `observedGeneration`, and status apply tests.
 
+### 5. Field index for commit-status gate kinds
+
+When the new kind is a **commit-status gate** CRD with `spec.promotionStrategyRef` (same shape as `ArgoCDCommitStatus`, `TimedCommitStatus`, and the other built-in gates):
+
+1. Add the type to [`internal/controller/fieldindex.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/controller/fieldindex.go) — extend `PromotionStrategyRefIndexValues` and `RegisterGatePromotionStrategyRefFieldIndexes`.
+2. In the gate controller, watch `PromotionStrategy` and list your kind with `client.MatchingFields{controller.PromotionStrategyRefField: ps.Name}` (do not namespace-list and filter in memory). See [Watching PromotionStrategy](developing-a-commitstatus.md#watching-promotionstrategy).
+3. If bundle assembly or other code lists the new gate by promotion strategy, ensure that cache also calls `RegisterGatePromotionStrategyRefFieldIndexes` (today: manager setup via `PromotionStrategyReconciler` and the dashboard read cache in `internal/apiserver/run.go`).
+4. Register the same index on fake clients in tests that use `MatchingFields` (follow `newFakeClientBuilder()` in [`internal/apiserver/builder_test.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/apiserver/builder_test.go)).
+
+Skip this step for types that do not reference a `PromotionStrategy` or never use field selectors on the cache client.
+
 ## Regenerate and verify
 
 After Go type and marker changes:

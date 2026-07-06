@@ -211,10 +211,7 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 
 		// Calculate timing information based on current environment's active commit
 		elapsed := time.Since(currentActiveCommitTime)
-		timeRemaining := envConfig.Duration.Duration - elapsed
-		if timeRemaining < 0 {
-			timeRemaining = 0
-		}
+		timeRemaining := max(envConfig.Duration.Duration-elapsed, 0)
 
 		// Determine commit status phase based on time elapsed in current environment
 		// This status will be reported for the current environment's active SHA
@@ -283,7 +280,7 @@ func (r *TimedCommitStatusReconciler) calculateCommitStatusPhase(requiredDuratio
 }
 
 func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, message string, envBranch string) (*promoterv1alpha1.CommitStatus, error) {
-	kind := reflect.TypeOf(promoterv1alpha1.TimedCommitStatus{}).Name()
+	kind := reflect.TypeFor[promoterv1alpha1.TimedCommitStatus]().Name()
 	commitStatusName := utils.CommitStatusResourceName(ctx, tcs, branch)
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
@@ -362,21 +359,20 @@ func (r *TimedCommitStatusReconciler) enqueueTimedCommitStatusForPromotionStrate
 			return nil
 		}
 
-		// List all TimedCommitStatus resources in the same namespace
 		var tcsList promoterv1alpha1.TimedCommitStatusList
-		if err := r.List(ctx, &tcsList, client.InNamespace(ps.Namespace)); err != nil {
+		if err := r.List(ctx, &tcsList,
+			client.InNamespace(ps.Namespace),
+			client.MatchingFields{PromotionStrategyRefField: ps.Name},
+		); err != nil {
 			log.FromContext(ctx).Error(err, "failed to list TimedCommitStatus resources")
 			return nil
 		}
 
-		// Enqueue all TimedCommitStatus resources that reference this PromotionStrategy
-		var requests []ctrl.Request
-		for _, tcs := range tcsList.Items {
-			if tcs.Spec.PromotionStrategyRef.Name == ps.Name {
-				requests = append(requests, ctrl.Request{
-					NamespacedName: client.ObjectKeyFromObject(&tcs),
-				})
-			}
+		requests := make([]ctrl.Request, 0, len(tcsList.Items))
+		for i := range tcsList.Items {
+			requests = append(requests, ctrl.Request{
+				NamespacedName: client.ObjectKeyFromObject(&tcsList.Items[i]),
+			})
 		}
 
 		return requests

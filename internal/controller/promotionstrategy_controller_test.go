@@ -29,7 +29,6 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/utils/ptr"
 
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -771,9 +770,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 				// Disable auto-merge for all environments to prevent them from auto-merging
 				// while we're asserting on their PR states. We'll re-enable it after assertions.
-				promotionStrategy.Spec.Environments[0].AutoMerge = ptr.To(false) // development
-				promotionStrategy.Spec.Environments[1].AutoMerge = ptr.To(false) // staging
-				promotionStrategy.Spec.Environments[2].AutoMerge = ptr.To(false) // production
+				promotionStrategy.Spec.Environments[0].AutoMerge = new(false) // development
+				promotionStrategy.Spec.Environments[1].AutoMerge = new(false) // staging
+				promotionStrategy.Spec.Environments[2].AutoMerge = new(false) // production
 
 				setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
@@ -1049,9 +1048,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					err := k8sClient.Get(ctx, typeNamespacedName, &ps)
 					g.Expect(err).To(Succeed())
 
-					ps.Spec.Environments[0].AutoMerge = ptr.To(true) // development
-					ps.Spec.Environments[1].AutoMerge = ptr.To(true) // staging
-					ps.Spec.Environments[2].AutoMerge = ptr.To(true) // production
+					ps.Spec.Environments[0].AutoMerge = new(true) // development
+					ps.Spec.Environments[1].AutoMerge = new(true) // staging
+					ps.Spec.Environments[2].AutoMerge = new(true) // production
 
 					err = k8sClient.Update(ctx, &ps)
 					g.Expect(err).To(Succeed())
@@ -1253,7 +1252,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				ps.Name = fmt.Sprintf("%s-%s", baseStrategy.Name, cfg.nameSuffix)
 				ps.Spec.ActivePath = cfg.activePath
 				ps.Spec.Environments = []promoterv1alpha1.Environment{
-					{Branch: testBranchDevelopment, AutoMerge: ptr.To(true)},
+					{Branch: testBranchDevelopment, AutoMerge: new(true)},
 				}
 				Expect(k8sClient.Create(ctx, ps)).To(Succeed())
 				promotionStrategies = append(promotionStrategies, *ps)
@@ -1297,7 +1296,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 				err = os.MkdirAll(path.Join(gitPath, activePath), 0o755)
 				Expect(err).ToNot(HaveOccurred())
-				err = os.WriteFile(path.Join(gitPath, activePath, "manifests-fake.yaml"), []byte(fmt.Sprintf("app: %s\ntime: %s\n", activePath, time.Now().Format(time.RFC3339Nano))), 0o644)
+				err = os.WriteFile(path.Join(gitPath, activePath, "manifests-fake.yaml"), fmt.Appendf(nil, "app: %s\ntime: %s\n", activePath, time.Now().Format(time.RFC3339Nano)), 0o644)
 				Expect(err).ToNot(HaveOccurred())
 
 				_, err = runGitCmd(ctx, gitPath, "add", path.Join(activePath, "manifests-fake.yaml"))
@@ -1330,7 +1329,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(os.WriteFile(path.Join(gitPath, "hydrator.metadata"), []byte(metadata), 0o644)).To(Succeed())
 				err = os.WriteFile(path.Join(gitPath, activePath, "hydrator.metadata"), []byte(metadata), 0o644)
 				Expect(err).ToNot(HaveOccurred())
-				err = os.WriteFile(path.Join(gitPath, activePath, "manifests-fake.yaml"), []byte(fmt.Sprintf("hydrated: %s\ntime: %s\n", drySha, time.Now().Format(time.RFC3339Nano))), 0o644)
+				err = os.WriteFile(path.Join(gitPath, activePath, "manifests-fake.yaml"), fmt.Appendf(nil, "hydrated: %s\ntime: %s\n", drySha, time.Now().Format(time.RFC3339Nano)), 0o644)
 				Expect(err).ToNot(HaveOccurred())
 
 				_, err = runGitCmd(ctx, gitPath, "add", "hydrator.metadata", path.Join(activePath, "hydrator.metadata"), path.Join(activePath, "manifests-fake.yaml"))
@@ -1434,7 +1433,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				// app's PromotionStrategy auto-merges its own path-scoped PR onto the shared
 				// active branch. Independence is achieved by hydrating one app at a time, not
 				// by toggling AutoMerge (an unrealistic operator step).
-				{Branch: testBranchDevelopment, AutoMerge: ptr.To(true)},
+				{Branch: testBranchDevelopment, AutoMerge: new(true)},
 			}
 			Expect(k8sClient.Create(ctx, psOne)).To(Succeed())
 			promotionStrategyOne = *psOne
@@ -1443,7 +1442,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			psTwo.Name = baseStrategy.Name + "-app-two"
 			psTwo.Spec.ActivePath = activePathTwo
 			psTwo.Spec.Environments = []promoterv1alpha1.Environment{
-				{Branch: testBranchDevelopment, AutoMerge: ptr.To(true)},
+				{Branch: testBranchDevelopment, AutoMerge: new(true)},
 			}
 			Expect(k8sClient.Create(ctx, psTwo)).To(Succeed())
 			promotionStrategyTwo = *psTwo
@@ -1477,7 +1476,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Eventually(func(g Gomega) {
 					var latest promoterv1alpha1.PromotionStrategy
 					g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: ps.Name, Namespace: ps.Namespace}, &latest)).To(Succeed())
-					latest.Spec.Environments[0].AutoMerge = ptr.To(false)
+					latest.Spec.Environments[0].AutoMerge = new(false)
 					g.Expect(k8sClient.Update(ctx, &latest)).To(Succeed())
 				}, constants.EventuallyTimeout).Should(Succeed())
 			}
@@ -3966,7 +3965,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Triggering PromotionStrategy reconciliation multiple times to test skip logic")
-				for i := 0; i < 5; i++ {
+				for range 5 {
 					Eventually(func(g Gomega) {
 						err := k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
 						g.Expect(err).To(Succeed())
@@ -4046,15 +4045,15 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
 					{
 						Branch:    "environments/development",
-						AutoMerge: ptr.To(true),
+						AutoMerge: new(true),
 					},
 					{
 						Branch:    "environments/staging",
-						AutoMerge: ptr.To(true),
+						AutoMerge: new(true),
 					},
 					{
 						Branch:    "environments/production",
-						AutoMerge: ptr.To(true),
+						AutoMerge: new(true),
 					},
 				}
 
@@ -4116,15 +4115,15 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 					promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
 						{
 							Branch:    testBranchDevelopment, // "environment/development"
-							AutoMerge: ptr.To(true),
+							AutoMerge: new(true),
 						},
 						{
 							Branch:    testBranchStaging, // "environment/staging"
-							AutoMerge: ptr.To(true),
+							AutoMerge: new(true),
 						},
 						{
 							Branch:    testBranchProduction, // "environment/production"
-							AutoMerge: ptr.To(true),
+							AutoMerge: new(true),
 						},
 					}
 
@@ -4222,15 +4221,15 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
 				{
 					Branch:    testBranchDevelopment,
-					AutoMerge: ptr.To(true),
+					AutoMerge: new(true),
 				},
 				{
 					Branch:    testBranchStaging,
-					AutoMerge: ptr.To(true),
+					AutoMerge: new(true),
 				},
 				{
 					Branch:    testBranchProduction,
-					AutoMerge: ptr.To(true),
+					AutoMerge: new(true),
 				},
 			}
 
@@ -4328,11 +4327,11 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
 					{
 						Branch:    testBranchDevelopment,
-						AutoMerge: ptr.To(true),
+						AutoMerge: new(true),
 					},
 					{
 						Branch:    testBranchStaging,
-						AutoMerge: ptr.To(true),
+						AutoMerge: new(true),
 					},
 				}
 
@@ -5113,6 +5112,17 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		})
 	})
 
+	// Changing PreviousEnvironmentCommitStatusKey is a breaking change for users who reference it
+	// in branch protection rules, rulesets, or automation. If this test fails after your change,
+	// update documentation and migration guides before merging.
+	Context("PreviousEnvironmentCommitStatusKey", func() {
+		It("should remain a stable public API value", func() {
+			Expect(promoterv1alpha1.PreviousEnvironmentCommitStatusKey).To(Equal("promoter-previous-environment"),
+				"PreviousEnvironmentCommitStatusKey is a public API used as the SCM commit status context (e.g. GitHub check run name). "+
+					"Users may reference this value in branch protection rules. Update documentation and migration guides before merging.")
+		})
+	})
+
 	Context("isPreviousEnvironmentPending", func() {
 		// Use fixed times for tests to ensure consistent time comparisons
 		olderTime := metav1.NewTime(time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC))
@@ -5765,7 +5775,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
 
 			// Multiple rapid calls - should only schedule ONE delayed enqueue
-			for i := 0; i < 5; i++ {
+			for range 5 {
 				time.Sleep(100 * time.Millisecond)
 				reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
 			}

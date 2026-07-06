@@ -33,7 +33,6 @@ import (
 	"github.com/expr-lang/expr/vm"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
-	"k8s.io/utils/ptr"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -394,14 +393,14 @@ func (r *GitCommitStatusReconciler) evaluateExpression(expression string, commit
 	}
 
 	if result {
-		return promoterv1alpha1.CommitPhaseSuccess, ptr.To(true), nil
+		return promoterv1alpha1.CommitPhaseSuccess, new(true), nil
 	}
-	return promoterv1alpha1.CommitPhaseFailure, ptr.To(false), nil
+	return promoterv1alpha1.CommitPhaseFailure, new(false), nil
 }
 
 // upsertCommitStatus creates or updates a CommitStatus resource for the validation result using Server-Side Apply.
 func (r *GitCommitStatusReconciler) upsertCommitStatus(ctx context.Context, gcs *promoterv1alpha1.GitCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, validationName string) (*promoterv1alpha1.CommitStatus, error) {
-	kind := reflect.TypeOf(promoterv1alpha1.GitCommitStatus{}).Name()
+	kind := reflect.TypeFor[promoterv1alpha1.GitCommitStatus]().Name()
 	commitStatusName := utils.CommitStatusResourceName(ctx, gcs, branch)
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
@@ -442,21 +441,20 @@ func (r *GitCommitStatusReconciler) enqueueGitCommitStatusForPromotionStrategy()
 			return nil
 		}
 
-		// List all GitCommitStatus resources in the same namespace
 		var gcsList promoterv1alpha1.GitCommitStatusList
-		if err := r.List(ctx, &gcsList, client.InNamespace(ps.Namespace)); err != nil {
+		if err := r.List(ctx, &gcsList,
+			client.InNamespace(ps.Namespace),
+			client.MatchingFields{PromotionStrategyRefField: ps.Name},
+		); err != nil {
 			log.FromContext(ctx).Error(err, "failed to list GitCommitStatus resources")
 			return nil
 		}
 
-		// Enqueue all GitCommitStatus resources that reference this PromotionStrategy
-		var requests []ctrl.Request
-		for _, gcs := range gcsList.Items {
-			if gcs.Spec.PromotionStrategyRef.Name == ps.Name {
-				requests = append(requests, ctrl.Request{
-					NamespacedName: client.ObjectKeyFromObject(&gcs),
-				})
-			}
+		requests := make([]ctrl.Request, 0, len(gcsList.Items))
+		for i := range gcsList.Items {
+			requests = append(requests, ctrl.Request{
+				NamespacedName: client.ObjectKeyFromObject(&gcsList.Items[i]),
+			})
 		}
 
 		return requests

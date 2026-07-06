@@ -1,5 +1,5 @@
 # Build the dashboard UI
-FROM node:24.16.0-bullseye-slim@sha256:3416ba4d075ababea074ad55b006a3d36afd9972dd87f9034495a052a2f5a956 AS dashboard-builder
+FROM node:24.18.0-bullseye-slim@sha256:6db635878579101aa23fc1d224816de4f5842e55f24f5098f1e5f03bf79b806c AS dashboard-builder
 WORKDIR /workspace
 
 # Copy package files first for better layer caching
@@ -65,7 +65,6 @@ RUN apt-get update && apt-get install -y tini && apt-get clean && rm -rf /var/li
 RUN mkdir /git
 COPY --from=builder /workspace/gitops-promoter .
 COPY --from=builder /workspace/hack/git/promoter_askpass.sh /git/promoter_askpass.sh
-COPY --from=dashboard-builder /workspace/ui/web/static ./ui/web/static
 ENV PATH="${PATH}:/git"
 RUN echo "${PATH}" >> /etc/bash.bashrc
 USER 65532:65532

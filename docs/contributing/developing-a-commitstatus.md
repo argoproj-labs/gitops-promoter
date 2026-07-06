@@ -202,6 +202,107 @@ commitStatus.Spec.Phase = promoterv1alpha1.CommitPhaseFailure
 commitStatus.Spec.Description = fmt.Sprintf("Applications are degraded: %s", errorDetail)
 ```
 
+## Watching PromotionStrategy
+
+Gate CRDs reference a `PromotionStrategy` via `spec.promotionStrategyRef`. When that strategy changes (for example environments or commit-status keys are updated), every gate that references it should reconcile so it can refresh owned `CommitStatus` resources.
+
+Built-in controllers watch `PromotionStrategy` and enqueue reconcile requests for matching gates. Use a **cache field index** on `.spec.promotionStrategyRef.name` so those lookups stay efficient and so `client.MatchingFields` works on the manager's cached client.
+
+### When to register an index
+
+Register a field index when your controller (or another component using the same informer cache) lists gate resources with:
+
+```go
+client.MatchingFields{".spec.promotionStrategyRef.name": promotionStrategyName}
+```
+
+Without `IndexField` registration, that `List` fails at runtime. Listing the whole namespace and filtering in memory works but does not scale and is easy to miss in unit tests.
+
+This applies to **cache-backed** `client.Client` calls (the default from `mgr.GetClient()`). It is separate from CRD `selectableFields`, which affect API-server field selectors on direct API reads.
+
+### Register the index
+
+In this repository, gate kinds share `controller.PromotionStrategyRefField` and `controller.RegisterGatePromotionStrategyRefFieldIndexes` in [`internal/controller/fieldindex.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/controller/fieldindex.go). Registration runs from any process that serves cache-backed lists filtered by promotion strategy:
+
+- **Manager** — `PromotionStrategyReconciler.SetupWithManager` (alongside the `CommitStatus` `.spec.sha` index).
+- **Dashboard API** — `internal/apiserver/run.go` on the read cache before bundle assembly.
+
+If you add a new in-repo gate kind, extend `PromotionStrategyRefIndexValues` and `RegisterGatePromotionStrategyRefFieldIndexes` with your type. See [Maintaining CRDs](maintaining-crds.md#5-field-index-for-commit-status-gate-kinds).
+
+For a controller outside this repo, register the index in your gate reconciler's `SetupWithManager`:
+
+```go
+const promotionStrategyRefField = ".spec.promotionStrategyRef.name"
+
+func (r *MyCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
+    if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.MyCommitStatus{}, promotionStrategyRefField,
+        func(rawObj client.Object) []string {
+            cs := rawObj.(*promoterv1alpha1.MyCommitStatus)
+            return []string{cs.Spec.PromotionStrategyRef.Name}
+        },
+    ); err != nil {
+        return fmt.Errorf("failed to set field index %s: %w", promotionStrategyRefField, err)
+    }
+    // …
+}
+```
+
+### Watch handler
+
+Watch `PromotionStrategy` and list gates with `MatchingFields` instead of scanning the namespace:
+
+```go
+func (r *MyCommitStatusReconciler) enqueueMyCommitStatusForPromotionStrategy() handler.EventHandler {
+    return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []ctrl.Request {
+        ps, ok := obj.(*promoterv1alpha1.PromotionStrategy)
+        if !ok {
+            return nil
+        }
+
+        var list promoterv1alpha1.MyCommitStatusList
+        if err := r.List(ctx, &list,
+            client.InNamespace(ps.Namespace),
+            client.MatchingFields{promotionStrategyRefField: ps.Name},
+        ); err != nil {
+            log.FromContext(ctx).Error(err, "failed to list MyCommitStatus resources")
+            return nil
+        }
+
+        requests := make([]ctrl.Request, 0, len(list.Items))
+        for i := range list.Items {
+            requests = append(requests, ctrl.Request{
+                NamespacedName: client.ObjectKeyFromObject(&list.Items[i]),
+            })
+        }
+        return requests
+    })
+}
+```
+
+Wire the watch in `SetupWithManager`:
+
+```go
+ctrl.NewControllerManagedBy(mgr).
+    For(&promoterv1alpha1.MyCommitStatus{}).
+    Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueMyCommitStatusForPromotionStrategy()).
+    Complete(r)
+```
+
+Built-in gate controllers follow this pattern; see [`timedcommitstatus_controller.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/controller/timedcommitstatus_controller.go) for a reference implementation.
+
+### Tests
+
+Fake clients used in tests must register the same index, or `MatchingFields` lists will fail:
+
+```go
+fake.NewClientBuilder().
+    WithScheme(scheme).
+    WithIndex(&promoterv1alpha1.MyCommitStatus{}, promotionStrategyRefField, indexFunc).
+    Build()
+```
+
+In-tree API server tests use `newFakeClientBuilder()` in [`internal/apiserver/builder_test.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/apiserver/builder_test.go), which registers indexes for all gate kinds.
+
 ## Triggering Reconciliation of ChangeTransferPolicies
 
 When your commit status controller detects important state transitions (e.g., a gate transitioning from pending to success), you may want to trigger immediate reconciliation of the affected ChangeTransferPolicy to minimize promotion latency.

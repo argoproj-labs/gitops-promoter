@@ -32,7 +32,7 @@
   // the { releases: [ { version } ] } structure Renovate expects.
   customDatasources: {
     'envtest-k8s': {
-      defaultRegistryUrlTemplate: 'https://raw.githubusercontent.com/kubernetes-sigs/controller-tools/HEAD/envtest-releases.yaml',
+      defaultRegistryUrlTemplate: 'https://raw.githubusercontent.com/kubernetes-sigs/controller-tools/main/envtest-releases.yaml',
       format: 'yaml',
       transformTemplates: [
         '{ "releases": $map($keys(releases), function($v) { { "version": $v } }) }',
@@ -108,6 +108,45 @@
       automerge: false,
     },
     // ----------------------------------------------------------------------
+    // Group A2: GitHub API client (go-github major paths + ghinstallation)
+    // go-github uses /vNN module paths; Renovate rewrites imports on major jumps.
+    // Dependabot ignores these packages to avoid duplicate PRs.
+    // ----------------------------------------------------------------------
+    {
+      description: 'go-github and ghinstallation bump together; rewrite imports on major path changes',
+      matchManagers: [
+        'gomod',
+      ],
+      matchPackageNames: [
+        'github.com/google/go-github/**',
+        'github.com/bradleyfalzon/ghinstallation/**',
+      ],
+      enabled: true,
+      groupName: 'GitHub API client',
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      automerge: false,
+      postUpdateOptions: [
+        'gomodUpdateImportPaths',
+        'gomodTidy',
+      ],
+    },
+    // ----------------------------------------------------------------------
+    // Group A3: E2E Kind node images (ci-e2e matrix; sliding window of minors)
+    // ----------------------------------------------------------------------
+    {
+      description: 'Group kindest/node bumps in the e2e Kind matrix',
+      matchDepNames: [
+        'kindest/node',
+      ],
+      groupName: 'E2E Kind Kubernetes matrix',
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      automerge: false,
+    },
+    // ----------------------------------------------------------------------
     // Group B: Go toolchain + golangci-lint (+ golang base image)
     // ----------------------------------------------------------------------
     {
@@ -131,6 +170,9 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
+          // go fix applies stdlib fixers for the new toolchain (any, min/max, iterators, …).
+          // Run before lint-fix so golangci-lint can clean up anything fix leaves behind.
+          'make go-fix || true',
           'make lint-fix || true',
         ],
         installTools: {
@@ -143,6 +185,64 @@
         ],
         executionMode: 'branch',
       },
+    },
+    // ----------------------------------------------------------------------
+    // Group B2: Node.js (Dockerfile base image + setup-node in workflows)
+    // npm package deps stay manual; only the runtime version is automated here.
+    // ----------------------------------------------------------------------
+    {
+      description: 'Group Node docker image and setup-node workflow inputs',
+      matchManagers: [
+        'custom.regex',
+        'dockerfile',
+      ],
+      matchDepNames: [
+        'node',
+      ],
+      matchPackageNames: [
+        'node',
+      ],
+      groupName: 'Node.js',
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      automerge: false,
+    },
+    // ----------------------------------------------------------------------
+    // Group B3: Python runtime (CI, Read the Docs, local MkDocs docker)
+    // pip/MkDocs package deps are in the docs dependencies group above.
+    // ----------------------------------------------------------------------
+    {
+      description: 'Group Python runtime across CI, Read the Docs, and local MkDocs docker',
+      matchManagers: [
+        'custom.regex',
+      ],
+      matchDepNames: [
+        'python',
+      ],
+      matchPackageNames: [
+        'python',
+        'library/python',
+      ],
+      groupName: 'Python runtime',
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      automerge: false,
+    },
+    // ----------------------------------------------------------------------
+    // Group C2: cosign CLI (release workflows; action SHA is Dependabot-owned)
+    // ----------------------------------------------------------------------
+    {
+      description: 'Keep cosign CLI in sync across release workflows',
+      matchDepNames: [
+        'sigstore/cosign',
+      ],
+      groupName: 'cosign',
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      automerge: false,
     },
     // ----------------------------------------------------------------------
     // Group C: goreleaser (Makefile + both release workflows in one PR)
@@ -274,6 +374,20 @@
       automerge: false,
     },
     // ----------------------------------------------------------------------
+    // Group D: Argo CD (tilt-ci + demo CLI install pins)
+    // ----------------------------------------------------------------------
+    {
+      description: 'Keep Argo CD install versions in sync across tilt-ci and the demo CLI',
+      matchDepNames: [
+        'argoproj/argo-cd',
+      ],
+      groupName: 'Argo CD',
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      automerge: false,
+    },
+    // ----------------------------------------------------------------------
     // Docker base images: full version tags only, never digest-only PRs
     // ----------------------------------------------------------------------
     {
@@ -355,6 +469,8 @@
       versioningTemplate: 'semver',
     },
     // ===== golangci-lint (Makefile + workflows, incl. SHA-pinned action) =====
+    // managerFilePatterns must be wrapped in /.../ to use regex; without delimiters Renovate
+    // treats the string as a glob (see docs.renovatebot.com/string-pattern-matching).
     {
       customType: 'regex',
       description: 'Update golangci-lint version in Makefile',
@@ -434,6 +550,20 @@
       versioningTemplate: 'semver',
       extractVersionTemplate: '^v(?<version>.*)$',
     },
+    {
+      customType: 'regex',
+      description: 'Update kindest/node versions in the e2e Kind matrix',
+      managerFilePatterns: [
+        '/^\\.github/workflows/ci-e2e\\.yaml$/',
+      ],
+      matchStrings: [
+        '- (?<currentValue>1\\.\\d+\\.\\d+)\\s*$',
+      ],
+      depNameTemplate: 'kindest/node',
+      datasourceTemplate: 'docker',
+      versioningTemplate: 'docker',
+      extractVersionTemplate: '^v?(?<version>.*)$',
+    },
     // ===== Makefile tool versions =====
     {
       customType: 'regex',
@@ -504,6 +634,22 @@
       versioningTemplate: 'semver',
       extractVersionTemplate: '^v(?<version>.*)$',
     },
+    // ===== cosign CLI (release workflows; installer action SHA is Dependabot-owned) =====
+    {
+      customType: 'regex',
+      description: 'Update cosign CLI version pinned in release workflows',
+      managerFilePatterns: [
+        '/^\\.github/workflows/release\\.yaml$/',
+        '/^\\.github/workflows/release-latest\\.yaml$/',
+      ],
+      matchStrings: [
+        'cosign-release:\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
+      ],
+      depNameTemplate: 'sigstore/cosign',
+      datasourceTemplate: 'github-releases',
+      versioningTemplate: 'semver',
+      extractVersionTemplate: '^v(?<version>.*)$',
+    },
     // ===== goreleaser pinned in release workflows (kept in lockstep) =====
     {
       customType: 'regex',
@@ -516,6 +662,104 @@
         'goreleaser/goreleaser-action@[\\s\\S]*?version:\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
       ],
       depNameTemplate: 'goreleaser/goreleaser',
+      datasourceTemplate: 'github-releases',
+      versioningTemplate: 'semver',
+      extractVersionTemplate: '^v(?<version>.*)$',
+    },
+    // ===== Node.js (Dockerfile base image + setup-node in workflows) =====
+    {
+      customType: 'regex',
+      description: 'Update Node.js version in GitHub Actions setup-node inputs',
+      managerFilePatterns: [
+        '/^\\.github/workflows/.*\\.ya?ml$/',
+      ],
+      matchStrings: [
+        'node-version:\\s*[\'"]?(?<currentValue>\\d+\\.\\d+\\.\\d+)[\'"]?',
+      ],
+      depNameTemplate: 'node',
+      datasourceTemplate: 'node-version',
+      versioningTemplate: 'node',
+    },
+    // ===== Python runtime (CI, Read the Docs, local MkDocs docker) =====
+    {
+      customType: 'regex',
+      description: 'Update Python version in GitHub Actions setup-python inputs',
+      managerFilePatterns: [
+        '/^\\.github/workflows/.*\\.ya?ml$/',
+      ],
+      matchStrings: [
+        'python-version:\\s*[\'"]?(?<currentValue>3\\.\\d+)[\'"]?',
+      ],
+      depNameTemplate: 'python',
+      datasourceTemplate: 'python-version',
+      versioningTemplate: 'docker',
+    },
+    {
+      customType: 'regex',
+      description: 'Update Python version in Read the Docs config',
+      managerFilePatterns: [
+        '/^\\.readthedocs\\.yaml$/',
+      ],
+      matchStrings: [
+        'python:\\s*"(?<currentValue>3\\.\\d+)"',
+      ],
+      depNameTemplate: 'python',
+      datasourceTemplate: 'python-version',
+      versioningTemplate: 'docker',
+    },
+    {
+      customType: 'regex',
+      description: 'Update Python version in the local MkDocs docker image',
+      managerFilePatterns: [
+        '/^Makefile$/',
+      ],
+      matchStrings: [
+        'MKDOCS_DOCKER_IMAGE\\?=python:(?<currentValue>3\\.\\d+)-alpine',
+      ],
+      depNameTemplate: 'python',
+      datasourceTemplate: 'docker',
+      packageNameTemplate: 'library/python',
+      versioningTemplate: 'docker',
+    },
+    // ===== Argo CD (tilt-ci + demo CLI install pins) =====
+    {
+      customType: 'regex',
+      description: 'Update Argo CD version pinned in the tilt-ci workflow',
+      managerFilePatterns: [
+        '/^\\.github/workflows/tilt-ci\\.yaml$/',
+      ],
+      matchStrings: [
+        'ARGOCD_VERSION:\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
+      ],
+      depNameTemplate: 'argoproj/argo-cd',
+      datasourceTemplate: 'github-releases',
+      versioningTemplate: 'semver',
+      extractVersionTemplate: '^v(?<version>.*)$',
+    },
+    {
+      customType: 'regex',
+      description: 'Update Argo CD version embedded in the demo CLI installer',
+      managerFilePatterns: [
+        '/^cmd/demo/config/argocd_version$/',
+      ],
+      matchStrings: [
+        '^v(?<currentValue>\\d+\\.\\d+\\.\\d+)\\s*$',
+      ],
+      depNameTemplate: 'argoproj/argo-cd',
+      datasourceTemplate: 'github-releases',
+      versioningTemplate: 'semver',
+      extractVersionTemplate: '^v(?<version>.*)$',
+    },
+    {
+      customType: 'regex',
+      description: 'Update Argo CD upstream URL in the demo CLI config template',
+      managerFilePatterns: [
+        '/^cmd/demo/config/config\\.yaml$/',
+      ],
+      matchStrings: [
+        'upstream: https://raw\\.githubusercontent\\.com/argoproj/argo-cd/v(?<currentValue>\\d+\\.\\d+\\.\\d+)/manifests/install-with-hydrator\\.yaml',
+      ],
+      depNameTemplate: 'argoproj/argo-cd',
       datasourceTemplate: 'github-releases',
       versioningTemplate: 'semver',
       extractVersionTemplate: '^v(?<version>.*)$',

@@ -463,7 +463,7 @@ func (r *WebRequestCommitStatusReconciler) applySCMAuthentication(ctx context.Co
 // The phase (Success or Pending) and sha are set from the validation outcome; description and URL are rendered from templateData.
 // The created resource is owned by the WebRequestCommitStatus so it is cleaned up when the WebRequestCommitStatus is deleted.
 func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, repositoryRefName string, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, templateData webrequest.TemplateData) (*promoterv1alpha1.CommitStatus, error) {
-	kind := reflect.TypeOf(promoterv1alpha1.WebRequestCommitStatus{}).Name()
+	kind := reflect.TypeFor[promoterv1alpha1.WebRequestCommitStatus]().Name()
 	commitStatusName := utils.CommitStatusResourceName(ctx, wrcs, branch)
 
 	// Render description template
@@ -528,21 +528,20 @@ func (r *WebRequestCommitStatusReconciler) enqueueWebRequestCommitStatusForPromo
 			return nil
 		}
 
-		// List all WebRequestCommitStatus resources in the same namespace
 		var wrcsList promoterv1alpha1.WebRequestCommitStatusList
-		if err := r.List(ctx, &wrcsList, client.InNamespace(ps.Namespace)); err != nil {
+		if err := r.List(ctx, &wrcsList,
+			client.InNamespace(ps.Namespace),
+			client.MatchingFields{PromotionStrategyRefField: ps.Name},
+		); err != nil {
 			log.FromContext(ctx).Error(err, "failed to list WebRequestCommitStatus resources")
 			return nil
 		}
 
-		// Enqueue all WebRequestCommitStatus resources that reference this PromotionStrategy
-		var requests []ctrl.Request
-		for _, wrcs := range wrcsList.Items {
-			if wrcs.Spec.PromotionStrategyRef.Name == ps.Name {
-				requests = append(requests, ctrl.Request{
-					NamespacedName: client.ObjectKeyFromObject(&wrcs),
-				})
-			}
+		requests := make([]ctrl.Request, 0, len(wrcsList.Items))
+		for i := range wrcsList.Items {
+			requests = append(requests, ctrl.Request{
+				NamespacedName: client.ObjectKeyFromObject(&wrcsList.Items[i]),
+			})
 		}
 
 		return requests

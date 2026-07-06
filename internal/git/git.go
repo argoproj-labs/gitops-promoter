@@ -211,10 +211,34 @@ func buildHydratorMetadataPath(activePath string) string {
 
 // GetBranchShas fetches the given branch and returns its hydrated and dry SHAs.
 //
+// Before fetching, it first checks - via a cheap, live ls-remote against this same clone's
+// repository - whether the branch's current remote SHA still matches lastKnownHydratedSha (the
+// Hydrated SHA this same branch/identity returned on a previous, successful call). If it matches,
+// the commit is guaranteed to already be present in this clone (it was fetched the last time this
+// identity observed that SHA), so the network fetch is skipped and rev-parse/ls-tree resolve it from
+// the existing local objects instead. This keeps the skip decision self-contained: callers cannot
+// accidentally skip the fetch based on a stale probe or a SHA observed by a different clone/identity,
+// since the check against the live remote happens inside this call, right before the fetch would.
+//
+// Pass an empty lastKnownHydratedSha (e.g. before any SHA has been observed for this branch, or when
+// the caller doesn't track one) to always fetch; the probe is skipped in that case since there's
+// nothing to compare against.
+//
 // Read-only: fetches the branch ref and reads from refs/object DB; never mutates the clone's
 // index/worktree/HEAD.
-func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch, activePath string) (BranchShas, error) {
+func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch, activePath, lastKnownHydratedSha string) (BranchShas, error) {
 	logger := log.FromContext(ctx)
+
+	skipFetch := false
+	if lastKnownHydratedSha != "" {
+		remoteHeads, err := LsRemote(ctx, g.gap, g.gitRepo, branch)
+		if err != nil {
+			logger.V(4).Info("ls-remote probe failed, falling back to unconditional fetch", "branch", branch, "error", err)
+		} else {
+			skipFetch = remoteHeads[branch] == lastKnownHydratedSha
+		}
+	}
+
 	gitPath := g.ClonePath()
 	if gitPath == "" {
 		return BranchShas{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
@@ -222,8 +246,9 @@ func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch, activ
 
 	logger.V(4).Info("git path", "path", gitPath)
 
-	// Fetch the branch to ensure we have the latest remote ref
-	if err := g.FetchBranch(ctx, branch); err != nil {
+	if skipFetch {
+		logger.V(4).Info("branch unchanged on remote since last reconcile, skipping fetch", "branch", branch)
+	} else if err := g.FetchBranch(ctx, branch); err != nil {
 		return BranchShas{}, err
 	}
 
@@ -531,6 +556,24 @@ func runCmd(ctx context.Context, gap scms.GitOperationsProvider, directory strin
 	return runCmdWithEnv(ctx, gap, directory, nil, args...)
 }
 
+// proxyRelatedEnvVars returns proxy/TLS env vars from the current process so git subprocesses
+// honor HTTPS_PROXY and GIT_SSL_CAINFO when the controller is run behind an MITM proxy.
+// cmd.Env replaces the entire child environment; without this, git bypasses the proxy.
+func proxyRelatedEnvVars() []string {
+	var out []string
+	for _, key := range []string{
+		"HTTPS_PROXY", "https_proxy",
+		"HTTP_PROXY", "http_proxy",
+		"NO_PROXY", "no_proxy",
+		"GIT_SSL_CAINFO", "SSL_CERT_FILE",
+	} {
+		if v := os.Getenv(key); v != "" {
+			out = append(out, key+"="+v)
+		}
+	}
+	return out
+}
+
 // runCmdWithEnv runs a git command, appending extraEnv to the standard auth environment, and
 // returns stdout, stderr, and error.
 func runCmdWithEnv(ctx context.Context, gap scms.GitOperationsProvider, directory string, extraEnv []string, args ...string) (string, string, error) {
@@ -551,7 +594,8 @@ func runCmdWithEnv(ctx context.Context, gap scms.GitOperationsProvider, director
 		"GIT_PASSWORD=" + token,
 		"PATH=" + os.Getenv("PATH"),
 		"GIT_TERMINAL_PROMPT=0",
-	}, extraEnv...)
+	}, proxyRelatedEnvVars()...)
+	cmd.Env = append(cmd.Env, extraEnv...)
 	var stdoutBuf bytes.Buffer
 	var stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf
