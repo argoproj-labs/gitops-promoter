@@ -183,13 +183,13 @@ func (r *DAGCommitStatusReconciler) updateDAGCommitStatus(ctx context.Context, d
 	return nil
 }
 
-// upstreamsPending reports whether ANY of branch's direct dependsOn upstreams is not yet ready for
-// targetDrySha. An upstream is ready when it has hydrated and merged the target dry SHA (with a
-// commit time no older than the current environment's) and is healthy. Upstreams for which the
-// target dry SHA is a no-op (git note advanced without a new commit) are transparently skipped by
-// recursing into their own upstreams. This mirrors the per-environment checks in the
+// upstreamsPending reports whether ANY of branch's direct dependsOn upstreams is not yet satisfied
+// for targetDrySha. An upstream is satisfied when it has hydrated and merged the target dry SHA
+// (with a commit time no older than the current environment's) and is healthy. Upstreams for which
+// the target dry SHA is a no-op (git note advanced without a new commit) are transparently skipped
+// by recursing into their own upstreams. This mirrors the per-environment checks in the
 // PreviousEnvironmentCommitStatus controller's isPreviousEnvironmentPending, adapted from a linear
-// chain to the DAG's dependsOn edges (all upstreams must be ready for a fan-in to pass).
+// chain to the DAG's dependsOn edges (all upstreams must be satisfied for a fan-in to pass).
 func upstreamsPending(g *dag, branch, targetDrySha string, currentActiveCommitTime metav1.Time, statusByBranch map[string]promoterv1alpha1.EnvironmentStatus) (isPending bool, reason string) {
 	for _, upstream := range g.dependsOn[branch] {
 		if pending, r := upstreamPending(g, upstream, targetDrySha, currentActiveCommitTime, statusByBranch); pending {
