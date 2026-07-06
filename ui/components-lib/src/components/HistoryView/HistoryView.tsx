@@ -298,7 +298,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                 </div>
               )}
               <div className="hp-matrix__head" style={{ gridTemplateColumns: gridTemplate }}>
-                <span className="hp-matrix__head-label">Commit</span>
+                <span className="hp-matrix__head-label">Dry Commit</span>
                 {visibleEnvs.map((env) => (
                   <span key={env.branch} className="hp-matrix__head-env">
                     <span
