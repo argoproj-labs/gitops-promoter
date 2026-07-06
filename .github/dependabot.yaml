@@ -28,33 +28,40 @@ updates:
       - dependency-name: "github.com/google/go-github/*"
       - dependency-name: "github.com/bradleyfalzon/ghinstallation/*"
     groups:
-      # etcd modules (api, client/pkg, client/v3) release together; one PR beats three.
+      # Single-segment `*` globs miss nested Go module paths (e.g. swag/jsonname,
+      # genproto/googleapis/api); use `**` so submodules stay in the group PR.
       go-etcd:
         patterns:
-          - "go.etcd.io/etcd/*"
+          - "go.etcd.io/etcd/**"
       # otel core, exporters, contrib instrumentation, and proto/otlp share a release train.
       opentelemetry:
         patterns:
-          - "go.opentelemetry.io/*"
+          - "go.opentelemetry.io/**"
       # crypto, net, sys, text, tools, etc. often bump in the same Dependabot cycle.
       golang-org-x:
         patterns:
-          - "golang.org/x/*"
+          - "golang.org/x/**"
       # swag root, jsonpointer/jsonreference, and swag/* submodules version together.
       go-openapi:
         patterns:
-          - "github.com/go-openapi/*"
+          - "github.com/go-openapi/**"
       # genproto, grpc, and protobuf are a coupled gRPC stack.
       google-golang-org:
         patterns:
-          - "google.golang.org/*"
+          - "google.golang.org/**"
       # client_golang plus client_model/common/procfs.
       prometheus:
         patterns:
-          - "github.com/prometheus/*"
+          - "github.com/prometheus/**"
 
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "daily"
     open-pull-requests-limit: 10
+    groups:
+      # init/analyze/upload-sarif must share the same release; partial bumps fail
+      # CodeQL with "Loaded a configuration file for version X, but running version Y".
+      codeql-action:
+        patterns:
+          - "github/codeql-action/**"
