@@ -1,35 +1,11 @@
 import { create } from 'zustand';
 import { enrichFromCRD } from '@shared/utils/PSData';
+import { environmentsFromCTPs, repoURLFromBundle } from '@shared/utils/bundle';
 import type { PromotionStrategy } from '@shared/utils/PSData';
-import type { Environment } from '@shared/types/promotion';
-import type { ChangeTransferPolicy, PromotionStrategyBundle } from '@shared/types/bundle';
+import type { PromotionStrategyBundle } from '@shared/types/bundle';
 
 interface CRDItem extends PromotionStrategy {
   enriched?: unknown;
-}
-
-// Reconstruct the per-environment status the UI renders. The bundle no longer carries
-// the PromotionStrategy status (it was a duplicate aggregation); instead we build the
-// environment list from the embedded ChangeTransferPolicies, one per environment keyed
-// by spec.activeBranch, in the order declared by the PromotionStrategy spec.
-function environmentsFromCTPs(ps: PromotionStrategy, ctps: ChangeTransferPolicy[]): Environment[] {
-  const byBranch = new Map<string, ChangeTransferPolicy>();
-  for (const ctp of ctps) {
-    const branch = ctp.spec?.activeBranch;
-    if (branch) byBranch.set(branch, ctp);
-  }
-
-  const specEnvironments = ps.spec?.environments ?? [];
-  return specEnvironments.map((env) => {
-    const status = byBranch.get(env.branch)?.status ?? {};
-    return {
-      branch: env.branch,
-      active: status.active ?? {},
-      proposed: status.proposed ?? {},
-      pullRequest: status.pullRequest,
-      history: status.history,
-    };
-  });
 }
 
 // The dashboard consumes a single, server-computed PromotionStrategyDetails bundle
@@ -40,13 +16,14 @@ function environmentsFromCTPs(ps: PromotionStrategy, ctps: ChangeTransferPolicy[
 function bundleToItem<T extends CRDItem>(bundle: PromotionStrategyBundle): T {
   const ps = bundle.promotionStrategy;
   const environments = environmentsFromCTPs(ps, bundle.changeTransferPolicies ?? []);
+  const deploymentRepoURL = repoURLFromBundle(bundle);
   const psWithEnvironments: PromotionStrategy = {
     ...ps,
     status: { ...ps.status, environments },
   };
   return {
     ...psWithEnvironments,
-    enriched: enrichFromCRD(psWithEnvironments),
+    enriched: enrichFromCRD(psWithEnvironments, 0, deploymentRepoURL),
   } as T;
 }
 

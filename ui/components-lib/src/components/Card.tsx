@@ -13,9 +13,11 @@ import './Card.scss';
 
 export interface CardProps {
   environments: Environment[];
+  /** SCM-derived deployment repo URL for hydrated commit links (from PromotionStrategyDetails). */
+  deploymentRepoURL?: string;
 }
 
-const Card: React.FC<CardProps> = ({ environments }) => {
+const Card: React.FC<CardProps> = ({ environments, deploymentRepoURL = '' }) => {
   const [historyMode, setHistoryMode] = useState<{ [branch: string]: number }>({});
   const [hoveredIcon, setHoveredIcon] = useState<string | null>(null);
   const [isVerticalLayout, setIsVerticalLayout] = useState<boolean>(true);
@@ -53,9 +55,9 @@ const Card: React.FC<CardProps> = ({ environments }) => {
   const enrichedEnvs = useMemo(() => {
     return environments.map((env) => {
       const historyIndex = getHistoryIndex(env.branch);
-      return enrichFromEnvironments([env], historyIndex)[0];
+      return enrichFromEnvironments([env], historyIndex, deploymentRepoURL)[0];
     });
-  }, [environments, historyMode]);
+  }, [environments, historyMode, deploymentRepoURL]);
 
   return (
     <div className="env-cards-container">

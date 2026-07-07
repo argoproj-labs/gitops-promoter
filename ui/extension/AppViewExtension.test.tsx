@@ -5,20 +5,26 @@ import { describe, it, beforeEach, afterEach, expect, vi } from 'vitest';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 
-const makeStrategy = (name: string, namespace = 'default') =>
+const makeBundle = (name: string, namespace = 'default') =>
   JSON.stringify({
-    kind: 'PromotionStrategy',
-    apiVersion: 'promoter.argoproj.io/v1alpha1',
-    metadata: {
-      name,
-      namespace,
-      uid: 'uid-' + name,
-      resourceVersion: '1',
-      generation: 1,
-      creationTimestamp: '',
+    kind: 'PromotionStrategyDetails',
+    apiVersion: 'view.promoter.argoproj.io/v1alpha1',
+    metadata: { name, namespace },
+    promotionStrategy: {
+      kind: 'PromotionStrategy',
+      apiVersion: 'promoter.argoproj.io/v1alpha1',
+      metadata: {
+        name,
+        namespace,
+        uid: 'uid-' + name,
+        resourceVersion: '1',
+        generation: 1,
+        creationTimestamp: '',
+      },
+      spec: { gitRepositoryRef: { name: 'my-repo' }, environments: [] },
+      status: {},
     },
-    spec: { gitRepositoryRef: { name: 'my-repo' }, environments: [] },
-    status: { environments: [] },
+    changeTransferPolicies: [],
   });
 
 const makeTreeNode = (name: string, namespace = 'default', version = 'v1alpha1') => ({
@@ -146,12 +152,12 @@ describe('AppViewExtension', () => {
       vi.mocked(fetch)
         .mockResolvedValueOnce({
           ok: true,
-          json: async () => ({ manifest: makeStrategy('strategy-1') }),
+          json: async () => ({ manifest: makeBundle('strategy-1') }),
           text: async () => '',
         } as Response)
         .mockResolvedValueOnce({
           ok: true,
-          json: async () => ({ manifest: makeStrategy('strategy-2') }),
+          json: async () => ({ manifest: makeBundle('strategy-2') }),
           text: async () => '',
         } as Response);
 
@@ -166,7 +172,7 @@ describe('AppViewExtension', () => {
     it('does not render a dropdown when only one strategy is loaded', async () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
-        json: async () => ({ manifest: makeStrategy('only-strategy') }),
+        json: async () => ({ manifest: makeBundle('only-strategy') }),
         text: async () => '',
       } as Response);
 
@@ -224,12 +230,12 @@ describe('AppViewExtension', () => {
       vi.mocked(fetch)
         .mockResolvedValueOnce({
           ok: true,
-          json: async () => ({ manifest: makeStrategy('my-strategy', 'ns-a') }),
+          json: async () => ({ manifest: makeBundle('my-strategy', 'ns-a') }),
           text: async () => '',
         } as Response)
         .mockResolvedValueOnce({
           ok: true,
-          json: async () => ({ manifest: makeStrategy('my-strategy', 'ns-b') }),
+          json: async () => ({ manifest: makeBundle('my-strategy', 'ns-b') }),
           text: async () => '',
         } as Response);
 
@@ -253,12 +259,12 @@ describe('AppViewExtension', () => {
       vi.mocked(fetch)
         .mockResolvedValueOnce({
           ok: true,
-          json: async () => ({ manifest: makeStrategy('my-strategy', 'ns-a') }),
+          json: async () => ({ manifest: makeBundle('my-strategy', 'ns-a') }),
           text: async () => '',
         } as Response)
         .mockResolvedValueOnce({
           ok: true,
-          json: async () => ({ manifest: makeStrategy('my-strategy', 'ns-b') }),
+          json: async () => ({ manifest: makeBundle('my-strategy', 'ns-b') }),
           text: async () => '',
         } as Response);
 
@@ -289,7 +295,7 @@ describe('AppViewExtension', () => {
 
       await render(makeProps([makeTreeNode('my-strategy')]));
 
-      expect(container.textContent).toContain('Failed to load PromotionStrategy');
+      expect(container.textContent).toContain('Failed to load PromotionStrategyDetails');
       expect(container.textContent).toContain('network failure');
     });
   });

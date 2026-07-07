@@ -417,6 +417,13 @@ func startGitServer(gitStoragePath string) (string, *http.Server) {
 	return gitServerPortStr, server
 }
 
+// testHydratorRepoURL is a valid HTTPS repo URL written into hydrator.metadata by test helpers.
+const testHydratorRepoURL = "https://github.com/test-org/deployment-repo"
+
+func testHydratorMetadataJSON(drySha string) string {
+	return fmt.Sprintf(`{"drySha": %q, "repoURL": %q}`, drySha, testHydratorRepoURL)
+}
+
 // testGitRepoCloneURL is the http URL of the fake repository on the in-process test git server (from GitRepository.Spec.Fake).
 func testGitRepoCloneURL(repo *promoterv1alpha1.GitRepository) string {
 	return fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repo.Spec.Fake.Owner, repo.Spec.Fake.Name)
@@ -710,8 +717,8 @@ func makeChangeAndHydrateRepo(gitPath string, repo *promoterv1alpha1.GitReposito
 		}
 
 		metadata := git.HydratorMetadata{
-			RepoURL: "", // This is not used anywhere, we use the SCM provider's HTTPS URL instead
 			DrySha:  sha,
+			RepoURL: testHydratorRepoURL,
 			Author:  "testuser <testmail@test.com>",
 			Date:    metav1.Now(),
 			Subject: subject,
@@ -1029,6 +1036,7 @@ func pushHydratedBranchForPath(ctx context.Context, gitPath, branch, activePath,
 
 	metadata := git.HydratorMetadata{
 		DrySha:  drySha,
+		RepoURL: testHydratorRepoURL,
 		Author:  "testuser <testmail@test.com>",
 		Date:    metav1.Now(),
 		Subject: commitMessage,
@@ -1122,6 +1130,7 @@ func pushHydratedBranchWithMetadataAtOnly(ctx context.Context, gitPath, branch, 
 
 	metadata := git.HydratorMetadata{
 		DrySha:  drySha,
+		RepoURL: testHydratorRepoURL,
 		Author:  "testuser <testmail@test.com>",
 		Date:    metav1.Now(),
 		Subject: commitMessage,

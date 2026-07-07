@@ -647,7 +647,7 @@ var _ = Describe("ActivePath support", func() {
 		Expect(os.MkdirAll(filepath.Join(workDir, "apps", "app-one"), 0o755)).To(Succeed())
 		err = os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"root-sha"}`), 0o644)
 		Expect(err).NotTo(HaveOccurred())
-		err = os.WriteFile(filepath.Join(workDir, "apps", "app-one", "hydrator.metadata"), []byte(`{"drySha":"app-sha"}`), 0o644)
+		err = os.WriteFile(filepath.Join(workDir, "apps", "app-one", "hydrator.metadata"), []byte(`{"drySha":"app-sha","repoURL":"https://github.com/org/deployment.git"}`), 0o644)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(workDir, "add", "-A")
 		Expect(err).NotTo(HaveOccurred())
@@ -674,6 +674,39 @@ var _ = Describe("ActivePath support", func() {
 		metadata, err := g.GetShaMetadataFromFile(GinkgoT().Context(), commitSha, "apps/app-one")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(metadata.Sha).To(Equal("app-sha"))
+	})
+
+	It("converts hydrator.metadata repoURL and reference commit repoURLs to HTTPS", func() {
+		Expect(os.MkdirAll(filepath.Join(workDir, "apps", "app-one"), 0o755)).To(Succeed())
+		metadataJSON := `{
+			"drySha":"app-sha",
+			"repoURL":"git@github.com:org/deployment.git",
+			"references":[{"commit":{"sha":"abc1234567890123456789012345678901234567890","repoURL":"git@github.com:org/code.git"}}]
+		}`
+		err := os.WriteFile(filepath.Join(workDir, "apps", "app-one", "hydrator.metadata"), []byte(metadataJSON), 0o644)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "add", "-A")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", "add ssh repo urls")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "branch", "-M", "environment/development")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "-u", "origin", "environment/development")
+		Expect(err).NotTo(HaveOccurred())
+
+		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
+		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
+		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
+
+		commitSha, err := runGitCmd(workDir, "rev-parse", "environment/development")
+		Expect(err).NotTo(HaveOccurred())
+		commitSha = strings.TrimSpace(commitSha)
+
+		metadata, err := g.GetShaMetadataFromFile(GinkgoT().Context(), commitSha, "apps/app-one")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(metadata.RepoURL).To(Equal("https://github.com/org/deployment"))
+		Expect(metadata.References).To(HaveLen(1))
+		Expect(metadata.References[0].Commit.RepoURL).To(Equal("https://github.com/org/code"))
 	})
 
 	It("treats a missing activePath hydrator.metadata as empty even when the path exists in the worktree", func() {

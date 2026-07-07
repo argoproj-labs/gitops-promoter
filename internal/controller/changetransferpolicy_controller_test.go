@@ -1223,7 +1223,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(os.WriteFile(path.Join(gitPath, "manifests-fake.yaml"), []byte("{\"side\": \"proposed\"}\n"), 0o644)).To(Succeed())
 				Expect(os.WriteFile(path.Join(gitPath, "hydrator.metadata"),
-					fmt.Appendf(nil, "{\"drySha\": %q}", proposedDrySha), 0o644)).To(Succeed())
+					[]byte(testHydratorMetadataJSON(proposedDrySha)), 0o644)).To(Succeed())
 				_, err = runGitCmd(ctx, gitPath, "add", "manifests-fake.yaml", "hydrator.metadata")
 				Expect(err).NotTo(HaveOccurred())
 				_, err = runGitCmd(ctx, gitPath, "commit", "-m", "proposed hydrated commit")

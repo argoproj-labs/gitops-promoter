@@ -53,13 +53,18 @@ function extractReferenceCommitData(dryCommit: Commit): null | ReferenceCommit {
   return { sha, author, subject, body, date, url };
 }
 
-function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnvDetails {
+function getEnvDetails(
+  environment: Environment,
+  index: number = 0,
+  deploymentRepoURL: string = '',
+): EnrichedEnvDetails {
   const { active = {}, proposed = {}, pullRequest, history = [] } = environment;
   const branch = environment.branch || '';
 
   //
   const activeHistory = history[index]?.active || active;
   const activeCommitInfo = activeHistory.dry || {};
+  const activeHydrated = activeHistory.hydrated || {};
 
   // Use active field for current view, history field for history view
   const activeChecks = getChecks(
@@ -122,7 +127,7 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
     activeCommitMessage: extractBodyPreTrailer(activeCommitInfo.body || '-'),
     activeCommitAuthor: extractNameOnly(activeCommitInfo.author || '-'),
     activeCommitDate: activeCommitInfo.commitTime || '',
-    activeCommitUrl: getCommitUrl(activeCommitInfo.repoURL ?? '', activeCommitInfo.sha ?? ''),
+    activeCommitUrl: getCommitUrl(deploymentRepoURL, activeHydrated.sha ?? ''),
     activeSha: activeCommitInfo.sha ? activeCommitInfo.sha.slice(0, 7) : '-',
     activeReferenceCommit: activeReferenceData,
     activeReferenceCommitUrl: activeReferenceData ? (activeReferenceData.url ?? null) : null,
@@ -141,7 +146,9 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
     proposedDryCommitBody: extractBodyPreTrailer(proposedDry.body || '-'),
     proposedDryCommitAuthor: extractNameOnly(proposedDry.author || '-'),
     proposedDryCommitDate: proposedDry.commitTime || '',
-    proposedDryCommitUrl: getCommitUrl(proposedDry.repoURL ?? '', proposedDry.sha ?? ''),
+    proposedDryCommitUrl: isHistoric
+      ? getCommitUrl(deploymentRepoURL, proposedDry.sha ?? '')
+      : getCommitUrl(proposed.dry?.repoURL ?? '', proposedDry.sha ?? ''),
     proposedSha: proposedDry.sha ? proposedDry.sha.slice(0, 7) : '-',
     proposedReferenceCommit: proposedReferenceData,
     proposedReferenceCommitUrl: proposedReferenceData ? (proposedReferenceData.url ?? null) : null,
@@ -185,13 +192,14 @@ export function getProcessingEnvs(environments: Environment[]): Set<string> {
 export function enrichFromCRD(
   ps: PromotionStrategy,
   historyIndex: number = 0,
+  deploymentRepoURL: string = '',
 ): EnrichedEnvDetails[] {
   if (!ps?.status?.environments) {
     return [];
   }
 
   return ps.status.environments.map((environment: Environment) =>
-    getEnvDetails(environment, historyIndex),
+    getEnvDetails(environment, historyIndex, deploymentRepoURL),
   );
 }
 
@@ -199,11 +207,14 @@ export function enrichFromCRD(
 export function enrichFromEnvironments(
   environments: Environment[],
   historyIndex: number = 0,
+  deploymentRepoURL: string = '',
 ): EnrichedEnvDetails[] {
   if (!environments) {
     return [];
   }
-  return environments.map((environment: Environment) => getEnvDetails(environment, historyIndex));
+  return environments.map((environment: Environment) =>
+    getEnvDetails(environment, historyIndex, deploymentRepoURL),
+  );
 }
 
 // Get overall promotion status and counts

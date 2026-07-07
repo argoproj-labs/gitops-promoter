@@ -1325,7 +1325,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 				err = os.MkdirAll(path.Join(gitPath, activePath), 0o755)
 				Expect(err).ToNot(HaveOccurred())
-				metadata := fmt.Sprintf("{\"drySha\": \"%s\"}", drySha)
+				metadata := testHydratorMetadataJSON(drySha)
 				Expect(os.WriteFile(path.Join(gitPath, "hydrator.metadata"), []byte(metadata), 0o644)).To(Succeed())
 				err = os.WriteFile(path.Join(gitPath, activePath, "hydrator.metadata"), []byte(metadata), 0o644)
 				Expect(err).ToNot(HaveOccurred())

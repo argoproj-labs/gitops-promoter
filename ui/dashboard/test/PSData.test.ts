@@ -13,6 +13,12 @@ const environmentWithReferenceCommit: Environment = {
       repoURL: 'https://github.example.com/deployment',
       subject: '[Changed] - infrastructure deployment',
     },
+    hydrated: {
+      sha: 'activehydrated111111111111111111111111111111111',
+      commitTime: '2026-05-22T14:40:04Z',
+      author: 'deployment-bot <bot@example.com>',
+      subject: '[Changed] - infrastructure deployment',
+    },
   },
   proposed: {
     dry: {
@@ -38,6 +44,59 @@ const environmentWithReferenceCommit: Environment = {
 };
 
 describe('enrichFromEnvironments', () => {
+  it('builds active URLs from SCM deployment repo + hydrated sha; dry proposed from status', () => {
+    const deploymentRepoURL = 'https://github.example.com/from-scm';
+    const [env] = enrichFromEnvironments([environmentWithReferenceCommit], 0, deploymentRepoURL);
+
+    expect(env.activeCommitUrl).toBe(
+      `${deploymentRepoURL}/commit/${environmentWithReferenceCommit.active!.hydrated!.sha}`,
+    );
+    expect(env.proposedDryCommitUrl).toBe(
+      `${environmentWithReferenceCommit.proposed!.dry!.repoURL}/commit/${environmentWithReferenceCommit.proposed!.dry!.sha}`,
+    );
+    expect(env.proposedReferenceCommitUrl).toBe(
+      'https://github.example.com/example-repo/commit/d22207e1fe7baad7e91400d80c42a599d25c1022',
+    );
+  });
+
+  it('builds historic proposed commit URLs from SCM-derived deployment repo URL', () => {
+    const deploymentRepoURL = 'https://github.example.com/from-scm';
+    const historicEnv: Environment = {
+      ...environmentWithReferenceCommit,
+      history: [
+        { active: {}, proposed: {} },
+        {
+          active: {
+            hydrated: {
+              sha: 'historyactivehydrated111111111111111111111111111',
+              commitTime: '2026-05-22T15:30:00Z',
+              author: 'bot <bot@example.com>',
+              subject: 'history active',
+            },
+          },
+          proposed: {
+            hydrated: {
+              sha: 'hydratedsha1111111111111111111111111111111111',
+              commitTime: '2026-05-22T16:00:00Z',
+              author: 'bot <bot@example.com>',
+              subject: 'hydrated commit',
+            },
+            commitStatuses: [],
+          },
+        },
+      ],
+    };
+
+    const [env] = enrichFromEnvironments([historicEnv], 1, deploymentRepoURL);
+
+    expect(env.proposedDryCommitUrl).toBe(
+      `${deploymentRepoURL}/commit/hydratedsha1111111111111111111111111111111111`,
+    );
+    expect(env.activeCommitUrl).toBe(
+      `${deploymentRepoURL}/commit/historyactivehydrated111111111111111111111111111`,
+    );
+  });
+
   it('preserves RFC 3339 commit timestamps so TimeAgo does not render "NaN days ago"', () => {
     const [env] = enrichFromEnvironments([environmentWithReferenceCommit], 0);
 

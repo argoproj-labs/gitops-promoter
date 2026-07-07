@@ -87,6 +87,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils/gitpaths"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils/repourl"
 )
 
 // EnvironmentOperations provides methods for interacting with a specific clone of a Git repository.
@@ -325,23 +326,41 @@ func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha,
 		return v1alpha1.CommitShaState{}, fmt.Errorf("could not unmarshal metadata file: %w", err)
 	}
 
-	// Use the HTTPS URL from the SCM provider instead of the repoURL from hydrator.metadata
-	// to ensure compatibility with the UI which expects HTTP(S) URLs. ArgoCD may use SSH URLs
-	// in its hydrator.metadata which won't work for creating web links.
-	// Strip the .git suffix as the UI appends /commit/{sha} directly.
-	httpsRepoURL := strings.TrimSuffix(g.gap.GetGitHttpsRepoUrl(*g.gitRepo), ".git")
+	repoURL, err := repourl.ConvertToWebURL(hydratorFile.RepoURL)
+	if err != nil {
+		return v1alpha1.CommitShaState{}, fmt.Errorf("convert hydrator repoURL: %w", err)
+	}
 
 	commitState := v1alpha1.CommitShaState{
 		Sha:        hydratorFile.DrySha,
 		CommitTime: hydratorFile.Date,
-		RepoURL:    httpsRepoURL,
+		RepoURL:    repoURL,
 		Author:     hydratorFile.Author,
 		Subject:    hydratorFile.Subject,
 		Body:       hydratorFile.Body,
-		References: hydratorFile.References,
+		References: convertReferenceRepoURLs(hydratorFile.References),
 	}
 
 	return commitState, nil
+}
+
+func convertReferenceRepoURLs(refs []v1alpha1.RevisionReference) []v1alpha1.RevisionReference {
+	if len(refs) == 0 {
+		return refs
+	}
+	out := make([]v1alpha1.RevisionReference, len(refs))
+	for i, ref := range refs {
+		out[i] = ref
+		if ref.Commit == nil || ref.Commit.RepoURL == "" {
+			continue
+		}
+		commit := *ref.Commit
+		if converted, err := repourl.ConvertToWebURL(commit.RepoURL); err == nil {
+			commit.RepoURL = converted
+		}
+		out[i].Commit = &commit
+	}
+	return out
 }
 
 // GetShaMetadataFromGit retrieves commit metadata by running git commands for a given SHA.
