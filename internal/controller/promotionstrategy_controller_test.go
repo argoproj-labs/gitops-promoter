@@ -28,7 +28,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"testing"
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
@@ -5858,32 +5857,19 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 	})
 })
 
-// childLabelPropagationSites lists controller files that must call StampInstanceIDLabel
-// at child-creation sites for multi-install label propagation (not gate CommitStatus paths,
-// which use CommitStatusStandardLabels).
-var childLabelPropagationSites = []struct {
-	file  string
-	calls int
-}{
-	{file: "promotionstrategy_controller.go", calls: 2},
-	{file: "changetransferpolicy_controller.go", calls: 1},
-}
-
-func TestChildCreationPropagatesInstanceIDLabel(t *testing.T) {
-	t.Parallel()
-	for _, site := range childLabelPropagationSites {
-		t.Run(site.file, func(t *testing.T) {
-			t.Parallel()
-			path := filepath.Join(".", site.file)
+var _ = Describe("Child creation instance-id label propagation", func() {
+	// Controller files must call StampInstanceIDLabel at child-creation sites for multi-install
+	// label propagation (not gate CommitStatus paths, which use CommitStatusStandardLabels).
+	DescribeTable("controller files call StampInstanceIDLabel",
+		func(file string, expectedCalls int) {
+			path := filepath.Join(".", file)
 			src, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatalf("read %s: %v", path, err)
-			}
+			Expect(err).NotTo(HaveOccurred(), "read %s", path)
+
 			fset := token.NewFileSet()
 			f, err := parser.ParseFile(fset, path, src, 0)
-			if err != nil {
-				t.Fatalf("parse %s: %v", path, err)
-			}
+			Expect(err).NotTo(HaveOccurred(), "parse %s", path)
+
 			count := 0
 			ast.Inspect(f, func(n ast.Node) bool {
 				call, ok := n.(*ast.CallExpr)
@@ -5899,9 +5885,10 @@ func TestChildCreationPropagatesInstanceIDLabel(t *testing.T) {
 				}
 				return true
 			})
-			if count != site.calls {
-				t.Fatalf("%s must call utils.StampInstanceIDLabel %d times for instance-id label propagation, found %d", site.file, site.calls, count)
-			}
-		})
-	}
-}
+			Expect(count).To(Equal(expectedCalls),
+				"%s must call utils.StampInstanceIDLabel %d times for instance-id label propagation", file, expectedCalls)
+		},
+		Entry("promotionstrategy_controller.go", "promotionstrategy_controller.go", 2),
+		Entry("changetransferpolicy_controller.go", "changetransferpolicy_controller.go", 1),
+	)
+})
