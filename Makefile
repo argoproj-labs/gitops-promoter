@@ -166,17 +166,23 @@ go-fix: ## Apply stdlib go fix modernizations (e.g. after a Go version bump).
 vet: ## Run go vet against code.
 	go vet ./...
 
+# This project uses Ginkgo exclusively. Fail if anyone adds a Go standard-library
+# test (`func TestXxx(t *testing.T)` that isn't a Ginkgo bootstrap calling RunSpecs).
+.PHONY: check-no-go-tests
+check-no-go-tests: ## Fail if any Go standard-library tests exist (Ginkgo only).
+	./hack/check-no-go-tests.sh
+
 .PHONY: test
-test: manifests generate fmt vet envtest ## Run tests.
+test: check-no-go-tests manifests generate fmt vet envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
 
 # Utilize Kind or modify the e2e tests to load the image locally, enabling compatibility with other vendors.
 .PHONY: test-e2e  # Run the e2e tests against a Kind k8s instance that is spun up.
-test-e2e:
+test-e2e: check-no-go-tests
 	go test ./test/e2e/ -v
 
 .PHONY: test-deps
-test-deps: ginkgo manifests generate fmt vet envtest
+test-deps: check-no-go-tests ginkgo manifests generate fmt vet envtest
 
 .PHONY: test-parallel
 test-parallel: test-deps ## Run tests in parallel
