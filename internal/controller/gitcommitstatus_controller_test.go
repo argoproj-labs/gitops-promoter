@@ -889,16 +889,19 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 		)
 
 		var (
-			devGCS     *promoterv1alpha1.GitCommitStatus
-			stagingGCS *promoterv1alpha1.GitCommitStatus
-			prodGCS    *promoterv1alpha1.GitCommitStatus
-			gatingPS   *promoterv1alpha1.PromotionStrategy
-			gatingName string
+			devGCS            *promoterv1alpha1.GitCommitStatus
+			stagingGCS        *promoterv1alpha1.GitCommitStatus
+			prodGCS           *promoterv1alpha1.GitCommitStatus
+			gatingPS          *promoterv1alpha1.PromotionStrategy
+			gatingName        string
+			gatingSCMSecret   *v1.Secret
+			gatingSCMProvider *promoterv1alpha1.ScmProvider
+			gatingGitRepo     *promoterv1alpha1.GitRepository
 		)
 
 		BeforeEach(func() {
 			By("Creating a PromotionStrategy with per-environment commit status requirements")
-			gatingName, scmSecret, scmProvider, gitRepo, _, _, gatingPS = promotionStrategyResource(ctx, "git-commit-gating", "default")
+			gatingName, gatingSCMSecret, gatingSCMProvider, gatingGitRepo, _, _, gatingPS = promotionStrategyResource(ctx, "git-commit-gating", "default")
 
 			// Configure per-environment ProposedCommitStatuses
 			for i := range gatingPS.Spec.Environments {
@@ -921,11 +924,11 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				}
 			}
 
-			setupInitialTestGitRepoOnServer(ctx, gitRepo)
+			setupInitialTestGitRepoOnServer(ctx, gatingGitRepo)
 
-			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gatingSCMSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gatingSCMProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gatingGitRepo)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gatingPS)).To(Succeed())
 		})
 
@@ -942,14 +945,14 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			if gatingPS != nil {
 				_ = k8sClient.Delete(ctx, gatingPS)
 			}
-			if gitRepo != nil {
-				_ = k8sClient.Delete(ctx, gitRepo)
+			if gatingGitRepo != nil {
+				_ = k8sClient.Delete(ctx, gatingGitRepo)
 			}
-			if scmProvider != nil {
-				_ = k8sClient.Delete(ctx, scmProvider)
+			if gatingSCMProvider != nil {
+				_ = k8sClient.Delete(ctx, gatingSCMProvider)
 			}
-			if scmSecret != nil {
-				_ = k8sClient.Delete(ctx, scmSecret)
+			if gatingSCMSecret != nil {
+				_ = k8sClient.Delete(ctx, gatingSCMSecret)
 			}
 		})
 
