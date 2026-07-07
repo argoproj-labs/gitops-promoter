@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { enrichFromCRD } from '@shared/utils/PSData';
-import { environmentsFromCTPs, repoURLFromBundle } from '@shared/utils/bundle';
+import { environmentsFromCTPs, cardPropsFromBundle } from '@shared/utils/bundle';
 import type { PromotionStrategy } from '@shared/utils/PSData';
 import type { PromotionStrategyBundle } from '@shared/types/bundle';
 
@@ -15,8 +15,7 @@ interface CRDItem extends PromotionStrategy {
 // keep working.
 function bundleToItem<T extends CRDItem>(bundle: PromotionStrategyBundle): T {
   const ps = bundle.promotionStrategy;
-  const environments = environmentsFromCTPs(ps, bundle.changeTransferPolicies ?? []);
-  const deploymentRepoURL = repoURLFromBundle(bundle);
+  const { environments, deploymentRepoURL } = cardPropsFromBundle(bundle);
   const psWithEnvironments: PromotionStrategy = {
     ...ps,
     status: { ...ps.status, environments },

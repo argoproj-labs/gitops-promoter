@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import Select, { SingleValue } from 'react-select';
 import Card from '@components-lib/components/Card';
-import { environmentsFromCTPs, repoURLFromBundle } from '@shared/utils/bundle';
+import { bundleKey } from '@shared/utils/bundle';
 import { fetchPromotionStrategyDetails } from '@shared/utils/fetchPromotionStrategyDetails';
-import type { Environment } from '@shared/types/promotion';
+import type { PromotionStrategyBundle } from '@shared/types/bundle';
 import { AppViewComponentProps } from '@shared/types/extension';
 import './StrategyDropdown.scss';
 
@@ -15,14 +15,6 @@ const STORAGE_PREFIX = 'gitops-promoter:lastStrategy:';
 interface SelectOption {
   value: string;
   label: string;
-}
-
-interface StrategyView {
-  key: string;
-  name: string;
-  namespace: string;
-  environments: Environment[];
-  deploymentRepoURL: string;
 }
 
 const getParam = (): string => {
@@ -65,7 +57,7 @@ const setStored = (appNamespace: string, appName: string, name: string) => {
 };
 
 const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
-  const [strategies, setStrategies] = useState<StrategyView[]>([]);
+  const [bundles, setBundles] = useState<PromotionStrategyBundle[]>([]);
   const [selectedKey, setSelectedKey] = useState<string>(
     () => getParam() || getStored(application.metadata.namespace, application.metadata.name),
   );
@@ -74,6 +66,7 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
   useEffect(() => {
     const appName = application.metadata.name;
     const appNamespace = application.metadata.namespace;
+    let ignore = false;
 
     const strategyNodes = (tree.nodes || []).filter(
       (node) => node.group === GROUP && node.kind === KIND,
@@ -81,7 +74,7 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
 
     if (strategyNodes.length === 0) {
       setFetchError('No PromotionStrategy resources found');
-      setStrategies([]);
+      setBundles([]);
       setSelectedKey('');
       setParam('');
       setStored(appNamespace, appName, '');
@@ -90,28 +83,14 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
 
     setFetchError(null);
     Promise.all(
-      strategyNodes.map(async (node) => {
-        const bundle = await fetchPromotionStrategyDetails(
-          appName,
-          appNamespace,
-          node.namespace,
-          node.name,
-        );
-        return {
-          key: `${node.namespace}/${node.name}`,
-          name: node.name,
-          namespace: node.namespace,
-          environments: environmentsFromCTPs(
-            bundle.promotionStrategy,
-            bundle.changeTransferPolicies ?? [],
-          ),
-          deploymentRepoURL: repoURLFromBundle(bundle),
-        };
-      }),
+      strategyNodes.map((node) =>
+        fetchPromotionStrategyDetails(appName, appNamespace, node.namespace, node.name),
+      ),
     )
       .then((parsed) => {
-        setStrategies(parsed);
-        const keys = parsed.map((s) => s.key);
+        if (ignore) return;
+        setBundles(parsed);
+        const keys = parsed.map(bundleKey);
         const fromUrl = getParam();
         const fromStored = getStored(appNamespace, appName);
         const initial =
@@ -123,34 +102,39 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
         setStored(appNamespace, appName, initial);
       })
       .catch((err) => {
+        if (ignore) return;
         const errorMessage = err instanceof Error ? err.message : String(err);
         setFetchError('Failed to load PromotionStrategyDetails: ' + errorMessage);
-        setStrategies([]);
+        setBundles([]);
         setSelectedKey('');
         setParam('');
         setStored(appNamespace, appName, '');
       });
+
+    return () => {
+      ignore = true;
+    };
   }, [application.metadata.name, application.metadata.namespace, tree]);
 
-  if (strategies.length === 0) {
+  if (bundles.length === 0) {
     if (fetchError) {
       return <div>{fetchError}</div>;
     }
     return <div>Loading...</div>;
   }
 
-  const selected = strategies.find((s) => s.key === selectedKey);
+  const selected = bundles.find((b) => bundleKey(b) === selectedKey);
 
-  const hasDuplicateNames = new Set(strategies.map((s) => s.name)).size < strategies.length;
+  const hasDuplicateNames = new Set(bundles.map((b) => b.metadata.name)).size < bundles.length;
 
-  const options: SelectOption[] = strategies.map((s) => ({
-    value: s.key,
-    label: hasDuplicateNames ? `${s.name} (${s.namespace})` : s.name,
+  const options: SelectOption[] = bundles.map((b) => ({
+    value: bundleKey(b),
+    label: hasDuplicateNames ? `${b.metadata.name} (${b.metadata.namespace})` : b.metadata.name,
   }));
 
   return (
     <div className="extension-container">
-      {strategies.length > 1 && (
+      {bundles.length > 1 && (
         <div className="strategy-dropdown-wrapper">
           <Select<SelectOption>
             classNamePrefix="strategy-dropdown"
@@ -168,9 +152,7 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
           />
         </div>
       )}
-      {selected && (
-        <Card environments={selected.environments} deploymentRepoURL={selected.deploymentRepoURL} />
-      )}
+      {selected && <Card bundle={selected} />}
     </div>
   );
 };

@@ -35,8 +35,15 @@ var _ = Describe("ConvertToWebURL", func() {
 		Entry("scp-style ssh", "git@github.com:org/repo.git", "https://github.com/org/repo"),
 		Entry("ssh URL", "ssh://git@github.com/org/repo.git", "https://github.com/org/repo"),
 		Entry("https with embedded git user", "https://git@github.com/org/repo", "https://github.com/org/repo"),
+		Entry("https with embedded credentials", "https://user:secret@github.com/org/repo", "https://github.com/org/repo"),
+		Entry("ssh URL with port", "ssh://git@github.com:2222/org/repo.git", "https://github.com:2222/org/repo"),
 		Entry("trailing slash", "https://github.com/org/repo/", "https://github.com/org/repo"),
 	)
+
+	It("returns an error for malformed scp-style input", func() {
+		_, err := repourl.ConvertToWebURL("git@host")
+		Expect(err).To(HaveOccurred())
+	})
 
 	It("returns an error for empty input", func() {
 		_, err := repourl.ConvertToWebURL("")

@@ -1,25 +1,24 @@
 import React, { useEffect, useState } from 'react';
 import Card from '@components-lib/components/Card';
-import { environmentsFromCTPs, repoURLFromBundle } from '@shared/utils/bundle';
 import { fetchPromotionStrategyDetails } from '@shared/utils/fetchPromotionStrategyDetails';
-import type { Environment } from '@shared/types/promotion';
+import type { PromotionStrategyBundle } from '@shared/types/bundle';
 import { ResourceExtensionProps } from '@shared/types/extension';
 
 // Argo CD extension component
 
 const ResourceExtension: React.FC<ResourceExtensionProps> = ({ application, resource }) => {
-  const [environments, setEnvironments] = useState<Environment[]>([]);
-  const [deploymentRepoURL, setDeploymentRepoURL] = useState('');
+  const [bundle, setBundle] = useState<PromotionStrategyBundle | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const psNamespace = resource.metadata?.namespace;
     const psName = resource.metadata?.name;
+    let ignore = false;
+
     if (!psNamespace || !psName) {
       setFetchError('PromotionStrategy metadata is missing name or namespace');
-      setEnvironments([]);
-      setDeploymentRepoURL('');
+      setBundle(null);
       setLoading(false);
       return;
     }
@@ -32,19 +31,23 @@ const ResourceExtension: React.FC<ResourceExtensionProps> = ({ application, reso
       psNamespace,
       psName,
     )
-      .then((bundle) => {
-        setEnvironments(
-          environmentsFromCTPs(bundle.promotionStrategy, bundle.changeTransferPolicies ?? []),
-        );
-        setDeploymentRepoURL(repoURLFromBundle(bundle));
+      .then((fetched) => {
+        if (ignore) return;
+        setBundle(fetched);
       })
       .catch((err) => {
+        if (ignore) return;
         const errorMessage = err instanceof Error ? err.message : String(err);
         setFetchError('Failed to load PromotionStrategyDetails: ' + errorMessage);
-        setEnvironments([]);
-        setDeploymentRepoURL('');
+        setBundle(null);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!ignore) setLoading(false);
+      });
+
+    return () => {
+      ignore = true;
+    };
   }, [
     application.metadata.name,
     application.metadata.namespace,
@@ -60,11 +63,7 @@ const ResourceExtension: React.FC<ResourceExtensionProps> = ({ application, reso
     return <div className="extension-container">Loading...</div>;
   }
 
-  return (
-    <div className="extension-container">
-      <Card environments={environments} deploymentRepoURL={deploymentRepoURL} />
-    </div>
-  );
+  return <div className="extension-container">{bundle && <Card bundle={bundle} />}</div>;
 };
 
 export default ResourceExtension;

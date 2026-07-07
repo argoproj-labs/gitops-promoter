@@ -1,6 +1,24 @@
 import type { Environment, PromotionStrategy } from '../types/promotion';
 import type { ChangeTransferPolicy, PromotionStrategyBundle } from '../types/bundle';
 
+export function bundleKey(bundle: PromotionStrategyBundle): string {
+  return `${bundle.metadata.namespace}/${bundle.metadata.name}`;
+}
+
+// Card-ready view data derived from a PromotionStrategyDetails bundle.
+export function cardPropsFromBundle(bundle: PromotionStrategyBundle): {
+  environments: Environment[];
+  deploymentRepoURL: string;
+} {
+  return {
+    environments: environmentsFromCTPs(
+      bundle.promotionStrategy,
+      bundle.changeTransferPolicies ?? [],
+    ),
+    deploymentRepoURL: repoURLFromBundle(bundle),
+  };
+}
+
 // Reconstruct the per-environment status the UI renders from ChangeTransferPolicies
 // in a PromotionStrategyDetails bundle (one CTP per environment, keyed by activeBranch).
 export function environmentsFromCTPs(
@@ -81,7 +99,7 @@ export function repoURLFromBundle(bundle: PromotionStrategyBundle): string {
   const azure = gr.azureDevOps;
   if (azure?.project && azure?.name && spec?.azureDevOps) {
     const az = spec.azureDevOps;
-    if (az.domain) {
+    if (az.domain && az.organization) {
       return normalizeRepoWebURL(
         `https://${az.domain}/${az.organization}/${azure.project}/_git/${azure.name}`,
       );

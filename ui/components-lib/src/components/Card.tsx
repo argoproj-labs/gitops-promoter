@@ -8,16 +8,28 @@ import {
   enrichFromEnvironments,
   getProcessingEnvs,
 } from '@shared/utils/PSData';
+import { cardPropsFromBundle } from '@shared/utils/bundle';
 import type { Environment } from '@shared/types/promotion';
+import type { PromotionStrategyBundle } from '@shared/types/bundle';
 import './Card.scss';
 
 export interface CardProps {
-  environments: Environment[];
-  /** SCM-derived deployment repo URL for hydrated commit links (from PromotionStrategyDetails). */
+  /** Per-environment status; omit when `bundle` is provided. */
+  environments?: Environment[];
+  /** SCM-derived deployment repo URL for hydrated commit links; omit when `bundle` is provided. */
   deploymentRepoURL?: string;
+  /** Full PromotionStrategyDetails bundle; derives environments and deploymentRepoURL when set. */
+  bundle?: PromotionStrategyBundle;
 }
 
-const Card: React.FC<CardProps> = ({ environments, deploymentRepoURL = '' }) => {
+const Card: React.FC<CardProps> = ({
+  environments: environmentsProp,
+  deploymentRepoURL: deploymentRepoURLProp = '',
+  bundle,
+}) => {
+  const { environments, deploymentRepoURL } = bundle
+    ? cardPropsFromBundle(bundle)
+    : { environments: environmentsProp ?? [], deploymentRepoURL: deploymentRepoURLProp };
   const [historyMode, setHistoryMode] = useState<{ [branch: string]: number }>({});
   const [hoveredIcon, setHoveredIcon] = useState<string | null>(null);
   const [isVerticalLayout, setIsVerticalLayout] = useState<boolean>(true);
