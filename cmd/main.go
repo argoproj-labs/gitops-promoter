@@ -53,7 +53,6 @@ import (
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 
@@ -107,19 +106,6 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 
 	return cmd
-}
-
-func bootstrapControllerInstanceID(ctx context.Context, cfg *rest.Config, namespace string) {
-	if err := instanceid.BootstrapControllerInstanceID(ctx, cfg, namespace); err != nil {
-		setupLog.Error(err, "failed to bootstrap controller instance ID from ControllerConfiguration")
-		os.Exit(1)
-	}
-	instanceID := instanceid.ControllerInstanceID()
-	if instanceID != nil {
-		setupLog.Info("multi-instance-id mode: scoping informer cache to instanceID", "instanceID", *instanceID)
-	} else {
-		setupLog.Info("default instance-id mode: scoping informer cache to resources without instance-id label")
-	}
 }
 
 func runController(
@@ -190,8 +176,16 @@ func runController(
 	processSignalsCtx := ctrl.SetupSignalHandler()
 	runCtx, shutdown := context.WithCancel(processSignalsCtx)
 
-	bootstrapControllerInstanceID(runCtx, restConfig, controllerNamespace)
+	if err := instanceid.BootstrapControllerInstanceID(runCtx, restConfig, controllerNamespace); err != nil {
+		setupLog.Error(err, "failed to bootstrap controller instance ID from ControllerConfiguration")
+		os.Exit(1)
+	}
 	instanceID := instanceid.ControllerInstanceID()
+	if instanceID != nil {
+		setupLog.Info("multi-instance-id mode: scoping informer cache to instanceID", "instanceID", *instanceID)
+	} else {
+		setupLog.Info("default instance-id mode: scoping informer cache to resources without instance-id label")
+	}
 
 	mcMgr, err := mcmanager.New(restConfig, provider, ctrl.Options{
 		Scheme: scheme,
