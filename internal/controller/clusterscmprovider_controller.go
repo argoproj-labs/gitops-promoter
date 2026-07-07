@@ -77,6 +77,10 @@ func (r *ClusterScmProviderReconciler) Reconcile(ctx context.Context, req ctrl.R
 	// Remove any existing Ready condition. We want to start fresh.
 	previousReady = utils.RemoveReadyCondition(&clusterScmProvider)
 
+	if err := ensureControllerInstanceIDStable(ctx, r.SettingsMgr); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	if deleted, err := r.handleFinalizer(ctx, &clusterScmProvider); err != nil || deleted {
 		return ctrl.Result{}, err
 	}

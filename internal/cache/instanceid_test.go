@@ -6,9 +6,9 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	promotercache "github.com/argoproj-labs/gitops-promoter/internal/cache"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
-	corev1 "k8s.io/api/core/v1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 )
@@ -67,18 +67,18 @@ var _ = Describe("Partitioned promoter CRDs", func() {
 		Expect(promoterv1alpha1.AddToScheme(scheme)).To(Succeed())
 
 		wantKinds := map[string]struct{}{
-			"PromotionStrategy":        {},
-			"ChangeTransferPolicy":     {},
-			"CommitStatus":             {},
-			"PullRequest":              {},
-			"ScmProvider":              {},
-			"ClusterScmProvider":       {},
-			"GitRepository":            {},
-			"GitCommitStatus":          {},
-			"TimedCommitStatus":        {},
-			"WebRequestCommitStatus":   {},
-			"ArgoCDCommitStatus":       {},
-			"RevertCommit":             {},
+			"PromotionStrategy":      {},
+			"ChangeTransferPolicy":   {},
+			"CommitStatus":           {},
+			"PullRequest":            {},
+			"ScmProvider":            {},
+			"ClusterScmProvider":     {},
+			"GitRepository":          {},
+			"GitCommitStatus":        {},
+			"TimedCommitStatus":      {},
+			"WebRequestCommitStatus": {},
+			"ArgoCDCommitStatus":     {},
+			"RevertCommit":           {},
 		}
 
 		gotKinds := map[string]struct{}{}

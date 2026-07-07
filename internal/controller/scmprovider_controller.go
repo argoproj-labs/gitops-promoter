@@ -36,6 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
@@ -43,8 +44,9 @@ import (
 // ScmProviderReconciler reconciles a ScmProvider object
 type ScmProviderReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	Recorder events.EventRecorder
+	Scheme      *runtime.Scheme
+	Recorder    events.EventRecorder
+	SettingsMgr *settings.Manager
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=scmproviders,verbs=get;list;watch;create;update;patch;delete
@@ -75,6 +77,10 @@ func (r *ScmProviderReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	// Remove any existing Ready condition. We want to start fresh.
 	previousReady = utils.RemoveReadyCondition(&scmProvider)
+
+	if err := ensureControllerInstanceIDStable(ctx, r.SettingsMgr); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	if deleted, err := r.handleFinalizer(ctx, &scmProvider); err != nil || deleted {
 		return ctrl.Result{}, err

@@ -5858,7 +5858,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 	})
 })
 
-// childLabelPropagationSites lists controller files that must call CopyInstanceIDLabelToMap
+// childLabelPropagationSites lists controller files that must call StampInstanceIDLabel
 // at child-creation sites for multi-install label propagation (not gate CommitStatus paths,
 // which use CommitStatusStandardLabels).
 var childLabelPropagationSites = []struct {
@@ -5894,13 +5894,13 @@ func TestChildCreationPropagatesInstanceIDLabel(t *testing.T) {
 				if !ok {
 					return true
 				}
-				if id, ok := sel.X.(*ast.Ident); ok && id.Name == "utils" && sel.Sel.Name == "CopyInstanceIDLabelToMap" {
+				if id, ok := sel.X.(*ast.Ident); ok && id.Name == "utils" && sel.Sel.Name == "StampInstanceIDLabel" {
 					count++
 				}
 				return true
 			})
 			if count != site.calls {
-				t.Fatalf("%s must call utils.CopyInstanceIDLabelToMap %d times for instance-id label propagation, found %d", site.file, site.calls, count)
+				t.Fatalf("%s must call utils.StampInstanceIDLabel %d times for instance-id label propagation, found %d", site.file, site.calls, count)
 			}
 		})
 	}

@@ -2,29 +2,19 @@ package utils
 
 import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	"github.com/argoproj-labs/gitops-promoter/internal/instanceid"
 )
 
-// CopyInstanceIDLabelToMap copies promoter.argoproj.io/instance-id from parent into labels when the
-// parent carries a non-empty value. Returns labels (never nil).
-func CopyInstanceIDLabelToMap(parent client.Object, labels map[string]string) map[string]string {
+// StampInstanceIDLabel sets promoter.argoproj.io/instance-id when instanceid.ControllerInstanceID() is non-nil.
+// Returns labels (never nil).
+func StampInstanceIDLabel(labels map[string]string) map[string]string {
 	if labels == nil {
 		labels = make(map[string]string)
 	}
-	v, ok := parent.GetLabels()[promoterv1alpha1.InstanceIDLabel]
-	if !ok || v == "" {
+	instanceID := instanceid.ControllerInstanceID()
+	if instanceID == nil {
 		return labels
 	}
-	labels[promoterv1alpha1.InstanceIDLabel] = v
+	labels[promoterv1alpha1.InstanceIDLabel] = *instanceID
 	return labels
-}
-
-// InstanceIDStatusValue returns a pointer for status.instanceID from parent metadata labels.
-// Returns nil when the parent has no non-empty instance-id label (default install).
-func InstanceIDStatusValue(parent client.Object) *string {
-	v, ok := parent.GetLabels()[promoterv1alpha1.InstanceIDLabel]
-	if !ok || v == "" {
-		return nil
-	}
-	return &v
 }

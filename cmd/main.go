@@ -44,6 +44,7 @@ import (
 	"github.com/spf13/pflag"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/instanceid"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils/gitpaths"
@@ -108,18 +109,17 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	return cmd
 }
 
-func readInstanceIDForCache(ctx context.Context, cfg *rest.Config, namespace string) *string {
-	instanceID, err := settings.ReadInstanceID(ctx, cfg, namespace)
-	if err != nil {
-		setupLog.Error(err, "failed to read instanceID from ControllerConfiguration")
+func bootstrapControllerInstanceID(ctx context.Context, cfg *rest.Config, namespace string) {
+	if err := instanceid.BootstrapControllerInstanceID(ctx, cfg, namespace); err != nil {
+		setupLog.Error(err, "failed to bootstrap controller instance ID from ControllerConfiguration")
 		os.Exit(1)
 	}
+	instanceID := instanceid.ControllerInstanceID()
 	if instanceID != nil {
-		setupLog.Info("multi-install mode: scoping informer cache to instanceID", "instanceID", *instanceID)
+		setupLog.Info("multi-instance-id mode: scoping informer cache to instanceID", "instanceID", *instanceID)
 	} else {
-		setupLog.Info("default install mode: scoping informer cache to resources without instance-id label")
+		setupLog.Info("default instance-id mode: scoping informer cache to resources without instance-id label")
 	}
-	return instanceID
 }
 
 func runController(
@@ -190,7 +190,8 @@ func runController(
 	processSignalsCtx := ctrl.SetupSignalHandler()
 	runCtx, shutdown := context.WithCancel(processSignalsCtx)
 
-	instanceID := readInstanceIDForCache(runCtx, restConfig, controllerNamespace)
+	bootstrapControllerInstanceID(runCtx, restConfig, controllerNamespace)
+	instanceID := instanceid.ControllerInstanceID()
 
 	mcMgr, err := mcmanager.New(restConfig, provider, ctrl.Options{
 		Scheme: scheme,
@@ -283,16 +284,18 @@ func runController(
 		panic(fmt.Errorf("unable to create PromotionStrategy controller: %w", err))
 	}
 	if err = (&controller.ScmProviderReconciler{
-		Client:   localManager.GetClient(),
-		Scheme:   localManager.GetScheme(),
-		Recorder: localManager.GetEventRecorder("ScmProvider"),
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorder("ScmProvider"),
+		SettingsMgr: settingsMgr,
 	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ScmProvider controller: %w", err))
 	}
 	if err = (&controller.GitRepositoryReconciler{
-		Client:   localManager.GetClient(),
-		Scheme:   localManager.GetScheme(),
-		Recorder: localManager.GetEventRecorder("GitRepository"),
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorder("GitRepository"),
+		SettingsMgr: settingsMgr,
 	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create GitRepository controller: %w", err))
 	}

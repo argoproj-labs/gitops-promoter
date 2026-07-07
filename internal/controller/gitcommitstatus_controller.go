@@ -100,6 +100,10 @@ func (r *GitCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	// Remove any existing Ready condition. We want to start fresh.
 	previousReady = utils.RemoveReadyCondition(&gcs)
 
+	if err := ensureControllerInstanceIDStable(ctx, r.SettingsMgr); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	// Fetch the referenced PromotionStrategy
 	var ps promoterv1alpha1.PromotionStrategy
 	psKey := client.ObjectKey{

@@ -32,6 +32,7 @@ import (
 	kubeconfigprovider "sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
 
 	promotercache "github.com/argoproj-labs/gitops-promoter/internal/cache"
+	"github.com/argoproj-labs/gitops-promoter/internal/instanceid"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -40,6 +41,8 @@ import (
 // startPartitionedManager builds a multicluster manager with instance-id cache
 // partitioning matching cmd/main.go and registers controllers needed for migration tests.
 func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace string, instanceID *string) context.CancelFunc {
+	instanceid.SetControllerInstanceIDForTest(instanceID)
+
 	mgrCtx, cancel := context.WithCancel(ctx)
 	stopped := make(chan struct{})
 	skipNameValidation := true
@@ -140,15 +143,17 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 	}).SetupWithManager(mgrCtx, localMgr)).To(Succeed())
 
 	Expect((&ScmProviderReconciler{
-		Client:   localMgr.GetClient(),
-		Scheme:   localMgr.GetScheme(),
-		Recorder: localMgr.GetEventRecorder("ScmProvider"),
+		Client:      localMgr.GetClient(),
+		Scheme:      localMgr.GetScheme(),
+		Recorder:    localMgr.GetEventRecorder("ScmProvider"),
+		SettingsMgr: settingsMgr,
 	}).SetupWithManager(mgrCtx, localMgr)).To(Succeed())
 
 	Expect((&GitRepositoryReconciler{
-		Client:   localMgr.GetClient(),
-		Scheme:   localMgr.GetScheme(),
-		Recorder: localMgr.GetEventRecorder("GitRepository"),
+		Client:      localMgr.GetClient(),
+		Scheme:      localMgr.GetScheme(),
+		Recorder:    localMgr.GetEventRecorder("GitRepository"),
+		SettingsMgr: settingsMgr,
 	}).SetupWithManager(mgrCtx, localMgr)).To(Succeed())
 
 	Expect(localMgr.AddHealthzCheck("healthz", healthz.Ping)).To(Succeed())

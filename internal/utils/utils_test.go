@@ -7,6 +7,7 @@ import (
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	instanceid "github.com/argoproj-labs/gitops-promoter/internal/instanceid"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -19,11 +20,21 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
+
+var _ = BeforeEach(func() {
+	instanceid.ResetControllerInstanceIDForTest()
+	instanceid.SetControllerInstanceIDForTest(nil)
+})
+
+var _ = AfterEach(func() {
+	instanceid.ResetControllerInstanceIDForTest()
+})
 
 var (
 	_ utils.PromoterResource = &promoterv1alpha1.PromotionStrategy{}
@@ -267,19 +278,18 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 		Expect(err.Error()).To(ContainSubstring("test error message"))
 	})
 
-	It("should mirror instance-id into status.instanceID when reconciliation returns an error", func() {
+	It("should stamp status.instanceID from instanceid.ControllerInstanceID", func() {
 		var err error
 		const instanceID = "wave-0"
-		obj.Labels = map[string]string{promoterv1alpha1.InstanceIDLabel: instanceID}
+		instanceid.SetControllerInstanceIDForTest(ptr.To(instanceID))
 		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(obj).Build()
 		Expect(fakeClient.Create(ctx, obj)).To(Succeed())
 
 		func() {
 			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err, nil)
-			err = errors.New("reconcile failed")
 		}()
 
-		Expect(err).To(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred())
 		updated := &promoterv1alpha1.PromotionStrategy{}
 		Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(obj), updated)).To(Succeed())
 		Expect(updated.Status.InstanceID).NotTo(BeNil())
