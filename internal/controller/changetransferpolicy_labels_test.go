@@ -22,11 +22,16 @@ import (
 	"strings"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
+	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -50,6 +55,7 @@ var _ = Describe("ChangeTransferPolicy pull request label expressions", func() {
 
 	BeforeEach(func() {
 		ctx = context.Background()
+		fake.ResetLabelCallCount()
 	})
 
 	It("evaluates a static label list onto PullRequest.spec.labels", func() {
@@ -130,6 +136,52 @@ var _ = Describe("ChangeTransferPolicy pull request label expressions", func() {
 			pr := fixtures.getPullRequest(ctx)
 			g.Expect(pr.Spec.Labels).To(BeEmpty())
 		}, constants.EventuallyTimeout).Should(Succeed())
+	})
+
+	It("reports Ready=False when the label expression fails to compile", func() {
+		fixtures := setupCTPLabelExpressionTest("ctp-labels-compile-fail", `Status.Invalid..Field`, nil)
+		defer fixtures.cleanup(ctx)
+
+		makeChangeAndHydrateRepo(fixtures.gitPath, fixtures.gitRepo, "", "")
+
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, fixtures.ctpNamespacedName(), fixtures.ctp)).To(Succeed())
+			ready := meta.FindStatusCondition(fixtures.ctp.Status.Conditions, string(promoterConditions.Ready))
+			g.Expect(ready).NotTo(BeNil())
+			g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			g.Expect(ready.Reason).To(Equal(string(promoterConditions.ReconciliationError)))
+			g.Expect(ready.Message).To(ContainSubstring("failed to evaluate pull request labels"))
+			g.Expect(ready.Message).To(ContainSubstring("failed to compile expression"))
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		var pr promoterv1alpha1.PullRequest
+		err := k8sClient.Get(ctx, fixtures.prNamespacedName(), &pr)
+		gomega := NewGomegaWithT(GinkgoTB())
+		gomega.Expect(apierrors.IsNotFound(err)).To(BeTrue())
+		gomega.Expect(fake.LabelCallCount()).To(BeZero())
+	})
+
+	It("reports Ready=False when the label expression fails at evaluation time", func() {
+		fixtures := setupCTPLabelExpressionTest("ctp-labels-eval-fail", `Status.Proposed.CommitStatuses[0].Phase`, nil)
+		defer fixtures.cleanup(ctx)
+
+		makeChangeAndHydrateRepo(fixtures.gitPath, fixtures.gitRepo, "", "")
+
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, fixtures.ctpNamespacedName(), fixtures.ctp)).To(Succeed())
+			ready := meta.FindStatusCondition(fixtures.ctp.Status.Conditions, string(promoterConditions.Ready))
+			g.Expect(ready).NotTo(BeNil())
+			g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			g.Expect(ready.Reason).To(Equal(string(promoterConditions.ReconciliationError)))
+			g.Expect(ready.Message).To(ContainSubstring("failed to evaluate pull request labels"))
+			g.Expect(ready.Message).To(ContainSubstring("failed to evaluate expression"))
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		var pr promoterv1alpha1.PullRequest
+		err := k8sClient.Get(ctx, fixtures.prNamespacedName(), &pr)
+		gomega := NewGomegaWithT(GinkgoTB())
+		gomega.Expect(apierrors.IsNotFound(err)).To(BeTrue())
+		gomega.Expect(fake.LabelCallCount()).To(BeZero())
 	})
 })
 

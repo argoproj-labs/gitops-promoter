@@ -134,4 +134,18 @@ var _ = Describe("Evaluator", func() {
 		_, err := e.Evaluate(`[1, 'lgtm']`, ExpressionContext{})
 		Expect(err).To(MatchError("expression must return []string, got int at index 0"))
 	})
+
+	It("rejects expressions that fail to compile", func() {
+		e := &Evaluator{}
+		_, err := e.Evaluate(`Status.Invalid..Field`, ExpressionContext{})
+		Expect(err).To(MatchError(ContainSubstring("failed to compile expression")))
+	})
+
+	It("rejects expressions that fail at evaluation time", func() {
+		e := &Evaluator{}
+		_, err := e.Evaluate(`Status.Proposed.CommitStatuses[0].Phase`, ExpressionContext{
+			Status: promoterv1alpha1.ChangeTransferPolicyStatus{},
+		})
+		Expect(err).To(MatchError(ContainSubstring("failed to evaluate expression")))
+	})
 })
