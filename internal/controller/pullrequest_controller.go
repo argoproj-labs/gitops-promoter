@@ -176,7 +176,7 @@ func (r *PullRequestReconciler) handleEmptyIDDeletion(ctx context.Context, pr *p
 
 	if controllerutil.ContainsFinalizer(pr, promoterv1alpha1.PullRequestFinalizer) {
 		controllerutil.RemoveFinalizer(pr, promoterv1alpha1.PullRequestFinalizer)
-		if err := r.Client.SubResource("finalizers").Update(ctx, pr); err != nil {
+		if err := r.Update(ctx, pr); err != nil {
 			return true, fmt.Errorf("failed to remove finalizer: %w", err)
 		}
 	}
@@ -210,7 +210,7 @@ func (r *PullRequestReconciler) cleanupTerminalStates(ctx context.Context, pr *p
 	// simple and reliable.
 	if controllerutil.ContainsFinalizer(pr, promoterv1alpha1.PullRequestFinalizer) {
 		controllerutil.RemoveFinalizer(pr, promoterv1alpha1.PullRequestFinalizer)
-		if err := r.Client.SubResource("finalizers").Update(ctx, pr); err != nil {
+		if err := r.Update(ctx, pr); err != nil {
 			return false, fmt.Errorf("failed to remove finalizer before cleanup delete: %w", err)
 		}
 	}
@@ -445,7 +445,7 @@ func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promote
 				return err //nolint:wrapcheck // error will be wrapped by caller
 			}
 			if controllerutil.AddFinalizer(pr, finalizer) {
-				return r.Client.SubResource("finalizers").Update(ctx, pr) //nolint:wrapcheck // RetryOnConflict returns wrapped error
+				return r.Update(ctx, pr) //nolint:wrapcheck // RetryOnConflict returns wrapped error
 			}
 			return nil
 		})
@@ -466,7 +466,7 @@ func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promote
 	}
 
 	controllerutil.RemoveFinalizer(pr, finalizer)
-	if err := r.Client.SubResource("finalizers").Update(ctx, pr); err != nil {
+	if err := r.Update(ctx, pr); err != nil {
 		return true, fmt.Errorf("failed to remove finalizer: %w", err)
 	}
 	return true, nil

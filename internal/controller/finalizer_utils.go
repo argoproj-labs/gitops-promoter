@@ -167,7 +167,8 @@ func handleResourceFinalizerWithDependencies(
 				return err //nolint:wrapcheck // error will be wrapped by caller
 			}
 			if controllerutil.AddFinalizer(obj, finalizer) {
-				return c.SubResource("finalizers").Update(ctx, obj) //nolint:wrapcheck // RetryOnConflict returns wrapped error
+				// CRDs have no /finalizers API subresource; update metadata.finalizers via the main resource.
+				return c.Update(ctx, obj) //nolint:wrapcheck // RetryOnConflict returns wrapped error
 			}
 			return nil
 		})
@@ -216,7 +217,7 @@ func handleResourceFinalizerWithDependencies(
 			return err //nolint:wrapcheck // error will be wrapped by caller
 		}
 		if controllerutil.RemoveFinalizer(obj, finalizer) {
-			return c.SubResource("finalizers").Update(ctx, obj) //nolint:wrapcheck // error will be wrapped by caller
+			return c.Update(ctx, obj) //nolint:wrapcheck // error will be wrapped by caller
 		}
 		return nil
 	})

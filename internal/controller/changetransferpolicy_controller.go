@@ -1443,7 +1443,7 @@ func (r *ChangeTransferPolicyReconciler) handleFinalizer(ctx context.Context, ct
 				return err //nolint:wrapcheck // error will be wrapped by caller
 			}
 			if controllerutil.AddFinalizer(ctp, finalizer) {
-				return r.Client.SubResource("finalizers").Update(ctx, ctp) //nolint:wrapcheck // RetryOnConflict returns wrapped error
+				return r.Update(ctx, ctp) //nolint:wrapcheck // RetryOnConflict returns wrapped error
 			}
 			return nil
 		})
@@ -1466,7 +1466,7 @@ func (r *ChangeTransferPolicyReconciler) handleFinalizer(ctx context.Context, ct
 			return err //nolint:wrapcheck // error will be wrapped by caller
 		}
 		if controllerutil.RemoveFinalizer(ctp, finalizer) {
-			return r.Client.SubResource("finalizers").Update(ctx, ctp) //nolint:wrapcheck // error will be wrapped by caller
+			return r.Update(ctx, ctp) //nolint:wrapcheck // error will be wrapped by caller
 		}
 		return nil
 	}); err != nil {
