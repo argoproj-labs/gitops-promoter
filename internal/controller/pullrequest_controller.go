@@ -18,6 +18,8 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"slices"
 	"strings"
@@ -95,6 +97,15 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	if shouldSkipSCMSync(&pr) {
+		logger.V(1).Info("skipping SCM sync for non-SCM spec change on open pull request")
+		requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.PullRequestConfiguration](ctx, r.SettingsMgr)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to get pull request requeue duration: %w", err)
+		}
+		return ctrl.Result{RequeueAfter: requeueDuration}, nil
+	}
+
 	provider, err := r.getPullRequestProvider(ctx, pr)
 	if err != nil {
 		if !pr.DeletionTimestamp.IsZero() {
@@ -132,6 +143,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	//    update was lost (e.g. conflict error) — syncStateFromProvider sets status.state = spec.state
 	//    so cleanup can proceed once the status is persisted.
 	if needsImmediateRequeue {
+		recordSCMSyncedSpecDigest(&pr)
 		return ctrl.Result{RequeueAfter: 1 * time.Microsecond}, nil
 	}
 
@@ -150,10 +162,13 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Previously, merge/close would delete inline, but this was problematic because the status
 	// update would be lost. Now we ensure the status is persisted before deletion occurs.
 	if cleanupRequired {
+		recordSCMSyncedSpecDigest(&pr)
 		return ctrl.Result{RequeueAfter: 1 * time.Microsecond}, nil
 	}
 
 	logger.Info("no known state transitions needed", "specState", pr.Spec.State, "statusState", pr.Status.State)
+
+	recordSCMSyncedSpecDigest(&pr)
 
 	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.PullRequestConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
@@ -353,54 +368,52 @@ func (r *PullRequestReconciler) handleStateTransitions(ctx context.Context, pr *
 	return false, nil
 }
 
-// pullRequestSpecNeedsSCMSync reports whether a PullRequest spec change requires contacting the SCM.
-// Commit message is only sent at merge time and does not need a reconcile while the PR is open.
-// MergeSha is only SCM-relevant when the desired state is merged (for example sha-mismatch retry
-// after a failed merge while status is still open).
-func pullRequestSpecNeedsSCMSync(oldPR, newPR *promoterv1alpha1.PullRequest) bool {
-	if oldPR.Spec.Title != newPR.Spec.Title ||
-		oldPR.Spec.Description != newPR.Spec.Description {
-		return true
-	}
-	if oldPR.Spec.State != newPR.Spec.State {
-		return true
-	}
-	if newPR.Spec.State == promoterv1alpha1.PullRequestMerged &&
-		oldPR.Spec.MergeSha != newPR.Spec.MergeSha {
-		return true
-	}
-	return false
+// pullRequestImmediatelySyncedSpecDigest fingerprints title and description, the fields
+// pushed to the SCM via provider.Update while the pull request is open.
+func pullRequestImmediatelySyncedSpecDigest(pr *promoterv1alpha1.PullRequest) string {
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s", pr.Spec.Title, pr.Spec.Description)))
+	return hex.EncodeToString(sum[:])
 }
 
-// pullRequestSCMRelevantUpdatePredicate limits PullRequest reconciles to spec changes that can
-// affect SCM behavior. Without it, CTP trailer writes to spec.commit.message (and routine mergeSha
-// updates while open) bump metadata.generation and trigger FindOpen on every reconcile.
-// Commit-message-only updates while spec.state is already merged are also ignored; the next periodic
-// requeue or another SCM-relevant watch event picks up the latest message before merge retries.
-func pullRequestSCMRelevantUpdatePredicate() predicate.Predicate {
+func recordSCMSyncedSpecDigest(pr *promoterv1alpha1.PullRequest) {
+	pr.Status.SCMSyncedSpecDigest = pullRequestImmediatelySyncedSpecDigest(pr)
+}
+
+// shouldSkipSCMSync reports whether reconcile can refresh status without contacting the SCM.
+// CTP trailer and mergeSha updates bump metadata.generation while title/description stay the same.
+func shouldSkipSCMSync(pr *promoterv1alpha1.PullRequest) bool {
+	if !pr.DeletionTimestamp.IsZero() {
+		return false
+	}
+	if pr.Spec.State == promoterv1alpha1.PullRequestMerged {
+		return false
+	}
+	if pr.Spec.State != promoterv1alpha1.PullRequestOpen {
+		return false
+	}
+	if pr.Status.ID == "" {
+		return false
+	}
+	if pr.Generation <= pr.Status.ObservedGeneration {
+		return false
+	}
+	return pr.Status.SCMSyncedSpecDigest == pullRequestImmediatelySyncedSpecDigest(pr)
+}
+
+// pullRequestDeletionFinalizerLengthChangedPredicate matches Update events where the object is
+// terminating (deletionTimestamp set) and the finalizer count changed. This is important because
+// the CTP controller sets a finalizer, and we need to reconcile when it's removed to ensure
+// quick cleanup of the PR.
+func pullRequestDeletionFinalizerLengthChangedPredicate() predicate.Predicate {
 	return predicate.Funcs{
-		CreateFunc: func(event.CreateEvent) bool { return true },
-		DeleteFunc: func(event.DeleteEvent) bool { return true },
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			oldPR, ok := e.ObjectOld.(*promoterv1alpha1.PullRequest)
-			if !ok || oldPR == nil {
+			if e.ObjectOld == nil || e.ObjectNew == nil {
 				return false
 			}
-			newPR, ok := e.ObjectNew.(*promoterv1alpha1.PullRequest)
-			if !ok || newPR == nil {
+			if e.ObjectNew.GetDeletionTimestamp().IsZero() {
 				return false
 			}
-			if oldPR.GetDeletionTimestamp().IsZero() && !newPR.GetDeletionTimestamp().IsZero() {
-				return true
-			}
-			if !newPR.GetDeletionTimestamp().IsZero() &&
-				len(oldPR.GetFinalizers()) != len(newPR.GetFinalizers()) {
-				return true
-			}
-			if oldPR.Generation == newPR.Generation {
-				return false
-			}
-			return pullRequestSpecNeedsSCMSync(oldPR, newPR)
+			return len(e.ObjectOld.GetFinalizers()) != len(e.ObjectNew.GetFinalizers())
 		},
 	}
 }
@@ -420,7 +433,10 @@ func (r *PullRequestReconciler) SetupWithManager(ctx context.Context, mgr ctrl.M
 	}
 
 	err = ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.PullRequest{}, builder.WithPredicates(pullRequestSCMRelevantUpdatePredicate())).
+		For(&promoterv1alpha1.PullRequest{}, builder.WithPredicates(predicate.Or(
+			predicate.GenerationChangedPredicate{},
+			pullRequestDeletionFinalizerLengthChangedPredicate(),
+		))).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Complete(r)
 	if err != nil {
