@@ -353,20 +353,51 @@ func (r *PullRequestReconciler) handleStateTransitions(ctx context.Context, pr *
 	return false, nil
 }
 
-// pullRequestDeletionFinalizerLengthChangedPredicate matches Update events where the object is
-// terminating (deletionTimestamp set) and the finalizer count changed. This is important because
-// the CTP controller sets a finalizer, and we need to reconcile when it's removed to ensure
-// quick cleanup of the PR.
-func pullRequestDeletionFinalizerLengthChangedPredicate() predicate.Predicate {
+// pullRequestSpecNeedsSCMSync reports whether a PullRequest spec change requires contacting the SCM.
+// Commit message is only sent at merge time and does not need a reconcile while the PR is open.
+// MergeSha is only SCM-relevant when the desired state is merged (for example sha-mismatch retry
+// after a failed merge while status is still open).
+func pullRequestSpecNeedsSCMSync(oldPR, newPR *promoterv1alpha1.PullRequest) bool {
+	if oldPR.Spec.Title != newPR.Spec.Title ||
+		oldPR.Spec.Description != newPR.Spec.Description {
+		return true
+	}
+	if oldPR.Spec.State != newPR.Spec.State {
+		return true
+	}
+	if newPR.Spec.State == promoterv1alpha1.PullRequestMerged &&
+		oldPR.Spec.MergeSha != newPR.Spec.MergeSha {
+		return true
+	}
+	return false
+}
+
+// pullRequestSCMRelevantUpdatePredicate limits PullRequest reconciles to spec changes that can
+// affect SCM behavior. Without it, CTP trailer writes to spec.commit.message (and routine mergeSha
+// updates while open) bump metadata.generation and trigger FindOpen on every reconcile.
+// Commit-message-only updates while spec.state is already merged are also ignored; the next periodic
+// requeue or another SCM-relevant watch event picks up the latest message before merge retries.
+func pullRequestSCMRelevantUpdatePredicate() predicate.Predicate {
 	return predicate.Funcs{
+		CreateFunc: func(event.CreateEvent) bool { return true },
+		DeleteFunc: func(event.DeleteEvent) bool { return true },
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			if e.ObjectOld == nil || e.ObjectNew == nil {
+			oldPR, ok := e.ObjectOld.(*promoterv1alpha1.PullRequest)
+			if !ok || oldPR == nil {
 				return false
 			}
-			if e.ObjectNew.GetDeletionTimestamp().IsZero() {
+			newPR, ok := e.ObjectNew.(*promoterv1alpha1.PullRequest)
+			if !ok || newPR == nil {
 				return false
 			}
-			return len(e.ObjectOld.GetFinalizers()) != len(e.ObjectNew.GetFinalizers())
+			if !newPR.GetDeletionTimestamp().IsZero() &&
+				len(oldPR.GetFinalizers()) != len(newPR.GetFinalizers()) {
+				return true
+			}
+			if oldPR.Generation == newPR.Generation {
+				return false
+			}
+			return pullRequestSpecNeedsSCMSync(oldPR, newPR)
 		},
 	}
 }
@@ -386,10 +417,7 @@ func (r *PullRequestReconciler) SetupWithManager(ctx context.Context, mgr ctrl.M
 	}
 
 	err = ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.PullRequest{}, builder.WithPredicates(predicate.Or(
-			predicate.GenerationChangedPredicate{},
-			pullRequestDeletionFinalizerLengthChangedPredicate(),
-		))).
+		For(&promoterv1alpha1.PullRequest{}, builder.WithPredicates(pullRequestSCMRelevantUpdatePredicate())).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Complete(r)
 	if err != nil {

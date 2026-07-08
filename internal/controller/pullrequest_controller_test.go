@@ -39,6 +39,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 )
 
 //go:embed testdata/PullRequest.yaml
@@ -168,6 +169,89 @@ var _ = Describe("PullRequest Controller", func() {
 				// reconciles occur. Without it, Update fires once per periodic reconcile.
 				Expect(fake.UpdateCallCount()).To(BeZero(),
 					"Update should not be called again for a generation that was already successfully synced")
+			})
+		})
+
+		Context("When SCM-irrelevant spec changes occur on an open PR", func() {
+			BeforeEach(func() {
+				// Keep periodic reconciles out of the Consistently window below.
+				setPullRequestRequeueDuration(ctx, time.Hour)
+
+				By("Creating test resources")
+				name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "scm-irrelevant-spec")
+
+				typeNamespacedName = types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
+
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+					g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+					g.Expect(pullRequest.Status.ID).NotTo(BeEmpty())
+					readyCond := meta.FindStatusCondition(pullRequest.Status.Conditions, string(conditions.Ready))
+					g.Expect(readyCond).NotTo(BeNil())
+					g.Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
+					g.Expect(readyCond.ObservedGeneration).To(Equal(pullRequest.Generation))
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+
+			AfterEach(func() {
+				Expect(k8sClient.Delete(ctx, pullRequest)).To(Succeed())
+			})
+
+			It("should not hit SCM when only spec.commit.message changes", func() {
+				fake.ResetPullRequestSCMCallCounts()
+
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+					pullRequest.Spec.Commit.Message = "updated merge commit message with trailers"
+					g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				Consistently(func(g Gomega) {
+					g.Expect(fake.FindOpenCallCount()).To(BeZero())
+					g.Expect(fake.UpdateCallCount()).To(BeZero())
+					g.Expect(fake.PullRequestSCMCallCount()).To(BeZero())
+				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
+			})
+
+			It("should not hit SCM when only spec.mergeSha changes while open", func() {
+				fake.ResetPullRequestSCMCallCounts()
+
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+					pullRequest.Spec.MergeSha = "fedcba9876543210fedcba9876543210fedcba98"
+					g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				Consistently(func(g Gomega) {
+					g.Expect(fake.FindOpenCallCount()).To(BeZero())
+					g.Expect(fake.UpdateCallCount()).To(BeZero())
+					g.Expect(fake.PullRequestSCMCallCount()).To(BeZero())
+				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
+			})
+
+			It("should still hit SCM when spec.title changes", func() {
+				fake.ResetPullRequestSCMCallCounts()
+				baselineFindOpen := fake.FindOpenCallCount()
+				baselineUpdate := fake.UpdateCallCount()
+
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+					pullRequest.Spec.Title = pullRequest.Spec.Title + "-updated"
+					g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				Eventually(func(g Gomega) {
+					g.Expect(fake.FindOpenCallCount()).To(BeNumerically(">", baselineFindOpen))
+					g.Expect(fake.UpdateCallCount()).To(BeNumerically(">", baselineUpdate))
+				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
 
@@ -1178,6 +1262,136 @@ var _ = Describe("PullRequest Controller", func() {
 				g.Expect(pullRequest.Finalizers).To(ContainElement(promoterv1alpha1.PullRequestFinalizer))
 			}, "3s", "500ms").Should(Succeed())
 		})
+	})
+})
+
+var _ = Describe("pullRequestSCMRelevantUpdatePredicate", func() {
+	pred := pullRequestSCMRelevantUpdatePredicate()
+	const testMergeSha = "abc123def456789012345678901234567890abcd"
+	const otherMergeSha = "fedcba9876543210fedcba9876543210fedcba98"
+
+	openPR := func(gen int64) *promoterv1alpha1.PullRequest {
+		return &promoterv1alpha1.PullRequest{
+			ObjectMeta: metav1.ObjectMeta{Generation: gen},
+			Spec: promoterv1alpha1.PullRequestSpec{
+				Title:    "title",
+				State:    promoterv1alpha1.PullRequestOpen,
+				MergeSha: testMergeSha,
+				Commit: promoterv1alpha1.CommitConfiguration{
+					Message: "initial commit message",
+				},
+			},
+		}
+	}
+
+	It("enqueues on create", func() {
+		Expect(pred.Create(event.CreateEvent{})).To(BeTrue())
+	})
+
+	It("enqueues on delete", func() {
+		Expect(pred.Delete(event.DeleteEvent{})).To(BeTrue())
+	})
+
+	It("ignores status-only URL updates at the same generation", func() {
+		oldPR := openPR(1)
+		oldPR.Status = promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"}
+		newPR := oldPR.DeepCopy()
+		newPR.Status.Url = "https://example/pr/1"
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeFalse())
+	})
+
+	It("enqueues on title change", func() {
+		oldPR := openPR(1)
+		newPR := oldPR.DeepCopy()
+		newPR.Generation = 2
+		newPR.Spec.Title = "updated title"
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+	})
+
+	It("enqueues on description change", func() {
+		oldPR := openPR(1)
+		newPR := oldPR.DeepCopy()
+		newPR.Generation = 2
+		newPR.Spec.Description = "updated description"
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+	})
+
+	It("enqueues on state open to merged", func() {
+		oldPR := openPR(1)
+		newPR := oldPR.DeepCopy()
+		newPR.Generation = 2
+		newPR.Spec.State = promoterv1alpha1.PullRequestMerged
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+	})
+
+	It("ignores commit.message-only changes while open", func() {
+		oldPR := openPR(1)
+		newPR := oldPR.DeepCopy()
+		newPR.Generation = 2
+		newPR.Spec.Commit.Message = "updated commit message"
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeFalse())
+		Expect(pullRequestSpecNeedsSCMSync(oldPR, newPR)).To(BeFalse())
+	})
+
+	It("ignores mergeSha-only changes while open", func() {
+		oldPR := openPR(1)
+		newPR := oldPR.DeepCopy()
+		newPR.Generation = 2
+		newPR.Spec.MergeSha = otherMergeSha
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeFalse())
+		Expect(pullRequestSpecNeedsSCMSync(oldPR, newPR)).To(BeFalse())
+	})
+
+	It("enqueues on mergeSha change while desired state is merged", func() {
+		oldPR := openPR(1)
+		oldPR.Spec.State = promoterv1alpha1.PullRequestMerged
+		newPR := oldPR.DeepCopy()
+		newPR.Generation = 2
+		newPR.Spec.MergeSha = otherMergeSha
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+		Expect(pullRequestSpecNeedsSCMSync(oldPR, newPR)).To(BeTrue())
+	})
+
+	It("enqueues when commit.message and state change to merged together", func() {
+		oldPR := openPR(1)
+		newPR := oldPR.DeepCopy()
+		newPR.Generation = 2
+		newPR.Spec.State = promoterv1alpha1.PullRequestMerged
+		newPR.Spec.Commit.Message = "merge commit with trailers"
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+		Expect(pullRequestSpecNeedsSCMSync(oldPR, newPR)).To(BeTrue())
+	})
+
+	It("enqueues when terminating and finalizer count changes", func() {
+		now := metav1.Now()
+		oldPR := &promoterv1alpha1.PullRequest{
+			ObjectMeta: metav1.ObjectMeta{
+				Generation:          1,
+				DeletionTimestamp:   &now,
+				Finalizers:          []string{promoterv1alpha1.PullRequestFinalizer},
+				ResourceVersion:     "1",
+			},
+			Spec: promoterv1alpha1.PullRequestSpec{State: promoterv1alpha1.PullRequestOpen},
+		}
+		newPR := oldPR.DeepCopy()
+		newPR.Finalizers = nil
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+	})
+
+	It("ignores unrelated finalizer changes without a generation bump while not deleting", func() {
+		oldPR := &promoterv1alpha1.PullRequest{
+			ObjectMeta: metav1.ObjectMeta{
+				Generation: 1,
+				Finalizers: []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
+			},
+			Spec: promoterv1alpha1.PullRequestSpec{State: promoterv1alpha1.PullRequestOpen},
+		}
+		newPR := oldPR.DeepCopy()
+		newPR.Finalizers = []string{
+			promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer,
+			promoterv1alpha1.PullRequestFinalizer,
+		}
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeFalse())
 	})
 })
 
