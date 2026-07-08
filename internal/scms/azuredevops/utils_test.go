@@ -38,9 +38,17 @@ var _ = Describe("Azure DevOps HTTP errors", func() {
 			notFound := http.StatusNotFound
 			return &ado.WrappedError{StatusCode: &notFound}
 		}(), true),
+		Entry("404 value wrapped error", func() error {
+			notFound := http.StatusNotFound
+			return ado.WrappedError{StatusCode: &notFound}
+		}(), true),
 		Entry("500 wrapped error", func() error {
 			serverError := http.StatusInternalServerError
 			return &ado.WrappedError{StatusCode: &serverError}
+		}(), false),
+		Entry("500 value wrapped error", func() error {
+			serverError := http.StatusInternalServerError
+			return ado.WrappedError{StatusCode: &serverError}
 		}(), false),
 		Entry("unrelated error", errors.New("network timeout"), false),
 	)
