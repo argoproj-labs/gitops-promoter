@@ -35,12 +35,19 @@ const FlowCell: React.FC<{
   const prUrl = cell.pullRequest?.url ?? rowForCell?.prUrl;
 
   return (
-    <button
-      type="button"
+    <div
       className={['cell', `cell--${cell.kind}`, isSelected ? 'cell--selected' : '']
         .filter(Boolean)
         .join(' ')}
+      role="button"
+      tabIndex={0}
       onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect?.();
+        }
+      }}
       aria-label={`${
         cell.kind === 'in-flight'
           ? cell.isProposed
@@ -73,7 +80,7 @@ const FlowCell: React.FC<{
         {time && <span className="cell__time">{time}</span>}
       </div>
 
-      {prId && (
+      {prId && prUrl && (
         <div className="cell__commit">
           <div className="cell__commit-meta">
             <Tooltip
@@ -126,7 +133,7 @@ const FlowCell: React.FC<{
             </div>
           )}
       </div>
-    </button>
+    </div>
   );
 };
 
