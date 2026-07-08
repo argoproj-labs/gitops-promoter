@@ -580,7 +580,7 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 	}
 }
 
-func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, pendingReason string, previousEnvironmentBranch string, previousCRPCSPhases []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) (*promoterv1alpha1.CommitStatus, error) {
+func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, pendingReason string, previousEnvironmentBranch string, previousCRPCSPhases []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase, previousEnvironmentCommitURL string) (*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
 
 	// TODO: do we like this name proposed-<name>?
@@ -589,11 +589,7 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 	kind := reflect.TypeFor[promoterv1alpha1.ChangeTransferPolicy]().Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
-	// If there is only one commit status, use the URL from that commit status.
-	var url string
-	if len(previousCRPCSPhases) == 1 {
-		url = previousCRPCSPhases[0].Url
-	}
+	url := previousEnvironmentCommitURL
 
 	statusMap := make(map[string]string)
 	for _, status := range previousCRPCSPhases {
@@ -723,9 +719,12 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 			"previousEnvironmentProposedNoteSha", getNoteDrySha(previousEnvironmentStatus.Proposed.Note),
 			"previousEnvironmentActiveBranch", previousEnvironmentStatus.Branch)
 
-		// Since there is at least one configured active check, and since this is not the first environment,
-		// we should not create a commit status for the previous environment.
-		cs, err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctp, commitStatusPhase, pendingReason, previousEnvironmentStatus.Branch, ctps[i-1].Status.Active.CommitStatuses)
+		var previousEnvCommitURL string
+		if repoURL := previousEnvironmentStatus.Active.Dry.RepoURL; repoURL != "" && previousEnvironmentStatus.Active.Hydrated.Sha != "" {
+			previousEnvCommitURL = repoURL + "/commit/" + previousEnvironmentStatus.Active.Hydrated.Sha
+		}
+
+		cs, err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctp, commitStatusPhase, pendingReason, previousEnvironmentStatus.Branch, ctps[i-1].Status.Active.CommitStatuses, previousEnvCommitURL)
 		if err != nil {
 			return fmt.Errorf("failed to create or update previous environment commit status for branch %s: %w", ctp.Spec.ActiveBranch, err)
 		}
