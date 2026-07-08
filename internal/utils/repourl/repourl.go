@@ -17,6 +17,7 @@ limitations under the License.
 package repourl
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -27,7 +28,7 @@ import (
 func ConvertToWebURL(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return "", fmt.Errorf("empty repo URL")
+		return "", errors.New("empty repo URL")
 	}
 
 	normalized := raw
