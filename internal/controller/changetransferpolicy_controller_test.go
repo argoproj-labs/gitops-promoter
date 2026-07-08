@@ -1998,3 +1998,65 @@ func changeTransferPolicyResources(ctx context.Context, name, namespace string) 
 
 	return name, scmSecret, scmProvider, gitRepo, commitStatus, changeTransferPolicy
 }
+
+var _ = Describe("commit status description trailers", func() {
+	var ctx context.Context
+
+	BeforeEach(func() {
+		ctx = context.Background()
+	})
+
+	It("round-trips plain text, newlines, and embedded quotes", func() {
+		for _, original := range []string{
+			"Waiting for approval",
+			"line1\nline2",
+			`say "hello"`,
+		} {
+			encoded, err := encodeTrailerDescription(original)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(decodeTrailerDescription(ctx, encoded)).To(Equal(original))
+		}
+	})
+
+	It("returns empty string for empty or malformed encoded values", func() {
+		Expect(decodeTrailerDescription(ctx, "")).To(Equal(""))
+		Expect(decodeTrailerDescription(ctx, "not-json")).To(Equal(""))
+	})
+
+	It("extracts commit status keys from phase, url, and description trailers", func() {
+		trailers := map[string][]string{
+			constants.TrailerCommitStatusActivePrefix + "argocd-health-phase":            {"success"},
+			constants.TrailerCommitStatusActivePrefix + "argocd-health-url":              {"https://example.com"},
+			constants.TrailerCommitStatusActivePrefix + "argocd-health-description":      {`"healthy"`},
+			constants.TrailerCommitStatusProposedPrefix + "no-deployments-allowed-phase": {"pending"},
+		}
+		activeKeys, proposedKeys := getCommitStatusKeysFromTrailers(ctx, trailers)
+		Expect(activeKeys).To(ConsistOf("argocd-health"))
+		Expect(proposedKeys).To(ConsistOf("no-deployments-allowed"))
+	})
+
+	It("populates history commit status descriptions from JSON-encoded trailers", func() {
+		description := "Waiting for hydrator\nsecond line"
+		encoded, err := encodeTrailerDescription(description)
+		Expect(err).NotTo(HaveOccurred())
+
+		trailers := map[string][]string{
+			constants.TrailerCommitStatusActivePrefix + healthCheckCSKey + "-phase":       {"success"},
+			constants.TrailerCommitStatusActivePrefix + healthCheckCSKey + "-url":         {"https://example.com/check"},
+			constants.TrailerCommitStatusActivePrefix + healthCheckCSKey + "-description": {encoded},
+			constants.TrailerCommitStatusProposedPrefix + "gate-phase":                    {"pending"},
+			constants.TrailerCommitStatusProposedPrefix + "gate-description":              {`"proposed description"`},
+		}
+
+		history := promoterv1alpha1.History{}
+		(&ChangeTransferPolicyReconciler{}).populateCommitStatuses(ctx, &history, trailers)
+
+		Expect(history.Active.CommitStatuses).To(HaveLen(1))
+		Expect(history.Active.CommitStatuses[0].Key).To(Equal(healthCheckCSKey))
+		Expect(history.Active.CommitStatuses[0].Description).To(Equal(description))
+
+		Expect(history.Proposed.CommitStatuses).To(HaveLen(1))
+		Expect(history.Proposed.CommitStatuses[0].Key).To(Equal("gate"))
+		Expect(history.Proposed.CommitStatuses[0].Description).To(Equal("proposed description"))
+	})
+})
