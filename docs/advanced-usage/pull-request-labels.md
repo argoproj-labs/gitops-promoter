@@ -1,10 +1,10 @@
 # Dynamic Pull Request Labels
 
-GitOps Promoter can manage **SCM pull request labels** dynamically using an [expr](https://github.com/expr-lang/expr) expression. This supports Prow/Tide-style workflows where you set `autoMerge: false` on the promotion and an external bot merges when specific labels appear.
+GitOps Promoter can manage **SCM pull request labels** dynamically using an [expr](https://github.com/expr-lang/expr) expression. This supports Prow/Tide-style workflows where you set `autoMerge: false` on the promotion and an external bot merges when specific labels appear. It also supports simple use cases like adding a `promoter` label to all PRs opened by GitOps Promoter.
 
 ## Configure on PromotionStrategy
 
-Configure labels at the top level of `PromotionStrategy` (not per environment). The PromotionStrategy controller copies `spec.pullRequest` onto each generated `ChangeTransferPolicy`.
+Configure labels at the top level of `PromotionStrategy`. The PromotionStrategy controller copies `spec.pullRequest` onto each generated `ChangeTransferPolicy`.
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
@@ -27,9 +27,13 @@ spec:
     - branch: prod
 ```
 
+> [!NOTE]
+> There is no per-environment `labels` field. But labels may be made environment-specific by taking advantage of the
+> `Spec.Branch` expression variable, which will always be the branch name for the environment under evaluation.
+
 ## How it works
 
-1. **PromotionStrategy → ChangeTransferPolicy**: `spec.pullRequest` is copied to each CTP via server-side apply.
+1. **PromotionStrategy → ChangeTransferPolicy**: `spec.pullRequest` is copied to each CTP.
 2. **ChangeTransferPolicy → PullRequest**: The CTP controller evaluates `pullRequest.labels.expression`, validates the result, and writes `PullRequest.spec.labels` when the set changes.
 3. **PullRequest → SCM**: The PullRequest controller diffs `spec.labels` against `status.appliedLabels` and calls the SCM provider to add or remove labels. On supported providers, each reconcile also reads label data from the routine open-PR check (no extra SCM call), refreshes `appliedLabels` for managed labels, and re-applies any that were removed externally.
 
