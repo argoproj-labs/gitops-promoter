@@ -9,8 +9,6 @@ interface PromotionStrategyDetailsViewProps {
 export const PromotionStrategyDetailsView: React.FC<PromotionStrategyDetailsViewProps> = ({
   strategy,
 }) => {
-  if (!strategy) return <div>No strategy found</div>;
-
   //Pass raw data
   const environments = strategy.status?.environments || [];
   return <Card environments={environments} />;

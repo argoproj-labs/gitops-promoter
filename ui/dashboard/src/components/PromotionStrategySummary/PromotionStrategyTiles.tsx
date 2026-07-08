@@ -19,7 +19,7 @@ export const PromotionStrategiesTiles: React.FC<PromotionStrategyTilesProps> = (
 
   return (
     <div className="applications-tiles">
-      {promotionStrategies.map((ps, idx) => {
+      {promotionStrategies.map((ps) => {
         const lastCommitTime = getLastCommitTime(ps);
         const lastUpdated = lastCommitTime ? formatDate(lastCommitTime.toISOString()) : '-';
 
@@ -29,14 +29,12 @@ export const PromotionStrategiesTiles: React.FC<PromotionStrategyTilesProps> = (
 
         return (
           <PromotionStrategyTile
-            key={ps.metadata?.name || `ps-${idx}`}
+            key={ps.metadata.name}
             ps={ps}
             namespace={namespace}
             borderStatus={borderStatus}
             lastUpdated={lastUpdated}
-            onClick={() =>
-              navigate(`/promotion-strategies/${namespace}/${ps.metadata?.name || ''}`)
-            }
+            onClick={() => navigate(`/promotion-strategies/${namespace}/${ps.metadata.name}`)}
           />
         );
       })}

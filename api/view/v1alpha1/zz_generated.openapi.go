@@ -3478,6 +3478,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategy(ref com
 						},
 					},
 				},
+				Required: []string{"spec"},
 			},
 		},
 		Dependencies: []string{
