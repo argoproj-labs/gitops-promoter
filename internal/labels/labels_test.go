@@ -106,7 +106,22 @@ var _ = Describe("Evaluator", func() {
 	It("rejects label names that exceed max length", func() {
 		e := &Evaluator{}
 		_, err := e.Evaluate(`['`+strings.Repeat("a", 51)+`']`, ExpressionContext{})
-		Expect(err).To(HaveOccurred())
+		Expect(err).To(MatchError(ContainSubstring("expression returned invalid label names")))
+		Expect(err).To(MatchError(ContainSubstring("exceeds maximum length")))
+	})
+
+	It("rejects empty label names", func() {
+		e := &Evaluator{}
+		_, err := e.Evaluate(`['']`, ExpressionContext{})
+		Expect(err).To(MatchError(ContainSubstring("expression returned invalid label names")))
+		Expect(err).To(MatchError(ContainSubstring("must not be empty")))
+	})
+
+	It("rejects duplicate label names", func() {
+		e := &Evaluator{}
+		_, err := e.Evaluate(`['a', 'a']`, ExpressionContext{})
+		Expect(err).To(MatchError(ContainSubstring("expression returned invalid label names")))
+		Expect(err).To(MatchError(ContainSubstring(`duplicate label "a"`)))
 	})
 
 	It("rejects non-slice expression output", func() {

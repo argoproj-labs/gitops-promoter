@@ -183,6 +183,30 @@ var _ = Describe("ChangeTransferPolicy pull request label expressions", func() {
 		gomega.Expect(apierrors.IsNotFound(err)).To(BeTrue())
 		gomega.Expect(fake.LabelCallCount()).To(BeZero())
 	})
+
+	It("reports Ready=False when the label expression returns invalid label names", func() {
+		fixtures := setupCTPLabelExpressionTest("ctp-labels-invalid-output", `['']`, nil)
+		defer fixtures.cleanup(ctx)
+
+		makeChangeAndHydrateRepo(fixtures.gitPath, fixtures.gitRepo, "", "")
+
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, fixtures.ctpNamespacedName(), fixtures.ctp)).To(Succeed())
+			ready := meta.FindStatusCondition(fixtures.ctp.Status.Conditions, string(promoterConditions.Ready))
+			g.Expect(ready).NotTo(BeNil())
+			g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
+			g.Expect(ready.Reason).To(Equal(string(promoterConditions.ReconciliationError)))
+			g.Expect(ready.Message).To(ContainSubstring("failed to evaluate pull request labels"))
+			g.Expect(ready.Message).To(ContainSubstring("expression returned invalid label names"))
+			g.Expect(ready.Message).To(ContainSubstring("must not be empty"))
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		var pr promoterv1alpha1.PullRequest
+		err := k8sClient.Get(ctx, fixtures.prNamespacedName(), &pr)
+		gomega := NewGomegaWithT(GinkgoTB())
+		gomega.Expect(apierrors.IsNotFound(err)).To(BeTrue())
+		gomega.Expect(fake.LabelCallCount()).To(BeZero())
+	})
 })
 
 type ctpLabelExpressionFixtures struct {
