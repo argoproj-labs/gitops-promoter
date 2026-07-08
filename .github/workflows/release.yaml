@@ -45,7 +45,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version: "1.26.4"
+          go-version: "1.26.5"
 
       - name: Docker Login in quay.io
         uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
