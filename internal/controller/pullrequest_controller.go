@@ -584,9 +584,6 @@ func (r *PullRequestReconciler) reconcileLabels(ctx context.Context, pr *promote
 	if labels.SetsEqual(pr.Spec.Labels, pr.Status.AppliedLabels) {
 		return nil
 	}
-	if err := labels.ValidateLabelNames(pr.Spec.Labels); err != nil {
-		return fmt.Errorf("invalid pull request spec.labels: %w", err)
-	}
 
 	toAdd, toRemove := labels.Diff(pr.Spec.Labels, pr.Status.AppliedLabels)
 	if len(toRemove) > 0 {
