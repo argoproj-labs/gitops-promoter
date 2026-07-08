@@ -1270,9 +1270,9 @@ var _ = Describe("pullRequestSCMRelevantUpdatePredicate", func() {
 	const testMergeSha = "abc123def456789012345678901234567890abcd"
 	const otherMergeSha = "fedcba9876543210fedcba9876543210fedcba98"
 
-	openPR := func(gen int64) *promoterv1alpha1.PullRequest {
+	openPR := func() *promoterv1alpha1.PullRequest {
 		return &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{Generation: gen},
+			ObjectMeta: metav1.ObjectMeta{Generation: 1},
 			Spec: promoterv1alpha1.PullRequestSpec{
 				Title:    "title",
 				State:    promoterv1alpha1.PullRequestOpen,
@@ -1293,7 +1293,7 @@ var _ = Describe("pullRequestSCMRelevantUpdatePredicate", func() {
 	})
 
 	It("ignores status-only URL updates at the same generation", func() {
-		oldPR := openPR(1)
+		oldPR := openPR()
 		oldPR.Status = promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"}
 		newPR := oldPR.DeepCopy()
 		newPR.Status.Url = "https://example/pr/1"
@@ -1301,7 +1301,7 @@ var _ = Describe("pullRequestSCMRelevantUpdatePredicate", func() {
 	})
 
 	It("enqueues on title change", func() {
-		oldPR := openPR(1)
+		oldPR := openPR()
 		newPR := oldPR.DeepCopy()
 		newPR.Generation = 2
 		newPR.Spec.Title = "updated title"
@@ -1309,7 +1309,7 @@ var _ = Describe("pullRequestSCMRelevantUpdatePredicate", func() {
 	})
 
 	It("enqueues on description change", func() {
-		oldPR := openPR(1)
+		oldPR := openPR()
 		newPR := oldPR.DeepCopy()
 		newPR.Generation = 2
 		newPR.Spec.Description = "updated description"
@@ -1317,7 +1317,7 @@ var _ = Describe("pullRequestSCMRelevantUpdatePredicate", func() {
 	})
 
 	It("enqueues on state open to merged", func() {
-		oldPR := openPR(1)
+		oldPR := openPR()
 		newPR := oldPR.DeepCopy()
 		newPR.Generation = 2
 		newPR.Spec.State = promoterv1alpha1.PullRequestMerged
@@ -1325,7 +1325,7 @@ var _ = Describe("pullRequestSCMRelevantUpdatePredicate", func() {
 	})
 
 	It("ignores commit.message-only changes while open", func() {
-		oldPR := openPR(1)
+		oldPR := openPR()
 		newPR := oldPR.DeepCopy()
 		newPR.Generation = 2
 		newPR.Spec.Commit.Message = "updated commit message"
@@ -1334,7 +1334,7 @@ var _ = Describe("pullRequestSCMRelevantUpdatePredicate", func() {
 	})
 
 	It("ignores mergeSha-only changes while open", func() {
-		oldPR := openPR(1)
+		oldPR := openPR()
 		newPR := oldPR.DeepCopy()
 		newPR.Generation = 2
 		newPR.Spec.MergeSha = otherMergeSha
@@ -1343,7 +1343,7 @@ var _ = Describe("pullRequestSCMRelevantUpdatePredicate", func() {
 	})
 
 	It("enqueues on mergeSha change while desired state is merged", func() {
-		oldPR := openPR(1)
+		oldPR := openPR()
 		oldPR.Spec.State = promoterv1alpha1.PullRequestMerged
 		newPR := oldPR.DeepCopy()
 		newPR.Generation = 2
@@ -1353,7 +1353,7 @@ var _ = Describe("pullRequestSCMRelevantUpdatePredicate", func() {
 	})
 
 	It("enqueues when commit.message and state change to merged together", func() {
-		oldPR := openPR(1)
+		oldPR := openPR()
 		newPR := oldPR.DeepCopy()
 		newPR.Generation = 2
 		newPR.Spec.State = promoterv1alpha1.PullRequestMerged
@@ -1366,10 +1366,10 @@ var _ = Describe("pullRequestSCMRelevantUpdatePredicate", func() {
 		now := metav1.Now()
 		oldPR := &promoterv1alpha1.PullRequest{
 			ObjectMeta: metav1.ObjectMeta{
-				Generation:          1,
-				DeletionTimestamp:   &now,
-				Finalizers:          []string{promoterv1alpha1.PullRequestFinalizer},
-				ResourceVersion:     "1",
+				Generation:        1,
+				DeletionTimestamp: &now,
+				Finalizers:        []string{promoterv1alpha1.PullRequestFinalizer},
+				ResourceVersion:   "1",
 			},
 			Spec: promoterv1alpha1.PullRequestSpec{State: promoterv1alpha1.PullRequestOpen},
 		}
