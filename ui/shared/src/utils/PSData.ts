@@ -157,8 +157,7 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
 // Returns branch names whose proposed commit has not yet been hydrated to the
 // newest dry commit. Envs with no proposed commit are not processing.
 export function getProcessingEnvs(environments: Environment[]): Set<string> {
-  const effectiveDrySha = (e: Environment) =>
-    e.proposed.note?.drySha || e.proposed.dry?.sha || '';
+  const effectiveDrySha = (e: Environment) => e.proposed.note?.drySha || e.proposed.dry?.sha || '';
   const hasProposedChange = (e: Environment) =>
     !!e.proposed.dry?.sha && e.active.dry?.sha !== e.proposed.dry.sha;
 
