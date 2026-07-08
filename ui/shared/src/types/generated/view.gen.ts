@@ -189,7 +189,7 @@ export type components = {
         /** @description ChangeTransferPolicySpec defines the desired state of ChangeTransferPolicy */
         ChangeTransferPolicySpec: {
             /**
-             * @description ActiveBranch staging hydrated branch
+             * @description ActiveBranch staging hydrated branch Must not start with '-', contain ':', or contain '..'.
              * @default
              */
             activeBranch: string;
@@ -204,7 +204,7 @@ export type components = {
              */
             gitRepositoryRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
             /**
-             * @description ProposedBranch staging hydrated branch
+             * @description ProposedBranch staging hydrated branch Must not start with '-', contain ':', or contain '..'.
              * @default
              */
             proposedBranch: string;
@@ -421,7 +421,7 @@ export type components = {
             /** @description AutoMerge determines whether the dry commit should be automatically merged into the next branch in the sequence. If false, the dry commit will be proposed but not merged. */
             autoMerge?: boolean;
             /**
-             * @description Branch is the name of the active branch for the environment.
+             * @description Branch is the name of the active branch for the environment. Must not start with '-', contain ':', or contain '..'.
              * @default
              */
             branch: string;
@@ -1278,7 +1278,7 @@ export type components = {
              */
             mergeSha: string;
             /**
-             * @description SourceBranch is the base the git reference that we are merging into Head ---> Base
+             * @description SourceBranch is the base the git reference that we are merging into Head ---> Base Must not start with '-', contain ':', or contain '..'.
              * @default
              */
             sourceBranch: string;
@@ -1288,7 +1288,7 @@ export type components = {
              */
             state: string;
             /**
-             * @description TargetBranch is the head the git reference we are merging from Head ---> Base
+             * @description TargetBranch is the head the git reference we are merging from Head ---> Base Must not start with '-', contain ':', or contain '..'.
              * @default
              */
             targetBranch: string;
