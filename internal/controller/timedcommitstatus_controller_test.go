@@ -30,6 +30,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
@@ -456,6 +457,13 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 				g.Expect(tcs.Status.Environments[0].Branch).To(Equal(testBranchDevelopment))
 				g.Expect(tcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)),
 					"Dev environment should transition to success after duration")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying a CommitStatusPhaseChanged event was emitted for the transition")
+			Eventually(func(g Gomega) {
+				var eventList v1.EventList
+				g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
+				g.Expect(hasEventWithReasonAndMessage(eventList, name+"-touch-ps", constants.CommitStatusPhaseChangedReason, "changed from pending to success")).To(BeTrue())
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})

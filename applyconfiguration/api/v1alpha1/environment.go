@@ -23,6 +23,7 @@ package v1alpha1
 // Environment defines a single environment in the promotion sequence.
 type EnvironmentApplyConfiguration struct {
 	// Branch is the name of the active branch for the environment.
+	// Must not start with '-', contain ':', or contain '..'.
 	Branch *string `json:"branch,omitempty"`
 	// AutoMerge determines whether the dry commit should be automatically merged into the next branch in the sequence.
 	// If false, the dry commit will be proposed but not merged.

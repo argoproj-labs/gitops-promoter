@@ -29,6 +29,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -115,6 +116,61 @@ var _ = Describe("PullRequest Controller", func() {
 			})
 		})
 
+		Context("When the PR is already open and nothing has changed", func() {
+			BeforeEach(func() {
+				// Must be set BEFORE the PR's first reconcile: controller-runtime's workqueue
+				// only applies a new RequeueAfter on each Reconcile's own return value, so a CC
+				// patch made after the first (5m-default) requeue is already scheduled has no
+				// effect until that 5-minute timer expires.
+				By("Shortening the PullRequest requeue duration so periodic reconciles happen quickly")
+				setPullRequestRequeueDuration(ctx, 200*time.Millisecond)
+
+				By("Creating test resources")
+				name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "steady-state-no-update")
+
+				typeNamespacedName = types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
+
+				By("Waiting for PullRequest to be open and successfully reconciled at least once")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+					g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+					g.Expect(pullRequest.Status.ID).NotTo(BeEmpty())
+					readyCond := meta.FindStatusCondition(pullRequest.Status.Conditions, string(conditions.Ready))
+					g.Expect(readyCond).NotTo(BeNil())
+					g.Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
+					g.Expect(readyCond.ObservedGeneration).To(Equal(pullRequest.Generation))
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+
+			AfterEach(func() {
+				Expect(k8sClient.Delete(ctx, pullRequest)).To(Succeed())
+			})
+
+			It("should not repeat SCM Update calls on every periodic requeue once synced", func() {
+				fake.ResetPullRequestSCMCallCounts()
+
+				By("Waiting for several periodic reconciles to occur (proven via FindOpen, which must always run)")
+				Eventually(func(g Gomega) {
+					g.Expect(fake.FindOpenCallCount()).To(BeNumerically(">=", 3))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Verifying Update was not repeated on any of those periodic reconciles")
+				// With the fix, a PR that is already open with no spec change since the last
+				// successful sync produces 0 Update calls no matter how many periodic
+				// reconciles occur. Without it, Update fires once per periodic reconcile.
+				Expect(fake.UpdateCallCount()).To(BeZero(),
+					"Update should not be called again for a generation that was already successfully synced")
+			})
+		})
+
 		Context("When closing", func() {
 			BeforeEach(func() {
 				By("Creating test resources")
@@ -149,6 +205,13 @@ var _ = Describe("PullRequest Controller", func() {
 					err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Verifying a PullRequestClosed event was emitted")
+				Eventually(func(g Gomega) {
+					var eventList v1.EventList
+					g.Expect(k8sClient.List(ctx, &eventList, client.InNamespace("default"))).To(Succeed())
+					g.Expect(hasEventWithReason(eventList, name, constants.PullRequestClosedReason)).To(BeTrue())
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
@@ -248,6 +311,13 @@ var _ = Describe("PullRequest Controller", func() {
 					// The message should be: "Reconciliation failed: failed to merge pull request: <actual error>"
 					// NOT: "Reconciliation failed: failed to merge pull request: failed to merge pull request: failed to merge pull request: <actual error>"
 					g.Expect(message).ToNot(ContainSubstring("failed to merge pull request: failed to merge pull request"))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Verifying a PullRequestMergeFailed event was emitted")
+				Eventually(func(g Gomega) {
+					var eventList v1.EventList
+					g.Expect(k8sClient.List(ctx, &eventList, client.InNamespace("default"))).To(Succeed())
+					g.Expect(hasEventWithReason(eventList, name, constants.PullRequestMergeFailedReason)).To(BeTrue())
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
@@ -869,6 +939,13 @@ var _ = Describe("PullRequest Controller", func() {
 				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
+			By("Verifying a PullRequestExternallyMergedOrClosed event was emitted")
+			Eventually(func(g Gomega) {
+				var eventList v1.EventList
+				g.Expect(k8sClient.List(ctx, &eventList, client.InNamespace("default"))).To(Succeed())
+				g.Expect(hasEventWithReason(eventList, name, constants.PullRequestExternallyMergedOrClosedReason)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
 			By("Verifying CTP status preserves ExternallyMergedOrClosed even after PR deletion")
 			// After the PR is deleted, the CTP should still maintain the ExternallyMergedOrClosed state
 			// This allows the CTP to keep a record of what happened to the PR
@@ -1167,6 +1244,25 @@ func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret,
 	}
 
 	return name, scmSecret, scmProvider, gitRepo, pullRequest
+}
+
+// setPullRequestRequeueDuration patches the singleton ControllerConfiguration's
+// pullRequest.workQueue.requeueDuration for the current test and registers a DeferCleanup that
+// restores the shipped default afterward, so later specs aren't affected.
+func setPullRequestRequeueDuration(ctx context.Context, d time.Duration) {
+	var cc promoterv1alpha1.ControllerConfiguration
+	key := types.NamespacedName{Namespace: "default", Name: settings.ControllerConfigurationName}
+	Expect(k8sClient.Get(ctx, key, &cc)).To(Succeed())
+	original := cc.Spec.PullRequest.WorkQueue.RequeueDuration
+	cc.Spec.PullRequest.WorkQueue.RequeueDuration = metav1.Duration{Duration: d}
+	Expect(k8sClient.Update(ctx, &cc)).To(Succeed())
+
+	DeferCleanup(func() {
+		var cc promoterv1alpha1.ControllerConfiguration
+		Expect(k8sClient.Get(ctx, key, &cc)).To(Succeed())
+		cc.Spec.PullRequest.WorkQueue.RequeueDuration = original
+		Expect(k8sClient.Update(ctx, &cc)).To(Succeed())
+	})
 }
 
 func getGitBranchSHA(ctx context.Context, owner, name, branch string) string {

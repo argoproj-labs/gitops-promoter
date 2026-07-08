@@ -216,6 +216,7 @@ You may optionally include a scope in parentheses after the type:
    - Use regex validation for character restrictions
    - Use metav1 types for time and duration fields instead of custom types
    - For numbers where negative values don't make sense, enforce a minimum of zero
+   - Prefer `// +k8s:immutable` for immutability only when the field has no other `XValidation` rules; otherwise use explicit `+kubebuilder:validation:XValidation:rule="self == oldSelf",message="field is immutable"` for all CEL rules on that field. Do **not** mix `+k8s:` markers with `XValidation` on one field — controller-gen emits nondeterministic rule order and CRD bases flap in CI ([controller-tools#1429](https://github.com/kubernetes-sigs/controller-tools/issues/1429); see `docs/contributing/writing-cel-rules.md`)
 3. Update example files in `internal/controller/testdata/` for both spec and status changes
 4. Run `make build-installer` to regenerate CRDs, DeepCopy methods, and install manifests
 5. Update controller logic

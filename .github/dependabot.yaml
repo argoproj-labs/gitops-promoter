@@ -4,11 +4,20 @@ updates:
   # The coupled Kubernetes platform packages (k8s.io/*, controller-runtime,
   # multicluster-runtime, and their staging deps) are ALSO owned by Renovate so
   # they can be bumped in lockstep with the Makefile envtest versions; they are
-  # ignored here to avoid duplicate PRs. See renovate.json5 for configuration.
+  # ignored here to avoid duplicate PRs. go-github (major /vNN paths) and
+  # ghinstallation are also Renovate-owned for import rewrites on major bumps.
+  # See renovate.json5 for configuration.
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
       interval: "daily"
+    open-pull-requests-limit: 10
+    # By default Dependabot only bumps direct requires. Indirect modules listed in
+    # go.mod (e.g. golang.org/x/crypto) need this to get version-update PRs.
+    allow:
+      - dependency-type: "indirect"
+      # oauth2, sync, and time are direct requires; include them in golang-org-x.
+      - dependency-name: "golang.org/x/*"
     ignore:
       - dependency-name: "k8s.io/*"
       - dependency-name: "sigs.k8s.io/controller-runtime"
@@ -16,8 +25,43 @@ updates:
       - dependency-name: "sigs.k8s.io/structured-merge-diff/*"
       - dependency-name: "sigs.k8s.io/json"
       - dependency-name: "sigs.k8s.io/randfill"
+      - dependency-name: "github.com/google/go-github/*"
+      - dependency-name: "github.com/bradleyfalzon/ghinstallation/*"
+    groups:
+      # Single-segment `*` globs miss nested Go module paths (e.g. swag/jsonname,
+      # genproto/googleapis/api); use `**` so submodules stay in the group PR.
+      go-etcd:
+        patterns:
+          - "go.etcd.io/etcd/**"
+      # otel core, exporters, contrib instrumentation, and proto/otlp share a release train.
+      opentelemetry:
+        patterns:
+          - "go.opentelemetry.io/**"
+      # crypto, net, sys, text, tools, etc. often bump in the same Dependabot cycle.
+      golang-org-x:
+        patterns:
+          - "golang.org/x/**"
+      # swag root, jsonpointer/jsonreference, and swag/* submodules version together.
+      go-openapi:
+        patterns:
+          - "github.com/go-openapi/**"
+      # genproto, grpc, and protobuf are a coupled gRPC stack.
+      google-golang-org:
+        patterns:
+          - "google.golang.org/**"
+      # client_golang plus client_model/common/procfs.
+      prometheus:
+        patterns:
+          - "github.com/prometheus/**"
 
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "daily"
+    open-pull-requests-limit: 10
+    groups:
+      # init/analyze/upload-sarif must share the same release; partial bumps fail
+      # CodeQL with "Loaded a configuration file for version X, but running version Y".
+      codeql-action:
+        patterns:
+          - "github/codeql-action/**"

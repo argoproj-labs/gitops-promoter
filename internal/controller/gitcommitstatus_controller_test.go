@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -163,6 +164,13 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 				g.Expect(cs.Spec.Description).To(Equal("Test validation check"))
 				g.Expect(cs.Spec.Name).To(Equal("gcs-simple" + "/" + testBranchDevelopment))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying a CommitStatusPhaseChanged event was emitted")
+			Eventually(func(g Gomega) {
+				var eventList v1.EventList
+				g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
+				g.Expect(hasEventWithReasonAndMessage(eventList, name+"-simple", constants.CommitStatusPhaseChangedReason, "to success")).To(BeTrue())
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
@@ -735,6 +743,23 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 					g.Expect(env.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)),
 						"Environment %s should pass initially", env.Branch)
 				}
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			stagingCTPName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(name, testBranchStaging))
+			// This Ordered suite shares one PromotionStrategy. Prior specs may have left staging
+			// mid-promotion, and switching the proposed commit status key above can trigger another
+			// reconcile. Wait until staging is idle before we push a revert commit to its active
+			// branch so a controller-driven promotion PR does not race the manual push below.
+			By("Verifying staging is idle before pushing a revert commit to its active branch")
+			Eventually(func(g Gomega) {
+				var ctp promoterv1alpha1.ChangeTransferPolicy
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: stagingCTPName, Namespace: "default"}, &ctp)).To(Succeed())
+				if ctp.Status.PullRequest != nil {
+					g.Expect(ctp.Status.PullRequest.State).NotTo(Equal(promoterv1alpha1.PullRequestOpen),
+						"staging should have no open promotion PR before the revert commit push")
+				}
+				g.Expect(ctp.Status.Active.Dry.Sha).To(Equal(ctp.Status.Proposed.Dry.Sha),
+					"staging active dry sha should match proposed dry sha before the revert commit push")
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Simulating a revert on the staging active branch using git revert")
