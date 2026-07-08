@@ -1,7 +1,7 @@
 import React from 'react';
 import { FaTimesCircle, FaTimes, FaBan, FaArrowRight } from 'react-icons/fa';
 import { GoGitPullRequest } from 'react-icons/go';
-import { timeAgo, formatDate, getCommitUrl } from '@shared/utils/util';
+import { timeAgo, formatDate, getCommitUrl, formatDuration } from '@shared/utils/util';
 import type { CellState, CommitRow, EnvColumn, HealthKey } from '../types';
 import { DRAWER_MIN_WIDTH, DRAWER_MAX_WIDTH, HEALTH_LABELS, healthIcon } from '../presentation';
 
@@ -50,7 +50,7 @@ const DetailDrawer: React.FC<{
 
   const presence = envs
     .map((e) => ({ env: e, cell: row.cells[e.branch] }))
-    .filter((x) => x.cell.kind !== 'not-reached');
+    .filter((x) => x.cell.kind !== 'no-changes');
 
   const envIdx = envs.findIndex((e) => e.branch === branch);
   const upstream = envs
@@ -62,7 +62,7 @@ const DetailDrawer: React.FC<{
     });
   const downstreamNotReached = envs
     .slice(envIdx + 1)
-    .filter((e) => row.cells[e.branch].kind === 'not-reached');
+    .filter((e) => row.cells[e.branch].kind === 'no-changes');
 
   return (
     <aside
@@ -112,7 +112,7 @@ const DetailDrawer: React.FC<{
               {cell.kind === 'was-here' && 'WAS HERE'}
               {cell.kind === 'failed' && 'FAILED'}
               {cell.kind === 'no-op' && 'NO-OP'}
-              {cell.kind === 'not-reached' && 'NOT REACHED'}
+              {cell.kind === 'no-changes' && 'NO CHANGES'}
             </span>
             <span className="hp-drawer__branch">{branch}</span>
           </div>
@@ -153,6 +153,12 @@ const DetailDrawer: React.FC<{
               <>
                 <span className="hp-drawer__sep">·</span>
                 <span title={exact}>{ago}</span>
+              </>
+            )}
+            {cell.kind === 'was-here' && cell.liveDurationMs != null && (
+              <>
+                <span className="hp-drawer__sep">·</span>
+                <span>live for {formatDuration(cell.liveDurationMs)}</span>
               </>
             )}
           </div>
@@ -249,7 +255,7 @@ const DetailDrawer: React.FC<{
                         <FaBan aria-hidden="true" /> NO-OP
                       </>
                     )}
-                    {c.kind === 'not-reached' && '—'}
+                    {c.kind === 'no-changes' && '—'}
                   </span>
                   {c.at && <span className="hp-drawer__presence-time">{timeAgo(c.at)}</span>}
                 </li>

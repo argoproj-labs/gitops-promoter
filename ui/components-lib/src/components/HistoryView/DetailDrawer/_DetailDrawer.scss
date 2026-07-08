@@ -159,7 +159,7 @@
   &--no-op {
     background: $text-muted;
   }
-  &--not-reached {
+  &--no-changes {
     background: $bg-softer;
     color: $text-secondary;
     border: 1px solid $stroke-strong;
@@ -347,7 +347,7 @@
     border-color: $accent;
     background: rgba(31, 79, 94, 0.06);
   }
-  &--not-reached {
+  &--no-changes {
     opacity: 0.6;
     border-style: dashed;
   }

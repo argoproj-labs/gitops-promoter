@@ -2,7 +2,7 @@ import type { Commit, CommitStatus, PullRequest } from '@shared/types/promotion'
 
 export type HealthKey = 'success' | 'failure' | 'pending' | 'unknown';
 
-export type CellKind = 'live' | 'in-flight' | 'was-here' | 'failed' | 'no-op' | 'not-reached';
+export type CellKind = 'live' | 'in-flight' | 'was-here' | 'failed' | 'no-op' | 'no-changes';
 
 export interface CellState {
   kind: CellKind;
@@ -14,6 +14,7 @@ export interface CellState {
   noopNote?: string;
   supersededById?: string;
   at?: string;
+  liveDurationMs?: number;
 }
 
 export interface EnvColumn {
@@ -47,6 +48,8 @@ export interface CommitRow {
   body?: string;
   prId?: string;
   prUrl?: string;
+  refShaShort?: string;
+  refUrl?: string;
   repoUrl: string;
   freshestAt: number;
   earliestAt: number;

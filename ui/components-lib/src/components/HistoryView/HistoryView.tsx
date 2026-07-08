@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import { FaChevronLeft, FaFilter, FaSort, FaLayerGroup } from 'react-icons/fa';
-import { GoGitPullRequest } from 'react-icons/go';
+import { GoGitCommit } from 'react-icons/go';
 import { timeAgo, formatDate, getCommitUrl } from '@shared/utils/util';
 import type { PromotionStrategy } from '@shared/types/promotion';
 import type { CommitRow, FilterId, SortId } from './types';
@@ -61,7 +61,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   const envScopedRows = useMemo(
     () =>
       envFilter.length
-        ? rows.filter((r) => envFilter.some((b) => r.cells[b]?.kind !== 'not-reached'))
+        ? rows.filter((r) => envFilter.some((b) => r.cells[b]?.kind !== 'no-changes'))
         : rows,
     [rows, envFilter],
   );
@@ -104,7 +104,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
       if (!row) return;
       const branches = envs.map((e) => e.branch);
       const liveBranch = branches.find((b) => row.cells[b].kind === 'live');
-      const branch = liveBranch ?? branches.find((b) => row.cells[b].kind !== 'not-reached');
+      const branch = liveBranch ?? branches.find((b) => row.cells[b].kind !== 'no-changes');
       if (branch) setSelected({ rowId, branch });
       requestAnimationFrame(() => {
         document
@@ -227,7 +227,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                   </DropdownItem>
                   {envs.map((env) => {
                     const envCount = rows.filter(
-                      (r) => r.cells[env.branch]?.kind !== 'not-reached',
+                      (r) => r.cells[env.branch]?.kind !== 'no-changes',
                     ).length;
                     return (
                       <DropdownItem
@@ -362,11 +362,11 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                           <span className="hp-row__sha">{row.dryShaShort}</span>
                         </Tooltip>
                       )}
-                      {row.prId && (
+                      {row.refShaShort && row.refUrl && (
                         <Tooltip
                           label={
                             <>
-                              Pull request #{row.prId}
+                              Source commit <code>{row.refShaShort}</code>
                               <br />
                               Open on remote
                             </>
@@ -374,13 +374,13 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                         >
                           <a
                             className="hp-row__pr"
-                            href={row.prUrl}
+                            href={row.refUrl}
                             target="_blank"
                             rel="noreferrer"
                             onClick={(e) => e.stopPropagation()}
-                            aria-label={`Pull request #${row.prId}, opens in new tab`}
+                            aria-label={`Source commit ${row.refShaShort}, opens in new tab`}
                           >
-                            <GoGitPullRequest aria-hidden="true" /> #{row.prId}
+                            <GoGitCommit aria-hidden="true" /> {row.refShaShort}
                           </a>
                         </Tooltip>
                       )}

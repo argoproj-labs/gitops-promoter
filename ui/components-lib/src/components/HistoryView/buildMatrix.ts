@@ -1,4 +1,4 @@
-import { extractNameOnly, extractBodyPreTrailer } from '@shared/utils/util';
+import { extractNameOnly, extractBodyPreTrailer, getCommitUrl } from '@shared/utils/util';
 import type { Commit, PromotionStrategy, PullRequest } from '@shared/types/promotion';
 import { LANE_COLORS } from './types';
 import type { CellKind, CellState, CommitRow, EnvColumn } from './types';
@@ -48,6 +48,8 @@ function getRow(
   if (!key || !commit) return null;
   let row = rowsById.get(key);
   if (!row) {
+    const ref = commit.references?.[0]?.commit;
+    const refUrl = ref ? getCommitUrl(ref.repoURL ?? '', ref.sha ?? '') : '';
     row = {
       id: key,
       dryShaFull: commit.sha ?? '',
@@ -57,6 +59,8 @@ function getRow(
       body: commit.body ? extractBodyPreTrailer(commit.body) : undefined,
       prId: pr?.id,
       prUrl: pr?.url,
+      refShaShort: ref?.sha ? shortSha(ref.sha) : undefined,
+      refUrl: refUrl || undefined,
       repoUrl: commit.repoURL ?? repoUrlFallback,
       freshestAt: 0,
       earliestAt: 0,
@@ -81,7 +85,7 @@ const cellRank: Record<CellKind, number> = {
   failed: 4,
   'was-here': 3,
   'no-op': 2,
-  'not-reached': 1,
+  'no-changes': 1,
 };
 
 function setCell(row: CommitRow, branch: string, next: CellState) {
@@ -89,6 +93,15 @@ function setCell(row: CommitRow, branch: string, next: CellState) {
   if (!prev || cellRank[next.kind] >= cellRank[prev.kind]) {
     row.cells[branch] = next;
   }
+}
+
+type HistoryEntry = NonNullable<StatusEnvironment['history']>[number];
+
+function wentLiveAt(entry: HistoryEntry | undefined): number | null {
+  const raw = entry?.pullRequest?.prMergeTime ?? entry?.active?.dry?.commitTime;
+  if (!raw) return null;
+  const t = new Date(raw).getTime();
+  return Number.isFinite(t) ? t : null;
 }
 
 function processHistory(rowsById: Map<string, CommitRow>, env: StatusEnvironment) {
@@ -108,6 +121,14 @@ function processHistory(rowsById: Map<string, CommitRow>, env: StatusEnvironment
 
     const supersededById =
       idx > 0 ? (commitKey(history[idx - 1]?.active?.dry) ?? undefined) : undefined;
+
+    const wentLive = wentLiveAt(entry);
+    const replacedAt = idx > 0 ? wentLiveAt(history[idx - 1]) : null;
+    const liveDurationMs =
+      wentLive != null && replacedAt != null && replacedAt > wentLive
+        ? replacedAt - wentLive
+        : undefined;
+
     setCell(row, branch, {
       kind,
       commit,
@@ -118,6 +139,7 @@ function processHistory(rowsById: Map<string, CommitRow>, env: StatusEnvironment
         ? `Same dry SHA as the previous entry, so ${branch} didn't change.`
         : undefined,
       supersededById,
+      liveDurationMs,
       at: commit.commitTime ?? entry.pullRequest?.prMergeTime ?? undefined,
     });
   });
@@ -148,7 +170,7 @@ function finalizeRow(row: CommitRow, envs: StatusEnvironment[]): CommitRow {
   for (const e of envs) {
     if (!row.cells[e.branch]) {
       row.cells[e.branch] = {
-        kind: 'not-reached',
+        kind: 'no-changes',
         commitStatuses: [],
         health: 'unknown',
       };

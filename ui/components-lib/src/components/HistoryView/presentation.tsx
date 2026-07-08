@@ -1,6 +1,7 @@
 import React from 'react';
 import { FaCheckCircle, FaTimesCircle, FaSpinner, FaQuestionCircle } from 'react-icons/fa';
 import type { CommitStatus } from '@shared/types/promotion';
+import { formatDuration } from '@shared/utils/util';
 import type { CellKind, CellState, HealthKey } from './types';
 
 export const HEALTH_LABELS: Record<HealthKey, string> = {
@@ -16,7 +17,7 @@ export const CELL_KIND_LABELS: Record<CellKind, string> = {
   'was-here': 'Was here',
   failed: 'Failed',
   'no-op': 'No-op',
-  'not-reached': 'Not reached',
+  'no-changes': 'No changes',
 };
 
 export const DRAWER_MIN_WIDTH = 320;
@@ -40,12 +41,14 @@ export function cellPillTooltip(cell: CellState, branch: string): string {
         ? `Proposed for ${branch} — promotion pending`
         : `Open promotion PR into ${branch}`;
     case 'was-here':
-      return `Was live in ${branch}, since replaced by a newer commit`;
+      return cell.liveDurationMs != null
+        ? `Was live in ${branch} for ${formatDuration(cell.liveDurationMs)} before a newer commit replaced it`
+        : `Was live in ${branch}, since replaced by a newer commit`;
     case 'failed':
       return `Checks failed in ${branch}`;
     case 'no-op':
       return cell.noopNote || `No change in ${branch}`;
-    case 'not-reached':
+    case 'no-changes':
       return `Never reached ${branch}`;
     default:
       return '';

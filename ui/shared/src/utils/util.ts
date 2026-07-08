@@ -22,6 +22,24 @@ export const timeAgo = (dateString: Rfc3339DateTime): string => {
   }
 };
 
+/**
+ * Compact duration from a millisecond span (e.g. `"3d 4h"`, `"2h 15m"`, `"8m"`,
+ * `"45s"`). Shows at most the two largest non-zero units. Sub-minute spans
+ * round to seconds; a non-positive span returns `"<1m"`.
+ */
+export function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return '<1m';
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (days > 0) return hours % 24 ? `${days}d ${hours % 24}h` : `${days}d`;
+  if (hours > 0) return minutes % 60 ? `${hours}h ${minutes % 60}m` : `${hours}h`;
+  if (minutes > 0) return `${minutes}m`;
+  return `${seconds}s`;
+}
+
 // Get the commit url from the repo url and sha
 export function getCommitUrl(repoUrl: string, sha: string): string {
   if (!repoUrl || !sha) return '';

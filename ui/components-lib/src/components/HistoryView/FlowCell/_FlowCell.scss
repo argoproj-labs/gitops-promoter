@@ -75,7 +75,7 @@
     background: transparent;
   }
 }
-.cell--not-reached {
+.cell--no-changes {
   border: 1px dashed $stroke;
   background: transparent;
   color: $text-muted;
@@ -135,7 +135,7 @@
     color: $text-secondary;
     border: 1px dashed $stroke-strong;
   }
-  &--not-reached {
+  &--no-changes {
     background: transparent;
     color: $text-muted;
     border: 1px dashed $stroke-strong;
@@ -145,6 +145,14 @@
 .cell__time {
   font-size: 10.5px;
   color: $text-muted;
+  white-space: nowrap;
+}
+
+/* Plain-text "live for 2h 15m" label for was-here cells — deliberately not a
+   pill, so a superseded commit reads as prose rather than a status badge. */
+.cell__live-for {
+  font-size: 11px;
+  color: $text-secondary;
   white-space: nowrap;
 }
 

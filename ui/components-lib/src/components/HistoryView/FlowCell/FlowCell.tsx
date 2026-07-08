@@ -1,7 +1,7 @@
 import React from 'react';
 import { FaBan, FaArrowRight } from 'react-icons/fa';
 import { GoGitPullRequest } from 'react-icons/go';
-import { timeAgo, formatDate } from '@shared/utils/util';
+import { timeAgo, formatDate, formatDuration } from '@shared/utils/util';
 import type { CellState, CommitRow } from '../types';
 import { commitKey } from '../helpers';
 import { CELL_KIND_LABELS, cellPillTooltip } from '../presentation';
@@ -15,10 +15,10 @@ const FlowCell: React.FC<{
   rowsById: Map<string, CommitRow>;
   onJumpToRow?: (rowId: string) => void;
 }> = ({ cell, branch, isSelected, onSelect, rowsById, onJumpToRow }) => {
-  if (cell.kind === 'not-reached') {
+  if (cell.kind === 'no-changes') {
     return (
-      <div className="cell cell--not-reached" aria-label={`Not reached in ${branch}`}>
-        Not reached
+      <div className="cell cell--no-changes" aria-label={`No changes in ${branch}`}>
+        No changes
       </div>
     );
   }
@@ -51,19 +51,25 @@ const FlowCell: React.FC<{
       title={exact}
     >
       <div className="cell__top">
-        <Tooltip label={cellPillTooltip(cell, branch)}>
-          <span className={`cell__pill cell__pill--${cell.kind}`}>
-            {cell.kind === 'live' && 'LIVE'}
-            {cell.kind === 'in-flight' && (cell.isProposed ? 'PROPOSED' : 'PR OPEN')}
-            {cell.kind === 'was-here' && 'WAS HERE'}
-            {cell.kind === 'failed' && 'FAILED'}
-            {cell.kind === 'no-op' && (
-              <>
-                <FaBan aria-hidden="true" /> NO-OP
-              </>
-            )}
-          </span>
-        </Tooltip>
+        {cell.kind === 'was-here' && cell.liveDurationMs != null ? (
+          <Tooltip label={cellPillTooltip(cell, branch)}>
+            <span className="cell__live-for">live for {formatDuration(cell.liveDurationMs)}</span>
+          </Tooltip>
+        ) : (
+          <Tooltip label={cellPillTooltip(cell, branch)}>
+            <span className={`cell__pill cell__pill--${cell.kind}`}>
+              {cell.kind === 'live' && 'LIVE'}
+              {cell.kind === 'in-flight' && (cell.isProposed ? 'PROPOSED' : 'PR OPEN')}
+              {cell.kind === 'was-here' && 'WAS HERE'}
+              {cell.kind === 'failed' && 'FAILED'}
+              {cell.kind === 'no-op' && (
+                <>
+                  <FaBan aria-hidden="true" /> NO-OP
+                </>
+              )}
+            </span>
+          </Tooltip>
+        )}
         {time && <span className="cell__time">{time}</span>}
       </div>
 

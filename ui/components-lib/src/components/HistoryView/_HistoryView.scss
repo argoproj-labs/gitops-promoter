@@ -397,13 +397,13 @@
     flex: 1;
     min-width: 0;
   }
-  > .cell--not-reached {
+  > .cell--no-changes {
     flex: 1;
     min-width: 0;
   }
 }
 
-.hp-row__env-slot--focus > .cell:not(.cell--not-reached) {
+.hp-row__env-slot--focus > .cell:not(.cell--no-changes) {
   outline: 2px solid rgba(31, 79, 94, 0.3);
   outline-offset: -1px;
 }
