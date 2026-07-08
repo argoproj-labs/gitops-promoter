@@ -162,6 +162,13 @@
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .proposed .promote-banner__icon,
+  .proposed .promote-flow::before {
+    animation: none;
+  }
+}
+
 .commit-group-header {
   display: flex;
   align-items: center;
