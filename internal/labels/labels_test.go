@@ -114,4 +114,24 @@ var _ = Describe("Evaluator", func() {
 		_, err := e.Evaluate(`42`, ExpressionContext{})
 		Expect(err).To(HaveOccurred())
 	})
+
+	It("returns an empty slice when the expression evaluates to []", func() {
+		e := &Evaluator{}
+		got, err := e.Evaluate(`[]`, ExpressionContext{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal([]string{}))
+		Expect(got).NotTo(BeNil())
+	})
+
+	It("rejects nil expression output", func() {
+		e := &Evaluator{}
+		_, err := e.Evaluate(`nil`, ExpressionContext{})
+		Expect(err).To(MatchError("expression must return []string, got <nil>"))
+	})
+
+	It("rejects slices containing non-string elements", func() {
+		e := &Evaluator{}
+		_, err := e.Evaluate(`[1, 'lgtm']`, ExpressionContext{})
+		Expect(err).To(MatchError("expression must return []string, got int at index 0"))
+	})
 })

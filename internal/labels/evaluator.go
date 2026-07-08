@@ -76,22 +76,18 @@ func (e *Evaluator) getCompiledExpression(expression string) (*vm.Program, error
 }
 
 func coerceStringSlice(v any) ([]string, error) {
-	switch val := v.(type) {
-	case nil:
-		return nil, nil
-	case []string:
-		return val, nil
-	case []any:
-		out := make([]string, len(val))
-		for i, item := range val {
-			s, ok := item.(string)
-			if !ok {
-				return nil, fmt.Errorf("expression must return []string, got %T at index %d", item, i)
-			}
-			out[i] = s
-		}
-		return out, nil
-	default:
+	val, ok := v.([]any)
+	if !ok {
 		return nil, fmt.Errorf("expression must return []string, got %T", v)
 	}
+
+	out := make([]string, len(val))
+	for i, item := range val {
+		s, ok := item.(string)
+		if !ok {
+			return nil, fmt.Errorf("expression must return []string, got %T at index %d", item, i)
+		}
+		out[i] = s
+	}
+	return out, nil
 }
