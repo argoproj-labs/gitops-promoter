@@ -77,7 +77,7 @@ var _ = Describe("ChangeTransferPolicy pull request label expressions", func() {
 		Expect(pr.Spec.Labels).To(ConsistOf("promoter", "security-scan", "deployment-freeze"))
 	})
 
-	It("evaluates a fixed label set only when all proposed commit statuses succeed", func() {
+	It("adds and clears labels based on proposed commit status phases", func() {
 		const gateKey = "label-gate"
 
 		fixtures := setupCTPLabelExpressionTest("ctp-labels-gates-pass", allGatesPassLabelsExpression, func(ctp *promoterv1alpha1.ChangeTransferPolicy) {
@@ -113,6 +113,22 @@ var _ = Describe("ChangeTransferPolicy pull request label expressions", func() {
 
 			pr := fixtures.getPullRequest(ctx)
 			g.Expect(pr.Spec.Labels).To(ConsistOf("lgtm", "approved"))
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: fixtures.commitStatus.Name, Namespace: fixtures.commitStatus.Namespace}, fixtures.commitStatus)).To(Succeed())
+			fixtures.commitStatus.Spec.Phase = promoterv1alpha1.CommitPhaseFailure
+			g.Expect(k8sClient.Update(ctx, fixtures.commitStatus)).To(Succeed())
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, fixtures.ctpNamespacedName(), fixtures.ctp)).To(Succeed())
+			g.Expect(fixtures.ctp.Status.Proposed.CommitStatuses).To(ContainElement(Satisfy(func(cs promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) bool {
+				return cs.Key == gateKey && cs.Phase == string(promoterv1alpha1.CommitPhaseFailure)
+			})))
+
+			pr := fixtures.getPullRequest(ctx)
+			g.Expect(pr.Spec.Labels).To(BeEmpty())
 		}, constants.EventuallyTimeout).Should(Succeed())
 	})
 })
