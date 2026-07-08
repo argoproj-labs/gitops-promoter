@@ -1362,6 +1362,21 @@ var _ = Describe("pullRequestSCMRelevantUpdatePredicate", func() {
 		Expect(pullRequestSpecNeedsSCMSync(oldPR, newPR)).To(BeTrue())
 	})
 
+	It("enqueues when deletion starts", func() {
+		now := metav1.Now()
+		oldPR := &promoterv1alpha1.PullRequest{
+			ObjectMeta: metav1.ObjectMeta{
+				Generation:      1,
+				Finalizers:      []string{promoterv1alpha1.PullRequestFinalizer},
+				ResourceVersion: "1",
+			},
+			Spec: promoterv1alpha1.PullRequestSpec{State: promoterv1alpha1.PullRequestOpen},
+		}
+		newPR := oldPR.DeepCopy()
+		newPR.DeletionTimestamp = &now
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+	})
+
 	It("enqueues when terminating and finalizer count changes", func() {
 		now := metav1.Now()
 		oldPR := &promoterv1alpha1.PullRequest{

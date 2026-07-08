@@ -390,6 +390,9 @@ func pullRequestSCMRelevantUpdatePredicate() predicate.Predicate {
 			if !ok || newPR == nil {
 				return false
 			}
+			if oldPR.GetDeletionTimestamp().IsZero() && !newPR.GetDeletionTimestamp().IsZero() {
+				return true
+			}
 			if !newPR.GetDeletionTimestamp().IsZero() &&
 				len(oldPR.GetFinalizers()) != len(newPR.GetFinalizers()) {
 				return true
