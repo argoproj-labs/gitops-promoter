@@ -133,6 +133,32 @@ type CommitStatusSelector struct {
 	Key string `json:"key"`
 }
 
+// ScmLabelsSpec configures dynamic SCM pull request labels via an expression.
+type ScmLabelsSpec struct {
+	// Expression is evaluated using the expr library (github.com/expr-lang/expr) against
+	// ChangeTransferPolicy status and spec. It must return a list of SCM label name strings.
+	//
+	// Available variables:
+	//   - Status: ChangeTransferPolicy status (Proposed/Active commit statuses, branch SHAs, etc.)
+	//   - Spec: ChangeTransferPolicy spec (ActiveBranch, ProposedBranch, etc.)
+	//   - PromotionStrategy: owning PromotionStrategy spec and status when available
+	//
+	// Each returned label name must satisfy the same validation as PullRequest.spec.labels
+	// (non-empty, max 50 characters, no newlines, max 10 labels, unique).
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=8192
+	Expression string `json:"expression"`
+}
+
+// PullRequestPolicySpec configures SCM pull request behavior for a promotion policy.
+type PullRequestPolicySpec struct {
+	// Labels configures dynamic SCM labels applied to promotion pull requests.
+	// +kubebuilder:validation:Optional
+	Labels *ScmLabelsSpec `json:"labels,omitempty"`
+}
+
 // PromotionStrategyStatus defines the observed state of PromotionStrategy
 type PromotionStrategyStatus struct {
 	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
