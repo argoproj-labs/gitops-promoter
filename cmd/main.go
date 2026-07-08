@@ -174,11 +174,9 @@ func runController(
 
 	restConfig := ctrl.GetConfigOrDie()
 	processSignalsCtx := ctrl.SetupSignalHandler()
-	runCtx, shutdown := context.WithCancel(processSignalsCtx)
 
-	if err := instanceid.BootstrapControllerInstanceID(runCtx, restConfig, controllerNamespace); err != nil {
-		setupLog.Error(err, "failed to bootstrap controller instance ID from ControllerConfiguration")
-		os.Exit(1)
+	if err := instanceid.BootstrapControllerInstanceID(processSignalsCtx, restConfig, controllerNamespace); err != nil {
+		return fmt.Errorf("bootstrap controller instance ID: %w", err)
 	}
 	instanceID := instanceid.ControllerInstanceID()
 	if instanceID != nil {
@@ -186,6 +184,8 @@ func runController(
 	} else {
 		setupLog.Info("default instance-id mode: scoping informer cache to resources without instance-id label")
 	}
+
+	runCtx, shutdown := context.WithCancel(processSignalsCtx)
 
 	mcMgr, err := mcmanager.New(restConfig, provider, ctrl.Options{
 		Scheme: scheme,
