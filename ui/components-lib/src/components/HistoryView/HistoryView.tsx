@@ -331,36 +331,18 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                     </div>
                     <div className="hp-row__meta">
                       {row.repoUrl && row.dryShaFull ? (
-                        <Tooltip
-                          label={
-                            <>
-                              Commit <code>{row.dryShaFull}</code>
-                              <br />
-                              Open on remote
-                            </>
-                          }
+                        <a
+                          className="hp-row__sha"
+                          href={getCommitUrl(row.repoUrl, row.dryShaFull)}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          aria-label={`Commit ${row.dryShaShort}, opens in new tab`}
                         >
-                          <a
-                            className="hp-row__sha"
-                            href={getCommitUrl(row.repoUrl, row.dryShaFull)}
-                            target="_blank"
-                            rel="noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            aria-label={`Commit ${row.dryShaShort}, opens in new tab`}
-                          >
-                            {row.dryShaShort}
-                          </a>
-                        </Tooltip>
+                          {row.dryShaShort}
+                        </a>
                       ) : (
-                        <Tooltip
-                          label={
-                            <>
-                              Commit <code>{row.dryShaFull || row.dryShaShort}</code>
-                            </>
-                          }
-                        >
-                          <span className="hp-row__sha">{row.dryShaShort}</span>
-                        </Tooltip>
+                        <span className="hp-row__sha">{row.dryShaShort}</span>
                       )}
                       {row.refShaShort && row.refUrl && (
                         <Tooltip
