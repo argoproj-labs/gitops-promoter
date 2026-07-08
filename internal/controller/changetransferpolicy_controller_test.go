@@ -24,6 +24,7 @@ import (
 	"path"
 	"slices"
 	"strings"
+	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
@@ -39,6 +40,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 )
 
 //go:embed testdata/ChangeTransferPolicy.yaml
@@ -811,6 +813,124 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			})
 		})
 
+		Context("When an open PR is in steady state", func() {
+			var (
+				name                 string
+				scmSecret            *v1.Secret
+				scmProvider          *promoterv1alpha1.ScmProvider
+				gitRepo              *promoterv1alpha1.GitRepository
+				changeTransferPolicy *promoterv1alpha1.ChangeTransferPolicy
+				ctpKey               types.NamespacedName
+				prKey                types.NamespacedName
+				gitPath              string
+				prName               string
+			)
+
+			BeforeEach(func() {
+				var err error
+				name, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-open-pr-steady", "default")
+
+				ctpKey = types.NamespacedName{Name: name, Namespace: "default"}
+				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
+				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
+				changeTransferPolicy.Spec.AutoMerge = new(false)
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
+
+				prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+				prKey = types.NamespacedName{Name: utils.KubeSafeUniqueName(prName), Namespace: "default"}
+
+				gitPath, err = os.MkdirTemp("", "*")
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			AfterEach(func() {
+				Expect(ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, changeTransferPolicy))).To(Succeed())
+				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+				_ = os.RemoveAll(gitPath)
+			})
+
+			waitForOpenPRWithID := func() (promoterv1alpha1.PullRequest, int64) {
+				var pr promoterv1alpha1.PullRequest
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+					g.Expect(pr.Status.ID).NotTo(BeEmpty())
+					g.Expect(k8sClient.Get(ctx, ctpKey, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.PullRequest).NotTo(BeNil())
+					g.Expect(changeTransferPolicy.Status.PullRequest.ID).To(Equal(pr.Status.ID))
+				}, constants.EventuallyTimeout).Should(Succeed())
+				return pr, pr.Generation
+			}
+
+			// Regression for open-PR steady state with blocked promotion: routine PR status
+			// writes used to Owns(PullRequest)-enqueue CTP, which SSA-reapplied the PR and
+			// retriggered PR controller SCM sync in a CTP→PR→CTP feedback loop.
+			It("should not enter a CTP→PR SCM feedback loop when PR status churns in steady state", func() {
+				By("Creating a pending promotion with an open PR")
+				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+				pr, stableGeneration := waitForOpenPRWithID()
+
+				fake.ResetPullRequestSCMCallCounts()
+
+				By("Simulating routine PR controller status-only writes that used to re-enqueue CTP")
+				for poke := range 3 {
+					Eventually(func(g Gomega) {
+						g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+						pr.Status.Url = fmt.Sprintf("https://fake.example/pr/%s?poke=%d", pr.Status.ID, poke)
+						g.Expect(k8sClient.Status().Update(ctx, &pr)).To(Succeed())
+					}, constants.EventuallyTimeout).Should(Succeed())
+				}
+
+				By("Waiting for the last status poke to land on the PR")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+					g.Expect(pr.Status.Url).To(Equal(fmt.Sprintf("https://fake.example/pr/%s?poke=2", pr.Status.ID)))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Verifying status churn does not drive SCM polling in a tight loop")
+				// With the fix, three status-only pokes produce 0 SCM calls after reset.
+				// Without it, the loop reaches 1+ FindOpen/Update pairs within ~0.5s.
+				Consistently(func(g Gomega) {
+					g.Expect(fake.FindOpenCallCount()).To(BeZero())
+					g.Expect(fake.UpdateCallCount()).To(BeZero())
+					g.Expect(fake.PullRequestSCMCallCount()).To(BeZero())
+				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
+
+				var afterPR promoterv1alpha1.PullRequest
+				Expect(k8sClient.Get(ctx, prKey, &afterPR)).To(Succeed())
+				Expect(afterPR.Generation).To(Equal(stableGeneration))
+			})
+
+			It("should still hit SCM when the PR spec changes", func() {
+				By("Creating a pending promotion with an open PR")
+				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+				pr, _ := waitForOpenPRWithID()
+
+				fake.ResetPullRequestSCMCallCounts()
+				baselineFindOpen := fake.FindOpenCallCount()
+
+				baselineUpdate := fake.UpdateCallCount()
+
+				By("Changing PR spec so the PR controller must sync to SCM")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+					pr.Spec.Title = pr.Spec.Title + "-updated"
+					g.Expect(k8sClient.Update(ctx, &pr)).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				Eventually(func(g Gomega) {
+					g.Expect(fake.FindOpenCallCount()).To(BeNumerically(">", baselineFindOpen))
+					g.Expect(fake.UpdateCallCount()).To(BeNumerically(">", baselineUpdate))
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+		})
+
 		// Regression guard for kubernetes/kubernetes#135841: when SSA re-applies a
 		// previously-populated nested object as the empty object {}, structured-merge
 		// converts the empty object to JSON null during typed merge, and OpenAPI
@@ -1194,6 +1314,82 @@ var _ = Describe("TemplatePullRequest", func() {
 			Expect(description).To(ContainSubstring("Strategy: " + psName))
 			Expect(description).To(ContainSubstring("Promote to " + testBranchDevelopment))
 		})
+	})
+})
+
+var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func() {
+	pred := pullRequestUpdateEnqueuesChangeTransferPolicyPredicate()
+
+	It("ignores status-only URL updates", func() {
+		oldPR := &promoterv1alpha1.PullRequest{
+			ObjectMeta: metav1.ObjectMeta{Generation: 1},
+			Status:     promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"},
+		}
+		newPR := oldPR.DeepCopy()
+		newPR.Status.Url = "https://example/pr/1"
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeFalse())
+	})
+
+	It("enqueues on spec generation change", func() {
+		oldPR := &promoterv1alpha1.PullRequest{ObjectMeta: metav1.ObjectMeta{Generation: 1}}
+		newPR := oldPR.DeepCopy()
+		newPR.Generation = 2
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+	})
+
+	It("enqueues when the PR ID is first set", func() {
+		oldPR := &promoterv1alpha1.PullRequest{
+			ObjectMeta: metav1.ObjectMeta{Generation: 1},
+			Status:     promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen},
+		}
+		newPR := oldPR.DeepCopy()
+		newPR.Status.ID = "42"
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+	})
+
+	It("enqueues on terminal state change", func() {
+		oldPR := &promoterv1alpha1.PullRequest{
+			ObjectMeta: metav1.ObjectMeta{Generation: 1},
+			Status:     promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"},
+		}
+		newPR := oldPR.DeepCopy()
+		newPR.Status.State = promoterv1alpha1.PullRequestMerged
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+	})
+
+	It("enqueues when externally merged flag changes", func() {
+		oldPR := &promoterv1alpha1.PullRequest{
+			ObjectMeta: metav1.ObjectMeta{Generation: 1},
+			Status:     promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"},
+		}
+		newPR := oldPR.DeepCopy()
+		newPR.Status.ExternallyMergedOrClosed = new(true)
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+	})
+
+	It("enqueues when the CTP finalizer is removed even if another finalizer is added", func() {
+		oldPR := &promoterv1alpha1.PullRequest{
+			ObjectMeta: metav1.ObjectMeta{
+				Generation: 1,
+				Finalizers: []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
+			},
+		}
+		newPR := oldPR.DeepCopy()
+		newPR.Finalizers = []string{promoterv1alpha1.PullRequestFinalizer}
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+	})
+
+	It("ignores unrelated finalizer changes when the CTP finalizer is unchanged", func() {
+		oldPR := &promoterv1alpha1.PullRequest{
+			ObjectMeta: metav1.ObjectMeta{
+				Generation: 1,
+				Finalizers: []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
+			},
+			Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"},
+		}
+		newPR := oldPR.DeepCopy()
+		newPR.Finalizers = append(slices.Clone(newPR.Finalizers), promoterv1alpha1.PullRequestFinalizer)
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeFalse())
 	})
 })
 

@@ -32,7 +32,7 @@
   // the { releases: [ { version } ] } structure Renovate expects.
   customDatasources: {
     'envtest-k8s': {
-      defaultRegistryUrlTemplate: 'https://raw.githubusercontent.com/kubernetes-sigs/controller-tools/HEAD/envtest-releases.yaml',
+      defaultRegistryUrlTemplate: 'https://raw.githubusercontent.com/kubernetes-sigs/controller-tools/main/envtest-releases.yaml',
       format: 'yaml',
       transformTemplates: [
         '{ "releases": $map($keys(releases), function($v) { { "version": $v } }) }',
@@ -133,6 +133,20 @@
       ],
     },
     // ----------------------------------------------------------------------
+    // Group A3: E2E Kind node images (ci-e2e matrix; sliding window of minors)
+    // ----------------------------------------------------------------------
+    {
+      description: 'Group kindest/node bumps in the e2e Kind matrix',
+      matchDepNames: [
+        'kindest/node',
+      ],
+      groupName: 'E2E Kind Kubernetes matrix',
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      automerge: false,
+    },
+    // ----------------------------------------------------------------------
     // Group B: Go toolchain + golangci-lint (+ golang base image)
     // ----------------------------------------------------------------------
     {
@@ -171,6 +185,50 @@
         ],
         executionMode: 'branch',
       },
+    },
+    // ----------------------------------------------------------------------
+    // Group B2: Node.js (Dockerfile base image + setup-node in workflows)
+    // npm package deps stay manual; only the runtime version is automated here.
+    // ----------------------------------------------------------------------
+    {
+      description: 'Group Node docker image and setup-node workflow inputs',
+      matchManagers: [
+        'custom.regex',
+        'dockerfile',
+      ],
+      matchDepNames: [
+        'node',
+      ],
+      matchPackageNames: [
+        'node',
+      ],
+      groupName: 'Node.js',
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      automerge: false,
+    },
+    // ----------------------------------------------------------------------
+    // Group B3: Python runtime (CI, Read the Docs, local MkDocs docker)
+    // pip/MkDocs package deps are in the docs dependencies group above.
+    // ----------------------------------------------------------------------
+    {
+      description: 'Group Python runtime across CI, Read the Docs, and local MkDocs docker',
+      matchManagers: [
+        'custom.regex',
+      ],
+      matchDepNames: [
+        'python',
+      ],
+      matchPackageNames: [
+        'python',
+        'library/python',
+      ],
+      groupName: 'Python runtime',
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      automerge: false,
     },
     // ----------------------------------------------------------------------
     // Group C2: cosign CLI (release workflows; action SHA is Dependabot-owned)
@@ -411,6 +469,8 @@
       versioningTemplate: 'semver',
     },
     // ===== golangci-lint (Makefile + workflows, incl. SHA-pinned action) =====
+    // managerFilePatterns must be wrapped in /.../ to use regex; without delimiters Renovate
+    // treats the string as a glob (see docs.renovatebot.com/string-pattern-matching).
     {
       customType: 'regex',
       description: 'Update golangci-lint version in Makefile',
@@ -489,6 +549,20 @@
       datasourceTemplate: 'custom.envtest-k8s',
       versioningTemplate: 'semver',
       extractVersionTemplate: '^v(?<version>.*)$',
+    },
+    {
+      customType: 'regex',
+      description: 'Update kindest/node versions in the e2e Kind matrix',
+      managerFilePatterns: [
+        '/^\\.github/workflows/ci-e2e\\.yaml$/',
+      ],
+      matchStrings: [
+        '- (?<currentValue>1\\.\\d+\\.\\d+)\\s*$',
+      ],
+      depNameTemplate: 'kindest/node',
+      datasourceTemplate: 'docker',
+      versioningTemplate: 'docker',
+      extractVersionTemplate: '^v?(?<version>.*)$',
     },
     // ===== Makefile tool versions =====
     {
@@ -591,6 +665,61 @@
       datasourceTemplate: 'github-releases',
       versioningTemplate: 'semver',
       extractVersionTemplate: '^v(?<version>.*)$',
+    },
+    // ===== Node.js (Dockerfile base image + setup-node in workflows) =====
+    {
+      customType: 'regex',
+      description: 'Update Node.js version in GitHub Actions setup-node inputs',
+      managerFilePatterns: [
+        '/^\\.github/workflows/.*\\.ya?ml$/',
+      ],
+      matchStrings: [
+        'node-version:\\s*[\'"]?(?<currentValue>\\d+\\.\\d+\\.\\d+)[\'"]?',
+      ],
+      depNameTemplate: 'node',
+      datasourceTemplate: 'node-version',
+      versioningTemplate: 'node',
+    },
+    // ===== Python runtime (CI, Read the Docs, local MkDocs docker) =====
+    {
+      customType: 'regex',
+      description: 'Update Python version in GitHub Actions setup-python inputs',
+      managerFilePatterns: [
+        '/^\\.github/workflows/.*\\.ya?ml$/',
+      ],
+      matchStrings: [
+        'python-version:\\s*[\'"]?(?<currentValue>3\\.\\d+)[\'"]?',
+      ],
+      depNameTemplate: 'python',
+      datasourceTemplate: 'python-version',
+      versioningTemplate: 'docker',
+    },
+    {
+      customType: 'regex',
+      description: 'Update Python version in Read the Docs config',
+      managerFilePatterns: [
+        '/^\\.readthedocs\\.yaml$/',
+      ],
+      matchStrings: [
+        'python:\\s*"(?<currentValue>3\\.\\d+)"',
+      ],
+      depNameTemplate: 'python',
+      datasourceTemplate: 'python-version',
+      versioningTemplate: 'docker',
+    },
+    {
+      customType: 'regex',
+      description: 'Update Python version in the local MkDocs docker image',
+      managerFilePatterns: [
+        '/^Makefile$/',
+      ],
+      matchStrings: [
+        'MKDOCS_DOCKER_IMAGE\\?=python:(?<currentValue>3\\.\\d+)-alpine',
+      ],
+      depNameTemplate: 'python',
+      datasourceTemplate: 'docker',
+      packageNameTemplate: 'library/python',
+      versioningTemplate: 'docker',
     },
     // ===== Argo CD (tilt-ci + demo CLI install pins) =====
     {
