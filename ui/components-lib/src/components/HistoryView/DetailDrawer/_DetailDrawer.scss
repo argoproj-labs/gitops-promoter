@@ -1,6 +1,10 @@
 @use '../tokens' as *;
 
 .hp-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
   width: 0;
   min-width: 0;
   background: $bg-surface;
@@ -9,7 +13,7 @@
   transition:
     width 0.18s ease,
     min-width 0.18s ease;
-  position: relative;
+  z-index: 5;
 }
 
 .hp-drawer--open {
@@ -19,6 +23,7 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.12);
 }
 
 // While dragging the edge, kill the width animation so the panel tracks the
