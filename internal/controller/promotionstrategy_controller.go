@@ -119,6 +119,15 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// Remove any existing Ready condition. We want to start fresh.
 	previousReady = utils.RemoveReadyCondition(&ps)
 
+	// Safety check: every DAGCommitStatus that targets this PromotionStrategy must have its key
+	// declared in the PS's global proposedCommitStatuses. Otherwise the gate the DAGCommitStatus
+	// produces is never consumed, and the user's intended ordering silently does not apply. We
+	// hard-fail the reconcile so the misconfiguration surfaces instead of being ignored.
+	// TODO: remove this safety check in 1.0.
+	if err = r.checkDAGCommitStatusKeysDeclared(ctx, &ps); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	// If a ChangeTransferPolicy does not exist, create it otherwise get it and store the ChangeTransferPolicy in a slice with the same order as ps.Spec.Environments.
 	ctps := make([]*promoterv1alpha1.ChangeTransferPolicy, len(ps.Spec.Environments))
 	for i, environment := range ps.Spec.Environments {
@@ -193,6 +202,44 @@ func (r *PromotionStrategyReconciler) SetupWithManager(ctx context.Context, mgr 
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
 	}
+	return nil
+}
+
+// checkDAGCommitStatusKeysDeclared verifies that every DAGCommitStatus referencing this
+// PromotionStrategy has its key declared in the PS's global proposedCommitStatuses. A
+// DAGCommitStatus whose key is not declared produces a gate that nobody consumes, so the intended
+// promotion ordering would silently not apply. This returns an error (hard-failing the reconcile)
+// so the misconfiguration is surfaced rather than ignored.
+//
+// TODO: remove this safety check in 1.0.
+func (r *PromotionStrategyReconciler) checkDAGCommitStatusKeysDeclared(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy) error {
+	var dcsList promoterv1alpha1.DAGCommitStatusList
+	if err := r.List(ctx, &dcsList,
+		client.InNamespace(ps.Namespace),
+		client.MatchingFields{PromotionStrategyRefField: ps.Name}); err != nil {
+		return fmt.Errorf("failed to list DAGCommitStatuses for PromotionStrategy %q: %w", ps.Name, err)
+	}
+
+	declared := make(map[string]bool, len(ps.Spec.ProposedCommitStatuses))
+	for _, sel := range ps.Spec.ProposedCommitStatuses {
+		declared[sel.Key] = true
+	}
+
+	for i := range dcsList.Items {
+		// Resolve the effective key the same way the DAGCommitStatus controller does: the CRD
+		// defaults an empty key to DAGCommitStatusKey, but an object built in memory may still be
+		// empty, so default it here too before comparing.
+		key := dcsList.Items[i].Spec.Key
+		if key == "" {
+			key = promoterv1alpha1.DAGCommitStatusKey
+		}
+		if !declared[key] {
+			return fmt.Errorf("DAGCommitStatus %q references PromotionStrategy %q with key %q, "+
+				"but that key is not in the PromotionStrategy's proposedCommitStatuses; add it so the gate is enforced",
+				dcsList.Items[i].Name, ps.Name, key)
+		}
+	}
+
 	return nil
 }
 

@@ -3897,6 +3897,97 @@ func argocdApplications(namespace, appLabel, repoOwner, repoName string) (argocd
 	return apps[0], apps[1], apps[2]
 }
 
+var _ = Describe("PromotionStrategy DAGCommitStatus key safety check", func() {
+	var (
+		ctx               context.Context
+		name              string
+		scmSecret         *v1.Secret
+		scmProvider       *promoterv1alpha1.ScmProvider
+		gitRepo           *promoterv1alpha1.GitRepository
+		promotionStrategy *promoterv1alpha1.PromotionStrategy
+		dagCommitStatus   *promoterv1alpha1.DAGCommitStatus
+	)
+
+	BeforeEach(func() {
+		ctx = context.Background()
+		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "ps-dag-safety-check", "default")
+	})
+
+	AfterEach(func() {
+		By("Cleaning up resources")
+		if dagCommitStatus != nil {
+			_ = k8sClient.Delete(ctx, dagCommitStatus)
+			dagCommitStatus = nil
+		}
+		_ = k8sClient.Delete(ctx, promotionStrategy)
+	})
+
+	It("hard-fails the reconcile when a DAGCommitStatus key is not declared in proposedCommitStatuses", func() {
+		By("Creating a PromotionStrategy with no proposedCommitStatuses")
+		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+		By("Creating a DAGCommitStatus that references the PS with a key it does not declare")
+		dagCommitStatus = &promoterv1alpha1.DAGCommitStatus{
+			ObjectMeta: metav1.ObjectMeta{Name: name + "-dag", Namespace: "default"},
+			Spec: promoterv1alpha1.DAGCommitStatusSpec{
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+				Key:                  promoterv1alpha1.DAGCommitStatusKey,
+				Environments: []promoterv1alpha1.DAGEnvironment{
+					{Branch: testBranchDevelopment},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, dagCommitStatus)).To(Succeed())
+
+		By("Checking that the PromotionStrategy's Ready condition reports the misconfiguration")
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, promotionStrategy)).To(Succeed())
+			cond := meta.FindStatusCondition(promotionStrategy.Status.Conditions, string(promoterConditions.Ready))
+			g.Expect(cond).ToNot(BeNil())
+			g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+			g.Expect(cond.Reason).To(Equal(string(promoterConditions.ReconciliationError)))
+			g.Expect(cond.Message).To(ContainSubstring("is not in the PromotionStrategy's proposedCommitStatuses"))
+		}, constants.EventuallyTimeout).Should(Succeed())
+	})
+
+	It("does not fail the safety check when the DAGCommitStatus key is declared in proposedCommitStatuses", func() {
+		By("Creating a PromotionStrategy that declares the DAG gate key")
+		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+			{Key: promoterv1alpha1.DAGCommitStatusKey},
+		}
+		setupInitialTestGitRepoOnServer(ctx, gitRepo)
+		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+		By("Creating a DAGCommitStatus that references the PS with the declared key")
+		dagCommitStatus = &promoterv1alpha1.DAGCommitStatus{
+			ObjectMeta: metav1.ObjectMeta{Name: name + "-dag", Namespace: "default"},
+			Spec: promoterv1alpha1.DAGCommitStatusSpec{
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+				Key:                  promoterv1alpha1.DAGCommitStatusKey,
+				Environments: []promoterv1alpha1.DAGEnvironment{
+					{Branch: testBranchDevelopment},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, dagCommitStatus)).To(Succeed())
+
+		By("Checking that the Ready condition never fails the safety check")
+		Consistently(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, promotionStrategy)).To(Succeed())
+			cond := meta.FindStatusCondition(promotionStrategy.Status.Conditions, string(promoterConditions.Ready))
+			if cond != nil && cond.Message != "" {
+				g.Expect(cond.Message).ToNot(ContainSubstring("is not in the PromotionStrategy's proposedCommitStatuses"))
+			}
+		}, "5s", "1s").Should(Succeed())
+	})
+})
+
 var _ = Describe("PromotionStrategy Bug Tests", func() {
 	Context("When PR merges while previous environment has non-passing checks", func() {
 		Context("When PR is merged before checks pass", func() {
