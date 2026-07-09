@@ -1,4 +1,4 @@
-import type { Rfc3339DateTime } from '../types/promotion';
+import type { PromotionStrategy, Rfc3339DateTime } from '../types/promotion';
 
 /** Relative time from an {@link Rfc3339DateTime} (e.g. `"3 hours ago"`). */
 export const timeAgo = (dateString: Rfc3339DateTime): string => {
@@ -87,20 +87,21 @@ export function formatDate(date?: Rfc3339DateTime): string {
 }
 
 // Get the last commit time from a PromotionStrategy
-export function getLastCommitTime(ps: any): Date | null {
-  //Determine the last commit time between both active/proposed hydrated commit
-  const commitTimes = [
-    ...(ps.status?.environments?.map((env: any) => env.active?.dry?.commitTime) || []),
-    ...(ps.status?.environments?.map((env: any) => env.active?.hydrated?.commitTime) || []),
-    ...(ps.status?.environments?.map((env: any) => env.proposed?.dry?.commitTime) || []),
-    ...(ps.status?.environments?.map((env: any) => env.proposed?.hydrated?.commitTime) || []),
-  ].filter(Boolean);
+export function getLastCommitTime(ps: PromotionStrategy): Date | null {
+  const commitTimes = (
+    ps.status?.environments.flatMap((env) => [
+      env.active.dry?.commitTime,
+      env.active.hydrated?.commitTime,
+      env.proposed.dry?.commitTime,
+      env.proposed.hydrated?.commitTime,
+    ]) ?? []
+  ).filter(Boolean) as Rfc3339DateTime[];
 
   if (commitTimes.length) {
-    return new Date(Math.max(...commitTimes.map((t) => new Date(t as string).getTime())));
+    return new Date(Math.max(...commitTimes.map((t) => new Date(t).getTime())));
   }
 
-  if (ps.metadata?.creationTimestamp) {
+  if (ps.metadata.creationTimestamp) {
     return new Date(ps.metadata.creationTimestamp);
   }
 

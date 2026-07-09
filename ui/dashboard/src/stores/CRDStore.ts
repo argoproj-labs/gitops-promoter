@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { enrichFromCRD } from '@shared/utils/PSData';
 import type { PromotionStrategy } from '@shared/utils/PSData';
 import type { Environment } from '@shared/types/promotion';
-import type { ChangeTransferPolicy, PromotionStrategyBundle } from '@shared/types/bundle';
+import type { ChangeTransferPolicy, PromotionStrategyDetails } from '@shared/types/view';
 
 interface CRDItem extends PromotionStrategy {
   enriched?: unknown;
@@ -12,38 +12,41 @@ interface CRDItem extends PromotionStrategy {
 // the PromotionStrategy status (it was a duplicate aggregation); instead we build the
 // environment list from the embedded ChangeTransferPolicies, one per environment keyed
 // by spec.activeBranch, in the order declared by the PromotionStrategy spec.
-function environmentsFromCTPs(ps: PromotionStrategy, ctps: ChangeTransferPolicy[]): Environment[] {
+function environmentsFromCTPs(
+  spec: PromotionStrategy['spec'],
+  ctps: ChangeTransferPolicy[],
+): Environment[] {
   const byBranch = new Map<string, ChangeTransferPolicy>();
   for (const ctp of ctps) {
     const branch = ctp.spec?.activeBranch;
     if (branch) byBranch.set(branch, ctp);
   }
 
-  const specEnvironments = ps.spec?.environments ?? [];
-  return specEnvironments.map((env) => {
+  return spec.environments.map((env) => {
     const status = byBranch.get(env.branch)?.status ?? {};
     return {
       branch: env.branch,
-      active: status.active ?? {},
-      proposed: status.proposed ?? {},
+      active: status.active ?? { dry: {}, hydrated: {} },
+      proposed: status.proposed ?? { dry: {}, hydrated: {} },
       pullRequest: status.pullRequest,
       history: status.history,
+      lastHealthyDryShas: [],
     };
   });
 }
 
-// The dashboard consumes a single, server-computed PromotionStrategyDetails bundle
-// (group view.promoter.argoproj.io) instead of four raw CRD streams. The bundle
-// embeds the PromotionStrategy (metadata + spec only) plus its ChangeTransferPolicies;
-// we rebuild status.environments from those CTPs so the existing enrichment/components
-// keep working.
-function bundleToItem<T extends CRDItem>(bundle: PromotionStrategyBundle): T {
+function bundleToItem<T extends CRDItem>(bundle: PromotionStrategyDetails): T {
   const ps = bundle.promotionStrategy;
-  const environments = environmentsFromCTPs(ps, bundle.changeTransferPolicies ?? []);
-  const psWithEnvironments: PromotionStrategy = {
+  const environments = environmentsFromCTPs(ps.spec, bundle.changeTransferPolicies ?? []);
+  const psWithEnvironments = {
     ...ps,
+    metadata: {
+      ...ps.metadata,
+      name: bundle.metadata.name,
+      namespace: bundle.metadata.namespace,
+    },
     status: { ...ps.status, environments },
-  };
+  } as PromotionStrategy;
   return {
     ...psWithEnvironments,
     enriched: enrichFromCRD(psWithEnvironments),
@@ -75,9 +78,9 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
         const res = await fetch(`/list?kind=${kind}&namespace=${namespace}`);
 
         if (!res.ok) throw new Error(`Error: ${res.status}`);
-        const data: PromotionStrategyBundle[] = await res.json();
+        const data = (await res.json()) as PromotionStrategyDetails[] | null;
 
-        set({ items: (data || []).map((b) => bundleToItem<T>(b)), loading: false });
+        set({ items: (data ?? []).map((b) => bundleToItem<T>(b)), loading: false });
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         set({ error: errorMessage, loading: false });
@@ -91,13 +94,13 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
 
       eventSource.addEventListener(eventName, async (evt: MessageEvent) => {
         try {
-          const bundle: PromotionStrategyBundle = JSON.parse(evt.data);
+          const bundle: PromotionStrategyDetails = JSON.parse(evt.data);
           const updated = bundleToItem<T>(bundle);
           set((state) => {
             const idx = state.items.findIndex(
               (item: T) =>
-                item.metadata?.name === updated.metadata?.name &&
-                item.metadata?.namespace === updated.metadata?.namespace,
+                item.metadata.name === updated.metadata.name &&
+                item.metadata.namespace === updated.metadata.namespace,
             );
             let newItems: T[];
             if (idx >= 0) {

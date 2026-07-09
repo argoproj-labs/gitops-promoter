@@ -39,7 +39,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
-	"k8s.io/utils/ptr"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 )
@@ -880,7 +879,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				fake.ResetPullRequestSCMCallCounts()
 
 				By("Simulating routine PR controller status-only writes that used to re-enqueue CTP")
-				for poke := 0; poke < 3; poke++ {
+				for poke := range 3 {
 					Eventually(func(g Gomega) {
 						g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
 						pr.Status.Url = fmt.Sprintf("https://fake.example/pr/%s?poke=%d", pr.Status.ID, poke)
@@ -1364,7 +1363,7 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 			Status:     promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"},
 		}
 		newPR := oldPR.DeepCopy()
-		newPR.Status.ExternallyMergedOrClosed = ptr.To(true)
+		newPR.Status.ExternallyMergedOrClosed = new(true)
 		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
 	})
 

@@ -28,7 +28,7 @@ export function PromotionStrategies() {
 
   return (
     <div>
-      <PromotionStrategiesTiles promotionStrategies={items || []} namespace={namespace} />
+      <PromotionStrategiesTiles promotionStrategies={items} namespace={namespace} />
     </div>
   );
 }

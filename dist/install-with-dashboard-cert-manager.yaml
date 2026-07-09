@@ -5939,6 +5939,8 @@ spec:
             required:
             - environments
             type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true
