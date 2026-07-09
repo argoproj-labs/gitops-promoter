@@ -39,6 +39,7 @@ jobs:
             ui/dashboard/package-lock.json
             ui/extension/package-lock.json
             ui/components-lib/package-lock.json
+            ui/shared/package-lock.json
 
       - name: Create k8s Kind Cluster
         uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
