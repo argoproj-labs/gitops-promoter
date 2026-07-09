@@ -811,6 +811,51 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
+
+			It("should delete PR quickly when externally merged on SCM and CTP reconciles", func() {
+				setPullRequestRequeueDuration(ctx, time.Hour)
+
+				By("Adding a pending commit and waiting for open PR")
+				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+
+				var createdPR promoterv1alpha1.PullRequest
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      utils.KubeSafeUniqueName(prName),
+						Namespace: "default",
+					}, &createdPR)
+					g.Expect(err).To(Succeed())
+					g.Expect(createdPR.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+					g.Expect(createdPR.Status.ID).ToNot(BeEmpty())
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).NotTo(Equal(changeTransferPolicy.Status.Proposed.Dry.Sha))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				fake.ResetFindOpenCallCount()
+
+				By("Simulating external merge on SCM (merges proposed into active and sends webhook)")
+				fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: createdPR.Name, Namespace: createdPR.Namespace}, &createdPR)).To(Succeed())
+				Expect(fakeProvider.Merge(ctx, createdPR)).To(Succeed())
+
+				By("Verifying PR is deleted promptly without relying on periodic requeue")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      createdPR.Name,
+						Namespace: createdPR.Namespace,
+					}, &createdPR)
+					g.Expect(errors.IsNotFound(err)).To(BeTrue())
+				}, 10*time.Second).Should(Succeed())
+
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.PullRequest).ToNot(BeNil())
+					g.Expect(changeTransferPolicy.Status.PullRequest.ExternallyMergedOrClosed).ToNot(BeNil())
+					g.Expect(*changeTransferPolicy.Status.PullRequest.ExternallyMergedOrClosed).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				Expect(fake.FindOpenCallCount()).To(BeNumerically(">=", 1))
+			})
 		})
 
 		Context("When an open PR is in steady state", func() {

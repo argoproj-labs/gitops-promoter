@@ -74,6 +74,9 @@ type ChangeTransferPolicyReconciler struct {
 	// enqueueFunc is set during SetupWithManager and can be retrieved via GetEnqueueFunc.
 	// It allows other controllers to enqueue CTP reconcile requests.
 	enqueueFunc CTPEnqueueFunc
+
+	// EnqueuePR wakes the PullRequest controller without patching the PR object.
+	EnqueuePR PREnqueueFunc
 }
 
 // GetEnqueueFunc returns a function that can be used to enqueue CTP reconcile requests.
@@ -1145,6 +1148,7 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 		logger.V(4).Info("No promotion needed - active branch already has proposed changes",
 			"activeDrySha", ctp.Status.Active.Dry.Sha,
 			"proposedDrySha", ctp.Status.Proposed.Dry.Sha)
+		r.enqueuePullRequestsForCTP(ctx, ctp)
 		return nil, nil
 	}
 
@@ -1285,9 +1289,29 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 		logger.V(4).Info("Created pull request", "pullRequest", pr.Name)
 	} else {
 		logger.V(4).Info("Applied pull request", "pullRequest", pr.Name)
+		if r.EnqueuePR != nil {
+			r.EnqueuePR(pr.Namespace, pr.Name)
+		}
 	}
 
 	return pr, nil
+}
+
+func (r *ChangeTransferPolicyReconciler) enqueuePullRequestsForCTP(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) {
+	if r.EnqueuePR == nil {
+		return
+	}
+	prList := &promoterv1alpha1.PullRequestList{}
+	if err := r.List(ctx, prList, ctpPullRequestListOptions(ctp)); err != nil {
+		log.FromContext(ctx).Error(err, "failed to list PullRequests to enqueue for SCM sync")
+		return
+	}
+	for i := range prList.Items {
+		pr := &prList.Items[i]
+		if pr.DeletionTimestamp.IsZero() {
+			r.EnqueuePR(pr.Namespace, pr.Name)
+		}
+	}
 }
 
 // mergePullRequests tries to merge the pull request if all the checks have passed and the environment is set to auto merge.

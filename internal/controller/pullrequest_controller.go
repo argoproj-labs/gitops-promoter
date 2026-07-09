@@ -50,9 +50,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 )
+
+// PREnqueueFunc enqueues PullRequest reconcile requests without modifying the object.
+// ChangeTransferPolicy uses this to wake the PR controller after trailer-only updates
+// or when promotion is complete but a PR CR still exists.
+type PREnqueueFunc func(namespace, name string)
 
 // PullRequestReconciler reconciles a PullRequest object
 type PullRequestReconciler struct {
@@ -60,6 +67,15 @@ type PullRequestReconciler struct {
 	Scheme      *runtime.Scheme
 	Recorder    events.EventRecorder
 	SettingsMgr *settings.Manager
+
+	// enqueueFunc is set during SetupWithManager and can be retrieved via GetEnqueueFunc.
+	enqueueFunc PREnqueueFunc
+}
+
+// GetEnqueueFunc returns a function that enqueues PullRequest reconcile requests.
+// This should be called after SetupWithManager has been called.
+func (r *PullRequestReconciler) GetEnqueueFunc() PREnqueueFunc {
+	return r.enqueueFunc
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests,verbs=get;list;watch;create;update;patch;delete
@@ -97,6 +113,25 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	// This short-circuit avoids FindOpen (and other) SCM calls for a very narrow kind of reconcile:
+	// where the PR is marked open, the resource isn't being deleted, the spec has changed, and the
+	// _only_ changes to the spec do not require an Update to the SCM PR.
+	//
+	// This keeps the possibly-frequent updates to the mergeSha and commit message fields from causing
+	// a bunch of unnecessary API calls.
+	//
+	// The intentional tradeoff is that, for this kind of update, we will _not_ check the SCM for drift,
+	// i.e. an external process merging or closing the PR.
+	//
+	// In practice, this will only be problematic for the "externally closed" case, which will sit in
+	// a drifted state until a different kind of reconcile bypasses this short circuit. If the PR was
+	// externally merged, a webhook will cause a CTP reconcile, and the CTP will explicitly enqueue the
+	// PR so that it will FindOpen and close/delete itself.
+	//
+	// TODO: in the future we could consider breaking the PullRequest resource up so that fields like
+	// mergeSha and the commit message get their own lifecycle, reserving the PullRequest reconcile
+	// loop for activity that actually requires SCM calls. We'd have to do some internal cache work
+	// to ensure we don't call Merge with stale sha/message data.
 	if shouldSkipSCMSync(&pr) {
 		logger.V(1).Info("skipping SCM sync for non-SCM spec change on open pull request")
 		requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.PullRequestConfiguration](ctx, r.SettingsMgr)
@@ -424,11 +459,27 @@ func (r *PullRequestReconciler) SetupWithManager(ctx context.Context, mgr ctrl.M
 		return fmt.Errorf("failed to get pull request max concurrent reconciles: %w", err)
 	}
 
+	externalEnqueueChan := make(chan event.GenericEvent, 1024)
+	r.enqueueFunc = func(namespace, name string) {
+		pr := &promoterv1alpha1.PullRequest{}
+		pr.SetNamespace(namespace)
+		pr.SetName(name)
+
+		select {
+		case externalEnqueueChan <- event.GenericEvent{Object: pr}:
+		default:
+			log.FromContext(ctx).Info("PullRequest enqueue channel is full, blocking until space is available",
+				"namespace", namespace, "name", name)
+			externalEnqueueChan <- event.GenericEvent{Object: pr}
+		}
+	}
+
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.PullRequest{}, builder.WithPredicates(predicate.Or(
 			predicate.GenerationChangedPredicate{},
 			pullRequestDeletionFinalizerLengthChangedPredicate(),
 		))).
+		WatchesRawSource(source.Channel(externalEnqueueChan, &handler.EnqueueRequestForObject{})).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Complete(r)
 	if err != nil {
