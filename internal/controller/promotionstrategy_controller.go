@@ -720,8 +720,14 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 			"previousEnvironmentActiveBranch", previousEnvironmentStatus.Branch)
 
 		var previousEnvCommitURL string
-		if repoURL := previousEnvironmentStatus.Active.Dry.RepoURL; repoURL != "" && previousEnvironmentStatus.Active.Hydrated.Sha != "" {
-			previousEnvCommitURL = repoURL + "/commit/" + previousEnvironmentStatus.Active.Hydrated.Sha
+		if sha := previousEnvironmentStatus.Active.Hydrated.Sha; sha != "" {
+			repoURL := previousEnvironmentStatus.Active.Hydrated.RepoURL
+			if repoURL == "" {
+				repoURL = previousEnvironmentStatus.Active.Dry.RepoURL
+			}
+			if repoURL != "" {
+				previousEnvCommitURL = repoURL + "/commit/" + sha
+			}
 		}
 
 		cs, err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctp, commitStatusPhase, pendingReason, previousEnvironmentStatus.Branch, ctps[i-1].Status.Active.CommitStatuses, previousEnvCommitURL)
