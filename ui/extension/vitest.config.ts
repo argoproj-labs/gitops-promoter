@@ -19,10 +19,6 @@ export default defineConfig({
   test: {
     environment: 'node',
     css: false,
-    include: [
-      '**/*.{test,spec}.?(c|m)[jt]s?(x)',
-      '../components-lib/src/**/*.{test,spec}.?(c|m)[jt]s?(x)',
-    ],
     server: {
       deps: {
         inline: [/react-icons/],

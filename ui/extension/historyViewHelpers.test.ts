@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { healthFromStatuses, shortSha, commitKey } from './helpers';
+import {
+  healthFromStatuses,
+  shortSha,
+  commitKey,
+} from '@components-lib/components/HistoryView/helpers';
 import type { Commit, CommitStatus } from '@shared/types/promotion';
 
 const status = (phase: string, key = phase): CommitStatus => ({ key, phase });

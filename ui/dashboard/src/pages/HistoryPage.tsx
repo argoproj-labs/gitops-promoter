@@ -13,7 +13,7 @@ const HistoryPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [namespace]);
 
-  const strategy = items.find((ps) => ps.metadata?.name === name);
+  const strategy = items.find((ps) => ps.metadata.name === name);
 
   return (
     <HistoryView

@@ -12,11 +12,9 @@ export const PromotionStrategyDetailsView: React.FC<PromotionStrategyDetailsView
 }) => {
   const navigate = useNavigate();
 
-  if (!strategy) return <div>No strategy found</div>;
-
   const environments = strategy.status?.environments || [];
-  const ns = strategy.metadata?.namespace || '';
-  const name = strategy.metadata?.name || '';
+  const ns = strategy.metadata.namespace || '';
+  const name = strategy.metadata.name || '';
 
   const handleHistoryNavigate = (_branch: string) => {
     navigate(`/promotion-strategies/${ns}/${name}/history`);
