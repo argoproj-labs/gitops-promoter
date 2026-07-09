@@ -1056,8 +1056,16 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyConfi
 							Ref:         ref(apiv1alpha1.WorkQueue{}.OpenAPIModelName()),
 						},
 					},
+					"commitMessageTemplate": {
+						SchemaProps: spec.SchemaProps{
+							Description: "CommitMessageTemplate is a Go template used to generate the merge commit message when a promotion pull request is merged.\n\nUses Go template syntax with Sprig functions available for string manipulation.\n\nTemplate data available when rendering:\n  - .ChangeTransferPolicy – the ChangeTransferPolicy managing this promotion\n  - .PromotionStrategy    – the PromotionStrategy for the CTP\n\nExample: access the original dry commit subject via\n  {{ .ChangeTransferPolicy.Status.Proposed.Dry.Subject }}\nor the dry SHA via\n  {{ trunc 5 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 				},
-				Required: []string{"workQueue"},
+				Required: []string{"workQueue", "commitMessageTemplate"},
 			},
 		},
 		Dependencies: []string{
