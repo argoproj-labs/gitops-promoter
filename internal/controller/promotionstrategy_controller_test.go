@@ -5269,6 +5269,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 	Context("upstreamsPending (linear regression guard)", func() {
 		// Use fixed times for tests to ensure consistent time comparisons
 		olderTime := metav1.NewTime(time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC))
+		newerTime := metav1.NewTime(time.Date(2024, 1, 15, 11, 0, 0, 0, time.UTC))
 
 		// Helper to create a HydratorMetadata pointer, or nil if empty
 		makeNote := func(drySha string) *promoterv1alpha1.HydratorMetadata {
@@ -5356,6 +5357,168 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				"OLD", "ABC", "ABC", // curr
 				false, ""),
 		)
+
+		// Recursive tests - verify the recursion through no-ops works correctly
+		Context("recursive lookback through no-ops", func() {
+			makeEnv := func(branch, activeDrySha, proposedDrySha, noteDrySha string, activeCommitTime metav1.Time, healthStatus string) promoterv1alpha1.EnvironmentStatus {
+				return promoterv1alpha1.EnvironmentStatus{
+					Branch: branch,
+					Active: promoterv1alpha1.CommitBranchState{
+						Dry: promoterv1alpha1.CommitShaState{
+							Sha:        activeDrySha,
+							CommitTime: activeCommitTime,
+						},
+						CommitStatuses: []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+							{Key: "health", Phase: healthStatus},
+						},
+					},
+					Proposed: promoterv1alpha1.CommitBranchState{
+						Dry: promoterv1alpha1.CommitShaState{
+							Sha:        proposedDrySha,
+							CommitTime: activeCommitTime,
+						},
+						Note: &promoterv1alpha1.HydratorMetadata{DrySha: noteDrySha},
+					},
+				}
+			}
+
+			// Test each truth table case after recursing through no-ops
+			It("blocks on hydration after recursing through no-ops", func() {
+				env1 := makeEnv("env1", "OLD", "OLD", "OLD", olderTime, string(promoterv1alpha1.CommitPhaseSuccess)) // not hydrated
+				env2 := makeEnv("env2", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess)) // no-op
+				env3 := makeEnv("env3", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				isPending, reason := linearUpstreamsPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
+
+				Expect(isPending).To(BeTrue())
+				Expect(reason).To(Equal("Waiting for the hydrator to finish processing the proposed dry commit"))
+			})
+
+			It("blocks on unmerged env after recursing through no-ops", func() {
+				env1 := makeEnv("env1", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess)) // hydrated, not merged
+				env2 := makeEnv("env2", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess)) // no-op
+				env3 := makeEnv("env3", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				isPending, reason := linearUpstreamsPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
+
+				Expect(isPending).To(BeTrue())
+				Expect(reason).To(Equal("Waiting for previous environment to be promoted"))
+			})
+
+			It("blocks on unhealthy env after recursing through no-ops", func() {
+				env1 := makeEnv("env1", "ABC", "ABC", "ABC", newerTime, string(promoterv1alpha1.CommitPhasePending)) // merged, unhealthy
+				env2 := makeEnv("env2", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess)) // no-op
+				env3 := makeEnv("env3", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				isPending, reason := linearUpstreamsPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
+
+				Expect(isPending).To(BeTrue())
+				Expect(reason).To(Equal(`Waiting for "env1" environment's "health" commit status to be successful`))
+			})
+
+			It("allows after recursing through no-ops to healthy merged env", func() {
+				env1 := makeEnv("env1", "ABC", "ABC", "ABC", newerTime, string(promoterv1alpha1.CommitPhaseSuccess)) // merged, healthy
+				env2 := makeEnv("env2", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess)) // no-op
+				env3 := makeEnv("env3", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				isPending, reason := linearUpstreamsPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
+
+				Expect(isPending).To(BeFalse())
+				Expect(reason).To(BeEmpty())
+			})
+
+			It("allows when all preceding envs are no-ops (base case)", func() {
+				env1 := makeEnv("env1", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess)) // no-op
+				env2 := makeEnv("env2", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess)) // no-op
+				env3 := makeEnv("env3", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				isPending, reason := linearUpstreamsPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
+
+				Expect(isPending).To(BeFalse())
+				Expect(reason).To(BeEmpty())
+			})
+
+			// Regression test: newer no-op dry SHA causes premature promotion through all envs.
+			It("blocks when newer no-op SHA causes all preceding envs to look like no-ops but staging is unhealthy", func() {
+				dev := makeEnv("environments/development",
+					"COMMIT1", "COMMIT1", "COMMIT2",
+					newerTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				staging := makeEnv("environments/staging",
+					"COMMIT1", "COMMIT1", "COMMIT2",
+					newerTime, string(promoterv1alpha1.CommitPhasePending)) // apps still deploying
+
+				prod := makeEnv("environments/production",
+					"OLD", "COMMIT1", "COMMIT2",
+					olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				isPending, reason := linearUpstreamsPending(
+					[]promoterv1alpha1.EnvironmentStatus{dev, staging},
+					getEffectiveHydratedDrySha(prod),
+					prod.Active.Dry.CommitTime)
+
+				Expect(isPending).To(BeTrue())
+				Expect(reason).To(Equal(`Waiting for "environments/staging" environment's "health" commit status to be successful`))
+			})
+
+			It("allows when newer no-op SHA and all preceding envs are healthy", func() {
+				dev := makeEnv("environments/development",
+					"COMMIT1", "COMMIT1", "COMMIT2",
+					newerTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				staging := makeEnv("environments/staging",
+					"COMMIT1", "COMMIT1", "COMMIT2",
+					newerTime, string(promoterv1alpha1.CommitPhaseSuccess)) // healthy
+
+				prod := makeEnv("environments/production",
+					"OLD", "COMMIT1", "COMMIT2",
+					olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				isPending, reason := linearUpstreamsPending(
+					[]promoterv1alpha1.EnvironmentStatus{dev, staging},
+					getEffectiveHydratedDrySha(prod),
+					prod.Active.Dry.CommitTime)
+
+				Expect(isPending).To(BeFalse())
+				Expect(reason).To(BeEmpty())
+			})
+
+			It("blocks when no-op for current commit but has pending changes from previous commit", func() {
+				env1 := makeEnv("env1",
+					"OLD", "COMMIT1", "COMMIT2",
+					olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				env2 := makeEnv("env2",
+					"OLD", "COMMIT2", "COMMIT2",
+					olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				isPending, reason := linearUpstreamsPending(
+					[]promoterv1alpha1.EnvironmentStatus{env1},
+					getEffectiveHydratedDrySha(env2),
+					env2.Active.Dry.CommitTime)
+
+				Expect(isPending).To(BeTrue())
+				Expect(reason).To(Equal("Waiting for previous environment to be promoted"))
+			})
+
+			It("allows when no-op for current commit and previous changes have been merged", func() {
+				env1 := makeEnv("env1",
+					"COMMIT1", "COMMIT1", "COMMIT2",
+					newerTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				env2 := makeEnv("env2",
+					"OLD", "COMMIT2", "COMMIT2",
+					olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				isPending, reason := linearUpstreamsPending(
+					[]promoterv1alpha1.EnvironmentStatus{env1},
+					getEffectiveHydratedDrySha(env2),
+					env2.Active.Dry.CommitTime)
+
+				Expect(isPending).To(BeFalse())
+				Expect(reason).To(BeEmpty())
+			})
+		})
 	})
 
 	/* isPreviousEnvironmentPending has moved: the PreviousEnvironmentCommitStatus controller now
