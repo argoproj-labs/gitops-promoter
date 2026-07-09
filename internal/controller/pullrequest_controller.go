@@ -337,15 +337,15 @@ func (r *PullRequestReconciler) handleStateTransitions(ctx context.Context, pr *
 	logger.Info("Reconciling PullRequest state", "desired", pr.Spec.State, "current", pr.Status.State)
 
 	if pr.Status.State == pr.Spec.State {
-        // pullRequestSCMRelevantSpecSynced will return true only if we've already set the SCM-relevant
+		// pullRequestSCMRelevantSpecSynced will return true only if we've already set the SCM-relevant
 		// fields on the SCM. Short-circuiting here avoids an SCM API call that will almost certainly be
 		// a no-op.
-        //
-        // Tradeoff (intentional): this only tracks whether *our* spec was pushed, not whether the SCM
-        // still reflects it. If the title/description are edited out-of-band on the SCM itself (e.g. a
-        // human edits the PR on GitHub) while pr.Spec is unchanged, we will not notice or correct that
-        // drift until pullRequestSCMRelevantSpecSynced returns false. We accept this because 
-		// Title/Description are the only fields this method pushes, and they change only via pr.Spec, 
+		//
+		// Tradeoff (intentional): this only tracks whether *our* spec was pushed, not whether the SCM
+		// still reflects it. If the title/description are edited out-of-band on the SCM itself (e.g. a
+		// human edits the PR on GitHub) while pr.Spec is unchanged, we will not notice or correct that
+		// drift until pullRequestSCMRelevantSpecSynced returns false. We accept this because
+		// Title/Description are the only fields this method pushes, and they change only via pr.Spec,
 		// which is exactly what pullRequestSCMRelevantSpecSynced checks.
 		if pullRequestSCMRelevantSpecSynced(pr) {
 			logger.V(4).Info("PullRequest SCM-relevant spec already synced, skipping redundant update")
