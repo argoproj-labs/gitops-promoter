@@ -5261,6 +5261,103 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		})
 	})
 
+	// Linear regression guard: isPreviousEnvironmentPending moved into the DAG controller as
+	// upstreamsPending. These tests are kept as an explicit, readable guard against
+	// reintroducing the out-of-order promotion bugs we hit before. They drive the linear cases
+	// through linearUpstreamsPending, which adapts the old ordered-preceding-list call shape onto
+	// the DAG's chain-shaped dependsOn edges.
+	Context("upstreamsPending (linear regression guard)", func() {
+		// Use fixed times for tests to ensure consistent time comparisons
+		olderTime := metav1.NewTime(time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC))
+
+		// Helper to create a HydratorMetadata pointer, or nil if empty
+		makeNote := func(drySha string) *promoterv1alpha1.HydratorMetadata {
+			if drySha == "" {
+				return nil
+			}
+			return &promoterv1alpha1.HydratorMetadata{DrySha: drySha}
+		}
+
+		// Helper to create environment status with specific values
+		makeEnvStatusWithTime := func(activeDrySha, proposedDrySha, noteDrySha string, activeTime metav1.Time) promoterv1alpha1.EnvironmentStatus {
+			return promoterv1alpha1.EnvironmentStatus{
+				Active: promoterv1alpha1.CommitBranchState{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha:        activeDrySha,
+						CommitTime: activeTime,
+					},
+					CommitStatuses: []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+						{Key: "health", Phase: string(promoterv1alpha1.CommitPhaseSuccess)},
+					},
+				},
+				Proposed: promoterv1alpha1.CommitBranchState{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha:        proposedDrySha,
+						CommitTime: olderTime, // Set proposed commit time to olderTime by default
+					},
+					Note: makeNote(noteDrySha),
+				},
+			}
+		}
+
+		// Helper that uses the older time by default (for backward compatibility)
+		makeEnvStatus := func(activeDrySha, proposedDrySha, noteSha string) promoterv1alpha1.EnvironmentStatus {
+			return makeEnvStatusWithTime(activeDrySha, proposedDrySha, noteSha, olderTime)
+		}
+
+		// Truth table for upstreamPending, exercised through a linear chain (per environment):
+		// | Hydrated | NoOp | Pending | Merged | Healthy | Result |
+		// |----------|------|---------|--------|---------|--------|
+		// | N        | -    | -       | -      | -       | BLOCK (hydrator) |
+		// | Y        | N    | -       | N      | -       | BLOCK (waiting for promotion) |
+		// | Y        | N    | -       | Y      | N       | BLOCK (commit status) |
+		// | Y        | N    | -       | Y      | Y       | ALLOW |
+		// | Y        | Y    | Y       | -      | -       | BLOCK (pending changes from previous commit) |
+		// | Y        | Y    | N       | -      | N       | BLOCK (commit status on no-op env) |
+		// | Y        | Y    | N       | -      | Y       | RECURSE (or ALLOW if base case) |
+
+		// Single preceding environment tests - covers the truth table
+		DescribeTable("single preceding environment - truth table coverage",
+			func(prevActiveDry, prevProposedDry, prevNoteDry, currActiveDry, currProposedDry, currNoteSha string, expectPending bool, expectReasonContains string) {
+				prevEnvStatus := makeEnvStatus(prevActiveDry, prevProposedDry, prevNoteDry)
+				currEnvStatus := makeEnvStatus(currActiveDry, currProposedDry, currNoteSha)
+
+				isPending, reason := linearUpstreamsPending([]promoterv1alpha1.EnvironmentStatus{prevEnvStatus}, getEffectiveHydratedDrySha(currEnvStatus), currEnvStatus.Active.Dry.CommitTime)
+
+				Expect(isPending).To(Equal(expectPending), "isPending mismatch")
+				if expectReasonContains != "" {
+					Expect(reason).To(ContainSubstring(expectReasonContains), "reason mismatch")
+				}
+			},
+			// Case 1: NOT hydrated → BLOCK "hydrator"
+			Entry("blocks when not hydrated",
+				"OLD", "OLD", "OLD", // prev: hasn't hydrated (note=OLD, target=ABC)
+				"OLD", "ABC", "ABC", // curr: target SHA is ABC
+				true, "Waiting for the hydrator to finish processing the proposed dry commit"),
+
+			// Case 2: Hydrated, NOT no-op, NOT merged → BLOCK "waiting for promotion"
+			Entry("blocks when hydrated but not merged (has real changes)",
+				"OLD", "ABC", "ABC", // prev: hydrated (note=ABC) but not merged (active=OLD)
+				"OLD", "ABC", "ABC", // curr
+				true, "Waiting for previous environment to be promoted"),
+
+			// Case 3: Hydrated, NOT no-op, merged, NOT healthy → BLOCK "commit status"
+			// (tested separately below since DescribeTable helper sets healthy)
+
+			// Case 4: Hydrated, NOT no-op, merged, healthy → ALLOW
+			Entry("allows when merged and healthy",
+				"ABC", "ABC", "ABC", // prev: merged and healthy
+				"OLD", "ABC", "ABC", // curr
+				false, ""),
+
+			// Case 7: Hydrated, IS no-op, healthy → ALLOW (base case with single env)
+			Entry("allows when preceding env is no-op and healthy (base case)",
+				"OLD", "OLD", "ABC", // prev: no-op (note=ABC != proposed=OLD)
+				"OLD", "ABC", "ABC", // curr
+				false, ""),
+		)
+	})
+
 	/* isPreviousEnvironmentPending has moved: the PreviousEnvironmentCommitStatus controller now
 	   delegates gating to the DAGCommitStatus controller, so these unit tests are commented out
 	   pending a rewrite that targets the DAG controller's upstream-readiness logic instead.
@@ -5994,3 +6091,57 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		})
 	})
 })
+
+// linearUpstreamsPending adapts the old isPreviousEnvironmentPending call shape — an ordered list
+// of preceding environments plus the current environment's target dry SHA and commit time — onto
+// the DAG controller's upstreamsPending. It builds a chain-shaped DAG (current dependsOn the last
+// preceding env, each preceding env dependsOn the one before it) so the linear regression tests
+// exercise the same logic through the DAG code.
+//
+// Every environment needs a unique branch name because upstreamsPending keys everything by branch
+// (both the statusByBranch map and the dependsOn edges); two empty branch names would collide in
+// the map. Preceding envs that already carry a Branch keep it (so reason messages that assert a
+// specific branch name still match); envs without one get a synthetic, unique name.
+func linearUpstreamsPending(precedingEnvs []promoterv1alpha1.EnvironmentStatus, targetDrySha string, currentActiveCommitTime metav1.Time) (bool, string) {
+	statusByBranch := make(map[string]promoterv1alpha1.EnvironmentStatus, len(precedingEnvs)+1)
+
+	// Assign a unique branch to each preceding env, preserving any name it already has.
+	branchNames := make([]string, len(precedingEnvs))
+	for i := range precedingEnvs {
+		env := precedingEnvs[i]
+		branch := env.Branch
+		if branch == "" {
+			branch = fmt.Sprintf("linear-env-%d", i)
+		}
+		env.Branch = branch
+		branchNames[i] = branch
+		statusByBranch[branch] = env
+	}
+
+	// The current environment sits at the tail of the chain. It only needs enough state for
+	// upstreamsPending to read its dependsOn edges; its own status is not inspected (the function
+	// evaluates the current branch's upstreams, not the current branch itself).
+	currentBranch := "linear-env-current"
+
+	// Build the chain: env[0] -> env[1] -> ... -> current.
+	envs := make([]promoterv1alpha1.DAGEnvironment, 0, len(precedingEnvs)+1)
+	for i, branch := range branchNames {
+		var dependsOn []string
+		if i > 0 {
+			dependsOn = []string{branchNames[i-1]}
+		}
+		envs = append(envs, promoterv1alpha1.DAGEnvironment{Branch: branch, DependsOn: dependsOn})
+	}
+	var currentDependsOn []string
+	if len(branchNames) > 0 {
+		currentDependsOn = []string{branchNames[len(branchNames)-1]}
+	}
+	envs = append(envs, promoterv1alpha1.DAGEnvironment{Branch: currentBranch, DependsOn: currentDependsOn})
+
+	g, err := buildDAG(envs)
+	if err != nil {
+		return true, fmt.Sprintf("failed to build linear DAG: %v", err)
+	}
+
+	return upstreamsPending(g, currentBranch, targetDrySha, currentActiveCommitTime, statusByBranch)
+}
