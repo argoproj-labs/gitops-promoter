@@ -143,7 +143,6 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	//    update was lost (e.g. conflict error) — syncStateFromProvider sets status.state = spec.state
 	//    so cleanup can proceed once the status is persisted.
 	if needsImmediateRequeue {
-		recordSCMSyncedSpecDigest(&pr)
 		return ctrl.Result{RequeueAfter: 1 * time.Microsecond}, nil
 	}
 
@@ -162,13 +161,10 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Previously, merge/close would delete inline, but this was problematic because the status
 	// update would be lost. Now we ensure the status is persisted before deletion occurs.
 	if cleanupRequired {
-		recordSCMSyncedSpecDigest(&pr)
 		return ctrl.Result{RequeueAfter: 1 * time.Microsecond}, nil
 	}
 
 	logger.Info("no known state transitions needed", "specState", pr.Spec.State, "statusState", pr.Status.State)
-
-	recordSCMSyncedSpecDigest(&pr)
 
 	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.PullRequestConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
@@ -326,7 +322,7 @@ func (r *PullRequestReconciler) handleStateTransitions(ctx context.Context, pr *
 			return false, nil
 		}
 		logger.Info("Updating PullRequest")
-		if err := r.updatePullRequest(ctx, *pr, provider); err != nil {
+		if err := r.updatePullRequest(ctx, pr, provider); err != nil {
 			return false, fmt.Errorf("failed to update pull request: %w", err) // Top-level wrap for update errors
 		}
 		return false, nil
@@ -373,10 +369,6 @@ func (r *PullRequestReconciler) handleStateTransitions(ctx context.Context, pr *
 func pullRequestImmediatelySyncedSpecDigest(pr *promoterv1alpha1.PullRequest) string {
 	sum := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s", pr.Spec.Title, pr.Spec.Description)))
 	return hex.EncodeToString(sum[:])
-}
-
-func recordSCMSyncedSpecDigest(pr *promoterv1alpha1.PullRequest) {
-	pr.Status.SCMSyncedSpecDigest = pullRequestImmediatelySyncedSpecDigest(pr)
 }
 
 // shouldSkipSCMSync reports whether reconcile can refresh status without contacting the SCM.
@@ -529,15 +521,17 @@ func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr *promo
 		return fmt.Errorf("failed to get pull request URL: %w", err)
 	}
 	pr.Status.Url = url
+	pr.Status.SCMSyncedSpecDigest = pullRequestImmediatelySyncedSpecDigest(pr)
 
 	return nil
 }
 
-func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
-	if err := provider.Update(ctx, pr.Spec.Title, pr.Spec.Description, pr); err != nil {
+func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
+	if err := provider.Update(ctx, pr.Spec.Title, pr.Spec.Description, *pr); err != nil {
 		return err //nolint:wrapcheck // Error wrapping handled at top level
 	}
-	r.Recorder.Eventf(&pr, nil, "Normal", constants.PullRequestUpdatedReason, "UpdatingPullRequest", "Pull Request %s updated", pr.Name)
+	pr.Status.SCMSyncedSpecDigest = pullRequestImmediatelySyncedSpecDigest(pr)
+	r.Recorder.Eventf(pr, nil, "Normal", constants.PullRequestUpdatedReason, "UpdatingPullRequest", "Pull Request %s updated", pr.Name)
 	return nil
 }
 
