@@ -1148,6 +1148,8 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 		logger.V(4).Info("No promotion needed - active branch already has proposed changes",
 			"activeDrySha", ctp.Status.Active.Dry.Sha,
 			"proposedDrySha", ctp.Status.Proposed.Dry.Sha)
+		// If there's a PullRequest resource, enqueue it so it quickly realizes it's already merged
+		// (thus the matching active/proposed dry shas) and gets cleaned up.
 		r.enqueuePullRequestsForCTP(ctx, ctp)
 		return nil, nil
 	}
@@ -1289,16 +1291,24 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 		logger.V(4).Info("Created pull request", "pullRequest", pr.Name)
 	} else {
 		logger.V(4).Info("Applied pull request", "pullRequest", pr.Name)
-		if r.EnqueuePR != nil {
-			r.EnqueuePR(pr.Namespace, pr.Name)
-		}
 	}
 
 	return pr, nil
 }
 
+func ctpStatusShowsPullRequestExists(ctp *promoterv1alpha1.ChangeTransferPolicy) bool {
+	pr := ctp.Status.PullRequest
+	if pr == nil || pr.ID == "" {
+		return false
+	}
+	if pr.ExternallyMergedOrClosed != nil && *pr.ExternallyMergedOrClosed {
+		return false
+	}
+	return pr.State == promoterv1alpha1.PullRequestOpen
+}
+
 func (r *ChangeTransferPolicyReconciler) enqueuePullRequestsForCTP(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) {
-	if r.EnqueuePR == nil {
+	if r.EnqueuePR == nil || !ctpStatusShowsPullRequestExists(ctp) {
 		return
 	}
 	prList := &promoterv1alpha1.PullRequestList{}

@@ -337,23 +337,18 @@ func (r *PullRequestReconciler) handleStateTransitions(ctx context.Context, pr *
 	logger.Info("Reconciling PullRequest state", "desired", pr.Spec.State, "current", pr.Status.State)
 
 	if pr.Status.State == pr.Spec.State {
-		// previousReady reflects the persisted Ready condition from before this reconcile's Get.
-		// If it's already True for this exact generation, the last reconcile at this spec already
-		// pushed the current title/description to the SCM successfully, so a periodic requeue with
-		// no spec change in between has nothing new to sync. We deliberately key off the Ready
-		// condition's (Status, ObservedGeneration) rather than pr.Status.ObservedGeneration: the
-		// latter is stamped on every reconcile attempt, success or failure (see
-		// utils.HandleReconciliationResult), so it can't distinguish "already synced" from
-		// "already tried and failed" — using it here would silently stop retrying a failed Update.
-		//
-		// Tradeoff (intentional): this only tracks whether *our* spec was pushed, not whether the SCM
-		// still reflects it. If the title/description are edited out-of-band on the SCM itself (e.g. a
-		// human edits the PR on GitHub) while pr.Spec is unchanged, we will not notice or correct that
-		// drift until pr.Generation next changes. We accept this because Title/Description are the
-		// only fields this method pushes, and they change only via pr.Spec, which is exactly what
-		// bumps Generation and re-enables the sync below.
-		if previousReady != nil && previousReady.Status == metav1.ConditionTrue && previousReady.ObservedGeneration == pr.Generation {
-			logger.V(4).Info("PullRequest already synced with the SCM for this generation, skipping redundant update")
+        // pullRequestSCMRelevantSpecSynced will return true only if we've already set the SCM-relevant
+		// fields on the SCM. Short-circuiting here avoids an SCM API call that will almost certainly be
+		// a no-op.
+        //
+        // Tradeoff (intentional): this only tracks whether *our* spec was pushed, not whether the SCM
+        // still reflects it. If the title/description are edited out-of-band on the SCM itself (e.g. a
+        // human edits the PR on GitHub) while pr.Spec is unchanged, we will not notice or correct that
+        // drift until pullRequestSCMRelevantSpecSynced returns false. We accept this because 
+		// Title/Description are the only fields this method pushes, and they change only via pr.Spec, 
+		// which is exactly what pullRequestSCMRelevantSpecSynced checks.
+		if pullRequestSCMRelevantSpecSynced(pr) {
+			logger.V(4).Info("PullRequest SCM-relevant spec already synced, skipping redundant update")
 			return false, nil
 		}
 		logger.Info("Updating PullRequest")
@@ -406,6 +401,14 @@ func pullRequestImmediatelySyncedSpecDigest(pr *promoterv1alpha1.PullRequest) st
 	return hex.EncodeToString(sum[:])
 }
 
+// pullRequestSCMRelevantSpecSynced reports whether the SCM already has the current title/description.
+// SCMSyncedSpecDigest is set only after a successful Create/Update, so a failed push leaves a stale
+// digest and the next reconcile still retries.
+func pullRequestSCMRelevantSpecSynced(pr *promoterv1alpha1.PullRequest) bool {
+	return pr.Status.SCMSyncedSpecDigest != "" &&
+		pr.Status.SCMSyncedSpecDigest == pullRequestImmediatelySyncedSpecDigest(pr)
+}
+
 // shouldSkipSCMSync reports whether reconcile can refresh status without contacting the SCM.
 // CTP trailer and mergeSha updates bump metadata.generation while title/description stay the same.
 func shouldSkipSCMSync(pr *promoterv1alpha1.PullRequest) bool {
@@ -424,7 +427,7 @@ func shouldSkipSCMSync(pr *promoterv1alpha1.PullRequest) bool {
 	if pr.Generation <= pr.Status.ObservedGeneration {
 		return false
 	}
-	return pr.Status.SCMSyncedSpecDigest == pullRequestImmediatelySyncedSpecDigest(pr)
+	return pullRequestSCMRelevantSpecSynced(pr)
 }
 
 // pullRequestDeletionFinalizerLengthChangedPredicate matches Update events where the object is
