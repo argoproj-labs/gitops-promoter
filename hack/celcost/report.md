@@ -14,7 +14,7 @@ Estimated static CEL costs versus kube-apiserver limits, computed from `k8s.io/a
 | ClusterScmProvider | v1alpha1 | 135 | 0.00% |
 | CommitStatus | v1alpha1 | 3 | 0.00% |
 | ControllerConfiguration | v1alpha1 | 3,550 | 0.00% |
-| DAGCommitStatus | v1alpha1 | 0 | 0.00% |
+| DAGCommitStatus | v1alpha1 | 8,787,000 | 8.79% |
 | GitCommitStatus | v1alpha1 | 0 | 0.00% |
 | GitRepository | v1alpha1 | 128 | 0.00% |
 | PreviousEnvironmentCommitStatus | v1alpha1 | 0 | 0.00% |
@@ -145,7 +145,15 @@ Source: `promoter.argoproj.io_dagcommitstatuses.yaml`
 
 ##### Version `v1alpha1`
 
-_No CEL validation rules._
+| Path | Cost | % of rule limit | Expression |
+|---|---:|---:|---|
+| `.spec.environments[].dependsOn[]` | 4,200,000 | 42.00% | `!self.contains(':')` |
+| `.spec.environments[].dependsOn[]` | 4,200,000 | 42.00% | `!self.contains('..')` |
+| `.spec.environments[].dependsOn[]` | 300,000 | 3.00% | `!self.startsWith('-')` |
+| `.spec.environments[].branch` | 42,000 | 0.42% | `!self.contains(':')` |
+| `.spec.environments[].branch` | 42,000 | 0.42% | `!self.contains('..')` |
+| `.spec.environments[].branch` | 3,000 | 0.03% | `!self.startsWith('-')` |
+| **Total** | **8,787,000** | **8.79%** | |
 
 #### GitCommitStatus
 

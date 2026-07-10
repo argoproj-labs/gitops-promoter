@@ -4352,16 +4352,35 @@ spec:
                       description: |-
                         Branch is the name of the active branch for the environment. It must match a branch declared
                         in the referenced PromotionStrategy's environments.
+                        Must not start with '-', contain ':', or contain '..'.
                       maxLength: 100
                       minLength: 1
                       type: string
+                      x-kubernetes-validations:
+                      - message: branch must not start with '-'
+                        rule: '!self.startsWith(''-'')'
+                      - message: branch must not contain ':'
+                        rule: '!self.contains('':'')'
+                      - message: branch must not contain '..'
+                        rule: '!self.contains(''..'')'
                     dependsOn:
                       description: |-
                         DependsOn is the list of upstream branches this environment depends on. The environment is
                         only eligible for promotion once every branch listed here is satisfied. An empty or omitted
                         list makes this environment a root of the graph.
+                        Each item must not start with '-', contain ':', or contain '..'.
                       items:
+                        maxLength: 100
+                        minLength: 1
                         type: string
+                        x-kubernetes-validations:
+                        - message: branch must not start with '-'
+                          rule: '!self.startsWith(''-'')'
+                        - message: branch must not contain ':'
+                          rule: '!self.contains('':'')'
+                        - message: branch must not contain '..'
+                          rule: '!self.contains(''..'')'
+                      maxItems: 100
                       type: array
                       x-kubernetes-list-type: set
                   required:

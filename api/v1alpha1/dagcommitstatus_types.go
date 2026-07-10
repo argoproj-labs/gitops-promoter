@@ -59,16 +59,27 @@ type DAGCommitStatusSpec struct {
 type DAGEnvironment struct {
 	// Branch is the name of the active branch for the environment. It must match a branch declared
 	// in the referenced PromotionStrategy's environments.
+	// Must not start with '-', contain ':', or contain '..'.
 	// +required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=100
+	// +kubebuilder:validation:XValidation:rule="!self.startsWith('-')",message="branch must not start with '-'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains(':')",message="branch must not contain ':'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains('..')",message="branch must not contain '..'"
 	Branch string `json:"branch"`
 
 	// DependsOn is the list of upstream branches this environment depends on. The environment is
 	// only eligible for promotion once every branch listed here is satisfied. An empty or omitted
 	// list makes this environment a root of the graph.
+	// Each item must not start with '-', contain ':', or contain '..'.
 	// +optional
 	// +listType:=set
+	// +kubebuilder:validation:MaxItems=100
+	// +kubebuilder:validation:items:MinLength=1
+	// +kubebuilder:validation:items:MaxLength=100
+	// +kubebuilder:validation:items:XValidation:rule="!self.startsWith('-')",message="branch must not start with '-'"
+	// +kubebuilder:validation:items:XValidation:rule="!self.contains(':')",message="branch must not contain ':'"
+	// +kubebuilder:validation:items:XValidation:rule="!self.contains('..')",message="branch must not contain '..'"
 	DependsOn []string `json:"dependsOn,omitempty"`
 }
 

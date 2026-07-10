@@ -24,10 +24,12 @@ package v1alpha1
 type DAGEnvironmentApplyConfiguration struct {
 	// Branch is the name of the active branch for the environment. It must match a branch declared
 	// in the referenced PromotionStrategy's environments.
+	// Must not start with '-', contain ':', or contain '..'.
 	Branch *string `json:"branch,omitempty"`
 	// DependsOn is the list of upstream branches this environment depends on. The environment is
 	// only eligible for promotion once every branch listed here is satisfied. An empty or omitted
 	// list makes this environment a root of the graph.
+	// Each item must not start with '-', contain ':', or contain '..'.
 	DependsOn []string `json:"dependsOn,omitempty"`
 }
 

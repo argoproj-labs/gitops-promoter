@@ -2308,7 +2308,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGEnvironment(ref common
 				Properties: map[string]spec.Schema{
 					"branch": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Branch is the name of the active branch for the environment. It must match a branch declared in the referenced PromotionStrategy's environments.",
+							Description: "Branch is the name of the active branch for the environment. It must match a branch declared in the referenced PromotionStrategy's environments. Must not start with '-', contain ':', or contain '..'.",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",
@@ -2316,7 +2316,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGEnvironment(ref common
 					},
 					"dependsOn": {
 						SchemaProps: spec.SchemaProps{
-							Description: "DependsOn is the list of upstream branches this environment depends on. The environment is only eligible for promotion once every branch listed here is satisfied. An empty or omitted list makes this environment a root of the graph.",
+							Description: "DependsOn is the list of upstream branches this environment depends on. The environment is only eligible for promotion once every branch listed here is satisfied. An empty or omitted list makes this environment a root of the graph. Each item must not start with '-', contain ':', or contain '..'.",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
