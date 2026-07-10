@@ -45,7 +45,9 @@ nav:
       - Overview: gating-promotions/index.md
       - Built-In Gates:
           - ArgoCDCommitStatus: gating-promotions/built-in-gates/argocd-commit-status.md
+          - DAGCommitStatus: gating-promotions/built-in-gates/dag-commit-status.md
           - GitCommitStatus: gating-promotions/built-in-gates/git-commit-status.md
+          - PreviousEnvironmentCommitStatus: gating-promotions/built-in-gates/previous-environment-commit-status.md
           - TimedCommitStatus: gating-promotions/built-in-gates/timed-commit-status.md
           - WebRequestCommitStatus:
               - Overview: gating-promotions/built-in-gates/web-request-commit-status/index.md
