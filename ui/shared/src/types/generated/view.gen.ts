@@ -80,6 +80,8 @@ export type components = {
             applicationsSelected?: components["schemas"]["ApplicationsSelected"][];
             /** @description Conditions Represents the observations of the current state. */
             conditions?: components["schemas"]["Condition"][];
+            /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
+            instanceID?: string;
             /**
              * Format: int64
              * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
@@ -222,6 +224,8 @@ export type components = {
             conditions?: components["schemas"]["Condition"][];
             /** @description History defines the history of promoted changes done by the ChangeTransferPolicy. You can think of it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged. The history length is hard-coded to be at most 5 entries. This may change in the future. History is constructed on a best-effort basis and should be used for informational purposes only. History is in reverse chronological order (newest is first). */
             history?: components["schemas"]["History"][];
+            /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
+            instanceID?: string;
             /**
              * Format: int64
              * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
@@ -366,6 +370,8 @@ export type components = {
             conditions?: components["schemas"]["Condition"][];
             /** @description Id is the unique identifier of the commit status, set by the SCM */
             id?: string;
+            /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
+            instanceID?: string;
             /**
              * Format: int64
              * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
@@ -632,6 +638,8 @@ export type components = {
              *     The controller validates the commit specified by Target ("active" or "proposed") but the CommitStatus is always reported on the PROPOSED commit for promotion gating. Each environment entry tracks both the ProposedHydratedSha (where status is reported) and the ActiveHydratedSha, with TargetedSha indicating which one was actually evaluated.
              */
             environments?: components["schemas"]["GitCommitStatusEnvironmentStatus"][];
+            /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
+            instanceID?: string;
             /**
              * Format: int64
              * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
@@ -720,6 +728,8 @@ export type components = {
         GitRepositoryStatus: {
             /** @description Conditions Represents the observations of the current state. */
             conditions?: components["schemas"]["Condition"][];
+            /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
+            instanceID?: string;
             /**
              * Format: int64
              * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
@@ -1224,6 +1234,8 @@ export type components = {
             conditions?: components["schemas"]["Condition"][];
             /** @description Environments holds the status of each environment in the promotion sequence. */
             environments: components["schemas"]["EnvironmentStatus"][];
+            /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
+            instanceID?: string;
             /**
              * Format: int64
              * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
@@ -1306,6 +1318,8 @@ export type components = {
             externallyMergedOrClosed?: boolean;
             /** @description ID the id of the pull request */
             id?: string;
+            /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
+            instanceID?: string;
             /**
              * Format: int64
              * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
@@ -1386,6 +1400,8 @@ export type components = {
         ScmProviderStatus: {
             /** @description Conditions Represents the observations of the current state. */
             conditions?: components["schemas"]["Condition"][];
+            /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
+            instanceID?: string;
             /**
              * Format: int64
              * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
@@ -1507,6 +1523,8 @@ export type components = {
             conditions?: components["schemas"]["Condition"][];
             /** @description Environments holds the status of each environment being tracked. */
             environments?: components["schemas"]["TimedCommitStatusEnvironmentsStatus"][];
+            /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
+            instanceID?: string;
             /**
              * Format: int64
              * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
@@ -1740,6 +1758,8 @@ export type components = {
             conditions?: components["schemas"]["Condition"][];
             /** @description Environments holds the status of each environment when context is "environments". When context is "promotionstrategy", this slice is empty and PromotionStrategyContext is used instead. */
             environments?: components["schemas"]["WebRequestCommitStatusEnvironmentStatus"][];
+            /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
+            instanceID?: string;
             /**
              * Format: int64
              * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
