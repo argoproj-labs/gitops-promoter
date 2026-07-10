@@ -6089,6 +6089,8 @@ spec:
             required:
             - environments
             type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true
@@ -8581,7 +8583,7 @@ spec:
         - --upstream=http://127.0.0.1:8080/
         - --logtostderr=true
         - --v=0
-        image: quay.io/brancz/kube-rbac-proxy:v0.22.0
+        image: quay.io/brancz/kube-rbac-proxy:v0.22.1
         name: kube-rbac-proxy
         ports:
         - containerPort: 8443

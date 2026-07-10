@@ -16,7 +16,7 @@
   // Run `go mod tidy` natively as part of every gomod artifact update. This is the
   // reliable equivalent of the CI codegen `go mod tidy` check -- unlike a shell
   // postUpgradeTask it needs no allowedCommands entry and uses the go.mod toolchain,
-  // so go.sum is always tidy in the PR (no chicken-and-egg with the allowlist).
+  // so go.mod and go.sum are always tidy in the PR (no chicken-and-egg with the allowlist).
   postUpdateOptions: [
     'gomodTidy',
   ],
@@ -111,15 +111,19 @@
     // Group A2: GitHub API client (go-github major paths + ghinstallation)
     // go-github uses /vNN module paths; Renovate rewrites imports on major jumps.
     // Dependabot ignores these packages to avoid duplicate PRs.
+    // Direct requires only for go-github majors; indirect minors/patches are allowed
+    // but indirect majors are blocked (ghinstallation may lag on the old /vNN path).
     // ----------------------------------------------------------------------
     {
-      description: 'go-github and ghinstallation bump together; rewrite imports on major path changes',
+      description: 'Direct go-github require bumps; rewrite imports on major path changes',
       matchManagers: [
         'gomod',
       ],
       matchPackageNames: [
         'github.com/google/go-github/**',
-        'github.com/bradleyfalzon/ghinstallation/**',
+      ],
+      matchDepTypes: [
+        'require',
       ],
       enabled: true,
       groupName: 'GitHub API client',
@@ -131,6 +135,54 @@
         'gomodUpdateImportPaths',
         'gomodTidy',
       ],
+    },
+    {
+      description: 'ghinstallation bumps with go-github in one PR',
+      matchManagers: [
+        'gomod',
+      ],
+      matchPackageNames: [
+        'github.com/bradleyfalzon/ghinstallation/**',
+      ],
+      enabled: true,
+      groupName: 'GitHub API client',
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      automerge: false,
+    },
+    {
+      description: 'Allow patch/minor bumps on transitive go-github module paths',
+      matchManagers: [
+        'gomod',
+      ],
+      matchPackageNames: [
+        'github.com/google/go-github/**',
+      ],
+      matchDepTypes: [
+        'indirect',
+      ],
+      matchUpdateTypes: [
+        'minor',
+        'patch',
+      ],
+      enabled: true,
+    },
+    {
+      description: 'Block major/path-change bumps on transitive go-github (e.g. v88 indirect while direct is v89)',
+      matchManagers: [
+        'gomod',
+      ],
+      matchPackageNames: [
+        'github.com/google/go-github/**',
+      ],
+      matchDepTypes: [
+        'indirect',
+      ],
+      matchUpdateTypes: [
+        'major',
+      ],
+      enabled: false,
     },
     // ----------------------------------------------------------------------
     // Group A3: E2E Kind node images (ci-e2e matrix; sliding window of minors)
@@ -469,11 +521,13 @@
       versioningTemplate: 'semver',
     },
     // ===== golangci-lint (Makefile + workflows, incl. SHA-pinned action) =====
+    // managerFilePatterns must be wrapped in /.../ to use regex; without delimiters Renovate
+    // treats the string as a glob (see docs.renovatebot.com/string-pattern-matching).
     {
       customType: 'regex',
       description: 'Update golangci-lint version in Makefile',
       managerFilePatterns: [
-        '^Makefile$',
+        '/^Makefile$/',
       ],
       matchStrings: [
         'GOLANGCI_LINT_VERSION\\s*\\??=\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
@@ -488,7 +542,7 @@
       customType: 'regex',
       description: 'Update golangci-lint version in GitHub Actions (handles SHA-pinned action)',
       managerFilePatterns: [
-        '^\\.github/workflows/.*\\.ya?ml$',
+        '/^\\.github/workflows/.*\\.ya?ml$/',
       ],
       matchStrings: [
         'golangci/golangci-lint-action@(?:[0-9a-f]{7,40}|v\\d+)[\\s\\S]*?version:\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',

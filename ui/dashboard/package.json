@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "npx vite build",
-    "lint": "eslint \"src/**/*.{ts,tsx}\"",
-    "lint:fix": "eslint \"src/**/*.{ts,tsx}\" --fix",
+    "lint": "cd .. && eslint -c dashboard/eslint.config.js \"dashboard/src/**/*.{ts,tsx}\" \"shared/src/**/*.{ts,tsx}\"",
+    "lint:fix": "cd .. && eslint -c dashboard/eslint.config.js \"dashboard/src/**/*.{ts,tsx}\" \"shared/src/**/*.{ts,tsx}\" --fix",
     "type-check": "tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

@@ -1,5 +1,6 @@
 import type { PromotionStrategy } from './promotion';
 
+// Extension API types
 export interface ResourceExtensionProps {
   application: {
     metadata: {
@@ -41,7 +42,7 @@ export interface TreeNode {
 }
 
 export interface Tree {
-  nodes: TreeNode[];
+  nodes?: TreeNode[];
 }
 
 export interface AppViewComponentProps {
@@ -55,17 +56,6 @@ export interface ApplicationsService {
 
 export interface Services {
   applications: ApplicationsService;
-}
-
-// Extension API types
-export interface ResourceExtensionProps {
-  application: {
-    metadata: {
-      name: string;
-      namespace: string;
-    };
-  };
-  resource: PromotionStrategy;
 }
 
 export interface StatusPanelProps {
