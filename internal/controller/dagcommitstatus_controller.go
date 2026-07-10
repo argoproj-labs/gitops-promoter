@@ -51,9 +51,10 @@ type DAGCommitStatusReconciler struct {
 	SettingsMgr *settings.Manager
 }
 
-// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=dagcommitstatuses,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=dagcommitstatuses,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=dagcommitstatuses/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=dagcommitstatuses/finalizers,verbs=update
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile reads the referenced PromotionStrategy and, using the dependency graph declared
 // in the DAGCommitStatus, determines which environments are eligible for promotion (all of

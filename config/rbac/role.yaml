@@ -49,7 +49,6 @@ rules:
   - dagcommitstatuses
   - gitcommitstatuses
   - gitrepositories
-  - previousenvironmentcommitstatuses
   - promotionstrategies
   - pullrequests
   - revertcommits
@@ -106,3 +105,11 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - previousenvironmentcommitstatuses
+  verbs:
+  - get
+  - list
+  - watch
