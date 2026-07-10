@@ -38,6 +38,7 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 | Warning    | TooManyMatchingSha  | There is more than one CommitStatus for a given key and SHA. There must only be one CommitStatus per key/sha.    |
 | Warning    | MissingProposedHydratorMetadata | The proposed branch has hydration output but no dry SHA was found at `<activePath>/hydrator.metadata`. Check that the hydrator writes metadata under `activePath`. |
 | Warning    | PullRequestNotReady | One or more of the [PullRequest](../crd-specs.md#pullrequest) managed by this ChangeTransferPolicy is not Ready. |
+| Warning    | PromotionHistoryNoteFailed | Writing the promotion-history git note for a merged pull request failed. The PullRequest finalizer is kept so the write is retried. |
 
 ## PullRequest
 

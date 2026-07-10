@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path"
@@ -27,6 +28,7 @@ import (
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -810,6 +812,241 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					// PR should be deleted (not found)
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+		})
+
+		Context("When writing promotion history notes at PR finalization", func() {
+			var name string
+			var scmSecret *v1.Secret
+			var scmProvider *promoterv1alpha1.ScmProvider
+			var gitRepo *promoterv1alpha1.GitRepository
+			var changeTransferPolicy *promoterv1alpha1.ChangeTransferPolicy
+			var typeNamespacedName types.NamespacedName
+			var gitPath string
+			var err error
+			var prName string
+			var prKey types.NamespacedName
+
+			BeforeEach(func() {
+				name, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-history-notes", "default")
+
+				typeNamespacedName = types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}
+
+				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
+				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
+				// We set auto merge to false so the tests control when (and by whom) the PR is merged.
+				changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
+
+				prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+				prKey = types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(prName),
+					Namespace: "default",
+				}
+
+				gitPath, err = os.MkdirTemp("", "*")
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			AfterEach(func() {
+				By("Cleaning up resources")
+				Expect(ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, changeTransferPolicy))).To(Succeed())
+				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+				_ = os.RemoveAll(gitPath)
+			})
+
+			// waitForPRWithTrailers waits until the PR is open on the provider and the CTP's second update pass
+			// has written the trailer block into spec.commit.message, then returns the PR.
+			waitForPRWithTrailers := func() promoterv1alpha1.PullRequest {
+				GinkgoHelper()
+				var pr promoterv1alpha1.PullRequest
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+					g.Expect(pr.Status.ID).ToNot(BeEmpty())
+					g.Expect(pr.Spec.Commit.Message).To(ContainSubstring(constants.TrailerPullRequestID + ":"))
+					g.Expect(pr.Spec.MergeSha).ToNot(BeEmpty())
+				}, constants.EventuallyTimeout).Should(Succeed())
+				return pr
+			}
+
+			It("writes a history note on a controller-initiated merge and builds history from it", func() {
+				By("Adding a pending commit")
+				makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+
+				By("Waiting for the PR to carry trailers")
+				pr := waitForPRWithTrailers()
+				prID := pr.Status.ID
+				mergeSha := pr.Spec.MergeSha
+
+				By("Enabling auto-merge so the controller merges the PR")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					changeTransferPolicy.Spec.AutoMerge = ptr.To(true)
+					g.Expect(k8sClient.Update(ctx, changeTransferPolicy)).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Waiting for the PR resource to be merged and cleaned up")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, prKey, &pr)
+					g.Expect(errors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Verifying the history note exists on the merge commit")
+				var mergeCommitSha string
+				Eventually(func(g Gomega) {
+					_, err := runGitCmd(ctx, gitPath, "fetch", "origin", changeTransferPolicy.Spec.ActiveBranch)
+					g.Expect(err).NotTo(HaveOccurred())
+					out, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+changeTransferPolicy.Spec.ActiveBranch)
+					g.Expect(err).NotTo(HaveOccurred())
+					mergeCommitSha = strings.TrimSpace(out)
+
+					note, err := fetchPromotionHistoryNote(gitPath, mergeCommitSha)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(note[constants.TrailerPullRequestID]).To(Equal([]string{prID}))
+					g.Expect(note[constants.TrailerShaHydratedProposed]).To(Equal([]string{mergeSha}))
+					g.Expect(note[constants.TrailerPullRequestMergeTime]).ToNot(BeEmpty())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Verifying the CTP history is populated")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.History).ToNot(BeEmpty())
+					entry := changeTransferPolicy.Status.History[0]
+					g.Expect(entry.PullRequest).ToNot(BeNil())
+					g.Expect(entry.PullRequest.ID).To(Equal(prID))
+					g.Expect(entry.PullRequest.PRMergeTime.IsZero()).To(BeFalse())
+					g.Expect(entry.Proposed.Hydrated.Sha).To(Equal(mergeSha))
+					g.Expect(entry.Active.Hydrated.Sha).To(Equal(mergeCommitSha))
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+
+			It("writes a history note for an externally squash-merged PR and builds history without trailers", func() {
+				By("Adding a pending commit")
+				makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+
+				By("Waiting for the PR to carry trailers")
+				pr := waitForPRWithTrailers()
+				prID := pr.Status.ID
+				mergeSha := pr.Spec.MergeSha
+
+				By("Squash-merging the proposed branch into the active branch outside the controller")
+				_, err := runGitCmd(ctx, gitPath, "fetch", "origin")
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "checkout", "-B", changeTransferPolicy.Spec.ActiveBranch, "origin/"+changeTransferPolicy.Spec.ActiveBranch)
+				Expect(err).NotTo(HaveOccurred())
+				beforeSha, err := runGitCmd(ctx, gitPath, "rev-parse", "HEAD")
+				Expect(err).NotTo(HaveOccurred())
+				beforeSha = strings.TrimSpace(beforeSha)
+				_, err = runGitCmd(ctx, gitPath, "merge", "--squash", "origin/"+changeTransferPolicy.Spec.ProposedBranch)
+				Expect(err).NotTo(HaveOccurred())
+				// The squash commit message intentionally carries no trailers, exactly like a merge performed in the SCM UI.
+				_, err = runGitCmd(ctx, gitPath, "commit", "-m", "external squash merge")
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, gitPath, "push", "origin", changeTransferPolicy.Spec.ActiveBranch)
+				Expect(err).NotTo(HaveOccurred())
+				squashSha, err := runGitCmd(ctx, gitPath, "rev-parse", "HEAD")
+				Expect(err).NotTo(HaveOccurred())
+				squashSha = strings.TrimSpace(squashSha)
+				sendWebhookForPush(ctx, beforeSha, changeTransferPolicy.Spec.ActiveBranch)
+
+				By("Removing the PR from the provider to simulate the external merge")
+				fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
+				Expect(fakeProvider.DeletePullRequest(ctx, pr)).To(Succeed())
+
+				By("Triggering PR reconciliation by updating the PR spec")
+				// The PullRequest controller uses GenerationChangedPredicate, so bump the spec for it to
+				// notice the PR is gone from the provider.
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+					orig := pr.DeepCopy()
+					pr.Spec.Description += " "
+					g.Expect(k8sClient.Patch(ctx, &pr, ctrlclient.MergeFrom(orig))).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Waiting for the PR resource to be cleaned up")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, prKey, &pr)
+					g.Expect(errors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Verifying the history note exists on the squash commit")
+				Eventually(func(g Gomega) {
+					note, err := fetchPromotionHistoryNote(gitPath, squashSha)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(note[constants.TrailerPullRequestID]).To(Equal([]string{prID}))
+					g.Expect(note[constants.TrailerShaHydratedProposed]).To(Equal([]string{mergeSha}))
+					g.Expect(note[constants.TrailerPullRequestMergeTime]).ToNot(BeEmpty())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Verifying the CTP history is populated from the note despite the trailer-less merge commit")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.History).ToNot(BeEmpty())
+					entry := changeTransferPolicy.Status.History[0]
+					g.Expect(entry.PullRequest).ToNot(BeNil())
+					g.Expect(entry.PullRequest.ID).To(Equal(prID))
+					g.Expect(entry.PullRequest.PRMergeTime.IsZero()).To(BeFalse())
+					g.Expect(entry.Proposed.Hydrated.Sha).To(Equal(mergeSha))
+					g.Expect(entry.Active.Hydrated.Sha).To(Equal(squashSha))
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+
+			It("skips the note but still releases the PR when it was closed without merging", func() {
+				By("Adding a pending commit")
+				makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+
+				By("Waiting for the PR to carry trailers")
+				pr := waitForPRWithTrailers()
+				oldUID := pr.UID
+
+				By("Removing the PR from the provider without merging anything")
+				fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
+				Expect(fakeProvider.DeletePullRequest(ctx, pr)).To(Succeed())
+
+				By("Triggering PR reconciliation by updating the PR spec")
+				// The PullRequest controller uses GenerationChangedPredicate, so bump the spec for it to
+				// notice the PR is gone from the provider.
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
+					if pr.UID != oldUID {
+						return
+					}
+					orig := pr.DeepCopy()
+					pr.Spec.Description += " "
+					g.Expect(k8sClient.Patch(ctx, &pr, ctrlclient.MergeFrom(orig))).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Waiting for the original PR resource to be cleaned up")
+				// The CTP recreates the PR afterwards (the promotion is still pending), so accept either
+				// not-found or a new resource with a different UID.
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, prKey, &pr)
+					if errors.IsNotFound(err) {
+						return
+					}
+					g.Expect(err).To(Succeed())
+					g.Expect(pr.UID).ToNot(Equal(oldUID))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Verifying no history note was written to the active branch head")
+				// The note write happens before the finalizer is released, so by the time the original PR is
+				// gone any note would already be on the remote.
+				_, err = runGitCmd(ctx, gitPath, "fetch", "origin", changeTransferPolicy.Spec.ActiveBranch)
+				Expect(err).NotTo(HaveOccurred())
+				activeHead, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+changeTransferPolicy.Spec.ActiveBranch)
+				Expect(err).NotTo(HaveOccurred())
+				_, err = fetchPromotionHistoryNote(gitPath, strings.TrimSpace(activeHead))
+				Expect(err).To(HaveOccurred(), "no note ref or note should exist for a closed-not-merged PR")
 			})
 		})
 
@@ -1998,3 +2235,220 @@ func changeTransferPolicyResources(ctx context.Context, name, namespace string) 
 
 	return name, scmSecret, scmProvider, gitRepo, commitStatus, changeTransferPolicy
 }
+
+// fetchPromotionHistoryNote fetches the promotion-history notes ref into the given clone and returns the
+// parsed note for sha. Errors when the notes ref does not exist on the remote or no note exists for sha.
+func fetchPromotionHistoryNote(gitPath, sha string) (map[string][]string, error) {
+	if _, err := runGitCmd(ctx, gitPath, "fetch", "origin", "+"+git.PromoterHistoryNotesRef+":"+git.PromoterHistoryNotesRef); err != nil {
+		return nil, err
+	}
+	out, err := runGitCmd(ctx, gitPath, "notes", "--ref="+git.PromoterHistoryNotesRef, "show", sha)
+	if err != nil {
+		return nil, err
+	}
+	var note map[string][]string
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &note); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal history note: %w", err)
+	}
+	return note, nil
+}
+
+// localGitProvider points EnvironmentOperations at a local bare repository, bypassing the test git server.
+type localGitProvider struct{ repoPath string }
+
+func (l *localGitProvider) GetGitHttpsRepoUrl(_ promoterv1alpha1.GitRepository) string {
+	return l.repoPath
+}
+func (l *localGitProvider) GetUser(_ context.Context) (string, error)  { return "user", nil }
+func (l *localGitProvider) GetToken(_ context.Context) (string, error) { return "token", nil }
+
+var _ = Describe("buildHistoryEntry trailer sources", func() {
+	var workDir string
+	var bareDir string
+	var branch string
+	var commitSha string
+	var gitOps *git.EnvironmentOperations
+
+	mustRunGit := func(dir string, args ...string) string {
+		GinkgoHelper()
+		out, err := runGitCmd(ctx, dir, args...)
+		Expect(err).NotTo(HaveOccurred())
+		return strings.TrimSpace(out)
+	}
+
+	BeforeEach(func() {
+		var err error
+		bareDir, err = os.MkdirTemp("", "history-entry-bare-*")
+		Expect(err).NotTo(HaveOccurred())
+		mustRunGit(bareDir, "init", "--bare")
+
+		workDir, err = os.MkdirTemp("", "history-entry-work-*")
+		Expect(err).NotTo(HaveOccurred())
+		mustRunGit(workDir, "clone", bareDir, ".")
+		mustRunGit(workDir, "config", "user.name", "Test User")
+		mustRunGit(workDir, "config", "user.email", "test@example.com")
+		mustRunGit(workDir, "config", "commit.gpgsign", "false")
+
+		Expect(os.WriteFile(path.Join(workDir, "file.txt"), []byte("content"), 0o644)).To(Succeed())
+		mustRunGit(workDir, "add", "-A")
+		// The commit message carries a trailer block, like a controller-performed merge commit.
+		mustRunGit(workDir, "commit", "-m", "Promote something\n\n"+constants.TrailerPullRequestID+": 77\n"+constants.TrailerPullRequestUrl+": https://example.com/pr/77")
+		commitSha = mustRunGit(workDir, "rev-parse", "HEAD")
+		branch = mustRunGit(workDir, "rev-parse", "--abbrev-ref", "HEAD")
+		mustRunGit(workDir, "push", "-u", "origin", branch)
+
+		gitRepo := &promoterv1alpha1.GitRepository{
+			ObjectMeta: metav1.ObjectMeta{Name: "history-entry-repo", Namespace: "default"},
+			Spec: promoterv1alpha1.GitRepositorySpec{
+				Fake: &promoterv1alpha1.FakeRepo{Owner: "test-owner", Name: "history-entry-repo"},
+			},
+		}
+		gitOps = git.NewEnvironmentOperations(gitRepo, &localGitProvider{repoPath: bareDir}, "default/history-entry-"+commitSha)
+		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
+		Expect(gitOps.FetchBranch(ctx, branch)).To(Succeed())
+		Expect(gitOps.FetchNotes(ctx)).To(Succeed())
+	})
+
+	AfterEach(func() {
+		_ = os.RemoveAll(bareDir)
+		_ = os.RemoveAll(workDir)
+	})
+
+	It("falls back to commit message trailers when no history note exists", func() {
+		r := &ChangeTransferPolicyReconciler{}
+		entry, include, err := r.buildHistoryEntry(ctx, commitSha, "", gitOps)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(include).To(BeTrue())
+		Expect(entry.PullRequest.ID).To(Equal("77"))
+		Expect(entry.PullRequest.Url).To(Equal("https://example.com/pr/77"))
+	})
+
+	It("prefers the history note over commit message trailers", func() {
+		mustRunGit(workDir, "notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-m",
+			`{"`+constants.TrailerPullRequestID+`":["88"],"`+constants.TrailerPullRequestUrl+`":["https://example.com/pr/88"]}`, commitSha)
+		mustRunGit(workDir, "push", "origin", git.PromoterHistoryNotesRef)
+		Expect(gitOps.FetchNotes(ctx)).To(Succeed())
+
+		r := &ChangeTransferPolicyReconciler{}
+		entry, include, err := r.buildHistoryEntry(ctx, commitSha, "", gitOps)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(include).To(BeTrue())
+		Expect(entry.PullRequest.ID).To(Equal("88"), "the note must win over the commit message trailers")
+		Expect(entry.PullRequest.Url).To(Equal("https://example.com/pr/88"))
+	})
+})
+
+var _ = Describe("findDrySha merge-commit location", func() {
+	var workDir string
+	var bareDir string
+	var branch string
+	var gitOps *git.EnvironmentOperations
+
+	mustRunGit := func(dir string, args ...string) string {
+		GinkgoHelper()
+		out, err := runGitCmd(ctx, dir, args...)
+		Expect(err).NotTo(HaveOccurred())
+		return strings.TrimSpace(out)
+	}
+
+	// commitWithDrySha commits a hydrator.metadata carrying the given dry sha (plus a unique file so every
+	// commit has a distinct tree) and returns the commit sha.
+	commitWithDrySha := func(drySha, fileName string) string {
+		GinkgoHelper()
+		Expect(os.WriteFile(path.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"`+drySha+`"}`), 0o644)).To(Succeed())
+		Expect(os.WriteFile(path.Join(workDir, fileName), []byte(fileName), 0o644)).To(Succeed())
+		mustRunGit(workDir, "add", "-A")
+		mustRunGit(workDir, "commit", "-m", "promote "+drySha)
+		return mustRunGit(workDir, "rev-parse", "HEAD")
+	}
+
+	revList := func() []string {
+		GinkgoHelper()
+		Expect(gitOps.FetchBranch(ctx, branch)).To(Succeed())
+		shas, err := gitOps.GetRevListFirstParent(ctx, "origin/"+branch, mergeCommitSearchWindow)
+		Expect(err).NotTo(HaveOccurred())
+		return shas
+	}
+
+	BeforeEach(func() {
+		var err error
+		bareDir, err = os.MkdirTemp("", "find-dry-sha-bare-*")
+		Expect(err).NotTo(HaveOccurred())
+		mustRunGit(bareDir, "init", "--bare")
+
+		workDir, err = os.MkdirTemp("", "find-dry-sha-work-*")
+		Expect(err).NotTo(HaveOccurred())
+		mustRunGit(workDir, "clone", bareDir, ".")
+		mustRunGit(workDir, "config", "user.name", "Test User")
+		mustRunGit(workDir, "config", "user.email", "test@example.com")
+		mustRunGit(workDir, "config", "commit.gpgsign", "false")
+
+		gitRepo := &promoterv1alpha1.GitRepository{
+			ObjectMeta: metav1.ObjectMeta{Name: "find-dry-sha-repo", Namespace: "default"},
+			Spec: promoterv1alpha1.GitRepositorySpec{
+				Fake: &promoterv1alpha1.FakeRepo{Owner: "test-owner", Name: "find-dry-sha-repo"},
+			},
+		}
+		gitOps = git.NewEnvironmentOperations(gitRepo, &localGitProvider{repoPath: bareDir}, "default/find-dry-sha-"+bareDir)
+	})
+
+	AfterEach(func() {
+		_ = os.RemoveAll(bareDir)
+		_ = os.RemoveAll(workDir)
+	})
+
+	It("returns the transition commit, not an older commit that carried the same dry sha", func() {
+		// History (oldest -> newest): promote A, promote B, re-promote A (the merge under finalization),
+		// then a sibling commit that does not change the dry sha.
+		commitWithDrySha("dry-a", "one.txt")
+		commitWithDrySha("dry-b", "two.txt")
+		rePromoteSha := commitWithDrySha("dry-a", "three.txt")
+		commitWithDrySha("dry-a", "four.txt")
+		branch = mustRunGit(workDir, "rev-parse", "--abbrev-ref", "HEAD")
+		mustRunGit(workDir, "push", "-u", "origin", branch)
+		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
+
+		shas := revList()
+		Expect(findDrySha(ctx, gitOps, shas, "", "dry-a")).To(Equal(rePromoteSha),
+			"the newest contiguous run wins; the ancient dry-a commit must not match")
+	})
+
+	It("returns empty when the tip does not carry the dry sha (closed-not-merged)", func() {
+		commitWithDrySha("dry-a", "one.txt")
+		commitWithDrySha("dry-b", "two.txt")
+		branch = mustRunGit(workDir, "rev-parse", "--abbrev-ref", "HEAD")
+		mustRunGit(workDir, "push", "-u", "origin", branch)
+		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
+
+		shas := revList()
+		Expect(findDrySha(ctx, gitOps, shas, "", "dry-never-merged")).To(BeEmpty())
+		Expect(findDrySha(ctx, gitOps, shas, "", "")).To(BeEmpty(), "no dry sha trailer means no match")
+	})
+
+	It("returns the root commit when the whole (short) history carries the dry sha", func() {
+		first := commitWithDrySha("dry-a", "one.txt")
+		commitWithDrySha("dry-a", "two.txt")
+		branch = mustRunGit(workDir, "rev-parse", "--abbrev-ref", "HEAD")
+		mustRunGit(workDir, "push", "-u", "origin", branch)
+		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
+
+		shas := revList()
+		Expect(findDrySha(ctx, gitOps, shas, "", "dry-a")).To(Equal(first),
+			"reaching the branch root means the oldest commit introduced the dry sha")
+	})
+
+	It("returns empty when the transition is not visible inside a full search window", func() {
+		commitWithDrySha("dry-old", "zero.txt")
+		for i := 0; i < mergeCommitSearchWindow; i++ {
+			commitWithDrySha("dry-a", fmt.Sprintf("file-%d.txt", i))
+		}
+		branch = mustRunGit(workDir, "rev-parse", "--abbrev-ref", "HEAD")
+		mustRunGit(workDir, "push", "-u", "origin", branch)
+		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
+
+		shas := revList()
+		Expect(shas).To(HaveLen(mergeCommitSearchWindow))
+		Expect(findDrySha(ctx, gitOps, shas, "", "dry-a")).To(BeEmpty(),
+			"a full window of matches is ambiguous: the transition commit is older than the window")
+	})
+})
