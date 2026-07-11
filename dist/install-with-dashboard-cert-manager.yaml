@@ -4386,6 +4386,9 @@ spec:
                   required:
                   - branch
                   type: object
+                  x-kubernetes-validations:
+                  - message: branch cannot depend on itself
+                    rule: '!has(self.dependsOn) || self.dependsOn.all(d, d != self.branch)'
                 maxItems: 1000
                 minItems: 1
                 type: array

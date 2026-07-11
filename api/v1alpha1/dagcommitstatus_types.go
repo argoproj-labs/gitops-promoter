@@ -54,6 +54,7 @@ type DAGCommitStatusSpec struct {
 }
 
 // DAGEnvironment is a single node in the promotion dependency graph.
+// +kubebuilder:validation:XValidation:rule="!has(self.dependsOn) || self.dependsOn.all(d, d != self.branch)",message="branch cannot depend on itself"
 type DAGEnvironment struct {
 	// Branch is the name of the active branch for the environment. It must match a branch declared
 	// in the referenced PromotionStrategy's environments.
