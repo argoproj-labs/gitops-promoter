@@ -35,11 +35,10 @@ order), so there is no graph to declare here — that is the difference from DAG
 
 ### `spec.key`
 
-`spec.key` is the gate name your PromotionStrategy checks in `proposedCommitStatuses`. When omitted,
-the CRD default is `promoter-previous-environment`. We recommend setting `spec.key` explicitly
-(including `promoter-previous-environment` when that is your gate name) so it matches your
-PromotionStrategy and your manifests are ready if the field becomes required in v1.0; see
-[Roadmap](../../roadmap.md).
+`spec.key` is the gate name your PromotionStrategy checks in `proposedCommitStatuses`. It is
+required and must match a key declared in that PromotionStrategy's `proposedCommitStatuses`, so the
+gate this controller produces is actually enforced. A common value is
+`promoter-previous-environment`.
 
 ## Wiring the gate into the PromotionStrategy
 

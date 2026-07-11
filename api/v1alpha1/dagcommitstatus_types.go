@@ -33,15 +33,13 @@ type DAGCommitStatusSpec struct {
 	PromotionStrategyRef ObjectReference `json:"promotionStrategyRef"`
 
 	// Key is the commit status key referenced in the PromotionStrategy's proposedCommitStatuses.
-	// When omitted, the CRD default is promoter-dag. Set Key explicitly, even if you use the CRD
-	// default.
+	// It must match a key declared there so the gate this controller produces is enforced.
 	// Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
-	// +optional
-	// +kubebuilder:default=promoter-dag
+	// +required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
-	Key string `json:"key,omitempty"`
+	Key string `json:"key"`
 
 	// Environments declares the promotion dependency graph. Each entry names an environment branch
 	// and the upstream branches it depends on. An environment becomes eligible for promotion once

@@ -4393,11 +4393,9 @@ spec:
                 - branch
                 x-kubernetes-list-type: map
               key:
-                default: promoter-dag
                 description: |-
                   Key is the commit status key referenced in the PromotionStrategy's proposedCommitStatuses.
-                  When omitted, the CRD default is promoter-dag. Set Key explicitly, even if you use the CRD
-                  default.
+                  It must match a key declared there so the gate this controller produces is enforced.
                   Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
                 maxLength: 63
                 minLength: 1
@@ -4420,6 +4418,7 @@ spec:
                 type: object
             required:
             - environments
+            - key
             - promotionStrategyRef
             type: object
           status:
@@ -5162,11 +5161,9 @@ spec:
             description: spec defines the desired state of PreviousEnvironmentCommitStatus
             properties:
               key:
-                default: promoter-previous-environment
                 description: |-
                   Key is the commit status key referenced in the PromotionStrategy's proposedCommitStatuses.
-                  When omitted, the CRD default is promoter-previous-environment. Set Key explicitly, even if
-                  you use the CRD default.
+                  It must match a key declared there so the gate this controller produces is enforced.
                   Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
                 maxLength: 63
                 minLength: 1
@@ -5188,6 +5185,7 @@ spec:
                 - name
                 type: object
             required:
+            - key
             - promotionStrategyRef
             type: object
           status:

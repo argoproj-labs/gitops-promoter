@@ -29,8 +29,7 @@ type DAGCommitStatusSpecApplyConfiguration struct {
 	// whether the environment's upstream dependencies (as declared in Environments) are satisfied.
 	PromotionStrategyRef *ObjectReferenceApplyConfiguration `json:"promotionStrategyRef,omitempty"`
 	// Key is the commit status key referenced in the PromotionStrategy's proposedCommitStatuses.
-	// When omitted, the CRD default is promoter-dag. Set Key explicitly, even if you use the CRD
-	// default.
+	// It must match a key declared there so the gate this controller produces is enforced.
 	// Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
 	Key *string `json:"key,omitempty"`
 	// Environments declares the promotion dependency graph. Each entry names an environment branch

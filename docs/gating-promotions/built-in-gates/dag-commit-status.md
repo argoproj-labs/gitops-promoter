@@ -54,10 +54,9 @@ above). Every `branch` must match a branch declared in the referenced PromotionS
 
 ### `spec.key`
 
-`spec.key` is the gate name your PromotionStrategy checks in `proposedCommitStatuses`. When omitted,
-the CRD default is `promoter-dag`. We recommend setting `spec.key` explicitly (including
-`promoter-dag` when that is your gate name) so it matches your PromotionStrategy and your manifests
-are ready if the field becomes required in v1.0; see [Roadmap](../../roadmap.md).
+`spec.key` is the gate name your PromotionStrategy checks in `proposedCommitStatuses`. It is
+required and must match a key declared in that PromotionStrategy's `proposedCommitStatuses`, so the
+gate this controller produces is actually enforced. A common value is `promoter-dag`.
 
 ## Wiring the gate into the PromotionStrategy
 

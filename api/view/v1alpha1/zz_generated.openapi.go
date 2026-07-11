@@ -2222,7 +2222,8 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatusSpec(ref c
 					},
 					"key": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Key is the commit status key referenced in the PromotionStrategy's proposedCommitStatuses. When omitted, the CRD default is promoter-dag. Set Key explicitly, even if you use the CRD default. Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).",
+							Description: "Key is the commit status key referenced in the PromotionStrategy's proposedCommitStatuses. It must match a key declared there so the gate this controller produces is enforced. Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).",
+							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -2248,7 +2249,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatusSpec(ref c
 						},
 					},
 				},
-				Required: []string{"promotionStrategyRef", "environments"},
+				Required: []string{"promotionStrategyRef", "key", "environments"},
 			},
 		},
 		Dependencies: []string{
@@ -3852,13 +3853,14 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PreviousEnvironmentCommit
 					},
 					"key": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Key is the commit status key referenced in the PromotionStrategy's proposedCommitStatuses. When omitted, the CRD default is promoter-previous-environment. Set Key explicitly, even if you use the CRD default. Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).",
+							Description: "Key is the commit status key referenced in the PromotionStrategy's proposedCommitStatuses. It must match a key declared there so the gate this controller produces is enforced. Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).",
+							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
 				},
-				Required: []string{"promotionStrategyRef"},
+				Required: []string{"promotionStrategyRef", "key"},
 			},
 		},
 		Dependencies: []string{
