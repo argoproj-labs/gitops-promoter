@@ -55,6 +55,7 @@ type PreviousEnvironmentCommitStatusReconciler struct {
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=previousenvironmentcommitstatuses/finalizers,verbs=update
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=dagcommitstatuses,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
 
 // Reconcile reconciles a PreviousEnvironmentCommitStatus: it reads the referenced PromotionStrategy
 // and, for each environment, maintains the previous-environment CommitStatus indicating whether the
