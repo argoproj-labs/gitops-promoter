@@ -6192,6 +6192,11 @@ spec:
                 description: PRCreationTime the time the PR was created
                 format: date-time
                 type: string
+              scmSyncedSpecDigest:
+                description: |-
+                  SCMSyncedSpecDigest fingerprints title and description last successfully synced
+                  to the SCM via provider.Update on an open pull request.
+                type: string
               state:
                 description: State of the merge request closed/merged/open
                 enum:

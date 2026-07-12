@@ -120,6 +120,11 @@ type PullRequestStatus struct {
 	// preserved in the owning ChangeTransferPolicy to maintain a record.
 	ExternallyMergedOrClosed *bool `json:"externallyMergedOrClosed,omitempty"`
 
+	// SCMSyncedSpecDigest fingerprints title and description last successfully synced
+	// to the SCM via provider.Update on an open pull request.
+	// +optional
+	SCMSyncedSpecDigest string `json:"scmSyncedSpecDigest,omitempty"`
+
 	// Conditions Represents the observations of the current state.
 	// +patchMergeKey=type
 	// +patchStrategy=merge

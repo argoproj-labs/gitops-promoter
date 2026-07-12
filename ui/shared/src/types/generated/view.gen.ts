@@ -1313,6 +1313,8 @@ export type components = {
             observedGeneration?: number;
             /** @description PRCreationTime the time the PR was created */
             prCreationTime?: components["schemas"]["Time"];
+            /** @description SCMSyncedSpecDigest fingerprints title and description last successfully synced to the SCM via provider.Update on an open pull request. */
+            scmSyncedSpecDigest?: string;
             /** @description State of the merge request closed/merged/open */
             state?: string;
             /** @description Url is the URL of the pull request. */
