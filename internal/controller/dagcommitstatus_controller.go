@@ -123,9 +123,6 @@ func (r *DAGCommitStatusReconciler) updateDAGCommitStatus(ctx context.Context, d
 	if err := graph.validateDAG(); err != nil {
 		return fmt.Errorf("invalid dependency graph: %w", err)
 	}
-	if _, err := graph.topologicalSort(); err != nil {
-		return fmt.Errorf("invalid dependency graph: %w", err)
-	}
 
 	// Index PromotionStrategy environment status by branch so each DAG node can look up its own
 	// and its upstreams' state in O(1).
@@ -416,11 +413,14 @@ func buildDAG(environments []promoterv1alpha1.DAGEnvironment) (*dag, error) {
 	return g, nil
 }
 
-// validateDAG checks that every dependsOn entry references a branch declared in the graph.
-// A dependsOn pointing at an unknown branch can never be satisfied, so the depending
-// environment would silently stall; surfacing it as an error is clearer than letting it
-// hang. Cycle detection is handled by topologicalSort.
+// validateDAG checks the dependency graph for two failure modes that would otherwise let an
+// environment silently stall:
+//   - a dependsOn entry that references a branch not declared in the graph (never satisfiable), and
+//   - a dependency cycle (the branches in the cycle can never all be satisfied).
+//
+// Surfacing either as an error is clearer than letting the depending environment hang.
 func (g *dag) validateDAG() error {
+	// Every dependsOn must resolve to a declared branch.
 	for _, branch := range g.branches {
 		for _, upstream := range g.dependsOn[branch] {
 			if _, exists := g.dependsOn[upstream]; !exists {
@@ -428,17 +428,12 @@ func (g *dag) validateDAG() error {
 			}
 		}
 	}
-	return nil
-}
 
-// topologicalSort returns the branches in an order where every branch appears after all of
-// its dependsOn upstreams, using Kahn's algorithm. It also detects cycles: if the graph
-// contains a dependency cycle, those branches can never reach in-degree zero, so fewer than
-// len(branches) are emitted and an error is returned. Branches with equal depth are emitted
-// in spec order, keeping the result deterministic.
-func (g *dag) topologicalSort() ([]string, error) {
-	// inDegree[b] = number of upstreams b still depends on. downstream[u] = branches that
-	// depend on u (the reverse of dependsOn), needed to relax edges as we emit nodes.
+	// Cycle detection via Kahn's algorithm: repeatedly remove branches whose upstreams have all
+	// been removed. inDegree[b] = upstreams b still depends on; downstream[u] = branches that
+	// depend on u (the reverse of dependsOn), used to relax edges as branches are removed. If a
+	// cycle exists, its branches never reach in-degree zero, so fewer than len(branches) are
+	// removed.
 	inDegree := make(map[string]int, len(g.branches))
 	downstream := make(map[string][]string, len(g.branches))
 	for _, branch := range g.branches {
@@ -448,8 +443,7 @@ func (g *dag) topologicalSort() ([]string, error) {
 		}
 	}
 
-	// Seed the queue with roots (no upstreams), walking branches in spec order so the output
-	// is deterministic rather than dependent on map iteration order.
+	// Seed the queue with roots (no upstreams).
 	queue := make([]string, 0, len(g.branches))
 	for _, branch := range g.branches {
 		if inDegree[branch] == 0 {
@@ -457,11 +451,11 @@ func (g *dag) topologicalSort() ([]string, error) {
 		}
 	}
 
-	sorted := make([]string, 0, len(g.branches))
+	removed := 0
 	for len(queue) > 0 {
 		branch := queue[0]
 		queue = queue[1:]
-		sorted = append(sorted, branch)
+		removed++
 		// Removing branch satisfies one dependency for each downstream; any that reach zero
 		// are now roots themselves.
 		for _, dependent := range downstream[branch] {
@@ -472,8 +466,8 @@ func (g *dag) topologicalSort() ([]string, error) {
 		}
 	}
 
-	if len(sorted) != len(g.branches) {
-		return nil, errors.New("environments contain a dependency cycle")
+	if removed != len(g.branches) {
+		return errors.New("environments contain a dependency cycle")
 	}
-	return sorted, nil
+	return nil
 }

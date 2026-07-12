@@ -106,33 +106,21 @@ var _ = Describe("DAG graph logic", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(g.validateDAG()).To(MatchError(ContainSubstring("unknown branch")))
 		})
-	})
 
-	Describe("topologicalSort", func() {
-		It("orders a linear chain", func() {
-			g, _ := buildDAG(dagEnvs("dev", "", "stg", "dev", "prd", "stg"))
-			order, err := g.topologicalSort()
+		It("accepts a diamond where every upstream is declared", func() {
+			g, err := buildDAG(dagEnvs("dev", "", "stg-us", "dev", "stg-eu", "dev", "prd", "stg-us,stg-eu"))
 			Expect(err).NotTo(HaveOccurred())
-			Expect(order).To(Equal([]string{"dev", "stg", "prd"}))
-		})
-
-		It("orders a diamond so every upstream precedes its downstream", func() {
-			g, _ := buildDAG(dagEnvs("dev", "", "stg-us", "dev", "stg-eu", "dev", "prd", "stg-us,stg-eu"))
-			order, err := g.topologicalSort()
-			Expect(err).NotTo(HaveOccurred())
-			Expect(order).To(Equal([]string{"dev", "stg-us", "stg-eu", "prd"}))
+			Expect(g.validateDAG()).To(Succeed())
 		})
 
 		It("detects a cycle between two branches", func() {
 			g, _ := buildDAG(dagEnvs("a", "b", "b", "a"))
-			_, err := g.topologicalSort()
-			Expect(err).To(MatchError(ContainSubstring("cycle")))
+			Expect(g.validateDAG()).To(MatchError(ContainSubstring("cycle")))
 		})
 
 		It("detects a self-dependency cycle", func() {
 			g, _ := buildDAG(dagEnvs("a", "a"))
-			_, err := g.topologicalSort()
-			Expect(err).To(MatchError(ContainSubstring("cycle")))
+			Expect(g.validateDAG()).To(MatchError(ContainSubstring("cycle")))
 		})
 	})
 
