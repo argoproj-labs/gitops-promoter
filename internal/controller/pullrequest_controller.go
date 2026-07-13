@@ -116,7 +116,8 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	// This short-circuit avoids FindOpen (and other) SCM calls for a very narrow kind of reconcile:
 	// where the PR is marked open, the resource isn't being deleted, the spec has changed, and the
-	// _only_ changes to the spec do not require an Update to the SCM PR.
+	// _only_ changes to the spec do not require an Update to the SCM PR (title/description) or
+	// label Add/Remove.
 	//
 	// This keeps the possibly-frequent updates to the mergeSha and commit message fields from causing
 	// a bunch of unnecessary API calls.
@@ -417,7 +418,9 @@ func pullRequestSCMRelevantSpecSynced(pr *promoterv1alpha1.PullRequest) bool {
 }
 
 // shouldSkipSCMSync reports whether reconcile can refresh status without contacting the SCM.
-// CTP trailer and mergeSha updates bump metadata.generation while title/description stay the same.
+// CTP trailer and mergeSha updates bump metadata.generation while title/description and labels
+// stay the same. If either the title/description digest or labels need syncing, fall through to
+// FindOpen and the normal SCM write path.
 func shouldSkipSCMSync(pr *promoterv1alpha1.PullRequest) bool {
 	if !pr.DeletionTimestamp.IsZero() {
 		return false
@@ -434,7 +437,13 @@ func shouldSkipSCMSync(pr *promoterv1alpha1.PullRequest) bool {
 	if pr.Generation <= pr.Status.ObservedGeneration {
 		return false
 	}
-	return pullRequestSCMRelevantSpecSynced(pr)
+	if !pullRequestSCMRelevantSpecSynced(pr) {
+		return false
+	}
+	if !labels.SetsEqual(pr.Spec.Labels, pr.Status.AppliedLabels) {
+		return false
+	}
+	return true
 }
 
 // pullRequestDeletionFinalizerLengthChangedPredicate matches Update events where the object is
