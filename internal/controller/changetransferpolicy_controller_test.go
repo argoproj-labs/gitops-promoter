@@ -92,6 +92,8 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
 
 				prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+
+				waitForCTPSteadyState(ctx, typeNamespacedName, changeTransferPolicy)
 			})
 
 			AfterEach(func() {
@@ -215,6 +217,8 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				gitPath, err = os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
+
+				waitForCTPSteadyState(ctx, typeNamespacedName, changeTransferPolicy)
 			})
 
 			AfterEach(func() {
@@ -326,6 +330,8 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				gitPath, err = os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
+
+				waitForCTPSteadyState(ctx, typeNamespacedName, changeTransferPolicy)
 			})
 
 			AfterEach(func() {
@@ -412,6 +418,8 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				gitPath, err = os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
+
+				waitForCTPSteadyState(ctx, typeNamespacedName, changeTransferPolicy)
 			})
 
 			AfterEach(func() {
@@ -483,17 +491,24 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 		})
 
 		Context("When setting mergeSha field", func() {
+			var name string
 			var scmSecret *v1.Secret
 			var scmProvider *promoterv1alpha1.ScmProvider
 			var gitRepo *promoterv1alpha1.GitRepository
 			var changeTransferPolicy *promoterv1alpha1.ChangeTransferPolicy
+			var typeNamespacedName types.NamespacedName
 			var gitPath string
 			var err error
 			var pr promoterv1alpha1.PullRequest
 			var prName string
 
 			BeforeEach(func() {
-				_, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-merge-sha", "default")
+				name, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-merge-sha", "default")
+
+				typeNamespacedName = types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}
 
 				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
 				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
@@ -508,6 +523,8 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				gitPath, err = os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
+
+				waitForCTPSteadyState(ctx, typeNamespacedName, changeTransferPolicy)
 			})
 
 			AfterEach(func() {
@@ -594,6 +611,8 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				gitPath, err = os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
+
+				waitForCTPSteadyState(ctx, typeNamespacedName, changeTransferPolicy)
 			})
 
 			AfterEach(func() {
@@ -696,6 +715,8 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				gitPath, err = os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
+
+				waitForCTPSteadyState(ctx, typeNamespacedName, changeTransferPolicy)
 			})
 
 			AfterEach(func() {
@@ -890,6 +911,8 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				gitPath, err = os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
+
+				waitForCTPSteadyState(ctx, ctpKey, changeTransferPolicy)
 			})
 
 			AfterEach(func() {
@@ -1815,14 +1838,7 @@ var _ = Describe("emitPromotionLifecycleEvents", func() {
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
 
-				// Wait for the initial reconcile so status.proposed.hydrated.sha is set.
-				// Webhook matching uses that field as the push "before" SHA.
-				Eventually(func(g Gomega) {
-					g.Expect(k8sClient.Get(ctx, ctpNamespacedName, changeTransferPolicy)).To(Succeed())
-					g.Expect(changeTransferPolicy.Status.Proposed.Hydrated.Sha).NotTo(BeEmpty())
-					g.Expect(changeTransferPolicy.Status.Proposed.Hydrated.Sha).
-						To(Equal(changeTransferPolicy.Status.Active.Hydrated.Sha))
-				}, constants.EventuallyTimeout).Should(Succeed())
+				waitForCTPSteadyState(ctx, ctpNamespacedName, changeTransferPolicy)
 			})
 
 			AfterEach(func() {

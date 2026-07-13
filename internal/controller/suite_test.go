@@ -41,6 +41,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -827,40 +828,41 @@ func buildGitHubWebhookPayload(beforeSha, ref string) string {
 	return string(payloadBytes)
 }
 
-// sendWebhookForPush sends a webhook after a git push to simulate SCM provider behavior
+// waitForCTPSteadyState polls until the CTP's initial reconcile has populated
+// status.proposed.hydrated.sha (required for webhook field-index matching).
+func waitForCTPSteadyState(ctx context.Context, key types.NamespacedName, ctp *promoterv1alpha1.ChangeTransferPolicy) {
+	GinkgoHelper()
+	Eventually(func(g Gomega) {
+		g.Expect(k8sClient.Get(ctx, key, ctp)).To(Succeed())
+		g.Expect(ctp.Status.Proposed.Hydrated.Sha).NotTo(BeEmpty())
+		g.Expect(ctp.Status.Proposed.Hydrated.Sha).
+			To(Equal(ctp.Status.Active.Hydrated.Sha))
+	}, constants.EventuallyTimeout).Should(Succeed())
+}
+
+// sendWebhookForPush sends a webhook after a git push to simulate SCM provider behavior.
 func sendWebhookForPush(ctx context.Context, sha, branch string) {
-	// Build GitHub-style webhook payload
+	GinkgoHelper()
+
 	payload := buildGitHubWebhookPayload(sha, "refs/heads/"+branch)
 
-	// Send the webhook request
 	webhookURL := fmt.Sprintf("http://localhost:%d/", webhookReceiverPort)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhookURL, bytes.NewBufferString(payload))
-	if err != nil {
-		// Don't fail the test if webhook fails - log it instead
-		fmt.Printf("Failed to create webhook request: %v\n", err)
-		return
-	}
+	Expect(err).NotTo(HaveOccurred(), "failed to create webhook request")
 
-	// Set GitHub webhook headers
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Github-Event", "push")
 	req.Header.Set("X-Github-Delivery", fmt.Sprintf("test-delivery-%d", time.Now().Unix()))
 
-	// Send the request
 	httpClient := &http.Client{Timeout: 5 * time.Second}
 	resp, err := httpClient.Do(req)
-	if err != nil {
-		// Don't fail the test if webhook fails - log it instead
-		fmt.Printf("Failed to send webhook request: %v\n", err)
-		return
-	}
+	Expect(err).NotTo(HaveOccurred(), "failed to send webhook request")
 	defer func() {
 		_ = resp.Body.Close()
 	}()
 
-	if resp.StatusCode != http.StatusNoContent {
-		fmt.Printf("Webhook receiver returned unexpected status code: %d\n", resp.StatusCode)
-	}
+	Expect(resp.StatusCode).To(Equal(http.StatusNoContent),
+		fmt.Sprintf("webhook receiver returned unexpected status %d for sha=%s branch=%s", resp.StatusCode, sha, branch))
 }
 
 // cloneTestRepo clones the test repo for gitRepo.Spec.Fake and configures git user. Returns the temp directory path.
@@ -1251,6 +1253,7 @@ func hydrateEnvironmentsBatchedTargets(ctx context.Context, repo *promoterv1alph
 	for i := range targets {
 		target := targets[i]
 		g.Go(func() error {
+			defer GinkgoRecover()
 			gp, err := cloneTestRepo(gctx, repo)
 			if err != nil {
 				return fmt.Errorf("failed to clone for branch %q: %w", target.Branch, err)
