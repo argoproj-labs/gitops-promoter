@@ -6729,8 +6729,6 @@ spec:
                   status writes: compare status.observedGeneration with metadata.generation.
                 format: int64
                 type: integer
-            required:
-            - environments
             type: object
         type: object
     served: true

@@ -139,9 +139,10 @@ type PromotionStrategyStatus struct {
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
 	// Environments holds the status of each environment in the promotion sequence.
+	// +optional
 	// +listType:=map
 	// +listMapKey=branch
-	Environments []EnvironmentStatus `json:"environments"`
+	Environments []EnvironmentStatus `json:"environments,omitempty"`
 
 	// Conditions Represents the observations of the current state.
 	// +patchMergeKey=type
