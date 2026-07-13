@@ -188,13 +188,22 @@ var _ = BeforeSuite(func() {
 		ControllerNamespace: "default",
 	})
 
-	// ChangeTransferPolicy controller must be set up first so we can
-	// get the enqueue function to pass to other controllers.
+	// PullRequest controller is set up before ChangeTransferPolicy so CTP can enqueue PR reconciles.
+	prReconciler := &PullRequestReconciler{
+		Client:      k8sManager.GetClient(),
+		Scheme:      k8sManager.GetScheme(),
+		Recorder:    k8sManager.GetEventRecorder("PullRequest"),
+		SettingsMgr: settingsMgr,
+	}
+	err = prReconciler.SetupWithManager(ctx, k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
 	ctpReconciler := &ChangeTransferPolicyReconciler{
 		Client:      k8sManager.GetClient(),
 		Scheme:      k8sManager.GetScheme(),
 		Recorder:    k8sManager.GetEventRecorder("ChangeTransferPolicy"),
 		SettingsMgr: settingsMgr,
+		EnqueuePR:   prReconciler.GetEnqueueFunc(),
 	}
 	err = ctpReconciler.SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
@@ -226,14 +235,6 @@ var _ = BeforeSuite(func() {
 		Recorder:    k8sManager.GetEventRecorder("PromotionStrategy"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
-	}).SetupWithManager(ctx, k8sManager)
-	Expect(err).ToNot(HaveOccurred())
-
-	err = (&PullRequestReconciler{
-		Client:      k8sManager.GetClient(),
-		Scheme:      k8sManager.GetScheme(),
-		Recorder:    k8sManager.GetEventRecorder("PullRequest"),
-		SettingsMgr: settingsMgr,
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 

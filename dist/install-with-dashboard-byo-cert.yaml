@@ -5994,6 +5994,8 @@ spec:
             required:
             - environments
             type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true
@@ -6267,6 +6269,11 @@ spec:
               prCreationTime:
                 description: PRCreationTime the time the PR was created
                 format: date-time
+                type: string
+              scmSyncedSpecDigest:
+                description: |-
+                  SCMSyncedSpecDigest fingerprints title and description last successfully synced
+                  to the SCM via provider.Update on an open pull request.
                 type: string
               state:
                 description: State of the merge request closed/merged/open
@@ -8691,7 +8698,7 @@ spec:
         - --upstream=http://127.0.0.1:8080/
         - --logtostderr=true
         - --v=0
-        image: quay.io/brancz/kube-rbac-proxy:v0.22.0
+        image: quay.io/brancz/kube-rbac-proxy:v0.22.1
         name: kube-rbac-proxy
         ports:
         - containerPort: 8443

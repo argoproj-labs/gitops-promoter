@@ -130,6 +130,11 @@ type PullRequestStatus struct {
 	// preserved in the owning ChangeTransferPolicy to maintain a record.
 	ExternallyMergedOrClosed *bool `json:"externallyMergedOrClosed,omitempty"`
 
+	// SCMSyncedSpecDigest fingerprints title and description last successfully synced
+	// to the SCM via provider.Update on an open pull request.
+	// +optional
+	SCMSyncedSpecDigest string `json:"scmSyncedSpecDigest,omitempty"`
+
 	// AppliedLabels lists SCM labels successfully applied by gitops-promoter (for sync and retraction).
 	// +kubebuilder:validation:Optional
 	// +listType=set

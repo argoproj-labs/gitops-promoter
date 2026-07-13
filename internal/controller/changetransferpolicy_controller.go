@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path"
@@ -77,6 +78,9 @@ type ChangeTransferPolicyReconciler struct {
 	enqueueFunc CTPEnqueueFunc
 
 	labelEvaluator prlabels.Evaluator
+
+	// EnqueuePR wakes the PullRequest controller without patching the PR object.
+	EnqueuePR PREnqueueFunc
 }
 
 // GetEnqueueFunc returns a function that can be used to enqueue CTP reconcile requests.
@@ -280,6 +284,42 @@ func getFirstTrailerValue(trailers map[string][]string, key string) string {
 	return ""
 }
 
+func encodeTrailerDescription(description string) (string, error) {
+	encoded, err := json.Marshal(description)
+	if err != nil {
+		return "", fmt.Errorf("encode commit status description: %w", err)
+	}
+	return string(encoded), nil
+}
+
+func decodeTrailerDescription(ctx context.Context, encoded string) string {
+	if encoded == "" {
+		return ""
+	}
+	var description string
+	if err := json.Unmarshal([]byte(encoded), &description); err != nil {
+		log.FromContext(ctx).Error(err, "failed to decode commit status description trailer", "encoded", encoded)
+		return ""
+	}
+	return description
+}
+
+func addCommitStatusTrailers(commitTrailers trailers, prefix string, statuses []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) error {
+	for _, status := range statuses {
+		commitTrailers[prefix+status.Key+"-phase"] = status.Phase
+		commitTrailers[prefix+status.Key+"-url"] = status.Url
+		if status.Description == "" {
+			continue
+		}
+		encoded, err := encodeTrailerDescription(status.Description)
+		if err != nil {
+			return err
+		}
+		commitTrailers[prefix+status.Key+"-description"] = encoded
+	}
+	return nil
+}
+
 // populateActiveMetadata populates the active metadata for a history entry
 func (r *ChangeTransferPolicyReconciler) populateActiveMetadata(ctx context.Context, h *promoterv1alpha1.History, sha, activePath string, gitOperations *git.EnvironmentOperations) {
 	logger := log.FromContext(ctx)
@@ -367,9 +407,10 @@ func (r *ChangeTransferPolicyReconciler) populateCommitStatuses(ctx context.Cont
 			url = ""
 		}
 		h.Active.CommitStatuses = append(h.Active.CommitStatuses, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
-			Key:   key,
-			Phase: getFirstTrailerValue(activeTrailers, constants.TrailerCommitStatusActivePrefix+key+"-phase"),
-			Url:   url,
+			Key:         key,
+			Phase:       getFirstTrailerValue(activeTrailers, constants.TrailerCommitStatusActivePrefix+key+"-phase"),
+			Url:         url,
+			Description: decodeTrailerDescription(ctx, getFirstTrailerValue(activeTrailers, constants.TrailerCommitStatusActivePrefix+key+"-description")),
 		})
 	}
 
@@ -381,9 +422,10 @@ func (r *ChangeTransferPolicyReconciler) populateCommitStatuses(ctx context.Cont
 			url = ""
 		}
 		h.Proposed.CommitStatuses = append(h.Proposed.CommitStatuses, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
-			Key:   key,
-			Phase: getFirstTrailerValue(activeTrailers, constants.TrailerCommitStatusProposedPrefix+key+"-phase"),
-			Url:   url,
+			Key:         key,
+			Phase:       getFirstTrailerValue(activeTrailers, constants.TrailerCommitStatusProposedPrefix+key+"-phase"),
+			Url:         url,
+			Description: decodeTrailerDescription(ctx, getFirstTrailerValue(activeTrailers, constants.TrailerCommitStatusProposedPrefix+key+"-description")),
 		})
 	}
 }
@@ -394,7 +436,7 @@ func getCommitStatusKeysFromTrailers(ctx context.Context, trailers map[string][]
 
 	// This function extracts commit status keys from trailers with the given prefix.
 	// It looks for keys that start with the prefix, trims the prefix, splits by "-", and joins all but the last part to form the commit status key.
-	// This is under the assumption that the last part is always "-phase" or "-url" today and that it does not go over multiple "-" aka the ending can not be
+	// This is under the assumption that the last part is always "-phase", "-url", or "-description" and that it does not go over multiple "-" aka the ending can not be
 	// -what-am-i-doing. This would return a bad key because it would contain -what-am-i.
 	extractKeys := func(prefix string) []string {
 		keys := []string{}
@@ -1153,6 +1195,9 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 		logger.V(4).Info("No promotion needed - active branch already has proposed changes",
 			"activeDrySha", ctp.Status.Active.Dry.Sha,
 			"proposedDrySha", ctp.Status.Proposed.Dry.Sha)
+		// If there's a PullRequest resource, enqueue it so it quickly realizes it's already merged
+		// (thus the matching active/proposed dry shas) and gets cleaned up.
+		r.enqueuePullRequestsForCTP(ctx, ctp)
 		return nil, nil
 	}
 
@@ -1232,13 +1277,11 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 		commitTrailers[constants.TrailerPullRequestCreationTime] = existingPR.Status.PRCreationTime.Format(time.RFC3339)
 		commitTrailers[constants.TrailerPullRequestUrl] = existingPR.Status.Url
 
-		for _, status := range ctp.Status.Active.CommitStatuses {
-			commitTrailers[constants.TrailerCommitStatusActivePrefix+status.Key+"-phase"] = status.Phase
-			commitTrailers[constants.TrailerCommitStatusActivePrefix+status.Key+"-url"] = status.Url
+		if err := addCommitStatusTrailers(commitTrailers, constants.TrailerCommitStatusActivePrefix, ctp.Status.Active.CommitStatuses); err != nil {
+			return nil, err
 		}
-		for _, status := range ctp.Status.Proposed.CommitStatuses {
-			commitTrailers[constants.TrailerCommitStatusProposedPrefix+status.Key+"-phase"] = status.Phase
-			commitTrailers[constants.TrailerCommitStatusProposedPrefix+status.Key+"-url"] = status.Url
+		if err := addCommitStatusTrailers(commitTrailers, constants.TrailerCommitStatusProposedPrefix, ctp.Status.Proposed.CommitStatuses); err != nil {
+			return nil, err
 		}
 		commitTrailers[constants.TrailerShaHydratedActive] = ctp.Status.Active.Hydrated.Sha
 		commitTrailers[constants.TrailerShaHydratedProposed] = ctp.Status.Proposed.Hydrated.Sha
@@ -1315,6 +1358,34 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 	}
 
 	return pr, nil
+}
+
+func ctpStatusShowsPullRequestExists(ctp *promoterv1alpha1.ChangeTransferPolicy) bool {
+	pr := ctp.Status.PullRequest
+	if pr == nil || pr.ID == "" {
+		return false
+	}
+	if pr.ExternallyMergedOrClosed != nil && *pr.ExternallyMergedOrClosed {
+		return false
+	}
+	return pr.State == promoterv1alpha1.PullRequestOpen
+}
+
+func (r *ChangeTransferPolicyReconciler) enqueuePullRequestsForCTP(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) {
+	if r.EnqueuePR == nil || !ctpStatusShowsPullRequestExists(ctp) {
+		return
+	}
+	prList := &promoterv1alpha1.PullRequestList{}
+	if err := r.List(ctx, prList, ctpPullRequestListOptions(ctp)); err != nil {
+		log.FromContext(ctx).Error(err, "failed to list PullRequests to enqueue for SCM sync")
+		return
+	}
+	for i := range prList.Items {
+		pr := &prList.Items[i]
+		if pr.DeletionTimestamp.IsZero() {
+			r.EnqueuePR(pr.Namespace, pr.Name)
+		}
+	}
 }
 
 func (r *ChangeTransferPolicyReconciler) evaluatePullRequestLabels(ctp *promoterv1alpha1.ChangeTransferPolicy, ps *promoterv1alpha1.PromotionStrategy) ([]string, bool, error) {

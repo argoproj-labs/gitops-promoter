@@ -24,6 +24,7 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -373,9 +374,9 @@ func (pr *PullRequest) DeletePullRequest(ctx context.Context, pullRequest v1alph
 
 // sendWebhook sends a webhook after a PR merge to simulate SCM provider webhook behavior
 func (pr *PullRequest) sendWebhook(ctx context.Context, pullRequest v1alpha1.PullRequest, beforeSha string) {
-	// Get the webhook receiver port from the test environment
-	// This matches the port calculation in suite_test.go
-	webhookReceiverPort := 8082 + ginkgov2.GinkgoParallelProcess()
+	// Get the webhook receiver port from the test environment.
+	// This matches the port calculation in suite_test.go.
+	webhookReceiverPort := constants.WebhookReceiverPort + ginkgov2.GinkgoParallelProcess()
 
 	// Build GitHub-style webhook payload with the beforeSha (SHA before the merge)
 	payload := pr.buildGitHubWebhookPayload(beforeSha, "refs/heads/"+pullRequest.Spec.TargetBranch)

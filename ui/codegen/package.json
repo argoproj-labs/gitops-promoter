@@ -1,0 +1,12 @@
+{
+  "name": "gitops-promoter-ui-codegen",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "generate": "node generate.mjs"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.10.1"
+  }
+}

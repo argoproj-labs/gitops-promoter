@@ -99,6 +99,12 @@ generate-extension-icon-styles: ## Generate Argo CD extension icon styles from l
 cel-cost-report: ## Estimate CRD CEL validation costs vs apiserver limits and write the docs report.
 	cd hack/celcost && go run . -o report.md ../../config/crd/bases
 
+.PHONY: generate-ui-types
+generate-ui-types: ## Generate TypeScript types from the view APIService OpenAPI schemas (requires committed zz_generated.openapi.go from make generate-apiserver).
+	go run ./hack/view2ts -o hack/view2ts/dist/view.openapi.json
+	cd ui/codegen && npm ci && npm run generate
+	cd ui/shared && npm ci
+
 .PHONY: generate-all
 generate-all: generate generate-apiserver generate-extension-icon-styles ## Run all code generation used in CI (controller-gen, view apiserver codegen, extension icon styles). For mocks, run make mockery-gen separately.
 
@@ -247,15 +253,24 @@ nilaway-no-test: nilaway ## Run nilaway to remove nil checks from the code
 build: manifests generate fmt vet ## Build manager binary.
 	go build -o bin/manager cmd/main.go
 
-.PHONY: build-dashboard
-build-dashboard: ## Build dashboard UI and embed it.
+.PHONY: install-ui-deps
+install-ui-deps: ## Install shared UI workspace dependencies (ui/shared, ui/components-lib).
+	cd ui/shared && npm install
 	cd ui/components-lib && npm install
+
+.PHONY: build-dashboard-ui
+build-dashboard-ui: ## Build dashboard UI and embed it (requires install-ui-deps).
 	cd ui/dashboard && npm install && npm run build:embed
 
-.PHONY: build-extension
-build-extension: ## Build ArgoCD extension.
-	cd ui/components-lib && npm install
+.PHONY: build-dashboard
+build-dashboard: install-ui-deps build-dashboard-ui ## Install UI deps and build dashboard.
+
+.PHONY: build-extension-ui
+build-extension-ui: ## Build ArgoCD extension (requires install-ui-deps).
 	cd ui/extension && npm install && npm run build
+
+.PHONY: build-extension
+build-extension: install-ui-deps build-extension-ui ## Install UI deps and build extension.
 
 .PHONY: install-extension-local
 install-extension-local: ## Install ArgoCD extension to /tmp/extensions/promoter directory.
@@ -312,11 +327,11 @@ apiserver-unregister-local: ## Remove the local APIService registration created 
 	./hack/apiserver-local-register.sh unregister
 
 .PHONY: lint-dashboard
-lint-dashboard: ## Run dashboard type-check, lint and audit checks
+lint-dashboard: install-ui-deps ## Run dashboard type-check, lint and audit checks
 	cd ui/dashboard && npm run type-check && npm run lint && npm run format:check && npm audit --omit=dev
 
 .PHONY: lint-extension
-lint-extension: ## Run extension type-check, lint and audit checks
+lint-extension: install-ui-deps ## Run extension type-check, lint and audit checks
 	cd ui/extension && npm run type-check && npm run lint && npm run format:check && npm audit --omit=dev
 
 # LCOV paths: vitest coverage uses istanbul lcov reporter with projectRoot = repo root (see vitest.config).
@@ -325,9 +340,9 @@ test-unit-test-extension: ## Run extension unit tests (with coverage)
 	cd ui/extension && npm test
 
 .PHONY: lint-components-lib
-lint-components-lib: ## Run components-lib type-check and format checks (includes shared/)
+lint-components-lib: install-ui-deps ## Run components-lib type-check and format checks (includes shared/)
 	cd ui/components-lib && npm run type-check && npm run format:check
-	cd ui/components-lib && npx prettier --check '../shared/**/*.{ts,tsx}'
+	cd ui/components-lib && npx prettier --check '../shared/**/*.{ts,tsx}' --ignore-path ../.prettierignore
 
 .PHONY: lint-ui
 lint-ui: lint-dashboard lint-extension lint-components-lib ## Run all UI checks
@@ -426,7 +441,7 @@ KUSTOMIZE_VERSION ?= v5.8.1
 CONTROLLER_TOOLS_VERSION ?= v0.21.0
 ENVTEST_VERSION ?= release-0.24
 GOLANGCI_LINT_VERSION ?= v2.12.2
-DEADCODE_VERSION ?= v0.47.0
+DEADCODE_VERSION ?= v0.48.0
 DEADCODE_FILTER ?= github.com/argoproj-labs/gitops-promoter/internal
 MOCKERY_VERSION ?= v3.7.1
 NILAWAY_VERSION ?= latest
