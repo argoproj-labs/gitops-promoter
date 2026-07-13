@@ -69,18 +69,18 @@ type CTPEnqueueFunc func(namespace, name string)
 // ChangeTransferPolicyReconciler reconciles a ChangeTransferPolicy object
 type ChangeTransferPolicyReconciler struct {
 	client.Client
-	Scheme      *runtime.Scheme
 	Recorder    events.EventRecorder
+	Scheme      *runtime.Scheme
 	SettingsMgr *settings.Manager
 
 	// enqueueFunc is set during SetupWithManager and can be retrieved via GetEnqueueFunc.
 	// It allows other controllers to enqueue CTP reconcile requests.
 	enqueueFunc CTPEnqueueFunc
 
-	labelEvaluator prlabels.Evaluator
-
 	// EnqueuePR wakes the PullRequest controller without patching the PR object.
 	EnqueuePR PREnqueueFunc
+
+	labelEvaluator prlabels.Evaluator
 }
 
 // GetEnqueueFunc returns a function that can be used to enqueue CTP reconcile requests.
