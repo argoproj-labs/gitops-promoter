@@ -1223,7 +1223,7 @@ export type components = {
             /** @description Conditions Represents the observations of the current state. */
             conditions?: components["schemas"]["Condition"][];
             /** @description Environments holds the status of each environment in the promotion sequence. */
-            environments: components["schemas"]["EnvironmentStatus"][];
+            environments?: components["schemas"]["EnvironmentStatus"][];
             /**
              * Format: int64
              * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
