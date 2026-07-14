@@ -640,7 +640,9 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 			Expect(k8sClient.Create(keyCtx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(keyCtx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(keyCtx, gitRepo)).To(Succeed())
+			declarePreviousEnvironmentGate(keyPS)
 			Expect(k8sClient.Create(keyCtx, keyPS)).To(Succeed())
+			createPreviousEnvironmentCommitStatus(keyCtx, keyPS)
 
 			tcs := &promoterv1alpha1.TimedCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{

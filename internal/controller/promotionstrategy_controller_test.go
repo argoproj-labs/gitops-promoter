@@ -77,7 +77,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				declarePreviousEnvironmentGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				createPreviousEnvironmentCommitStatus(ctx, promotionStrategy)
 			})
 
 			AfterEach(func() {
@@ -126,7 +128,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				declarePreviousEnvironmentGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				createPreviousEnvironmentCommitStatus(ctx, promotionStrategy)
 
 				// Initialize empty structs for use in tests
 				ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
@@ -218,7 +222,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Sha).To(Equal(ctpDev.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Sha).To(Equal(ctpDev.Status.Proposed.Hydrated.Sha))
 					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses)).To(BeTrue())
+					g.Expect(utils.AreCommitStatusesPassing(proposedStatusesIgnoringOrderingGate(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses))).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
 					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testBranchStaging))
@@ -229,7 +233,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.Dry.Sha).To(Equal(ctpStaging.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.Hydrated.Sha).To(Equal(ctpStaging.Status.Proposed.Hydrated.Sha))
 					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses)).To(BeTrue())
+					g.Expect(utils.AreCommitStatusesPassing(proposedStatusesIgnoringOrderingGate(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses))).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
 					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testBranchProduction))
@@ -240,7 +244,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.Dry.Sha).To(Equal(ctpProd.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.Hydrated.Sha).To(Equal(ctpProd.Status.Proposed.Hydrated.Sha))
 					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses)).To(BeTrue())
+					g.Expect(utils.AreCommitStatusesPassing(proposedStatusesIgnoringOrderingGate(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses))).To(BeTrue())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Adding a pending commit")
@@ -400,7 +404,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, clusterScmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				declarePreviousEnvironmentGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				createPreviousEnvironmentCommitStatus(ctx, promotionStrategy)
 
 				// Initialize empty structs for use in tests
 				ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
@@ -492,7 +498,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Sha).To(Equal(ctpDev.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Sha).To(Equal(ctpDev.Status.Proposed.Hydrated.Sha))
 					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses)).To(BeTrue())
+					g.Expect(utils.AreCommitStatusesPassing(proposedStatusesIgnoringOrderingGate(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses))).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
 					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testBranchStaging))
@@ -503,7 +509,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.Dry.Sha).To(Equal(ctpStaging.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.Hydrated.Sha).To(Equal(ctpStaging.Status.Proposed.Hydrated.Sha))
 					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses)).To(BeTrue())
+					g.Expect(utils.AreCommitStatusesPassing(proposedStatusesIgnoringOrderingGate(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses))).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
 					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testBranchProduction))
@@ -514,7 +520,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.Dry.Sha).To(Equal(ctpProd.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.Hydrated.Sha).To(Equal(ctpProd.Status.Proposed.Hydrated.Sha))
 					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses)).To(BeTrue())
+					g.Expect(utils.AreCommitStatusesPassing(proposedStatusesIgnoringOrderingGate(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses))).To(BeTrue())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Adding a pending commit")
@@ -579,7 +585,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				declarePreviousEnvironmentGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				createPreviousEnvironmentCommitStatus(ctx, promotionStrategy)
 
 				// Initialize empty structs for use in tests
 				ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
@@ -674,7 +682,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Sha).To(Equal(ctpDev.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Sha).To(Equal(ctpDev.Status.Proposed.Hydrated.Sha))
 					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses)).To(BeTrue())
+					g.Expect(utils.AreCommitStatusesPassing(proposedStatusesIgnoringOrderingGate(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses))).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
 					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testBranchStaging))
@@ -685,7 +693,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.Dry.Sha).To(Equal(ctpStaging.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.Hydrated.Sha).To(Equal(ctpStaging.Status.Proposed.Hydrated.Sha))
 					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses)).To(BeTrue())
+					g.Expect(utils.AreCommitStatusesPassing(proposedStatusesIgnoringOrderingGate(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses))).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
 					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testBranchProduction))
@@ -696,7 +704,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.Dry.Sha).To(Equal(ctpProd.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.Hydrated.Sha).To(Equal(ctpProd.Status.Proposed.Hydrated.Sha))
 					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses)).To(BeTrue())
+					g.Expect(utils.AreCommitStatusesPassing(proposedStatusesIgnoringOrderingGate(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses))).To(BeTrue())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Adding a pending commit")
@@ -783,7 +791,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				declarePreviousEnvironmentGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				createPreviousEnvironmentCommitStatus(ctx, promotionStrategy)
 
 				// Initialize empty structs for use in tests
 				ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
@@ -875,7 +885,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Sha).To(Equal(ctpDev.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Sha).To(Equal(ctpDev.Status.Proposed.Hydrated.Sha))
 					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses)).To(BeTrue())
+					g.Expect(utils.AreCommitStatusesPassing(proposedStatusesIgnoringOrderingGate(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses))).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
 					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testBranchStaging))
@@ -886,7 +896,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.Dry.Sha).To(Equal(ctpStaging.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.Hydrated.Sha).To(Equal(ctpStaging.Status.Proposed.Hydrated.Sha))
 					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses)).To(BeTrue())
+					g.Expect(utils.AreCommitStatusesPassing(proposedStatusesIgnoringOrderingGate(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses))).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
 					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testBranchProduction))
@@ -897,7 +907,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.Dry.Sha).To(Equal(ctpProd.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.Hydrated.Sha).To(Equal(ctpProd.Status.Proposed.Hydrated.Sha))
 					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses)).To(BeTrue())
+					g.Expect(utils.AreCommitStatusesPassing(proposedStatusesIgnoringOrderingGate(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses))).To(BeTrue())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Adding a pending commit")
@@ -1109,7 +1119,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			declarePreviousEnvironmentGate(promotionStrategy)
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+			createPreviousEnvironmentCommitStatus(ctx, promotionStrategy)
 		})
 
 		AfterEach(func() {
@@ -1175,7 +1187,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			declarePreviousEnvironmentGate(promotionStrategy)
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+			createPreviousEnvironmentCommitStatus(ctx, promotionStrategy)
 		})
 
 		AfterEach(func() {
@@ -1254,7 +1268,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				ps.Spec.Environments = []promoterv1alpha1.Environment{
 					{Branch: testBranchDevelopment, AutoMerge: new(true)},
 				}
+				declarePreviousEnvironmentGate(ps)
 				Expect(k8sClient.Create(ctx, ps)).To(Succeed())
+				createPreviousEnvironmentCommitStatus(ctx, ps)
 				promotionStrategies = append(promotionStrategies, *ps)
 			}
 		})
@@ -1435,7 +1451,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				// by toggling AutoMerge (an unrealistic operator step).
 				{Branch: testBranchDevelopment, AutoMerge: new(true)},
 			}
+			declarePreviousEnvironmentGate(psOne)
 			Expect(k8sClient.Create(ctx, psOne)).To(Succeed())
+			createPreviousEnvironmentCommitStatus(ctx, psOne)
 			promotionStrategyOne = *psOne
 
 			psTwo := baseStrategy.DeepCopy()
@@ -1444,7 +1462,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			psTwo.Spec.Environments = []promoterv1alpha1.Environment{
 				{Branch: testBranchDevelopment, AutoMerge: new(true)},
 			}
+			declarePreviousEnvironmentGate(psTwo)
 			Expect(k8sClient.Create(ctx, psTwo)).To(Succeed())
+			createPreviousEnvironmentCommitStatus(ctx, psTwo)
 			promotionStrategyTwo = *psTwo
 
 			Eventually(func(g Gomega) {
@@ -1731,14 +1751,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Key: healthCheckCSKey,
 					},
 				}
-				// The previous-environment gate must be declared explicitly on the PromotionStrategy;
-				// the controller no longer auto-injects it. The PreviousEnvironmentCommitStatus CR
-				// (created below) delegates to a DAGCommitStatus that reports this gate key.
-				promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-					{
-						Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
-					},
-				}
 				activeCommitStatusDevelopment.Spec.Name = healthCheckCSKey
 				activeCommitStatusDevelopment.Labels = map[string]string{
 					promoterv1alpha1.CommitStatusLabel: healthCheckCSKey,
@@ -1751,21 +1763,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				declarePreviousEnvironmentGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-
-				previousEnvironmentCommitStatus := &promoterv1alpha1.PreviousEnvironmentCommitStatus{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      name,
-						Namespace: "default",
-					},
-					Spec: promoterv1alpha1.PreviousEnvironmentCommitStatusSpec{
-						PromotionStrategyRef: promoterv1alpha1.ObjectReference{
-							Name: name,
-						},
-						Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
-					},
-				}
-				Expect(k8sClient.Create(ctx, previousEnvironmentCommitStatus)).To(Succeed())
+				createPreviousEnvironmentCommitStatus(ctx, promotionStrategy)
 
 				// Initialize empty structs for use in tests
 				ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
@@ -2214,14 +2214,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					},
 				}
 
-				// The previous-environment gate must be declared explicitly on the PromotionStrategy;
-				// the controller no longer auto-injects it. The PreviousEnvironmentCommitStatus CR
-				// (created below) delegates to a DAGCommitStatus that reports this gate key.
-				promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-					{
-						Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
-					},
-				}
 				activeCommitStatusDevelopment.Spec.Name = healthCheckCSKey
 				activeCommitStatusDevelopment.Labels = map[string]string{
 					promoterv1alpha1.CommitStatusLabel: healthCheckCSKey,
@@ -2234,21 +2226,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				declarePreviousEnvironmentGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-
-				previousEnvironmentCommitStatus := &promoterv1alpha1.PreviousEnvironmentCommitStatus{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      name,
-						Namespace: "default",
-					},
-					Spec: promoterv1alpha1.PreviousEnvironmentCommitStatusSpec{
-						PromotionStrategyRef: promoterv1alpha1.ObjectReference{
-							Name: name,
-						},
-						Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
-					},
-				}
-				Expect(k8sClient.Create(ctx, previousEnvironmentCommitStatus)).To(Succeed())
+				createPreviousEnvironmentCommitStatus(ctx, promotionStrategy)
 
 				// Initialize empty structs for use in tests
 				ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
@@ -2474,7 +2454,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				gitPath, err := os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
 				makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+				declarePreviousEnvironmentGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				createPreviousEnvironmentCommitStatus(ctx, promotionStrategy)
 
 				// We should now get PRs created for the ProposedCommits
 				// Check that ChangeTransferPolicy are created
@@ -2717,7 +2699,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				declarePreviousEnvironmentGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				createPreviousEnvironmentCommitStatus(ctx, promotionStrategy)
 
 				// Initialize empty structs for use in tests
 				ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
@@ -2870,14 +2854,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					},
 				}
 
-				// The previous-environment gate must be declared explicitly on the PromotionStrategy;
-				// the controller no longer auto-injects it. The PreviousEnvironmentCommitStatus CR
-				// (created below) delegates to a DAGCommitStatus that reports this gate key.
-				promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-					{
-						Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
-					},
-				}
+				declarePreviousEnvironmentGate(promotionStrategy)
 
 				argocdCommitStatus = promoterv1alpha1.ArgoCDCommitStatus{
 					ObjectMeta: metav1.ObjectMeta{
@@ -2900,24 +2877,11 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				createPreviousEnvironmentCommitStatus(ctx, promotionStrategy)
 				Expect(k8sClient.Create(ctx, &argocdCommitStatus)).To(Succeed())
 				Expect(k8sClient.Create(ctx, &argoCDAppDev)).To(Succeed())
 				Expect(k8sClient.Create(ctx, &argoCDAppStaging)).To(Succeed())
 				Expect(k8sClient.Create(ctx, &argoCDAppProduction)).To(Succeed())
-
-				previousEnvironmentCommitStatus := &promoterv1alpha1.PreviousEnvironmentCommitStatus{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      name,
-						Namespace: "default",
-					},
-					Spec: promoterv1alpha1.PreviousEnvironmentCommitStatusSpec{
-						PromotionStrategyRef: promoterv1alpha1.ObjectReference{
-							Name: name,
-						},
-						Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
-					},
-				}
-				Expect(k8sClient.Create(ctx, previousEnvironmentCommitStatus)).To(Succeed())
 			})
 
 			AfterEach(func() {
@@ -3147,14 +3111,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					},
 				}
 
-				// The previous-environment gate must be declared explicitly on the PromotionStrategy;
-				// the controller no longer auto-injects it. The PreviousEnvironmentCommitStatus CR
-				// (created below) delegates to a DAGCommitStatus that reports this gate key.
-				promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-					{
-						Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
-					},
-				}
+				declarePreviousEnvironmentGate(promotionStrategy)
 
 				testArgoCDCommitStatus := promoterv1alpha1.ArgoCDCommitStatus{}
 				//nolint:musttag // Not bothering adding yaml tags since it's just for a test.
@@ -3185,24 +3142,11 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				createPreviousEnvironmentCommitStatus(ctx, promotionStrategy)
 				Expect(k8sClient.Create(ctx, &argocdCommitStatus)).To(Succeed())
 				Expect(k8sClientDev.Create(ctx, &argoCDAppDev)).To(Succeed())
 				Expect(k8sClientStaging.Create(ctx, &argoCDAppStaging)).To(Succeed())
 				Expect(k8sClient.Create(ctx, &argoCDAppProduction)).To(Succeed())
-
-				previousEnvironmentCommitStatus := &promoterv1alpha1.PreviousEnvironmentCommitStatus{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      name,
-						Namespace: "default",
-					},
-					Spec: promoterv1alpha1.PreviousEnvironmentCommitStatusSpec{
-						PromotionStrategyRef: promoterv1alpha1.ObjectReference{
-							Name: name,
-						},
-						Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
-					},
-				}
-				Expect(k8sClient.Create(ctx, previousEnvironmentCommitStatus)).To(Succeed())
 			})
 
 			AfterEach(func() {
@@ -3463,7 +3407,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 				drySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 
+				declarePreviousEnvironmentGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				createPreviousEnvironmentCommitStatus(ctx, promotionStrategy)
 
 				By("Checking that all the ChangeTransferPolicies and PRs are created and in their proper state")
 				Eventually(func(g Gomega) {
@@ -3855,6 +3801,50 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 	return psName, scmSecret, scmProvider, gitRepo, commitStatusDevelopment, commitStatusStaging, promotionStrategy
 }
 
+// declarePreviousEnvironmentGate appends the previous-environment gate key to the
+// PromotionStrategy's proposedCommitStatuses. The PS controller no longer auto-injects linear
+// ordering, so tests that rely on sequential promotion must declare the gate explicitly. Call
+// this before the PromotionStrategy is created; it appends (rather than overwrites) so any
+// test-specific proposedCommitStatuses are preserved. Pair it with
+// createPreviousEnvironmentCommitStatus, which creates the resource that backs the gate.
+func declarePreviousEnvironmentGate(ps *promoterv1alpha1.PromotionStrategy) {
+	ps.Spec.ProposedCommitStatuses = append(ps.Spec.ProposedCommitStatuses,
+		promoterv1alpha1.CommitStatusSelector{Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey})
+}
+
+// createPreviousEnvironmentCommitStatus creates the PreviousEnvironmentCommitStatus that backs
+// the previous-environment gate for the given PromotionStrategy. It generates a chain-shaped
+// DAGCommitStatus so promotion is gated in spec order. Call this after the PromotionStrategy has
+// been created (the resource references it by name), and pair it with declarePreviousEnvironmentGate
+// so the gate key is also declared on the PromotionStrategy.
+func createPreviousEnvironmentCommitStatus(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy) {
+	pecs := &promoterv1alpha1.PreviousEnvironmentCommitStatus{
+		ObjectMeta: metav1.ObjectMeta{Name: ps.Name, Namespace: ps.Namespace},
+		Spec: promoterv1alpha1.PreviousEnvironmentCommitStatusSpec{
+			PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: ps.Name},
+			Key:                  promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+		},
+	}
+	Expect(k8sClient.Create(ctx, pecs)).To(Succeed())
+}
+
+// proposedStatusesIgnoringOrderingGate returns the proposed commit statuses with the ordering
+// gate (previous-environment / DAG) filtered out. Tests that assert a PromotionStrategy has no
+// proposed commit statuses of its own now always carry an ordering gate (required since the
+// controller stopped auto-injecting one), and that gate stays pending for a no-op environment
+// whose upstream has not promoted. Filtering it lets those assertions check only the test's own
+// gates without depending on the ordering gate's phase.
+func proposedStatusesIgnoringOrderingGate(statuses []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase {
+	out := make([]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase, 0, len(statuses))
+	for _, s := range statuses {
+		if s.Key == promoterv1alpha1.DAGCommitStatusKey || s.Key == promoterv1alpha1.PreviousEnvironmentCommitStatusKey {
+			continue
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
 func argocdApplications(namespace, appLabel, repoOwner, repoName string) (argocd.Application, argocd.Application, argocd.Application) {
 	environments := []string{"development", "staging", "production"}
 	apps := make([]argocd.Application, len(environments))
@@ -3920,6 +3910,24 @@ var _ = Describe("PromotionStrategy DAGCommitStatus key safety check", func() {
 			dagCommitStatus = nil
 		}
 		_ = k8sClient.Delete(ctx, promotionStrategy)
+	})
+
+	It("hard-fails the reconcile when no DAGCommitStatus or PreviousEnvironmentCommitStatus is configured", func() {
+		By("Creating a PromotionStrategy with no DAGCommitStatus and no PreviousEnvironmentCommitStatus")
+		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+		By("Checking that the Ready condition reports the missing ordering configuration")
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, promotionStrategy)).To(Succeed())
+			cond := meta.FindStatusCondition(promotionStrategy.Status.Conditions, string(promoterConditions.Ready))
+			g.Expect(cond).ToNot(BeNil())
+			g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+			g.Expect(cond.Reason).To(Equal(string(promoterConditions.ReconciliationError)))
+			g.Expect(cond.Message).To(ContainSubstring("has no DAGCommitStatus"))
+		}, constants.EventuallyTimeout).Should(Succeed())
 	})
 
 	It("hard-fails the reconcile when a DAGCommitStatus key is not declared in proposedCommitStatuses", func() {
@@ -4016,14 +4024,6 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 					},
 				}
 
-				// The previous-environment gate must be declared explicitly on the PromotionStrategy;
-				// the controller no longer auto-injects it. The PreviousEnvironmentCommitStatus CR
-				// (created below) delegates to a DAGCommitStatus that reports this gate key.
-				promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-					{
-						Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
-					},
-				}
 				activeCommitStatusDevelopment.Spec.Name = healthCheckCSKey
 				activeCommitStatusDevelopment.Labels = map[string]string{
 					promoterv1alpha1.CommitStatusLabel: healthCheckCSKey,
@@ -4036,21 +4036,9 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				declarePreviousEnvironmentGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-
-				previousEnvironmentCommitStatus := &promoterv1alpha1.PreviousEnvironmentCommitStatus{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      name,
-						Namespace: "default",
-					},
-					Spec: promoterv1alpha1.PreviousEnvironmentCommitStatusSpec{
-						PromotionStrategyRef: promoterv1alpha1.ObjectReference{
-							Name: name,
-						},
-						Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
-					},
-				}
-				Expect(k8sClient.Create(ctx, previousEnvironmentCommitStatus)).To(Succeed())
+				createPreviousEnvironmentCommitStatus(ctx, promotionStrategy)
 
 				// Initialize empty structs for use in tests
 				ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
@@ -4288,7 +4276,9 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				declarePreviousEnvironmentGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				createPreviousEnvironmentCommitStatus(ctx, promotionStrategy)
 			})
 
 			AfterEach(func() {
@@ -4481,7 +4471,9 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = os.RemoveAll(gitPath) }()
 			makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+			declarePreviousEnvironmentGate(promotionStrategy)
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+			createPreviousEnvironmentCommitStatus(ctx, promotionStrategy)
 
 			var ctpDev, ctpStaging, ctpProd promoterv1alpha1.ChangeTransferPolicy
 			var pullRequestDev, pullRequestStaging, pullRequestProd promoterv1alpha1.PullRequest
@@ -4643,14 +4635,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 					Key: healthCheckCSKey,
 				},
 			}
-			// The previous-environment gate must be declared explicitly on the PromotionStrategy;
-			// the controller no longer auto-injects it. The PreviousEnvironmentCommitStatus CR
-			// (created below) delegates to a DAGCommitStatus that reports this gate key.
-			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-				{
-					Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
-				},
-			}
+			declarePreviousEnvironmentGate(promotionStrategy)
 			activeCommitStatusDevelopment.Spec.Name = healthCheckCSKey
 			activeCommitStatusDevelopment.Labels = map[string]string{
 				promoterv1alpha1.CommitStatusLabel: healthCheckCSKey,
@@ -4664,23 +4649,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-
-			// The previous-environment gate is now owned by the dedicated PreviousEnvironmentCommitStatus
-			// controller, which only runs when a PreviousEnvironmentCommitStatus CR exists. Create one so
-			// the gate is maintained for these out-of-order specs.
-			previousEnvironmentCommitStatus := &promoterv1alpha1.PreviousEnvironmentCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
-					Namespace: "default",
-				},
-				Spec: promoterv1alpha1.PreviousEnvironmentCommitStatusSpec{
-					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
-						Name: name,
-					},
-					Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
-				},
-			}
-			Expect(k8sClient.Create(ctx, previousEnvironmentCommitStatus)).To(Succeed())
+			createPreviousEnvironmentCommitStatus(ctx, promotionStrategy)
 
 			ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
 			ctpStaging = promoterv1alpha1.ChangeTransferPolicy{}

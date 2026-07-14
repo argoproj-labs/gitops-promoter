@@ -28,6 +28,7 @@ import (
 
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -168,6 +169,28 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}, nil
 }
 
+// enqueuePromotionStrategyForDAGCommitStatus maps a DAGCommitStatus event to the PromotionStrategy
+// it references. The safety check (checkDAGCommitStatusKeysDeclared) hard-fails a reconcile when no
+// DAGCommitStatus targets the PromotionStrategy yet. A PreviousEnvironmentCommitStatus generates its
+// DAGCommitStatus asynchronously, so a PromotionStrategy created alongside one can reconcile (and
+// hard-fail) before the gate exists. Since the PromotionStrategy only Owns ChangeTransferPolicies —
+// which are not created on a failed reconcile — nothing would re-trigger it until the slow error
+// backoff. Watching DAGCommitStatus lets the PromotionStrategy reconcile as soon as its gate appears.
+func (r *PromotionStrategyReconciler) enqueuePromotionStrategyForDAGCommitStatus() handler.EventHandler {
+	return handler.EnqueueRequestsFromMapFunc(func(_ context.Context, obj client.Object) []ctrl.Request {
+		dcs, ok := obj.(*promoterv1alpha1.DAGCommitStatus)
+		if !ok {
+			return nil
+		}
+		if dcs.Spec.PromotionStrategyRef.Name == "" {
+			return nil
+		}
+		return []ctrl.Request{{
+			NamespacedName: client.ObjectKey{Namespace: dcs.Namespace, Name: dcs.Spec.PromotionStrategyRef.Name},
+		}}
+	})
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *PromotionStrategyReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.CommitStatus{}, ".spec.sha", func(rawObj client.Object) []string {
@@ -197,6 +220,9 @@ func (r *PromotionStrategyReconciler) SetupWithManager(ctx context.Context, mgr 
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.PromotionStrategy{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Owns(&promoterv1alpha1.ChangeTransferPolicy{}).
+		// Re-reconcile a PromotionStrategy when a DAGCommitStatus that references it appears, so the
+		// safety check recovers as soon as its gate exists instead of waiting on the slow error backoff.
+		Watches(&promoterv1alpha1.DAGCommitStatus{}, r.enqueuePromotionStrategyForDAGCommitStatus()).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Complete(r)
 	if err != nil {
@@ -205,11 +231,16 @@ func (r *PromotionStrategyReconciler) SetupWithManager(ctx context.Context, mgr 
 	return nil
 }
 
-// checkDAGCommitStatusKeysDeclared verifies that every DAGCommitStatus referencing this
-// PromotionStrategy has its key declared in the PS's global proposedCommitStatuses. A
-// DAGCommitStatus whose key is not declared produces a gate that nobody consumes, so the intended
-// promotion ordering would silently not apply. This returns an error (hard-failing the reconcile)
-// so the misconfiguration is surfaced rather than ignored.
+// checkDAGCommitStatusKeysDeclared verifies that this PromotionStrategy has valid promotion
+// ordering configured. It hard-fails the reconcile (surfacing the misconfiguration instead of
+// silently promoting environments out of order) in two cases:
+//
+//   - No DAGCommitStatus targets the PromotionStrategy. A PreviousEnvironmentCommitStatus
+//     generates a chain-shaped DAGCommitStatus as its gate, so an empty list means neither
+//     ordering mechanism is configured and no ordering applies at all.
+//   - A DAGCommitStatus targets the PromotionStrategy but its key is not declared in the PS's
+//     global proposedCommitStatuses, so the gate it produces is never consumed and the intended
+//     ordering silently does not apply.
 //
 // TODO: remove this safety check in 1.0.
 func (r *PromotionStrategyReconciler) checkDAGCommitStatusKeysDeclared(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy) error {
@@ -218,6 +249,11 @@ func (r *PromotionStrategyReconciler) checkDAGCommitStatusKeysDeclared(ctx conte
 		client.InNamespace(ps.Namespace),
 		client.MatchingFields{PromotionStrategyRefField: ps.Name}); err != nil {
 		return fmt.Errorf("failed to list DAGCommitStatuses for PromotionStrategy %q: %w", ps.Name, err)
+	}
+
+	if len(dcsList.Items) < 1 {
+		return fmt.Errorf("PromotionStrategy %q has no DAGCommitStatus (or PreviousEnvironmentCommitStatus, "+
+			"which generates one); configure one so promotion ordering is enforced", ps.Name)
 	}
 
 	declared := make(map[string]bool, len(ps.Spec.ProposedCommitStatuses))
