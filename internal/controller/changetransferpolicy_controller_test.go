@@ -39,7 +39,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
-	"k8s.io/utils/ptr"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 )
@@ -812,6 +811,51 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
+
+			It("should delete PR quickly when externally merged on SCM and CTP reconciles", func() {
+				setPullRequestRequeueDuration(ctx, time.Hour)
+
+				By("Adding a pending commit and waiting for open PR")
+				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+
+				var createdPR promoterv1alpha1.PullRequest
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      utils.KubeSafeUniqueName(prName),
+						Namespace: "default",
+					}, &createdPR)
+					g.Expect(err).To(Succeed())
+					g.Expect(createdPR.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+					g.Expect(createdPR.Status.ID).ToNot(BeEmpty())
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).NotTo(Equal(changeTransferPolicy.Status.Proposed.Dry.Sha))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				fake.ResetFindOpenCallCount()
+
+				By("Simulating external merge on SCM (merges proposed into active and sends webhook)")
+				fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: createdPR.Name, Namespace: createdPR.Namespace}, &createdPR)).To(Succeed())
+				Expect(fakeProvider.Merge(ctx, createdPR)).To(Succeed())
+
+				By("Verifying PR is deleted promptly without relying on periodic requeue")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      createdPR.Name,
+						Namespace: createdPR.Namespace,
+					}, &createdPR)
+					g.Expect(errors.IsNotFound(err)).To(BeTrue())
+				}, 10*time.Second).Should(Succeed())
+
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.PullRequest).ToNot(BeNil())
+					g.Expect(changeTransferPolicy.Status.PullRequest.ExternallyMergedOrClosed).ToNot(BeNil())
+					g.Expect(*changeTransferPolicy.Status.PullRequest.ExternallyMergedOrClosed).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				Expect(fake.FindOpenCallCount()).To(BeNumerically(">=", 1))
+			})
 		})
 
 		Context("When an open PR is in steady state", func() {
@@ -880,7 +924,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				fake.ResetPullRequestSCMCallCounts()
 
 				By("Simulating routine PR controller status-only writes that used to re-enqueue CTP")
-				for poke := 0; poke < 3; poke++ {
+				for poke := range 3 {
 					Eventually(func(g Gomega) {
 						g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
 						pr.Status.Url = fmt.Sprintf("https://fake.example/pr/%s?poke=%d", pr.Status.ID, poke)
@@ -1364,7 +1408,7 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 			Status:     promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"},
 		}
 		newPR := oldPR.DeepCopy()
-		newPR.Status.ExternallyMergedOrClosed = ptr.To(true)
+		newPR.Status.ExternallyMergedOrClosed = new(true)
 		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
 	})
 
@@ -2003,3 +2047,65 @@ func changeTransferPolicyResources(ctx context.Context, name, namespace string) 
 
 	return name, scmSecret, scmProvider, gitRepo, commitStatus, changeTransferPolicy
 }
+
+var _ = Describe("commit status description trailers", func() {
+	var ctx context.Context
+
+	BeforeEach(func() {
+		ctx = context.Background()
+	})
+
+	It("round-trips plain text, newlines, and embedded quotes", func() {
+		for _, original := range []string{
+			"Waiting for approval",
+			"line1\nline2",
+			`say "hello"`,
+		} {
+			encoded, err := encodeTrailerDescription(original)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(decodeTrailerDescription(ctx, encoded)).To(Equal(original))
+		}
+	})
+
+	It("returns empty string for empty or malformed encoded values", func() {
+		Expect(decodeTrailerDescription(ctx, "")).To(Equal(""))
+		Expect(decodeTrailerDescription(ctx, "not-json")).To(Equal(""))
+	})
+
+	It("extracts commit status keys from phase, url, and description trailers", func() {
+		trailers := map[string][]string{
+			constants.TrailerCommitStatusActivePrefix + "argocd-health-phase":            {"success"},
+			constants.TrailerCommitStatusActivePrefix + "argocd-health-url":              {"https://example.com"},
+			constants.TrailerCommitStatusActivePrefix + "argocd-health-description":      {`"healthy"`},
+			constants.TrailerCommitStatusProposedPrefix + "no-deployments-allowed-phase": {"pending"},
+		}
+		activeKeys, proposedKeys := getCommitStatusKeysFromTrailers(ctx, trailers)
+		Expect(activeKeys).To(ConsistOf("argocd-health"))
+		Expect(proposedKeys).To(ConsistOf("no-deployments-allowed"))
+	})
+
+	It("populates history commit status descriptions from JSON-encoded trailers", func() {
+		description := "Waiting for hydrator\nsecond line"
+		encoded, err := encodeTrailerDescription(description)
+		Expect(err).NotTo(HaveOccurred())
+
+		trailers := map[string][]string{
+			constants.TrailerCommitStatusActivePrefix + healthCheckCSKey + "-phase":       {"success"},
+			constants.TrailerCommitStatusActivePrefix + healthCheckCSKey + "-url":         {"https://example.com/check"},
+			constants.TrailerCommitStatusActivePrefix + healthCheckCSKey + "-description": {encoded},
+			constants.TrailerCommitStatusProposedPrefix + "gate-phase":                    {"pending"},
+			constants.TrailerCommitStatusProposedPrefix + "gate-description":              {`"proposed description"`},
+		}
+
+		history := promoterv1alpha1.History{}
+		(&ChangeTransferPolicyReconciler{}).populateCommitStatuses(ctx, &history, trailers)
+
+		Expect(history.Active.CommitStatuses).To(HaveLen(1))
+		Expect(history.Active.CommitStatuses[0].Key).To(Equal(healthCheckCSKey))
+		Expect(history.Active.CommitStatuses[0].Description).To(Equal(description))
+
+		Expect(history.Proposed.CommitStatuses).To(HaveLen(1))
+		Expect(history.Proposed.CommitStatuses[0].Key).To(Equal("gate"))
+		Expect(history.Proposed.CommitStatuses[0].Description).To(Equal("proposed description"))
+	})
+})

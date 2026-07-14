@@ -6730,6 +6730,8 @@ spec:
                 format: int64
                 type: integer
             type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true
@@ -6980,6 +6982,11 @@ spec:
               prCreationTime:
                 description: PRCreationTime the time the PR was created
                 format: date-time
+                type: string
+              scmSyncedSpecDigest:
+                description: |-
+                  SCMSyncedSpecDigest fingerprints title and description last successfully synced
+                  to the SCM via provider.Update on an open pull request.
                 type: string
               state:
                 description: State of the merge request closed/merged/open
@@ -8797,7 +8804,6 @@ rules:
   verbs:
   - get
   - list
-  - patch
   - update
   - watch
 - apiGroups:
@@ -8820,26 +8826,19 @@ rules:
   - promoter.argoproj.io
   resources:
   - argocdcommitstatuses
-  - changetransferpolicies
   - clusterscmproviders
-  - commitstatuses
   - controllerconfigurations
-  - dagcommitstatuses
   - gitcommitstatuses
   - gitrepositories
+  - previousenvironmentcommitstatuses
   - promotionstrategies
-  - pullrequests
   - revertcommits
   - scmproviders
   - timedcommitstatuses
   - webrequestcommitstatuses
   verbs:
-  - create
-  - delete
   - get
   - list
-  - patch
-  - update
   - watch
 - apiGroups:
   - promoter.argoproj.io
@@ -8847,15 +8846,12 @@ rules:
   - argocdcommitstatuses/finalizers
   - changetransferpolicies/finalizers
   - clusterscmproviders/finalizers
-  - commitstatuses/finalizers
-  - controllerconfigurations/finalizers
   - dagcommitstatuses/finalizers
   - gitcommitstatuses/finalizers
   - gitrepositories/finalizers
   - previousenvironmentcommitstatuses/finalizers
   - promotionstrategies/finalizers
   - pullrequests/finalizers
-  - revertcommits/finalizers
   - scmproviders/finalizers
   - timedcommitstatuses/finalizers
   - webrequestcommitstatuses/finalizers
@@ -8875,7 +8871,6 @@ rules:
   - previousenvironmentcommitstatuses/status
   - promotionstrategies/status
   - pullrequests/status
-  - revertcommits/status
   - scmproviders/status
   - timedcommitstatuses/status
   - webrequestcommitstatuses/status
@@ -8886,10 +8881,27 @@ rules:
 - apiGroups:
   - promoter.argoproj.io
   resources:
-  - previousenvironmentcommitstatuses
+  - changetransferpolicies
+  - pullrequests
   verbs:
+  - create
+  - delete
   - get
   - list
+  - patch
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - commitstatuses
+  - dagcommitstatuses
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
   - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -9324,7 +9336,7 @@ spec:
         - --upstream=http://127.0.0.1:8080/
         - --logtostderr=true
         - --v=0
-        image: quay.io/brancz/kube-rbac-proxy:v0.22.0
+        image: quay.io/brancz/kube-rbac-proxy:v0.22.1
         name: kube-rbac-proxy
         ports:
         - containerPort: 8443

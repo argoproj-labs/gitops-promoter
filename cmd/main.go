@@ -215,12 +215,13 @@ func runController(
 
 	processSignalsCtx := ctrl.SetupSignalHandler()
 
-	if err = (&controller.PullRequestReconciler{
+	prReconciler := &controller.PullRequestReconciler{
 		Client:      localManager.GetClient(),
 		Scheme:      localManager.GetScheme(),
 		Recorder:    localManager.GetEventRecorder("PullRequest"),
 		SettingsMgr: settingsMgr,
-	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+	}
+	if err = prReconciler.SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create PullRequest controller: %w", err))
 	}
 	if err = (&controller.RevertCommitReconciler{
@@ -238,6 +239,7 @@ func runController(
 		Scheme:      localManager.GetScheme(),
 		Recorder:    localManager.GetEventRecorder("ChangeTransferPolicy"),
 		SettingsMgr: settingsMgr,
+		EnqueuePR:   prReconciler.GetEnqueueFunc(),
 	}
 	if err = ctpReconciler.SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ChangeTransferPolicy controller: %w", err))

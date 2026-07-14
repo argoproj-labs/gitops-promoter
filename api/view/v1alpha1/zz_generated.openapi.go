@@ -3951,6 +3951,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategy(ref com
 						},
 					},
 				},
+				Required: []string{"spec"},
 			},
 		},
 		Dependencies: []string{
@@ -4486,6 +4487,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestStatus(ref com
 						SchemaProps: spec.SchemaProps{
 							Description: "ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the resource still desired it open (spec.state is \"open\"): either it was merged or closed outside the controller, or it was closed on the SCM because the PullRequest resource was deleted (finalizer) and a subsequent sync observed it missing. The controller does not distinguish those cases here. When true, the State field will be empty (\"\") since we cannot tell merge vs. close from the provider. The PullRequest resource will be deleted after this flag is set when possible, but the status is preserved in the owning ChangeTransferPolicy to maintain a record.",
 							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
+					"scmSyncedSpecDigest": {
+						SchemaProps: spec.SchemaProps{
+							Description: "SCMSyncedSpecDigest fingerprints title and description last successfully synced to the SCM via provider.Update on an open pull request.",
+							Type:        []string{"string"},
 							Format:      "",
 						},
 					},

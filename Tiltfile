@@ -8,12 +8,33 @@ load('ext://restart_process', 'docker_build_with_restart')
 # Local Development (Dashboard runs locally with hot reload)
 # =============================================================================
 
+# Shared npm installs must not run in parallel (dashboard + extension both use components-lib).
+local_resource(
+    'install-ui-deps',
+    cmd='make install-ui-deps',
+    deps=[
+        'ui/shared/package.json',
+        'ui/shared/package-lock.json',
+        'ui/components-lib/package.json',
+        'ui/components-lib/package-lock.json',
+    ],
+    ignore=['**/node_modules', '**/dist'],
+    labels=['build'],
+)
+
 # Build the dashboard UI (runs on UI source changes)
 local_resource(
     'build-dashboard',
-    cmd='make build-dashboard',
-    deps=['ui/dashboard/src', 'ui/components-lib/src', 'ui/shared/src'],
+    cmd='make build-dashboard-ui',
+    deps=[
+        'ui/dashboard/src',
+        'ui/dashboard/package.json',
+        'ui/dashboard/package-lock.json',
+        'ui/components-lib/src',
+        'ui/shared/src',
+    ],
     ignore=['**/node_modules', '**/dist'],
+    resource_deps=['install-ui-deps'],
     allow_parallel=True,
     labels=['build'],
 )
@@ -31,9 +52,16 @@ local_resource(
 # Build extension (optional, for ArgoCD extension development)
 local_resource(
     'build-extension',
-    cmd='make build-extension',
-    deps=['ui/extension/src', 'ui/components-lib/src'],
+    cmd='make build-extension-ui',
+    deps=[
+        'ui/extension/src',
+        'ui/extension/package.json',
+        'ui/extension/package-lock.json',
+        'ui/components-lib/src',
+        'ui/shared/src',
+    ],
     ignore=['**/node_modules', '**/dist'],
+    resource_deps=['install-ui-deps'],
     labels=['build'],
     allow_parallel=True,
 )

@@ -78,7 +78,8 @@ func ensureSecretFinalizerForProvider(
 			return nil
 		}
 		if controllerutil.AddFinalizer(&secret, finalizer) {
-			return c.Update(ctx, &secret)
+			// Core Secrets have no /finalizers subresource; update metadata.finalizers via the main resource.
+			return c.Update(ctx, &secret) //nolint:wrapcheck // RetryOnConflict returns wrapped error
 		}
 		return nil
 	})
@@ -131,7 +132,7 @@ func removeSecretFinalizerForProvider(
 			return err //nolint:wrapcheck // error will be wrapped by caller
 		}
 		if controllerutil.RemoveFinalizer(&secret, finalizer) {
-			return c.Update(ctx, &secret)
+			return c.Update(ctx, &secret) //nolint:wrapcheck // RetryOnConflict returns wrapped error
 		}
 		return nil
 	})
@@ -166,7 +167,8 @@ func handleResourceFinalizerWithDependencies(
 				return err //nolint:wrapcheck // error will be wrapped by caller
 			}
 			if controllerutil.AddFinalizer(obj, finalizer) {
-				return c.Update(ctx, obj)
+				// CRDs have no /finalizers API subresource; update metadata.finalizers via the main resource.
+				return c.Update(ctx, obj) //nolint:wrapcheck // RetryOnConflict returns wrapped error
 			}
 			return nil
 		})
@@ -215,7 +217,7 @@ func handleResourceFinalizerWithDependencies(
 			return err //nolint:wrapcheck // error will be wrapped by caller
 		}
 		if controllerutil.RemoveFinalizer(obj, finalizer) {
-			return c.Update(ctx, obj)
+			return c.Update(ctx, obj) //nolint:wrapcheck // error will be wrapped by caller
 		}
 		return nil
 	})

@@ -19,7 +19,6 @@ rules:
   verbs:
   - get
   - list
-  - patch
   - update
   - watch
 - apiGroups:
@@ -42,26 +41,19 @@ rules:
   - promoter.argoproj.io
   resources:
   - argocdcommitstatuses
-  - changetransferpolicies
   - clusterscmproviders
-  - commitstatuses
   - controllerconfigurations
-  - dagcommitstatuses
   - gitcommitstatuses
   - gitrepositories
+  - previousenvironmentcommitstatuses
   - promotionstrategies
-  - pullrequests
   - revertcommits
   - scmproviders
   - timedcommitstatuses
   - webrequestcommitstatuses
   verbs:
-  - create
-  - delete
   - get
   - list
-  - patch
-  - update
   - watch
 - apiGroups:
   - promoter.argoproj.io
@@ -69,15 +61,12 @@ rules:
   - argocdcommitstatuses/finalizers
   - changetransferpolicies/finalizers
   - clusterscmproviders/finalizers
-  - commitstatuses/finalizers
-  - controllerconfigurations/finalizers
   - dagcommitstatuses/finalizers
   - gitcommitstatuses/finalizers
   - gitrepositories/finalizers
   - previousenvironmentcommitstatuses/finalizers
   - promotionstrategies/finalizers
   - pullrequests/finalizers
-  - revertcommits/finalizers
   - scmproviders/finalizers
   - timedcommitstatuses/finalizers
   - webrequestcommitstatuses/finalizers
@@ -97,7 +86,6 @@ rules:
   - previousenvironmentcommitstatuses/status
   - promotionstrategies/status
   - pullrequests/status
-  - revertcommits/status
   - scmproviders/status
   - timedcommitstatuses/status
   - webrequestcommitstatuses/status
@@ -108,8 +96,25 @@ rules:
 - apiGroups:
   - promoter.argoproj.io
   resources:
-  - previousenvironmentcommitstatuses
+  - changetransferpolicies
+  - pullrequests
   verbs:
+  - create
+  - delete
   - get
   - list
+  - patch
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - commitstatuses
+  - dagcommitstatuses
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
   - watch
