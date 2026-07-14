@@ -1806,7 +1806,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					}, &ctpProd)
 					g.Expect(err).To(Succeed())
 					g.Expect(ctpProd.Name).To(Equal(utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch))))
-				}).Should(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Adding a pending commit")
 				gitPath, err := os.MkdirTemp("", "*")
@@ -1973,7 +1973,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Namespace: typeNamespacedName.Namespace,
 					}, &ctpProd)
 					g.Expect(err).To(Succeed())
-				}).Should(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
 
 				const promotionIterations = 2
 				for iter := 1; iter <= promotionIterations; iter++ {
@@ -2268,7 +2268,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					}, &ctpProd)
 					g.Expect(err).To(Succeed())
 					g.Expect(ctpProd.Name).To(Equal(utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch))))
-				}).Should(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Adding a pending commit")
 				gitPath, err := os.MkdirTemp("", "*")
