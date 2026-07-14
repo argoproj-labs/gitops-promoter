@@ -56,6 +56,8 @@ func newFakeClientBuilder() *fake.ClientBuilder {
 	b := fake.NewClientBuilder().WithScheme(utils.GetScheme())
 	for _, obj := range []client.Object{
 		&promoterv1alpha1.ArgoCDCommitStatus{},
+		&promoterv1alpha1.DAGCommitStatus{},
+		&promoterv1alpha1.PreviousEnvironmentCommitStatus{},
 		&promoterv1alpha1.GitCommitStatus{},
 		&promoterv1alpha1.TimedCommitStatus{},
 		&promoterv1alpha1.WebRequestCommitStatus{},

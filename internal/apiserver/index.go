@@ -118,6 +118,8 @@ func (p *BundleProvider) childKinds() []client.Object {
 		&promoterv1alpha1.GitCommitStatus{},
 		&promoterv1alpha1.TimedCommitStatus{},
 		&promoterv1alpha1.WebRequestCommitStatus{},
+		&promoterv1alpha1.DAGCommitStatus{},
+		&promoterv1alpha1.PreviousEnvironmentCommitStatus{},
 		&promoterv1alpha1.GitRepository{},
 		&promoterv1alpha1.ScmProvider{},
 		&promoterv1alpha1.ClusterScmProvider{},
@@ -255,6 +257,10 @@ func (p *BundleProvider) mapObjectToPromotionStrategies(ctx context.Context, obj
 	case *promoterv1alpha1.TimedCommitStatus:
 		return keyFromRef(o.Namespace, o.Spec.PromotionStrategyRef.Name)
 	case *promoterv1alpha1.WebRequestCommitStatus:
+		return keyFromRef(o.Namespace, o.Spec.PromotionStrategyRef.Name)
+	case *promoterv1alpha1.DAGCommitStatus:
+		return keyFromRef(o.Namespace, o.Spec.PromotionStrategyRef.Name)
+	case *promoterv1alpha1.PreviousEnvironmentCommitStatus:
 		return keyFromRef(o.Namespace, o.Spec.PromotionStrategyRef.Name)
 	case *promoterv1alpha1.GitRepository:
 		return p.keysReferencingGitRepository(ctx, o.Namespace, o.Name)

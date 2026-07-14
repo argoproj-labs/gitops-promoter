@@ -36,6 +36,8 @@ func PromotionStrategyRefIndexValues(rawObj client.Object) []string {
 		return []string{o.Spec.PromotionStrategyRef.Name}
 	case *promoterv1alpha1.DAGCommitStatus:
 		return []string{o.Spec.PromotionStrategyRef.Name}
+	case *promoterv1alpha1.PreviousEnvironmentCommitStatus:
+		return []string{o.Spec.PromotionStrategyRef.Name}
 	case *promoterv1alpha1.GitCommitStatus:
 		return []string{o.Spec.PromotionStrategyRef.Name}
 	case *promoterv1alpha1.TimedCommitStatus:
@@ -53,6 +55,7 @@ func RegisterGatePromotionStrategyRefFieldIndexes(ctx context.Context, indexer c
 	gateKinds := []client.Object{
 		&promoterv1alpha1.ArgoCDCommitStatus{},
 		&promoterv1alpha1.DAGCommitStatus{},
+		&promoterv1alpha1.PreviousEnvironmentCommitStatus{},
 		&promoterv1alpha1.GitCommitStatus{},
 		&promoterv1alpha1.TimedCommitStatus{},
 		&promoterv1alpha1.WebRequestCommitStatus{},

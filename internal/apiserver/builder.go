@@ -129,6 +129,18 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 	}
 	bundle.WebRequestCommitStatuses = nilIfEmpty(webReqCSList.Items)
 
+	dagCSList := &promoterv1alpha1.DAGCommitStatusList{}
+	if err := reader.List(ctx, dagCSList, client.InNamespace(namespace), client.MatchingFields{controller.PromotionStrategyRefField: name}); err != nil {
+		return nil, fmt.Errorf("failed to list DAGCommitStatuses: %w", err)
+	}
+	bundle.DAGCommitStatuses = nilIfEmpty(dagCSList.Items)
+
+	prevEnvCSList := &promoterv1alpha1.PreviousEnvironmentCommitStatusList{}
+	if err := reader.List(ctx, prevEnvCSList, client.InNamespace(namespace), client.MatchingFields{controller.PromotionStrategyRefField: name}); err != nil {
+		return nil, fmt.Errorf("failed to list PreviousEnvironmentCommitStatuses: %w", err)
+	}
+	bundle.PreviousEnvironmentCommitStatuses = nilIfEmpty(prevEnvCSList.Items)
+
 	// Git config: GitRepository -> ScmProvider / ClusterScmProvider.
 	// The credentials Secret referenced by the provider is intentionally never read.
 	if err := attachGitConfig(ctx, reader, namespace, ps, bundle); err != nil {

@@ -63,6 +63,12 @@ type PromotionStrategyDetails struct {
 	// WebRequestCommitStatuses are the WebRequestCommitStatus managers that reference the PromotionStrategy.
 	WebRequestCommitStatuses []promoterv1alpha1.WebRequestCommitStatus `json:"webRequestCommitStatuses,omitempty"`
 
+	// DAGCommitStatuses are the DAGCommitStatus managers that reference the PromotionStrategy.
+	DAGCommitStatuses []promoterv1alpha1.DAGCommitStatus `json:"dagCommitStatuses,omitempty"`
+
+	// PreviousEnvironmentCommitStatuses are the PreviousEnvironmentCommitStatus managers that reference the PromotionStrategy.
+	PreviousEnvironmentCommitStatuses []promoterv1alpha1.PreviousEnvironmentCommitStatus `json:"previousEnvironmentCommitStatuses,omitempty"`
+
 	// GitRepository is the GitRepository referenced by the PromotionStrategy, if resolvable.
 	GitRepository *promoterv1alpha1.GitRepository `json:"gitRepository,omitempty"`
 
