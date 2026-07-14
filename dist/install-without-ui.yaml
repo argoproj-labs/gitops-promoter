@@ -7964,13 +7964,10 @@ rules:
   - promoter.argoproj.io
   resources:
   - argocdcommitstatuses
-  - clusterscmproviders
   - controllerconfigurations
   - gitcommitstatuses
-  - gitrepositories
   - promotionstrategies
   - revertcommits
-  - scmproviders
   - timedcommitstatuses
   - webrequestcommitstatuses
   verbs:
@@ -8015,8 +8012,30 @@ rules:
   - promoter.argoproj.io
   resources:
   - changetransferpolicies
-  - commitstatuses
   - pullrequests
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - clusterscmproviders
+  - gitrepositories
+  - scmproviders
+  verbs:
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - commitstatuses
   verbs:
   - create
   - delete
