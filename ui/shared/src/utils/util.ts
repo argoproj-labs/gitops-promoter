@@ -71,7 +71,7 @@ export function formatDate(date?: Rfc3339DateTime): string {
 // Get the last commit time from a PromotionStrategy
 export function getLastCommitTime(ps: PromotionStrategy): Date | null {
   const commitTimes = (
-    ps.status?.environments.flatMap((env) => [
+    ps.status?.environments?.flatMap((env) => [
       env.active.dry?.commitTime,
       env.active.hydrated?.commitTime,
       env.proposed.dry?.commitTime,
