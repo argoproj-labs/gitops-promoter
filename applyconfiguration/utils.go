@@ -153,6 +153,10 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.OutputSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PollingModeSpec"):
 		return &apiv1alpha1.PollingModeSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("PreviousEnvironmentCommitStatusConfig"):
+		return &apiv1alpha1.PreviousEnvironmentCommitStatusConfigApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("PreviousEnvironmentURLConfig"):
+		return &apiv1alpha1.PreviousEnvironmentURLConfigApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PromotionStrategy"):
 		return &apiv1alpha1.PromotionStrategyApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PromotionStrategyConfiguration"):

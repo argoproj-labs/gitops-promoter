@@ -67,6 +67,40 @@ type PromotionStrategySpec struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MinLength=1
 	ActivePath string `json:"activePath,omitempty"`
+
+	// PreviousEnvironmentCommitStatus configures the auto-generated
+	// "promoter-previous-environment" commit status, which aggregates the active commit
+	// statuses of the preceding environment.
+	// +kubebuilder:validation:Optional
+	PreviousEnvironmentCommitStatus PreviousEnvironmentCommitStatusConfig `json:"previousEnvironmentCommitStatus,omitempty"`
+}
+
+// PreviousEnvironmentCommitStatusConfig configures the previous-environment commit status.
+type PreviousEnvironmentCommitStatusConfig struct {
+	// URL generates the URL to use in the previous-environment CommitStatus, for example a
+	// deep link to a promoter UI. If the template is empty, the URL of the single aggregated
+	// status is used when there is exactly one; otherwise no URL is set.
+	// +kubebuilder:validation:Optional
+	URL PreviousEnvironmentURLConfig `json:"url,omitempty"`
+}
+
+// PreviousEnvironmentURLConfig is a Go text/template rendered to produce the commit status URL.
+type PreviousEnvironmentURLConfig struct {
+	// Template is a go text template and receives .PromotionStrategy, .PreviousEnvironmentBranch,
+	// .Sha, and .AggregatedStatuses variables. A function called urlQueryEscape is available to
+	// escape url query parameters.
+	//
+	// Example:
+	//
+	//   {{ printf "https://argocd.example.com/applications/%s/%s?view=GitOps+Promoter&promotionstrategy=%s" .PromotionStrategy.Namespace .PromotionStrategy.Name (urlQueryEscape (printf "%s/%s" .PromotionStrategy.Namespace .PromotionStrategy.Name)) }}
+	//
+	// +kubebuilder:validation:Optional
+	Template string `json:"template,omitempty"`
+
+	// Options sets options for the template, e.g. "missingkey=error". See the text/template
+	// documentation for the full list of options.
+	// +kubebuilder:validation:Optional
+	Options []string `json:"options,omitempty"`
 }
 
 // Environment defines a single environment in the promotion sequence.

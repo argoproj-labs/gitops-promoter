@@ -139,9 +139,83 @@ is acceptable because the previous environment is healthy.
 Since the previous environment CommitStatus aggregates the active commit status checks of the previous environment, it
 is nontrivial to determine what URL to use for the aggregate CommitStatus.
 
-For now, the previous environment CommitStatus will only be set if there is only one active commit status. Its URL will
-be set to the URL of the previous environment's active commit status. If there are multiple active commit statuses, no
-URL will be set. This behavior may change in the future.
+When no URL template is configured, the previous environment CommitStatus URL falls back to the URL of the previous
+environment's single active commit status if there is exactly one. If there are multiple (or zero) active commit
+statuses, no URL will be set.
+
+To take control of this URL, for example to link to an Argo CD instance or a dashboard scoped to the previous
+environment, set the `spec.previousEnvironmentCommitStatus.url.template` field on the PromotionStrategy. This mirrors
+the [ArgoCDCommitStatus URL template](built-in-gates/argocd-commit-status.md#commit-status-url-template). The template
+uses [Go templates](https://pkg.go.dev/text/template) syntax and most [Sprig](https://masterminds.github.io/sprig/)
+functions (excluding `env`, `expandenv` and `getHostByName`) are supported, as well as an additional
+[`urlQueryEscape`](https://pkg.go.dev/net/url#QueryEscape) function for escaping url query parameters. When a template is
+set, its rendered value overrides the single-active-commit-status fallback described above.
+
+> [!IMPORTANT]
+> The rendered URL must use a scheme of either 'http' or 'https'
+
+##### Template Variables
+
+The template receives a `PreviousEnvironmentURLTemplateData` value with the following fields:
+
+- `.PromotionStrategy` - holds the whole [PromotionStrategy CR](../crd-specs.md#promotionstrategy) in its current state.
+- `.PreviousEnvironmentBranch` - string holding the previous environment's branch name.
+- `.Sha` - string holding the previous environment's active hydrated commit SHA.
+- `.AggregatedStatuses` - a slice of the previous environment's aggregated commit-status phases. Each element (a
+  `ChangeRequestPolicyCommitStatusPhase`) exposes `.Key`, `.Phase`, `.Url` and `.Description`.
+
+##### Template Options
+
+Template options can be configured for how missing variables are handled via `spec.previousEnvironmentCommitStatus.url.options`.
+Can be one of:
+
+- `missingkey=default` or `missingkey=invalid` - The default behavior: Do nothing and continue execution. If printed, the result of the index operation is the string "<no value>".
+- `missingkey=zero` - The operation returns the zero value for the map type's element.
+- `missingkey=error` - Execution stops immediately with an error.
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PromotionStrategy
+metadata:
+  name: argocon-demo
+spec:
+  previousEnvironmentCommitStatus:
+    url:
+      template: https://argocd.example.com/applications?view=GitOps+Promoter
+      options:
+        - missingkey=zero
+```
+
+##### Examples
+
+Simple url
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PromotionStrategy
+metadata:
+  name: argocon-demo
+spec:
+  previousEnvironmentCommitStatus:
+    url:
+      template: https://argocd.example.com/applications?view=GitOps+Promoter
+```
+
+Deep link to the Argo CD Application backing the PromotionStrategy, scoped to the GitOps Promoter view
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PromotionStrategy
+metadata:
+  name: argocon-demo
+spec:
+  previousEnvironmentCommitStatus:
+    url:
+      template: >-
+        https://argocd.example.com/applications/{{ .PromotionStrategy.Namespace }}/{{ .PromotionStrategy.Name }}?view=GitOps+Promoter&promotionstrategy={{ urlQueryEscape (printf "%s/%s" .PromotionStrategy.Namespace .PromotionStrategy.Name) }}
+      options:
+        - missingkey=error
+```
 
 ## Built-In Gates
 

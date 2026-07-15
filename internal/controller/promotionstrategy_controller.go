@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	neturl "net/url"
 	"path"
 	"reflect"
 	"sync"
@@ -581,7 +582,44 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 	}
 }
 
-func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, pendingReason string, previousEnvironmentBranch string, previousCRPCSPhases []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) (*promoterv1alpha1.CommitStatus, error) {
+// PreviousEnvironmentURLTemplateData is the data passed to the previous-environment URL template.
+type PreviousEnvironmentURLTemplateData struct {
+	PromotionStrategy         promoterv1alpha1.PromotionStrategy
+	PreviousEnvironmentBranch string
+	Sha                       string
+	AggregatedStatuses        []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase
+}
+
+// resolvePreviousEnvironmentURL determines the URL for the previous-environment commit status.
+// When a URL template is configured, it is rendered against data and the result must parse to an
+// http or https URL. When no template is configured, it falls back to the URL of the single
+// aggregated commit status if there is exactly one, otherwise the empty string.
+func resolvePreviousEnvironmentURL(urlConfig promoterv1alpha1.PreviousEnvironmentURLConfig, data PreviousEnvironmentURLTemplateData, previousCRPCSPhases []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) (string, error) {
+	if urlConfig.Template == "" {
+		// If there is only one commit status, use the URL from that commit status.
+		if len(previousCRPCSPhases) == 1 {
+			return previousCRPCSPhases[0].Url, nil
+		}
+		return "", nil
+	}
+
+	renderedURL, err := utils.RenderStringTemplate(urlConfig.Template, data, urlConfig.Options...)
+	if err != nil {
+		return "", fmt.Errorf("failed to render previous environment URL template: %w", err)
+	}
+
+	parsedURL, err := neturl.Parse(renderedURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse rendered previous environment URL %q: %w", renderedURL, err)
+	}
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return "", fmt.Errorf("rendered previous environment URL scheme is not http or https: %s", parsedURL.Scheme)
+	}
+
+	return renderedURL, nil
+}
+
+func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, pendingReason string, previousEnvironmentBranch string, previousEnvironmentSha string, previousCRPCSPhases []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) (*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
 
 	// TODO: do we like this name proposed-<name>?
@@ -590,10 +628,18 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 	kind := reflect.TypeFor[promoterv1alpha1.ChangeTransferPolicy]().Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
-	// If there is only one commit status, use the URL from that commit status.
-	var url string
-	if len(previousCRPCSPhases) == 1 {
-		url = previousCRPCSPhases[0].Url
+	url, err := resolvePreviousEnvironmentURL(
+		ps.Spec.PreviousEnvironmentCommitStatus.URL,
+		PreviousEnvironmentURLTemplateData{
+			PromotionStrategy:         *ps,
+			PreviousEnvironmentBranch: previousEnvironmentBranch,
+			Sha:                       previousEnvironmentSha,
+			AggregatedStatuses:        previousCRPCSPhases,
+		},
+		previousCRPCSPhases,
+	)
+	if err != nil {
+		return nil, err
 	}
 
 	statusMap := make(map[string]string)
@@ -726,7 +772,7 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 
 		// Since there is at least one configured active check, and since this is not the first environment,
 		// we should not create a commit status for the previous environment.
-		cs, err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctp, commitStatusPhase, pendingReason, previousEnvironmentStatus.Branch, ctps[i-1].Status.Active.CommitStatuses)
+		cs, err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ps, ctp, commitStatusPhase, pendingReason, previousEnvironmentStatus.Branch, previousEnvironmentStatus.Active.Hydrated.Sha, ctps[i-1].Status.Active.CommitStatuses)
 		if err != nil {
 			return fmt.Errorf("failed to create or update previous environment commit status for branch %s: %w", ctp.Spec.ActiveBranch, err)
 		}

@@ -45,6 +45,10 @@ type PromotionStrategySpecApplyConfiguration struct {
 	// When set, proposed branches are created as <environment-branch>-next/<activePath>.
 	// Individual environments can override this value via their own activePath field.
 	ActivePath *string `json:"activePath,omitempty"`
+	// PreviousEnvironmentCommitStatus configures the auto-generated
+	// "promoter-previous-environment" commit status, which aggregates the active commit
+	// statuses of the preceding environment.
+	PreviousEnvironmentCommitStatus *PreviousEnvironmentCommitStatusConfigApplyConfiguration `json:"previousEnvironmentCommitStatus,omitempty"`
 }
 
 // PromotionStrategySpecApplyConfiguration constructs a declarative configuration of the PromotionStrategySpec type for use with
@@ -105,5 +109,13 @@ func (b *PromotionStrategySpecApplyConfiguration) WithEnvironments(values ...*En
 // If called multiple times, the ActivePath field is set to the value of the last call.
 func (b *PromotionStrategySpecApplyConfiguration) WithActivePath(value string) *PromotionStrategySpecApplyConfiguration {
 	b.ActivePath = &value
+	return b
+}
+
+// WithPreviousEnvironmentCommitStatus sets the PreviousEnvironmentCommitStatus field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the PreviousEnvironmentCommitStatus field is set to the value of the last call.
+func (b *PromotionStrategySpecApplyConfiguration) WithPreviousEnvironmentCommitStatus(value *PreviousEnvironmentCommitStatusConfigApplyConfiguration) *PromotionStrategySpecApplyConfiguration {
+	b.PreviousEnvironmentCommitStatus = value
 	return b
 }
