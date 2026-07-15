@@ -49,7 +49,7 @@ type ClusterScmProviderReconciler struct {
 	SettingsMgr *settings.Manager
 }
 
-// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=clusterscmproviders,verbs=get;list;watch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=clusterscmproviders,verbs=get;list;watch;update
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=clusterscmproviders/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=clusterscmproviders/finalizers,verbs=update
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=gitrepositories,verbs=get;list;watch
