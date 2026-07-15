@@ -4108,6 +4108,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestStatus(ref com
 							Format:      "",
 						},
 					},
+					"scmSyncedSpecDigest": {
+						SchemaProps: spec.SchemaProps{
+							Description: "SCMSyncedSpecDigest fingerprints title and description last successfully synced to the SCM via provider.Update on an open pull request.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 					"conditions": {
 						VendorExtensible: spec.VendorExtensible{
 							Extensions: spec.Extensions{
