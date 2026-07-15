@@ -3,6 +3,7 @@ package instanceid
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -14,7 +15,11 @@ import (
 
 const controllerConfigurationName = "promoter-controller-configuration"
 
+// mu guards controllerInstanceID and bootstrapped. In production the only write happens at
+// startup before the manager starts, but tests swap the cached value while reconciler
+// goroutines from a running manager read it concurrently.
 var (
+	mu                   sync.RWMutex
 	controllerInstanceID *string
 	bootstrapped         bool
 )
@@ -23,7 +28,10 @@ var (
 // (rest.Config, not informer) and caches it for the process lifetime. Subsequent calls are
 // no-ops that return the cached value. Must be called before any consumer needs ControllerInstanceID.
 func BootstrapControllerInstanceID(ctx context.Context, cfg *rest.Config, namespace string) error {
-	if bootstrapped {
+	mu.RLock()
+	already := bootstrapped
+	mu.RUnlock()
+	if already {
 		return nil
 	}
 	id, err := readInstanceIDFromAPI(ctx, cfg, namespace)
@@ -57,6 +65,8 @@ func readInstanceIDFromAPI(ctx context.Context, cfg *rest.Config, namespace stri
 // ControllerInstanceID returns the value set by BootstrapControllerInstanceID.
 // Returns nil when spec.instanceID is unset. Panics if bootstrap was not called.
 func ControllerInstanceID() *string {
+	mu.RLock()
+	defer mu.RUnlock()
 	if !bootstrapped {
 		panic("instanceid.ControllerInstanceID called before instanceid.BootstrapControllerInstanceID")
 	}
@@ -64,17 +74,34 @@ func ControllerInstanceID() *string {
 }
 
 func setControllerInstanceID(id *string) {
+	mu.Lock()
+	defer mu.Unlock()
 	controllerInstanceID = id
 	bootstrapped = true
 }
 
-// SetControllerInstanceIDForTest sets the cached controller instance ID for tests.
-func SetControllerInstanceIDForTest(id *string) {
-	setControllerInstanceID(id)
+// SetControllerInstanceIDForTest sets the cached controller instance ID for tests. It returns a
+// restore function that reinstates the previous cached state; tests that share the process with
+// a running manager (whose reconcilers read ControllerInstanceID) must call it when done so the
+// swapped value does not leak into other specs.
+func SetControllerInstanceIDForTest(id *string) (restore func()) {
+	mu.Lock()
+	prevID, prevBootstrapped := controllerInstanceID, bootstrapped
+	controllerInstanceID = id
+	bootstrapped = true
+	mu.Unlock()
+	return func() {
+		mu.Lock()
+		defer mu.Unlock()
+		controllerInstanceID = prevID
+		bootstrapped = prevBootstrapped
+	}
 }
 
 // ResetControllerInstanceIDForTest clears the bootstrap cache between tests.
 func ResetControllerInstanceIDForTest() {
+	mu.Lock()
+	defer mu.Unlock()
 	controllerInstanceID = nil
 	bootstrapped = false
 }

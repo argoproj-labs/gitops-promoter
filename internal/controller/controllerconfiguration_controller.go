@@ -52,7 +52,6 @@ type ControllerConfigurationReconciler struct {
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=controllerconfigurations,resourceNames=promoter-controller-configuration,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=controllerconfigurations/status,resourceNames=promoter-controller-configuration,verbs=get;update;patch
 
-
 // Reconcile detects spec.instanceID drift from the startup bootstrap value and shuts down the
 // controller so the informer cache partition is rebuilt on restart.
 func (r *ControllerConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
