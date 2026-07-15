@@ -41,14 +41,11 @@ rules:
   - promoter.argoproj.io
   resources:
   - argocdcommitstatuses
-  - clusterscmproviders
   - controllerconfigurations
   - gitcommitstatuses
-  - gitrepositories
   - previousenvironmentcommitstatuses
   - promotionstrategies
   - revertcommits
-  - scmproviders
   - timedcommitstatuses
   - webrequestcommitstatuses
   verbs:
@@ -97,6 +94,8 @@ rules:
   - promoter.argoproj.io
   resources:
   - changetransferpolicies
+  - commitstatuses
+  - dagcommitstatuses
   - pullrequests
   verbs:
   - create
@@ -104,17 +103,16 @@ rules:
   - get
   - list
   - patch
+  - update
   - watch
 - apiGroups:
   - promoter.argoproj.io
   resources:
-  - commitstatuses
-  - dagcommitstatuses
+  - clusterscmproviders
+  - gitrepositories
+  - scmproviders
   verbs:
-  - create
-  - delete
   - get
   - list
-  - patch
   - update
   - watch
