@@ -62,7 +62,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 		})
 	})
 
-	Context("When reconciling a resource with no commit statuses", func() {
+	Context("When reconciling a resource with only the ordering gate configured", func() {
 		Context("When git repo is not initialized", func() {
 			var name string
 			var promotionStrategy *promoterv1alpha1.PromotionStrategy
@@ -221,8 +221,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Active.CommitStatuses)).To(BeTrue())
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Sha).To(Equal(ctpDev.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Sha).To(Equal(ctpDev.Status.Proposed.Hydrated.Sha))
-					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(proposedStatusesIgnoringOrderingGate(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses))).To(BeTrue())
+					// The proposed environment has no in-flight change (active and proposed dry SHAs match),
+					// so the previous-environment gate was never evaluated by the DAG controller; the
+					// ChangeTransferPolicy reports the placeholder pending status for the undeclared CommitStatus.
+					g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses).To(Equal(
+						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+							{
+								Key:         promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+								Phase:       string(promoterv1alpha1.CommitPhasePending),
+								Description: "Waiting for status to be reported",
+							},
+						},
+					))
 
 					// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
 					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testBranchStaging))
@@ -232,8 +242,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Active.CommitStatuses)).To(BeTrue())
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.Dry.Sha).To(Equal(ctpStaging.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.Hydrated.Sha).To(Equal(ctpStaging.Status.Proposed.Hydrated.Sha))
-					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(proposedStatusesIgnoringOrderingGate(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses))).To(BeTrue())
+					// The proposed environment has no in-flight change (active and proposed dry SHAs match),
+					// so the previous-environment gate was never evaluated by the DAG controller; the
+					// ChangeTransferPolicy reports the placeholder pending status for the undeclared CommitStatus.
+					g.Expect(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses).To(Equal(
+						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+							{
+								Key:         promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+								Phase:       string(promoterv1alpha1.CommitPhasePending),
+								Description: "Waiting for status to be reported",
+							},
+						},
+					))
 
 					// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
 					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testBranchProduction))
@@ -243,8 +263,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[2].Active.CommitStatuses)).To(BeTrue())
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.Dry.Sha).To(Equal(ctpProd.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.Hydrated.Sha).To(Equal(ctpProd.Status.Proposed.Hydrated.Sha))
-					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(proposedStatusesIgnoringOrderingGate(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses))).To(BeTrue())
+					// The proposed environment has no in-flight change (active and proposed dry SHAs match),
+					// so the previous-environment gate was never evaluated by the DAG controller; the
+					// ChangeTransferPolicy reports the placeholder pending status for the undeclared CommitStatus.
+					g.Expect(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses).To(Equal(
+						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+							{
+								Key:         promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+								Phase:       string(promoterv1alpha1.CommitPhasePending),
+								Description: "Waiting for status to be reported",
+							},
+						},
+					))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Adding a pending commit")
@@ -497,8 +527,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Active.CommitStatuses)).To(BeTrue())
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Sha).To(Equal(ctpDev.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Sha).To(Equal(ctpDev.Status.Proposed.Hydrated.Sha))
-					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(proposedStatusesIgnoringOrderingGate(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses))).To(BeTrue())
+					// The proposed environment has no in-flight change (active and proposed dry SHAs match),
+					// so the previous-environment gate was never evaluated by the DAG controller; the
+					// ChangeTransferPolicy reports the placeholder pending status for the undeclared CommitStatus.
+					g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses).To(Equal(
+						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+							{
+								Key:         promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+								Phase:       string(promoterv1alpha1.CommitPhasePending),
+								Description: "Waiting for status to be reported",
+							},
+						},
+					))
 
 					// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
 					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testBranchStaging))
@@ -508,8 +548,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Active.CommitStatuses)).To(BeTrue())
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.Dry.Sha).To(Equal(ctpStaging.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.Hydrated.Sha).To(Equal(ctpStaging.Status.Proposed.Hydrated.Sha))
-					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(proposedStatusesIgnoringOrderingGate(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses))).To(BeTrue())
+					// The proposed environment has no in-flight change (active and proposed dry SHAs match),
+					// so the previous-environment gate was never evaluated by the DAG controller; the
+					// ChangeTransferPolicy reports the placeholder pending status for the undeclared CommitStatus.
+					g.Expect(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses).To(Equal(
+						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+							{
+								Key:         promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+								Phase:       string(promoterv1alpha1.CommitPhasePending),
+								Description: "Waiting for status to be reported",
+							},
+						},
+					))
 
 					// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
 					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testBranchProduction))
@@ -519,8 +569,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[2].Active.CommitStatuses)).To(BeTrue())
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.Dry.Sha).To(Equal(ctpProd.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.Hydrated.Sha).To(Equal(ctpProd.Status.Proposed.Hydrated.Sha))
-					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(proposedStatusesIgnoringOrderingGate(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses))).To(BeTrue())
+					// The proposed environment has no in-flight change (active and proposed dry SHAs match),
+					// so the previous-environment gate was never evaluated by the DAG controller; the
+					// ChangeTransferPolicy reports the placeholder pending status for the undeclared CommitStatus.
+					g.Expect(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses).To(Equal(
+						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+							{
+								Key:         promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+								Phase:       string(promoterv1alpha1.CommitPhasePending),
+								Description: "Waiting for status to be reported",
+							},
+						},
+					))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Adding a pending commit")
@@ -681,8 +741,19 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Active.CommitStatuses)).To(BeTrue())
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Sha).To(Equal(ctpDev.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Sha).To(Equal(ctpDev.Status.Proposed.Hydrated.Sha))
-					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(proposedStatusesIgnoringOrderingGate(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses))).To(BeTrue())
+					// The previous-environment gate reflects the last time it was evaluated: environment/development once had an
+					// in-flight change, and the DAG controller recorded success for all upstreams before active caught
+					// up to proposed. The controller no longer re-evaluates a no-op environment, so this stale-but-real
+					// success record is what the ChangeTransferPolicy reports.
+					g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses).To(Equal(
+						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+							{
+								Key:         promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+								Phase:       string(promoterv1alpha1.CommitPhaseSuccess),
+								Description: "environment/development - all upstream environments promoted and healthy",
+							},
+						},
+					))
 
 					// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
 					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testBranchStaging))
@@ -692,8 +763,19 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Active.CommitStatuses)).To(BeTrue())
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.Dry.Sha).To(Equal(ctpStaging.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.Hydrated.Sha).To(Equal(ctpStaging.Status.Proposed.Hydrated.Sha))
-					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(proposedStatusesIgnoringOrderingGate(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses))).To(BeTrue())
+					// The previous-environment gate reflects the last time it was evaluated: environment/staging once had an
+					// in-flight change, and the DAG controller recorded success for all upstreams before active caught
+					// up to proposed. The controller no longer re-evaluates a no-op environment, so this stale-but-real
+					// success record is what the ChangeTransferPolicy reports.
+					g.Expect(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses).To(Equal(
+						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+							{
+								Key:         promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+								Phase:       string(promoterv1alpha1.CommitPhaseSuccess),
+								Description: "environment/staging - all upstream environments promoted and healthy",
+							},
+						},
+					))
 
 					// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
 					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testBranchProduction))
@@ -703,8 +785,19 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[2].Active.CommitStatuses)).To(BeTrue())
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.Dry.Sha).To(Equal(ctpProd.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.Hydrated.Sha).To(Equal(ctpProd.Status.Proposed.Hydrated.Sha))
-					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(proposedStatusesIgnoringOrderingGate(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses))).To(BeTrue())
+					// The previous-environment gate reflects the last time it was evaluated: environment/production once had an
+					// in-flight change, and the DAG controller recorded success for all upstreams before active caught
+					// up to proposed. The controller no longer re-evaluates a no-op environment, so this stale-but-real
+					// success record is what the ChangeTransferPolicy reports.
+					g.Expect(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses).To(Equal(
+						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+							{
+								Key:         promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+								Phase:       string(promoterv1alpha1.CommitPhaseSuccess),
+								Description: "environment/production - all upstream environments promoted and healthy",
+							},
+						},
+					))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Adding a pending commit")
@@ -884,8 +977,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Active.CommitStatuses)).To(BeTrue())
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Sha).To(Equal(ctpDev.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Sha).To(Equal(ctpDev.Status.Proposed.Hydrated.Sha))
-					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(proposedStatusesIgnoringOrderingGate(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses))).To(BeTrue())
+					// The proposed environment has no in-flight change (active and proposed dry SHAs match),
+					// so the previous-environment gate was never evaluated by the DAG controller; the
+					// ChangeTransferPolicy reports the placeholder pending status for the undeclared CommitStatus.
+					g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses).To(Equal(
+						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+							{
+								Key:         promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+								Phase:       string(promoterv1alpha1.CommitPhasePending),
+								Description: "Waiting for status to be reported",
+							},
+						},
+					))
 
 					// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
 					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testBranchStaging))
@@ -895,8 +998,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Active.CommitStatuses)).To(BeTrue())
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.Dry.Sha).To(Equal(ctpStaging.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.Hydrated.Sha).To(Equal(ctpStaging.Status.Proposed.Hydrated.Sha))
-					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(proposedStatusesIgnoringOrderingGate(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses))).To(BeTrue())
+					// The proposed environment has no in-flight change (active and proposed dry SHAs match),
+					// so the previous-environment gate was never evaluated by the DAG controller; the
+					// ChangeTransferPolicy reports the placeholder pending status for the undeclared CommitStatus.
+					g.Expect(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses).To(Equal(
+						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+							{
+								Key:         promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+								Phase:       string(promoterv1alpha1.CommitPhasePending),
+								Description: "Waiting for status to be reported",
+							},
+						},
+					))
 
 					// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
 					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testBranchProduction))
@@ -906,8 +1019,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[2].Active.CommitStatuses)).To(BeTrue())
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.Dry.Sha).To(Equal(ctpProd.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.Hydrated.Sha).To(Equal(ctpProd.Status.Proposed.Hydrated.Sha))
-					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(proposedStatusesIgnoringOrderingGate(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses))).To(BeTrue())
+					// The proposed environment has no in-flight change (active and proposed dry SHAs match),
+					// so the previous-environment gate was never evaluated by the DAG controller; the
+					// ChangeTransferPolicy reports the placeholder pending status for the undeclared CommitStatus.
+					g.Expect(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses).To(Equal(
+						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+							{
+								Key:         promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+								Phase:       string(promoterv1alpha1.CommitPhasePending),
+								Description: "Waiting for status to be reported",
+							},
+						},
+					))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Adding a pending commit")
@@ -3826,23 +3949,6 @@ func createPreviousEnvironmentCommitStatus(ctx context.Context, ps *promoterv1al
 		},
 	}
 	Expect(k8sClient.Create(ctx, pecs)).To(Succeed())
-}
-
-// proposedStatusesIgnoringOrderingGate returns the proposed commit statuses with the ordering
-// gate (previous-environment / DAG) filtered out. Tests that assert a PromotionStrategy has no
-// proposed commit statuses of its own now always carry an ordering gate (required since the
-// controller stopped auto-injecting one), and that gate stays pending for a no-op environment
-// whose upstream has not promoted. Filtering it lets those assertions check only the test's own
-// gates without depending on the ordering gate's phase.
-func proposedStatusesIgnoringOrderingGate(statuses []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase {
-	out := make([]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase, 0, len(statuses))
-	for _, s := range statuses {
-		if s.Key == promoterv1alpha1.DAGCommitStatusKey || s.Key == promoterv1alpha1.PreviousEnvironmentCommitStatusKey {
-			continue
-		}
-		out = append(out, s)
-	}
-	return out
 }
 
 func argocdApplications(namespace, appLabel, repoOwner, repoName string) (argocd.Application, argocd.Application, argocd.Application) {
