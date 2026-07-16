@@ -44,6 +44,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 )
 
 //go:embed testdata/WebRequestCommitStatus.yaml
@@ -4672,10 +4673,11 @@ var _ = Describe("WebRequestCommitStatus Controller - Stale Cache Guard", Ordere
 		// defer on the error path (HandleReconciliationResult still patches the
 		// Ready=False condition, which bumps RV, which the tracker records).
 		r := &WebRequestCommitStatusReconciler{
-			Client:    k8sClient,
-			Scheme:    k8sClient.Scheme(),
-			Recorder:  events.NewFakeRecorder(10),
-			rvTracker: utils.NewResourceVersionTracker(),
+			Client:      k8sClient,
+			Scheme:      k8sClient.Scheme(),
+			Recorder:    events.NewFakeRecorder(10),
+			SettingsMgr: settings.NewManager(k8sClient, k8sClient, settings.ManagerConfig{ControllerNamespace: "default"}),
+			rvTracker:   utils.NewResourceVersionTracker(),
 		}
 		key := types.NamespacedName{Name: wrcs.Name, Namespace: wrcs.Namespace}
 

@@ -102,6 +102,10 @@ func (r *GitCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	// Remove any existing Ready condition. We want to start fresh.
 	previousReady = utils.RemoveReadyCondition(&gcs)
 
+	if err := ensureControllerInstanceIDStable(ctx, r.SettingsMgr); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	// Fetch the referenced PromotionStrategy
 	var ps promoterv1alpha1.PromotionStrategy
 	psKey := client.ObjectKey{
@@ -407,8 +411,9 @@ func (r *GitCommitStatusReconciler) upsertCommitStatus(ctx context.Context, gcs 
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
 	// Build the apply configuration
+	commitStatusLabels := utils.CommitStatusStandardLabels(gcs, branch, validationName)
 	commitStatusApply := acv1alpha1.CommitStatus(commitStatusName, gcs.Namespace).
-		WithLabels(utils.CommitStatusStandardLabels(gcs, branch, validationName)).
+		WithLabels(commitStatusLabels).
 		WithOwnerReferences(acmetav1.OwnerReference().
 			WithAPIVersion(gvk.GroupVersion().String()).
 			WithKind(gvk.Kind).

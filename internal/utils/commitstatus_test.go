@@ -3,7 +3,10 @@ package utils_test
 import (
 	"context"
 
+	"k8s.io/utils/ptr"
+
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -27,6 +30,15 @@ var _ = Describe("CommitStatusGateLabelKeyForParent", func() {
 })
 
 var _ = Describe("CommitStatusStandardLabels", func() {
+	BeforeEach(func() {
+		settings.ResetControllerInstanceIDForTest()
+		settings.SetControllerInstanceIDForTest(nil)
+	})
+
+	AfterEach(func() {
+		settings.ResetControllerInstanceIDForTest()
+	})
+
 	It("returns parent gate, environment, and commit-status key labels", func() {
 		parent := &promoterv1alpha1.TimedCommitStatus{
 			ObjectMeta: metav1.ObjectMeta{
@@ -39,6 +51,19 @@ var _ = Describe("CommitStatusStandardLabels", func() {
 			promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel("environment/development"),
 			promoterv1alpha1.CommitStatusLabel:         "timer",
 		}))
+	})
+
+	It("stamps instance-id from settings.ControllerInstanceID when configured", func() {
+		settings.SetControllerInstanceIDForTest(ptr.To("wave-0"))
+		parent := &promoterv1alpha1.WebRequestCommitStatus{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "wrcs",
+				Namespace: "ns",
+			},
+		}
+		labels := utils.CommitStatusStandardLabels(parent, "env/dev", "key")
+		Expect(labels[promoterv1alpha1.InstanceIDLabel]).To(Equal("wave-0"))
+		Expect(labels[promoterv1alpha1.CommitStatusLabel]).To(Equal("key"))
 	})
 })
 

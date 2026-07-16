@@ -8,7 +8,7 @@ This document outlines best practices for implementing custom commit status cont
 
 ## Required Labels
 
-All commit status controllers should set the following standard labels on the `CommitStatus` resources they create. Use `utils.CommitStatusStandardLabels(parent, branch, key)` to set all three at once.
+All commit status controllers should set the following standard labels on the `CommitStatus` resources they create. Use `utils.CommitStatusStandardLabels(parent, branch, key)` — it sets the three gating labels and copies `promoter.argoproj.io/instance-id` from the parent gate when present (see [§4](#4-instance-id-label-multi-install)).
 
 ### 1. Commit Status Label
 
@@ -50,6 +50,21 @@ commitStatus.Labels[promoterv1alpha1.EnvironmentLabel] = utils.KubeSafeLabel(bra
 If multiple PromotionStrategies share the same active branch (via `PromotionStrategy.spec.activePath`), commit statuses
 for different apps can target the same active commit SHA. In this setup, controllers should use distinct
 `CommitStatusLabel` keys per app/controller domain (for example `argocd-health-payments`), so gating remains isolated.
+
+### 4. Instance ID Label (multi-install)
+
+When the cluster runs multiple Promoter controller installs, each install only caches resources labeled with its configured `ControllerConfiguration.spec.instanceID`. In the default install (`instanceID` unset), only **unlabeled** resources are cached—do not add this label to gate CRs or PromotionStrategies managed by the default install.
+
+`CommitStatusStandardLabels` copies `promoter.argoproj.io/instance-id` from the parent gate when the parent carries a non-empty value. Label the parent gate during migration before the controller will reconcile it.
+
+```go
+commitStatusLabels := utils.CommitStatusStandardLabels(parentGate, branch, key)
+commitStatusApply := acv1alpha1.CommitStatus(name, namespace).
+    WithLabels(commitStatusLabels).
+    // …
+```
+
+See [Multiple Controller Installs](../multi-install.md) for operator configuration and migration notes.
 
 ## Existing Controllers
 
@@ -102,7 +117,7 @@ The helper applies `KubeSafeUniqueName` to `parent.metadata.name-branch-<stem>`.
 
 Example: `my-app-environment-development-timed-<hash>` (or `...-argo-cd-<hash>` for Argo CD gates)
 
-Set the standard CommitStatus labels with `utils.CommitStatusStandardLabels(parent, branch, key)` (parent gate, environment, and commit-status key).
+Set the standard CommitStatus labels with `utils.CommitStatusStandardLabels(parent, branch, key)` (parent gate, environment, commit-status key, and instance-id when the parent gate carries it).
 
 #### Orphan cleanup
 

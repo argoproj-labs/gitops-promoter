@@ -80,8 +80,8 @@ type ArgoCDCommitStatusReconciler struct {
 
 // URLTemplateData is the data passed to the URLTemplate in the ArgoCDCommitStatus.
 type URLTemplateData struct {
-	Environment        string
 	ArgoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
+	Environment        string
 }
 
 // ApplicationsInEnvironment is a list of applications in an environment.
@@ -133,6 +133,10 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 
 	// Remove any existing Ready condition. We want to start fresh.
 	previousReady = utils.RemoveReadyCondition(&argoCDCommitStatus)
+
+	if err := ensureControllerInstanceIDStable(ctx, r.SettingsMgr); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	ls, err := metav1.LabelSelectorAsSelector(argoCDCommitStatus.Spec.ApplicationSelector)
 	if err != nil {
@@ -537,17 +541,22 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 
 	r.watchLocalApplications = watchLocalApplications
 
+	controllerOpts := controller.Options{
+		MaxConcurrentReconciles: maxConcurrentReconciles,
+		RateLimiter:             rateLimiter,
+		UsePriorityQueue:        new(true),
+	}
+	if skip := mcMgr.GetLocalManager().GetControllerOptions().SkipNameValidation; skip != nil {
+		controllerOpts.SkipNameValidation = skip
+	}
+
 	err = mcbuilder.ControllerManagedBy(mcMgr).
 		For(&promoterv1alpha1.ArgoCDCommitStatus{},
 			mcbuilder.WithEngageWithLocalCluster(true),
 			mcbuilder.WithEngageWithProviderClusters(false),
 			mcbuilder.WithPredicates(predicate.GenerationChangedPredicate{}),
 		).
-		WithOptions(controller.Options{
-			MaxConcurrentReconciles: maxConcurrentReconciles,
-			RateLimiter:             rateLimiter,
-			UsePriorityQueue:        new(true),
-		}).
+		WithOptions(controllerOpts).
 		Watches(&argocd.Application{}, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
 			mcbuilder.WithEngageWithLocalCluster(watchLocalApplications),
 			mcbuilder.WithEngageWithProviderClusters(true),
@@ -725,8 +734,9 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 	}
 
 	// Build the apply configuration
+	commitStatusLabels := utils.CommitStatusStandardLabels(&argoCDCommitStatus, targetBranch, key)
 	commitStatusApply := acv1alpha1.CommitStatus(resourceName, argoCDCommitStatus.Namespace).
-		WithLabels(utils.CommitStatusStandardLabels(&argoCDCommitStatus, targetBranch, key)).
+		WithLabels(commitStatusLabels).
 		WithOwnerReferences(acmetav1.OwnerReference().
 			WithAPIVersion(gvk.GroupVersion().String()).
 			WithKind(gvk.Kind).
