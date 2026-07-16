@@ -13,19 +13,7 @@ import './Card.scss';
 
 export interface CardProps {
   environments: Environment[];
-  /**
-   * When set, the env card whose `branch` matches is scrolled into view and
-   * visually highlighted. Used for deep-linking to a single environment.
-   * Surfaces resolve this from their own routing (dashboard: URL hash;
-   * extension: query param) and pass the decoded branch here.
-   */
   highlightBranch?: string;
-  /**
-   * Called when the focused env card changes (via click), with the focused
-   * branch or `null` when focus is cleared. Surfaces use this to reflect the
-   * selection into their own URL (dashboard: hash; extension: query param),
-   * keeping `Card` free of any routing knowledge.
-   */
   onFocusChange?: (_branch: string | null) => void;
 }
 
@@ -33,16 +21,8 @@ const Card: React.FC<CardProps> = ({ environments, highlightBranch, onFocusChang
   const [historyMode, setHistoryMode] = useState<{ [branch: string]: number }>({});
   const [hoveredIcon, setHoveredIcon] = useState<string | null>(null);
   const [isVerticalLayout, setIsVerticalLayout] = useState<boolean>(true);
-  // Which env card is focused. Seeded from the deep-link prop and also driven
-  // by clicking a card. `null` means nothing is focused.
-  const [focusedBranch, setFocusedBranch] = useState<string | null>(highlightBranch ?? null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
-
-  // Follow deep-link changes (e.g. hash/param navigation) into focus state.
-  useEffect(() => {
-    setFocusedBranch(highlightBranch ?? null);
-  }, [highlightBranch]);
 
   useEffect(() => {
     const detectFlexDirection = () => {
@@ -80,9 +60,6 @@ const Card: React.FC<CardProps> = ({ environments, highlightBranch, onFocusChang
     });
   }, [environments, historyMode]);
 
-  // Deep-link: scroll the focused env card into view once it's rendered. Keyed
-  // on the incoming prop (not click-driven focus) so clicking an already-visible
-  // card doesn't yank the scroll position.
   useEffect(() => {
     if (!highlightBranch) return;
     const node = highlightRef.current;
@@ -91,11 +68,7 @@ const Card: React.FC<CardProps> = ({ environments, highlightBranch, onFocusChang
   }, [highlightBranch, enrichedEnvs]);
 
   const toggleFocus = (branch: string) => {
-    setFocusedBranch((prev) => {
-      const next = prev === branch ? null : branch;
-      onFocusChange?.(next);
-      return next;
-    });
+    onFocusChange?.(highlightBranch === branch ? null : branch);
   };
 
   return (
@@ -135,9 +108,9 @@ const Card: React.FC<CardProps> = ({ environments, highlightBranch, onFocusChang
             !inHistoryMode &&
             proposedStatus !== undefined &&
             ['pending', 'failure'].includes(proposedStatus);
-          const isFocused = focusedBranch === branch;
-          // The scroll target is the deep-linked card, independent of click focus.
-          const isScrollTarget = highlightBranch === branch;
+          // The highlighted card is both the focus target and the scroll target.
+          const isFocused = highlightBranch === branch;
+          const isScrollTarget = isFocused;
           const cardClassName = [
             'env-card',
             inHistoryMode ? 'history-mode' : '',

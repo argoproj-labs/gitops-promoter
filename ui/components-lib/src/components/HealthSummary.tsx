@@ -2,7 +2,7 @@ import { FiChevronDown, FiChevronUp, FiInfo } from 'react-icons/fi';
 import { StatusIcon, StatusType } from './StatusIcon';
 import React, { useState } from 'react';
 import { Tooltip } from './Tooltip';
-import { linkTargetProps } from '@shared/utils/util';
+import { linkTargetProps, handleInternalLinkClick } from '@shared/utils/util';
 import './HealthSummary.scss';
 
 export interface HealthSummaryProps {
@@ -113,6 +113,7 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({
                   <a
                     href={check.url}
                     {...linkTargetProps(check.url)}
+                    onClick={(e) => handleInternalLinkClick(e, check.url)}
                     className="health-check-link"
                     title="View details"
                   >

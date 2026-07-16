@@ -86,6 +86,23 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
   // via the History API).
   const [highlightBranch, setHighlightBranch] = useState<string>(() => getEnvParam());
 
+  const focusEnv = (branch: string) => {
+    setEnvParam(branch);
+    setHighlightBranch(branch);
+  };
+
+  useEffect(() => {
+    const onPopState = () => {
+      const urlKey = getParam();
+      if (urlKey) {
+        setSelectedKey(urlKey);
+      }
+      setHighlightBranch(getEnvParam());
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
   useEffect(() => {
     const appName = application.metadata.name;
     const appNamespace = application.metadata.namespace;
@@ -188,8 +205,7 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
               setSelectedKey(key);
               setParam(key);
               // Env focus belongs to a specific strategy; clear it on switch.
-              setEnvParam('');
-              setHighlightBranch('');
+              focusEnv('');
               setStored(application.metadata.namespace, application.metadata.name, key);
             }}
           />
@@ -200,7 +216,7 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
           key={selectedKey}
           environments={selected.status?.environments || []}
           highlightBranch={highlightBranch}
-          onFocusChange={(branch) => setEnvParam(branch ?? '')}
+          onFocusChange={(branch) => focusEnv(branch ?? '')}
         />
       )}
     </div>

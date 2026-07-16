@@ -40,6 +40,49 @@ export function linkTargetProps(url?: string): { target?: string; rel?: string }
   return { target: '_blank', rel: 'noopener noreferrer' };
 }
 
+/**
+ * Click handler for anchors whose href may point back into this app. For a
+ * plain left-click on a same-origin URL, updates the URL via the History API
+ * instead of letting the browser do a full-document navigation — turning a
+ * hard reload into an in-place param change. A synthetic `popstate` is
+ * dispatched so listeners (react-router's BrowserRouter, or an extension's own
+ * popstate handler) re-read the URL and re-render.
+ *
+ * Falls through to the browser default (does nothing) for cross-origin URLs,
+ * unparseable URLs, and modified clicks (cmd/ctrl/shift/alt or non-left button)
+ * so "open in new tab" and cross-origin links keep working.
+ */
+export function handleInternalLinkClick(
+  event: {
+    button: number;
+    metaKey: boolean;
+    ctrlKey: boolean;
+    shiftKey: boolean;
+    altKey: boolean;
+    defaultPrevented: boolean;
+    preventDefault: () => void;
+  },
+  url?: string,
+): void {
+  if (!url) return;
+  // Let the browser handle new-tab/window intents and non-primary buttons.
+  if (event.defaultPrevented) return;
+  if (event.button !== 0) return;
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+
+  let target: URL;
+  try {
+    target = new URL(url, window.location.href);
+  } catch {
+    return; // unparseable — treat as external, let the browser try.
+  }
+  if (target.origin !== window.location.origin) return;
+
+  event.preventDefault();
+  window.history.pushState(null, '', target.toString());
+  window.dispatchEvent(new PopStateEvent('popstate'));
+}
+
 // Get the commit url from the repo url and sha
 export function getCommitUrl(repoUrl: string, sha: string): string {
   if (!repoUrl || !sha) return '';
