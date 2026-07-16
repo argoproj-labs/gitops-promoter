@@ -1133,6 +1133,27 @@ export type components = {
             /** @description Interval controls how often to retry the HTTP request while in pending state. When reportOn is "proposed": stops polling after success for a given SHA. When reportOn is "active": always polls at this interval. */
             interval?: components["schemas"]["Duration"];
         };
+        /** @description PreviousEnvironmentCommitStatusConfig configures the previous-environment commit status. */
+        PreviousEnvironmentCommitStatusConfig: {
+            /**
+             * @description URL generates the URL to use in the previous-environment CommitStatus, for example a deep link to a promoter UI. If the template is empty, the URL of the single aggregated status is used when there is exactly one; otherwise no URL is set.
+             * @default {}
+             */
+            url?: components["schemas"]["PreviousEnvironmentURLConfig"];
+        };
+        /** @description PreviousEnvironmentURLConfig is a Go text/template rendered to produce the commit status URL. */
+        PreviousEnvironmentURLConfig: {
+            /** @description Options sets options for the template, e.g. "missingkey=error". See the text/template documentation for the full list of options. */
+            options?: string[];
+            /**
+             * @description Template is a go text template and receives .PromotionStrategy, .PreviousEnvironmentBranch, .Sha, and .AggregatedStatuses variables. A function called urlQueryEscape is available to escape url query parameters.
+             *
+             *     Example:
+             *
+             *       {{ printf "https://argocd.example.com/applications/%s/%s?view=GitOps+Promoter&promotionstrategy=%s" .PromotionStrategy.Namespace .PromotionStrategy.Name (urlQueryEscape (printf "%s/%s" .PromotionStrategy.Namespace .PromotionStrategy.Name)) }}
+             */
+            template?: string;
+        };
         /** @description PromotionStrategy is the Schema for the promotionstrategies API */
         PromotionStrategy: {
             /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
@@ -1211,6 +1232,11 @@ export type components = {
              * @default {}
              */
             gitRepositoryRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /**
+             * @description PreviousEnvironmentCommitStatus configures the auto-generated "promoter-previous-environment" commit status, which aggregates the active commit statuses of the preceding environment.
+             * @default {}
+             */
+            previousEnvironmentCommitStatus?: components["schemas"]["PreviousEnvironmentCommitStatusConfig"];
             /**
              * @description ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running in a live environment. If a proposed commit status is failing for a given environment, the dry commit will not be promoted to that environment.
              *

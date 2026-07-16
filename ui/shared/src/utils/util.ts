@@ -49,7 +49,7 @@ export function linkTargetProps(url?: string): { target?: string; rel?: string }
  * popstate handler) re-read the URL and re-render.
  *
  * Falls through to the browser default (does nothing) for cross-origin URLs,
- * unparseable URLs, and modified clicks (cmd/ctrl/shift/alt or non-left button)
+ * unparsable URLs, and modified clicks (cmd/ctrl/shift/alt or non-left button)
  * so "open in new tab" and cross-origin links keep working.
  */
 export function handleInternalLinkClick(
@@ -74,7 +74,7 @@ export function handleInternalLinkClick(
   try {
     target = new URL(url, window.location.href);
   } catch {
-    return; // unparseable — treat as external, let the browser try.
+    return; // unparsable — treat as external, let the browser try.
   }
   if (target.origin !== window.location.origin) return;
 

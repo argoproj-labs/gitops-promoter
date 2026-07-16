@@ -25,6 +25,8 @@ import (
 )
 
 func TestResolvePreviousEnvironmentURL(t *testing.T) {
+	t.Parallel()
+
 	ps := promoterv1alpha1.PromotionStrategy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "argocon-demo",
@@ -33,10 +35,10 @@ func TestResolvePreviousEnvironmentURL(t *testing.T) {
 	}
 	tests := []struct {
 		name    string
-		url     promoterv1alpha1.PreviousEnvironmentURLConfig
-		phases  []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase
 		want    string
 		wantErr string
+		url     promoterv1alpha1.PreviousEnvironmentURLConfig
+		phases  []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase
 	}{
 		{
 			name: "template renders using template data",
@@ -101,6 +103,8 @@ func TestResolvePreviousEnvironmentURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			data := PreviousEnvironmentURLTemplateData{
 				PromotionStrategy:         ps,
 				PreviousEnvironmentBranch: "environments/staging",
