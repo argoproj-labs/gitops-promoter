@@ -32,7 +32,6 @@ import (
 	kubeconfigprovider "sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
 
 	promotercache "github.com/argoproj-labs/gitops-promoter/internal/cache"
-	"github.com/argoproj-labs/gitops-promoter/internal/instanceid"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -45,7 +44,7 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 	// BeforeSuite against the primary envtest). Swap it for this partitioned manager's lifetime
 	// and restore it in stop(), otherwise every reconcile in later specs on this ginkgo process
 	// fails ensureControllerInstanceIDStable with a drift error.
-	restoreInstanceID := instanceid.SetControllerInstanceIDForTest(instanceID)
+	restoreInstanceID := settings.SetControllerInstanceIDForTest(instanceID)
 
 	mgrCtx, cancel := context.WithCancel(ctx)
 	stopped := make(chan struct{})

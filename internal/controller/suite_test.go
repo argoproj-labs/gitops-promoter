@@ -48,7 +48,6 @@ import (
 	"k8s.io/client-go/util/retry"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
-	"github.com/argoproj-labs/gitops-promoter/internal/instanceid"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -184,7 +183,7 @@ var _ = BeforeSuite(func() {
 	controllerConfiguration, err := loadShippedControllerConfigurationForTests(settings.ControllerConfigurationName)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient.Create(ctx, controllerConfiguration)).To(Succeed())
-	Expect(instanceid.BootstrapControllerInstanceID(ctx, cfg, "default")).To(Succeed())
+	Expect(settings.BootstrapControllerInstanceID(ctx, cfg, "default")).To(Succeed())
 
 	settingsMgr := settings.NewManager(k8sManager.GetClient(), k8sManager.GetAPIReader(), settings.ManagerConfig{
 		ControllerNamespace: "default",

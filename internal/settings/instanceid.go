@@ -1,4 +1,4 @@
-package instanceid
+package settings
 
 import (
 	"context"
@@ -12,8 +12,6 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
-
-const controllerConfigurationName = "promoter-controller-configuration"
 
 // mu guards controllerInstanceID and bootstrapped. In production the only write happens at
 // startup before the manager starts, but tests swap the cached value while reconciler
@@ -53,10 +51,10 @@ func readInstanceIDFromAPI(ctx context.Context, cfg *rest.Config, namespace stri
 
 	cc := &promoterv1alpha1.ControllerConfiguration{}
 	if err := c.Get(ctx, client.ObjectKey{
-		Name:      controllerConfigurationName,
+		Name:      ControllerConfigurationName,
 		Namespace: namespace,
 	}, cc); err != nil {
-		return nil, fmt.Errorf("failed to get ControllerConfiguration %q: %w", controllerConfigurationName, err)
+		return nil, fmt.Errorf("failed to get ControllerConfiguration %q: %w", ControllerConfigurationName, err)
 	}
 
 	return cc.Spec.InstanceID, nil
@@ -68,7 +66,7 @@ func ControllerInstanceID() *string {
 	mu.RLock()
 	defer mu.RUnlock()
 	if !bootstrapped {
-		panic("instanceid.ControllerInstanceID called before instanceid.BootstrapControllerInstanceID")
+		panic("settings.ControllerInstanceID called before settings.BootstrapControllerInstanceID")
 	}
 	return controllerInstanceID
 }
@@ -122,15 +120,10 @@ func DriftMessage(cached, live *string) string {
 	)
 }
 
-// LiveInstanceIDReader returns the live ControllerConfiguration.spec.instanceID.
-type LiveInstanceIDReader interface {
-	GetInstanceID(ctx context.Context) (*string, error)
-}
-
-// EnsureStable returns an error when live ControllerConfiguration.spec.instanceID does not
-// match the cached controller instance ID from bootstrap.
-func EnsureStable(ctx context.Context, liveReader LiveInstanceIDReader) error {
-	live, err := liveReader.GetInstanceID(ctx)
+// EnsureInstanceIDStable returns an error when the live ControllerConfiguration.spec.instanceID
+// does not match the cached controller instance ID from bootstrap.
+func (m *Manager) EnsureInstanceIDStable(ctx context.Context) error {
+	live, err := m.GetInstanceID(ctx)
 	if err != nil {
 		return fmt.Errorf("read live ControllerConfiguration instanceID: %w", err)
 	}

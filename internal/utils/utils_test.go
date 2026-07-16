@@ -7,7 +7,7 @@ import (
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	instanceid "github.com/argoproj-labs/gitops-promoter/internal/instanceid"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -28,12 +28,12 @@ import (
 )
 
 var _ = BeforeEach(func() {
-	instanceid.ResetControllerInstanceIDForTest()
-	instanceid.SetControllerInstanceIDForTest(nil)
+	settings.ResetControllerInstanceIDForTest()
+	settings.SetControllerInstanceIDForTest(nil)
 })
 
 var _ = AfterEach(func() {
-	instanceid.ResetControllerInstanceIDForTest()
+	settings.ResetControllerInstanceIDForTest()
 })
 
 var (
@@ -278,10 +278,10 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 		Expect(err.Error()).To(ContainSubstring("test error message"))
 	})
 
-	It("should stamp status.instanceID from instanceid.ControllerInstanceID", func() {
+	It("should stamp status.instanceID from settings.ControllerInstanceID", func() {
 		var err error
 		const instanceID = "wave-0"
-		instanceid.SetControllerInstanceIDForTest(ptr.To(instanceID))
+		settings.SetControllerInstanceIDForTest(ptr.To(instanceID))
 		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(obj).Build()
 		Expect(fakeClient.Create(ctx, obj)).To(Succeed())
 

@@ -6,7 +6,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	"github.com/argoproj-labs/gitops-promoter/internal/instanceid"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -31,12 +31,12 @@ var _ = Describe("CommitStatusGateLabelKeyForParent", func() {
 
 var _ = Describe("CommitStatusStandardLabels", func() {
 	BeforeEach(func() {
-		instanceid.ResetControllerInstanceIDForTest()
-		instanceid.SetControllerInstanceIDForTest(nil)
+		settings.ResetControllerInstanceIDForTest()
+		settings.SetControllerInstanceIDForTest(nil)
 	})
 
 	AfterEach(func() {
-		instanceid.ResetControllerInstanceIDForTest()
+		settings.ResetControllerInstanceIDForTest()
 	})
 
 	It("returns parent gate, environment, and commit-status key labels", func() {
@@ -53,8 +53,8 @@ var _ = Describe("CommitStatusStandardLabels", func() {
 		}))
 	})
 
-	It("stamps instance-id from instanceid.ControllerInstanceID when configured", func() {
-		instanceid.SetControllerInstanceIDForTest(ptr.To("wave-0"))
+	It("stamps instance-id from settings.ControllerInstanceID when configured", func() {
+		settings.SetControllerInstanceIDForTest(ptr.To("wave-0"))
 		parent := &promoterv1alpha1.WebRequestCommitStatus{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "wrcs",

@@ -13,7 +13,7 @@ import (
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	"github.com/argoproj-labs/gitops-promoter/internal/instanceid"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -477,7 +477,7 @@ func HandleReconciliationResult(
 
 	// Stamp status.instanceID on every reconcile attempt so consumers can see which controller
 	// instance is actively reconciling this resource, including when Ready=False.
-	obj.SetStatusInstanceID(instanceid.ControllerInstanceID())
+	obj.SetStatusInstanceID(settings.ControllerInstanceID())
 	// Stamp status.observedGeneration before building the apply configuration so the SSA
 	// patch records which spec generation produced this status. SSA with ForceOwnership
 	// has no optimistic-concurrency guard, so observedGeneration is the only signal a

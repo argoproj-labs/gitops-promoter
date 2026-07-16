@@ -45,7 +45,7 @@ func CommitStatusGateLabelKeyForParent(parent client.Object) string {
 
 // CommitStatusStandardLabels returns the labels gate controllers set on each CommitStatus:
 // parent gate, environment branch, commit-status key (spec.key), and promoter.argoproj.io/instance-id
-// when instanceid.ControllerInstanceID() is non-nil.
+// when settings.ControllerInstanceID() is non-nil.
 func CommitStatusStandardLabels(parent client.Object, branch, commitStatusKey string) map[string]string {
 	return StampInstanceIDLabel(map[string]string{
 		CommitStatusGateLabelKeyForParent(parent): KubeSafeLabel(parent.GetName()),

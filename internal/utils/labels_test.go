@@ -6,7 +6,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	"github.com/argoproj-labs/gitops-promoter/internal/instanceid"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
@@ -16,28 +16,28 @@ const (
 
 var _ = Describe("StampInstanceIDLabel", func() {
 	BeforeEach(func() {
-		instanceid.ResetControllerInstanceIDForTest()
+		settings.ResetControllerInstanceIDForTest()
 	})
 
 	AfterEach(func() {
-		instanceid.ResetControllerInstanceIDForTest()
+		settings.ResetControllerInstanceIDForTest()
 	})
 
 	It("returns an empty map when labels is nil and install is default", func() {
-		instanceid.SetControllerInstanceIDForTest(nil)
+		settings.SetControllerInstanceIDForTest(nil)
 		labels := utils.StampInstanceIDLabel(nil)
 		Expect(labels).NotTo(BeNil())
 		Expect(labels).To(BeEmpty())
 	})
 
 	It("preserves existing labels on default install", func() {
-		instanceid.SetControllerInstanceIDForTest(nil)
+		settings.SetControllerInstanceIDForTest(nil)
 		labels := utils.StampInstanceIDLabel(map[string]string{"k": "v"})
 		Expect(labels).To(Equal(map[string]string{"k": "v"}))
 	})
 
-	It("stamps instance-id from instanceid.ControllerInstanceID", func() {
-		instanceid.SetControllerInstanceIDForTest(ptr.To(testInstanceID))
+	It("stamps instance-id from settings.ControllerInstanceID", func() {
+		settings.SetControllerInstanceIDForTest(ptr.To(testInstanceID))
 		labels := utils.StampInstanceIDLabel(map[string]string{"k": "v"})
 		Expect(labels[promoterv1alpha1.InstanceIDLabel]).To(Equal(testInstanceID))
 		Expect(labels["k"]).To(Equal("v"))
