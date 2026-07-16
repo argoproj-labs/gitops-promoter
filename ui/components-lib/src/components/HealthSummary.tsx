@@ -2,6 +2,7 @@ import { FiChevronDown, FiChevronUp, FiInfo } from 'react-icons/fi';
 import { StatusIcon, StatusType } from './StatusIcon';
 import React, { useState } from 'react';
 import { Tooltip } from './Tooltip';
+import { linkTargetProps } from '@shared/utils/util';
 import './HealthSummary.scss';
 
 export interface HealthSummaryProps {
@@ -62,7 +63,9 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({
     return null;
   }
 
-  const handleClick = () => {
+  const handleClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    // Don't let expanding the checks bubble up to the env-card focus handler.
+    event.stopPropagation();
     setIsExpanded(!isExpanded);
   };
 
@@ -109,8 +112,7 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({
                 {check.url && (
                   <a
                     href={check.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    {...linkTargetProps(check.url)}
                     className="health-check-link"
                     title="View details"
                   >

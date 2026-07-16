@@ -7,6 +7,7 @@ import TimeAgo from './TimeAgo';
 import HealthSummary from './HealthSummary';
 import './CommitInfo.scss';
 import { ReferenceCommit } from '@shared/types/promotion';
+import { linkTargetProps } from '@shared/utils/util';
 
 export interface CommitInfoProps {
   title?: string;
@@ -73,8 +74,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
       return (
         <a
           href={commitUrl}
-          target="_blank"
-          rel="noopener noreferrer"
+          {...linkTargetProps(commitUrl)}
           className="commit-sha-link"
           title={`View commit ${sha}`}
         >
@@ -208,8 +208,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
           {prUrl && prNumber && (
             <a
               href={prUrl}
-              target="_blank"
-              rel="noopener noreferrer"
+              {...linkTargetProps(prUrl)}
               className={`pr-indicator ${isActive ? 'pr-merged' : ''}`}
               title={`View PR #${prNumber}${isActive ? ' (Merged)' : ''}`}
             >

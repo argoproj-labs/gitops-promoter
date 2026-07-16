@@ -13,13 +13,36 @@ import './Card.scss';
 
 export interface CardProps {
   environments: Environment[];
+  /**
+   * When set, the env card whose `branch` matches is scrolled into view and
+   * visually highlighted. Used for deep-linking to a single environment.
+   * Surfaces resolve this from their own routing (dashboard: URL hash;
+   * extension: query param) and pass the decoded branch here.
+   */
+  highlightBranch?: string;
+  /**
+   * Called when the focused env card changes (via click), with the focused
+   * branch or `null` when focus is cleared. Surfaces use this to reflect the
+   * selection into their own URL (dashboard: hash; extension: query param),
+   * keeping `Card` free of any routing knowledge.
+   */
+  onFocusChange?: (_branch: string | null) => void;
 }
 
-const Card: React.FC<CardProps> = ({ environments }) => {
+const Card: React.FC<CardProps> = ({ environments, highlightBranch, onFocusChange }) => {
   const [historyMode, setHistoryMode] = useState<{ [branch: string]: number }>({});
   const [hoveredIcon, setHoveredIcon] = useState<string | null>(null);
   const [isVerticalLayout, setIsVerticalLayout] = useState<boolean>(true);
+  // Which env card is focused. Seeded from the deep-link prop and also driven
+  // by clicking a card. `null` means nothing is focused.
+  const [focusedBranch, setFocusedBranch] = useState<string | null>(highlightBranch ?? null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const highlightRef = useRef<HTMLDivElement>(null);
+
+  // Follow deep-link changes (e.g. hash/param navigation) into focus state.
+  useEffect(() => {
+    setFocusedBranch(highlightBranch ?? null);
+  }, [highlightBranch]);
 
   useEffect(() => {
     const detectFlexDirection = () => {
@@ -56,6 +79,24 @@ const Card: React.FC<CardProps> = ({ environments }) => {
       return enrichFromEnvironments([env], historyIndex)[0];
     });
   }, [environments, historyMode]);
+
+  // Deep-link: scroll the focused env card into view once it's rendered. Keyed
+  // on the incoming prop (not click-driven focus) so clicking an already-visible
+  // card doesn't yank the scroll position.
+  useEffect(() => {
+    if (!highlightBranch) return;
+    const node = highlightRef.current;
+    if (!node) return;
+    node.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+  }, [highlightBranch, enrichedEnvs]);
+
+  const toggleFocus = (branch: string) => {
+    setFocusedBranch((prev) => {
+      const next = prev === branch ? null : branch;
+      onFocusChange?.(next);
+      return next;
+    });
+  };
 
   return (
     <div className="env-cards-container">
@@ -94,18 +135,44 @@ const Card: React.FC<CardProps> = ({ environments }) => {
             !inHistoryMode &&
             proposedStatus !== undefined &&
             ['pending', 'failure'].includes(proposedStatus);
+          const isFocused = focusedBranch === branch;
+          // The scroll target is the deep-linked card, independent of click focus.
+          const isScrollTarget = highlightBranch === branch;
           const cardClassName = [
             'env-card',
             inHistoryMode ? 'history-mode' : '',
             hasPendingProposal ? '' : 'single-commit-group',
+            isFocused ? 'highlighted' : '',
           ]
             .filter(Boolean)
             .join(' ');
 
+          // Focus the card on click, but let clicks on interactive children
+          // (history controls, commit/PR links) behave normally.
+          const handleCardClick = (event: React.MouseEvent<HTMLDivElement>) => {
+            if ((event.target as HTMLElement).closest('a, button')) return;
+            toggleFocus(branch);
+          };
+          const handleCardKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+            if (event.target !== event.currentTarget) return;
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              toggleFocus(branch);
+            }
+          };
+
           return (
             <React.Fragment key={env.branch}>
               <div className="env-card-column">
-                <div className={cardClassName}>
+                <div
+                  className={cardClassName}
+                  ref={isScrollTarget ? highlightRef : undefined}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={isFocused}
+                  onClick={handleCardClick}
+                  onKeyDown={handleCardKeyDown}
+                >
                   <div
                     className="env-card__title"
                     style={{

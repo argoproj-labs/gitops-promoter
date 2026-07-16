@@ -8,6 +8,7 @@ import './StrategyDropdown.scss';
 const GROUP = 'promoter.argoproj.io';
 const KIND = 'PromotionStrategy';
 const PARAM = 'promotionstrategy';
+const ENV_PARAM = 'env';
 const STORAGE_PREFIX = 'gitops-promoter:lastStrategy:';
 
 interface SelectOption {
@@ -20,12 +21,29 @@ const getParam = (): string => {
   return params.get(PARAM) || '';
 };
 
+// Deep-link to a single environment card via `&env=<branch>`.
+// URLSearchParams handles decoding on read / encoding on write, matching PARAM.
+const getEnvParam = (): string => {
+  const params = new URLSearchParams(window.location.search);
+  return params.get(ENV_PARAM) || '';
+};
+
 const setParam = (name: string) => {
   const url = new URL(window.location.href);
   if (name) {
     url.searchParams.set(PARAM, name);
   } else {
     url.searchParams.delete(PARAM);
+  }
+  window.history.replaceState(null, '', url.toString());
+};
+
+const setEnvParam = (branch: string) => {
+  const url = new URL(window.location.href);
+  if (branch) {
+    url.searchParams.set(ENV_PARAM, branch);
+  } else {
+    url.searchParams.delete(ENV_PARAM);
   }
   window.history.replaceState(null, '', url.toString());
 };
@@ -62,6 +80,11 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
     () => getParam() || getStored(application.metadata.namespace, application.metadata.name),
   );
   const [fetchError, setFetchError] = useState<string | null>(null);
+  // The env deep-link highlights a specific env card. `highlightBranch` mirrors
+  // the `env` URL param: seeded from the URL at load time and re-synced whenever
+  // the URL changes in place (e.g. a "View Details" link that mutates the param
+  // via the History API).
+  const [highlightBranch, setHighlightBranch] = useState<string>(() => getEnvParam());
 
   useEffect(() => {
     const appName = application.metadata.name;
@@ -164,12 +187,22 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
               const key = option ? option.value : '';
               setSelectedKey(key);
               setParam(key);
+              // Env focus belongs to a specific strategy; clear it on switch.
+              setEnvParam('');
+              setHighlightBranch('');
               setStored(application.metadata.namespace, application.metadata.name, key);
             }}
           />
         </div>
       )}
-      {selected && <Card environments={selected.status?.environments || []} />}
+      {selected && (
+        <Card
+          key={selectedKey}
+          environments={selected.status?.environments || []}
+          highlightBranch={highlightBranch}
+          onFocusChange={(branch) => setEnvParam(branch ?? '')}
+        />
+      )}
     </div>
   );
 };

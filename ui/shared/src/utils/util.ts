@@ -22,6 +22,24 @@ export const timeAgo = (dateString: Rfc3339DateTime): string => {
   }
 };
 
+/**
+ * Anchor target/rel for a link. Same-origin links open in the current window
+ * (no new tab); cross-origin links open in a new tab with a safe rel. If the URL
+ * can't be parsed, treat it as external.
+ */
+export function linkTargetProps(url?: string): { target?: string; rel?: string } {
+  if (url) {
+    try {
+      if (new URL(url, window.location.href).origin === window.location.origin) {
+        return {};
+      }
+    } catch {
+      // fall through to external
+    }
+  }
+  return { target: '_blank', rel: 'noopener noreferrer' };
+}
+
 // Get the commit url from the repo url and sha
 export function getCommitUrl(repoUrl: string, sha: string): string {
   if (!repoUrl || !sha) return '';
