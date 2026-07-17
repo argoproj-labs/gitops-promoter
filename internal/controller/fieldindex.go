@@ -20,7 +20,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 
@@ -57,7 +57,11 @@ func GateCommitStatusKinds() []client.Object {
 	// Return copies of the prototype objects so callers cannot mutate the cache.
 	out := make([]client.Object, len(gateCommitStatusKinds))
 	for i, obj := range gateCommitStatusKinds {
-		out[i] = obj.DeepCopyObject().(client.Object)
+		copied, ok := obj.DeepCopyObject().(client.Object)
+		if !ok {
+			panic(fmt.Sprintf("DeepCopyObject for %T did not return client.Object", obj))
+		}
+		out[i] = copied
 	}
 	return out
 }
@@ -76,7 +80,7 @@ func discoverPromotionStrategyRefGateKinds(scheme *runtime.Scheme) []client.Obje
 		}
 		kindNames = append(kindNames, kind)
 	}
-	sort.Strings(kindNames)
+	slices.Sort(kindNames)
 
 	out := make([]client.Object, 0, len(kindNames))
 	for _, kind := range kindNames {
@@ -92,7 +96,7 @@ func discoverPromotionStrategyRefGateKinds(scheme *runtime.Scheme) []client.Obje
 // typeHasPromotionStrategyRef reports whether t (a non-pointer struct type) has
 // Spec.PromotionStrategyRef.
 func typeHasPromotionStrategyRef(t reflect.Type) bool {
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	if t.Kind() != reflect.Struct {
@@ -103,7 +107,7 @@ func typeHasPromotionStrategyRef(t reflect.Type) bool {
 		return false
 	}
 	specType := spec.Type
-	if specType.Kind() == reflect.Ptr {
+	if specType.Kind() == reflect.Pointer {
 		specType = specType.Elem()
 	}
 	if specType.Kind() != reflect.Struct {
@@ -120,7 +124,7 @@ func PromotionStrategyRefName(obj client.Object) string {
 		return ""
 	}
 	v := reflect.ValueOf(obj)
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		if v.IsNil() {
 			return ""
 		}
