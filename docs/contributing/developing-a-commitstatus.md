@@ -217,6 +217,78 @@ commitStatus.Spec.Phase = promoterv1alpha1.CommitPhaseFailure
 commitStatus.Spec.Description = fmt.Sprintf("Applications are degraded: %s", errorDetail)
 ```
 
+## Spec Configuration Patterns
+
+CommitStatus CRDs that support per-environment configuration should follow the **global + per-env merge** pattern: behavioral fields appear at both the spec level (global defaults) and per-environment level, with documented merge semantics. This gives users a single, predictable model across all gate kinds.
+
+CRDs where the same logic applies identically to every environment (no per-env config needed) use a simpler global-only pattern — the controller discovers environments from the PromotionStrategy status.
+
+### Global-Only Configuration
+
+All configuration lives at the spec level. The controller iterates over environments from the referenced PromotionStrategy's status — the CRD's spec has no `environments` list.
+
+**Used by:** GitCommitStatus, ArgoCDCommitStatus, WebRequestCommitStatus
+
+```yaml
+spec:
+  key: my-gate
+  promotionStrategyRef:
+    name: my-app
+  # All config here — no environments list in spec
+  expression: '...'
+```
+
+**When to use:** The same logic applies identically to every environment. No per-env overrides are needed.
+
+Note that environment-specific logic may be embedded in the global settings. For example, an expression might contain logic to differentiate by branch. But the expression itself applies globally and is not configured per environment.
+
+### Global + Per-Environment with Merge (Standard)
+
+When a CRD needs per-environment configuration, fields should appear at both the spec level (global) and per-environment level. The controller merges them with defined semantics.
+
+**Used by:** ScheduledCommitStatus
+
+**Planned for:** TimedCommitStatus (currently per-env only; adding a global default `duration` is tracked as a follow-up)
+
+```yaml
+spec:
+  key: promotion-window
+  promotionStrategyRef:
+    name: my-app
+  timezone: America/New_York        # global default — used by all windows without their own timezone
+  exclude:                          # global — applies to all listed envs
+    - description: Holiday freeze
+      cron: "0 0 25 12 *"
+      duration: 48h
+      timezone: UTC                 # per-window override
+  environments:
+    - branch: environment/development
+      allow:                        # per-env — merged with global
+        - description: Business hours
+          cron: "0 9 * * 1-5"
+          duration: 8h
+    - branch: environment/staging
+      exclude:                      # per-env — merged with global
+        - description: Sunday blackout
+          cron: "0 0 * * 0"
+          duration: 24h
+```
+
+**When to use:** Any CRD where environments benefit from different settings. This pattern requires:
+
+1. **Documented merge semantics** — how global and per-env values combine (OR, override, union, etc.)
+2. **CEL validation** — ensure each environment ends up with a valid configuration after the merge (e.g. at least one allow or exclude window)
+3. **Clear precedence rules** — which level wins on conflict (e.g. exclusions always override allow windows)
+
+Only listed environments are gated; unlisted environments default to success (24/7 open).
+
+### Choosing a Pattern
+
+| Question | → Pattern |
+|---|---|
+| Same logic for every environment, no per-env config needed? | Global-only |
+| Environments need different settings? | Global + per-env merge |
+
 ## Watching PromotionStrategy
 
 Gate CRDs reference a `PromotionStrategy` via `spec.promotionStrategyRef`. When that strategy changes (for example environments or commit-status keys are updated), every gate that references it should reconcile so it can refresh owned `CommitStatus` resources.

@@ -170,6 +170,19 @@ Key features:
 - Reports pending until the required duration is met
 - Prevents promotions when there are pending changes in lower environments
 
+### Scheduled Gating
+
+The [ScheduledCommitStatus](built-in-gates/scheduled-commit-status.md) controller gates promotions based on cron-based time windows. It evaluates recurring allow and exclude windows to determine whether promotions are permitted at the current time, enabling business-hours-only rollouts, maintenance windows, and deployment freezes.
+
+Key features:
+
+- Cron-based allow/exclude windows with durations
+- `spec.key` (required)
+- Global windows shared across all listed environments, with per-environment overrides
+- Per-environment timezone support (IANA names)
+- Precise requeuing at window transition times (no polling)
+- Exclusion-only mode (allow everything except during blackout periods)
+
 ### Web Request (HTTP) Validation
 
 The [WebRequestCommitStatus](built-in-gates/web-request-commit-status/index.md) controller gates promotions on external HTTP/HTTPS APIs. It calls configurable endpoints, evaluates the response with expressions, and creates CommitStatus resources so the SCM shows success or pending.
