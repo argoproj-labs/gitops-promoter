@@ -44,11 +44,11 @@ import (
 
 // GateCommitStatusKinds is discovered from the promoter scheme (any type with
 // Spec.PromotionStrategyRef). These specs assert the view aggregate still wires
-// each discovered gate into PromotionStrategyDetails / buildBundle / watches /
-// PS mapping — the parts that cannot be inferred automatically.
+// each discovered gate into PromotionStrategyDetails / buildBundle / PS mapping /
+// apiserver RBAC — the parts that cannot be inferred automatically.
 //
 // When you add a new gate CRD with Spec.PromotionStrategyRef:
-//  1. Register it with SchemeBuilder (discovery picks it up automatically)
+//  1. Register it with SchemeBuilder (discovery picks it up automatically for watches)
 //  2. Add a []T field on PromotionStrategyDetails
 //  3. List it in buildBundle
 //  4. Add the resource plural to config/apiserver/base/rbac.yaml (promoter-apiserver)
@@ -81,19 +81,6 @@ var _ = Describe("Gate commit-status managers stay in sync with the view aggrega
 				"PromotionStrategyDetails is missing a []%s field for gate %T. Add the field in "+
 					"api/view/v1alpha1/types.go, then run make generate-apiserver and make generate-ui-types",
 				elemType.Name(), gate)
-		}
-	})
-
-	It("watches every discovered gate kind as a child kind", func() {
-		watched := map[reflect.Type]struct{}{}
-		for _, kind := range newProviderWithReader(newFakeReader()).childKinds() {
-			watched[reflect.TypeOf(kind)] = struct{}{}
-		}
-		for _, gate := range controller.GateCommitStatusKinds() {
-			Expect(watched).To(HaveKey(reflect.TypeOf(gate)),
-				"childKinds() does not watch gate %T. Append controller.GateCommitStatusKinds() in "+
-					"BundleProvider.childKinds (internal/apiserver/index.go)",
-				gate)
 		}
 	})
 

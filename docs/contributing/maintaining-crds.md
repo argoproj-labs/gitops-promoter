@@ -71,7 +71,12 @@ If the type is reconciled and has status SSA behavior, also follow [Maintaining 
 When the new kind is a **commit-status gate** CRD with `spec.promotionStrategyRef` (same shape as `ArgoCDCommitStatus`, `TimedCommitStatus`, and the other built-in gates):
 
 1. Register the type on the promoter scheme (`AddToScheme` / `SchemeBuilder`). That is enough for field indexes, instance-id cache partitioning, and resource-count metrics — you do not maintain separate kind lists for those.
-2. In the gate controller, watch `PromotionStrategy` and list your kind with `client.MatchingFields{controller.PromotionStrategyRefField: ps.Name}` (do not namespace-list and filter in memory). See [Watching PromotionStrategy](developing-a-commitstatus.md#watching-promotionstrategy).
+2. Wire the reconciler in **all three** setup sites (copy an existing gate’s `SetupWithManager` block):
+   - [`cmd/main.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/cmd/main.go) — production manager
+   - [`internal/controller/suite_test.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/controller/suite_test.go) — main envtest suite
+   - [`internal/controller/test_manager_test.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/controller/test_manager_test.go) (`startPartitionedManager`) — instance-id migration / partitioned-manager tests  
+   Omitting the last site is a common miss: migration tests will time out waiting for child `CommitStatus` objects that never get created.
+3. In the gate controller, watch `PromotionStrategy` and list your kind with `client.MatchingFields{controller.PromotionStrategyRefField: ps.Name}` (do not namespace-list and filter in memory). See [Watching PromotionStrategy](developing-a-commitstatus.md#watching-promotionstrategy).
 
 Skip this step for types that do not reference a `PromotionStrategy` or never use field selectors on the cache client.
 

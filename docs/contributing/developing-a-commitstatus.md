@@ -68,7 +68,7 @@ commitStatusApply := acv1alpha1.CommitStatus(name, namespace).
     // …
 ```
 
-See [Multiple Controller Installs](../multi-install.md) for operator configuration and migration notes. New in-tree gate CRDs: register the type on the scheme ([Maintaining CRDs](maintaining-crds.md)), then complete the [Dashboard view bundle](#dashboard-view-bundle) steps.
+See [Multiple Controller Installs](../multi-install.md) for operator configuration and migration notes. New in-tree gate CRDs: register the type on the scheme ([Maintaining CRDs](maintaining-crds.md)), register the reconciler in `cmd/main.go`, `suite_test.go`, and `startPartitionedManager` in `test_manager_test.go`, then complete the [Dashboard view bundle](#dashboard-view-bundle) steps.
 
 ## Existing Controllers
 
