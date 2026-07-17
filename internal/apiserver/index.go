@@ -110,18 +110,15 @@ func (p *BundleProvider) currentResourceVersion() string {
 
 // childKinds are all resource kinds whose changes can affect a bundle.
 func (p *BundleProvider) childKinds() []client.Object {
-	kinds := []client.Object{
+	return append([]client.Object{
 		&promoterv1alpha1.PromotionStrategy{},
 		&promoterv1alpha1.ChangeTransferPolicy{},
 		&promoterv1alpha1.PullRequest{},
 		&promoterv1alpha1.CommitStatus{},
-	}
-	kinds = append(kinds, controller.GateCommitStatusKinds()...)
-	return append(kinds,
 		&promoterv1alpha1.GitRepository{},
 		&promoterv1alpha1.ScmProvider{},
 		&promoterv1alpha1.ClusterScmProvider{},
-	)
+	}, controller.GateCommitStatusKinds()...)
 }
 
 // SetupInformers registers event handlers for all child kinds so that any change
