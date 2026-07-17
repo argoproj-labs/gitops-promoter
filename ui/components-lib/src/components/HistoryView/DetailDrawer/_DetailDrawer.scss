@@ -1,0 +1,407 @@
+@use '../tokens' as *;
+
+.hp-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 0;
+  min-width: 0;
+  background: $bg-surface;
+  border-left: 1px solid $stroke;
+  overflow: hidden;
+  transition:
+    width 0.18s ease,
+    min-width 0.18s ease;
+  z-index: 5;
+}
+
+.hp-drawer--open {
+  // Width is driven inline (user-resizable); these are fallbacks.
+  width: 420px;
+  min-width: 320px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.12);
+}
+
+// While dragging the edge, kill the width animation so the panel tracks the
+// pointer 1:1 instead of easing behind it.
+.hp-drawer--resizing {
+  transition: none;
+  user-select: none;
+}
+
+.hp-drawer__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 22px 22px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.hp-drawer__resizer {
+  position: absolute;
+  top: 0;
+  left: -3px;
+  bottom: 0;
+  width: 10px;
+  z-index: 5;
+  cursor: col-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 3px;
+    width: 2px;
+    background: transparent;
+    transition: background 0.14s ease;
+  }
+
+  &:hover::before,
+  &:focus-visible::before,
+  .hp-drawer--resizing &::before {
+    background: $accent;
+  }
+
+  &:focus-visible {
+    outline: none;
+    &::before {
+      background: $accent;
+      width: 3px;
+    }
+  }
+}
+
+.hp-drawer__resizer-grip {
+  position: relative;
+  width: 4px;
+  height: 32px;
+  border-radius: 999px;
+  background: $stroke-strong;
+  opacity: 0;
+  transition: opacity 0.14s ease;
+
+  .hp-drawer__resizer:hover &,
+  .hp-drawer__resizer:focus-visible &,
+  .hp-drawer--resizing & {
+    opacity: 1;
+  }
+}
+
+.hp-drawer__prompt {
+  padding: 28px 20px;
+  color: $text-muted;
+  font-size: 13px;
+  text-align: center;
+}
+
+.hp-drawer__close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid $stroke;
+  background: $bg-surface;
+  color: $text-secondary;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  svg {
+    font-size: 11px;
+  }
+  &:hover {
+    background: $bg-softer;
+    color: $text-primary;
+  }
+}
+
+.hp-drawer__header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 32px;
+}
+
+.hp-drawer__badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hp-drawer__kind {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 3px 8px;
+  border-radius: $radius-sm;
+  color: #fff;
+  &--live {
+    background: $success-ink;
+  }
+  &--in-flight {
+    background: $pending-ink;
+  }
+  &--was-here {
+    background: $text-secondary;
+  }
+  &--failed {
+    background: $failure-ink;
+  }
+  &--no-op {
+    background: $text-muted;
+  }
+  &--no-changes {
+    background: $bg-softer;
+    color: $text-secondary;
+    border: 1px solid $stroke-strong;
+  }
+}
+
+.hp-drawer__branch {
+  font-size: 12px;
+  font-weight: 600;
+  color: $accent;
+  background: rgba(31, 79, 94, 0.08);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.hp-drawer__subject {
+  margin: 4px 0 0 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: $text-primary;
+  line-height: 1.3;
+}
+
+.hp-drawer__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: $text-secondary;
+}
+.hp-drawer__author {
+  color: $text-secondary;
+}
+.hp-drawer__sep {
+  color: $text-muted;
+}
+
+.hp-drawer__sha {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: $accent;
+  text-decoration: none;
+  background: rgba(31, 79, 94, 0.08);
+  padding: 1px 6px;
+  border-radius: $radius-sm;
+}
+
+.hp-drawer__pr {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  color: $accent;
+  text-decoration: none;
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.hp-drawer__section {
+  border-top: 1px solid $stroke;
+  padding-top: 14px;
+  h3 {
+    margin: 0 0 8px 0;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: $text-muted;
+  }
+  p {
+    margin: 0;
+    font-size: 13px;
+    color: $text-secondary;
+    line-height: 1.45;
+  }
+  ul {
+    margin: 0;
+    padding-left: 18px;
+    font-size: 13px;
+    color: $text-secondary;
+    line-height: 1.5;
+  }
+
+  &--danger {
+    background: $failure-soft;
+    border-top: 1px solid $failure-border;
+    border-radius: $radius-md;
+    padding: 12px 14px;
+    h3 {
+      color: $failure-ink;
+    }
+    strong {
+      color: $failure-ink;
+    }
+  }
+
+  &--muted {
+    background: $bg-soft;
+    border-top: 1px solid $stroke;
+    border-radius: $radius-md;
+    padding: 12px 14px;
+  }
+}
+
+.hp-drawer__body {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: $text-secondary;
+  background: $bg-softer;
+  border: 1px solid $stroke;
+  border-radius: $radius-md;
+  white-space: pre-wrap;
+  line-height: 1.4;
+}
+
+.hp-drawer__checks {
+  list-style: none;
+  padding-left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hp-drawer__check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  padding: 4px 8px;
+  border-radius: $radius-sm;
+
+  &--success {
+    color: $success-ink;
+    background: $success-soft;
+  }
+  &--failure {
+    color: $failure-ink;
+    background: $failure-soft;
+  }
+  &--pending {
+    color: $pending-ink;
+    background: $pending-soft;
+  }
+  &--unknown {
+    color: $text-muted;
+    background: $bg-softer;
+  }
+}
+
+.hp-drawer__check-icon {
+  display: inline-flex;
+}
+.hp-drawer__check-key {
+  font-weight: 600;
+}
+.hp-drawer__check-desc {
+  color: $text-secondary;
+  font-weight: 400;
+}
+
+.hp-drawer__presence {
+  list-style: none;
+  padding-left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hp-drawer__presence-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 10px;
+  border: 1px solid $stroke;
+  border-radius: $radius-md;
+  background: $bg-soft;
+
+  &--current {
+    border-color: $accent;
+    background: rgba(31, 79, 94, 0.06);
+  }
+  &--no-changes {
+    opacity: 0.6;
+    border-style: dashed;
+  }
+}
+
+.hp-drawer__presence-branch {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: $text-primary;
+}
+
+.hp-drawer__presence-time {
+  font-size: 11px;
+  color: $text-muted;
+}
+
+.hp-drawer__hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: $text-muted;
+  font-style: italic;
+  strong {
+    color: $text-secondary;
+    font-style: normal;
+  }
+}
+
+.hp-drawer__replaced {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: 1px solid $stroke;
+  border-radius: $radius-md;
+  background: $bg-soft;
+  color: $text-primary;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  &:hover {
+    border-color: $accent;
+    background: rgba(31, 79, 94, 0.06);
+  }
+  svg {
+    color: $accent;
+    font-size: 11px;
+    flex-shrink: 0;
+  }
+}
