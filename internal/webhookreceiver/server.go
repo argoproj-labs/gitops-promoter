@@ -54,7 +54,7 @@ type WebhookReceiver struct {
 	mgr          controllerruntime.Manager
 	k8sClient    client.Client
 	enqueueCTP   EnqueueFunc
-	ctx          context.Context
+	shutdown     <-chan struct{} // closed when Start's context is cancelled
 	missRetrySem chan struct{}
 
 	// Optional overrides for tests (zero values use the package constants).
@@ -76,7 +76,7 @@ func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP EnqueueFunc) W
 
 // Start starts the webhook receiver server on the given address.
 func (wr *WebhookReceiver) Start(ctx context.Context, addr string) error {
-	wr.ctx = ctx
+	wr.shutdown = ctx.Done()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", wr.postRoot)
@@ -206,7 +206,8 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		reqLogger.Info("no ChangeTransferPolicy found for webhook delivery")
 		responseCode = http.StatusNoContent
 		w.WriteHeader(responseCode)
-		wr.scheduleMissRetry(provider, jsonBytes, deliveryID)
+		// Detach from the request context so the async retry outlives the HTTP handler.
+		wr.scheduleMissRetry(context.WithoutCancel(ctx), provider, jsonBytes, deliveryID)
 		return
 	}
 
@@ -224,8 +225,8 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(responseCode)
 }
 
-func (wr *WebhookReceiver) scheduleMissRetry(provider string, jsonBytes []byte, deliveryID string) {
-	if wr.ctx == nil || wr.missRetrySem == nil {
+func (wr *WebhookReceiver) scheduleMissRetry(ctx context.Context, provider string, jsonBytes []byte, deliveryID string) {
+	if wr.missRetrySem == nil {
 		return
 	}
 
@@ -237,19 +238,27 @@ func (wr *WebhookReceiver) scheduleMissRetry(provider string, jsonBytes []byte, 
 				<-wr.missRetrySem
 				metrics.DecWebhookMissRetryPending()
 			}()
-			wr.retryFindAndEnqueue(provider, jsonBytes, deliveryID)
+			retryCtx, cancel := context.WithTimeout(ctx, wr.getRetryTimeout())
+			defer cancel()
+			if wr.shutdown != nil {
+				go func() {
+					select {
+					case <-wr.shutdown:
+						cancel()
+					case <-retryCtx.Done():
+					}
+				}()
+			}
+			wr.retryFindAndEnqueue(retryCtx, provider, jsonBytes, deliveryID)
 		}()
 	default:
 		logger.V(4).Info("skipping webhook miss retry; at capacity", "deliveryID", deliveryID)
 	}
 }
 
-func (wr *WebhookReceiver) retryFindAndEnqueue(provider string, jsonBytes []byte, deliveryID string) {
+func (wr *WebhookReceiver) retryFindAndEnqueue(ctx context.Context, provider string, jsonBytes []byte, deliveryID string) {
 	reqLogger := logger.WithValues("provider", provider, "deliveryID", deliveryID)
-	timeout := wr.getRetryTimeout()
-	retryCtx, cancel := context.WithTimeout(wr.ctx, timeout)
-	defer cancel()
-	retryCtx = log.IntoContext(retryCtx, reqLogger)
+	ctx = log.IntoContext(ctx, reqLogger)
 
 	backoff := wait.Backoff{
 		Duration: wr.getRetryBaseDelay(),
@@ -258,7 +267,7 @@ func (wr *WebhookReceiver) retryFindAndEnqueue(provider string, jsonBytes []byte
 		Steps:    math.MaxInt32,
 	}
 
-	err := wait.ExponentialBackoffWithContext(retryCtx, backoff, func(ctx context.Context) (bool, error) {
+	err := wait.ExponentialBackoffWithContext(ctx, backoff, func(ctx context.Context) (bool, error) {
 		ctp, findErr := wr.findChangeTransferPolicy(ctx, provider, jsonBytes)
 		if findErr != nil {
 			// List failures and ambiguous matches should not keep retrying.
