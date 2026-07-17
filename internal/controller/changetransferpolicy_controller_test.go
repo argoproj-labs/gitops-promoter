@@ -1624,8 +1624,6 @@ var _ = Describe("emitPromotionLifecycleEvents", func() {
 					proposedBranch = changeTransferPolicy.Spec.ProposedBranch
 					g.Expect(proposedBranch).To(Equal(path.Join(testBranchDevelopmentNext, activePathApp)))
 				}, constants.EventuallyTimeout).Should(Succeed())
-
-				waitForCTPSteadyState(ctx, ctpNamespacedName, &changeTransferPolicy)
 			})
 
 			AfterEach(func() {
