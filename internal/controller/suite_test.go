@@ -830,6 +830,11 @@ func buildGitHubWebhookPayload(beforeSha, ref string) string {
 
 // waitForCTPSteadyState polls until the CTP's initial reconcile has populated
 // status.proposed.hydrated.sha (required for webhook field-index matching).
+//
+// Call this at the end of BeforeEach for tests that push changes and rely on a
+// webhook event to be picked up for the test to proceed quickly. If you don't
+// call this first, the webhook might send too early, and the `before` sha won't
+// match the CTP state.
 func waitForCTPSteadyState(ctx context.Context, key types.NamespacedName, ctp *promoterv1alpha1.ChangeTransferPolicy) {
 	GinkgoHelper()
 	Eventually(func(g Gomega) {
