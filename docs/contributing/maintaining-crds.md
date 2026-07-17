@@ -66,7 +66,7 @@ Follow an existing controller test as a template, for example [`promotionstrateg
 
 If the type is reconciled and has status SSA behavior, also follow [Maintaining resource status](updating-status.md) for field owners, `observedGeneration`, and status apply tests.
 
-### 5. Field index for commit-status gate kinds
+### 5. Scheme registration and gate wiring
 
 When the new kind is a **commit-status gate** CRD with `spec.promotionStrategyRef` (same shape as `ArgoCDCommitStatus`, `TimedCommitStatus`, and the other built-in gates):
 
