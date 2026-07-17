@@ -70,23 +70,26 @@ If the type is reconciled and has status SSA behavior, also follow [Maintaining 
 
 When the new kind is a **commit-status gate** CRD with `spec.promotionStrategyRef` (same shape as `ArgoCDCommitStatus`, `TimedCommitStatus`, and the other built-in gates):
 
-1. Add the type to [`internal/controller/fieldindex.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/controller/fieldindex.go) — extend `PromotionStrategyRefIndexValues` and `RegisterGatePromotionStrategyRefFieldIndexes`.
+1. Register the type on the promoter scheme (`AddToScheme` / `SchemeBuilder`). That is enough for field indexes, instance-id cache partitioning, and resource-count metrics — you do not maintain separate kind lists for those.
 2. In the gate controller, watch `PromotionStrategy` and list your kind with `client.MatchingFields{controller.PromotionStrategyRefField: ps.Name}` (do not namespace-list and filter in memory). See [Watching PromotionStrategy](developing-a-commitstatus.md#watching-promotionstrategy).
-3. If bundle assembly or other code lists the new gate by promotion strategy, ensure that cache also calls `RegisterGatePromotionStrategyRefFieldIndexes` (today: manager setup via `PromotionStrategyReconciler` and the dashboard read cache in `internal/apiserver/run.go`).
-4. Register the same index on fake clients in tests that use `MatchingFields` (follow `newFakeClientBuilder()` in [`internal/apiserver/builder_test.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/apiserver/builder_test.go)).
 
 Skip this step for types that do not reference a `PromotionStrategy` or never use field selectors on the cache client.
+
+### 6. Dashboard view bundle for commit-status gate kinds
+
+In-tree gate managers are also exposed on the aggregated `PromotionStrategyDetails` resource. After the CRD is on the scheme, follow [Dashboard view bundle](developing-a-commitstatus.md#dashboard-view-bundle) (bundle field, `buildBundle` list, apiserver RBAC, and codegen).
 
 ## Regenerate and verify
 
 After Go type and marker changes:
 
-1. **`make build-installer`** — CRD bases, deepcopy, applyconfiguration, extension icon styles, and the `dist/` install bundles.
-2. **`go mod tidy`** if module deps changed.
-3. **`make test-parallel`** — includes the strict unmarshal tests above.
-4. **`make lint-docs`** if you edited `docs/`.
+1. **`make build-installer`** — CRD bases, deepcopy, applyconfiguration, extension icon styles, and the `dist/` install bundles (includes apiserver RBAC from `config/apiserver/base/`).
+2. **`make generate-apiserver`** and **`make generate-ui-types`** when `api/view/v1alpha1` or embedded promoter types in the view bundle change (see [UI TypeScript types](ui-types.md)).
+3. **`go mod tidy`** if module deps changed.
+4. **`make test-parallel`** — includes the strict unmarshal tests above.
+5. **`make lint-docs`** if you edited `docs/`.
 
-CI’s **Check Codegen** job runs `make build-installer` and fails on drift; see [Continuous Integration](ci.md).
+CI’s **Check Codegen** job runs `make build-installer`, `make generate-apiserver`, and `make generate-ui-types` and fails on drift; see [Continuous Integration](ci.md).
 
 ## API design reminders
 
@@ -103,5 +106,7 @@ CI’s **Check Codegen** job runs `make build-installer` and fails on drift; see
 | User-facing CR reference | [CRD Specs](../crd-specs.md) |
 | CEL rules and marker mixing | [Writing CEL Validation Rules](writing-cel-rules.md) |
 | Status subresource / SSA | [Maintaining resource status](updating-status.md) |
+| Dashboard aggregation API | [Dashboard Aggregation API](../advanced-usage/dashboard-apiserver.md) |
+| UI types from the view API | [UI TypeScript types](ui-types.md) |
 | CI codegen checks | [Continuous Integration](ci.md) |
 | Contributor overview | [Contributing overview](index.md) |

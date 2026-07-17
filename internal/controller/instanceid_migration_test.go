@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 
@@ -41,10 +42,11 @@ import (
 )
 
 const (
-	migrationWave0       = "wave-0"
-	migrationGateGitKey  = "gcs-migration"
-	migrationGateWebKey  = "wrs-migration"
-	migrationAppLabelKey = "instance-id-migration-app"
+	migrationWave0            = "wave-0"
+	migrationGateGitKey       = "gcs-migration"
+	migrationGateWebKey       = "wrs-migration"
+	migrationGateScheduledKey = "scs-migration"
+	migrationAppLabelKey      = "instance-id-migration-app"
 )
 
 func setInstanceIDLabel(obj metav1.Object, instanceID string) {
@@ -84,22 +86,18 @@ func expectGateMigrated(ctx context.Context, g Gomega, cl client.Client, gate cl
 	g.Expect(cs.Labels).To(HaveKeyWithValue(promoterv1alpha1.InstanceIDLabel, instanceID),
 		"CommitStatus for gate %s should inherit instance-id after migration", gate.GetName())
 
-	switch typedGate := gate.(type) {
-	case *promoterv1alpha1.TimedCommitStatus:
-		g.Expect(typedGate.Status.InstanceID).NotTo(BeNil())
-		g.Expect(*typedGate.Status.InstanceID).To(Equal(instanceID))
-	case *promoterv1alpha1.GitCommitStatus:
-		g.Expect(typedGate.Status.InstanceID).NotTo(BeNil())
-		g.Expect(*typedGate.Status.InstanceID).To(Equal(instanceID))
-	case *promoterv1alpha1.WebRequestCommitStatus:
-		g.Expect(typedGate.Status.InstanceID).NotTo(BeNil())
-		g.Expect(*typedGate.Status.InstanceID).To(Equal(instanceID))
-	case *promoterv1alpha1.ArgoCDCommitStatus:
-		g.Expect(typedGate.Status.InstanceID).NotTo(BeNil())
-		g.Expect(*typedGate.Status.InstanceID).To(Equal(instanceID))
-	default:
-		g.Expect(false).To(BeTrue(), "unexpected gate type %T", gate)
-	}
+	_, ok := gate.(utils.PromoterResource)
+	g.Expect(ok).To(BeTrue(),
+		"%T must implement utils.PromoterResource (SetStatusInstanceID)", gate)
+	statusID := reflect.ValueOf(gate).Elem().FieldByName("Status").FieldByName("InstanceID")
+	g.Expect(statusID.IsValid()).To(BeTrue(),
+		"%T missing Status.InstanceID *string; add the field and SetStatusInstanceID on the API type", gate)
+	g.Expect(statusID.IsNil()).To(BeFalse(),
+		"%T status.instanceID unset after migration. Ensure the reconciler calls ensureControllerInstanceIDStable "+
+			"and defers HandleReconciliationResult so status is stamped from ControllerConfiguration.spec.instanceID",
+		gate)
+	g.Expect(statusID.Elem().String()).To(Equal(instanceID),
+		"%T status.instanceID = %q, want %q after migration", gate, statusID.Elem().String(), instanceID)
 }
 
 var _ = Describe("Instance ID migration", Ordered, func() {
@@ -140,6 +138,7 @@ var _ = Describe("Instance ID migration", Ordered, func() {
 		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 			{Key: migrationGateGitKey},
 			{Key: migrationGateWebKey},
+			{Key: migrationGateScheduledKey},
 		}
 
 		timedCommitStatus := &promoterv1alpha1.TimedCommitStatus{
@@ -204,6 +203,29 @@ var _ = Describe("Instance ID migration", Ordered, func() {
 			},
 		}
 
+		scheduledCommitStatus := &promoterv1alpha1.ScheduledCommitStatus{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      psName + "-scheduled",
+				Namespace: "default",
+			},
+			Spec: promoterv1alpha1.ScheduledCommitStatusSpec{
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName},
+				Key:                  migrationGateScheduledKey,
+				Environments: []promoterv1alpha1.ScheduledEnvironment{
+					{
+						Branch: testBranchDevelopment,
+						Allow: []promoterv1alpha1.CronWindow{
+							{
+								Description: "always",
+								Cron:        "0 0 * * *",
+								Duration:    metav1.Duration{Duration: 24 * time.Hour},
+							},
+						},
+					},
+				},
+			},
+		}
+
 		setupInitialTestGitRepoOnServer(ctx, gitRepo)
 		Expect(migClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(migClient.Create(ctx, scmProvider)).To(Succeed())
@@ -212,6 +234,7 @@ var _ = Describe("Instance ID migration", Ordered, func() {
 		Expect(migClient.Create(ctx, timedCommitStatus)).To(Succeed())
 		Expect(migClient.Create(ctx, gitCommitStatus)).To(Succeed())
 		Expect(migClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
+		Expect(migClient.Create(ctx, scheduledCommitStatus)).To(Succeed())
 
 		workTreePath, err := os.MkdirTemp("", "instance-id-migration-*")
 		Expect(err).NotTo(HaveOccurred())
@@ -272,6 +295,7 @@ var _ = Describe("Instance ID migration", Ordered, func() {
 			timedCommitStatus,
 			gitCommitStatus,
 			webRequestCommitStatus,
+			scheduledCommitStatus,
 			argoCDCommitStatus,
 		}
 
@@ -325,7 +349,7 @@ var _ = Describe("Instance ID migration", Ordered, func() {
 				g.Expect(ctp.Labels).To(HaveKeyWithValue(promoterv1alpha1.InstanceIDLabel, wave0))
 			}
 
-			for _, gate := range []client.Object{timedCommitStatus, gitCommitStatus, webRequestCommitStatus} {
+			for _, gate := range []client.Object{timedCommitStatus, gitCommitStatus, webRequestCommitStatus, scheduledCommitStatus} {
 				expectGateMigrated(ctx, g, migClient, gate, testBranchDevelopment, wave0)
 			}
 

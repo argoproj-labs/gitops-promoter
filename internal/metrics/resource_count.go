@@ -1,4 +1,3 @@
-//nolint:goconst // CRD kind strings in promoterResources are inlined for readability alongside each type.
 package metrics
 
 import (
@@ -16,8 +15,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
-	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/kinds"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
 const resourceCountInterval = 30 * time.Second
@@ -69,26 +69,9 @@ type resourceCountInformerSource interface {
 	GetInformer(ctx context.Context, obj client.Object, opts ...cache.InformerGetOption) (cache.Informer, error)
 }
 
-type promoterResource struct {
-	obj  client.Object
-	kind string
-}
-
-// promoterResources lists each root CRD kind matching config/rbac/role.yaml (single source for kinds and count targets).
-var promoterResources = []promoterResource{
-	{kind: "ArgoCDCommitStatus", obj: &promoterv1alpha1.ArgoCDCommitStatus{}},
-	{kind: "ChangeTransferPolicy", obj: &promoterv1alpha1.ChangeTransferPolicy{}},
-	{kind: "ClusterScmProvider", obj: &promoterv1alpha1.ClusterScmProvider{}},
-	{kind: "CommitStatus", obj: &promoterv1alpha1.CommitStatus{}},
-	{kind: "ControllerConfiguration", obj: &promoterv1alpha1.ControllerConfiguration{}},
-	{kind: "GitCommitStatus", obj: &promoterv1alpha1.GitCommitStatus{}},
-	{kind: "GitRepository", obj: &promoterv1alpha1.GitRepository{}},
-	{kind: "PromotionStrategy", obj: &promoterv1alpha1.PromotionStrategy{}},
-	{kind: "PullRequest", obj: &promoterv1alpha1.PullRequest{}},
-	{kind: "RevertCommit", obj: &promoterv1alpha1.RevertCommit{}},
-	{kind: "ScmProvider", obj: &promoterv1alpha1.ScmProvider{}},
-	{kind: "TimedCommitStatus", obj: &promoterv1alpha1.TimedCommitStatus{}},
-	{kind: "WebRequestCommitStatus", obj: &promoterv1alpha1.WebRequestCommitStatus{}},
+// promoterResources returns every promoter root CRD kind (from the process scheme) for metric counting.
+func promoterResources() []client.Object {
+	return kinds.All(utils.GetScheme())
 }
 
 func countsByReadinessFromInformer(ctx context.Context, c resourceCountInformerSource, obj client.Object) (map[string]int, error) {
@@ -109,17 +92,19 @@ func countsByReadinessFromInformer(ctx context.Context, c resourceCountInformerS
 }
 
 func refreshKubernetesResourceCounts(ctx context.Context, c resourceCountInformerSource, log logr.Logger) {
-	for _, r := range promoterResources {
-		counts, err := countsByReadinessFromInformer(ctx, c, r.obj)
+	scheme := utils.GetScheme()
+	for _, obj := range promoterResources() {
+		kind := kinds.Kind(scheme, obj)
+		counts, err := countsByReadinessFromInformer(ctx, c, obj)
 		if err != nil {
-			log.Error(err, "counting resources for promoter_kubernetes_resources metric", "kind", r.kind)
+			log.Error(err, "counting resources for promoter_kubernetes_resources metric", "kind", kind)
 			for _, readiness := range readinessBuckets {
-				kubernetesResources.WithLabelValues(r.kind, readiness).Set(0)
+				kubernetesResources.WithLabelValues(kind, readiness).Set(0)
 			}
 			continue
 		}
 		for _, readiness := range readinessBuckets {
-			kubernetesResources.WithLabelValues(r.kind, readiness).Set(float64(counts[readiness]))
+			kubernetesResources.WithLabelValues(kind, readiness).Set(float64(counts[readiness]))
 		}
 	}
 }

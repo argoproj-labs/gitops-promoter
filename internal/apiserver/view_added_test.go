@@ -66,7 +66,9 @@ var _ = Describe("Gate commit-status managers stay in sync with the view aggrega
 			"ScheduledCommitStatus",
 		} {
 			Expect(got).To(HaveKey(want),
-				"scheme discovery should find %s (does the type have Spec.PromotionStrategyRef and SchemeBuilder.Register?)", want)
+				"scheme discovery should find %s. Add Spec.PromotionStrategyRef and register the type "+
+					"with SchemeBuilder in api/v1alpha1",
+				want)
 		}
 	})
 
@@ -76,7 +78,8 @@ var _ = Describe("Gate commit-status managers stay in sync with the view aggrega
 			elemType := reflect.TypeOf(gate).Elem()
 			_, ok := viewFields[elemType]
 			Expect(ok).To(BeTrue(),
-				"PromotionStrategyDetails is missing a []%s field for gate %T; add it to api/view/v1alpha1/types.go and regenerate the view OpenAPI",
+				"PromotionStrategyDetails is missing a []%s field for gate %T. Add the field in "+
+					"api/view/v1alpha1/types.go, then run make generate-apiserver and make generate-ui-types",
 				elemType.Name(), gate)
 		}
 	})
@@ -88,7 +91,9 @@ var _ = Describe("Gate commit-status managers stay in sync with the view aggrega
 		}
 		for _, gate := range controller.GateCommitStatusKinds() {
 			Expect(watched).To(HaveKey(reflect.TypeOf(gate)),
-				"childKinds() is missing gate %T; include controller.GateCommitStatusKinds() in BundleProvider.childKinds", gate)
+				"childKinds() does not watch gate %T. Append controller.GateCommitStatusKinds() in "+
+					"BundleProvider.childKinds (internal/apiserver/index.go)",
+				gate)
 		}
 	})
 
@@ -102,9 +107,14 @@ var _ = Describe("Gate commit-status managers stay in sync with the view aggrega
 			setPromotionStrategyRefName(gate, testPSName)
 
 			Expect(controller.PromotionStrategyRefIndexValues(gate)).To(Equal([]string{testPSName}),
-				"PromotionStrategyRefIndexValues must handle %T", gate)
+				"PromotionStrategyRefIndexValues returned nothing for %T. Spec.PromotionStrategyRef must be present; "+
+					"fieldindex discovery is structural — check the Spec field name",
+				gate)
 			Expect(provider.mapObjectToPromotionStrategies(context.Background(), gate)).To(Equal([]types.NamespacedName{psKey}),
-				"mapObjectToPromotionStrategies must handle %T", gate)
+				"mapObjectToPromotionStrategies did not map %T to its PromotionStrategy. "+
+					"Gate kinds are handled via controller.PromotionStrategyRefName in the default branch of "+
+					"mapObjectToPromotionStrategies (internal/apiserver/index.go)",
+				gate)
 		}
 	})
 
@@ -132,12 +142,16 @@ var _ = Describe("Gate commit-status managers stay in sync with the view aggrega
 		for _, proto := range gates {
 			elemType := reflect.TypeOf(proto).Elem()
 			fieldName := viewFields[elemType]
-			Expect(fieldName).NotTo(BeEmpty())
+			Expect(fieldName).NotTo(BeEmpty(),
+				"PromotionStrategyDetails has no []%s field for %T. Add it in api/view/v1alpha1/types.go",
+				elemType.Name(), proto)
 			slice := bundleVal.FieldByName(fieldName)
-			Expect(slice.IsValid()).To(BeTrue())
+			Expect(slice.IsValid()).To(BeTrue(),
+				"PromotionStrategyDetails.%s is not a settable field on the bundle value", fieldName)
 			Expect(slice.Len()).To(Equal(1),
-				"buildBundle did not include %s (field %s); list the gate kind in internal/apiserver/builder.go",
-				elemType.Name(), fieldName)
+				"buildBundle did not include %s (field %s). List the kind with MatchingFields and assign "+
+					"bundle.%s in internal/apiserver/builder.go",
+				elemType.Name(), fieldName, fieldName)
 		}
 	})
 
@@ -149,7 +163,9 @@ var _ = Describe("Gate commit-status managers stay in sync with the view aggrega
 			Expect(err).NotTo(HaveOccurred())
 			plural := gateResourcePlural(gvk)
 			Expect(resources).To(ContainElement(plural),
-				"%s: add %q to promoter-apiserver ClusterRole resources (config/apiserver/base/rbac.yaml)", gvk.Kind, plural)
+				"%s: add %q under promoter-apiserver ClusterRole resources in config/apiserver/base/rbac.yaml, "+
+					"then run make build-installer so dist/ install manifests stay in sync",
+				gvk.Kind, plural)
 		}
 	})
 })
