@@ -19,7 +19,6 @@ package apiserver
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -221,6 +220,6 @@ func apiserverClusterRoleResources() []string {
 		}
 		return resources
 	}
-	Fail(fmt.Sprintf("ClusterRole promoter-apiserver not found in %s", path))
+	Fail("ClusterRole promoter-apiserver not found in " + path)
 	return nil
 }
