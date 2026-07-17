@@ -8538,6 +8538,7 @@ rules:
   - gitcommitstatuses
   - timedcommitstatuses
   - webrequestcommitstatuses
+  - scheduledcommitstatuses
   - gitrepositories
   - scmproviders
   - clusterscmproviders
