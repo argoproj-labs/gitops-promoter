@@ -6,4 +6,6 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: previousenvironmentcommitstatus-sample
 spec:
-  # TODO(user): Add fields here
+  key: promoter-previous-environment
+  promotionStrategyRef:
+    name: promotionstrategy-sample
