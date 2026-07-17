@@ -26,6 +26,7 @@ var _ = Describe("CommitStatusGateLabelKeyForParent", func() {
 		Entry("WebRequestCommitStatus", &promoterv1alpha1.WebRequestCommitStatus{}, "promoter.argoproj.io/web-request-commit-status"),
 		Entry("ArgoCDCommitStatus", &promoterv1alpha1.ArgoCDCommitStatus{}, "promoter.argoproj.io/argo-cd-commit-status"),
 		Entry("GitCommitStatus", &promoterv1alpha1.GitCommitStatus{}, "promoter.argoproj.io/git-commit-status"),
+		Entry("ScheduledCommitStatus", &promoterv1alpha1.ScheduledCommitStatus{}, "promoter.argoproj.io/scheduled-commit-status"),
 	)
 })
 
@@ -80,6 +81,7 @@ var _ = Describe("CommitStatusResourceName", func() {
 		Entry("WebRequestCommitStatus", &promoterv1alpha1.WebRequestCommitStatus{}, "environment/staging", "web-request"),
 		Entry("ArgoCDCommitStatus", &promoterv1alpha1.ArgoCDCommitStatus{}, "environment/production", "argo-cd"),
 		Entry("GitCommitStatus", &promoterv1alpha1.GitCommitStatus{}, "environment/development", "git"),
+		Entry("ScheduledCommitStatus", &promoterv1alpha1.ScheduledCommitStatus{}, "environment/staging", "scheduled"),
 	)
 })
 

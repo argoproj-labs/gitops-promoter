@@ -107,6 +107,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	return cmd
 }
 
+//nolint:gocyclo // Linear controller-registration sequence; splitting would obscure the startup order.
 func runController(
 	metricsAddr string,
 	probeAddr string,
@@ -349,6 +350,15 @@ func runController(
 	}).SetupWithManager(runCtx, localManager); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "WebRequestCommitStatus")
 		panic(fmt.Errorf("unable to create WebRequestCommitStatus controller: %w", err))
+	}
+	if err := (&controller.ScheduledCommitStatusReconciler{
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorder("ScheduledCommitStatus"),
+		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+	}).SetupWithManager(runCtx, localManager); err != nil {
+		panic(fmt.Errorf("unable to create ScheduledCommitStatus controller: %w", err))
 	}
 	//+kubebuilder:scaffold:builder
 

@@ -20,10 +20,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
 	"sync"
 	"time"
 
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
@@ -31,10 +31,8 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
-
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -44,9 +42,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-
-	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 )
 
 // GitCommitStatusReconciler reconciles a GitCommitStatus object
@@ -141,6 +136,8 @@ func (r *GitCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 }
 
 // SetupWithManager sets up the controller with the Manager.
+//
+//nolint:dupl // Gate controllers share the same SetupWithManager skeleton by design.
 func (r *GitCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	// Use Direct methods to read configuration from the API server without cache during setup.
 	// The cache is not started during SetupWithManager, so we must use the non-cached API reader.
@@ -271,7 +268,16 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 
 		// Create or update the CommitStatus for the proposed hydrated SHA
 		// Use the same key from gcs.Spec.Key for all environments
-		cs, err := r.upsertCommitStatus(ctx, gcs, ps, branch, proposedSha, phase, gcs.Spec.Key)
+		cs, err := utils.UpsertCommitStatus(ctx, r.Client, utils.UpsertCommitStatusParams{
+			Parent:      gcs,
+			RepoRefName: ps.Spec.RepositoryReference.Name,
+			Branch:      branch,
+			Sha:         proposedSha,
+			Key:         gcs.Spec.Key,
+			Description: gcs.Spec.Description,
+			Phase:       phase,
+			FieldOwner:  constants.GitCommitStatusControllerFieldOwner,
+		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", branch, err)
 		}
@@ -402,41 +408,6 @@ func (r *GitCommitStatusReconciler) evaluateExpression(expression string, commit
 		return promoterv1alpha1.CommitPhaseSuccess, new(true), nil
 	}
 	return promoterv1alpha1.CommitPhaseFailure, new(false), nil
-}
-
-// upsertCommitStatus creates or updates a CommitStatus resource for the validation result using Server-Side Apply.
-func (r *GitCommitStatusReconciler) upsertCommitStatus(ctx context.Context, gcs *promoterv1alpha1.GitCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, validationName string) (*promoterv1alpha1.CommitStatus, error) {
-	kind := reflect.TypeFor[promoterv1alpha1.GitCommitStatus]().Name()
-	commitStatusName := utils.CommitStatusResourceName(ctx, gcs, branch)
-	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
-
-	// Build the apply configuration
-	commitStatusLabels := utils.CommitStatusStandardLabels(gcs, branch, validationName)
-	commitStatusApply := acv1alpha1.CommitStatus(commitStatusName, gcs.Namespace).
-		WithLabels(commitStatusLabels).
-		WithOwnerReferences(acmetav1.OwnerReference().
-			WithAPIVersion(gvk.GroupVersion().String()).
-			WithKind(gvk.Kind).
-			WithName(gcs.Name).
-			WithUID(gcs.UID).
-			WithController(true).
-			WithBlockOwnerDeletion(true)).
-		WithSpec(acv1alpha1.CommitStatusSpec().
-			WithRepositoryReference(acv1alpha1.ObjectReference().WithName(ps.Spec.RepositoryReference.Name)).
-			WithName(validationName + "/" + branch).
-			WithDescription(gcs.Spec.Description).
-			WithPhase(phase).
-			WithSha(sha))
-
-	// Apply using Server-Side Apply with Patch to get the result directly
-	commitStatus := &promoterv1alpha1.CommitStatus{}
-	commitStatus.Name = commitStatusName
-	commitStatus.Namespace = gcs.Namespace
-	if err := r.Patch(ctx, commitStatus, utils.ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(constants.GitCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
-		return nil, fmt.Errorf("failed to apply CommitStatus: %w", err)
-	}
-
-	return commitStatus, nil
 }
 
 // enqueueGitCommitStatusForPromotionStrategy returns a handler that enqueues all GitCommitStatus resources
