@@ -92,7 +92,7 @@ func gvkKey(sc *runtime.Scheme, obj client.Object) schema.GroupVersionKind {
 func buildStubInformerSourceWithCounts() *stubResourceCountInformerSource {
 	s := testMetricsScheme()
 	gvkInf := make(map[schema.GroupVersionKind]toolscache.SharedIndexInformer)
-	for _, obj := range promoterResources() {
+	for _, obj := range kinds.All(s) {
 		gvk := gvkKey(s, obj)
 		kind := kinds.Kind(s, obj)
 		var items []runtime.Object
@@ -128,7 +128,7 @@ func buildStubInformerSourceWithCounts() *stubResourceCountInformerSource {
 
 func resetPromoterKubernetesResourceGauges() {
 	scheme := utils.GetScheme()
-	for _, obj := range promoterResources() {
+	for _, obj := range kinds.All(scheme) {
 		kind := kinds.Kind(scheme, obj)
 		for _, readiness := range readinessBuckets {
 			kubernetesResources.DeleteLabelValues(kind, readiness)
@@ -237,7 +237,7 @@ var _ = Describe("Resource count metrics", func() {
 				close(done)
 			}()
 
-			minGets := 2 * len(promoterResources())
+			minGets := 2 * len(kinds.All(utils.GetScheme()))
 			Eventually(func() int32 { return stub.getCount.Load() }).WithTimeout(3 * time.Second).WithPolling(5 * time.Millisecond).
 				Should(BeNumerically(">=", minGets))
 

@@ -69,11 +69,6 @@ type resourceCountInformerSource interface {
 	GetInformer(ctx context.Context, obj client.Object, opts ...cache.InformerGetOption) (cache.Informer, error)
 }
 
-// promoterResources returns every promoter root CRD kind (from the process scheme) for metric counting.
-func promoterResources() []client.Object {
-	return kinds.All(utils.GetScheme())
-}
-
 func countsByReadinessFromInformer(ctx context.Context, c resourceCountInformerSource, obj client.Object) (map[string]int, error) {
 	informer, err := c.GetInformer(ctx, obj)
 	if err != nil {
@@ -93,7 +88,7 @@ func countsByReadinessFromInformer(ctx context.Context, c resourceCountInformerS
 
 func refreshKubernetesResourceCounts(ctx context.Context, c resourceCountInformerSource, log logr.Logger) {
 	scheme := utils.GetScheme()
-	for _, obj := range promoterResources() {
+	for _, obj := range kinds.All(scheme) {
 		kind := kinds.Kind(scheme, obj)
 		counts, err := countsByReadinessFromInformer(ctx, c, obj)
 		if err != nil {
