@@ -18,18 +18,29 @@ package apiserver
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"reflect"
+	goruntime "runtime"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/yaml"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
 // GateCommitStatusKinds is discovered from the promoter scheme (any type with
@@ -41,6 +52,7 @@ import (
 //  1. Register it with SchemeBuilder (discovery picks it up automatically)
 //  2. Add a []T field on PromotionStrategyDetails
 //  3. List it in buildBundle
+//  4. Add the resource plural to config/apiserver/base/rbac.yaml (promoter-apiserver)
 var _ = Describe("Gate commit-status managers stay in sync with the view aggregate", func() {
 	It("discovers at least the known PromotionStrategyRef gate kinds", func() {
 		got := map[string]struct{}{}
@@ -131,6 +143,18 @@ var _ = Describe("Gate commit-status managers stay in sync with the view aggrega
 				elemType.Name(), fieldName)
 		}
 	})
+
+	It("grants the apiserver ClusterRole read access to every discovered gate kind", func() {
+		scheme := utils.GetScheme()
+		resources := apiserverClusterRoleResources()
+		for _, proto := range controller.GateCommitStatusKinds() {
+			gvk, err := apiutil.GVKForObject(proto, scheme)
+			Expect(err).NotTo(HaveOccurred())
+			plural := gateResourcePlural(gvk)
+			Expect(resources).To(ContainElement(plural),
+				"%s: add %q to promoter-apiserver ClusterRole resources (config/apiserver/base/rbac.yaml)", gvk.Kind, plural)
+		}
+	})
 })
 
 // promotionStrategyDetailsGateSliceFields maps gate element types (e.g.
@@ -158,4 +182,47 @@ func setPromotionStrategyRefName(obj client.Object, name string) {
 	nameField := ref.FieldByName("Name")
 	Expect(nameField.CanSet()).To(BeTrue(), "%T.Spec.PromotionStrategyRef.Name is not settable", obj)
 	nameField.SetString(name)
+}
+
+// gateResourcePlural returns the CRD plural for a gate kind (…Status → …statuses).
+func gateResourcePlural(gvk schema.GroupVersionKind) string {
+	return strings.ToLower(gvk.Kind) + "es"
+}
+
+// apiserverClusterRoleResources returns the promoter.argoproj.io resources listed
+// on the promoter-apiserver ClusterRole in config/apiserver/base/rbac.yaml.
+//
+// TODO: automatically generate this RBAC instead of relying on the user to update it.
+func apiserverClusterRoleResources() []string {
+	_, thisFile, _, ok := goruntime.Caller(0)
+	Expect(ok).To(BeTrue())
+	path := filepath.Join(filepath.Dir(thisFile), "..", "..", "config", "apiserver", "base", "rbac.yaml")
+
+	raw, err := os.ReadFile(path)
+	Expect(err).NotTo(HaveOccurred(), "read %s", path)
+
+	decoder := yaml.NewYAMLOrJSONDecoder(strings.NewReader(string(raw)), 4096)
+	for {
+		var role rbacv1.ClusterRole
+		err := decoder.Decode(&role)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		Expect(err).NotTo(HaveOccurred(), "decode %s", path)
+		if role.Name != "promoter-apiserver" {
+			continue
+		}
+		var resources []string
+		for _, rule := range role.Rules {
+			for _, group := range rule.APIGroups {
+				if group != "promoter.argoproj.io" {
+					continue
+				}
+				resources = append(resources, rule.Resources...)
+			}
+		}
+		return resources
+	}
+	Fail(fmt.Sprintf("ClusterRole promoter-apiserver not found in %s", path))
+	return nil
 }
