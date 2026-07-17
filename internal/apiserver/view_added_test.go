@@ -97,9 +97,8 @@ var _ = Describe("Gate commit-status managers stay in sync with the view aggrega
 		provider := newProviderWithReader(newFakeReader(mappingSeed()...))
 		psKey := types.NamespacedName{Namespace: testNamespace, Name: testPSName}
 
-		for _, proto := range controller.GateCommitStatusKinds() {
-			gate := proto.DeepCopyObject().(client.Object)
-			gate.SetName(fmt.Sprintf("gate-%s", reflect.TypeOf(gate).Elem().Name()))
+		for _, gate := range controller.GateCommitStatusKinds() {
+			gate.SetName("gate-" + reflect.TypeOf(gate).Elem().Name())
 			gate.SetNamespace(testNamespace)
 			setPromotionStrategyRefName(gate, testPSName)
 
@@ -111,17 +110,16 @@ var _ = Describe("Gate commit-status managers stay in sync with the view aggrega
 	})
 
 	It("includes every discovered gate kind when building a bundle", func() {
-		objs := []client.Object{
-			&promoterv1alpha1.PromotionStrategy{
-				ObjectMeta: metav1.ObjectMeta{Name: testPSName, Namespace: testNamespace, UID: testPSUID},
-				Spec: promoterv1alpha1.PromotionStrategySpec{
-					Environments: []promoterv1alpha1.Environment{{Branch: "environment/dev"}},
-				},
+		gates := controller.GateCommitStatusKinds()
+		objs := make([]client.Object, 0, 1+len(gates))
+		objs = append(objs, &promoterv1alpha1.PromotionStrategy{
+			ObjectMeta: metav1.ObjectMeta{Name: testPSName, Namespace: testNamespace, UID: testPSUID},
+			Spec: promoterv1alpha1.PromotionStrategySpec{
+				Environments: []promoterv1alpha1.Environment{{Branch: "environment/dev"}},
 			},
-		}
-		for _, proto := range controller.GateCommitStatusKinds() {
-			gate := proto.DeepCopyObject().(client.Object)
-			gate.SetName(fmt.Sprintf("gate-%s", reflect.TypeOf(gate).Elem().Name()))
+		})
+		for _, gate := range gates {
+			gate.SetName("gate-" + reflect.TypeOf(gate).Elem().Name())
 			gate.SetNamespace(testNamespace)
 			setPromotionStrategyRefName(gate, testPSName)
 			objs = append(objs, gate)
@@ -132,7 +130,7 @@ var _ = Describe("Gate commit-status managers stay in sync with the view aggrega
 
 		viewFields := promotionStrategyDetailsGateSliceFields()
 		bundleVal := reflect.ValueOf(bundle).Elem()
-		for _, proto := range controller.GateCommitStatusKinds() {
+		for _, proto := range gates {
 			elemType := reflect.TypeOf(proto).Elem()
 			fieldName := viewFields[elemType]
 			Expect(fieldName).NotTo(BeEmpty())
