@@ -91,6 +91,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ControllerConfigurationSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ControllerConfigurationStatus"):
 		return &apiv1alpha1.ControllerConfigurationStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("CronWindow"):
+		return &apiv1alpha1.CronWindowApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("Environment"):
 		return &apiv1alpha1.EnvironmentApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("EnvironmentStatus"):
@@ -187,6 +189,18 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.RevertCommitSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("RevisionReference"):
 		return &apiv1alpha1.RevisionReferenceApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ScheduledCommitStatus"):
+		return &apiv1alpha1.ScheduledCommitStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ScheduledCommitStatusConfiguration"):
+		return &apiv1alpha1.ScheduledCommitStatusConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ScheduledCommitStatusSpec"):
+		return &apiv1alpha1.ScheduledCommitStatusSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ScheduledCommitStatusStatus"):
+		return &apiv1alpha1.ScheduledCommitStatusStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ScheduledEnvironment"):
+		return &apiv1alpha1.ScheduledEnvironmentApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ScheduledEnvironmentStatus"):
+		return &apiv1alpha1.ScheduledEnvironmentStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ScmProvider"):
 		return &apiv1alpha1.ScmProviderApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ScmProviderObjectReference"):
@@ -233,6 +247,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.WebRequestCommitStatusStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("WhenWithOutputSpec"):
 		return &apiv1alpha1.WhenWithOutputSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("WindowStatus"):
+		return &apiv1alpha1.WindowStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("WorkQueue"):
 		return &apiv1alpha1.WorkQueueApplyConfiguration{}
 

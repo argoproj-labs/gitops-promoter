@@ -71,6 +71,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.ControllerConfigurationList{}.OpenAPIModelName():                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationList(ref),
 		apiv1alpha1.ControllerConfigurationSpec{}.OpenAPIModelName():                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSpec(ref),
 		apiv1alpha1.ControllerConfigurationStatus{}.OpenAPIModelName():                        schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationStatus(ref),
+		apiv1alpha1.CronWindow{}.OpenAPIModelName():                                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_CronWindow(ref),
 		apiv1alpha1.Environment{}.OpenAPIModelName():                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_Environment(ref),
 		apiv1alpha1.EnvironmentStatus{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_EnvironmentStatus(ref),
 		apiv1alpha1.ExponentialFailure{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_ExponentialFailure(ref),
@@ -125,6 +126,13 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.RevertCommitSpec{}.OpenAPIModelName():                                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommitSpec(ref),
 		apiv1alpha1.RevertCommitStatus{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommitStatus(ref),
 		apiv1alpha1.RevisionReference{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevisionReference(ref),
+		apiv1alpha1.ScheduledCommitStatus{}.OpenAPIModelName():                                schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScheduledCommitStatus(ref),
+		apiv1alpha1.ScheduledCommitStatusConfiguration{}.OpenAPIModelName():                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScheduledCommitStatusConfiguration(ref),
+		apiv1alpha1.ScheduledCommitStatusList{}.OpenAPIModelName():                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScheduledCommitStatusList(ref),
+		apiv1alpha1.ScheduledCommitStatusSpec{}.OpenAPIModelName():                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScheduledCommitStatusSpec(ref),
+		apiv1alpha1.ScheduledCommitStatusStatus{}.OpenAPIModelName():                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScheduledCommitStatusStatus(ref),
+		apiv1alpha1.ScheduledEnvironment{}.OpenAPIModelName():                                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScheduledEnvironment(ref),
+		apiv1alpha1.ScheduledEnvironmentStatus{}.OpenAPIModelName():                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScheduledEnvironmentStatus(ref),
 		apiv1alpha1.Scm{}.OpenAPIModelName():                                                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_Scm(ref),
 		apiv1alpha1.ScmProvider{}.OpenAPIModelName():                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProvider(ref),
 		apiv1alpha1.ScmProviderList{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderList(ref),
@@ -152,6 +160,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.WebRequestCommitStatusSpec{}.OpenAPIModelName():                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusSpec(ref),
 		apiv1alpha1.WebRequestCommitStatusStatus{}.OpenAPIModelName():                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusStatus(ref),
 		apiv1alpha1.WhenWithOutputSpec{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_WhenWithOutputSpec(ref),
+		apiv1alpha1.WindowStatus{}.OpenAPIModelName():                                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_WindowStatus(ref),
 		apiv1alpha1.WorkQueue{}.OpenAPIModelName():                                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_WorkQueue(ref),
 		PromotionStrategyDetails{}.OpenAPIModelName():                                         schema_gitops_promoter_api_view_v1alpha1_PromotionStrategyDetails(ref),
 		PromotionStrategyDetailsList{}.OpenAPIModelName():                                     schema_gitops_promoter_api_view_v1alpha1_PromotionStrategyDetailsList(ref),
@@ -2067,12 +2076,19 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSp
 							Ref:         ref(apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName()),
 						},
 					},
+					"scheduledCommitStatus": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ScheduledCommitStatus contains the configuration for the ScheduledCommitStatus controller, including WorkQueue settings that control reconciliation behavior.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.ScheduledCommitStatusConfiguration{}.OpenAPIModelName()),
+						},
+					},
 				},
-				Required: []string{"promotionStrategy", "changeTransferPolicy", "pullRequest", "commitStatus", "argocdCommitStatus", "timedCommitStatus", "gitCommitStatus", "webRequestCommitStatus"},
+				Required: []string{"promotionStrategy", "changeTransferPolicy", "pullRequest", "commitStatus", "argocdCommitStatus", "timedCommitStatus", "gitCommitStatus", "webRequestCommitStatus", "scheduledCommitStatus"},
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.ArgoCDCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyConfiguration{}.OpenAPIModelName(), apiv1alpha1.CommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategyConfiguration{}.OpenAPIModelName(), apiv1alpha1.PullRequestConfiguration{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName()},
+			apiv1alpha1.ArgoCDCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyConfiguration{}.OpenAPIModelName(), apiv1alpha1.CommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategyConfiguration{}.OpenAPIModelName(), apiv1alpha1.PullRequestConfiguration{}.OpenAPIModelName(), apiv1alpha1.ScheduledCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName()},
 	}
 }
 
@@ -2125,6 +2141,50 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSt
 		},
 		Dependencies: []string{
 			metav1.Condition{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CronWindow(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "CronWindow defines a recurring time window using a cron expression and a duration.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"description": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Description is an optional human-readable explanation of this window (e.g. \"US East business hours\", \"Holiday deployment freeze\").",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"cron": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Cron is a standard 5-field cron expression defining the start of the window (minute hour day-of-month month day-of-week). For example \"0 9 * * 1-5\" means Monday–Friday at 09:00 in the configured timezone.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"duration": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Duration is how long the window remains open after the cron trigger. The duration should be in a format accepted by Go's time.ParseDuration function, e.g., \"8h\", \"30m\", \"2h30m\".",
+							Ref:         ref(metav1.Duration{}.OpenAPIModelName()),
+						},
+					},
+					"timezone": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Timezone overrides the spec-level default timezone for this specific window. If not set, the spec-level timezone (or UTC if that is also not set) is used.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"cron", "duration"},
+			},
+		},
+		Dependencies: []string{
+			metav1.Duration{}.OpenAPIModelName()},
 	}
 }
 
@@ -4432,6 +4492,386 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevisionReference(ref com
 	}
 }
 
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScheduledCommitStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ScheduledCommitStatus is the Schema for the scheduledcommitstatuses API.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Description: "metadata is a standard object metadata",
+							Default:     map[string]interface{}{},
+							Ref:         ref(metav1.ObjectMeta{}.OpenAPIModelName()),
+						},
+					},
+					"spec": {
+						SchemaProps: spec.SchemaProps{
+							Description: "spec defines the desired state of ScheduledCommitStatus",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.ScheduledCommitStatusSpec{}.OpenAPIModelName()),
+						},
+					},
+					"status": {
+						SchemaProps: spec.SchemaProps{
+							Description: "status defines the observed state of ScheduledCommitStatus",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.ScheduledCommitStatusStatus{}.OpenAPIModelName()),
+						},
+					},
+				},
+				Required: []string{"spec"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.ScheduledCommitStatusSpec{}.OpenAPIModelName(), apiv1alpha1.ScheduledCommitStatusStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScheduledCommitStatusConfiguration(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ScheduledCommitStatusConfiguration defines the configuration for the ScheduledCommitStatus controller.\n\nThis configuration controls how the ScheduledCommitStatus controller processes reconciliation requests, including requeue intervals, concurrency limits, and rate limiting behavior.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"workQueue": {
+						SchemaProps: spec.SchemaProps{
+							Description: "WorkQueue contains the work queue configuration for the ScheduledCommitStatus controller. This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.WorkQueue{}.OpenAPIModelName()),
+						},
+					},
+				},
+				Required: []string{"workQueue"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.WorkQueue{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScheduledCommitStatusList(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ScheduledCommitStatusList contains a list of ScheduledCommitStatus.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref(metav1.ListMeta{}.OpenAPIModelName()),
+						},
+					},
+					"items": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.ScheduledCommitStatus{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"items"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.ScheduledCommitStatus{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScheduledCommitStatusSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ScheduledCommitStatusSpec defines the desired state of ScheduledCommitStatus.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"promotionStrategyRef": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PromotionStrategyRef is a reference to the promotion strategy that this scheduled commit status applies to.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.ObjectReference{}.OpenAPIModelName()),
+						},
+					},
+					"key": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Key is the gate name referenced in the PromotionStrategy's proposedCommitStatuses. Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"timezone": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Timezone is the default IANA timezone name used for evaluating cron expressions across all windows. Individual windows may override this with their own timezone field. Defaults to UTC.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"allow": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Allow defines global allow windows applied to all listed environments in addition to per-environment allow windows (OR semantics across all).",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.CronWindow{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+					"exclude": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Exclude defines global exclusion windows applied to all listed environments in addition to per-environment exclusions. Exclusions take precedence over allow windows.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.CronWindow{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+					"environments": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-map-keys": []interface{}{
+									"branch",
+								},
+								"x-kubernetes-list-type": "map",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "Environments defines the list of environments to gate. Only listed environments are gated; unlisted environments default to success (24/7 open). Each environment inherits global allow/exclude windows and may add its own. An environment with no per-environment windows is valid when global windows are defined.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.ScheduledEnvironment{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"promotionStrategyRef", "key", "environments"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.CronWindow{}.OpenAPIModelName(), apiv1alpha1.ObjectReference{}.OpenAPIModelName(), apiv1alpha1.ScheduledEnvironment{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScheduledCommitStatusStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ScheduledCommitStatusStatus defines the observed state of ScheduledCommitStatus.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"observedGeneration": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.",
+							Type:        []string{"integer"},
+							Format:      "int64",
+						},
+					},
+					"environments": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-map-keys": []interface{}{
+									"branch",
+								},
+								"x-kubernetes-list-type": "map",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "Environments holds the status of each environment being tracked.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.ScheduledEnvironmentStatus{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+					"conditions": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-map-keys": []interface{}{
+									"type",
+								},
+								"x-kubernetes-list-type": "map",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "Conditions represent the latest available observations of an object's state",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(metav1.Condition{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+					"instanceID": {
+						SchemaProps: spec.SchemaProps{
+							Description: "InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install).",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.ScheduledEnvironmentStatus{}.OpenAPIModelName(), metav1.Condition{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScheduledEnvironment(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ScheduledEnvironment defines the window configuration for a single environment.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"branch": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Branch is the name of the branch/environment you want to gate with time windows. Must not start with '-', contain ':', or contain '..'.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"allow": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Allow defines the allowed promotion windows. Promotions are allowed when the current time falls inside any of these windows (OR semantics). These are combined with any global spec.allow windows. If no allow windows are defined (neither here nor globally), the environment operates in exclusion-only mode.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.CronWindow{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+					"exclude": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Exclude defines blackout periods during which promotions are blocked. Exclusions take precedence over allow windows — if the current time falls inside any exclusion, promotions are blocked regardless of allow windows. These are combined with any global spec.exclude windows. If empty, no blackout periods are applied.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.CronWindow{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"branch"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.CronWindow{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScheduledEnvironmentStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ScheduledEnvironmentStatus defines the observed window state for a specific environment.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"branch": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Branch is the name of the branch/environment.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"sha": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Sha is the proposed commit SHA being tracked for this environment. Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"phase": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Phase represents the current phase of the scheduled gate.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"active": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Active holds details of the currently active window driving the phase. Nil when no specific window is active (e.g. exclusion-only mode with no active exclusion).",
+							Ref:         ref(apiv1alpha1.WindowStatus{}.OpenAPIModelName()),
+						},
+					},
+					"next": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Next holds details of the next expected window transition. Used by UIs for countdown timers and by the controller for precise requeuing.",
+							Ref:         ref(apiv1alpha1.WindowStatus{}.OpenAPIModelName()),
+						},
+					},
+				},
+				Required: []string{"branch", "sha", "phase"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.WindowStatus{}.OpenAPIModelName()},
+	}
+}
+
 func schema_argoproj_labs_gitops_promoter_api_v1alpha1_Scm(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -5649,6 +6089,41 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WhenWithOutputSpec(ref co
 		},
 		Dependencies: []string{
 			apiv1alpha1.OutputSpec{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WindowStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "WindowStatus holds details about a specific window state (active or upcoming).",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"allow": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Allow is the cron expression of the allow window, if applicable.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"exclude": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Exclude is the cron expression of the exclusion window, if applicable.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"transition": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Transition is when this window state is expected to change (e.g. window closing for active, window opening for next).",
+							Ref:         ref(metav1.Time{}.OpenAPIModelName()),
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			metav1.Time{}.OpenAPIModelName()},
 	}
 }
 

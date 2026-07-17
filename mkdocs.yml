@@ -47,6 +47,7 @@ nav:
           - ArgoCDCommitStatus: gating-promotions/built-in-gates/argocd-commit-status.md
           - GitCommitStatus: gating-promotions/built-in-gates/git-commit-status.md
           - TimedCommitStatus: gating-promotions/built-in-gates/timed-commit-status.md
+          - ScheduledCommitStatus: gating-promotions/built-in-gates/scheduled-commit-status.md
           - WebRequestCommitStatus:
               - Overview: gating-promotions/built-in-gates/web-request-commit-status/index.md
               - Simulator: gating-promotions/built-in-gates/web-request-commit-status/simulator.md

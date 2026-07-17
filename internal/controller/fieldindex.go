@@ -40,6 +40,8 @@ func PromotionStrategyRefIndexValues(rawObj client.Object) []string {
 		return []string{o.Spec.PromotionStrategyRef.Name}
 	case *promoterv1alpha1.WebRequestCommitStatus:
 		return []string{o.Spec.PromotionStrategyRef.Name}
+	case *promoterv1alpha1.ScheduledCommitStatus:
+		return []string{o.Spec.PromotionStrategyRef.Name}
 	default:
 		return nil
 	}
@@ -53,6 +55,7 @@ func RegisterGatePromotionStrategyRefFieldIndexes(ctx context.Context, indexer c
 		&promoterv1alpha1.GitCommitStatus{},
 		&promoterv1alpha1.TimedCommitStatus{},
 		&promoterv1alpha1.WebRequestCommitStatus{},
+		&promoterv1alpha1.ScheduledCommitStatus{},
 	}
 	for _, obj := range gateKinds {
 		if err := indexer.IndexField(ctx, obj, PromotionStrategyRefField, PromotionStrategyRefIndexValues); err != nil {

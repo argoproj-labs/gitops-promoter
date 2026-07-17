@@ -44,6 +44,7 @@ rules:
   - gitcommitstatuses
   - promotionstrategies
   - revertcommits
+  - scheduledcommitstatuses
   - timedcommitstatuses
   - webrequestcommitstatuses
   verbs:
@@ -60,6 +61,7 @@ rules:
   - gitrepositories/finalizers
   - promotionstrategies/finalizers
   - pullrequests/finalizers
+  - scheduledcommitstatuses/finalizers
   - scmproviders/finalizers
   - timedcommitstatuses/finalizers
   - webrequestcommitstatuses/finalizers
@@ -76,6 +78,7 @@ rules:
   - gitrepositories/status
   - promotionstrategies/status
   - pullrequests/status
+  - scheduledcommitstatuses/status
   - scmproviders/status
   - timedcommitstatuses/status
   - webrequestcommitstatuses/status

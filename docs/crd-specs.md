@@ -84,6 +84,16 @@ to check the status of the Argo CD Applications that are being used in the promo
 {!internal/controller/testdata/ArgoCDCommitStatus.yaml!}
 ```
 
+### ScheduledCommitStatus
+
+A ScheduledCommitStatus provides calendar-based gating for environment promotions using cron expressions with durations.
+It defines recurring allow and exclusion windows that control when promotions can happen — useful for business-hours-only
+rollouts, deployment freezes, or maintenance-window policies. See [Scheduled Commit Status](gating-promotions/built-in-gates/scheduled-commit-status.md) for configuration details and examples.
+
+```yaml
+{!internal/controller/testdata/ScheduledCommitStatus.yaml!}
+```
+
 ### TimedCommitStatus
 
 A TimedCommitStatus provides time-based gating for environment promotions. It monitors how long commits have been running
