@@ -297,15 +297,7 @@ Only listed environments are gated; unlisted environments default to success (24
 
 Gate CRDs reference a `PromotionStrategy` via `spec.promotionStrategyRef`. When that strategy changes (for example environments or commit-status keys are updated), every gate that references it should reconcile so it can refresh owned `CommitStatus` resources.
 
-Built-in controllers watch `PromotionStrategy` and enqueue reconcile requests for matching gates. Use a **cache field index** on `.spec.promotionStrategyRef.name` so those lookups stay efficient and so `client.MatchingFields` works on the manager's cached client.
-
-### When to register an index
-
-`MatchingFields` lists need a cache field index on `.spec.promotionStrategyRef.name`. Without `IndexField` registration, that `List` fails at runtime. Listing the whole namespace and filtering in memory works but does not scale and is easy to miss in unit tests.
-
-This applies to **cache-backed** `client.Client` calls (the default from `mgr.GetClient()`). It is separate from CRD `selectableFields`, which affect API-server field selectors on direct API reads.
-
-**In this repository**, registering the gate type on the promoter scheme is enough — field indexes for `Spec.PromotionStrategyRef` kinds are registered for you. **Outside this repo**, register the index yourself in `SetupWithManager`:
+Built-in controllers watch `PromotionStrategy` and enqueue reconcile requests for matching gates. List with `client.MatchingFields{controller.PromotionStrategyRefField: ps.Name}` (do not namespace-list and filter in memory). **In this repository**, registering the type on the promoter scheme is enough for that field index. **Outside this repo**, register the index in `SetupWithManager` before the watch:
 
 ```go
 const promotionStrategyRefField = ".spec.promotionStrategyRef.name"
