@@ -63,6 +63,9 @@ type PromotionStrategyDetails struct {
 	// WebRequestCommitStatuses are the WebRequestCommitStatus managers that reference the PromotionStrategy.
 	WebRequestCommitStatuses []promoterv1alpha1.WebRequestCommitStatus `json:"webRequestCommitStatuses,omitempty"`
 
+	// ScheduledCommitStatuses are the ScheduledCommitStatus managers that reference the PromotionStrategy.
+	ScheduledCommitStatuses []promoterv1alpha1.ScheduledCommitStatus `json:"scheduledCommitStatuses,omitempty"`
+
 	// GitRepository is the GitRepository referenced by the PromotionStrategy, if resolvable.
 	GitRepository *promoterv1alpha1.GitRepository `json:"gitRepository,omitempty"`
 

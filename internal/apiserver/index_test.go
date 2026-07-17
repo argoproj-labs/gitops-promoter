@@ -125,6 +125,12 @@ var _ = Describe("mapObjectToPromotionStrategies", func() {
 				Spec:       promoterv1alpha1.WebRequestCommitStatusSpec{PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: testPSName}},
 			},
 			[]types.NamespacedName{psKey}),
+		Entry("ScheduledCommitStatus by ref",
+			&promoterv1alpha1.ScheduledCommitStatus{
+				ObjectMeta: objectMeta("scheduled"),
+				Spec:       promoterv1alpha1.ScheduledCommitStatusSpec{PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: testPSName}},
+			},
+			[]types.NamespacedName{psKey}),
 		Entry("GitRepository reverse lookup",
 			&promoterv1alpha1.GitRepository{ObjectMeta: objectMeta("my-repo")},
 			[]types.NamespacedName{psKey}),
