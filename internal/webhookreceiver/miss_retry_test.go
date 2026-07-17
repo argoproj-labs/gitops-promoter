@@ -125,7 +125,7 @@ var _ = Describe("WebhookReceiver miss retry", func() {
 	)
 
 	BeforeEach(func() {
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel = context.WithCancel(context.Background())
 		metrics.WebhookMissRetryPending.Set(0)
 	})
 
