@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/tidwall/gjson"
 
 	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/util/wait"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -34,28 +36,48 @@ const (
 	ProviderUnknown        = ""
 )
 
+// Miss-retry defaults for async field-index lookups after an initial webhook miss.
+const (
+	missRetryTimeout      = 15 * time.Second
+	missRetryBaseDelay    = 100 * time.Millisecond
+	missRetryMaxDelay     = 2 * time.Second
+	missRetryFactor       = 2.0
+	maxPendingMissRetries = 256
+)
+
 // EnqueueFunc is a function type that can be used to enqueue CTP reconcile requests
 // without modifying the CTP object. This matches controller.CTPEnqueueFunc.
 type EnqueueFunc func(namespace, name string)
 
 // WebhookReceiver is a server that listens for webhooks and triggers reconciles of ChangeTransferPolicies.
 type WebhookReceiver struct {
-	mgr        controllerruntime.Manager
-	k8sClient  client.Client
-	enqueueCTP EnqueueFunc
+	mgr          controllerruntime.Manager
+	k8sClient    client.Client
+	enqueueCTP   EnqueueFunc
+	ctx          context.Context
+	missRetrySem chan struct{}
+
+	// Optional overrides for tests (zero values use the package constants).
+	retryTimeout   time.Duration
+	retryBaseDelay time.Duration
+	retryMaxDelay  time.Duration
+	retryFactor    float64
 }
 
 // NewWebhookReceiver creates a new instance of WebhookReceiver.
 func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP EnqueueFunc) WebhookReceiver {
 	return WebhookReceiver{
-		mgr:        mgr,
-		k8sClient:  mgr.GetClient(),
-		enqueueCTP: enqueueCTP,
+		mgr:          mgr,
+		k8sClient:    mgr.GetClient(),
+		enqueueCTP:   enqueueCTP,
+		missRetrySem: make(chan struct{}, maxPendingMissRetries),
 	}
 }
 
 // Start starts the webhook receiver server on the given address.
 func (wr *WebhookReceiver) Start(ctx context.Context, addr string) error {
+	wr.ctx = ctx
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", wr.postRoot)
 
@@ -184,6 +206,7 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		reqLogger.Info("no ChangeTransferPolicy found for webhook delivery")
 		responseCode = http.StatusNoContent
 		w.WriteHeader(responseCode)
+		wr.scheduleMissRetry(provider, jsonBytes, deliveryID)
 		return
 	}
 
@@ -199,6 +222,93 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 
 	responseCode = http.StatusNoContent
 	w.WriteHeader(responseCode)
+}
+
+func (wr *WebhookReceiver) scheduleMissRetry(provider string, jsonBytes []byte, deliveryID string) {
+	if wr.ctx == nil || wr.missRetrySem == nil {
+		return
+	}
+
+	select {
+	case wr.missRetrySem <- struct{}{}:
+		metrics.IncWebhookMissRetryPending()
+		go func() {
+			defer func() {
+				<-wr.missRetrySem
+				metrics.DecWebhookMissRetryPending()
+			}()
+			wr.retryFindAndEnqueue(provider, jsonBytes, deliveryID)
+		}()
+	default:
+		logger.V(4).Info("skipping webhook miss retry; at capacity", "deliveryID", deliveryID)
+	}
+}
+
+func (wr *WebhookReceiver) retryFindAndEnqueue(provider string, jsonBytes []byte, deliveryID string) {
+	reqLogger := logger.WithValues("provider", provider, "deliveryID", deliveryID)
+	timeout := wr.getRetryTimeout()
+	retryCtx, cancel := context.WithTimeout(wr.ctx, timeout)
+	defer cancel()
+	retryCtx = log.IntoContext(retryCtx, reqLogger)
+
+	backoff := wait.Backoff{
+		Duration: wr.getRetryBaseDelay(),
+		Factor:   wr.getRetryFactor(),
+		Cap:      wr.getRetryMaxDelay(),
+		Steps:    math.MaxInt32,
+	}
+
+	err := wait.ExponentialBackoffWithContext(retryCtx, backoff, func(ctx context.Context) (bool, error) {
+		ctp, findErr := wr.findChangeTransferPolicy(ctx, provider, jsonBytes)
+		if findErr != nil {
+			// List failures and ambiguous matches should not keep retrying.
+			return false, findErr
+		}
+		if ctp == nil {
+			return false, nil
+		}
+		if wr.enqueueCTP != nil {
+			wr.enqueueCTP(ctp.Namespace, ctp.Name)
+		}
+		reqLogger.Info("Triggered reconcile of ChangeTransferPolicy via deferred webhook retry",
+			"namespace", ctp.Namespace, "name", ctp.Name)
+		return true, nil
+	})
+	if err != nil {
+		if wait.Interrupted(err) {
+			reqLogger.V(4).Info("deferred webhook miss retry exhausted without a match", "error", err)
+		} else {
+			reqLogger.V(4).Info("deferred webhook miss retry stopped", "error", err)
+		}
+	}
+}
+
+func (wr *WebhookReceiver) getRetryTimeout() time.Duration {
+	if wr.retryTimeout > 0 {
+		return wr.retryTimeout
+	}
+	return missRetryTimeout
+}
+
+func (wr *WebhookReceiver) getRetryBaseDelay() time.Duration {
+	if wr.retryBaseDelay > 0 {
+		return wr.retryBaseDelay
+	}
+	return missRetryBaseDelay
+}
+
+func (wr *WebhookReceiver) getRetryMaxDelay() time.Duration {
+	if wr.retryMaxDelay > 0 {
+		return wr.retryMaxDelay
+	}
+	return missRetryMaxDelay
+}
+
+func (wr *WebhookReceiver) getRetryFactor() float64 {
+	if wr.retryFactor > 0 {
+		return wr.retryFactor
+	}
+	return missRetryFactor
 }
 
 func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provider string, jsonBytes []byte) (*promoterv1alpha1.ChangeTransferPolicy, error) {
@@ -277,7 +387,8 @@ func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provide
 	}
 
 	if len(ctpLists.Items) == 0 {
-		return nil, fmt.Errorf("no changetransferpolicies found from webhook receiver sha: %s, ref: %s", beforeSha, ref)
+		logger.V(4).Info("no changetransferpolicies found from webhook receiver", "sha", beforeSha, "ref", ref)
+		return nil, nil
 	}
 	if len(ctpLists.Items) > 1 {
 		return nil, fmt.Errorf("too many changetransferpolicies found for sha: %s, ref: %s", beforeSha, ref)
