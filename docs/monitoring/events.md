@@ -98,7 +98,11 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 |------------|-----------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
 | Normal     | OrphanedChangeTransferPolicyDeleted     | An orphaned [ChangeTransferPolicy](../crd-specs.md#changetransferpolicy) was deleted after environment changes (e.g., branch rename).     |
 | Warning    | ChangeTransferPolicyNotReady            | One or more of the [ChangeTransferPolicy](../crd-specs.md#changetransferpolicy) resources managed by this PromotionStrategy is not Ready. |
-| Warning    | PreviousEnvironmentCommitStatusNotReady | One or more of the active [CommitStatus](../crd-specs.md#commitstatus) resources for the previous environment is not Ready.               |
+
+Missing or undeclared promotion ordering (no [DAGCommitStatus](../crd-specs.md#dagcommitstatus) /
+[PreviousEnvironmentCommitStatus](../crd-specs.md#previousenvironmentcommitstatus), or a gate `key` not listed in
+`proposedCommitStatuses`) surfaces as a `ReconciliationError` on the PromotionStrategy `Ready` condition rather than a
+dedicated event reason.
 
 ## GitRepository
 

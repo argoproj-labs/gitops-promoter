@@ -901,6 +901,7 @@ spec:
   gitRepositoryRef:
     name: my-app-repo
   proposedCommitStatuses:
+    - key: promoter-previous-environment # required ordering gate; see PreviousEnvironmentCommitStatus
     - key: external-approval  # Must match WebRequestCommitStatus.spec.key
   environments:
     - branch: environment/development

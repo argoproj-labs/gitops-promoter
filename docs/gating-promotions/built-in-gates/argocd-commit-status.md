@@ -50,6 +50,8 @@ kind: PromotionStrategy
 metadata:
   name: argocon-demo
 spec:
+  proposedCommitStatuses:
+    - key: promoter-previous-environment # required ordering gate; see PreviousEnvironmentCommitStatus
   activeCommitStatuses:
     - key: argocd-health  # same as ArgoCDCommitStatus.spec.key
   environments:

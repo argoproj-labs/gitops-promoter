@@ -11,8 +11,9 @@ apiserver that serves a single, read-only, server-computed resource that bundles
   a read-only controller-runtime cache and is never persisted to etcd.
 
 Each bundle contains the `PromotionStrategy`, its `ChangeTransferPolicy`,
-`PullRequest`, and `CommitStatus` children, the four commit-status manager kinds
-(`ArgoCDCommitStatus`, `GitCommitStatus`, `TimedCommitStatus`,
+`PullRequest`, and `CommitStatus` children, the commit-status manager kinds
+(`ArgoCDCommitStatus`, `DAGCommitStatus`, `GitCommitStatus`,
+`PreviousEnvironmentCommitStatus`, `TimedCommitStatus`,
 `WebRequestCommitStatus`), and the git config (`GitRepository` plus its
 `ScmProvider` or `ClusterScmProvider`).
 
