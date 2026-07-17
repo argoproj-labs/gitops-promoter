@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { namespaceStore } from '../stores/NamespaceStore';
 import { viewStore } from '../stores/ViewStore';
 import { PromotionStrategyStore } from '../stores/PromotionStrategyStore';
@@ -27,6 +27,13 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
   const { namespace: urlNamespace, name: urlStrategyName } = useParams();
   const namespace = propsNamespace || urlNamespace;
   const strategyName = propsStrategyName || urlStrategyName;
+
+  // Deep-link to a single environment via `#env=<branch>` in the URL hash.
+  const { pathname, search, hash } = useLocation();
+  const highlightBranch = React.useMemo(() => {
+    const raw = new URLSearchParams(hash.replace(/^#/, '')).get('env');
+    return raw ? decodeURIComponent(raw) : undefined;
+  }, [hash]);
 
   const currentNamespace = namespaceStore((s: NamespaceStore) => s.namespace);
   const setNamespace = namespaceStore((s: NamespaceStore) => s.setNamespace);
@@ -61,6 +68,13 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
   ]);
 
   const navigate = useNavigate();
+
+  // Reflect click-focus into the URL hash so the selection is shareable.
+  // Uses replace so focusing cards doesn't stack browser-history entries.
+  const handleFocusChange = (branch: string | null) => {
+    const newHash = branch ? `#env=${encodeURIComponent(branch)}` : '';
+    navigate({ pathname, search, hash: newHash }, { replace: true });
+  };
 
   const handleBack = () => {
     setNamespace(currentNamespace);
@@ -115,7 +129,11 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
 
       {currentView === 'cards' ? (
         <div style={{ marginTop: '40px' }}>
-          <PromotionStrategyDetailsView strategy={selectedStrategy} />
+          <PromotionStrategyDetailsView
+            strategy={selectedStrategy}
+            highlightBranch={highlightBranch}
+            onFocusChange={handleFocusChange}
+          />
         </div>
       ) : (
         <LiveManifestView strategy={selectedStrategy} />

@@ -13,13 +13,16 @@ import './Card.scss';
 
 export interface CardProps {
   environments: Environment[];
+  highlightBranch?: string;
+  onFocusChange?: (_branch: string | null) => void;
 }
 
-const Card: React.FC<CardProps> = ({ environments }) => {
+const Card: React.FC<CardProps> = ({ environments, highlightBranch, onFocusChange }) => {
   const [historyMode, setHistoryMode] = useState<{ [branch: string]: number }>({});
   const [hoveredIcon, setHoveredIcon] = useState<string | null>(null);
   const [isVerticalLayout, setIsVerticalLayout] = useState<boolean>(true);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const highlightRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const detectFlexDirection = () => {
@@ -56,6 +59,17 @@ const Card: React.FC<CardProps> = ({ environments }) => {
       return enrichFromEnvironments([env], historyIndex)[0];
     });
   }, [environments, historyMode]);
+
+  useEffect(() => {
+    if (!highlightBranch) return;
+    const node = highlightRef.current;
+    if (!node) return;
+    node.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+  }, [highlightBranch, enrichedEnvs]);
+
+  const toggleFocus = (branch: string) => {
+    onFocusChange?.(highlightBranch === branch ? null : branch);
+  };
 
   return (
     <div className="env-cards-container">
@@ -94,18 +108,44 @@ const Card: React.FC<CardProps> = ({ environments }) => {
             !inHistoryMode &&
             proposedStatus !== undefined &&
             ['pending', 'failure'].includes(proposedStatus);
+          // The highlighted card is both the focus target and the scroll target.
+          const isFocused = highlightBranch === branch;
+          const isScrollTarget = isFocused;
           const cardClassName = [
             'env-card',
             inHistoryMode ? 'history-mode' : '',
             hasPendingProposal ? '' : 'single-commit-group',
+            isFocused ? 'highlighted' : '',
           ]
             .filter(Boolean)
             .join(' ');
 
+          // Focus the card on click, but let clicks on interactive children
+          // (history controls, commit/PR links) behave normally.
+          const handleCardClick = (event: React.MouseEvent<HTMLDivElement>) => {
+            if ((event.target as HTMLElement).closest('a, button')) return;
+            toggleFocus(branch);
+          };
+          const handleCardKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+            if (event.target !== event.currentTarget) return;
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              toggleFocus(branch);
+            }
+          };
+
           return (
             <React.Fragment key={env.branch}>
               <div className="env-card-column">
-                <div className={cardClassName}>
+                <div
+                  className={cardClassName}
+                  ref={isScrollTarget ? highlightRef : undefined}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={isFocused}
+                  onClick={handleCardClick}
+                  onKeyDown={handleCardKeyDown}
+                >
                   <div
                     className="env-card__title"
                     style={{

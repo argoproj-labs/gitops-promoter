@@ -23,6 +23,9 @@ $extension-wrapper-gap: 20px;
     scroll-behavior: smooth;
     box-sizing: border-box;
     margin: 0;
+    // overflow-x: auto also clips the y-axis; pad so a highlighted card's
+    // ring isn't cut off at the container edges.
+    padding: 6px;
   }
 
   .env-cards-wrapper {
@@ -73,6 +76,9 @@ $extension-wrapper-gap: 20px;
     align-items: center;
     width: 100%;
     overflow-x: auto;
+    // overflow-x: auto also clips the y-axis; pad so a highlighted card's
+    // ring isn't cut off at the container edges.
+    padding: 6px;
   }
 
   .env-cards-wrapper {

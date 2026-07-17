@@ -40,6 +40,7 @@ export default [
         setInterval: 'readonly',
         clearInterval: 'readonly',
         fetch: 'readonly',
+        URLSearchParams: 'readonly',
         EventSource: 'readonly',
         MessageEvent: 'readonly',
         // Node globals

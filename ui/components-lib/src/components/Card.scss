@@ -18,6 +18,12 @@
   display: flex;
   flex-direction: column;
   max-height: fit-content;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid $argo-running;
+    outline-offset: 2px;
+  }
 
   &.single-commit-group {
     min-height: 250px;
@@ -27,6 +33,17 @@
     border: 1px dashed $argo-color-gray-5;
     background: $argo-color-gray-4;
     box-shadow: none;
+  }
+
+  // Focused/deep-link target: give the card a soft ring. A spread box-shadow
+  // follows the card's rounded corners; the base depth shadows are layered
+  // after it so elevation is preserved and the ring stays even on all edges.
+  // The container has padding so the ring isn't clipped at its edges.
+  &.highlighted {
+    box-shadow:
+      0 0 0 4px rgba(13, 173, 234, 0.55),
+      0 1px 3px rgba(0, 0, 0, 0.1),
+      0 1px 2px rgba(0, 0, 0, 0.06);
   }
 }
 

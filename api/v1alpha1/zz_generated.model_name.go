@@ -371,6 +371,16 @@ func (in PollingModeSpec) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in PreviousEnvironmentCommitStatusConfig) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.PreviousEnvironmentCommitStatusConfig"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in PreviousEnvironmentURLConfig) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.PreviousEnvironmentURLConfig"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in PromotionStrategy) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.PromotionStrategy"
 }

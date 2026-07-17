@@ -105,6 +105,8 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.ObjectReference{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_ObjectReference(ref),
 		apiv1alpha1.OutputSpec{}.OpenAPIModelName():                                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_OutputSpec(ref),
 		apiv1alpha1.PollingModeSpec{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_PollingModeSpec(ref),
+		apiv1alpha1.PreviousEnvironmentCommitStatusConfig{}.OpenAPIModelName():                schema_argoproj_labs_gitops_promoter_api_v1alpha1_PreviousEnvironmentCommitStatusConfig(ref),
+		apiv1alpha1.PreviousEnvironmentURLConfig{}.OpenAPIModelName():                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_PreviousEnvironmentURLConfig(ref),
 		apiv1alpha1.PromotionStrategy{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategy(ref),
 		apiv1alpha1.PromotionStrategyConfiguration{}.OpenAPIModelName():                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategyConfiguration(ref),
 		apiv1alpha1.PromotionStrategyList{}.OpenAPIModelName():                                schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategyList(ref),
@@ -3521,6 +3523,62 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PollingModeSpec(ref commo
 	}
 }
 
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PreviousEnvironmentCommitStatusConfig(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "PreviousEnvironmentCommitStatusConfig configures the previous-environment commit status.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"url": {
+						SchemaProps: spec.SchemaProps{
+							Description: "URL generates the URL to use in the previous-environment CommitStatus, for example a deep link to a promoter UI. If the template is empty, the URL of the single aggregated status is used when there is exactly one; otherwise no URL is set.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.PreviousEnvironmentURLConfig{}.OpenAPIModelName()),
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.PreviousEnvironmentURLConfig{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PreviousEnvironmentURLConfig(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "PreviousEnvironmentURLConfig is a Go text/template rendered to produce the commit status URL.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"template": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Template is a go text template and receives .PromotionStrategy, .PreviousEnvironmentBranch, .Sha, and .AggregatedStatuses variables. A function called urlQueryEscape is available to escape url query parameters.\n\nExample:\n\n  {{ printf \"https://argocd.example.com/applications/%s/%s?view=GitOps+Promoter&promotionstrategy=%s\" .PromotionStrategy.Namespace .PromotionStrategy.Name (urlQueryEscape (printf \"%s/%s\" .PromotionStrategy.Namespace .PromotionStrategy.Name)) }}",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"options": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Options sets options for the template, e.g. \"missingkey=error\". See the text/template documentation for the full list of options.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
 func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategy(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -3721,12 +3779,19 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategySpec(ref
 							Format:      "",
 						},
 					},
+					"previousEnvironmentCommitStatus": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PreviousEnvironmentCommitStatus configures the auto-generated \"promoter-previous-environment\" commit status, which aggregates the active commit statuses of the preceding environment.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.PreviousEnvironmentCommitStatusConfig{}.OpenAPIModelName()),
+						},
+					},
 				},
 				Required: []string{"gitRepositoryRef", "environments"},
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.CommitStatusSelector{}.OpenAPIModelName(), apiv1alpha1.Environment{}.OpenAPIModelName(), apiv1alpha1.ObjectReference{}.OpenAPIModelName()},
+			apiv1alpha1.CommitStatusSelector{}.OpenAPIModelName(), apiv1alpha1.Environment{}.OpenAPIModelName(), apiv1alpha1.ObjectReference{}.OpenAPIModelName(), apiv1alpha1.PreviousEnvironmentCommitStatusConfig{}.OpenAPIModelName()},
 	}
 }
 
