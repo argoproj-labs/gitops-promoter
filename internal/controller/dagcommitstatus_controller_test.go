@@ -17,6 +17,7 @@ limitations under the License.
 package controller
 
 import (
+	_ "embed"
 	"strings"
 	"time"
 
@@ -26,6 +27,9 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
+
+//go:embed testdata/DAGCommitStatus.yaml
+var testDAGCommitStatusYAML string
 
 // dagEnvs builds a DAGEnvironment slice from alternating (branch, dependsOn) pairs so tests can
 // declare a graph compactly. dependsOn is a comma-joined string, empty for a graph root.
@@ -77,6 +81,15 @@ func dagEnvStatusWithNote(branch, activeDry, proposedDry, noteDry string, health
 	}
 	return envStatus
 }
+
+var _ = Describe("DAGCommitStatus Controller", func() {
+	Context("When unmarshalling the test data", func() {
+		It("should unmarshal the DAGCommitStatus resource", func() {
+			err := unmarshalYamlStrict(testDAGCommitStatusYAML, &promoterv1alpha1.DAGCommitStatus{})
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+})
 
 var _ = Describe("DAG graph logic", func() {
 	Describe("buildDAG", func() {

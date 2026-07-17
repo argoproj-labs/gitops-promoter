@@ -83,6 +83,26 @@ spec:
           qps: 20
           bucket: 50
 
+  # PreviousEnvironmentCommitStatus controller generates a chain-shaped DAGCommitStatus for linear ordering
+  previousEnvironmentCommitStatus:
+    workQueue:
+      requeueDuration: "5m"
+      maxConcurrentReconciles: 5
+      rateLimiter:
+        exponentialFailure:
+          baseDelay: "500ms"
+          maxDelay: "1m"
+
+  # DAGCommitStatus controller evaluates environment dependency graphs and writes ordering CommitStatuses
+  dagCommitStatus:
+    workQueue:
+      requeueDuration: "5m"
+      maxConcurrentReconciles: 5
+      rateLimiter:
+        exponentialFailure:
+          baseDelay: "500ms"
+          maxDelay: "1m"
+
   # TimedCommitStatus controller enforces soak-time gates via CommitStatus resources
   timedCommitStatus:
     workQueue:

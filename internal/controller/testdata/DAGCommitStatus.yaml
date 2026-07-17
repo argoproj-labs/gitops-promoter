@@ -1,0 +1,35 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: DAGCommitStatus
+metadata:
+  name: dagcommitstatus-sample
+spec:
+  # Gate key for PromotionStrategy.spec.proposedCommitStatuses
+  key: promoter-dag
+  promotionStrategyRef:
+    name: example-promotion-strategy
+  # Diamond graph: dev fans out to e2e and perf, which fan in to prod
+  environments:
+    - branch: environment/dev
+    - branch: environment/e2e
+      dependsOn:
+        - environment/dev
+    - branch: environment/perf
+      dependsOn:
+        - environment/dev
+    - branch: environment/prod
+      dependsOn:
+        - environment/e2e
+        - environment/perf
+status:
+  observedGeneration: 123 # compare with metadata.generation to detect stale status
+  conditions:
+    # The Ready condition indicates that the resource has been successfully reconciled, when there is an error during
+    # reconciliation, the condition will be False with a reason of ReconciliationError. When we successfully reconcile the resource,
+    # the condition will be True with a reason of ReconciliationSuccess. The Ready condition is essentially a way to show reconciliation
+    # errors to the user. This condition exists on all resources that have reconciliation logic.
+    - type: Ready
+      lastTransitionTime: 2023-10-01T00:00:00Z
+      message: Reconciliation succeeded
+      reason: ReconciliationSuccess # ReconciliationSuccess or ReconciliationError
+      status: "True" # "True," "False," or "Unknown"
+      observedGeneration: 123

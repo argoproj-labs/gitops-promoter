@@ -19,6 +19,9 @@ spec:
       openAPIV3Schema:
         description: PreviousEnvironmentCommitStatus is the Schema for the previousenvironmentcommitstatuses
           API
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#previousenvironmentcommitstatus
         properties:
           apiVersion:
             description: |-

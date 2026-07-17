@@ -8,6 +8,8 @@ spec:
   activeCommitStatuses:
     - key: argocd-app-health
   proposedCommitStatuses:
+    # Ordering gate key; must match PreviousEnvironmentCommitStatus.spec.key or DAGCommitStatus.spec.key
+    - key: promoter-previous-environment
     - key: security-scan
   environments:
     - branch: environment/dev
@@ -28,7 +30,7 @@ status:
     - type: Ready
       lastTransitionTime: 2023-10-01T00:00:00Z
       message: Reconciliation succeeded
-      reason: ReconciliationSuccess # ReconciliationSuccess, ReconciliationError, ChangeTransferPolicyNotReady, or PreviousEnvironmentCommitStatusNotReady
+      reason: ReconciliationSuccess # ReconciliationSuccess, ReconciliationError, or ChangeTransferPolicyNotReady
       status: "True" # "True," "False," or "Unknown"
       observedGeneration: 123
   environments:

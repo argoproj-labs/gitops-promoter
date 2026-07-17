@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	_ "embed"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -31,7 +32,17 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 )
 
+//go:embed testdata/PreviousEnvironmentCommitStatus.yaml
+var testPreviousEnvironmentCommitStatusYAML string
+
 var _ = Describe("PreviousEnvironmentCommitStatus Controller", func() {
+	Context("When unmarshalling the test data", func() {
+		It("should unmarshal the PreviousEnvironmentCommitStatus resource", func() {
+			err := unmarshalYamlStrict(testPreviousEnvironmentCommitStatusYAML, &promoterv1alpha1.PreviousEnvironmentCommitStatus{})
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
 	Context("When reconciling a resource", func() {
 		var (
 			ctx               context.Context

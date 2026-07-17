@@ -1,8 +1,10 @@
 ### PromotionStrategy
 
 The PromotionStrategy is the user's interface to controlling how changes are promoted through their environments. In 
-this CR, the user configures the list of live hydrated environment branches in their order of promotion. They'll also
-configure the checks which must pass between promotion steps.
+this CR, the user configures the list of live hydrated environment branches and the checks which must pass between
+promotion steps. Promotion ordering is not injected automatically: declare an ordering gate key in
+`proposedCommitStatuses` and create a matching [PreviousEnvironmentCommitStatus](#previousenvironmentcommitstatus) or
+[DAGCommitStatus](#dagcommitstatus).
 
 ```yaml
 {!internal/controller/testdata/PromotionStrategy.yaml!}
@@ -14,10 +16,14 @@ A ChangeTransferPolicy represents a pair hydrated environment branch pair: the p
 environment branch. When a new commit appears in the proposed branch, the ChangeTransferPolicy will open a PR against 
 the live branch. When all the configured checks pass, the ChangeTransferPolicy will merge the PR.
 
-A PromotionStrategy will create a ChangeTransferPolicy for each configured environment. For each environment besides the
-first one, the PromotionStrategy controller will inject a `proposedCommitStatus` to represent the active status of the
-previous environment. This is how the PromotionStrategy ensures that the environment PRs are merged in order, respecting
-the previous environments' active commit statuses.
+A PromotionStrategy will create a ChangeTransferPolicy for each configured environment and copy the declared
+`activeCommitStatuses` / `proposedCommitStatuses` onto that CTP. It does **not** inject an ordering gate.
+
+Promotion ordering is configured separately: create a
+[PreviousEnvironmentCommitStatus](#previousenvironmentcommitstatus) (linear) or
+[DAGCommitStatus](#dagcommitstatus) (graph), and declare its `key` in the PromotionStrategy's global
+`proposedCommitStatuses`. Without an ordering gate, the PromotionStrategy controller fails its reconcile. See
+[Gating Promotions](gating-promotions/index.md) for details.
 
 The [Events](monitoring/events.md#changetransferpolicy) page documents the Kubernetes events produced by 
 ChangeTransferPolicies. PromotionStrategy and ChangeTransferPolicy controllers set standard labels on related resources; see [Labels](debugging/labels.md#promotion-and-change-transfer).
@@ -73,6 +79,29 @@ auth mechanism. A ClusterScmProvider can be referenced by any GitRepository in t
 
 ```yaml
 {!internal/controller/testdata/ClusterScmProvider.yaml!}
+```
+
+### PreviousEnvironmentCommitStatus
+
+A PreviousEnvironmentCommitStatus gates each environment on the previous environment in a **linear** pipeline
+(for example dev → staging → prod). It is a thin adapter over [DAGCommitStatus](#dagcommitstatus): it builds a
+chain-shaped dependency graph from the PromotionStrategy's environments (in spec order) and lets the DAG controller
+perform the gating. Declare the same `spec.key` in the PromotionStrategy's global `proposedCommitStatuses`. See
+[Previous Environment Commit Status](gating-promotions/built-in-gates/previous-environment-commit-status.md).
+
+```yaml
+{!internal/controller/testdata/PreviousEnvironmentCommitStatus.yaml!}
+```
+
+### DAGCommitStatus
+
+A DAGCommitStatus gates promotions based on a **dependency graph** between environments. Each environment declares the
+upstream environments it `dependsOn`; an environment becomes eligible once all upstreams have promoted the same dry
+commit and are healthy. Declare the same `spec.key` in the PromotionStrategy's global `proposedCommitStatuses`. See
+[DAG Commit Status](gating-promotions/built-in-gates/dag-commit-status.md).
+
+```yaml
+{!internal/controller/testdata/DAGCommitStatus.yaml!}
 ```
 
 ### ArgoCDCommitStatus
@@ -164,8 +193,10 @@ The `ChangeTransferPolicy` CRD may also have the following condition reasons:
 
 The `PromotionStrategy` CRD may also have the following condition reasons:
 
-* `PreviousEnvironmentCommitStatusNotReady`
 * `ChangeTransferPolicyNotReady`
+
+Missing or undeclared promotion ordering (no `DAGCommitStatus` / `PreviousEnvironmentCommitStatus`, or a gate `key`
+not listed in `proposedCommitStatuses`) surfaces as `ReconciliationError`.
 
 ## Finalizers
 

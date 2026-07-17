@@ -13,6 +13,13 @@ An "active commit status" is a check which must be passing on an active (already
 merged for the next environment. To set a CommitStatus to be used as an active commit status, set the `spec.sha` field 
 to the commit hash of the active change in the live environment branch.
 
+Promotion ordering (which environments may promote relative to others) is also expressed as a proposed commit
+status. It is **not** injected automatically: you must create a
+[PreviousEnvironmentCommitStatus](built-in-gates/previous-environment-commit-status.md) (linear pipelines) or a
+[DAGCommitStatus](built-in-gates/dag-commit-status.md) (arbitrary graphs) and declare its `key` in the
+PromotionStrategy's global `proposedCommitStatuses`. Without an ordering gate, the PromotionStrategy controller fails
+its reconcile so environments cannot promote out of order by accident.
+
 ## Example
 
 The following example demonstrates how to configure a PromotionStrategy to use CommitStatuses for both a proposed and
@@ -20,7 +27,11 @@ an active commit status check.
 
 ```yaml
 kind: PromotionStrategy
+metadata:
+  name: demo
 spec:
+  proposedCommitStatuses:
+    - key: promoter-previous-environment # ordering gate; must match PreviousEnvironmentCommitStatus.spec.key
   activeCommitStatuses:
     - key: healthy
   environments:
@@ -29,10 +40,19 @@ spec:
     - branch: environment/prod
       proposedCommitStatuses:
         - key: deployment-freeze
+---
+kind: PreviousEnvironmentCommitStatus
+metadata:
+  name: demo
+spec:
+  key: promoter-previous-environment
+  promotionStrategyRef:
+    name: demo
 ```
 
-In this example, the PromotionStrategy has three environments: `environment/dev`, `environment/test`, and `environment/prod`. All environments
-have a `healthy` active commit status check. The `environment/prod` environment has an additional `deployment-freeze` proposed
+In this example, the PromotionStrategy has three environments: `environment/dev`, `environment/test`, and `environment/prod`.
+All environments have a `healthy` active commit status check and the linear ordering gate
+`promoter-previous-environment`. The `environment/prod` environment has an additional `deployment-freeze` proposed
 commit status check.
 
 Suppose the environment branches have been hydrated from the `main` branch and that the branches have the following
@@ -78,6 +98,22 @@ spec:
 kind: CommitStatus
 metadata:
   labels:
+    promoter.argoproj.io/commit-status: promoter-previous-environment
+spec:
+  sha: d0e1f2  # environment/test-next
+  phase: success
+---
+kind: CommitStatus
+metadata:
+  labels:
+    promoter.argoproj.io/commit-status: promoter-previous-environment
+spec:
+  sha: d6e7f8  # environment/prod-next
+  phase: success
+---
+kind: CommitStatus
+metadata:
+  labels:
     promoter.argoproj.io/commit-status: deployment-freeze
 spec:
   sha: d6e7f8  # environment/prod-next
@@ -85,7 +121,7 @@ spec:
 ```
 
 Note that all the active commit statuses have SHAs corresponding to the active environment branches, and the proposed
-commit status has a SHA corresponding to the proposed (`-next`) environment branch.
+commit statuses (including the ordering gate) have SHAs corresponding to the proposed (`-next`) environment branches.
 
 Any tool wanting to gate an active commit status must create and update CommitStatuses with the appropriate SHAs for 
 the respective environments' live environment branches.
@@ -93,15 +129,22 @@ the respective environments' live environment branches.
 Any tool wanting to gate a proposed commit status must create and update CommitStatuses with the appropriate SHAs for
 the respective environments' proposed (`-next`) environment branches.
 
-### How Active Commit Statuses Work (Implementation Details)
+### How Environment Ordering Works (Implementation Details)
 
-The PromotionStrategy controller will create a ChangeTransferPolicy for each environment. The ChangeTransferPolicy 
-controller does not actually "look back" at previous environments to enforce active commit status checks. Instead, the
-PromotionStrategy controller will inject a `proposedCommitStatus` to represent the active status of the previous
-environment. The PromotionStrategy controller will also create and maintain a `CommitStatus` for each non-zero-index
-environment, based on the aggregate active commit status check of the previous environment.
+The PromotionStrategy controller creates a ChangeTransferPolicy for each environment and copies the PromotionStrategy's
+declared `activeCommitStatuses` / `proposedCommitStatuses` (global plus per-environment) onto that CTP. It does **not**
+inject an ordering key or create ordering CommitStatuses itself.
 
-So for the above example, the stg environment's ChangeTransferPolicy CR will look like this:
+The ChangeTransferPolicy controller does not "look back" at previous environments. Ordering is enforced like any other
+proposed commit status: the CTP waits for a CommitStatus whose `promoter.argoproj.io/commit-status` label matches the
+ordering key and whose `spec.sha` matches the proposed hydrated SHA.
+
+Those ordering CommitStatuses are written by the [DAGCommitStatus](built-in-gates/dag-commit-status.md) controller.
+[PreviousEnvironmentCommitStatus](built-in-gates/previous-environment-commit-status.md) is a thin adapter that generates
+a chain-shaped DAGCommitStatus from the PromotionStrategy's environment list (in spec order). The DAG controller
+evaluates upstream environments (same dry commit promoted and healthy) and sets `phase` accordingly.
+
+So for the above example, the `environment/test` ChangeTransferPolicy CR looks like this:
 
 ```yaml
 kind: ChangeTransferPolicy
@@ -113,12 +156,11 @@ spec:
     # will be stored on the 
     - key: healthy
   proposedCommitStatuses:
-    - key: healthy
     - key: promoter-previous-environment
 ```
 
-Assuming the `environment/dev` environment has a `healthy` active commit status check, the `promoter-previous-environment`
-CommitStatus will look like this:
+When the previous environment (`environment/dev`) has promoted the same dry commit and is healthy, the ordering
+CommitStatus for test looks like this:
 
 ```yaml
 kind: CommitStatus
@@ -130,9 +172,9 @@ spec:
   phase: success
 ```
 
-Even though the CommitStatus is "about" the `environment/dev` branch, the SHA is the SHA of the `environment/test-next` branch. This is
-how the PromotionStrategy controller expresses its opinion of the proposed commit on the stg environment, i.e. that it
-is acceptable because the previous environment is healthy.
+The SHA is the proposed hydrated SHA of the environment being gated (`environment/test-next`). Phase is `success`
+when the previous environment has promoted the same dry commit and is healthy. In this linear example,
+PreviousEnvironmentCommitStatus produces that CommitStatus via the DAGCommitStatus it generates.
 
 #### Previous Environment CommitStatus URL
 
@@ -146,6 +188,16 @@ URL will be set. This behavior may change in the future.
 ## Built-In Gates
 
 GitOps Promoter ships built-in gate controllers that create and manage `CommitStatus` resources automatically. Each gate has a matching CRD kind (for example `ArgoCDCommitStatus`); configure them in your cluster and reference their `spec.key` in `PromotionStrategy`.
+
+### Environment Ordering
+
+Promotion ordering is required for every PromotionStrategy. Use one of:
+
+- [PreviousEnvironmentCommitStatus](built-in-gates/previous-environment-commit-status.md) — linear pipelines
+  (dev → staging → prod). Generates a chain-shaped [DAGCommitStatus](built-in-gates/dag-commit-status.md).
+- [DAGCommitStatus](built-in-gates/dag-commit-status.md) — arbitrary directed acyclic graphs.
+
+Declare the gate `key` in the PromotionStrategy's global `proposedCommitStatuses`. See those pages for wiring details.
 
 ### Argo CD Health Status
 
