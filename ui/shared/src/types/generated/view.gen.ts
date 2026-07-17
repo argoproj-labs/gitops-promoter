@@ -412,6 +412,20 @@ export type components = {
              */
             type: string;
         };
+        /** @description CronWindow defines a recurring time window using a cron expression and a duration. */
+        CronWindow: {
+            /**
+             * @description Cron is a standard 5-field cron expression defining the start of the window (minute hour day-of-month month day-of-week). For example "0 9 * * 1-5" means Monday–Friday at 09:00 in the configured timezone.
+             * @default
+             */
+            cron: string;
+            /** @description Description is an optional human-readable explanation of this window (e.g. "US East business hours", "Holiday deployment freeze"). */
+            description?: string;
+            /** @description Duration is how long the window remains open after the cron trigger. The duration should be in a format accepted by Go's time.ParseDuration function, e.g., "8h", "30m", "2h30m". */
+            duration: components["schemas"]["Duration"];
+            /** @description Timezone overrides the spec-level default timezone for this specific window. If not set, the spec-level timezone (or UTC if that is also not set) is used. */
+            timezone?: string;
+        };
         /** @description Duration is a wrapper around time.Duration which supports correct marshaling to YAML and JSON. In particular, it marshals into strings, which can be used as map keys in json. */
         Duration: string;
         /** @description Environment defines a single environment in the promotion sequence. */
@@ -1187,6 +1201,8 @@ export type components = {
             promotionStrategy: components["schemas"]["PromotionStrategy"];
             /** @description PullRequests are the PullRequests associated with the PromotionStrategy (selected by the promoter.argoproj.io/promotion-strategy label). */
             pullRequests?: components["schemas"]["PullRequest"][];
+            /** @description ScheduledCommitStatuses are the ScheduledCommitStatus managers that reference the PromotionStrategy. */
+            scheduledCommitStatuses?: components["schemas"]["ScheduledCommitStatus"][];
             /** @description ScmProvider is the namespaced ScmProvider referenced by the GitRepository, if applicable. The credentials Secret referenced by the provider is never resolved or included. */
             scmProvider?: components["schemas"]["ScmProvider"];
             /** @description TimedCommitStatuses are the TimedCommitStatus managers that reference the PromotionStrategy. */
@@ -1346,6 +1362,97 @@ export type components = {
         RevisionReference: {
             /** @description Commit contains metadata about the commit that is related in some way to another commit. */
             commit?: components["schemas"]["CommitMetadata"];
+        };
+        /** @description ScheduledCommitStatus is the Schema for the scheduledcommitstatuses API. */
+        ScheduledCommitStatus: {
+            /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
+            apiVersion?: string;
+            /** @description Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds */
+            kind?: string;
+            /**
+             * @description metadata is a standard object metadata
+             * @default {}
+             */
+            metadata?: components["schemas"]["ObjectMeta"];
+            /**
+             * @description spec defines the desired state of ScheduledCommitStatus
+             * @default {}
+             */
+            spec: components["schemas"]["ScheduledCommitStatusSpec"];
+            /**
+             * @description status defines the observed state of ScheduledCommitStatus
+             * @default {}
+             */
+            status?: components["schemas"]["ScheduledCommitStatusStatus"];
+        };
+        /** @description ScheduledCommitStatusSpec defines the desired state of ScheduledCommitStatus. */
+        ScheduledCommitStatusSpec: {
+            /** @description Allow defines global allow windows applied to all listed environments in addition to per-environment allow windows (OR semantics across all). */
+            allow?: components["schemas"]["CronWindow"][];
+            /** @description Environments defines the list of environments to gate. Only listed environments are gated; unlisted environments default to success (24/7 open). Each environment inherits global allow/exclude windows and may add its own. An environment with no per-environment windows is valid when global windows are defined. */
+            environments: components["schemas"]["ScheduledEnvironment"][];
+            /** @description Exclude defines global exclusion windows applied to all listed environments in addition to per-environment exclusions. Exclusions take precedence over allow windows. */
+            exclude?: components["schemas"]["CronWindow"][];
+            /**
+             * @description Key is the gate name referenced in the PromotionStrategy's proposedCommitStatuses. Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
+             * @default
+             */
+            key: string;
+            /**
+             * @description PromotionStrategyRef is a reference to the promotion strategy that this scheduled commit status applies to.
+             * @default {}
+             */
+            promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /** @description Timezone is the default IANA timezone name used for evaluating cron expressions across all windows. Individual windows may override this with their own timezone field. Defaults to UTC. */
+            timezone?: string;
+        };
+        /** @description ScheduledCommitStatusStatus defines the observed state of ScheduledCommitStatus. */
+        ScheduledCommitStatusStatus: {
+            /** @description Conditions represent the latest available observations of an object's state */
+            conditions?: components["schemas"]["Condition"][];
+            /** @description Environments holds the status of each environment being tracked. */
+            environments?: components["schemas"]["ScheduledEnvironmentStatus"][];
+            /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
+            instanceID?: string;
+            /**
+             * Format: int64
+             * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
+             */
+            observedGeneration?: number;
+        };
+        /** @description ScheduledEnvironment defines the window configuration for a single environment. */
+        ScheduledEnvironment: {
+            /** @description Allow defines the allowed promotion windows. Promotions are allowed when the current time falls inside any of these windows (OR semantics). These are combined with any global spec.allow windows. If no allow windows are defined (neither here nor globally), the environment operates in exclusion-only mode. */
+            allow?: components["schemas"]["CronWindow"][];
+            /**
+             * @description Branch is the name of the branch/environment you want to gate with time windows. Must not start with '-', contain ':', or contain '..'.
+             * @default
+             */
+            branch: string;
+            /** @description Exclude defines blackout periods during which promotions are blocked. Exclusions take precedence over allow windows — if the current time falls inside any exclusion, promotions are blocked regardless of allow windows. These are combined with any global spec.exclude windows. If empty, no blackout periods are applied. */
+            exclude?: components["schemas"]["CronWindow"][];
+        };
+        /** @description ScheduledEnvironmentStatus defines the observed window state for a specific environment. */
+        ScheduledEnvironmentStatus: {
+            /** @description Active holds details of the currently active window driving the phase. Nil when no specific window is active (e.g. exclusion-only mode with no active exclusion). */
+            active?: components["schemas"]["WindowStatus"];
+            /**
+             * @description Branch is the name of the branch/environment.
+             * @default
+             */
+            branch: string;
+            /** @description Next holds details of the next expected window transition. Used by UIs for countdown timers and by the controller for precise requeuing. */
+            next?: components["schemas"]["WindowStatus"];
+            /**
+             * @description Phase represents the current phase of the scheduled gate.
+             * @default
+             */
+            phase: string;
+            /**
+             * @description Sha is the proposed commit SHA being tracked for this environment. Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+             * @default
+             */
+            sha: string;
         };
         /**
          * @description Scm specifies authentication using SCM provider credentials.
@@ -1824,6 +1931,15 @@ export type components = {
              *       - success.when.variables result → {{ index .SuccessVariables "key" }}
              */
             variables?: components["schemas"]["OutputSpec"];
+        };
+        /** @description WindowStatus holds details about a specific window state (active or upcoming). */
+        WindowStatus: {
+            /** @description Allow is the cron expression of the allow window, if applicable. */
+            allow?: string;
+            /** @description Exclude is the cron expression of the exclusion window, if applicable. */
+            exclude?: string;
+            /** @description Transition is when this window state is expected to change (e.g. window closing for active, window opening for next). */
+            transition?: components["schemas"]["Time"];
         };
         /** @description ObjectReference is a reference to an object by name. It is used to refer to objects in the same namespace. */
         io_argoproj_promoter_v1alpha1_ObjectReference: {
