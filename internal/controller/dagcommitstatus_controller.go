@@ -39,6 +39,7 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
+	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
@@ -135,6 +136,7 @@ func (r *DAGCommitStatusReconciler) updateDAGCommitStatus(ctx context.Context, d
 	// upstreams has promoted and become healthy for the SAME dry SHA this environment is
 	// promoting, pending otherwise.
 	logger := logf.FromContext(ctx)
+	commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0, len(graph.branches))
 	for _, branch := range graph.branches {
 		envStatus := statusByBranch[branch]
 
@@ -174,10 +176,18 @@ func (r *DAGCommitStatusReconciler) updateDAGCommitStatus(ctx context.Context, d
 		// instead leaves the gate undetectable, so the promotion never advances. Mirrors the
 		// PreviousEnvironmentCommitStatus controller.
 		proposedHydratedSha := envStatus.Proposed.Hydrated.Sha
-		if _, err := r.createOrUpdateDAGCommitStatus(ctx, dcs, ps, branch, proposedHydratedSha, phase, reason); err != nil {
+		cs, err := r.createOrUpdateDAGCommitStatus(ctx, dcs, ps, branch, proposedHydratedSha, phase, reason)
+		if err != nil {
 			return fmt.Errorf("failed to set DAG commit status for branch %q: %w", branch, err)
 		}
+		commitStatuses = append(commitStatuses, cs)
 	}
+
+	if err := utils.CleanupOrphanedCommitStatuses(ctx, r.Client, r.Recorder, dcs, commitStatuses); err != nil {
+		return fmt.Errorf("failed to cleanup orphaned CommitStatus resources: %w", err)
+	}
+
+	utils.InheritNotReadyConditionFromObjects(dcs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
 
 	return nil
 }

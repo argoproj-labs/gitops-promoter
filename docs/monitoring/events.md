@@ -90,6 +90,14 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 |------------|-----------------|---------------------------------------------------|
 | Normal     | CommitStatusSet | The CommitStatus was successfully set in the SCM. |
 
+## DAGCommitStatus
+
+[DAGCommitStatuses](../crd-specs.md#dagcommitstatus) may produce the following events:
+
+| Event Type | Event Reason           | Description                                                                                                              |
+|------------|------------------------|--------------------------------------------------------------------------------------------------------------------------|
+| Warning    | CommitStatusesNotReady | One or more of the [CommitStatus](../crd-specs.md#commitstatus) resources managed by this DAGCommitStatus is not Ready. |
+
 ## PromotionStrategy
 
 [PromotionStrategies](../crd-specs.md#promotionstrategy) may produce the following events:
