@@ -98,6 +98,14 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 |------------|------------------------|--------------------------------------------------------------------------------------------------------------------------|
 | Warning    | CommitStatusesNotReady | One or more of the [CommitStatus](../crd-specs.md#commitstatus) resources managed by this DAGCommitStatus is not Ready. |
 
+## PreviousEnvironmentCommitStatus
+
+[PreviousEnvironmentCommitStatuses](../crd-specs.md#previousenvironmentcommitstatus) may produce the following events:
+
+| Event Type | Event Reason            | Description                                                                                                                              |
+|------------|-------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
+| Warning    | DAGCommitStatusNotReady | The [DAGCommitStatus](../crd-specs.md#dagcommitstatus) owned by this PreviousEnvironmentCommitStatus is not Ready.                      |
+
 ## PromotionStrategy
 
 [PromotionStrategies](../crd-specs.md#promotionstrategy) may produce the following events:

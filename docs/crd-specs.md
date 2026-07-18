@@ -193,6 +193,18 @@ The `ArgoCDCommitStatus` CRD may also have the following condition reasons:
 
 * `CommitStatusesNotReady`
 
+#### `DAGCommitStatus`
+
+The `DAGCommitStatus` CRD may also have the following condition reasons:
+
+* `CommitStatusesNotReady`
+
+#### `PreviousEnvironmentCommitStatus`
+
+The `PreviousEnvironmentCommitStatus` CRD may also have the following condition reasons:
+
+* `DAGCommitStatusNotReady`
+
 #### `ChangeTransferPolicy`
 
 The `ChangeTransferPolicy` CRD may also have the following condition reasons:

@@ -38,6 +38,7 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
+	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
@@ -58,8 +59,7 @@ type PreviousEnvironmentCommitStatusReconciler struct {
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
 
 // Reconcile reconciles a PreviousEnvironmentCommitStatus: it reads the referenced PromotionStrategy
-// and, for each environment, maintains the previous-environment CommitStatus indicating whether the
-// preceding environment is synced and healthy.
+// and upserts a chain-shaped DAGCommitStatus that performs the previous-environment gating.
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/reconcile
@@ -104,10 +104,11 @@ func (r *PreviousEnvironmentCommitStatusReconciler) Reconcile(ctx context.Contex
 	}
 
 	// 3. Generate the chain-shaped DAGCommitStatus that does the actual gating work.
-	err = r.upsertDAGCommitStatus(ctx, &pecs, &ps)
+	dag, err := r.upsertDAGCommitStatus(ctx, &pecs, &ps)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to upsert DAG commit status: %w", err)
 	}
+	utils.InheritNotReadyConditionFromObjects(&pecs, promoterConditions.DAGCommitStatusNotReady, dag)
 
 	// 4. Requeue using the configured requeue duration.
 	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.PreviousEnvironmentCommitStatusConfiguration](ctx, r.SettingsMgr)
@@ -186,7 +187,7 @@ func (r *PreviousEnvironmentCommitStatusReconciler) enqueuePreviousEnvironmentCo
 // Apply. The DAGCommitStatus controller does the actual gating; this controller only builds the
 // chain. The generated object is owned by the PreviousEnvironmentCommitStatus and reuses its
 // commit status key.
-func (r *PreviousEnvironmentCommitStatusReconciler) upsertDAGCommitStatus(ctx context.Context, pecs *promoterv1alpha1.PreviousEnvironmentCommitStatus, ps *promoterv1alpha1.PromotionStrategy) error {
+func (r *PreviousEnvironmentCommitStatusReconciler) upsertDAGCommitStatus(ctx context.Context, pecs *promoterv1alpha1.PreviousEnvironmentCommitStatus, ps *promoterv1alpha1.PromotionStrategy) (*promoterv1alpha1.DAGCommitStatus, error) {
 	key := pecs.Spec.Key
 	if key == "" {
 		// Spec.Key is defaulted by the CRD on the API-server write path; fall back here so objects
@@ -225,10 +226,10 @@ func (r *PreviousEnvironmentCommitStatusReconciler) upsertDAGCommitStatus(ctx co
 	dag.Name = pecs.Name
 	dag.Namespace = pecs.Namespace
 	if err := r.Patch(ctx, dag, utils.ApplyPatch{ApplyConfig: dagApply}, client.FieldOwner(constants.PreviousEnvironmentCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
-		return fmt.Errorf("failed to apply DAGCommitStatus %q: %w", pecs.Name, err)
+		return nil, fmt.Errorf("failed to apply DAGCommitStatus %q: %w", pecs.Name, err)
 	}
 
-	return nil
+	return dag, nil
 }
 
 func getNoteDrySha(note *promoterv1alpha1.HydratorMetadata) string {
