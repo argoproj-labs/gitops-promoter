@@ -145,8 +145,20 @@ func (r *DAGCommitStatusReconciler) updateDAGCommitStatus(ctx context.Context, d
 		// only churn an already-merged change. This mirrors the PreviousEnvironmentCommitStatus
 		// controller and, since a proposed change implies the hydrator has produced a SHA, also
 		// keeps us from writing a CommitStatus with an empty sha.
+		//
+		// Keep any existing CommitStatus in the valid set so orphan cleanup leaves the last
+		// evaluated (stale-but-real) gate status alone until a new proposed change appears.
 		if envStatus.Active.Dry.Sha == envStatus.Proposed.Dry.Sha {
 			logger.V(4).Info("Skipping environment with no proposed change", "branch", branch)
+			existing := &promoterv1alpha1.CommitStatus{}
+			name := utils.CommitStatusResourceName(ctx, dcs, branch)
+			if err := r.Get(ctx, client.ObjectKey{Namespace: dcs.Namespace, Name: name}, existing); err != nil {
+				if !k8serrors.IsNotFound(err) {
+					return fmt.Errorf("failed to get existing DAG CommitStatus for branch %q: %w", branch, err)
+				}
+			} else {
+				commitStatuses = append(commitStatuses, existing)
+			}
 			continue
 		}
 

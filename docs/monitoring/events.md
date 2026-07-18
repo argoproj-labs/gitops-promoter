@@ -94,9 +94,10 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 
 [DAGCommitStatuses](../crd-specs.md#dagcommitstatus) may produce the following events:
 
-| Event Type | Event Reason           | Description                                                                                                              |
-|------------|------------------------|--------------------------------------------------------------------------------------------------------------------------|
-| Warning    | CommitStatusesNotReady | One or more of the [CommitStatus](../crd-specs.md#commitstatus) resources managed by this DAGCommitStatus is not Ready. |
+| Event Type | Event Reason                | Description                                                                                                              |
+|------------|-----------------------------|--------------------------------------------------------------------------------------------------------------------------|
+| Warning    | CommitStatusesNotReady      | One or more of the [CommitStatus](../crd-specs.md#commitstatus) resources managed by this DAGCommitStatus is not Ready. |
+| Normal     | OrphanedCommitStatusDeleted | An orphaned [CommitStatus](../crd-specs.md#commitstatus) was deleted after it no longer applied (e.g., branch removed). |
 
 ## PreviousEnvironmentCommitStatus
 
