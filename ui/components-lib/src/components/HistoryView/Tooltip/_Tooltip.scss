@@ -1,0 +1,66 @@
+@use '../tokens' as *;
+
+/* Portal tooltip: rendered into <body> so it isn't clipped by cells'
+   overflow:hidden or the scrolling matrix. */
+.hp-tip {
+  position: fixed;
+  z-index: 1000;
+  transform: translate(-50%, -100%);
+  max-width: 280px;
+  padding: 6px 9px;
+  border-radius: 6px;
+  background: #1f2733;
+  color: #fff;
+  font-size: 11.5px;
+  line-height: 1.4;
+  font-weight: 500;
+  white-space: normal;
+  text-align: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+  pointer-events: none;
+  animation: hp-tip-in 0.09s ease-out;
+
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 10.5px;
+    word-break: break-all;
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    width: 7px;
+    height: 7px;
+    background: #1f2733;
+    transform: translateX(-50%) rotate(45deg);
+  }
+
+  &--above {
+    transform: translate(-50%, -100%);
+    &::after {
+      bottom: -3px;
+    }
+  }
+  &--below {
+    transform: translate(-50%, 0);
+    &::after {
+      top: -3px;
+    }
+  }
+}
+
+@keyframes hp-tip-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hp-tip {
+    animation: none;
+  }
+}

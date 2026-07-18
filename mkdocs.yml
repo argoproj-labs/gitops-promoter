@@ -49,6 +49,7 @@ nav:
           - GitCommitStatus: gating-promotions/built-in-gates/git-commit-status.md
           - PreviousEnvironmentCommitStatus: gating-promotions/built-in-gates/previous-environment-commit-status.md
           - TimedCommitStatus: gating-promotions/built-in-gates/timed-commit-status.md
+          - ScheduledCommitStatus: gating-promotions/built-in-gates/scheduled-commit-status.md
           - WebRequestCommitStatus:
               - Overview: gating-promotions/built-in-gates/web-request-commit-status/index.md
               - Simulator: gating-promotions/built-in-gates/web-request-commit-status/simulator.md
@@ -68,6 +69,7 @@ nav:
       - Overview: advanced-usage/index.md
       - Using a Custom Hydrator: advanced-usage/custom-hydrator.md
       - Configuring Multi-Tenancy: advanced-usage/multi-tenancy.md
+      - Multiple Controller Installs: multi-install.md
       - Dashboard Aggregation API: advanced-usage/dashboard-apiserver.md
   - CRD Specs: crd-specs.md
   - Contributing:

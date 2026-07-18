@@ -32,6 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 )
 
 // ensureSecretFinalizerForProvider adds a finalizer to a Secret referenced by an ScmProvider or ClusterScmProvider.
@@ -256,4 +257,11 @@ func formatDependentResourceError(obj client.Object, resourceType string, depend
 	}
 
 	return fmt.Sprintf("%s still has dependent resource %s and %d more", resourceID, firstDependent, len(dependents)-1)
+}
+
+func ensureControllerInstanceIDStable(ctx context.Context, settingsMgr *settings.Manager) error {
+	if err := settingsMgr.EnsureInstanceIDStable(ctx); err != nil {
+		return fmt.Errorf("controller instance ID is not stable: %w", err)
+	}
+	return nil
 }

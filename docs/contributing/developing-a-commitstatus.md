@@ -8,7 +8,7 @@ This document outlines best practices for implementing custom commit status cont
 
 ## Required Labels
 
-All commit status controllers should set the following standard labels on the `CommitStatus` resources they create. Use `utils.CommitStatusStandardLabels(parent, branch, key)` to set all three at once.
+All commit status controllers should set the following standard labels on the `CommitStatus` resources they create. Use `utils.CommitStatusStandardLabels(parent, branch, key)` — it sets the three gating labels and copies `promoter.argoproj.io/instance-id` from the parent gate when present (see [§4](#4-instance-id-label-multi-install)).
 
 ### 1. Commit Status Label
 
@@ -50,6 +50,21 @@ commitStatus.Labels[promoterv1alpha1.EnvironmentLabel] = utils.KubeSafeLabel(bra
 If multiple PromotionStrategies share the same active branch (via `PromotionStrategy.spec.activePath`), commit statuses
 for different apps can target the same active commit SHA. In this setup, controllers should use distinct
 `CommitStatusLabel` keys per app/controller domain (for example `argocd-health-payments`), so gating remains isolated.
+
+### 4. Instance ID Label (multi-install)
+
+When the cluster runs multiple Promoter controller installs, each install only caches resources labeled with its configured `ControllerConfiguration.spec.instanceID`. In the default install (`instanceID` unset), only **unlabeled** resources are cached—do not add this label to gate CRs or PromotionStrategies managed by the default install.
+
+`CommitStatusStandardLabels` copies `promoter.argoproj.io/instance-id` from the parent gate when the parent carries a non-empty value. Label the parent gate during migration before the controller will reconcile it.
+
+```go
+commitStatusLabels := utils.CommitStatusStandardLabels(parentGate, branch, key)
+commitStatusApply := acv1alpha1.CommitStatus(name, namespace).
+    WithLabels(commitStatusLabels).
+    // …
+```
+
+See [Multiple Controller Installs](../multi-install.md) for operator configuration and migration notes.
 
 ## Existing Controllers
 
@@ -102,7 +117,7 @@ The helper applies `KubeSafeUniqueName` to `parent.metadata.name-branch-<stem>`.
 
 Example: `my-app-environment-development-timed-<hash>` (or `...-argo-cd-<hash>` for Argo CD gates)
 
-Set the standard CommitStatus labels with `utils.CommitStatusStandardLabels(parent, branch, key)` (parent gate, environment, and commit-status key).
+Set the standard CommitStatus labels with `utils.CommitStatusStandardLabels(parent, branch, key)` (parent gate, environment, commit-status key, and instance-id when the parent gate carries it).
 
 #### Orphan cleanup
 
@@ -201,6 +216,78 @@ commitStatus.Spec.Description = fmt.Sprintf("All %d applications are healthy", t
 commitStatus.Spec.Phase = promoterv1alpha1.CommitPhaseFailure
 commitStatus.Spec.Description = fmt.Sprintf("Applications are degraded: %s", errorDetail)
 ```
+
+## Spec Configuration Patterns
+
+CommitStatus CRDs that support per-environment configuration should follow the **global + per-env merge** pattern: behavioral fields appear at both the spec level (global defaults) and per-environment level, with documented merge semantics. This gives users a single, predictable model across all gate kinds.
+
+CRDs where the same logic applies identically to every environment (no per-env config needed) use a simpler global-only pattern — the controller discovers environments from the PromotionStrategy status.
+
+### Global-Only Configuration
+
+All configuration lives at the spec level. The controller iterates over environments from the referenced PromotionStrategy's status — the CRD's spec has no `environments` list.
+
+**Used by:** GitCommitStatus, ArgoCDCommitStatus, WebRequestCommitStatus
+
+```yaml
+spec:
+  key: my-gate
+  promotionStrategyRef:
+    name: my-app
+  # All config here — no environments list in spec
+  expression: '...'
+```
+
+**When to use:** The same logic applies identically to every environment. No per-env overrides are needed.
+
+Note that environment-specific logic may be embedded in the global settings. For example, an expression might contain logic to differentiate by branch. But the expression itself applies globally and is not configured per environment.
+
+### Global + Per-Environment with Merge (Standard)
+
+When a CRD needs per-environment configuration, fields should appear at both the spec level (global) and per-environment level. The controller merges them with defined semantics.
+
+**Used by:** ScheduledCommitStatus
+
+**Planned for:** TimedCommitStatus (currently per-env only; adding a global default `duration` is tracked as a follow-up)
+
+```yaml
+spec:
+  key: promotion-window
+  promotionStrategyRef:
+    name: my-app
+  timezone: America/New_York        # global default — used by all windows without their own timezone
+  exclude:                          # global — applies to all listed envs
+    - description: Holiday freeze
+      cron: "0 0 25 12 *"
+      duration: 48h
+      timezone: UTC                 # per-window override
+  environments:
+    - branch: environment/development
+      allow:                        # per-env — merged with global
+        - description: Business hours
+          cron: "0 9 * * 1-5"
+          duration: 8h
+    - branch: environment/staging
+      exclude:                      # per-env — merged with global
+        - description: Sunday blackout
+          cron: "0 0 * * 0"
+          duration: 24h
+```
+
+**When to use:** Any CRD where environments benefit from different settings. This pattern requires:
+
+1. **Documented merge semantics** — how global and per-env values combine (OR, override, union, etc.)
+2. **CEL validation** — ensure each environment ends up with a valid configuration after the merge (e.g. at least one allow or exclude window)
+3. **Clear precedence rules** — which level wins on conflict (e.g. exclusions always override allow windows)
+
+Only listed environments are gated; unlisted environments default to success (24/7 open).
+
+### Choosing a Pattern
+
+| Question | → Pattern |
+|---|---|
+| Same logic for every environment, no per-env config needed? | Global-only |
+| Environments need different settings? | Global + per-env merge |
 
 ## Watching PromotionStrategy
 

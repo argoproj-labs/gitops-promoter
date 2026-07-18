@@ -37,6 +37,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/controller"
 )
 
 var log = ctrl.Log.WithName("dashboard-apiserver")
@@ -109,21 +110,15 @@ func (p *BundleProvider) currentResourceVersion() string {
 
 // childKinds are all resource kinds whose changes can affect a bundle.
 func (p *BundleProvider) childKinds() []client.Object {
-	return []client.Object{
+	return append([]client.Object{
 		&promoterv1alpha1.PromotionStrategy{},
 		&promoterv1alpha1.ChangeTransferPolicy{},
 		&promoterv1alpha1.PullRequest{},
 		&promoterv1alpha1.CommitStatus{},
-		&promoterv1alpha1.ArgoCDCommitStatus{},
-		&promoterv1alpha1.GitCommitStatus{},
-		&promoterv1alpha1.TimedCommitStatus{},
-		&promoterv1alpha1.WebRequestCommitStatus{},
-		&promoterv1alpha1.DAGCommitStatus{},
-		&promoterv1alpha1.PreviousEnvironmentCommitStatus{},
 		&promoterv1alpha1.GitRepository{},
 		&promoterv1alpha1.ScmProvider{},
 		&promoterv1alpha1.ClusterScmProvider{},
-	}
+	}, controller.GateCommitStatusKinds()...)
 }
 
 // SetupInformers registers event handlers for all child kinds so that any change
@@ -250,18 +245,6 @@ func (p *BundleProvider) mapObjectToPromotionStrategies(ctx context.Context, obj
 		return keyFromLabel(o.Namespace, o.Labels)
 	case *promoterv1alpha1.CommitStatus:
 		return keyFromLabel(o.Namespace, o.Labels)
-	case *promoterv1alpha1.ArgoCDCommitStatus:
-		return keyFromRef(o.Namespace, o.Spec.PromotionStrategyRef.Name)
-	case *promoterv1alpha1.GitCommitStatus:
-		return keyFromRef(o.Namespace, o.Spec.PromotionStrategyRef.Name)
-	case *promoterv1alpha1.TimedCommitStatus:
-		return keyFromRef(o.Namespace, o.Spec.PromotionStrategyRef.Name)
-	case *promoterv1alpha1.WebRequestCommitStatus:
-		return keyFromRef(o.Namespace, o.Spec.PromotionStrategyRef.Name)
-	case *promoterv1alpha1.DAGCommitStatus:
-		return keyFromRef(o.Namespace, o.Spec.PromotionStrategyRef.Name)
-	case *promoterv1alpha1.PreviousEnvironmentCommitStatus:
-		return keyFromRef(o.Namespace, o.Spec.PromotionStrategyRef.Name)
 	case *promoterv1alpha1.GitRepository:
 		return p.keysReferencingGitRepository(ctx, o.Namespace, o.Name)
 	case *promoterv1alpha1.ScmProvider:
@@ -269,6 +252,11 @@ func (p *BundleProvider) mapObjectToPromotionStrategies(ctx context.Context, obj
 	case *promoterv1alpha1.ClusterScmProvider:
 		return p.keysReferencingScmProvider(ctx, "ClusterScmProvider", "", o.Name)
 	default:
+		// PromotionStrategyRef gate managers (ArgoCD/Git/Timed/WebRequest/Scheduled
+		// CommitStatus, and any future gate with Spec.PromotionStrategyRef).
+		if name := controller.PromotionStrategyRefName(obj); name != "" {
+			return keyFromRef(obj.GetNamespace(), name)
+		}
 		return nil
 	}
 }

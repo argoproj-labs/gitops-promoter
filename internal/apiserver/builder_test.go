@@ -54,14 +54,7 @@ func psLabeledMeta(name string) metav1.ObjectMeta {
 // newFakeClientBuilder returns a fake client builder with gate promotionStrategyRef field indexes.
 func newFakeClientBuilder() *fake.ClientBuilder {
 	b := fake.NewClientBuilder().WithScheme(utils.GetScheme())
-	for _, obj := range []client.Object{
-		&promoterv1alpha1.ArgoCDCommitStatus{},
-		&promoterv1alpha1.DAGCommitStatus{},
-		&promoterv1alpha1.PreviousEnvironmentCommitStatus{},
-		&promoterv1alpha1.GitCommitStatus{},
-		&promoterv1alpha1.TimedCommitStatus{},
-		&promoterv1alpha1.WebRequestCommitStatus{},
-	} {
+	for _, obj := range controller.GateCommitStatusKinds() {
 		b = b.WithIndex(obj, controller.PromotionStrategyRefField, controller.PromotionStrategyRefIndexValues)
 	}
 	return b
@@ -133,6 +126,10 @@ func seedObjects() []client.Object {
 			ObjectMeta: objectMeta("web-1"),
 			Spec:       promoterv1alpha1.WebRequestCommitStatusSpec{PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: testPSName}},
 		},
+		&promoterv1alpha1.ScheduledCommitStatus{
+			ObjectMeta: objectMeta("scheduled-1"),
+			Spec:       promoterv1alpha1.ScheduledCommitStatusSpec{PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: testPSName}},
+		},
 		&promoterv1alpha1.GitRepository{
 			ObjectMeta: objectMeta("my-repo"),
 			Spec: promoterv1alpha1.GitRepositorySpec{
@@ -188,6 +185,8 @@ var _ = Describe("BuildBundle", func() {
 		Expect(bundle.GitCommitStatuses).To(HaveLen(1))
 		Expect(bundle.TimedCommitStatuses).To(HaveLen(1))
 		Expect(bundle.WebRequestCommitStatuses).To(HaveLen(1))
+		Expect(bundle.ScheduledCommitStatuses).To(HaveLen(1))
+		Expect(bundle.ScheduledCommitStatuses[0].Name).To(Equal("scheduled-1"))
 
 		By("resolving git config but never the Secret")
 		Expect(bundle.GitRepository).NotTo(BeNil())

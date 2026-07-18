@@ -7,6 +7,7 @@ import (
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -19,10 +20,35 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+)
+
+var _ = BeforeEach(func() {
+	settings.ResetControllerInstanceIDForTest()
+	settings.SetControllerInstanceIDForTest(nil)
+})
+
+var _ = AfterEach(func() {
+	settings.ResetControllerInstanceIDForTest()
+})
+
+var (
+	_ utils.PromoterResource = &promoterv1alpha1.PromotionStrategy{}
+	_ utils.PromoterResource = &promoterv1alpha1.ChangeTransferPolicy{}
+	_ utils.PromoterResource = &promoterv1alpha1.CommitStatus{}
+	_ utils.PromoterResource = &promoterv1alpha1.PullRequest{}
+	_ utils.PromoterResource = &promoterv1alpha1.ScmProvider{}
+	_ utils.PromoterResource = &promoterv1alpha1.ClusterScmProvider{}
+	_ utils.PromoterResource = &promoterv1alpha1.GitRepository{}
+	_ utils.PromoterResource = &promoterv1alpha1.TimedCommitStatus{}
+	_ utils.PromoterResource = &promoterv1alpha1.GitCommitStatus{}
+	_ utils.PromoterResource = &promoterv1alpha1.WebRequestCommitStatus{}
+	_ utils.PromoterResource = &promoterv1alpha1.ArgoCDCommitStatus{}
+	_ utils.PromoterResource = &promoterv1alpha1.ControllerConfiguration{}
 )
 
 var _ = Describe("test rendering a template", func() {
@@ -250,6 +276,24 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 		// The error should be preserved
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("test error message"))
+	})
+
+	It("should stamp status.instanceID from settings.ControllerInstanceID", func() {
+		var err error
+		const instanceID = "wave-0"
+		settings.SetControllerInstanceIDForTest(ptr.To(instanceID))
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(obj).Build()
+		Expect(fakeClient.Create(ctx, obj)).To(Succeed())
+
+		func() {
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, testFieldOwner, nil, &err, nil)
+		}()
+
+		Expect(err).NotTo(HaveOccurred())
+		updated := &promoterv1alpha1.PromotionStrategy{}
+		Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(obj), updated)).To(Succeed())
+		Expect(updated.Status.InstanceID).NotTo(BeNil())
+		Expect(*updated.Status.InstanceID).To(Equal(instanceID))
 	})
 
 	It("should handle successful reconciliation without error", func() {

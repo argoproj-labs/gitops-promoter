@@ -65,3 +65,8 @@ const ScmProviderSecretFinalizer = "scmprovider.promoter.argoproj.io/secret-fina
 
 // ClusterScmProviderSecretFinalizer prevents deletion of Secret while ClusterScmProvider references it
 const ClusterScmProviderSecretFinalizer = "clusterscmprovider.promoter.argoproj.io/secret-finalizer"
+
+// InstanceIDLabel partitions resources between multiple controller installs sharing an API server.
+// Each install configures ControllerConfiguration.spec.instanceID (exact label match) or leaves it
+// unset (only unlabeled resources). Labeled and unlabeled resources are never reconciled together.
+const InstanceIDLabel = "promoter.argoproj.io/instance-id"

@@ -201,6 +201,11 @@ func (in ControllerConfigurationStatus) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in CronWindow) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.CronWindow"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in DAGCommitStatus) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.DAGCommitStatus"
 }
@@ -526,6 +531,41 @@ func (in RevisionReference) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ScheduledCommitStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ScheduledCommitStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ScheduledCommitStatusConfiguration) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ScheduledCommitStatusConfiguration"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ScheduledCommitStatusList) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ScheduledCommitStatusList"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ScheduledCommitStatusSpec) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ScheduledCommitStatusSpec"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ScheduledCommitStatusStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ScheduledCommitStatusStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ScheduledEnvironment) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ScheduledEnvironment"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ScheduledEnvironmentStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ScheduledEnvironmentStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in Scm) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.Scm"
 }
@@ -658,6 +698,11 @@ func (in WebRequestCommitStatusStatus) OpenAPIModelName() string {
 // OpenAPIModelName returns the OpenAPI model name for this type.
 func (in WhenWithOutputSpec) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.WhenWithOutputSpec"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in WindowStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.WindowStatus"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.

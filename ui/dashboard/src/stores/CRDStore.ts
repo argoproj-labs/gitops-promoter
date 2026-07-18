@@ -73,6 +73,7 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
 
     fetchItems: async (namespace: string) => {
       set({ loading: true, error: null });
+
       try {
         const res = await fetch(`/list?kind=${kind}&namespace=${namespace}`);
 

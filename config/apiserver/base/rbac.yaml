@@ -20,6 +20,9 @@ rules:
       - gitcommitstatuses
       - timedcommitstatuses
       - webrequestcommitstatuses
+      - scheduledcommitstatuses
+      - previousenvironmentcommitstatuses
+      - dagcommitstatuses
       - gitrepositories
       - scmproviders
       - clusterscmproviders

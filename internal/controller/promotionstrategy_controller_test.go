@@ -20,8 +20,12 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -6150,3 +6154,42 @@ func linearUpstreamsPending(precedingEnvs []promoterv1alpha1.EnvironmentStatus, 
 
 	return upstreamsPending(g, currentBranch, targetDrySha, currentActiveCommitTime, statusByBranch)
 }
+
+var _ = Describe("Child creation instance-id label propagation", func() {
+	// Controller files must call StampInstanceIDLabel at child-creation sites for multi-install
+	// label propagation (not gate CommitStatus paths, which use CommitStatusStandardLabels).
+	DescribeTable("controller files call StampInstanceIDLabel",
+		func(file string, expectedCalls int) {
+			path := filepath.Join(".", file)
+			src, err := os.ReadFile(path)
+			Expect(err).NotTo(HaveOccurred(), "read %s", path)
+
+			fset := token.NewFileSet()
+			f, err := parser.ParseFile(fset, path, src, 0)
+			Expect(err).NotTo(HaveOccurred(), "parse %s", path)
+
+			count := 0
+			ast.Inspect(f, func(n ast.Node) bool {
+				call, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				sel, ok := call.Fun.(*ast.SelectorExpr)
+				if !ok {
+					return true
+				}
+				if id, ok := sel.X.(*ast.Ident); ok && id.Name == "utils" && sel.Sel.Name == "StampInstanceIDLabel" {
+					count++
+				}
+				return true
+			})
+			Expect(count).To(Equal(expectedCalls),
+				"%s must call utils.StampInstanceIDLabel %d times for instance-id label propagation", file, expectedCalls)
+		},
+		// One call stamps instance-id onto owned ChangeTransferPolicies. The former second call
+		// lived on auto-injected PreviousEnvironmentCommitStatus creation, which was removed when
+		// ordering gates became explicit CRDs.
+		Entry("promotionstrategy_controller.go", "promotionstrategy_controller.go", 1),
+		Entry("changetransferpolicy_controller.go", "changetransferpolicy_controller.go", 1),
+	)
+})

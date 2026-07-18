@@ -1,0 +1,89 @@
+@use 'sass:color';
+@use '../../styles/colors' as *;
+
+$bg-page: #eef1f6;
+$bg-surface: #ffffff;
+$bg-soft: #f9fafb;
+$bg-softer: #f3f5f8;
+// Text colors tuned for WCAG 2.2 AA (4.5:1 on white/soft surfaces).
+// The shared $argo-color-gray-5/6 are too light (2.1:1 / 3.5:1) for text.
+$text-primary: $argo-color-gray-7; // #4b4b4b — 8.7:1 on white
+$text-secondary: #586773; // 5.8:1 on white (was gray-6 3.5:1)
+$text-muted: #677483; // 4.8:1 on white (was gray-5 2.1:1)
+$stroke: rgba(15, 35, 60, 0.14);
+$stroke-strong: rgba(15, 35, 60, 0.5); // 3.19:1 vs white — UI/control boundaries (1.4.11)
+$accent: #1f4f5e;
+
+$success: $argo-success;
+$failure: $argo-failed;
+$pending: $argo-running;
+
+// Accessible text/solid-fill variants — meet 4.5:1 for white-on-fill pill
+// labels and colored-text-on-tint. Keep separate from brand hues so other
+// components are unaffected.
+$success-ink: #12805a; // white-on 4.9:1 / on-white 5.0:1
+$failure-ink: #c0392b; // white-on 5.4:1
+$pending-ink: #0b78a6; // white-on 4.9:1
+
+$success-soft: rgba(45, 153, 96, 0.12);
+$success-border: rgba(18, 128, 90, 0.55);
+$failure-soft: rgba(220, 67, 67, 0.1);
+$failure-border: rgba(192, 57, 43, 0.55);
+$pending-soft: rgba(13, 173, 234, 0.14);
+$pending-border: rgba(11, 120, 166, 0.55);
+
+$radius-sm: 4px;
+$radius-md: 6px;
+$radius-lg: 8px;
+
+.fa-spin {
+  animation: fa-spin 2s infinite linear;
+}
+@keyframes fa-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Visible keyboard focus for the page's custom controls (buttons styled as
+   cards/chips, SHA/PR links). Uses :focus-visible so it only shows for
+   keyboard/AT navigation, not mouse clicks. WCAG 2.4.7. */
+.hp {
+  :focus-visible {
+    outline: 2px solid $accent;
+    outline-offset: 2px;
+    border-radius: $radius-sm;
+  }
+}
+
+/* Respect the user's reduced-motion preference: stop the infinite spinner and
+   the pulsing filter dot, and neutralize transitions. WCAG 2.3.3. */
+@media (prefers-reduced-motion: reduce) {
+  .hp {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* Visually hidden but available to screen readers (for live-region
+   announcements and supplemental labels). */
+.hp-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

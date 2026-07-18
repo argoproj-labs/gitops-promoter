@@ -62,7 +62,15 @@ const (
 	// performed by the GitCommitStatus controller.
 	GitCommitStatusControllerFieldOwner = "promoter.argoproj.io/gitcommitstatus-controller"
 
+	// ScheduledCommitStatusControllerFieldOwner is the field owner for Server-Side Apply operations
+	// performed by the ScheduledCommitStatus controller.
+	ScheduledCommitStatusControllerFieldOwner = "promoter.argoproj.io/scheduledcommitstatus-controller"
+
 	// CommitStatusControllerFieldOwner is the field owner for Server-Side Apply operations
 	// performed by the CommitStatus controller.
 	CommitStatusControllerFieldOwner = "promoter.argoproj.io/commitstatus-controller"
+
+	// ControllerConfigurationControllerFieldOwner is the field owner for Server-Side Apply operations
+	// performed by the ControllerConfiguration controller.
+	ControllerConfigurationControllerFieldOwner = "promoter.argoproj.io/controllerconfiguration-controller"
 )

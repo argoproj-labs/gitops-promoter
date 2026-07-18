@@ -45,20 +45,21 @@ Various actors may want to manage CommitStatuses:
 
 A given PromotionStrategy may need to reference CommitStatuses from any or all of these actors.
 
-To facilitate the cross-team communication, _PromotionStrategy references to CommitStatuses are cluster-scoped_. If any
-CommitStatus on a cluster matches the key specified in a PromotionStrategy, then the PromotionStrategy controller will
-take that CommitStatus into account for the promotion process. This allows different actors to host CommitStatuses in
-their own namespaces, using their own SCM credentials.
+### Cluster-scoped gating (single install)
+
+To facilitate cross-team communication in the **default** controller install (`ControllerConfiguration.spec.instanceID` unset), _PromotionStrategy references to CommitStatuses are cluster-scoped within that partition_. The default install's cache only holds unlabeled Promoter CRs, so only unlabeled CommitStatuses on the cluster match. This allows different actors to host CommitStatuses in their own namespaces, using their own SCM credentials, as long as those CommitStatuses are not labeled for another install.
 
 This cluster-scoped reference is reasonably safe in a multi-tenant setup because:
 
-1. The reference is read-only. When referencing a CommitStatus in another namespace, a PromotionStrategy does not leak
-   any information about itself. It just reads the status.
-2. A CommitStatus's commit SHA must match the SHA of a commit being promoted to affect promotion. In other
-   words, the CommitStatus's creator must already have knowledge about the SHAs in the PromotionStrategy's repository.
-3. The worst a malicious or faulty CommitStatus can do is block an environment's promotion. If a promotion is 
-   erroneously blocked, the PromotionStrategy user can take advantage of an override mechanism (such as manually
-   merging the blocked PR), and the GitOps Promoter's admin can investigate and remediate the faulty blocker.
+1. The reference is read-only. When referencing a CommitStatus in another namespace, a PromotionStrategy does not leak any information about itself. It just reads the status.
+2. A CommitStatus's commit SHA must match the SHA of a commit being promoted to affect promotion. In other words, the CommitStatus's creator must already have knowledge about the SHAs in the PromotionStrategy's repository.
+3. The worst a malicious or faulty CommitStatus can do is block an environment's promotion. If a promotion is erroneously blocked, the PromotionStrategy user can take advantage of an override mechanism (such as manually merging the blocked PR), and the GitOps Promoter's admin can investigate and remediate the faulty blocker.
+
+### Instance-id partitioning (multiple installs)
+
+[Multiple controller installs](../multi-install.md) add a separate axis from namespace tenancy. When `spec.instanceID` is set on `ControllerConfiguration`, each install's informer cache only holds Promoter CRs labeled `promoter.argoproj.io/instance-id` with that value. Gating lists run against that cache, so CommitStatuses from another install **do not** affect promotion—even if the key and SHA match.
+
+Namespace tenancy (who may reference whose Secrets) and instance-id partitioning (which install reconciles which CRs) are independent. You can combine both: tenants in separate namespaces within one install, or multiple installs on one cluster with hard isolation between them.
 
 # ScmProvider and ClusterScmProvider Tenancy
 

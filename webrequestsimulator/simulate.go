@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/webrequest"
 	"github.com/argoproj-labs/gitops-promoter/webrequestsimulator/internal/simulate"
 	"github.com/argoproj-labs/gitops-promoter/webrequestsimulator/simulatortypes"
@@ -35,6 +36,11 @@ import (
 //
 // Safe for concurrent use.
 func Simulate(ctx context.Context, in simulatortypes.Input) (*simulatortypes.Result, error) {
+	// CommitStatus labels are stamped via settings.ControllerInstanceID. The
+	// simulator has no ControllerConfiguration/rest.Config, so treat instance-id
+	// as unset for this process.
+	settings.SetControllerInstanceIDForTest(nil)
+
 	res, err := simulate.Simulate(ctx, simulate.Args{
 		WebRequestCommitStatus: in.WebRequestCommitStatus,
 		PromotionStrategy:      in.PromotionStrategy,

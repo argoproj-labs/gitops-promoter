@@ -41,6 +41,10 @@ type DAGCommitStatusStatusApplyConfiguration struct {
 	//
 	// The status of each condition is one of True, False, or Unknown.
 	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
+	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+	// reconcile attempt by this install's controller, including when Ready=False; omitted
+	// when the resource has no instance-id label (default install).
+	InstanceID *string `json:"instanceID,omitempty"`
 }
 
 // DAGCommitStatusStatusApplyConfiguration constructs a declarative configuration of the DAGCommitStatusStatus type for use with
@@ -67,5 +71,13 @@ func (b *DAGCommitStatusStatusApplyConfiguration) WithConditions(values ...*v1.C
 		}
 		b.Conditions = append(b.Conditions, *values[i])
 	}
+	return b
+}
+
+// WithInstanceID sets the InstanceID field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the InstanceID field is set to the value of the last call.
+func (b *DAGCommitStatusStatusApplyConfiguration) WithInstanceID(value string) *DAGCommitStatusStatusApplyConfiguration {
+	b.InstanceID = &value
 	return b
 }
