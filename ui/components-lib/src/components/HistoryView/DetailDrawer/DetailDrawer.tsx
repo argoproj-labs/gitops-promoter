@@ -63,7 +63,10 @@ const DetailDrawer: React.FC<{
   const hydrated = cell.hydrated;
   const hydratedRepoURL = hydrated?.repoURL || cell.commit?.repoURL || row.repoUrl || '';
   const hydratedRepoName = hydratedRepoURL
-    ? hydratedRepoURL.replace(/\.git$/, '').split('/').pop()
+    ? hydratedRepoURL
+        .replace(/\.git$/, '')
+        .split('/')
+        .pop()
     : undefined;
   const refs = cell.references ?? [];
 

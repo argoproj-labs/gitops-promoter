@@ -118,8 +118,8 @@ export function getLastCommitTime(ps: PromotionStrategy): Date | null {
 export function sortStrategyCommitStatuses(ps: PromotionStrategy): PromotionStrategy {
   const byKey = (a: { key: string }, b: { key: string }) => a.key.localeCompare(b.key);
   for (const env of ps.status?.environments ?? []) {
-    env.active?.commitStatuses?.sort(byKey);
-    env.proposed?.commitStatuses?.sort(byKey);
+    env.active.commitStatuses?.sort(byKey);
+    env.proposed.commitStatuses?.sort(byKey);
     for (const entry of env.history ?? []) {
       entry.active?.commitStatuses?.sort(byKey);
       entry.proposed?.commitStatuses?.sort(byKey);
