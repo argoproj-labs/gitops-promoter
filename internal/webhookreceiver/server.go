@@ -312,6 +312,10 @@ func (wr *WebhookReceiver) tryLookupAndEnqueue(ctx context.Context, sha, ref, vi
 	ctp, outcome, lookupErr := wr.lookupCTPByHydratedSHA(ctx, sha, ref)
 	switch outcome {
 	case ctpLookupFound:
+		if ctp == nil {
+			// Defensive: lookupCTPByHydratedSHA should never return Found with a nil CTP.
+			return false, false, errors.New("CTP lookup reported found but returned nil")
+		}
 		if wr.enqueueCTP != nil {
 			wr.enqueueCTP(ctp.Namespace, ctp.Name)
 		}
