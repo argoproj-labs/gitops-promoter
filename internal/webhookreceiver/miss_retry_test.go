@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -131,9 +132,12 @@ func (f *flakyListClient) List(ctx context.Context, list client.ObjectList, opts
 	defer f.mu.Unlock()
 	if f.failuresLeft > 0 {
 		f.failuresLeft--
-		return fmt.Errorf("simulated list failure")
+		return errors.New("simulated list failure")
 	}
-	return f.Client.List(ctx, list, opts...)
+	if err := f.Client.List(ctx, list, opts...); err != nil {
+		return fmt.Errorf("list changetransferpolicies: %w", err)
+	}
+	return nil
 }
 
 type testLifecycle struct {

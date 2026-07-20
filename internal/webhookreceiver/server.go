@@ -222,6 +222,8 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 	case ctpLookupListError:
 		reqLogger.V(4).Info("transient CTP lookup failure; scheduling miss retry", "error", lookupErr)
 		wr.scheduleMissRetry(context.WithoutCancel(ctx), provider, beforeSha, ref, deliveryID)
+	default:
+		reqLogger.V(4).Info("unexpected CTP lookup outcome", "outcome", outcome)
 	}
 
 	responseCode = http.StatusNoContent
@@ -379,6 +381,8 @@ func parseWebhookPush(provider string, jsonBytes []byte) (beforeSha, ref string)
 				ref = firstUpdate.Get("name").String()
 			}
 		}
+	default:
+		// Unsupported or unknown provider: leave beforeSha empty so the caller no-ops.
 	}
 	return beforeSha, ref
 }
