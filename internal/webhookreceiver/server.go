@@ -195,37 +195,40 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := log.IntoContext(r.Context(), reqLogger)
-	ctp, err := wr.findChangeTransferPolicy(ctx, provider, jsonBytes)
-	if err != nil {
-		reqLogger.V(4).Info("could not find any matching ChangeTransferPolicies", "error", err)
+	beforeSha, ref := parseWebhookPush(provider, jsonBytes)
+	if beforeSha == "" {
+		reqLogger.V(4).Info("unable to extract commit SHA from provider payload", "provider", provider)
 		responseCode = http.StatusNoContent
 		w.WriteHeader(responseCode)
 		return
 	}
-	if ctp == nil {
+
+	ctp, outcome, lookupErr := wr.lookupCTPByHydratedSHA(ctx, beforeSha, ref)
+	switch outcome {
+	case ctpLookupFound:
+		ctpFound = true
+		startUpdate := time.Now()
+		if wr.enqueueCTP != nil {
+			wr.enqueueCTP(ctp.Namespace, ctp.Name)
+		}
+		updateDuration = time.Since(startUpdate)
+		reqLogger.Info("Triggered reconcile of ChangeTransferPolicy via webhook", "namespace", ctp.Namespace, "name", ctp.Name)
+	case ctpLookupTooManyMatches:
+		reqLogger.V(4).Info("too many ChangeTransferPolicies matched hydrated sha for webhook delivery", "sha", beforeSha, "ref", ref)
+	case ctpLookupNotFound:
 		reqLogger.Info("no ChangeTransferPolicy found for webhook delivery")
-		responseCode = http.StatusNoContent
-		w.WriteHeader(responseCode)
 		// Detach from the request context so the async retry outlives the HTTP handler.
-		wr.scheduleMissRetry(context.WithoutCancel(ctx), provider, jsonBytes, deliveryID)
-		return
+		wr.scheduleMissRetry(context.WithoutCancel(ctx), provider, beforeSha, ref, deliveryID)
+	case ctpLookupListError:
+		reqLogger.V(4).Info("transient CTP lookup failure; scheduling miss retry", "error", lookupErr)
+		wr.scheduleMissRetry(context.WithoutCancel(ctx), provider, beforeSha, ref, deliveryID)
 	}
-
-	ctpFound = true
-
-	// Use the enqueue function to trigger reconciliation.
-	startUpdate := time.Now()
-	if wr.enqueueCTP != nil {
-		wr.enqueueCTP(ctp.Namespace, ctp.Name)
-	}
-	updateDuration = time.Since(startUpdate)
-	reqLogger.Info("Triggered reconcile of ChangeTransferPolicy via webhook", "namespace", ctp.Namespace, "name", ctp.Name)
 
 	responseCode = http.StatusNoContent
 	w.WriteHeader(responseCode)
 }
 
-func (wr *WebhookReceiver) scheduleMissRetry(ctx context.Context, provider string, jsonBytes []byte, deliveryID string) {
+func (wr *WebhookReceiver) scheduleMissRetry(ctx context.Context, provider, sha, ref, deliveryID string) {
 	if wr.missRetrySem == nil {
 		return
 	}
@@ -249,15 +252,15 @@ func (wr *WebhookReceiver) scheduleMissRetry(ctx context.Context, provider strin
 					}
 				}()
 			}
-			wr.retryFindAndEnqueue(retryCtx, provider, jsonBytes, deliveryID)
+			wr.retryFindAndEnqueue(retryCtx, provider, sha, ref, deliveryID)
 		}()
 	default:
 		logger.V(4).Info("skipping webhook miss retry; at capacity", "deliveryID", deliveryID)
 	}
 }
 
-func (wr *WebhookReceiver) retryFindAndEnqueue(ctx context.Context, provider string, jsonBytes []byte, deliveryID string) {
-	reqLogger := logger.WithValues("provider", provider, "deliveryID", deliveryID)
+func (wr *WebhookReceiver) retryFindAndEnqueue(ctx context.Context, provider, sha, ref, deliveryID string) {
+	reqLogger := logger.WithValues("provider", provider, "deliveryID", deliveryID, "sha", sha, "ref", ref)
 	ctx = log.IntoContext(ctx, reqLogger)
 
 	backoff := wait.Backoff{
@@ -268,20 +271,26 @@ func (wr *WebhookReceiver) retryFindAndEnqueue(ctx context.Context, provider str
 	}
 
 	err := wait.ExponentialBackoffWithContext(ctx, backoff, func(ctx context.Context) (bool, error) {
-		ctp, findErr := wr.findChangeTransferPolicy(ctx, provider, jsonBytes)
-		if findErr != nil {
-			// List failures and ambiguous matches should not keep retrying.
-			return false, findErr
-		}
-		if ctp == nil {
+		ctp, outcome, lookupErr := wr.lookupCTPByHydratedSHA(ctx, sha, ref)
+		switch outcome {
+		case ctpLookupFound:
+			if wr.enqueueCTP != nil {
+				wr.enqueueCTP(ctp.Namespace, ctp.Name)
+			}
+			reqLogger.Info("Triggered reconcile of ChangeTransferPolicy via deferred webhook retry",
+				"namespace", ctp.Namespace, "name", ctp.Name)
+			return true, nil
+		case ctpLookupNotFound:
 			return false, nil
+		case ctpLookupListError:
+			// Transient API/index failures: keep retrying until the outer timeout.
+			reqLogger.V(4).Info("transient CTP lookup failure; will retry", "error", lookupErr)
+			return false, nil
+		case ctpLookupTooManyMatches:
+			return false, fmt.Errorf("too many changetransferpolicies found for sha: %s, ref: %s", sha, ref)
+		default:
+			return false, fmt.Errorf("unexpected CTP lookup outcome: %v", outcome)
 		}
-		if wr.enqueueCTP != nil {
-			wr.enqueueCTP(ctp.Namespace, ctp.Name)
-		}
-		reqLogger.Info("Triggered reconcile of ChangeTransferPolicy via deferred webhook retry",
-			"namespace", ctp.Namespace, "name", ctp.Name)
-		return true, nil
 	})
 	if err != nil {
 		if wait.Interrupted(err) {
@@ -320,13 +329,19 @@ func (wr *WebhookReceiver) getRetryFactor() float64 {
 	return missRetryFactor
 }
 
-func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provider string, jsonBytes []byte) (*promoterv1alpha1.ChangeTransferPolicy, error) {
-	logger := log.FromContext(ctx)
-	var beforeSha string
-	var ref string
-	ctpLists := promoterv1alpha1.ChangeTransferPolicyList{}
+// ctpLookupOutcome is the result of a hydrated-SHA field-index lookup.
+type ctpLookupOutcome int
 
-	// Extract webhook data based on provider
+const (
+	ctpLookupFound ctpLookupOutcome = iota
+	ctpLookupNotFound
+	ctpLookupTooManyMatches
+	ctpLookupListError
+)
+
+// parseWebhookPush extracts the pre-push commit SHA and ref from a provider payload.
+// Returns an empty beforeSha when the payload cannot be parsed for this provider.
+func parseWebhookPush(provider string, jsonBytes []byte) (beforeSha, ref string) {
 	switch provider {
 	case ProviderGitHub, ProviderForgejo, ProviderGitea:
 		// GitHub, Forgejo, and Gitea webhook format (all use 'pusher')
@@ -364,46 +379,46 @@ func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provide
 				ref = firstUpdate.Get("name").String()
 			}
 		}
-	default:
-		logger.V(4).Info("unsupported provider", "provider", provider)
-		return nil, nil
 	}
+	return beforeSha, ref
+}
 
-	if beforeSha == "" {
-		logger.V(4).Info("unable to extract commit SHA from provider payload", "provider", provider)
-		return nil, nil
-	}
+// lookupCTPByHydratedSHA finds a ChangeTransferPolicy by proposed (then active) hydrated SHA.
+// Parse failures are handled by the caller; this only performs the k8s index lookup.
+func (wr *WebhookReceiver) lookupCTPByHydratedSHA(ctx context.Context, sha, ref string) (*promoterv1alpha1.ChangeTransferPolicy, ctpLookupOutcome, error) {
+	logger := log.FromContext(ctx)
+	ctpLists := promoterv1alpha1.ChangeTransferPolicyList{}
 
 	err := wr.k8sClient.List(ctx, &ctpLists, &client.ListOptions{
 		FieldSelector: fields.SelectorFromSet(map[string]string{
-			".status.proposed.hydrated.sha": beforeSha,
+			".status.proposed.hydrated.sha": sha,
 		}),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to list changetransferpolicies for webhook receiver: %w", err)
+		return nil, ctpLookupListError, fmt.Errorf("failed to list via proposed sha changetransferpolicies for webhook receiver: %w", err)
 	}
 
 	if len(ctpLists.Items) == 0 {
 		// List again, this time checking the active sha. This lets us catch cases where someone manually merged a PR in the SCM.
 		err = wr.k8sClient.List(ctx, &ctpLists, &client.ListOptions{
 			FieldSelector: fields.SelectorFromSet(map[string]string{
-				".status.active.hydrated.sha": beforeSha,
+				".status.active.hydrated.sha": sha,
 			}),
 		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to list changetransferpolicies for webhook receiver: %w", err)
+			return nil, ctpLookupListError, fmt.Errorf("failed to list via active sha changetransferpolicies for webhook receiver: %w", err)
 		}
 	}
 
-	if len(ctpLists.Items) == 0 {
-		logger.V(4).Info("no changetransferpolicies found from webhook receiver", "sha", beforeSha, "ref", ref)
-		return nil, nil
+	switch len(ctpLists.Items) {
+	case 0:
+		logger.V(4).Info("no changetransferpolicies found from webhook receiver", "sha", sha, "ref", ref)
+		return nil, ctpLookupNotFound, nil
+	case 1:
+		return &ctpLists.Items[0], ctpLookupFound, nil
+	default:
+		return nil, ctpLookupTooManyMatches, nil
 	}
-	if len(ctpLists.Items) > 1 {
-		return nil, fmt.Errorf("too many changetransferpolicies found for sha: %s, ref: %s", beforeSha, ref)
-	}
-
-	return &ctpLists.Items[0], nil
 }
 
 // extractDeliveryID inspects common webhook headers and returns the first non-empty delivery ID string found (provider-agnostic).

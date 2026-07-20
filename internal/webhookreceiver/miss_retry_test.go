@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -116,6 +117,23 @@ func (e *enqueueRecorder) last() (namespace, name string) {
 	}
 	c := e.calls[len(e.calls)-1]
 	return c[0], c[1]
+}
+
+// flakyListClient fails List a fixed number of times, then delegates to the wrapped client.
+type flakyListClient struct {
+	client.Client
+	mu           sync.Mutex
+	failuresLeft int
+}
+
+func (f *flakyListClient) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.failuresLeft > 0 {
+		f.failuresLeft--
+		return fmt.Errorf("simulated list failure")
+	}
+	return f.Client.List(ctx, list, opts...)
 }
 
 type testLifecycle struct {
@@ -253,6 +271,38 @@ var _ = Describe("WebhookReceiver miss retry", func() {
 		Consistently(func() int {
 			return enqueues.count()
 		}, 150*time.Millisecond, 20*time.Millisecond).Should(Equal(0))
+	})
+
+	It("retries after transient list failures and enqueues when lookup succeeds", func() {
+		ctp := newCTP("ctp-flaky")
+		enqueues := &enqueueRecorder{}
+		// Fail the sync lookup and the first deferred attempt, then succeed.
+		flaky := &flakyListClient{Client: newFakeClient(ctp), failuresLeft: 2}
+		wr := &WebhookReceiver{
+			shutdown:       lc.shutdown,
+			k8sClient:      flaky,
+			enqueueCTP:     enqueues.enqueue,
+			missRetrySem:   make(chan struct{}, maxPendingMissRetries),
+			retryTimeout:   2 * time.Second,
+			retryBaseDelay: 20 * time.Millisecond,
+			retryMaxDelay:  50 * time.Millisecond,
+			retryFactor:    2.0,
+		}
+
+		rec := postGitHubPush(wr, testShaA)
+		Expect(rec.Code).To(Equal(http.StatusNoContent))
+		Expect(enqueues.count()).To(Equal(0))
+
+		Eventually(func() int {
+			return enqueues.count()
+		}, 2*time.Second, 20*time.Millisecond).Should(Equal(1))
+		ns, name := enqueues.last()
+		Expect(ns).To(Equal(testNamespace))
+		Expect(name).To(Equal("ctp-flaky"))
+
+		Eventually(func() float64 {
+			return testutil.ToFloat64(metrics.WebhookMissRetryPending)
+		}, time.Second, 10*time.Millisecond).Should(Equal(0.0))
 	})
 
 	It("returns 204 and drops additional retries when the miss-retry semaphore is full", func() {
