@@ -56,7 +56,10 @@ type WebhookReceiver struct {
 	mgr        controllerruntime.Manager
 	k8sClient  client.Client
 	enqueueCTP EnqueueFunc
-	shutdown   <-chan struct{} // closed when Start's context is cancelled
+
+	// baseCtx is the context passed to Start. Async miss-retries derive their contexts from
+	// it so they are cancelled on shutdown without watching a separate signal.
+	baseCtx context.Context //nolint:containedctx // server-lifetime context set once in Start, not a request context
 
 	// pendingMissRetries counts in-flight miss-retry goroutines; new retries are dropped
 	// once it reaches the max pending capacity. Nothing ever blocks on it.
@@ -81,7 +84,7 @@ func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP EnqueueFunc) *
 
 // Start starts the webhook receiver server on the given address.
 func (wr *WebhookReceiver) Start(ctx context.Context, addr string) error {
-	wr.shutdown = ctx.Done()
+	wr.baseCtx = ctx
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", wr.postRoot)
@@ -211,8 +214,7 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		ctpFound = true
 	case retryable:
 		reqLogger.Info("no ChangeTransferPolicy matched webhook delivery; scheduling miss retry")
-		// Detach from the request context so the async retry outlives the HTTP handler.
-		wr.scheduleMissRetry(context.WithoutCancel(ctx), provider, beforeSha, ref, deliveryID)
+		wr.scheduleMissRetry(provider, beforeSha, ref, deliveryID)
 	default:
 		// Terminal outcomes (ambiguous SHA match, unexpected lookup result) are config/logic
 		// problems operators should see at default verbosity.
@@ -223,7 +225,10 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(responseCode)
 }
 
-func (wr *WebhookReceiver) scheduleMissRetry(ctx context.Context, provider, sha, ref, deliveryID string) {
+// scheduleMissRetry starts an async retry of the CTP lookup, bounded by the pending-retry
+// capacity. The retry context inherits from baseCtx (not the HTTP request), so it outlives
+// the handler but is cancelled on shutdown.
+func (wr *WebhookReceiver) scheduleMissRetry(provider, sha, ref, deliveryID string) {
 	if wr.pendingMissRetries.Add(1) > int64(wr.getMaxPendingRetries()) {
 		wr.pendingMissRetries.Add(-1)
 		logger.V(4).Info("skipping webhook miss retry; at capacity", "deliveryID", deliveryID)
@@ -235,19 +240,17 @@ func (wr *WebhookReceiver) scheduleMissRetry(ctx context.Context, provider, sha,
 			wr.pendingMissRetries.Add(-1)
 			metrics.DecWebhookMissRetryPending()
 		}()
-		retryCtx, cancel := context.WithTimeout(ctx, wr.getRetryTimeout())
+		retryCtx, cancel := context.WithTimeout(wr.getBaseContext(), wr.getRetryTimeout())
 		defer cancel()
-		if wr.shutdown != nil {
-			go func() {
-				select {
-				case <-wr.shutdown:
-					cancel()
-				case <-retryCtx.Done():
-				}
-			}()
-		}
 		wr.retryFindAndEnqueue(retryCtx, provider, sha, ref, deliveryID)
 	}()
+}
+
+func (wr *WebhookReceiver) getBaseContext() context.Context {
+	if wr.baseCtx != nil {
+		return wr.baseCtx
+	}
+	return context.Background()
 }
 
 func (wr *WebhookReceiver) retryFindAndEnqueue(ctx context.Context, provider, sha, ref, deliveryID string) {

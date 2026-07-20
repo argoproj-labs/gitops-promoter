@@ -231,15 +231,15 @@ func (f *flakyListClient) List(ctx context.Context, list client.ObjectList, opts
 }
 
 type testLifecycle struct {
-	stop     func()
-	shutdown <-chan struct{}
+	ctx  context.Context //nolint:containedctx // stands in for the server-lifetime context passed to Start
+	stop func()
 }
 
 func newTestLifecycle() testLifecycle {
 	ctx, cancel := context.WithCancel(context.Background())
 	return testLifecycle{
-		stop:     cancel,
-		shutdown: ctx.Done(),
+		ctx:  ctx,
+		stop: cancel,
 	}
 }
 
@@ -263,7 +263,7 @@ var _ = Describe("WebhookReceiver miss retry", func() {
 		ctp := newCTP("ctp-match")
 		enqueues := &enqueueRecorder{}
 		wr := &WebhookReceiver{
-			shutdown:   lc.shutdown,
+			baseCtx:    lc.ctx,
 			k8sClient:  newFakeClient(ctp),
 			enqueueCTP: enqueues.enqueue,
 		}
@@ -281,7 +281,7 @@ var _ = Describe("WebhookReceiver miss retry", func() {
 		enqueues := &enqueueRecorder{}
 		cl := newFakeClient()
 		wr := &WebhookReceiver{
-			shutdown:       lc.shutdown,
+			baseCtx:        lc.ctx,
 			k8sClient:      cl,
 			enqueueCTP:     enqueues.enqueue,
 			retryTimeout:   2 * time.Second,
@@ -316,7 +316,7 @@ var _ = Describe("WebhookReceiver miss retry", func() {
 	It("does not enqueue when no CTP appears before the retry timeout", func() {
 		enqueues := &enqueueRecorder{}
 		wr := &WebhookReceiver{
-			shutdown:       lc.shutdown,
+			baseCtx:        lc.ctx,
 			k8sClient:      newFakeClient(),
 			enqueueCTP:     enqueues.enqueue,
 			retryTimeout:   150 * time.Millisecond,
@@ -344,7 +344,7 @@ var _ = Describe("WebhookReceiver miss retry", func() {
 		ctp2.Status.Active.Hydrated.Sha = testShaB
 		enqueues := &enqueueRecorder{}
 		wr := &WebhookReceiver{
-			shutdown:       lc.shutdown,
+			baseCtx:        lc.ctx,
 			k8sClient:      newFakeClient(ctp1, ctp2),
 			enqueueCTP:     enqueues.enqueue,
 			retryTimeout:   200 * time.Millisecond,
@@ -369,7 +369,7 @@ var _ = Describe("WebhookReceiver miss retry", func() {
 		// Fail the sync lookup and the first deferred attempt, then succeed.
 		flaky := &flakyListClient{Client: newFakeClient(ctp), failuresLeft: 2}
 		wr := &WebhookReceiver{
-			shutdown:       lc.shutdown,
+			baseCtx:        lc.ctx,
 			k8sClient:      flaky,
 			enqueueCTP:     enqueues.enqueue,
 			retryTimeout:   2 * time.Second,
@@ -398,7 +398,7 @@ var _ = Describe("WebhookReceiver miss retry", func() {
 		enqueues := &enqueueRecorder{}
 		// Client that never matches so retries stay in flight until cancelled/timeout.
 		wr := &WebhookReceiver{
-			shutdown:          lc.shutdown,
+			baseCtx:           lc.ctx,
 			k8sClient:         newFakeClient(),
 			enqueueCTP:        enqueues.enqueue,
 			maxPendingRetries: 1,
