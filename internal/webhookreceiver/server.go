@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -52,26 +53,29 @@ type EnqueueFunc func(namespace, name string)
 
 // WebhookReceiver is a server that listens for webhooks and triggers reconciles of ChangeTransferPolicies.
 type WebhookReceiver struct {
-	mgr          controllerruntime.Manager
-	k8sClient    client.Client
-	enqueueCTP   EnqueueFunc
-	shutdown     <-chan struct{} // closed when Start's context is cancelled
-	missRetrySem chan struct{}
+	mgr        controllerruntime.Manager
+	k8sClient  client.Client
+	enqueueCTP EnqueueFunc
+	shutdown   <-chan struct{} // closed when Start's context is cancelled
+
+	// pendingMissRetries counts in-flight miss-retry goroutines; new retries are dropped
+	// once it reaches the max pending capacity. Nothing ever blocks on it.
+	pendingMissRetries atomic.Int64
 
 	// Optional overrides for tests (zero values use the package constants).
-	retryTimeout   time.Duration
-	retryBaseDelay time.Duration
-	retryMaxDelay  time.Duration
-	retryFactor    float64
+	retryTimeout      time.Duration
+	retryBaseDelay    time.Duration
+	retryMaxDelay     time.Duration
+	retryFactor       float64
+	maxPendingRetries int
 }
 
 // NewWebhookReceiver creates a new instance of WebhookReceiver.
-func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP EnqueueFunc) WebhookReceiver {
-	return WebhookReceiver{
-		mgr:          mgr,
-		k8sClient:    mgr.GetClient(),
-		enqueueCTP:   enqueueCTP,
-		missRetrySem: make(chan struct{}, maxPendingMissRetries),
+func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP EnqueueFunc) *WebhookReceiver {
+	return &WebhookReceiver{
+		mgr:        mgr,
+		k8sClient:  mgr.GetClient(),
+		enqueueCTP: enqueueCTP,
 	}
 }
 
@@ -220,34 +224,30 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 }
 
 func (wr *WebhookReceiver) scheduleMissRetry(ctx context.Context, provider, sha, ref, deliveryID string) {
-	if wr.missRetrySem == nil {
+	if wr.pendingMissRetries.Add(1) > int64(wr.getMaxPendingRetries()) {
+		wr.pendingMissRetries.Add(-1)
+		logger.V(4).Info("skipping webhook miss retry; at capacity", "deliveryID", deliveryID)
 		return
 	}
-
-	select {
-	case wr.missRetrySem <- struct{}{}:
-		metrics.IncWebhookMissRetryPending()
-		go func() {
-			defer func() {
-				<-wr.missRetrySem
-				metrics.DecWebhookMissRetryPending()
-			}()
-			retryCtx, cancel := context.WithTimeout(ctx, wr.getRetryTimeout())
-			defer cancel()
-			if wr.shutdown != nil {
-				go func() {
-					select {
-					case <-wr.shutdown:
-						cancel()
-					case <-retryCtx.Done():
-					}
-				}()
-			}
-			wr.retryFindAndEnqueue(retryCtx, provider, sha, ref, deliveryID)
+	metrics.IncWebhookMissRetryPending()
+	go func() {
+		defer func() {
+			wr.pendingMissRetries.Add(-1)
+			metrics.DecWebhookMissRetryPending()
 		}()
-	default:
-		logger.V(4).Info("skipping webhook miss retry; at capacity", "deliveryID", deliveryID)
-	}
+		retryCtx, cancel := context.WithTimeout(ctx, wr.getRetryTimeout())
+		defer cancel()
+		if wr.shutdown != nil {
+			go func() {
+				select {
+				case <-wr.shutdown:
+					cancel()
+				case <-retryCtx.Done():
+				}
+			}()
+		}
+		wr.retryFindAndEnqueue(retryCtx, provider, sha, ref, deliveryID)
+	}()
 }
 
 func (wr *WebhookReceiver) retryFindAndEnqueue(ctx context.Context, provider, sha, ref, deliveryID string) {
@@ -304,6 +304,13 @@ func (wr *WebhookReceiver) getRetryFactor() float64 {
 		return wr.retryFactor
 	}
 	return missRetryFactor
+}
+
+func (wr *WebhookReceiver) getMaxPendingRetries() int {
+	if wr.maxPendingRetries > 0 {
+		return wr.maxPendingRetries
+	}
+	return maxPendingMissRetries
 }
 
 // tryLookupAndEnqueue performs a single hydrated-SHA lookup and enqueues the matching

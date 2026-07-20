@@ -133,8 +133,9 @@ Labels:
 A gauge of the current number of in-flight async webhook miss-retry goroutines.
 
 When a push webhook does not match any ChangeTransferPolicy on the first lookup, the receiver returns `204` immediately
-and may retry the field-index lookup in the background (bounded semaphore, exponential backoff, overall deadline).
-This gauge is the occupancy of that retry queue (0 when idle, up to the configured max pending retries).
+and may retry the field-index lookup in the background (bounded concurrency, exponential backoff, overall deadline).
+This gauge is the occupancy of that retry queue (0 when idle, up to the maximum of 256 pending retries; further
+misses are dropped while at capacity).
 
 No labels.
 

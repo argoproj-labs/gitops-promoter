@@ -253,7 +253,7 @@ var _ = Describe("WebhookReceiver miss retry", func() {
 
 	AfterEach(func() {
 		lc.stop()
-		// Allow in-flight retries to release the semaphore/gauge after cancel.
+		// Allow in-flight retries to release the pending counter/gauge after cancel.
 		Eventually(func() float64 {
 			return testutil.ToFloat64(metrics.WebhookMissRetryPending)
 		}, 2*time.Second, 10*time.Millisecond).Should(Equal(0.0))
@@ -263,10 +263,9 @@ var _ = Describe("WebhookReceiver miss retry", func() {
 		ctp := newCTP("ctp-match")
 		enqueues := &enqueueRecorder{}
 		wr := &WebhookReceiver{
-			shutdown:     lc.shutdown,
-			k8sClient:    newFakeClient(ctp),
-			enqueueCTP:   enqueues.enqueue,
-			missRetrySem: make(chan struct{}, maxPendingMissRetries),
+			shutdown:   lc.shutdown,
+			k8sClient:  newFakeClient(ctp),
+			enqueueCTP: enqueues.enqueue,
 		}
 
 		rec := postGitHubPush(wr, testShaA)
@@ -285,7 +284,6 @@ var _ = Describe("WebhookReceiver miss retry", func() {
 			shutdown:       lc.shutdown,
 			k8sClient:      cl,
 			enqueueCTP:     enqueues.enqueue,
-			missRetrySem:   make(chan struct{}, maxPendingMissRetries),
 			retryTimeout:   2 * time.Second,
 			retryBaseDelay: 20 * time.Millisecond,
 			retryMaxDelay:  50 * time.Millisecond,
@@ -321,7 +319,6 @@ var _ = Describe("WebhookReceiver miss retry", func() {
 			shutdown:       lc.shutdown,
 			k8sClient:      newFakeClient(),
 			enqueueCTP:     enqueues.enqueue,
-			missRetrySem:   make(chan struct{}, maxPendingMissRetries),
 			retryTimeout:   150 * time.Millisecond,
 			retryBaseDelay: 20 * time.Millisecond,
 			retryMaxDelay:  40 * time.Millisecond,
@@ -350,7 +347,6 @@ var _ = Describe("WebhookReceiver miss retry", func() {
 			shutdown:       lc.shutdown,
 			k8sClient:      newFakeClient(ctp1, ctp2),
 			enqueueCTP:     enqueues.enqueue,
-			missRetrySem:   make(chan struct{}, maxPendingMissRetries),
 			retryTimeout:   200 * time.Millisecond,
 			retryBaseDelay: 20 * time.Millisecond,
 			retryMaxDelay:  40 * time.Millisecond,
@@ -376,7 +372,6 @@ var _ = Describe("WebhookReceiver miss retry", func() {
 			shutdown:       lc.shutdown,
 			k8sClient:      flaky,
 			enqueueCTP:     enqueues.enqueue,
-			missRetrySem:   make(chan struct{}, maxPendingMissRetries),
 			retryTimeout:   2 * time.Second,
 			retryBaseDelay: 20 * time.Millisecond,
 			retryMaxDelay:  50 * time.Millisecond,
@@ -399,18 +394,18 @@ var _ = Describe("WebhookReceiver miss retry", func() {
 		}, time.Second, 10*time.Millisecond).Should(Equal(0.0))
 	})
 
-	It("returns 204 and drops additional retries when the miss-retry semaphore is full", func() {
+	It("returns 204 and drops additional retries when pending miss retries are at capacity", func() {
 		enqueues := &enqueueRecorder{}
 		// Client that never matches so retries stay in flight until cancelled/timeout.
 		wr := &WebhookReceiver{
-			shutdown:       lc.shutdown,
-			k8sClient:      newFakeClient(),
-			enqueueCTP:     enqueues.enqueue,
-			missRetrySem:   make(chan struct{}, 1),
-			retryTimeout:   5 * time.Second,
-			retryBaseDelay: 50 * time.Millisecond,
-			retryMaxDelay:  100 * time.Millisecond,
-			retryFactor:    2.0,
+			shutdown:          lc.shutdown,
+			k8sClient:         newFakeClient(),
+			enqueueCTP:        enqueues.enqueue,
+			maxPendingRetries: 1,
+			retryTimeout:      5 * time.Second,
+			retryBaseDelay:    50 * time.Millisecond,
+			retryMaxDelay:     100 * time.Millisecond,
+			retryFactor:       2.0,
 		}
 
 		rec1 := postGitHubPush(wr, testShaA)
