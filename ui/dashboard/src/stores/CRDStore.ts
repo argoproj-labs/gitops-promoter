@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { enrichFromCRD } from '@shared/utils/PSData';
+import { sortStrategyCommitStatuses } from '@shared/utils/util';
 import type { PromotionStrategy } from '@shared/utils/PSData';
 import type { Environment } from '@shared/types/promotion';
 import type { ChangeTransferPolicy, PromotionStrategyDetails } from '@shared/types/view';
@@ -47,6 +48,7 @@ function bundleToItem<T extends CRDItem>(bundle: PromotionStrategyDetails): T {
     },
     status: { ...ps.status, environments },
   } as PromotionStrategy;
+  sortStrategyCommitStatuses(psWithEnvironments);
   return {
     ...psWithEnvironments,
     enriched: enrichFromCRD(psWithEnvironments),

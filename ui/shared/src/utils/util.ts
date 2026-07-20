@@ -108,6 +108,26 @@ export function getLastCommitTime(ps: PromotionStrategy): Date | null {
   return null;
 }
 
+/**
+ * Sort every `commitStatuses` list on a parsed PromotionStrategy by key, in
+ * place. The CRD emits these in a non-deterministic order (aggregated from
+ * multiple CommitStatus resources), so normalizing once at ingestion gives every
+ * consumer (overview, history matrix, drawer) the same stable ordering. Mutates
+ * and returns the same object for call-site convenience.
+ */
+export function sortStrategyCommitStatuses(ps: PromotionStrategy): PromotionStrategy {
+  const byKey = (a: { key: string }, b: { key: string }) => a.key.localeCompare(b.key);
+  for (const env of ps.status?.environments ?? []) {
+    env.active?.commitStatuses?.sort(byKey);
+    env.proposed?.commitStatuses?.sort(byKey);
+    for (const entry of env.history ?? []) {
+      entry.active?.commitStatuses?.sort(byKey);
+      entry.proposed?.commitStatuses?.sort(byKey);
+    }
+  }
+  return ps;
+}
+
 // Get the overall promotion status from individual environment statuses
 export function getOverallPromotionStatus(
   environmentStatuses: string[],
