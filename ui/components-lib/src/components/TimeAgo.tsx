@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { timeAgo, formatDate } from '../../../shared/src/utils/util';
 import type { Rfc3339DateTime } from '@shared/types/promotion';
+import { Tooltip } from './Tooltip';
 
 interface TimeAgoProps {
   /** RFC 3339 string or `Date`; do not pass pre-formatted `formatDate` output. */
@@ -17,7 +18,11 @@ const TimeAgo: React.FC<TimeAgoProps> = ({ date, interval = 60000 }) => {
   }, [interval]);
 
   const dateString = typeof date === 'string' ? date : date.toISOString();
-  return <span title={formatDate(dateString)}>{timeAgo(dateString)}</span>;
+  return (
+    <Tooltip content={formatDate(dateString)}>
+      <span>{timeAgo(dateString)}</span>
+    </Tooltip>
+  );
 };
 
 export default TimeAgo;

@@ -1,4 +1,4 @@
-import type { Commit, CommitStatus, PullRequest } from '@shared/types/promotion';
+import type { Commit, CommitStatus, PullRequest, ReferenceCommit } from '@shared/types/promotion';
 
 export type HealthKey = 'success' | 'failure' | 'pending' | 'unknown';
 
@@ -6,7 +6,12 @@ export type CellKind = 'live' | 'in-flight' | 'was-here' | 'failed' | 'no-op' | 
 
 export interface CellState {
   kind: CellKind;
+  /** Dry commit (config source-of-truth) this cell represents. */
   commit?: Commit;
+  /** Rendered-manifests commit (deploy repo, distinct sha) produced from `commit`. */
+  hydrated?: Commit;
+  /** Upstream code commits registered on the dry commit (`dry.references[].commit`). */
+  references?: ReferenceCommit[];
   commitStatuses: CommitStatus[];
   health: HealthKey;
   pullRequest?: PullRequest;
@@ -15,6 +20,7 @@ export interface CellState {
   supersededById?: string;
   at?: string;
   liveDurationMs?: number;
+  replacedAt?: string;
 }
 
 export interface EnvColumn {

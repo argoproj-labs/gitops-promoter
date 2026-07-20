@@ -428,6 +428,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({
           onResizeTo={drawer.onResizeTo}
           onClose={() => setSelected(null)}
           onJumpToRow={handleJumpToRow}
+          onSelectCell={(branch) =>
+            selected && setSelected({ rowId: selected.rowId, branch })
+          }
         />
       </div>
     </div>

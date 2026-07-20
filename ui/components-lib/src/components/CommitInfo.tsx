@@ -146,10 +146,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
               <span className="commit-author">by {commit.author || 'N/A'}</span>
               {commit.date && (
                 <span className="commit-date">
-                  authored{' '}
-                  <span title={commit.date}>
-                    <TimeAgo date={commit.date} />
-                  </span>
+                  authored <TimeAgo date={commit.date} />
                 </span>
               )}
             </div>

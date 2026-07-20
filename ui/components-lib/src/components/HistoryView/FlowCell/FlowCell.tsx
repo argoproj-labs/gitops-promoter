@@ -55,7 +55,6 @@ const FlowCell: React.FC<{
             : 'PR open'
           : CELL_KIND_LABELS[cell.kind]
       } in ${branch}`}
-      title={exact}
     >
       <div className="cell__top">
         {cell.kind === 'was-here' && cell.liveDurationMs != null ? (
@@ -67,7 +66,7 @@ const FlowCell: React.FC<{
             <span className={`cell__pill cell__pill--${cell.kind}`}>
               {cell.kind === 'live' && 'LIVE'}
               {cell.kind === 'in-flight' && (cell.isProposed ? 'PROPOSED' : 'PR OPEN')}
-              {cell.kind === 'was-here' && 'WAS HERE'}
+              {cell.kind === 'was-here' && 'REPLACED'}
               {cell.kind === 'failed' && 'FAILED'}
               {cell.kind === 'no-op' && (
                 <>
@@ -77,7 +76,11 @@ const FlowCell: React.FC<{
             </span>
           </Tooltip>
         )}
-        {time && <span className="cell__time">{time}</span>}
+        {time && (
+          <Tooltip label={exact}>
+            <span className="cell__time">{time}</span>
+          </Tooltip>
+        )}
       </div>
 
       {prId && prUrl && (
