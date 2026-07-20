@@ -37,6 +37,7 @@ const (
 )
 
 // Miss-retry defaults for async field-index lookups after an initial webhook miss.
+// TODO: consider making these configurable via ControllerConfiguration.
 const (
 	missRetryTimeout      = 15 * time.Second
 	missRetryBaseDelay    = 100 * time.Millisecond
