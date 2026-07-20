@@ -206,6 +206,10 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 	ctp, outcome, lookupErr := wr.lookupCTPByHydratedSHA(ctx, beforeSha, ref)
 	switch outcome {
 	case ctpLookupFound:
+		if ctp == nil {
+			reqLogger.V(4).Info("CTP lookup reported found but returned nil")
+			break
+		}
 		ctpFound = true
 		startUpdate := time.Now()
 		if wr.enqueueCTP != nil {
@@ -276,6 +280,9 @@ func (wr *WebhookReceiver) retryFindAndEnqueue(ctx context.Context, provider, sh
 		ctp, outcome, lookupErr := wr.lookupCTPByHydratedSHA(ctx, sha, ref)
 		switch outcome {
 		case ctpLookupFound:
+			if ctp == nil {
+				return false, errors.New("CTP lookup reported found but returned nil")
+			}
 			if wr.enqueueCTP != nil {
 				wr.enqueueCTP(ctp.Namespace, ctp.Name)
 			}
