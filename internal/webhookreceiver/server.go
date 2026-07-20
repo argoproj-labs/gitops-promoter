@@ -214,6 +214,7 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		ctpFound = true
 	case retryable:
 		reqLogger.Info("no ChangeTransferPolicy matched webhook delivery; scheduling miss retry")
+		//nolint:contextcheck // the retry must outlive the HTTP request, so it inherits the server-lifetime context instead
 		wr.scheduleMissRetry(provider, beforeSha, ref, deliveryID)
 	default:
 		// Terminal outcomes (ambiguous SHA match, unexpected lookup result) are config/logic
