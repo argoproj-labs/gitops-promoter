@@ -210,7 +210,9 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		// Detach from the request context so the async retry outlives the HTTP handler.
 		wr.scheduleMissRetry(context.WithoutCancel(ctx), provider, beforeSha, ref, deliveryID)
 	default:
-		reqLogger.V(4).Info("giving up on webhook delivery", "error", lookupErr)
+		// Terminal outcomes (ambiguous SHA match, unexpected lookup result) are config/logic
+		// problems operators should see at default verbosity.
+		reqLogger.Error(lookupErr, "giving up on webhook delivery")
 	}
 
 	responseCode = http.StatusNoContent
@@ -267,9 +269,11 @@ func (wr *WebhookReceiver) retryFindAndEnqueue(ctx context.Context, provider, sh
 	})
 	if err != nil {
 		if wait.Interrupted(err) {
+			// Expected when no CTP appears before the miss-retry timeout.
 			reqLogger.V(4).Info("deferred webhook miss retry exhausted without a match", "error", err)
 		} else {
-			reqLogger.V(4).Info("deferred webhook miss retry stopped", "error", err)
+			// Terminal stop (e.g. ambiguous SHA match) — surface at Error so it is not filtered.
+			reqLogger.Error(err, "deferred webhook miss retry stopped")
 		}
 	}
 }
