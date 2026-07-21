@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { FaChevronLeft, FaFilter, FaSort, FaLayerGroup } from 'react-icons/fa';
 import { GoGitCommit } from 'react-icons/go';
 import { timeAgo, formatDate, getCommitUrl } from '@shared/utils/util';
@@ -13,11 +13,18 @@ import DetailDrawer from './DetailDrawer/DetailDrawer';
 import { useDrawerWidth } from './useDrawerWidth';
 import './index.scss';
 
+export interface CellSelection {
+  rowId: string;
+  branch: string;
+}
+
 export interface HistoryViewProps {
   strategy?: PromotionStrategy;
   name?: string;
   namespace?: string;
   onBack?: () => void;
+  initialSelection?: CellSelection | null;
+  onSelectionChange?: (_selection: CellSelection | null) => void;
   // By default the view fills its host container (`height: 100%`), which is
   // correct when mounted inside a sized ancestor like ArgoCD's
   // `application-details__tree`. Hosts with no sized ancestor (the dashboard)
@@ -31,6 +38,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   namespace: namespaceProp,
   onBack,
   fillViewport = false,
+  initialSelection = null,
+  onSelectionChange,
 }) => {
   const rootClass = fillViewport ? 'hp--viewport' : '';
   const name = nameProp ?? strategy?.metadata?.name;
@@ -49,9 +58,26 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   const [filter, setFilter] = useState<FilterId>('all');
   const [sort, setSort] = useState<SortId>('newest');
   const [envFilter, setEnvFilter] = useState<string[]>([]);
-  const [selected, setSelected] = useState<{ rowId: string; branch: string } | null>(null);
+  const [selected, setSelectedState] = useState<CellSelection | null>(initialSelection);
+
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  onSelectionChangeRef.current = onSelectionChange;
+
+  const selectCell = useCallback((next: CellSelection | null) => {
+    setSelectedState(next);
+    onSelectionChangeRef.current?.(next);
+  }, []);
 
   const drawer = useDrawerWidth();
+
+  const validBranches = useMemo(() => new Set(envs.map((e) => e.branch)), [envs]);
+  useEffect(() => {
+    if (!selected || rows.length === 0) return;
+    if (!rowsById.has(selected.rowId) || !validBranches.has(selected.branch)) {
+      setSelectedState(null);
+      onSelectionChangeRef.current?.(null);
+    }
+  }, [selected, rows.length, rowsById, validBranches]);
 
   const handleToggleEnvFilter = useCallback((branch: string) => {
     setEnvFilter((prev) =>
@@ -106,14 +132,14 @@ const HistoryView: React.FC<HistoryViewProps> = ({
       const branches = envs.map((e) => e.branch);
       const liveBranch = branches.find((b) => row.cells[b].kind === 'live');
       const branch = liveBranch ?? branches.find((b) => !isEmptyCellKind(row.cells[b].kind));
-      if (branch) setSelected({ rowId, branch });
+      if (branch) selectCell({ rowId, branch });
       requestAnimationFrame(() => {
         document
           .getElementById(`row-${rowId}`)
           ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
       });
     },
-    [envs, rowsById],
+    [envs, rowsById, selectCell],
   );
 
   if (!strategy) return <div className={`hp-loading ${rootClass}`}>Loading promotion history…</div>;
@@ -403,7 +429,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                           cell={row.cells[env.branch]}
                           branch={env.branch}
                           isSelected={selected?.rowId === row.id && selected?.branch === env.branch}
-                          onSelect={() => setSelected({ rowId: row.id, branch: env.branch })}
+                          onSelect={() => selectCell({ rowId: row.id, branch: env.branch })}
                           rowsById={rowsById}
                           onJumpToRow={handleJumpToRow}
                         />
@@ -427,9 +453,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({
           onResizeStart={drawer.onResizeStart}
           onResizeReset={drawer.onResizeReset}
           onResizeTo={drawer.onResizeTo}
-          onClose={() => setSelected(null)}
+          onClose={() => selectCell(null)}
           onJumpToRow={handleJumpToRow}
-          onSelectCell={(branch) => selected && setSelected({ rowId: selected.rowId, branch })}
+          onSelectCell={(branch) => selected && selectCell({ rowId: selected.rowId, branch })}
         />
       </div>
     </div>
