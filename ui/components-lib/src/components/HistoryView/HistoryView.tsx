@@ -5,6 +5,7 @@ import { timeAgo, formatDate, getCommitUrl } from '@shared/utils/util';
 import type { PromotionStrategy } from '@shared/types/promotion';
 import type { CommitRow, FilterId, SortId } from './types';
 import { buildMatrix } from './buildMatrix';
+import { isEmptyCellKind } from './helpers';
 import { Dropdown, DropdownItem } from './Dropdown/Dropdown';
 import Tooltip from './Tooltip/Tooltip';
 import FlowCell from './FlowCell/FlowCell';
@@ -61,7 +62,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   const envScopedRows = useMemo(
     () =>
       envFilter.length
-        ? rows.filter((r) => envFilter.some((b) => r.cells[b]?.kind !== 'no-changes'))
+        ? rows.filter((r) => envFilter.some((b) => !isEmptyCellKind(r.cells[b]?.kind)))
         : rows,
     [rows, envFilter],
   );
@@ -104,7 +105,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
       if (!row) return;
       const branches = envs.map((e) => e.branch);
       const liveBranch = branches.find((b) => row.cells[b].kind === 'live');
-      const branch = liveBranch ?? branches.find((b) => row.cells[b].kind !== 'no-changes');
+      const branch = liveBranch ?? branches.find((b) => !isEmptyCellKind(row.cells[b].kind));
       if (branch) setSelected({ rowId, branch });
       requestAnimationFrame(() => {
         document
@@ -227,7 +228,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                   </DropdownItem>
                   {envs.map((env) => {
                     const envCount = rows.filter(
-                      (r) => r.cells[env.branch]?.kind !== 'no-changes',
+                      (r) => !isEmptyCellKind(r.cells[env.branch]?.kind),
                     ).length;
                     return (
                       <DropdownItem
