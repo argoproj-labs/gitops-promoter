@@ -128,6 +128,17 @@ Labels:
 * `ctp_found`: Whether a ChangeTransferPolicy was found for the webhook (true, false). May be false for error conditions, so check the response code.
 * `response_code`: The HTTP response code of the webhook processing. 204 is the success code, which may be returned even if no ChangeTransferPolicy was found.
 
+## webhook_miss_retry_pending
+
+A gauge of the current number of in-flight async webhook miss-retry goroutines.
+
+When a push webhook does not match any ChangeTransferPolicy on the first lookup, the receiver returns `204` immediately
+and may retry the field-index lookup in the background (bounded concurrency, exponential backoff, overall deadline).
+This gauge is the occupancy of that retry queue (0 when idle, up to the maximum of 256 pending retries; further
+misses are dropped while at capacity).
+
+No labels.
+
 ## promoter_finalizer_dependent_resources
 
 A gauge of the current number of dependent resources preventing deletion of a resource.

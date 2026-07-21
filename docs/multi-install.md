@@ -48,13 +48,7 @@ The value must be a valid Kubernetes label value (min length 1, max 63 character
 
 ### Read path: informer cache filtering
 
-At startup the controller reads `instanceID` from `ControllerConfiguration` (via a direct API read, not the informer cache) and configures `cache.ByObject` label selectors for every reconciled Promoter CRD and for `Secret` objects:
-
-- `PromotionStrategy`, `ChangeTransferPolicy`, `CommitStatus`, `PullRequest`
-- `ScmProvider`, `ClusterScmProvider`, `GitRepository`
-- `GitCommitStatus`, `TimedCommitStatus`, `WebRequestCommitStatus`, `ArgoCDCommitStatus`
-- `RevertCommit`
-- `Secret` (SCM credentials, HTTP auth, kubeconfig, and other secrets fetched through the manager client)
+At startup the controller reads `instanceID` from `ControllerConfiguration` (via a direct API read, not the informer cache) and configures `cache.ByObject` label selectors for every promoter root CRD except `ControllerConfiguration`, plus `Secret` objects (SCM credentials, HTTP auth, kubeconfig, and other secrets fetched through the manager client).
 
 `ControllerConfiguration` itself is **not** filtered—the install must always read its own configuration.
 
@@ -129,7 +123,7 @@ Follow these principles whenever you add, change, or remove `promoter.argoproj.i
 
 ### Default install → multi-install
 
-1. **Label roots only** — add `promoter.argoproj.io/instance-id: <your-id>` to every Promoter CR this install should manage (`PromotionStrategy`, `GitRepository`, `ScmProvider` / `ClusterScmProvider`, `TimedCommitStatus`, `GitCommitStatus`, `WebRequestCommitStatus`, `ArgoCDCommitStatus`, and others as needed). Label referenced `Secret` objects (SCM, HTTP auth, kubeconfig) with the same value. Use metadata-only patches.
+1. **Label roots only** — add `promoter.argoproj.io/instance-id: <your-id>` to every Promoter CR this install should manage (`PromotionStrategy`, `GitRepository`, `ScmProvider` / `ClusterScmProvider`, `TimedCommitStatus`, `ScheduledCommitStatus`, `GitCommitStatus`, `WebRequestCommitStatus`, `ArgoCDCommitStatus`, and others as needed). Label referenced `Secret` objects (SCM, HTTP auth, kubeconfig) with the same value. Use metadata-only patches.
 2. **Expect the gap** — the currently running default install stops reconciling relabeled parents immediately (they leave its informer cache). **Children are not relabeled until after restart** on the new partition. This is expected, not a failure.
 3. **Set `spec.instanceID`** on `ControllerConfiguration` to the same value (non-empty). The controller pod restarts automatically in a single-replica install.
 4. **Wait for propagation** — confirm children carry the label and labeled resources report `status.instanceID` (see [Verification](#verification) below).

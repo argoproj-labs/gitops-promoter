@@ -68,6 +68,7 @@ var _ = Describe("When ControllerConfiguration.spec.instanceID drifts from boots
 		Entry("PullRequest", setupInstanceIDDriftPullRequest),
 		Entry("CommitStatus", setupInstanceIDDriftCommitStatus),
 		Entry("TimedCommitStatus", setupInstanceIDDriftTimedCommitStatus),
+		Entry("ScheduledCommitStatus", setupInstanceIDDriftScheduledCommitStatus),
 		Entry("GitCommitStatus", setupInstanceIDDriftGitCommitStatus),
 		Entry("WebRequestCommitStatus", setupInstanceIDDriftWebRequestCommitStatus),
 		Entry("ArgoCDCommitStatus", setupInstanceIDDriftArgoCDCommitStatus),
@@ -248,6 +249,32 @@ func setupInstanceIDDriftTimedCommitStatus(ctx context.Context) (utils.PromoterR
 	}
 	Expect(k8sClient.Create(ctx, tcs)).To(Succeed())
 	return tcs, key, func() { deleteIgnoringNotFound(ctx, tcs) }
+}
+
+func setupInstanceIDDriftScheduledCommitStatus(ctx context.Context) (utils.PromoterResource, types.NamespacedName, func()) {
+	name := instanceIDDriftResourceName("ScheduledCommitStatus")
+	key := types.NamespacedName{Name: name, Namespace: "default"}
+	scs := &promoterv1alpha1.ScheduledCommitStatus{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+		Spec: promoterv1alpha1.ScheduledCommitStatusSpec{
+			PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name + "-ps"},
+			Key:                  "instance-id-drift",
+			Environments: []promoterv1alpha1.ScheduledEnvironment{
+				{
+					Branch: testBranchDevelopment,
+					Allow: []promoterv1alpha1.CronWindow{
+						{
+							Description: "always",
+							Cron:        "0 0 * * *",
+							Duration:    metav1.Duration{Duration: 24 * time.Hour},
+						},
+					},
+				},
+			},
+		},
+	}
+	Expect(k8sClient.Create(ctx, scs)).To(Succeed())
+	return scs, key, func() { deleteIgnoringNotFound(ctx, scs) }
 }
 
 func setupInstanceIDDriftGitCommitStatus(ctx context.Context) (utils.PromoterResource, types.NamespacedName, func()) {

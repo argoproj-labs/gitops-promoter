@@ -2,7 +2,9 @@ package cache
 
 import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/kinds"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
@@ -11,30 +13,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// promoterCRDObjects lists every promoter.argoproj.io type reconciled by the controller that
-// participates in instance-id partitioning. ControllerConfiguration is scoped separately by
-// install namespace (see partitionedControllerConfigurationObject).
-var promoterCRDObjects = []client.Object{
-	&promoterv1alpha1.PromotionStrategy{},
-	&promoterv1alpha1.ChangeTransferPolicy{},
-	&promoterv1alpha1.CommitStatus{},
-	&promoterv1alpha1.PullRequest{},
-	&promoterv1alpha1.ScmProvider{},
-	&promoterv1alpha1.ClusterScmProvider{},
-	&promoterv1alpha1.GitRepository{},
-	&promoterv1alpha1.GitCommitStatus{},
-	&promoterv1alpha1.TimedCommitStatus{},
-	&promoterv1alpha1.WebRequestCommitStatus{},
-	&promoterv1alpha1.ArgoCDCommitStatus{},
-	&promoterv1alpha1.RevertCommit{},
-}
-
 // partitionedSecretObject is the cache.ByObject key for corev1.Secret. A package-level pointer
 // is required because controller-runtime matches ByObject map keys by pointer identity.
 var partitionedSecretObject client.Object = &corev1.Secret{}
-
-// partitionedControllerConfigurationObject is the cache.ByObject key for ControllerConfiguration.
-var partitionedControllerConfigurationObject client.Object = &promoterv1alpha1.ControllerConfiguration{}
 
 // OptionsForInstanceID returns controller-runtime cache options that partition informer watches by
 // instance-id label. When instanceID is nil, only resources without the label are cached. When
@@ -48,7 +29,7 @@ func OptionsForInstanceID(instanceID *string, controllerNamespace string) cache.
 	for _, obj := range objs {
 		byObject[obj] = cache.ByObject{Label: sel}
 	}
-	byObject[partitionedControllerConfigurationObject] = cache.ByObject{
+	byObject[PartitionedControllerConfigurationObject()] = cache.ByObject{
 		Namespaces: map[string]cache.Config{
 			controllerNamespace: {},
 		},
@@ -71,11 +52,19 @@ func instanceIDSelector(instanceID *string) labels.Selector {
 }
 
 // PartitionedObjects returns every type whose informer cache is scoped by instance-id label,
-// including Promoter CRDs and Secrets referenced for SCM, HTTP auth, and kubeconfig credentials.
+// including Promoter CRDs (every scheme kind except ControllerConfiguration) and Secrets
+// referenced for SCM, HTTP auth, and kubeconfig credentials.
 // Exported for tests.
 func PartitionedObjects() []client.Object {
-	out := make([]client.Object, 0, len(promoterCRDObjects)+1)
-	out = append(out, promoterCRDObjects...)
+	scheme := utils.GetScheme()
+	all := kinds.All(scheme)
+	out := make([]client.Object, 0, len(all))
+	for _, obj := range all {
+		if kinds.Kind(scheme, obj) == kinds.ControllerConfigurationKind {
+			continue
+		}
+		out = append(out, obj)
+	}
 	out = append(out, partitionedSecretObject)
 	return out
 }
@@ -89,5 +78,11 @@ func PartitionedSecretObject() client.Object {
 // PartitionedControllerConfigurationObject returns the ControllerConfiguration type key used in
 // cache.ByObject install-namespace scoping. Exported for tests.
 func PartitionedControllerConfigurationObject() client.Object {
-	return partitionedControllerConfigurationObject
+	scheme := utils.GetScheme()
+	for _, obj := range kinds.All(scheme) {
+		if kinds.Kind(scheme, obj) == kinds.ControllerConfigurationKind {
+			return obj
+		}
+	}
+	panic("ControllerConfiguration missing from promoter scheme")
 }
