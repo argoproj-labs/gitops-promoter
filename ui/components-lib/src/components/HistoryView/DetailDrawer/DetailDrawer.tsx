@@ -259,7 +259,7 @@ const DetailDrawer: React.FC<{
             <h3>Checks</h3>
             <p className="hp-drawer__checks-group-label">{checksLabel}</p>
             <ul className="hp-drawer__checks">
-              {[...passingChecks, ...pendingChecks, ...failingChecks].map((c) => (
+              {[...failingChecks, ...pendingChecks, ...passingChecks].map((c) => (
                 <li key={c.key} className={`hp-drawer__check hp-drawer__check--${c.phase}`}>
                   <span className="hp-drawer__check-icon" aria-hidden="true">
                     {healthIcon[c.phase as HealthKey] ?? healthIcon.unknown}
@@ -269,6 +269,17 @@ const DetailDrawer: React.FC<{
                   </span>
                   <span className="hp-drawer__check-key">{c.key}</span>
                   {c.description && <span className="hp-drawer__check-desc">{c.description}</span>}
+                  {c.url && (
+                    <a
+                      href={c.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="hp-drawer__check-link"
+                      aria-label={`View details for ${c.key}, opens in new tab`}
+                    >
+                      View details
+                    </a>
+                  )}
                 </li>
               ))}
             </ul>

@@ -349,6 +349,18 @@
   color: $text-secondary;
   font-weight: 400;
 }
+.hp-drawer__check-link {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-weight: 600;
+  white-space: nowrap;
+  color: inherit;
+  text-decoration: underline;
+
+  &:hover {
+    text-decoration: none;
+  }
+}
 
 // Active / Proposed subheader above a checks list.
 .hp-drawer__checks-group-label {
