@@ -1,8 +1,28 @@
 import { extractNameOnly, extractBodyPreTrailer, getCommitUrl } from '@shared/utils/util';
-import type { Commit, PromotionStrategy, PullRequest } from '@shared/types/promotion';
+import type {
+  Commit,
+  PromotionStrategy,
+  PullRequest,
+  ReferenceCommit,
+} from '@shared/types/promotion';
 import { LANE_COLORS } from './types';
 import type { CellKind, CellState, CommitRow, EnvColumn } from './types';
 import { healthFromStatuses, shortSha, commitKey } from './helpers';
+
+/**
+ * Pull the upstream code commits registered on a dry commit into `ReferenceCommit[]`,
+ * attaching a resolved `url` per ref (refs are cross-repo, so each carries its own
+ * `repoURL`). Empty refs (config-only changes) yield an empty array.
+ */
+function toReferenceCommits(dry: Commit | undefined): ReferenceCommit[] {
+  return (dry?.references ?? [])
+    .map((r) => r.commit)
+    .filter((c): c is NonNullable<typeof c> => !!c)
+    .map((c) => ({
+      ...c,
+      url: c.repoURL && c.sha ? getCommitUrl(c.repoURL, c.sha) : undefined,
+    }));
+}
 
 type StatusEnvironment = NonNullable<
   NonNullable<PromotionStrategy['status']>['environments']
@@ -123,7 +143,10 @@ function processHistory(rowsById: Map<string, CommitRow>, env: StatusEnvironment
       idx > 0 ? (commitKey(history[idx - 1]?.active?.dry) ?? undefined) : undefined;
 
     const wentLive = wentLiveAt(entry);
-    const replacedAt = idx > 0 ? wentLiveAt(history[idx - 1]) : null;
+    const replacer = idx > 0 ? history[idx - 1] : undefined;
+    const replacedAt = wentLiveAt(replacer);
+    const replacedAtRaw =
+      replacer?.pullRequest?.prMergeTime ?? replacer?.active?.dry?.commitTime ?? undefined;
     const liveDurationMs =
       wentLive != null && replacedAt != null && replacedAt > wentLive
         ? replacedAt - wentLive
@@ -132,6 +155,8 @@ function processHistory(rowsById: Map<string, CommitRow>, env: StatusEnvironment
     setCell(row, branch, {
       kind,
       commit,
+      hydrated: entry.active?.hydrated,
+      references: toReferenceCommits(commit),
       commitStatuses: statuses,
       health,
       pullRequest: entry.pullRequest,
@@ -140,6 +165,7 @@ function processHistory(rowsById: Map<string, CommitRow>, env: StatusEnvironment
         : undefined,
       supersededById,
       liveDurationMs,
+      replacedAt: replacedAtRaw,
       at: commit.commitTime ?? entry.pullRequest?.prMergeTime ?? undefined,
     });
   });
@@ -215,6 +241,8 @@ export function buildMatrix(strategy: PromotionStrategy): {
         setCell(row, branch, {
           kind,
           commit: env.active.dry,
+          hydrated: env.active.hydrated,
+          references: toReferenceCommits(env.active.dry),
           commitStatuses: statuses,
           health,
           pullRequest: env.pullRequest,
@@ -232,6 +260,8 @@ export function buildMatrix(strategy: PromotionStrategy): {
         setCell(row, branch, {
           kind,
           commit: env.proposed.dry,
+          hydrated: env.proposed.hydrated,
+          references: toReferenceCommits(env.proposed.dry),
           commitStatuses: statuses,
           health,
           pullRequest: env.pullRequest,

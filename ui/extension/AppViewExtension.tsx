@@ -4,6 +4,7 @@ import Card from '@components-lib/components/Card';
 import HistoryView from '@components-lib/components/HistoryView/HistoryView';
 import { PromotionStrategy } from '@shared/types/promotion';
 import { AppViewComponentProps } from '@shared/types/extension';
+import { sortStrategyCommitStatuses } from '@shared/utils/util';
 import './StrategyDropdown.scss';
 
 type ViewMode = 'card' | 'history';
@@ -110,7 +111,7 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
           throw new Error(messageParts.join(' - '));
         }
         const data: { manifest: string } = await response.json();
-        return JSON.parse(data.manifest) as PromotionStrategy;
+        return sortStrategyCommitStatuses(JSON.parse(data.manifest) as PromotionStrategy);
       }),
     )
       .then((parsed) => {

@@ -1,7 +1,7 @@
 import React from 'react';
 import { FaCheckCircle, FaTimesCircle, FaSpinner, FaQuestionCircle } from 'react-icons/fa';
 import type { CommitStatus } from '@shared/types/promotion';
-import { formatDuration } from '@shared/utils/util';
+import { formatDate } from '@shared/utils/util';
 import type { CellKind, CellState, HealthKey } from './types';
 
 export const HEALTH_LABELS: Record<HealthKey, string> = {
@@ -41,8 +41,8 @@ export function cellPillTooltip(cell: CellState, branch: string): string {
         ? `Proposed for ${branch} — promotion pending`
         : `Open promotion PR into ${branch}`;
     case 'was-here':
-      return cell.liveDurationMs != null
-        ? `Was live in ${branch} for ${formatDuration(cell.liveDurationMs)} before a newer commit replaced it`
+      return cell.replacedAt
+        ? `Replaced on ${formatDate(cell.replacedAt)}`
         : `Was live in ${branch}, since replaced by a newer commit`;
     case 'failed':
       return `Checks failed in ${branch}`;
