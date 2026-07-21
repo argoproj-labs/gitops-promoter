@@ -73,7 +73,12 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   const validBranches = useMemo(() => new Set(envs.map((e) => e.branch)), [envs]);
   useEffect(() => {
     if (!selected || rows.length === 0) return;
-    if (!rowsById.has(selected.rowId) || !validBranches.has(selected.branch)) {
+    const selectedCell = rowsById.get(selected.rowId)?.cells[selected.branch];
+    if (
+      !validBranches.has(selected.branch) ||
+      !selectedCell ||
+      isEmptyCellKind(selectedCell.kind)
+    ) {
       setSelectedState(null);
       onSelectionChangeRef.current?.(null);
     }
