@@ -19,9 +19,9 @@ package controller
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"time"
 
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -29,7 +29,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -38,9 +37,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-
-	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 )
 
 // TimedCommitStatusReconciler reconciles a TimedCommitStatus object
@@ -52,9 +48,11 @@ type TimedCommitStatusReconciler struct {
 	EnqueueCTP  CTPEnqueueFunc
 }
 
-// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=timedcommitstatuses,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=timedcommitstatuses,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=timedcommitstatuses/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=timedcommitstatuses/finalizers,verbs=update
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch;patch;create;delete
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -65,6 +63,8 @@ type TimedCommitStatusReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.21.0/pkg/reconcile
+//
+//nolint:dupl // Gate controllers share the same reconciliation skeleton by design.
 func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling TimedCommitStatus")
@@ -88,6 +88,10 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	// Remove any existing Ready condition. We want to start fresh.
 	previousReady = utils.RemoveReadyCondition(&tcs)
+
+	if err := ensureControllerInstanceIDStable(ctx, r.SettingsMgr); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	// 2. Fetch the referenced PromotionStrategy
 	var ps promoterv1alpha1.PromotionStrategy
@@ -248,7 +252,17 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 
 		// Create or update the CommitStatus for the current environment's active SHA
 		// This acts as an active commit status that gates promotions from this environment
-		cs, err := r.upsertCommitStatus(ctx, tcs, ps, envConfig.Branch, currentActiveSha, phase, message, envConfig.Branch)
+		key := tcs.Spec.CommitStatusKey() //nolint:staticcheck // SA1019: #1465 use spec.Key directly in v1.0
+		cs, err := utils.UpsertCommitStatus(ctx, r.Client, utils.UpsertCommitStatusParams{
+			Parent:      tcs,
+			RepoRefName: ps.Spec.RepositoryReference.Name,
+			Branch:      envConfig.Branch,
+			Sha:         currentActiveSha,
+			Key:         key,
+			Description: message,
+			Phase:       phase,
+			FieldOwner:  constants.TimedCommitStatusControllerFieldOwner,
+		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", envConfig.Branch, err)
 		}
@@ -277,41 +291,6 @@ func (r *TimedCommitStatusReconciler) calculateCommitStatusPhase(requiredDuratio
 
 	// Not enough time has passed yet
 	return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Waiting for %s duration gate to complete on %s environment", requiredDuration.String(), envBranch)
-}
-
-func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, message string, envBranch string) (*promoterv1alpha1.CommitStatus, error) {
-	kind := reflect.TypeFor[promoterv1alpha1.TimedCommitStatus]().Name()
-	commitStatusName := utils.CommitStatusResourceName(ctx, tcs, branch)
-	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
-
-	key := tcs.Spec.CommitStatusKey() //nolint:staticcheck // SA1019: #1465 use spec.Key directly in v1.0
-
-	// Build the apply configuration
-	commitStatusApply := acv1alpha1.CommitStatus(commitStatusName, tcs.Namespace).
-		WithLabels(utils.CommitStatusStandardLabels(tcs, branch, key)).
-		WithOwnerReferences(acmetav1.OwnerReference().
-			WithAPIVersion(gvk.GroupVersion().String()).
-			WithKind(gvk.Kind).
-			WithName(tcs.Name).
-			WithUID(tcs.UID).
-			WithController(true).
-			WithBlockOwnerDeletion(true)).
-		WithSpec(acv1alpha1.CommitStatusSpec().
-			WithRepositoryReference(acv1alpha1.ObjectReference().WithName(ps.Spec.RepositoryReference.Name)).
-			WithName(key + "/" + envBranch).
-			WithDescription(message).
-			WithPhase(phase).
-			WithSha(sha))
-
-	// Apply using Server-Side Apply with Patch to get the result directly
-	commitStatus := &promoterv1alpha1.CommitStatus{}
-	commitStatus.Name = commitStatusName
-	commitStatus.Namespace = tcs.Namespace
-	if err := r.Patch(ctx, commitStatus, utils.ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(constants.TimedCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
-		return nil, fmt.Errorf("failed to apply CommitStatus: %w", err)
-	}
-
-	return commitStatus, nil
 }
 
 // calculateRequeueDuration determines when to requeue based on whether there are pending time gates.

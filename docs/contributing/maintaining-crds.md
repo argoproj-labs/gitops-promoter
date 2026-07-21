@@ -66,34 +66,42 @@ Follow an existing controller test as a template, for example [`promotionstrateg
 
 If the type is reconciled and has status SSA behavior, also follow [Maintaining resource status](updating-status.md) for field owners, `observedGeneration`, and status apply tests.
 
-### 5. Field index for commit-status gate kinds
+### 5. Scheme registration and gate wiring
 
 When the new kind is a **commit-status gate** CRD with `spec.promotionStrategyRef` (same shape as `ArgoCDCommitStatus`, `TimedCommitStatus`, and the other built-in gates):
 
-1. Add the type to [`internal/controller/fieldindex.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/controller/fieldindex.go) — extend `PromotionStrategyRefIndexValues` and `RegisterGatePromotionStrategyRefFieldIndexes`.
-2. In the gate controller, watch `PromotionStrategy` and list your kind with `client.MatchingFields{controller.PromotionStrategyRefField: ps.Name}` (do not namespace-list and filter in memory). See [Watching PromotionStrategy](developing-a-commitstatus.md#watching-promotionstrategy).
-3. If bundle assembly or other code lists the new gate by promotion strategy, ensure that cache also calls `RegisterGatePromotionStrategyRefFieldIndexes` (today: manager setup via `PromotionStrategyReconciler` and the dashboard read cache in `internal/apiserver/run.go`).
-4. Register the same index on fake clients in tests that use `MatchingFields` (follow `newFakeClientBuilder()` in [`internal/apiserver/builder_test.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/apiserver/builder_test.go)).
+1. Register the type on the promoter scheme (`AddToScheme` / `SchemeBuilder`). That is enough for field indexes, instance-id cache partitioning, and resource-count metrics — you do not maintain separate kind lists for those.
+2. Wire the reconciler in **all three** setup sites (copy an existing gate’s `SetupWithManager` block):
+   - [`cmd/main.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/cmd/main.go) — production manager
+   - [`internal/controller/suite_test.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/controller/suite_test.go) — main envtest suite
+   - [`internal/controller/test_manager_test.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/controller/test_manager_test.go) (`startPartitionedManager`) — instance-id migration / partitioned-manager tests  
+   Omitting the last site is a common miss: migration tests will time out waiting for child `CommitStatus` objects that never get created.
+3. In the gate controller, watch `PromotionStrategy` and list your kind with `client.MatchingFields{controller.PromotionStrategyRefField: ps.Name}` (do not namespace-list and filter in memory). See [Watching PromotionStrategy](developing-a-commitstatus.md#watching-promotionstrategy).
 
 Skip this step for types that do not reference a `PromotionStrategy` or never use field selectors on the cache client.
+
+### 6. Dashboard view bundle for commit-status gate kinds
+
+In-tree gate managers are also exposed on the aggregated `PromotionStrategyDetails` resource. After the CRD is on the scheme, follow [Dashboard view bundle](developing-a-commitstatus.md#dashboard-view-bundle) (bundle field, `buildBundle` list, apiserver RBAC, and codegen).
 
 ## Regenerate and verify
 
 After Go type and marker changes:
 
-1. **`make build-installer`** — CRD bases, deepcopy, applyconfiguration, extension icon styles, and the `dist/` install bundles.
-2. **`go mod tidy`** if module deps changed.
-3. **`make test-parallel`** — includes the strict unmarshal tests above.
-4. **`make lint-docs`** if you edited `docs/`.
+1. **`make build-installer`** — CRD bases, deepcopy, applyconfiguration, extension icon styles, and the `dist/` install bundles (includes apiserver RBAC from `config/apiserver/base/`).
+2. **`make generate-apiserver`** and **`make generate-ui-types`** when `api/view/v1alpha1` or embedded promoter types in the view bundle change (see [UI TypeScript types](ui-types.md)).
+3. **`go mod tidy`** if module deps changed.
+4. **`make test-parallel`** — includes the strict unmarshal tests above.
+5. **`make lint-docs`** if you edited `docs/`.
 
-CI’s **Check Codegen** job runs `make build-installer` and fails on drift; see [Continuous Integration](ci.md).
+CI’s **Check Codegen** job runs `make build-installer`, `make generate-apiserver`, and `make generate-ui-types` and fails on drift; see [Continuous Integration](ci.md).
 
 ## API design reminders
 
 - Put validation on Go types with kubebuilder markers (`// +kubebuilder:validation:…`, CEL `XValidation`, and so on); do not hand-edit `config/crd/bases/` except via generation.
 - Prefer **`// +k8s:immutable`** on fields that must not change after set (controller-gen v0.21+) when that field has **no other** `XValidation` rules. It emits the same `self == oldSelf` CEL rule as a hand-written immutability `XValidation`. If the field also needs custom CEL checks, use explicit `XValidation` for immutability too — **do not mix `+k8s:` markers with `XValidation` on one field** ([controller-tools#1429](https://github.com/kubernetes-sigs/controller-tools/issues/1429); see [Writing CEL Validation Rules](writing-cel-rules.md)). Example in-tree: `PullRequest` `sourceBranch` / `targetBranch`.
 - Use **`// +k8s:enum`** on a `type Foo string` plus `const` block only when **every** field typed `Foo` shares the same allowed values. Remove redundant field `Enum` markers only in that case. Do **not** put `+k8s:enum` on a type that is also used from status fields allowing `""` or a subset of consts (controller-gen applies the type enum to all references; field `Enum` is not merged for extras like `""`). Example in-tree: `ContextMode` on `WebRequestCommitStatus`. Plain `string` fields still use field `Enum`.
-- Express reconciler RBAC with **`// +kubebuilder:rbac`** on controllers; regenerate manifests rather than editing `config/rbac/role.yaml` by hand.
+- Express reconciler RBAC with **`// +kubebuilder:rbac`** on the controller that performs each API call; regenerate manifests rather than editing `config/rbac/role.yaml` by hand. CRDs and built-in types such as Secrets have no writable `/finalizers` API subresource; update `metadata.finalizers` via `Update` on the main resource. For least-privilege RBAC, grant `*/finalizers: update` instead of `update` on the primary resource when the controller only changes finalizers.
 - For SCM-facing types and commit-status controllers, see [Adding an SCM Provider](adding-an-scm-provider.md) and [Developing a CommitStatus](developing-a-commitstatus.md).
 
 ## Related docs
@@ -103,5 +111,7 @@ CI’s **Check Codegen** job runs `make build-installer` and fails on drift; see
 | User-facing CR reference | [CRD Specs](../crd-specs.md) |
 | CEL rules and marker mixing | [Writing CEL Validation Rules](writing-cel-rules.md) |
 | Status subresource / SSA | [Maintaining resource status](updating-status.md) |
+| Dashboard aggregation API | [Dashboard Aggregation API](../advanced-usage/dashboard-apiserver.md) |
+| UI types from the view API | [UI TypeScript types](ui-types.md) |
 | CI codegen checks | [Continuous Integration](ci.md) |
 | Contributor overview | [Contributing overview](index.md) |

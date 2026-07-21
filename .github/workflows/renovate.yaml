@@ -52,7 +52,7 @@ jobs:
           permission-vulnerability-alerts: read
 
       - name: Self-hosted Renovate
-        uses: renovatebot/github-action@b50d2ba2bd928235abdcc14d06dfafc217f1c565 # v46.1.18
+        uses: renovatebot/github-action@3064367f740a1a91cca218698a63902689cce200 # v46.1.20
         with:
           configurationFile: renovate.json5
           token: ${{ steps.get_token.outputs.token }}

@@ -52,6 +52,7 @@ export default [
         URLSearchParams: 'readonly',
         EventSource: 'readonly',
         MessageEvent: 'readonly',
+        HTMLDivElement: 'readonly',
         // Node globals
         process: 'readonly',
         __dirname: 'readonly',

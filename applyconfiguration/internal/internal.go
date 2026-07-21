@@ -203,6 +203,16 @@ var schemaYAML = typed.YAMLObject(`types:
     elementType:
       namedType: __untyped_deduced_
     elementRelationship: separable
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ScheduledCommitStatus
+  scalar: untyped
+  list:
+    elementType:
+      namedType: __untyped_atomic_
+    elementRelationship: atomic
+  map:
+    elementType:
+      namedType: __untyped_deduced_
+    elementRelationship: separable
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ScmProvider
   scalar: untyped
   list:
@@ -251,6 +261,9 @@ var schemaYAML = typed.YAMLObject(`types:
           elementRelationship: associative
           keys:
           - type
+    - name: instanceID
+      type:
+        scalar: string
     - name: observedGeneration
       type:
         scalar: numeric

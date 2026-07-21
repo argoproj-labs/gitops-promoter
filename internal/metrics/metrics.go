@@ -181,6 +181,14 @@ var (
 		[]string{"ctp_found", "response_code"},
 	)
 
+	// WebhookMissRetryPending tracks in-flight async miss-retry goroutines (0–max capacity).
+	WebhookMissRetryPending = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "webhook_miss_retry_pending",
+			Help: "Current number of in-flight async webhook miss-retry goroutines.",
+		},
+	)
+
 	webRequestCommitStatusHTTPRequestsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "webrequest_commit_status_http_requests_total",
@@ -231,6 +239,7 @@ func init() {
 		scmCallsRateLimitRemaining,
 		scmCallsRateLimitResetRemainingSeconds,
 		webhookProcessingDurationSeconds,
+		WebhookMissRetryPending,
 		webRequestCommitStatusHTTPRequestsTotal,
 		webRequestCommitStatusHTTPRequestDurationSeconds,
 		FinalizerDependentCount,
@@ -309,6 +318,16 @@ func RecordWebhookCall(ctpFound bool, responseCode int, duration time.Duration) 
 	}
 	webhookCallsTotal.With(labels).Inc()
 	webhookProcessingDurationSeconds.With(labels).Observe(duration.Seconds())
+}
+
+// IncWebhookMissRetryPending increments the in-flight miss-retry gauge when a slot is acquired.
+func IncWebhookMissRetryPending() {
+	WebhookMissRetryPending.Inc()
+}
+
+// DecWebhookMissRetryPending decrements the in-flight miss-retry gauge when a slot is released.
+func DecWebhookMissRetryPending() {
+	WebhookMissRetryPending.Dec()
 }
 
 // RecordWebRequestCommitStatusHTTPRequest records count and duration for a completed outbound HTTP

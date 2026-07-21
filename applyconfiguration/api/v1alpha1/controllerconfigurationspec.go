@@ -29,6 +29,13 @@ package v1alpha1
 // rate limiters, and other controller-specific parameters. All fields should be required,
 // with defaults set in manifests rather than in code.
 type ControllerConfigurationSpecApplyConfiguration struct {
+	// InstanceID scopes which Promoter CRs this install reconciles. When set, only resources
+	// labeled promoter.argoproj.io/instance-id with this exact value enter the informer cache.
+	// When unset (nil), only resources without that label are reconciled. There is no mode that
+	// reconciles labeled and unlabeled resources together. Changing this value rebuilds the
+	// informer cache partition: a single-replica install shuts down and restarts automatically;
+	// HA installs (multiple replicas with leader election) require a rolling restart of all pods.
+	InstanceID *string `json:"instanceID,omitempty"`
 	// PromotionStrategy contains the configuration for the PromotionStrategy controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	PromotionStrategy *PromotionStrategyConfigurationApplyConfiguration `json:"promotionStrategy,omitempty"`
@@ -53,12 +60,23 @@ type ControllerConfigurationSpecApplyConfiguration struct {
 	// WebRequestCommitStatus contains the configuration for the WebRequestCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	WebRequestCommitStatus *WebRequestCommitStatusConfigurationApplyConfiguration `json:"webRequestCommitStatus,omitempty"`
+	// ScheduledCommitStatus contains the configuration for the ScheduledCommitStatus controller,
+	// including WorkQueue settings that control reconciliation behavior.
+	ScheduledCommitStatus *ScheduledCommitStatusConfigurationApplyConfiguration `json:"scheduledCommitStatus,omitempty"`
 }
 
 // ControllerConfigurationSpecApplyConfiguration constructs a declarative configuration of the ControllerConfigurationSpec type for use with
 // apply.
 func ControllerConfigurationSpec() *ControllerConfigurationSpecApplyConfiguration {
 	return &ControllerConfigurationSpecApplyConfiguration{}
+}
+
+// WithInstanceID sets the InstanceID field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the InstanceID field is set to the value of the last call.
+func (b *ControllerConfigurationSpecApplyConfiguration) WithInstanceID(value string) *ControllerConfigurationSpecApplyConfiguration {
+	b.InstanceID = &value
+	return b
 }
 
 // WithPromotionStrategy sets the PromotionStrategy field in the declarative configuration to the given value
@@ -122,5 +140,13 @@ func (b *ControllerConfigurationSpecApplyConfiguration) WithGitCommitStatus(valu
 // If called multiple times, the WebRequestCommitStatus field is set to the value of the last call.
 func (b *ControllerConfigurationSpecApplyConfiguration) WithWebRequestCommitStatus(value *WebRequestCommitStatusConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
 	b.WebRequestCommitStatus = value
+	return b
+}
+
+// WithScheduledCommitStatus sets the ScheduledCommitStatus field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ScheduledCommitStatus field is set to the value of the last call.
+func (b *ControllerConfigurationSpecApplyConfiguration) WithScheduledCommitStatus(value *ScheduledCommitStatusConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
+	b.ScheduledCommitStatus = value
 	return b
 }

@@ -1,0 +1,518 @@
+@use 'tokens' as *;
+
+.hp {
+  display: flex;
+  flex-direction: column;
+  // Fill the host's already-sized container. In the ArgoCD extension the view
+  // mounts inside `application-details__tree`, a definite-height, scroll-capable
+  // flex child, so `height: 100%` resolves to the space below Argo's chrome
+  // with no measurement. Hosts without a sized ancestor (the dashboard, whose
+  // #root/body/html are auto-height) opt into viewport clamping via
+  // `.hp--viewport`.
+  height: 100%;
+  background: $bg-page;
+  overflow: hidden;
+}
+
+// Dashboard: no sized ancestor to fill, so anchor to the viewport instead,
+// leaving room for the 48px TopBar. `dvh` (not `vh`) excludes mobile browser
+// chrome so the matrix ends at the true viewport bottom.
+.hp--viewport {
+  height: calc(100dvh - 48px);
+}
+
+.hp-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.hp-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.hp-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px 10px 20px;
+  background: $bg-surface;
+  border-bottom: 1px solid $stroke;
+  flex-shrink: 0;
+  z-index: 4;
+}
+
+.hp-header__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid $stroke;
+  border-radius: $radius-md;
+  background: $bg-surface;
+  color: $text-primary;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+  svg {
+    font-size: 10px;
+  }
+  &:hover {
+    background: $bg-softer;
+    border-color: $stroke-strong;
+  }
+}
+
+.hp-header__title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  h1 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 700;
+    color: $text-primary;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+.hp-header__subtitle {
+  font-size: 12px;
+  font-weight: 500;
+  color: $text-muted;
+}
+
+.hp-header__spacer {
+  flex: 1;
+}
+
+.hp-header__stats {
+  display: flex;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.hp-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: $text-secondary;
+  padding: 3px 9px 3px 7px;
+  border-radius: 999px;
+  border: 1px solid $stroke;
+  background: $bg-surface;
+  strong {
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1;
+  }
+  &::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    flex-shrink: 0;
+  }
+  &--success {
+    &::before {
+      background: $success-ink;
+    }
+    strong {
+      color: $success-ink;
+    }
+    background: $success-soft;
+    border-color: $success-border;
+  }
+  &--warning {
+    &::before {
+      background: $pending-ink;
+    }
+    strong {
+      color: $pending-ink;
+    }
+    background: $pending-soft;
+    border-color: $pending-border;
+  }
+  &--danger {
+    &::before {
+      background: $failure-ink;
+    }
+    strong {
+      color: $failure-ink;
+    }
+    background: $failure-soft;
+    border-color: $failure-border;
+  }
+  &--info {
+    &::before {
+      background: $accent;
+    }
+    strong {
+      color: $accent;
+    }
+    background: rgba(31, 79, 94, 0.08);
+    border-color: rgba(31, 79, 94, 0.3);
+  }
+}
+
+.hp-loading,
+.hp-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  // Same host-fill contract as `.hp`: fill a sized ancestor by default, or
+  // clamp to the viewport when the host adds `.hp--viewport`.
+  height: 100%;
+  color: $text-secondary;
+  font-size: 14px;
+}
+.hp-empty__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: $text-primary;
+}
+.hp-empty__body {
+  margin: 0;
+  max-width: 360px;
+  text-align: center;
+  color: $text-secondary;
+}
+.hp-empty__back {
+  padding: 6px 14px;
+  border: 1px solid $stroke;
+  border-radius: $radius-md;
+  background: $bg-surface;
+  cursor: pointer;
+  &:hover {
+    background: $bg-softer;
+  }
+}
+
+.hp-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.hp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: $text-secondary;
+  background: $bg-surface;
+  border: 1px solid $stroke;
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1.45;
+  transition:
+    background 0.14s ease,
+    color 0.14s ease,
+    border-color 0.14s ease;
+
+  &:hover {
+    background: $bg-softer;
+    border-color: $stroke-strong;
+  }
+
+  &--active {
+    background: $accent;
+    color: #ffffff;
+    border-color: $accent;
+    .hp-chip__count {
+      color: rgba(255, 255, 255, 0.92);
+      background: rgba(255, 255, 255, 0.18);
+    }
+  }
+}
+
+.hp-chip__count {
+  font-size: 10px;
+  font-weight: 700;
+  background: $bg-softer;
+  color: $text-muted;
+  padding: 0 5px;
+  border-radius: 999px;
+}
+
+.hp-chip--env.hp-chip--active .hp-chip__dot {
+  background: #fff;
+}
+
+.hp-chip__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: none;
+}
+
+.hp-matrix {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  // No top padding: the sticky header must sit flush with the scroll
+  // container's top edge. With top padding, scrolled-up rows show through the
+  // gap above where the header sticks. The header supplies its own top spacing.
+  padding: 0 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hp-matrix__sticky {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: $bg-page;
+  border-bottom: 1px solid $stroke;
+  margin-bottom: 6px;
+  .hp-env-banner {
+    margin: 16px 0 8px;
+  }
+}
+
+.hp-matrix__head {
+  display: grid;
+  gap: 6px;
+  padding: 16px 10px 10px;
+}
+
+// When the banner is present it already provides the top spacing, so the
+// header drops its own to avoid a double gap.
+.hp-env-banner + .hp-matrix__head {
+  padding-top: 0;
+}
+
+.hp-matrix__head-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: $text-muted;
+}
+
+.hp-matrix__head-env {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hp-matrix__head-env-swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.hp-matrix__head-env-branch {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  // Color set inline via env palette.
+}
+
+.hp-matrix__empty {
+  padding: 32px;
+  text-align: center;
+  color: $text-muted;
+  font-size: 13px;
+  border: 1px dashed $stroke;
+  border-radius: $radius-lg;
+  background: $bg-surface;
+}
+
+.hp-env-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border: 1px solid $stroke;
+  border-radius: $radius-md;
+  background: $bg-surface;
+  color: $text-muted;
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.hp-env-banner__text {
+  flex: 1;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  strong {
+    font-weight: 700;
+  }
+}
+
+.hp-env-banner__clear {
+  appearance: none;
+  background: transparent;
+  border: 1px solid currentColor;
+  color: inherit;
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: $radius-sm;
+  cursor: pointer;
+  &:hover {
+    background: currentColor;
+    color: $bg-surface;
+  }
+}
+
+.hp-row__env-slot {
+  display: flex;
+  min-width: 0;
+  transition:
+    opacity 0.18s ease,
+    filter 0.18s ease;
+
+  > .cell {
+    flex: 1;
+    min-width: 0;
+  }
+  > .cell--no-changes {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+.hp-row__env-slot--focus > .cell:not(.cell--no-changes) {
+  outline: 2px solid rgba(31, 79, 94, 0.3);
+  outline-offset: -1px;
+}
+
+.hp-row {
+  display: grid;
+  gap: 8px;
+  padding: 7px 8px;
+  background: $bg-softer;
+  border: 1px solid $stroke;
+  border-radius: $radius-md;
+  align-items: stretch;
+  transition: border-color 0.14s ease;
+
+  &:hover {
+    border-color: $stroke-strong;
+  }
+  &--selected {
+    border-color: $accent;
+    background: rgba(31, 79, 94, 0.04);
+  }
+}
+
+.hp-row__commit {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: 4px 10px 4px 8px;
+  min-width: 0;
+  position: relative;
+
+  background: $bg-surface;
+  margin: -7px 0 -7px -8px;
+  padding: 11px 10px 11px 16px;
+  border-top-left-radius: $radius-md;
+  border-bottom-left-radius: $radius-md;
+
+  border-right: 1px solid $stroke;
+}
+
+.hp-row__subject {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: $text-primary;
+  line-height: 1.3;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.hp-row__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.hp-row__sha {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: $accent;
+  background: rgba(31, 79, 94, 0.08);
+  padding: 0 5px;
+  border-radius: $radius-sm;
+  text-decoration: none;
+  &:hover {
+    background: rgba(31, 79, 94, 0.16);
+  }
+}
+
+.hp-row__pr {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: $accent;
+  text-decoration: none;
+  padding: 0 5px;
+  border-radius: $radius-sm;
+  border: 1px solid rgba(31, 79, 94, 0.3);
+  &:hover {
+    background: rgba(31, 79, 94, 0.08);
+  }
+  svg {
+    font-size: 9px;
+  }
+}
+
+.hp-row__author {
+  font-size: 11px;
+  color: $text-muted;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.hp-row__author-inline,
+.hp-row__time-inline {
+  font-size: 11px;
+  color: $text-muted;
+}
+
+.hp-row__sep {
+  color: $text-muted;
+}

@@ -214,7 +214,7 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 
 	// Send webhook after merge to simulate SCM provider webhook behavior
 	// The webhook uses the "before" SHA (target branch SHA before the merge)
-	// The new findChangeTransferPolicy code will search by active.hydrated.sha as fallback
+	// The webhook receiver lookup searches by active.hydrated.sha as fallback
 	pr.sendWebhook(ctx, pullRequest, beforeSha)
 
 	mutexPR.Lock()

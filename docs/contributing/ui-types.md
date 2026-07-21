@@ -19,6 +19,8 @@ make generate-ui-types
 
 Commit updated OpenAPI Go output and `ui/shared/src/types/generated/view.gen.ts`.
 
+When adding a **new commit-status gate** to `PromotionStrategyDetails`, also follow the manual view steps in [Dashboard view bundle](developing-a-commitstatus.md#dashboard-view-bundle) (bundle field, `buildBundle` list, apiserver RBAC, `make build-installer`).
+
 CI runs `make generate-ui-types` in the **Check Codegen** job and fails if the generated file drifts.
 
 ## Layout

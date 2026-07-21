@@ -77,6 +77,10 @@ func statusApplyConfig(obj client.Object, conditionsOnly bool) (any, error) {
 		return scmProviderStatusApply(o, conditionsOnly)
 	case *promoterv1alpha1.ClusterScmProvider:
 		return clusterScmProviderStatusApply(o, conditionsOnly)
+	case *promoterv1alpha1.ScheduledCommitStatus:
+		return scheduledCommitStatusStatusApply(o, conditionsOnly)
+	case *promoterv1alpha1.ControllerConfiguration:
+		return controllerConfigurationStatusApply(o, conditionsOnly)
 	default:
 		return nil, fmt.Errorf("unsupported object type for status SSA: %T", obj)
 	}
@@ -190,6 +194,26 @@ func clusterScmProviderStatusApply(o *promoterv1alpha1.ClusterScmProvider, condi
 		return nil, err
 	}
 	return acv1alpha1.ClusterScmProvider(o.Name).WithStatus(statusAC), nil
+}
+
+func scheduledCommitStatusStatusApply(o *promoterv1alpha1.ScheduledCommitStatus, conditionsOnly bool) (any, error) {
+	statusAC := acv1alpha1.ScheduledCommitStatusStatus()
+	if conditionsOnly {
+		statusAC = statusAC.WithConditions(ConditionsToApply(o.Status.Conditions)...)
+	} else if err := jsonRoundTrip(&o.Status, statusAC); err != nil {
+		return nil, err
+	}
+	return acv1alpha1.ScheduledCommitStatus(o.Name, o.Namespace).WithStatus(statusAC), nil
+}
+
+func controllerConfigurationStatusApply(o *promoterv1alpha1.ControllerConfiguration, conditionsOnly bool) (any, error) {
+	statusAC := acv1alpha1.ControllerConfigurationStatus()
+	if conditionsOnly {
+		statusAC = statusAC.WithConditions(ConditionsToApply(o.Status.Conditions)...)
+	} else if err := jsonRoundTrip(&o.Status, statusAC); err != nil {
+		return nil, err
+	}
+	return acv1alpha1.ControllerConfiguration(o.Name, o.Namespace).WithStatus(statusAC), nil
 }
 
 // jsonRoundTrip copies all JSON-tagged fields from src into dst by marshaling src and

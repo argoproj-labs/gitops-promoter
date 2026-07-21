@@ -80,8 +80,8 @@ type ArgoCDCommitStatusReconciler struct {
 
 // URLTemplateData is the data passed to the URLTemplate in the ArgoCDCommitStatus.
 type URLTemplateData struct {
-	Environment        string
 	ArgoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
+	Environment        string
 }
 
 // ApplicationsInEnvironment is a list of applications in an environment.
@@ -90,11 +90,16 @@ type ApplicationsInEnvironment struct {
 	argocd.ApplicationList
 }
 
-// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=argocdcommitstatuses,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=argocdcommitstatuses,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=argocdcommitstatuses/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=argocdcommitstatuses/finalizers,verbs=update
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch;patch;create;delete
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
 // +kubebuilder:rbac:groups=argoproj.io,resources=applications,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=gitrepositories,verbs=get;list;watch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=scmproviders,verbs=get;list;watch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=clusterscmproviders,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -128,6 +133,10 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 
 	// Remove any existing Ready condition. We want to start fresh.
 	previousReady = utils.RemoveReadyCondition(&argoCDCommitStatus)
+
+	if err := ensureControllerInstanceIDStable(ctx, r.SettingsMgr); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	ls, err := metav1.LabelSelectorAsSelector(argoCDCommitStatus.Spec.ApplicationSelector)
 	if err != nil {
@@ -532,17 +541,22 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 
 	r.watchLocalApplications = watchLocalApplications
 
+	controllerOpts := controller.Options{
+		MaxConcurrentReconciles: maxConcurrentReconciles,
+		RateLimiter:             rateLimiter,
+		UsePriorityQueue:        new(true),
+	}
+	if skip := mcMgr.GetLocalManager().GetControllerOptions().SkipNameValidation; skip != nil {
+		controllerOpts.SkipNameValidation = skip
+	}
+
 	err = mcbuilder.ControllerManagedBy(mcMgr).
 		For(&promoterv1alpha1.ArgoCDCommitStatus{},
 			mcbuilder.WithEngageWithLocalCluster(true),
 			mcbuilder.WithEngageWithProviderClusters(false),
 			mcbuilder.WithPredicates(predicate.GenerationChangedPredicate{}),
 		).
-		WithOptions(controller.Options{
-			MaxConcurrentReconciles: maxConcurrentReconciles,
-			RateLimiter:             rateLimiter,
-			UsePriorityQueue:        new(true),
-		}).
+		WithOptions(controllerOpts).
 		Watches(&argocd.Application{}, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
 			mcbuilder.WithEngageWithLocalCluster(watchLocalApplications),
 			mcbuilder.WithEngageWithProviderClusters(true),
@@ -720,8 +734,9 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 	}
 
 	// Build the apply configuration
+	commitStatusLabels := utils.CommitStatusStandardLabels(&argoCDCommitStatus, targetBranch, key)
 	commitStatusApply := acv1alpha1.CommitStatus(resourceName, argoCDCommitStatus.Namespace).
-		WithLabels(utils.CommitStatusStandardLabels(&argoCDCommitStatus, targetBranch, key)).
+		WithLabels(commitStatusLabels).
 		WithOwnerReferences(acmetav1.OwnerReference().
 			WithAPIVersion(gvk.GroupVersion().String()).
 			WithKind(gvk.Kind).

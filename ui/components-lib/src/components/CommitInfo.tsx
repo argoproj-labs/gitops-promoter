@@ -2,6 +2,7 @@ import { GoArchive } from 'react-icons/go';
 import { BsBraces } from 'react-icons/bs';
 import { GoGitPullRequest } from 'react-icons/go';
 import { StatusIcon, StatusType } from './StatusIcon';
+import { Tooltip } from './Tooltip';
 import React, { useState, useRef, useCallback } from 'react';
 import TimeAgo from './TimeAgo';
 import HealthSummary from './HealthSummary';
@@ -30,7 +31,6 @@ export interface CommitInfoProps {
   mergeTimeAgo?: string;
 }
 
-// Combined component to display commit information and groups
 const CommitInfo: React.FC<CommitInfoProps> = ({
   title,
   deploymentCommit,
@@ -71,21 +71,16 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
     const sha = commit.sha?.substring(0, 8) || 'N/A';
     if (commitUrl && commit.sha) {
       return (
-        <a
-          href={commitUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="commit-sha-link"
-          title={`View commit ${sha}`}
-        >
-          {sha}
-        </a>
+        <Tooltip content={`Open commit ${sha} on GitHub`}>
+          <a href={commitUrl} target="_blank" rel="noopener noreferrer" className="commit-sha-link">
+            {sha}
+          </a>
+        </Tooltip>
       );
     }
     return <span className="commit-sha">{sha}</span>;
   };
 
-  // Create tooltip on subject and body
   const getTooltipContent = (commit: any) => {
     const subject = commit.subject || '';
     const body = commit.body || '';
@@ -126,7 +121,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
 
     timeoutRef.current = setTimeout(() => {
       setShowTooltip(false);
-    }, 100); // Small delay to prevent flickering
+    }, 100);
   }, []);
 
   const renderCommit = (commit: any, type: 'deployment' | 'code', commitUrl?: string) => {
@@ -151,10 +146,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
               <span className="commit-author">by {commit.author || 'N/A'}</span>
               {commit.date && (
                 <span className="commit-date">
-                  authored{' '}
-                  <span title={commit.date}>
-                    <TimeAgo date={commit.date} />
-                  </span>
+                  authored <TimeAgo date={commit.date} />
                 </span>
               )}
             </div>
@@ -198,25 +190,44 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
     );
   }
 
-  // Render with group structure
+  const isProposed = className.includes('proposed');
+
   return (
     <div className={`commit-group ${className}`}>
+      {isProposed && (
+        <>
+          <div className="promote-flow" aria-hidden="true" />
+          <div className="promote-banner">
+            <svg className="promote-banner__icon" viewBox="0 0 16 7" fill="none" aria-hidden="true">
+              <path
+                d="M1 6 L8 1 L15 6"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            Pushing to Active
+          </div>
+        </>
+      )}
       <div className="commit-group-header">
         <StatusIcon phase={status} type="health" />
         <h4 className="commit-group-title">
           {title}
           {prUrl && prNumber && (
-            <a
-              href={prUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`pr-indicator ${isActive ? 'pr-merged' : ''}`}
-              title={`View PR #${prNumber}${isActive ? ' (Merged)' : ''}`}
-            >
-              <GoGitPullRequest className="pr-icon" />
-              PR #{prNumber}
-              {mergeTimeAgo && <span className="pr-merge-time">{mergeTimeAgo}</span>}
-            </a>
+            <Tooltip content={`Open PR #${prNumber} on GitHub${isActive ? ' (Merged)' : ''}`}>
+              <a
+                href={prUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`pr-indicator ${isActive ? 'pr-merged' : ''}`}
+              >
+                <GoGitPullRequest className="pr-icon" />
+                PR #{prNumber}
+                {mergeTimeAgo && <span className="pr-merge-time">{mergeTimeAgo}</span>}
+              </a>
+            </Tooltip>
           )}
         </h4>
       </div>
@@ -227,7 +238,6 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
         </div>
       )}
 
-      {/* Display checks for this section */}
       {(healthSummary?.shouldDisplay || (additionalChecks && additionalChecks.length > 0)) &&
         checks && (
           <HealthSummary
