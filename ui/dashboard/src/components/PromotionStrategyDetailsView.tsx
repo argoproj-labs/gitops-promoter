@@ -1,7 +1,7 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
 import Card from '@lib/components/Card';
 import { type PromotionStrategy } from '@shared/utils/PSData';
+import { useNavigateWithParams } from '../hooks/useNavigateWithParams';
 
 interface PromotionStrategyDetailsViewProps {
   strategy: PromotionStrategy;
@@ -10,7 +10,7 @@ interface PromotionStrategyDetailsViewProps {
 export const PromotionStrategyDetailsView: React.FC<PromotionStrategyDetailsViewProps> = ({
   strategy,
 }) => {
-  const navigate = useNavigate();
+  const navigate = useNavigateWithParams();
 
   const environments = strategy.status?.environments || [];
   const ns = strategy.metadata.namespace || '';

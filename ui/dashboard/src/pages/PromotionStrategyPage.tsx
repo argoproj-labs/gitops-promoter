@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
+import { useNavigateWithParams } from '../hooks/useNavigateWithParams';
 import { namespaceStore } from '../stores/NamespaceStore';
 import { viewStore } from '../stores/ViewStore';
 import { PromotionStrategyStore } from '../stores/PromotionStrategyStore';
@@ -59,7 +60,7 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
     selectedStrategy,
   ]);
 
-  const navigate = useNavigate();
+  const navigate = useNavigateWithParams();
 
   const handleBack = () => {
     setNamespace(currentNamespace);

@@ -1,11 +1,12 @@
 import React, { useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import HistoryView from '@lib/components/HistoryView/HistoryView';
 import { PromotionStrategyStore } from '../stores/PromotionStrategyStore';
+import { useNavigateWithParams } from '../hooks/useNavigateWithParams';
 
 const HistoryPage: React.FC = () => {
   const { namespace, name } = useParams();
-  const navigate = useNavigate();
+  const navigate = useNavigateWithParams();
   const { items, fetchItems } = PromotionStrategyStore();
 
   useEffect(() => {
