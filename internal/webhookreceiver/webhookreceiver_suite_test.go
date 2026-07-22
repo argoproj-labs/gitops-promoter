@@ -1,4 +1,4 @@
-package webhookreceiver_test
+package webhookreceiver
 
 import (
 	"testing"

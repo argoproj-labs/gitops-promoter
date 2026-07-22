@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import './_Tooltip.scss';
 
 // Renders the bubble into document.body so it escapes the matrix cells'
 // `overflow: hidden` (a CSS-only tooltip would be clipped).

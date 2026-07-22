@@ -1,9 +1,17 @@
 import React from 'react';
 import { FaTimesCircle, FaTimes, FaBan, FaArrowRight } from 'react-icons/fa';
-import { GoGitPullRequest } from 'react-icons/go';
-import { timeAgo, formatDate, getCommitUrl, formatDuration } from '@shared/utils/util';
+import { GoGitPullRequest, GoGitCommit } from 'react-icons/go';
+import {
+  timeAgo,
+  formatDate,
+  getCommitUrl,
+  formatDuration,
+  extractNameOnly,
+  extractBodyPreTrailer,
+} from '@shared/utils/util';
 import type { CellState, CommitRow, EnvColumn, HealthKey } from '../types';
 import { DRAWER_MIN_WIDTH, DRAWER_MAX_WIDTH, HEALTH_LABELS, healthIcon } from '../presentation';
+import Tooltip from '../Tooltip/Tooltip';
 
 const DetailDrawer: React.FC<{
   row: CommitRow | null;
@@ -18,6 +26,7 @@ const DetailDrawer: React.FC<{
   onResizeTo: (width: number) => void;
   onClose: () => void;
   onJumpToRow: (id: string) => void;
+  onSelectCell: (branch: string) => void;
 }> = ({
   row,
   cell,
@@ -31,6 +40,7 @@ const DetailDrawer: React.FC<{
   onResizeTo,
   onClose,
   onJumpToRow,
+  onSelectCell,
 }) => {
   if (!row || !cell || !branch) {
     return (
@@ -48,21 +58,17 @@ const DetailDrawer: React.FC<{
   const passingChecks = cell.commitStatuses.filter((s) => s.phase === 'success');
   const pendingChecks = cell.commitStatuses.filter((s) => s.phase === 'pending');
 
-  const presence = envs
-    .map((e) => ({ env: e, cell: row.cells[e.branch] }))
-    .filter((x) => x.cell.kind !== 'no-changes');
+  const checksLabel = cell.isProposed ? 'Proposed' : 'Active';
 
-  const envIdx = envs.findIndex((e) => e.branch === branch);
-  const upstream = envs
-    .slice(0, envIdx)
-    .reverse()
-    .find((e) => {
-      const k = row.cells[e.branch].kind;
-      return k === 'live' || k === 'was-here';
-    });
-  const downstreamNotReached = envs
-    .slice(envIdx + 1)
-    .filter((e) => row.cells[e.branch].kind === 'no-changes');
+  const hydrated = cell.hydrated;
+  const hydratedRepoURL = hydrated?.repoURL || cell.commit?.repoURL || row.repoUrl || '';
+  const hydratedRepoName = hydratedRepoURL
+    ? hydratedRepoURL
+        .replace(/\.git$/, '')
+        .split('/')
+        .pop()
+    : undefined;
+  const refs = cell.references ?? [];
 
   return (
     <aside
@@ -109,7 +115,7 @@ const DetailDrawer: React.FC<{
             <span className={`hp-drawer__kind hp-drawer__kind--${cell.kind}`}>
               {cell.kind === 'live' && 'LIVE'}
               {cell.kind === 'in-flight' && (cell.isProposed ? 'PROPOSED' : 'PR OPEN')}
-              {cell.kind === 'was-here' && 'WAS HERE'}
+              {cell.kind === 'was-here' && 'REPLACED'}
               {cell.kind === 'failed' && 'FAILED'}
               {cell.kind === 'no-op' && 'NO-OP'}
               {cell.kind === 'no-changes' && 'NO CHANGES'}
@@ -121,17 +127,21 @@ const DetailDrawer: React.FC<{
             <span className="hp-drawer__author">{row.author}</span>
             <span className="hp-drawer__sep">·</span>
             {row.repoUrl && row.dryShaFull ? (
-              <a
-                href={getCommitUrl(row.repoUrl, row.dryShaFull)}
-                target="_blank"
-                rel="noreferrer"
-                className="hp-drawer__sha"
-                aria-label={`Commit ${row.dryShaShort}, opens in new tab`}
-              >
-                {row.dryShaShort}
-              </a>
+              <Tooltip label="Dry commit">
+                <a
+                  href={getCommitUrl(row.repoUrl, row.dryShaFull)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="hp-drawer__sha"
+                  aria-label={`Dry commit ${row.dryShaShort}, opens in new tab`}
+                >
+                  {row.dryShaShort}
+                </a>
+              </Tooltip>
             ) : (
-              <span className="hp-drawer__sha">{row.dryShaShort}</span>
+              <Tooltip label="Dry commit">
+                <span className="hp-drawer__sha">{row.dryShaShort}</span>
+              </Tooltip>
             )}
             {row.prId && (
               <>
@@ -152,7 +162,9 @@ const DetailDrawer: React.FC<{
             {ago && (
               <>
                 <span className="hp-drawer__sep">·</span>
-                <span title={exact}>{ago}</span>
+                <Tooltip label={exact}>
+                  <span>{ago}</span>
+                </Tooltip>
               </>
             )}
             {cell.kind === 'was-here' && cell.liveDurationMs != null && (
@@ -162,31 +174,75 @@ const DetailDrawer: React.FC<{
               </>
             )}
           </div>
+          {hydrated?.sha && (
+            <div className="hp-drawer__deployed">
+              Deployed as{' '}
+              {hydratedRepoURL ? (
+                <Tooltip label="Hydrated commit">
+                  <a
+                    href={getCommitUrl(hydratedRepoURL, hydrated.sha)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="hp-drawer__deployed-sha"
+                    aria-label={`Hydrated commit ${hydrated.sha.slice(0, 7)}, opens in new tab`}
+                  >
+                    {hydrated.sha.slice(0, 7)}
+                  </a>
+                </Tooltip>
+              ) : (
+                <Tooltip label="Hydrated commit">
+                  <span className="hp-drawer__deployed-sha">{hydrated.sha.slice(0, 7)}</span>
+                </Tooltip>
+              )}
+              {hydratedRepoName && (
+                <span className="hp-drawer__deployed-repo"> ({hydratedRepoName})</span>
+              )}
+            </div>
+          )}
         </div>
 
-        {cell.kind === 'failed' && failingChecks.length > 0 && (
-          <div className="hp-drawer__section hp-drawer__section--danger">
-            <h3>Why it failed</h3>
-            <ul>
-              {failingChecks.map((c) => (
-                <li key={c.key}>
-                  <strong>{c.key}</strong>
-                  {c.description ? <> — {c.description}</> : null}
-                  {c.url && (
-                    <>
-                      {' '}
-                      <a
-                        href={c.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        aria-label={`View details for ${c.key}, opens in new tab`}
-                      >
-                        View details
-                      </a>
-                    </>
-                  )}
-                </li>
-              ))}
+        {refs.length > 0 && (
+          <div className="hp-drawer__section">
+            <h3>app commits ({refs.length})</h3>
+            <ul className="hp-drawer__refs">
+              {refs.map((ref, i) => {
+                const body = ref.body ? extractBodyPreTrailer(ref.body) : '';
+                return (
+                  <li key={ref.sha ?? i} className="hp-drawer__ref">
+                    <div className="hp-drawer__ref-subject">
+                      {(ref.subject ?? '').trim() || '(no subject)'}
+                    </div>
+                    <div className="hp-drawer__ref-meta">
+                      <span className="hp-drawer__ref-author">
+                        {ref.author ? extractNameOnly(ref.author) : '—'}
+                      </span>
+                      {ref.sha && (
+                        <>
+                          <span className="hp-drawer__sep" aria-hidden="true">
+                            ·
+                          </span>
+                          {ref.url ? (
+                            <a
+                              href={ref.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="hp-drawer__ref-sha"
+                              aria-label={`Source commit ${ref.sha.slice(0, 7)}, opens in new tab`}
+                            >
+                              <GoGitCommit aria-hidden="true" /> {ref.sha.slice(0, 7)}
+                            </a>
+                          ) : (
+                            <span className="hp-drawer__ref-sha">
+                              <GoGitCommit aria-hidden="true" /> {ref.sha.slice(0, 7)}
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </div>
+                    {body && <pre className="hp-drawer__ref-body">{body}</pre>}
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}
@@ -198,11 +254,12 @@ const DetailDrawer: React.FC<{
           </div>
         )}
 
-        {cell.commitStatuses.length > 0 && cell.kind !== 'failed' && (
+        {cell.commitStatuses.length > 0 && (
           <div className="hp-drawer__section">
             <h3>Checks</h3>
+            <p className="hp-drawer__checks-group-label">{checksLabel}</p>
             <ul className="hp-drawer__checks">
-              {[...passingChecks, ...pendingChecks, ...failingChecks].map((c) => (
+              {[...failingChecks, ...pendingChecks, ...passingChecks].map((c) => (
                 <li key={c.key} className={`hp-drawer__check hp-drawer__check--${c.phase}`}>
                   <span className="hp-drawer__check-icon" aria-hidden="true">
                     {healthIcon[c.phase as HealthKey] ?? healthIcon.unknown}
@@ -212,6 +269,17 @@ const DetailDrawer: React.FC<{
                   </span>
                   <span className="hp-drawer__check-key">{c.key}</span>
                   {c.description && <span className="hp-drawer__check-desc">{c.description}</span>}
+                  {c.url && (
+                    <a
+                      href={c.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="hp-drawer__check-link"
+                      aria-label={`View details for ${c.key}, opens in new tab`}
+                    >
+                      View details
+                    </a>
+                  )}
                 </li>
               ))}
             </ul>
@@ -231,20 +299,14 @@ const DetailDrawer: React.FC<{
             {envs.map((e) => {
               const c = row.cells[e.branch];
               const isHere = e.branch === branch;
-              return (
-                <li
-                  key={e.branch}
-                  className={[
-                    'hp-drawer__presence-item',
-                    `hp-drawer__presence-item--${c.kind}`,
-                    isHere ? 'hp-drawer__presence-item--current' : '',
-                  ].join(' ')}
-                >
+              const selectable = !isHere && c.kind !== 'no-changes';
+              const inner = (
+                <>
                   <span className="hp-drawer__presence-branch">{e.branch}</span>
                   <span className={`cell__pill cell__pill--${c.kind}`}>
                     {c.kind === 'live' && 'LIVE'}
                     {c.kind === 'in-flight' && (c.isProposed ? 'PROPOSED' : 'PR OPEN')}
-                    {c.kind === 'was-here' && 'WAS HERE'}
+                    {c.kind === 'was-here' && 'REPLACED'}
                     {c.kind === 'failed' && (
                       <>
                         <FaTimesCircle aria-hidden="true" /> FAILED
@@ -257,22 +319,39 @@ const DetailDrawer: React.FC<{
                     )}
                     {c.kind === 'no-changes' && '—'}
                   </span>
-                  {c.at && <span className="hp-drawer__presence-time">{timeAgo(c.at)}</span>}
+                  {c.at && (
+                    <Tooltip label={formatDate(c.at)}>
+                      <span className="hp-drawer__presence-time">{timeAgo(c.at)}</span>
+                    </Tooltip>
+                  )}
+                </>
+              );
+              const className = [
+                'hp-drawer__presence-item',
+                `hp-drawer__presence-item--${c.kind}`,
+                isHere ? 'hp-drawer__presence-item--current' : '',
+                selectable ? 'hp-drawer__presence-item--selectable' : '',
+              ].join(' ');
+              return (
+                <li key={e.branch}>
+                  {selectable ? (
+                    <button
+                      type="button"
+                      className={className}
+                      onClick={() => onSelectCell(e.branch)}
+                      aria-label={`View ${e.branch} details for this commit`}
+                    >
+                      {inner}
+                    </button>
+                  ) : (
+                    <div className={className} aria-current={isHere ? 'true' : undefined}>
+                      {inner}
+                    </div>
+                  )}
                 </li>
               );
             })}
           </ul>
-          {presence.length === 1 && downstreamNotReached.length > 0 && (
-            <p className="hp-drawer__hint">
-              This commit only reached <strong>{branch}</strong>. It hasn't moved on to{' '}
-              {downstreamNotReached.map((e) => e.branch).join(', ')}.
-            </p>
-          )}
-          {upstream && (
-            <p className="hp-drawer__hint">
-              Promoted here from <strong>{upstream.branch}</strong>.
-            </p>
-          )}
         </div>
 
         {cell.kind === 'was-here' && cell.supersededById && rowsById.get(cell.supersededById) && (

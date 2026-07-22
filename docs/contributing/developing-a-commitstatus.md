@@ -8,7 +8,7 @@ This document outlines best practices for implementing custom commit status cont
 
 ## Required Labels
 
-All commit status controllers should set the following standard labels on the `CommitStatus` resources they create. Use `utils.CommitStatusStandardLabels(parent, branch, key)` — it sets the three gating labels and copies `promoter.argoproj.io/instance-id` from the parent gate when present (see [§4](#4-instance-id-label-multi-install)).
+All commit status controllers should set the following standard labels on the `CommitStatus` resources they create. Use `utils.CommitStatusStandardLabels(parent, branch, key)` — it sets the three gating labels and stamps `promoter.argoproj.io/instance-id` from `ControllerConfiguration.spec.instanceID` when the controller is running in multi-install mode (see [§4](#4-instance-id-label-multi-install)).
 
 ### 1. Commit Status Label
 
@@ -53,9 +53,13 @@ for different apps can target the same active commit SHA. In this setup, control
 
 ### 4. Instance ID Label (multi-install)
 
-When the cluster runs multiple Promoter controller installs, each install only caches resources labeled with its configured `ControllerConfiguration.spec.instanceID`. In the default install (`instanceID` unset), only **unlabeled** resources are cached—do not add this label to gate CRs or PromotionStrategies managed by the default install.
+When the cluster runs multiple Promoter controller installs, each install only **caches** resources labeled with its configured `ControllerConfiguration.spec.instanceID`. In the default install (`instanceID` unset), only **unlabeled** resources are cached—do not add this label to gate CRs or PromotionStrategies managed by the default install.
 
-`CommitStatusStandardLabels` copies `promoter.argoproj.io/instance-id` from the parent gate when the parent carries a non-empty value. Label the parent gate during migration before the controller will reconcile it.
+For gate controllers:
+
+1. **Label the parent gate** during migration so it enters the correct install’s informer. Controllers do not patch `metadata.labels` on the gate itself.
+2. **Child `CommitStatus` labels** — use `CommitStatusStandardLabels` (or `StampInstanceIDLabel`); it stamps `promoter.argoproj.io/instance-id` from the controller’s configured `instanceID`, not by copying the parent’s labels.
+3. **`status.instanceID`** — call `ensureControllerInstanceIDStable` at the top of `Reconcile` and defer `HandleReconciliationResult` (same pattern as built-in gates).
 
 ```go
 commitStatusLabels := utils.CommitStatusStandardLabels(parentGate, branch, key)
@@ -64,7 +68,7 @@ commitStatusApply := acv1alpha1.CommitStatus(name, namespace).
     // …
 ```
 
-See [Multiple Controller Installs](../multi-install.md) for operator configuration and migration notes.
+See [Multiple Controller Installs](../multi-install.md) for operator configuration and migration notes. New in-tree gate CRDs: register the type on the scheme ([Maintaining CRDs](maintaining-crds.md)), register the reconciler in `cmd/main.go`, `suite_test.go`, and `startPartitionedManager` in `test_manager_test.go`, then complete the [Dashboard view bundle](#dashboard-view-bundle) steps.
 
 ## Existing Controllers
 
@@ -117,7 +121,7 @@ The helper applies `KubeSafeUniqueName` to `parent.metadata.name-branch-<stem>`.
 
 Example: `my-app-environment-development-timed-<hash>` (or `...-argo-cd-<hash>` for Argo CD gates)
 
-Set the standard CommitStatus labels with `utils.CommitStatusStandardLabels(parent, branch, key)` (parent gate, environment, commit-status key, and instance-id when the parent gate carries it).
+Set the standard CommitStatus labels with `utils.CommitStatusStandardLabels(parent, branch, key)` (parent gate, environment, commit-status key, and instance-id from the controller’s configured `instanceID` when set).
 
 #### Orphan cleanup
 
@@ -293,30 +297,7 @@ Only listed environments are gated; unlisted environments default to success (24
 
 Gate CRDs reference a `PromotionStrategy` via `spec.promotionStrategyRef`. When that strategy changes (for example environments or commit-status keys are updated), every gate that references it should reconcile so it can refresh owned `CommitStatus` resources.
 
-Built-in controllers watch `PromotionStrategy` and enqueue reconcile requests for matching gates. Use a **cache field index** on `.spec.promotionStrategyRef.name` so those lookups stay efficient and so `client.MatchingFields` works on the manager's cached client.
-
-### When to register an index
-
-Register a field index when your controller (or another component using the same informer cache) lists gate resources with:
-
-```go
-client.MatchingFields{".spec.promotionStrategyRef.name": promotionStrategyName}
-```
-
-Without `IndexField` registration, that `List` fails at runtime. Listing the whole namespace and filtering in memory works but does not scale and is easy to miss in unit tests.
-
-This applies to **cache-backed** `client.Client` calls (the default from `mgr.GetClient()`). It is separate from CRD `selectableFields`, which affect API-server field selectors on direct API reads.
-
-### Register the index
-
-In this repository, gate kinds share `controller.PromotionStrategyRefField` and `controller.RegisterGatePromotionStrategyRefFieldIndexes` in [`internal/controller/fieldindex.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/controller/fieldindex.go). Registration runs from any process that serves cache-backed lists filtered by promotion strategy:
-
-- **Manager** — `PromotionStrategyReconciler.SetupWithManager` (alongside the `CommitStatus` `.spec.sha` index).
-- **Dashboard API** — `internal/apiserver/run.go` on the read cache before bundle assembly.
-
-If you add a new in-repo gate kind, extend `PromotionStrategyRefIndexValues` and `RegisterGatePromotionStrategyRefFieldIndexes` with your type. See [Maintaining CRDs](maintaining-crds.md#5-field-index-for-commit-status-gate-kinds).
-
-For a controller outside this repo, register the index in your gate reconciler's `SetupWithManager`:
+Built-in controllers watch `PromotionStrategy` and enqueue reconcile requests for matching gates. List with `client.MatchingFields{controller.PromotionStrategyRefField: ps.Name}` (do not namespace-list and filter in memory). **In this repository**, registering the type on the promoter scheme is enough for that field index. **Outside this repo**, register the index in `SetupWithManager` before the watch:
 
 ```go
 const promotionStrategyRefField = ".spec.promotionStrategyRef.name"
@@ -377,18 +358,16 @@ ctrl.NewControllerManagedBy(mgr).
 
 Built-in gate controllers follow this pattern; see [`timedcommitstatus_controller.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/controller/timedcommitstatus_controller.go) for a reference implementation.
 
-### Tests
+## Dashboard view bundle
 
-Fake clients used in tests must register the same index, or `MatchingFields` lists will fail:
+Built-in gate managers are included in the aggregated `PromotionStrategyDetails` resource served by the [dashboard APIService](../advanced-usage/dashboard-apiserver.md). For a new in-tree gate:
 
-```go
-fake.NewClientBuilder().
-    WithScheme(scheme).
-    WithIndex(&promoterv1alpha1.MyCommitStatus{}, promotionStrategyRefField, indexFunc).
-    Build()
-```
-
-In-tree API server tests use `newFakeClientBuilder()` in [`internal/apiserver/builder_test.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/apiserver/builder_test.go), which registers indexes for all gate kinds.
+1. **Bundle field** — add a slice field on `PromotionStrategyDetails` in [`api/view/v1alpha1/types.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/api/view/v1alpha1/types.go) (mirror existing `*CommitStatuses` fields).
+2. **Bundle assembly** — list the kind with `MatchingFields{controller.PromotionStrategyRefField: name}` in [`internal/apiserver/builder.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/apiserver/builder.go) and assign into that field.
+3. **Apiserver RBAC** — add the resource plural (for example `scheduledcommitstatuses`) under the `promoter-apiserver` ClusterRole in [`config/apiserver/base/rbac.yaml`](https://github.com/argoproj-labs/gitops-promoter/blob/main/config/apiserver/base/rbac.yaml). This file is maintained by hand (not generated from kubebuilder markers).
+4. **Codegen** — run `make generate-apiserver` and `make generate-ui-types`, then `make build-installer` so OpenAPI, `view.gen.ts`, and `dist/` install bundles stay current. See [UI TypeScript types](ui-types.md).
+5. **Optional UI** — bundle inclusion does not automatically render the gate in the dashboard; wire widgets separately if needed.
+6. **User docs** — update [Dashboard Aggregation API](../advanced-usage/dashboard-apiserver.md) if it enumerates manager kinds.
 
 ## Triggering Reconciliation of ChangeTransferPolicies
 

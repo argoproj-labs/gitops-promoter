@@ -45,6 +45,7 @@ var (
 	_ utils.PromoterResource = &promoterv1alpha1.ClusterScmProvider{}
 	_ utils.PromoterResource = &promoterv1alpha1.GitRepository{}
 	_ utils.PromoterResource = &promoterv1alpha1.TimedCommitStatus{}
+	_ utils.PromoterResource = &promoterv1alpha1.ScheduledCommitStatus{}
 	_ utils.PromoterResource = &promoterv1alpha1.GitCommitStatus{}
 	_ utils.PromoterResource = &promoterv1alpha1.WebRequestCommitStatus{}
 	_ utils.PromoterResource = &promoterv1alpha1.ArgoCDCommitStatus{}

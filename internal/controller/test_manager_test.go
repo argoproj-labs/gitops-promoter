@@ -39,6 +39,8 @@ import (
 
 // startPartitionedManager builds a multicluster manager with instance-id cache
 // partitioning matching cmd/main.go and registers controllers needed for migration tests.
+// When adding a new built-in gate reconciler, register it here as well as in suite_test.go
+// and cmd/main.go — otherwise instance-id migration tests will not create its CommitStatuses.
 func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace string, instanceID *string) context.CancelFunc {
 	// The instance ID is process-global state also read by the main suite's managers (started in
 	// BeforeSuite against the primary envtest). Swap it for this partitioned manager's lifetime
@@ -119,6 +121,14 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 		Client:      localMgr.GetClient(),
 		Scheme:      localMgr.GetScheme(),
 		Recorder:    localMgr.GetEventRecorder("WebRequestCommitStatus"),
+		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+	}).SetupWithManager(mgrCtx, localMgr)).To(Succeed())
+
+	Expect((&ScheduledCommitStatusReconciler{
+		Client:      localMgr.GetClient(),
+		Scheme:      localMgr.GetScheme(),
+		Recorder:    localMgr.GetEventRecorder("ScheduledCommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(mgrCtx, localMgr)).To(Succeed())

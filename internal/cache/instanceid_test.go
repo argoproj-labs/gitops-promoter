@@ -3,13 +3,13 @@ package cache_test
 import (
 	"testing"
 
-	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	promotercache "github.com/argoproj-labs/gitops-promoter/internal/cache"
+	"github.com/argoproj-labs/gitops-promoter/internal/kinds"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 )
 
@@ -62,27 +62,8 @@ var _ = Describe("OptionsForInstanceID", func() {
 })
 
 var _ = Describe("Partitioned promoter CRDs", func() {
-	It("includes every reconciled Promoter CRD kind except ControllerConfiguration", func() {
-		scheme := runtime.NewScheme()
-		Expect(promoterv1alpha1.AddToScheme(scheme)).To(Succeed())
-
-		wantKinds := map[string]struct{}{
-			"PromotionStrategy":               {},
-			"ChangeTransferPolicy":            {},
-			"CommitStatus":                    {},
-			"PullRequest":                     {},
-			"ScmProvider":                     {},
-			"ClusterScmProvider":              {},
-			"GitRepository":                   {},
-			"GitCommitStatus":                 {},
-			"TimedCommitStatus":               {},
-			"WebRequestCommitStatus":          {},
-			"ArgoCDCommitStatus":              {},
-			"PreviousEnvironmentCommitStatus": {},
-			"DAGCommitStatus":                 {},
-			"ScheduledCommitStatus":           {},
-			"RevertCommit":                    {},
-		}
+	It("includes every scheme promoter kind except ControllerConfiguration", func() {
+		scheme := utils.GetScheme()
 
 		gotKinds := map[string]struct{}{}
 		for _, obj := range promotercache.PartitionedObjects() {
@@ -94,6 +75,20 @@ var _ = Describe("Partitioned promoter CRDs", func() {
 			gotKinds[gvk.Kind] = struct{}{}
 		}
 
-		Expect(gotKinds).To(Equal(wantKinds))
+		wantKinds := map[string]struct{}{}
+		for _, obj := range kinds.All(scheme) {
+			kind := kinds.Kind(scheme, obj)
+			if kind == kinds.ControllerConfigurationKind {
+				continue
+			}
+			wantKinds[kind] = struct{}{}
+		}
+		Expect(gotKinds).To(Equal(wantKinds),
+			"PartitionedObjects kinds drifted from kinds.All (minus ControllerConfiguration). "+
+				"PartitionedObjects in internal/cache/instanceid.go must stay derived from kinds.All; "+
+				"do not reintroduce a hardcoded CRD list. Register new CRDs with SchemeBuilder only")
+		Expect(gotKinds).NotTo(HaveKey(kinds.ControllerConfigurationKind),
+			"ControllerConfiguration must not be instance-id partitioned; it is scoped by install namespace. "+
+				"Keep excluding it in PartitionedObjects")
 	})
 })

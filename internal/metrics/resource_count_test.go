@@ -26,6 +26,8 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/kinds"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
 func TestMetrics(t *testing.T) {
@@ -90,10 +92,11 @@ func gvkKey(sc *runtime.Scheme, obj client.Object) schema.GroupVersionKind {
 func buildStubInformerSourceWithCounts() *stubResourceCountInformerSource {
 	s := testMetricsScheme()
 	gvkInf := make(map[schema.GroupVersionKind]toolscache.SharedIndexInformer)
-	for _, r := range promoterResources {
-		gvk := gvkKey(s, r.obj)
+	for _, obj := range kinds.All(s) {
+		gvk := gvkKey(s, obj)
+		kind := kinds.Kind(s, obj)
 		var items []runtime.Object
-		switch r.kind {
+		switch kind {
 		case "PromotionStrategy":
 			readyTrue := metav1.ConditionTrue
 			readyFalse := metav1.ConditionFalse
@@ -118,15 +121,17 @@ func buildStubInformerSourceWithCounts() *stubResourceCountInformerSource {
 		default:
 			items = nil
 		}
-		gvkInf[gvk] = informerWithExampleAndItems(r.obj, items...)
+		gvkInf[gvk] = informerWithExampleAndItems(obj, items...)
 	}
 	return &stubResourceCountInformerSource{scheme: s, gvkInf: gvkInf}
 }
 
 func resetPromoterKubernetesResourceGauges() {
-	for _, r := range promoterResources {
+	scheme := utils.GetScheme()
+	for _, obj := range kinds.All(scheme) {
+		kind := kinds.Kind(scheme, obj)
 		for _, readiness := range readinessBuckets {
-			kubernetesResources.DeleteLabelValues(r.kind, readiness)
+			kubernetesResources.DeleteLabelValues(kind, readiness)
 		}
 	}
 }
@@ -232,7 +237,7 @@ var _ = Describe("Resource count metrics", func() {
 				close(done)
 			}()
 
-			minGets := 2 * len(promoterResources)
+			minGets := 2 * len(kinds.All(utils.GetScheme()))
 			Eventually(func() int32 { return stub.getCount.Load() }).WithTimeout(3 * time.Second).WithPolling(5 * time.Millisecond).
 				Should(BeNumerically(">=", minGets))
 

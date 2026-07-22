@@ -39,7 +39,10 @@ var _ = Describe("GateCommitStatusKinds", func() {
 			"WebRequestCommitStatus",
 			"ScheduledCommitStatus",
 		} {
-			Expect(got).To(HaveKey(want))
+			Expect(got).To(HaveKey(want),
+				"%s missing from GateCommitStatusKinds. Ensure Spec has PromotionStrategyRef and the type is "+
+					"registered with SchemeBuilder in api/v1alpha1",
+				want)
 		}
 
 		for _, notWant := range []string{
@@ -49,7 +52,9 @@ var _ = Describe("GateCommitStatusKinds", func() {
 			"PullRequest",
 			"GitRepository",
 		} {
-			Expect(got).NotTo(HaveKey(notWant))
+			Expect(got).NotTo(HaveKey(notWant),
+				"%s must not be treated as a PromotionStrategyRef gate; it lacks Spec.PromotionStrategyRef",
+				notWant)
 		}
 	})
 })
