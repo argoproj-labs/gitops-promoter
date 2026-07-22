@@ -209,6 +209,28 @@ var _ = Describe("Resource count metrics", func() {
 				ContainSubstring("injected get informer failure"),
 			))
 		})
+
+		It("skips ControllerConfiguration without calling GetInformer", func() {
+			var logLines []string
+			log := funcr.New(func(prefix, args string) {
+				if prefix != "" {
+					logLines = append(logLines, prefix+": "+args)
+					return
+				}
+				logLines = append(logLines, args)
+			}, funcr.Options{})
+
+			stub := buildStubInformerSourceWithCounts()
+			stub.getCount = &atomic.Int32{}
+			ccGVK := gvkKey(stub.scheme, &promoterv1alpha1.ControllerConfiguration{})
+			// No informer registered — would error if GetInformer were called for this kind.
+			delete(stub.gvkInf, ccGVK)
+
+			refreshKubernetesResourceCounts(context.Background(), stub, log)
+
+			Expect(stub.getCount.Load()).To(Equal(int32(len(kinds.All(stub.scheme)) - 1)))
+			Expect(strings.Join(logLines, "\n")).NotTo(ContainSubstring("ControllerConfiguration"))
+		})
 	})
 
 	Describe("ResourceCountRunnable", func() {
@@ -237,7 +259,8 @@ var _ = Describe("Resource count metrics", func() {
 				close(done)
 			}()
 
-			minGets := 2 * len(kinds.All(utils.GetScheme()))
+			// ControllerConfiguration is skipped, so each refresh lists one fewer kind.
+			minGets := 2 * (len(kinds.All(utils.GetScheme())) - 1)
 			Eventually(func() int32 { return stub.getCount.Load() }).WithTimeout(3 * time.Second).WithPolling(5 * time.Millisecond).
 				Should(BeNumerically(">=", minGets))
 

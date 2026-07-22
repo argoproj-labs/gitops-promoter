@@ -28,7 +28,7 @@ var kubernetesResources = prometheus.NewGaugeVec(
 		Name: "promoter_kubernetes_resources",
 		Help: "Current count of promoter.argoproj.io custom resources in the local Kubernetes cluster, by API kind and readiness. " +
 			"Updated on an interval from the controller informer stores (no per-tick list/deep-copy); does not include resources on remote clusters " +
-			"reconciled via multicluster setup.",
+			"reconciled via multicluster setup. ControllerConfiguration is omitted (singleton, multi-namespace informer).",
 	},
 	[]string{"kind", "readiness"},
 )
@@ -90,6 +90,11 @@ func refreshKubernetesResourceCounts(ctx context.Context, c resourceCountInforme
 	scheme := utils.GetScheme()
 	for _, obj := range kinds.All(scheme) {
 		kind := kinds.Kind(scheme, obj)
+		// ControllerConfiguration is cached with ByObject.Namespaces, so GetInformer returns a
+		// multiNamespaceInformer that is not a SharedIndexInformer. Skip it — it is a singleton.
+		if kind == kinds.ControllerConfigurationKind {
+			continue
+		}
 		counts, err := countsByReadinessFromInformer(ctx, c, obj)
 		if err != nil {
 			log.Error(err, "counting resources for promoter_kubernetes_resources metric", "kind", kind)
