@@ -48,15 +48,15 @@ import (
 
 // DAGURLTemplateData is the data passed to DAGCommitStatus.spec.url.template.
 type DAGURLTemplateData struct {
-	Environment       string
 	DAGCommitStatus   promoterv1alpha1.DAGCommitStatus
 	PromotionStrategy *promoterv1alpha1.PromotionStrategy
-	// DependsOn is the current environment's immediate upstream branches (one edge away),
-	// copied from DAGCommitStatus.spec.environments for the Environment being rendered.
-	DependsOn []string
+	Environment       string
 	// DependsOnQuery is DependsOn encoded as repeated env= query parameters
 	// (e.g. "env=e2e&env=perf"), ready to append after "?". Empty when DependsOn is empty.
 	DependsOnQuery string
+	// DependsOn is the current environment's immediate upstream branches (one edge away),
+	// copied from DAGCommitStatus.spec.environments for the Environment being rendered.
+	DependsOn []string
 }
 
 // dependsOnForBranch returns the dependsOn list for branch from the DAG spec, or nil if the
