@@ -135,6 +135,20 @@ url:
     {{- if .DependsOnQuery -}}{{ printf "%s?%s" $base .DependsOnQuery }}{{- else -}}{{ $base }}{{- end -}}
 ```
 
+For a custom encoding (something other than repeated `env=`), use `.DependsOn` directly. For example,
+a comma-separated `upstreams=` query:
+
+```yaml
+url:
+  template: |
+    {{- $base := printf "https://promoter.example.com/promotion-strategies/%s" .PromotionStrategy.Name -}}
+    {{- if .DependsOn -}}
+    {{ printf "%s?upstreams=%s" $base (urlQueryEscape (join "," .DependsOn)) }}
+    {{- else -}}
+    {{ $base }}
+    {{- end -}}
+```
+
 ## Wiring the gate into the PromotionStrategy
 
 The DAGCommitStatus only *produces* the gate; the PromotionStrategy must *consume* it. Add the same
