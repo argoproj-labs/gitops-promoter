@@ -117,5 +117,34 @@ var _ = Describe("PreviousEnvironmentCommitStatus Controller", func() {
 				g.Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
+
+		It("should pass url.template through to the owned DAGCommitStatus", func() {
+			const urlTemplate = "https://example.com/ps/{{ .PromotionStrategy.Name }}?env={{ .Environment }}"
+
+			By("Creating a PreviousEnvironmentCommitStatus with a URL template")
+			pecs = &promoterv1alpha1.PreviousEnvironmentCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.PreviousEnvironmentCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+					URL: promoterv1alpha1.URLConfig{
+						Template: urlTemplate,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, pecs)).To(Succeed())
+
+			By("Waiting for the owned DAGCommitStatus to receive the URL template")
+			Eventually(func(g Gomega) {
+				dag := &promoterv1alpha1.DAGCommitStatus{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: name}, dag)).To(Succeed())
+				g.Expect(dag.Spec.URL.Template).To(Equal(urlTemplate))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
 	})
 })

@@ -2377,12 +2377,19 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatusSpec(ref c
 							},
 						},
 					},
+					"url": {
+						SchemaProps: spec.SchemaProps{
+							Description: "URL generates the URL to use on the per-environment CommitStatus (SCM details link), for example a link into the Promoter UI that highlights this environment's dependsOn upstreams. Optional; when empty, no URL is set on the child CommitStatus. The template receives .Environment, .DAGCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery (see controller docs).",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.URLConfig{}.OpenAPIModelName()),
+						},
+					},
 				},
 				Required: []string{"promotionStrategyRef", "key", "environments"},
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.DAGEnvironment{}.OpenAPIModelName(), apiv1alpha1.ObjectReference{}.OpenAPIModelName()},
+			apiv1alpha1.DAGEnvironment{}.OpenAPIModelName(), apiv1alpha1.ObjectReference{}.OpenAPIModelName(), apiv1alpha1.URLConfig{}.OpenAPIModelName()},
 	}
 }
 
@@ -4009,12 +4016,19 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PreviousEnvironmentCommit
 							Format:      "",
 						},
 					},
+					"url": {
+						SchemaProps: spec.SchemaProps{
+							Description: "URL is passed through to the owned chain-shaped DAGCommitStatus. The DAG controller renders it when writing per-environment CommitStatuses. Optional; when empty, no URL is set.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.URLConfig{}.OpenAPIModelName()),
+						},
+					},
 				},
 				Required: []string{"promotionStrategyRef", "key"},
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.ObjectReference{}.OpenAPIModelName()},
+			apiv1alpha1.ObjectReference{}.OpenAPIModelName(), apiv1alpha1.URLConfig{}.OpenAPIModelName()},
 	}
 }
 

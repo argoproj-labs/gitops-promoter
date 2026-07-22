@@ -20,6 +20,9 @@ spec:
       dependsOn:
         - environment/e2e
         - environment/perf
+  # Optional SCM details URL on each per-environment gate CommitStatus
+  url:
+    template: "https://promoter.example.com/promotion-strategies/{{ .PromotionStrategy.Name }}?env={{ urlQueryEscape .Environment }}"
 status:
   observedGeneration: 123 # compare with metadata.generation to detect stale status
   conditions:

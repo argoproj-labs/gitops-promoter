@@ -20,7 +20,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"reflect"
+	"strings"
 	"time"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -43,6 +45,43 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
+
+// DAGURLTemplateData is the data passed to DAGCommitStatus.spec.url.template.
+type DAGURLTemplateData struct {
+	Environment       string
+	DAGCommitStatus   promoterv1alpha1.DAGCommitStatus
+	PromotionStrategy *promoterv1alpha1.PromotionStrategy
+	// DependsOn is the current environment's immediate upstream branches (one edge away),
+	// copied from DAGCommitStatus.spec.environments for the Environment being rendered.
+	DependsOn []string
+	// DependsOnQuery is DependsOn encoded as repeated env= query parameters
+	// (e.g. "env=e2e&env=perf"), ready to append after "?". Empty when DependsOn is empty.
+	DependsOnQuery string
+}
+
+// dependsOnForBranch returns the dependsOn list for branch from the DAG spec, or nil if the
+// branch is not declared.
+func dependsOnForBranch(dcs *promoterv1alpha1.DAGCommitStatus, branch string) []string {
+	for i := range dcs.Spec.Environments {
+		if dcs.Spec.Environments[i].Branch == branch {
+			return dcs.Spec.Environments[i].DependsOn
+		}
+	}
+	return nil
+}
+
+// buildDependsOnQuery encodes upstream branches as repeated env= query parameters for Promoter UI
+// deep links (e.g. "env=e2e&env=perf"). Values are query-escaped. Returns "" when dependsOn is empty.
+func buildDependsOnQuery(dependsOn []string) string {
+	if len(dependsOn) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(dependsOn))
+	for _, dep := range dependsOn {
+		parts = append(parts, "env="+url.QueryEscape(dep))
+	}
+	return strings.Join(parts, "&")
+}
 
 // DAGCommitStatusReconciler reconciles a DAGCommitStatus object
 type DAGCommitStatusReconciler struct {
@@ -314,6 +353,47 @@ func (r *DAGCommitStatusReconciler) createOrUpdateDAGCommitStatus(
 
 	labels := utils.CommitStatusStandardLabels(dcs, branch, key)
 
+	// Use the stable gate key as the SCM commit status context (spec.Name) so users can
+	// reference a single predictable name in branch protection rules, regardless of which
+	// environment or phase produced the status. The human-readable, per-environment detail
+	// goes in the description instead.
+	commitStatusSpec := acv1alpha1.CommitStatusSpec().
+		WithRepositoryReference(acv1alpha1.ObjectReference().
+			WithName(ps.Spec.RepositoryReference.Name)).
+		WithSha(hydratedSha).
+		WithName(key).
+		WithDescription(description).
+		WithPhase(phase)
+
+	// Render URL from template if configured; when empty, leave CommitStatus.spec.url unset
+	if dcs.Spec.URL.Template != "" {
+		dependsOn := dependsOnForBranch(dcs, branch)
+		data := DAGURLTemplateData{
+			Environment:       branch,
+			DAGCommitStatus:   *dcs,
+			PromotionStrategy: ps,
+			DependsOn:         dependsOn,
+			DependsOnQuery:    buildDependsOnQuery(dependsOn),
+		}
+		renderedURL, err := utils.RenderStringTemplate(dcs.Spec.URL.Template, data, dcs.Spec.URL.Options...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to render URL template: %w", err)
+		}
+		parsedURL, err := url.Parse(renderedURL)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse URL: %w", err)
+		}
+		if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+			return nil, fmt.Errorf("URL scheme is not http or https: %s", parsedURL.Scheme)
+		}
+		logf.FromContext(ctx).V(4).Info("Rendered URL template",
+			"url", renderedURL,
+			"environment", branch,
+			"commitStatus", commitStatusName,
+			"namespace", dcs.Namespace)
+		commitStatusSpec = commitStatusSpec.WithUrl(renderedURL)
+	}
+
 	commitStatusApply := acv1alpha1.CommitStatus(commitStatusName, dcs.Namespace).
 		WithLabels(labels).
 		WithOwnerReferences(acmetav1.OwnerReference().
@@ -323,17 +403,7 @@ func (r *DAGCommitStatusReconciler) createOrUpdateDAGCommitStatus(
 			WithUID(dcs.UID).
 			WithController(true).
 			WithBlockOwnerDeletion(true)).
-		WithSpec(acv1alpha1.CommitStatusSpec().
-			WithRepositoryReference(acv1alpha1.ObjectReference().
-				WithName(ps.Spec.RepositoryReference.Name)).
-			WithSha(hydratedSha).
-			// Use the stable gate key as the SCM commit status context (spec.Name) so users can
-			// reference a single predictable name in branch protection rules, regardless of which
-			// environment or phase produced the status. The human-readable, per-environment detail
-			// goes in the description instead.
-			WithName(key).
-			WithDescription(description).
-			WithPhase(phase))
+		WithSpec(commitStatusSpec)
 
 	commitStatus := &promoterv1alpha1.CommitStatus{}
 	commitStatus.Name = commitStatusName

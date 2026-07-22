@@ -58,6 +58,83 @@ above). Every `branch` must match a branch declared in the referenced PromotionS
 required and must match a key declared in that PromotionStrategy's `proposedCommitStatuses`, so the
 gate this controller produces is actually enforced. A common value is `promoter-dag`.
 
+### Commit Status URL Template
+
+To set the SCM details URL on each per-environment gate `CommitStatus` (for example a link into
+the Promoter UI), configure `spec.url.template`. The template uses
+[Go templates](https://pkg.go.dev/text/template) syntax and most
+[Sprig](https://masterminds.github.io/sprig/) functions (excluding `env`, `expandenv`, and
+`getHostByName`) are supported, plus [`urlQueryEscape`](https://pkg.go.dev/net/url#QueryEscape)
+for query parameters.
+
+> [!IMPORTANT]
+> The rendered URL must use a scheme of either `http` or `https`. When `url.template` is omitted,
+> no URL is set on the child CommitStatus.
+
+#### Template Variables
+
+- `.Environment` — the environment branch name the URL is being rendered for
+- `.DAGCommitStatus` — the whole [DAGCommitStatus](../../crd-specs.md#dagcommitstatus) CR
+- `.PromotionStrategy` — the referenced [PromotionStrategy](../../crd-specs.md#promotionstrategy)
+- `.DependsOn` — the current environment's immediate upstream branches (one edge away), from
+  `spec.environments[].dependsOn`
+- `.DependsOnQuery` — `.DependsOn` encoded as repeated `env=` query parameters for Promoter UI deep
+  links (for example `env=environment%2Fe2e&env=environment%2Fperf`). Empty for graph roots with no
+  `dependsOn`. Append after `?` in the template; do not add a leading `?` yourself inside this field.
+
+#### Template Options
+
+Same `missingkey=...` options as other commit status URL templates:
+
+- `missingkey=default` or `missingkey=invalid` — continue; missing map keys print as `<no value>`
+- `missingkey=zero` — return the zero value for the map element type
+- `missingkey=error` — fail the reconcile if a missing key is indexed
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: DAGCommitStatus
+metadata:
+  name: demo-dag
+spec:
+  url:
+    template: ...
+    options:
+      - missingkey=error
+```
+
+#### Examples
+
+Simple URL that includes the current environment:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: DAGCommitStatus
+metadata:
+  name: demo-dag
+spec:
+  key: promoter-dag
+  promotionStrategyRef:
+    name: demo-dag
+  environments:
+    - branch: environment/dev
+    - branch: environment/staging
+      dependsOn:
+        - environment/dev
+  url:
+    template: "https://promoter.example.com/promotion-strategies/{{ .PromotionStrategy.Name }}?env={{ urlQueryEscape .Environment }}"
+```
+
+Highlight this environment's immediate `dependsOn` upstreams (useful for SCM "View details" deep
+links). Use `.DependsOnQuery` so the template stays small; roots with an empty `dependsOn` omit the
+query string:
+
+```yaml
+url:
+  template: |
+    {{- $base := printf "https://promoter.example.com/promotion-strategies/%s" .PromotionStrategy.Name -}}
+    {{- if .DependsOnQuery -}}{{ printf "%s?%s" $base .DependsOnQuery }}{{- else -}}{{ $base }}{{- end -}}
+```
+
 ## Wiring the gate into the PromotionStrategy
 
 The DAGCommitStatus only *produces* the gate; the PromotionStrategy must *consume* it. Add the same

@@ -209,6 +209,20 @@ func (r *PreviousEnvironmentCommitStatusReconciler) upsertDAGCommitStatus(ctx co
 	kind := reflect.TypeOf(promoterv1alpha1.PreviousEnvironmentCommitStatus{}).Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
+	dagSpec := acv1alpha1.DAGCommitStatusSpec().
+		WithPromotionStrategyRef(acv1alpha1.ObjectReference().WithName(ps.Name)).
+		WithKey(key).
+		WithEnvironments(environments...)
+
+	// Pass URL config through to the owned DAG; the DAG controller renders it onto child CommitStatuses.
+	if pecs.Spec.URL.Template != "" {
+		urlConfig := acv1alpha1.URLConfig().WithTemplate(pecs.Spec.URL.Template)
+		if len(pecs.Spec.URL.Options) > 0 {
+			urlConfig = urlConfig.WithOptions(pecs.Spec.URL.Options...)
+		}
+		dagSpec = dagSpec.WithURL(urlConfig)
+	}
+
 	dagApply := acv1alpha1.DAGCommitStatus(pecs.Name, pecs.Namespace).
 		WithOwnerReferences(acmetav1.OwnerReference().
 			WithAPIVersion(gvk.GroupVersion().String()).
@@ -217,10 +231,7 @@ func (r *PreviousEnvironmentCommitStatusReconciler) upsertDAGCommitStatus(ctx co
 			WithUID(pecs.UID).
 			WithController(true).
 			WithBlockOwnerDeletion(true)).
-		WithSpec(acv1alpha1.DAGCommitStatusSpec().
-			WithPromotionStrategyRef(acv1alpha1.ObjectReference().WithName(ps.Name)).
-			WithKey(key).
-			WithEnvironments(environments...))
+		WithSpec(dagSpec)
 
 	dag := &promoterv1alpha1.DAGCommitStatus{}
 	dag.Name = pecs.Name

@@ -32,6 +32,9 @@ type PreviousEnvironmentCommitStatusSpecApplyConfiguration struct {
 	// It must match a key declared there so the gate this controller produces is enforced.
 	// Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
 	Key *string `json:"key,omitempty"`
+	// URL is passed through to the owned chain-shaped DAGCommitStatus. The DAG controller renders
+	// it when writing per-environment CommitStatuses. Optional; when empty, no URL is set.
+	URL *URLConfigApplyConfiguration `json:"url,omitempty"`
 }
 
 // PreviousEnvironmentCommitStatusSpecApplyConfiguration constructs a declarative configuration of the PreviousEnvironmentCommitStatusSpec type for use with
@@ -53,5 +56,13 @@ func (b *PreviousEnvironmentCommitStatusSpecApplyConfiguration) WithPromotionStr
 // If called multiple times, the Key field is set to the value of the last call.
 func (b *PreviousEnvironmentCommitStatusSpecApplyConfiguration) WithKey(value string) *PreviousEnvironmentCommitStatusSpecApplyConfiguration {
 	b.Key = &value
+	return b
+}
+
+// WithURL sets the URL field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the URL field is set to the value of the last call.
+func (b *PreviousEnvironmentCommitStatusSpecApplyConfiguration) WithURL(value *URLConfigApplyConfiguration) *PreviousEnvironmentCommitStatusSpecApplyConfiguration {
+	b.URL = value
 	return b
 }

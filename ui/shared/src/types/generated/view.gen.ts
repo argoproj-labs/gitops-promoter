@@ -462,6 +462,11 @@ export type components = {
              * @default {}
              */
             promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /**
+             * @description URL generates the URL to use on the per-environment CommitStatus (SCM details link), for example a link into the Promoter UI that highlights this environment's dependsOn upstreams. Optional; when empty, no URL is set on the child CommitStatus. The template receives .Environment, .DAGCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery (see controller docs).
+             * @default {}
+             */
+            url?: components["schemas"]["URLConfig"];
         };
         /** @description DAGCommitStatusStatus defines the observed state of DAGCommitStatus. */
         DAGCommitStatusStatus: {
@@ -1256,6 +1261,11 @@ export type components = {
              * @default {}
              */
             promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /**
+             * @description URL is passed through to the owned chain-shaped DAGCommitStatus. The DAG controller renders it when writing per-environment CommitStatuses. Optional; when empty, no URL is set.
+             * @default {}
+             */
+            url?: components["schemas"]["URLConfig"];
         };
         /** @description PreviousEnvironmentCommitStatusStatus defines the observed state of PreviousEnvironmentCommitStatus. */
         PreviousEnvironmentCommitStatusStatus: {

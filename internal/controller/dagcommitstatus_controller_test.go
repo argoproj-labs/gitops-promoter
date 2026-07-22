@@ -17,15 +17,23 @@ limitations under the License.
 package controller
 
 import (
+	"context"
 	_ "embed"
+	"os"
 	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
 //go:embed testdata/DAGCommitStatus.yaml
@@ -87,6 +95,141 @@ var _ = Describe("DAGCommitStatus Controller", func() {
 		It("should unmarshal the DAGCommitStatus resource", func() {
 			err := unmarshalYamlStrict(testDAGCommitStatusYAML, &promoterv1alpha1.DAGCommitStatus{})
 			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
+	Context("When reconciling with a URL template", func() {
+		var (
+			ctx               context.Context
+			name              string
+			scmSecret         *v1.Secret
+			scmProvider       *promoterv1alpha1.ScmProvider
+			gitRepo           *promoterv1alpha1.GitRepository
+			promotionStrategy *promoterv1alpha1.PromotionStrategy
+			dagCommitStatus   *promoterv1alpha1.DAGCommitStatus
+		)
+
+		BeforeEach(func() {
+			ctx = context.Background()
+
+			By("Setting up test git repository and PromotionStrategy")
+			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "dag-commit-status-url-test", "default")
+
+			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: promoterv1alpha1.DAGCommitStatusKey},
+			}
+			setupInitialTestGitRepoOnServer(ctx, gitRepo)
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			By("Cleaning up test resources")
+			if dagCommitStatus != nil {
+				_ = k8sClient.Delete(ctx, dagCommitStatus)
+			}
+			if promotionStrategy != nil {
+				_ = k8sClient.Delete(ctx, promotionStrategy)
+			}
+			if gitRepo != nil {
+				_ = k8sClient.Delete(ctx, gitRepo)
+			}
+			if scmProvider != nil {
+				_ = k8sClient.Delete(ctx, scmProvider)
+			}
+			if scmSecret != nil {
+				_ = k8sClient.Delete(ctx, scmSecret)
+			}
+		})
+
+		It("should render url.template onto per-environment CommitStatuses", func() {
+			By("Creating a DAGCommitStatus with a URL template that includes the environment")
+			dagCommitStatus = &promoterv1alpha1.DAGCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-dag",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.DAGCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  promoterv1alpha1.DAGCommitStatusKey,
+					Environments: []promoterv1alpha1.DAGEnvironment{
+						{Branch: testBranchDevelopment},
+						{Branch: testBranchStaging, DependsOn: []string{testBranchDevelopment}},
+						{Branch: testBranchProduction, DependsOn: []string{testBranchStaging}},
+					},
+					URL: promoterv1alpha1.URLConfig{
+						Template: "https://example.com/ui?env={{ .Environment }}",
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, dagCommitStatus)).To(Succeed())
+
+			By("Waiting for the DAGCommitStatus to become Ready")
+			Eventually(func(g Gomega) {
+				updated := &promoterv1alpha1.DAGCommitStatus{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dagCommitStatus), updated)).To(Succeed())
+				readyCondition := meta.FindStatusCondition(updated.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(readyCondition).ToNot(BeNil())
+				g.Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Creating a proposed change so the DAG writes CommitStatuses")
+			gitPath, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() { _ = os.RemoveAll(gitPath) })
+			makeChangeAndHydrateRepo(gitPath, gitRepo, "url template test change", "")
+
+			By("Checking that each environment CommitStatus has the rendered URL")
+			for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
+				Eventually(func(g Gomega) {
+					cs := &promoterv1alpha1.CommitStatus{}
+					csName := utils.CommitStatusResourceName(ctx, dagCommitStatus, branch)
+					g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: csName}, cs)).To(Succeed())
+					g.Expect(cs.Spec.Url).To(Equal("https://example.com/ui?env=" + branch))
+				}, constants.EventuallyTimeout).Should(Succeed())
+			}
+		})
+	})
+})
+
+var _ = Describe("DAG URL template helpers", func() {
+	Describe("dependsOnForBranch", func() {
+		It("returns the dependsOn list for a declared branch", func() {
+			dcs := &promoterv1alpha1.DAGCommitStatus{
+				Spec: promoterv1alpha1.DAGCommitStatusSpec{
+					Environments: dagEnvs("dev", "", "e2e", "dev", "prod", "e2e,perf"),
+				},
+			}
+			Expect(dependsOnForBranch(dcs, "prod")).To(Equal([]string{"e2e", "perf"}))
+			Expect(dependsOnForBranch(dcs, "dev")).To(BeEmpty())
+		})
+
+		It("returns nil for an unknown branch", func() {
+			dcs := &promoterv1alpha1.DAGCommitStatus{
+				Spec: promoterv1alpha1.DAGCommitStatusSpec{
+					Environments: dagEnvs("dev", ""),
+				},
+			}
+			Expect(dependsOnForBranch(dcs, "missing")).To(BeNil())
+		})
+	})
+
+	Describe("buildDependsOnQuery", func() {
+		It("returns empty for a root with no dependsOn", func() {
+			Expect(buildDependsOnQuery(nil)).To(Equal(""))
+			Expect(buildDependsOnQuery([]string{})).To(Equal(""))
+		})
+
+		It("encodes a single upstream as env=", func() {
+			Expect(buildDependsOnQuery([]string{"environment/dev"})).To(Equal("env=environment%2Fdev"))
+		})
+
+		It("encodes fan-in upstreams as repeated env=", func() {
+			Expect(buildDependsOnQuery([]string{"environment/e2e", "environment/perf"})).
+				To(Equal("env=environment%2Fe2e&env=environment%2Fperf"))
 		})
 	})
 })

@@ -37,6 +37,12 @@ type DAGCommitStatusSpecApplyConfiguration struct {
 	// all of its dependsOn upstreams are satisfied. An entry with no dependsOn is a graph root.
 	// The graph must be acyclic; cycles and references to unknown branches are rejected.
 	Environments []DAGEnvironmentApplyConfiguration `json:"environments,omitempty"`
+	// URL generates the URL to use on the per-environment CommitStatus (SCM details link), for
+	// example a link into the Promoter UI that highlights this environment's dependsOn upstreams.
+	// Optional; when empty, no URL is set on the child CommitStatus. The template receives
+	// .Environment, .DAGCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery
+	// (see controller docs).
+	URL *URLConfigApplyConfiguration `json:"url,omitempty"`
 }
 
 // DAGCommitStatusSpecApplyConfiguration constructs a declarative configuration of the DAGCommitStatusSpec type for use with
@@ -71,5 +77,13 @@ func (b *DAGCommitStatusSpecApplyConfiguration) WithEnvironments(values ...*DAGE
 		}
 		b.Environments = append(b.Environments, *values[i])
 	}
+	return b
+}
+
+// WithURL sets the URL field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the URL field is set to the value of the last call.
+func (b *DAGCommitStatusSpecApplyConfiguration) WithURL(value *URLConfigApplyConfiguration) *DAGCommitStatusSpecApplyConfiguration {
+	b.URL = value
 	return b
 }

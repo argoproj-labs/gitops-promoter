@@ -40,6 +40,38 @@ required and must match a key declared in that PromotionStrategy's `proposedComm
 gate this controller produces is actually enforced. A common value is
 `promoter-previous-environment`.
 
+### Commit Status URL Template
+
+Optional `spec.url` is passed through to the owned chain-shaped
+[DAGCommitStatus](dag-commit-status.md). The **DAG controller** renders the template when writing
+per-environment gate `CommitStatus` objects; this controller does not render URLs itself.
+
+Configure `url.template` the same way as on DAGCommitStatus (Go templates, Sprig with the same
+restrictions, `urlQueryEscape`, and optional `url.options`). After pass-through, template variables
+are those of the DAG renderer:
+
+- `.Environment`
+- `.DAGCommitStatus` (the generated chain-shaped DAG, including `spec.environments[].dependsOn`)
+- `.PromotionStrategy`
+- `.DependsOn` / `.DependsOnQuery` (immediate upstreams for the current environment)
+
+See [DAG Commit Status — Commit Status URL Template](dag-commit-status.md#commit-status-url-template)
+for variable details and examples. A linear pipeline typically has at most one `dependsOn` entry per
+environment.
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PreviousEnvironmentCommitStatus
+metadata:
+  name: demo
+spec:
+  key: promoter-previous-environment
+  promotionStrategyRef:
+    name: demo
+  url:
+    template: "https://promoter.example.com/promotion-strategies/{{ .PromotionStrategy.Name }}?env={{ urlQueryEscape .Environment }}"
+```
+
 ## Wiring the gate into the PromotionStrategy
 
 The PreviousEnvironmentCommitStatus only *produces* the gate (via the DAGCommitStatus it generates);

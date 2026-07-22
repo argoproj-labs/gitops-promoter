@@ -51,6 +51,14 @@ type DAGCommitStatusSpec struct {
 	// +listType:=map
 	// +listMapKey=branch
 	Environments []DAGEnvironment `json:"environments"`
+
+	// URL generates the URL to use on the per-environment CommitStatus (SCM details link), for
+	// example a link into the Promoter UI that highlights this environment's dependsOn upstreams.
+	// Optional; when empty, no URL is set on the child CommitStatus. The template receives
+	// .Environment, .DAGCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery
+	// (see controller docs).
+	// +kubebuilder:validation:Optional
+	URL URLConfig `json:"url,omitempty"`
 }
 
 // DAGEnvironment is a single node in the promotion dependency graph.

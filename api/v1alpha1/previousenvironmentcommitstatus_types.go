@@ -40,6 +40,11 @@ type PreviousEnvironmentCommitStatusSpec struct {
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
 	Key string `json:"key"`
+
+	// URL is passed through to the owned chain-shaped DAGCommitStatus. The DAG controller renders
+	// it when writing per-environment CommitStatuses. Optional; when empty, no URL is set.
+	// +kubebuilder:validation:Optional
+	URL URLConfig `json:"url,omitempty"`
 }
 
 // PreviousEnvironmentCommitStatusStatus defines the observed state of PreviousEnvironmentCommitStatus.
