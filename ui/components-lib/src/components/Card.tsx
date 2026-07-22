@@ -21,17 +21,18 @@ const Card: React.FC<CardProps> = ({ environments, onHistoryNavigate }) => {
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
+
     const detectFlexDirection = () => {
-      if (wrapperRef.current) {
-        const styles = window.getComputedStyle(wrapperRef.current);
-        const flexDirection = styles.flexDirection;
-        setIsVerticalLayout(flexDirection === 'row');
-      }
+      const flexDirection = window.getComputedStyle(wrapper).flexDirection;
+      setIsVerticalLayout(flexDirection === 'row');
     };
 
     detectFlexDirection();
-    window.addEventListener('resize', detectFlexDirection);
-    return () => window.removeEventListener('resize', detectFlexDirection);
+    const observer = new ResizeObserver(detectFlexDirection);
+    observer.observe(wrapper);
+    return () => observer.disconnect();
   }, []);
 
   const processingEnvs = useMemo(() => getProcessingEnvs(environments), [environments]);
