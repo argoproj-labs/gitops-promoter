@@ -1,5 +1,10 @@
 import type { Commit, CommitStatus } from '@shared/types/promotion';
-import type { HealthKey } from './types';
+import type { CellKind, HealthKey } from './types';
+
+// Cell kinds with no commit activity for the env: non-selectable, excluded from env-scoped rows.
+export function isEmptyCellKind(kind: CellKind | undefined): boolean {
+  return kind === 'no-changes' || kind === 'unknown-history';
+}
 
 export function healthFromStatuses(statuses: CommitStatus[] | undefined): HealthKey {
   if (!statuses || statuses.length === 0) return 'unknown';

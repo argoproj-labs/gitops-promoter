@@ -23,6 +23,21 @@ const FlowCell: React.FC<{
     );
   }
 
+  if (cell.kind === 'unknown-history') {
+    return (
+      <Tooltip
+        label={`This commit predates ${branch}'s available history, so whether it ran here is no longer recorded.`}
+      >
+        <div
+          className="cell cell--unknown-history"
+          aria-label={`History unavailable for this commit in ${branch}`}
+        >
+          <span className="cell__unknown-label">History unavailable</span>
+        </div>
+      </Tooltip>
+    );
+  }
+
   const failingChecks = cell.commitStatuses
     .filter((s) => s.phase === 'failure')
     .map((s) => (s.description ? `${s.key}: ${s.description}` : s.key));
