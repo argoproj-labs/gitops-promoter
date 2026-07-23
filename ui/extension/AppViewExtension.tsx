@@ -6,6 +6,8 @@ import type { CellSelection } from '@components-lib/components/HistoryView/Histo
 import { PromotionStrategy } from '@shared/types/promotion';
 import { AppViewComponentProps } from '@shared/types/extension';
 import { sortStrategyCommitStatuses } from '@shared/utils/util';
+import { bundleToPromotionStrategy } from '@shared/utils/bundle';
+import { isMockMode } from '@shared/fixtures/mockMode';
 import './StrategyDropdown.scss';
 
 type ViewMode = 'card' | 'history';
@@ -94,6 +96,29 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
   useEffect(() => {
     const appName = application.metadata.name;
     const appNamespace = application.metadata.namespace;
+
+    // Gated on process.env.NODE_ENV so the production webpack build inlines the
+    // constant, folds the branch to `false`, and drops the dynamic mockData chunk.
+    if (process.env.NODE_ENV !== 'production' && isMockMode()) {
+      void import('@shared/fixtures/mockData').then(({ mockBundles }) => {
+        const parsed = mockBundles().map((b) =>
+          sortStrategyCommitStatuses(bundleToPromotionStrategy(b)),
+        );
+        setFetchError(null);
+        setStrategies(parsed);
+        const keys = parsed.map(strategyKey);
+        const fromUrl = getParam();
+        const fromStored = getStored(appNamespace, appName);
+        const initial =
+          (keys.includes(fromUrl) && fromUrl) ||
+          (keys.includes(fromStored) && fromStored) ||
+          keys[0];
+        setSelectedKey(initial);
+        setParam(initial);
+        setStored(appNamespace, appName, initial);
+      });
+      return;
+    }
 
     const strategyNodes = (tree.nodes ?? []).filter(
       (node) => node.group === GROUP && node.kind === KIND,

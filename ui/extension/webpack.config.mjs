@@ -1,10 +1,13 @@
 import path from 'path';
 import { codecovWebpackPlugin } from '@codecov/webpack-plugin';
 
-export default {
+export default (_env, argv) => ({
   entry: './index.tsx',
   output: {
     filename: 'extension-promoter.js',
+    // Async chunks (e.g. the dev-only mock fixture) must also match Argo CD's
+    // ^extension(.*)\.js$ scan so the extension installer serves them.
+    chunkFilename: 'extension-promoter-[name].js',
     path: path.resolve(process.cwd(), 'dist'),
     library: { type: 'window' },
   },
@@ -40,5 +43,7 @@ export default {
       uploadToken: process.env.CODECOV_TOKEN,
     }),
   ],
-  mode: 'production',
-};
+  // Defaults to production (release/CI builds, make build-extension); the dev/watch
+  // scripts pass --mode development so the mock-data branch is retained locally.
+  mode: argv.mode ?? 'production',
+});
