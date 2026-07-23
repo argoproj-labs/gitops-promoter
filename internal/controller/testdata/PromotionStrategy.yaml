@@ -18,6 +18,10 @@ spec:
       - key: performance-test
       proposedCommitStatuses:
       - key: deployment-freeze
+  pullRequest:
+    labels:
+      expression: |
+        all(Status.Proposed.CommitStatuses, {.Phase == 'success'}) ? ['lgtm'] : []
 status:
   observedGeneration: 123 # compare with metadata.generation to detect stale status
   conditions:

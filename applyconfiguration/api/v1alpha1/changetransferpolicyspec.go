@@ -40,6 +40,9 @@ type ChangeTransferPolicySpecApplyConfiguration struct {
 	ActiveCommitStatuses []CommitStatusSelectorApplyConfiguration `json:"activeCommitStatuses,omitempty"`
 	// ProposedCommitStatuses lists the statuses to be monitored on the proposed branch
 	ProposedCommitStatuses []CommitStatusSelectorApplyConfiguration `json:"proposedCommitStatuses,omitempty"`
+	// PullRequest configures SCM pull request behavior for this change transfer policy.
+	// Copied from the owning PromotionStrategy by the PromotionStrategy controller.
+	PullRequest *PullRequestPolicySpecApplyConfiguration `json:"pullRequest,omitempty"`
 }
 
 // ChangeTransferPolicySpecApplyConfiguration constructs a declarative configuration of the ChangeTransferPolicySpec type for use with
@@ -111,5 +114,13 @@ func (b *ChangeTransferPolicySpecApplyConfiguration) WithProposedCommitStatuses(
 		}
 		b.ProposedCommitStatuses = append(b.ProposedCommitStatuses, *values[i])
 	}
+	return b
+}
+
+// WithPullRequest sets the PullRequest field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the PullRequest field is set to the value of the last call.
+func (b *ChangeTransferPolicySpecApplyConfiguration) WithPullRequest(value *PullRequestPolicySpecApplyConfiguration) *ChangeTransferPolicySpecApplyConfiguration {
+	b.PullRequest = value
 	return b
 }
