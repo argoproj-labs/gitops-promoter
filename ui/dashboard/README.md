@@ -50,6 +50,12 @@ npm run dev
 
 Open [http://localhost:5173](http://localhost:5173) in your browser.
 
+### Mock data
+
+Append `?mock=true` to a dashboard route (e.g. [http://localhost:5173/promotion-strategies?mock=true](http://localhost:5173/promotion-strategies?mock=true)) to render a stable, built-in set of `PromotionStrategy` fixtures instead of fetching live data. This is useful for building UI against specific states (in-flight promotions, history, PR states) without a running controller, and the fixtures are also importable from `@shared/fixtures/mockData` for unit tests.
+
+The mock code is gated on `import.meta.env.DEV`, so it is dead-code-eliminated from production builds (`npm run build`) and never ships in the bundle.
+
 ## Production Build
 
 ### Build Everything (Dashboard + Go Binary)

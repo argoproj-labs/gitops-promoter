@@ -1,53 +1,25 @@
 import { create } from 'zustand';
 import { enrichFromCRD } from '@shared/utils/PSData';
 import { sortStrategyCommitStatuses } from '@shared/utils/util';
+import { bundleToPromotionStrategy } from '@shared/utils/bundle';
+import { isMockMode } from '@shared/fixtures/mockMode';
 import type { PromotionStrategy } from '@shared/utils/PSData';
-import type { Environment } from '@shared/types/promotion';
-import type { ChangeTransferPolicy, PromotionStrategyDetails } from '@shared/types/view';
+import type { PromotionStrategyDetails } from '@shared/types/view';
 
 interface CRDItem extends PromotionStrategy {
   enriched?: unknown;
 }
 
-// Reconstruct the per-environment status the UI renders. The bundle no longer carries
-// the PromotionStrategy status (it was a duplicate aggregation); instead we build the
-// environment list from the embedded ChangeTransferPolicies, one per environment keyed
-// by spec.activeBranch, in the order declared by the PromotionStrategy spec.
-function environmentsFromCTPs(
-  spec: PromotionStrategy['spec'],
-  ctps: ChangeTransferPolicy[],
-): Environment[] {
-  const byBranch = new Map<string, ChangeTransferPolicy>();
-  for (const ctp of ctps) {
-    const branch = ctp.spec?.activeBranch;
-    if (branch) byBranch.set(branch, ctp);
-  }
+// The mock fixture is PromotionStrategy bundles, so only serve it to that store.
+const PROMOTION_STRATEGY_KIND = 'PromotionStrategyDetails';
 
-  return spec.environments.map((env) => {
-    const status = byBranch.get(env.branch)?.status ?? {};
-    return {
-      branch: env.branch,
-      active: status.active ?? { dry: {}, hydrated: {} },
-      proposed: status.proposed ?? { dry: {}, hydrated: {} },
-      pullRequest: status.pullRequest,
-      history: status.history,
-      lastHealthyDryShas: [],
-    };
-  });
-}
+// Gated on import.meta.env.DEV so the prod build constant-folds this to `false`,
+// letting Rollup drop the branch and the dynamic mockData chunk entirely.
+const mockEnabled = (kind: string) =>
+  import.meta.env.DEV && isMockMode() && kind === PROMOTION_STRATEGY_KIND;
 
 function bundleToItem<T extends CRDItem>(bundle: PromotionStrategyDetails): T {
-  const ps = bundle.promotionStrategy;
-  const environments = environmentsFromCTPs(ps.spec, bundle.changeTransferPolicies ?? []);
-  const psWithEnvironments = {
-    ...ps,
-    metadata: {
-      ...ps.metadata,
-      name: bundle.metadata.name,
-      namespace: bundle.metadata.namespace,
-    },
-    status: { ...ps.status, environments },
-  } as PromotionStrategy;
+  const psWithEnvironments = bundleToPromotionStrategy(bundle);
   sortStrategyCommitStatuses(psWithEnvironments);
   return {
     ...psWithEnvironments,
@@ -74,6 +46,17 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
     connectionStatus: 'connecting',
 
     fetchItems: async (namespace: string) => {
+      if (mockEnabled(kind)) {
+        const { mockBundles } = await import('@shared/fixtures/mockData');
+        set({
+          items: mockBundles().map((b) => bundleToItem<T>(b)),
+          loading: false,
+          error: null,
+          connectionStatus: 'open',
+        });
+        return;
+      }
+
       set({ loading: true, error: null });
 
       try {
@@ -90,6 +73,9 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
     },
 
     subscribe: (namespace: string) => {
+      // No live stream in mock mode; the fixture is static.
+      if (mockEnabled(kind)) return;
+
       if (eventSource) eventSource.close();
 
       eventSource = new EventSource(`/watch?kind=${kind}&namespace=${namespace}`);
