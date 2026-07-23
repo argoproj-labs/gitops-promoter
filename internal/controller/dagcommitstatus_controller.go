@@ -101,8 +101,7 @@ type DAGCommitStatusReconciler struct {
 // Reconcile reads the referenced PromotionStrategy and, using the dependency graph declared
 // in the DAGCommitStatus, determines which environments are eligible for promotion (all of
 // their dependsOn upstreams are satisfied) and reports that as a per-environment commit
-// status. This scaffold wires up graph construction, validation, and eligibility; writing
-// the commit statuses back is added in a follow-up.
+// status.
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/reconcile
