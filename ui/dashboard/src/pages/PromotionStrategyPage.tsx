@@ -102,6 +102,13 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
             </button>
 
             <button
+              className="strategy-page-tab"
+              onClick={() => navigate(`/promotion-strategies/${namespace}/${strategyName}/history`)}
+            >
+              History
+            </button>
+
+            <button
               className={`strategy-page-tab ${currentView === 'yaml' ? 'active' : ''}`}
               onClick={() => setView('yaml')}
             >
