@@ -18,11 +18,15 @@ $extension-wrapper-gap: 20px;
     flex-direction: row;
     overflow-x: auto;
     width: 100%;
+    height: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
     gap: 20px;
     justify-content: safe center;
     scroll-behavior: smooth;
     box-sizing: border-box;
     margin: 0;
+    padding: 8px 0;
   }
 
   .env-cards-wrapper {
@@ -73,7 +77,11 @@ $extension-wrapper-gap: 20px;
     flex-direction: column;
     align-items: center;
     width: 100%;
+    height: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-x: auto;
+    padding: 8px 0;
   }
 
   .env-cards-wrapper {

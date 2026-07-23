@@ -114,7 +114,7 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
       </div>
 
       {currentView === 'cards' ? (
-        <div style={{ marginTop: '8px' }}>
+        <div className="strategy-page-cards">
           <PromotionStrategyDetailsView strategy={selectedStrategy} />
         </div>
       ) : (
