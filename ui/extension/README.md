@@ -73,3 +73,9 @@ npm run dev
 ```
 
 **Note**: The extension is NOT embedded in the main Docker container.
+
+### Mock data
+
+Append `?mock=true` to the Argo CD application URL to render a stable, built-in set of `PromotionStrategy` fixtures instead of fetching data from the Argo CD API. This is useful for building the extension against specific states (in-flight promotions, history, PR states) without live resources, and the fixtures are also importable from `@shared/fixtures/mockData` for unit tests.
+
+Mock mode is only compiled into development builds. Use `npm run dev` or `npm run dev-local` (which pass `--mode development`); the production `npm run build` / `make build-extension` gate it out via `process.env.NODE_ENV`, so it is dead-code-eliminated and never ships in the released bundle.
