@@ -49,7 +49,7 @@ spec:
 
 Declares the promotion dependency graph. Each entry names an environment `branch` and the upstream
 `dependsOn` branches it waits on. An entry with no `dependsOn` is a graph root (for example `dev`
-above). Every `branch` must match a branch declared in the referenced PromotionStrategy's
+above). The set of `branch` values must exactly match the referenced PromotionStrategy's
 `environments`. The graph must be acyclic; cycles and references to unknown branches are rejected.
 
 ### `spec.key`

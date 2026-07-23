@@ -280,6 +280,36 @@ var _ = Describe("DAG graph logic", func() {
 		})
 	})
 
+	Describe("validateEnvironmentsMatchPS", func() {
+		psWithBranches := func(name string, branches ...string) *promoterv1alpha1.PromotionStrategy {
+			ps := &promoterv1alpha1.PromotionStrategy{ObjectMeta: metav1.ObjectMeta{Name: name}}
+			for _, branch := range branches {
+				ps.Spec.Environments = append(ps.Spec.Environments, promoterv1alpha1.Environment{Branch: branch})
+			}
+			return ps
+		}
+
+		It("accepts when DAG branches exactly match the PromotionStrategy", func() {
+			g, err := buildDAG(dagEnvs("dev", "", "stg", "dev", "prd", "stg"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(g.validateEnvironmentsMatchPS("demo-dag", psWithBranches("demo-ps", "dev", "stg", "prd"))).To(Succeed())
+		})
+
+		It("rejects a DAG branch that is not in the PromotionStrategy", func() {
+			g, err := buildDAG(dagEnvs("dev", "", "ghost", "dev"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(g.validateEnvironmentsMatchPS("demo-dag", psWithBranches("demo-ps", "dev"))).To(MatchError(ContainSubstring(
+				`declares branch "ghost", but PromotionStrategy "demo-ps" has no such environment`)))
+		})
+
+		It("rejects when the DAG is missing PromotionStrategy environment branches", func() {
+			g, err := buildDAG(dagEnvs("dev", ""))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(g.validateEnvironmentsMatchPS("demo-dag", psWithBranches("demo-ps", "dev", "prd", "stg"))).To(MatchError(ContainSubstring(
+				`missing PromotionStrategy "demo-ps" environment branches: prd, stg`)))
+		})
+	})
+
 	// upstreamsPending runs the following truth table against every dependsOn upstream (a fan-in
 	// passes only when all upstreams are satisfied; a linear chain is the single-upstream case). The
 	// logic is a direct port of the PreviousEnvironmentCommitStatus controller's linear

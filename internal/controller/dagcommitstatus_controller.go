@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/url"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -152,9 +153,10 @@ func (r *DAGCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 }
 
 // updateDAGCommitStatus builds the dependency graph from the spec, validates it (unknown
-// references, cycles), derives which environments are satisfied (synced and healthy) from the
-// PromotionStrategy state, and writes a per-environment CommitStatus: success once all of an
-// environment's dependsOn upstreams are satisfied, pending otherwise.
+// references, cycles, exact match against the PromotionStrategy environments), derives which
+// environments are satisfied (synced and healthy) from the PromotionStrategy state, and writes a
+// per-environment CommitStatus: success once all of an environment's dependsOn upstreams are
+// satisfied, pending otherwise.
 func (r *DAGCommitStatusReconciler) updateDAGCommitStatus(ctx context.Context, dcs *promoterv1alpha1.DAGCommitStatus, ps *promoterv1alpha1.PromotionStrategy) error {
 	graph, err := buildDAG(dcs.Spec.Environments)
 	if err != nil {
@@ -162,6 +164,9 @@ func (r *DAGCommitStatusReconciler) updateDAGCommitStatus(ctx context.Context, d
 	}
 	if err := graph.validateDAG(); err != nil {
 		return fmt.Errorf("invalid dependency graph: %w", err)
+	}
+	if err := graph.validateEnvironmentsMatchPS(dcs.Name, ps); err != nil {
+		return err
 	}
 
 	// Index PromotionStrategy environment status by branch so each DAG node can look up its own
@@ -503,6 +508,35 @@ func buildDAG(environments []promoterv1alpha1.DAGEnvironment) (*dag, error) {
 		g.dependsOn[env.Branch] = env.DependsOn
 	}
 	return g, nil
+}
+
+// validateEnvironmentsMatchPS checks that the DAG's declared branches are exactly the set of
+// environments on the referenced PromotionStrategy. A mismatch would otherwise stall promotions
+// with no clear error: an unknown DAG branch never gets a usable CommitStatus, and a PS
+// environment omitted from the DAG waits forever on "Waiting for status to be reported" when the
+// gate key is in global proposedCommitStatuses.
+func (g *dag) validateEnvironmentsMatchPS(dcsName string, ps *promoterv1alpha1.PromotionStrategy) error {
+	psBranches := make(map[string]bool, len(ps.Spec.Environments))
+	for _, env := range ps.Spec.Environments {
+		psBranches[env.Branch] = true
+	}
+	for _, branch := range g.branches {
+		if !psBranches[branch] {
+			return fmt.Errorf("DAGCommitStatus %q declares branch %q, but PromotionStrategy %q has no such environment",
+				dcsName, branch, ps.Name)
+		}
+		delete(psBranches, branch)
+	}
+	if len(psBranches) > 0 {
+		missing := make([]string, 0, len(psBranches))
+		for branch := range psBranches {
+			missing = append(missing, branch)
+		}
+		slices.Sort(missing)
+		return fmt.Errorf("DAGCommitStatus %q is missing PromotionStrategy %q environment branches: %s",
+			dcsName, ps.Name, strings.Join(missing, ", "))
+	}
+	return nil
 }
 
 // validateDAG checks the dependency graph for two failure modes that would otherwise let an
