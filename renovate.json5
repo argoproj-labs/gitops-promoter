@@ -385,31 +385,6 @@
       },
     },
     {
-      description: 'kube-rbac-proxy image is baked into config + dist/ install bundles; regenerate them on bump',
-      matchDepNames: [
-        'quay.io/brancz/kube-rbac-proxy',
-      ],
-      semanticCommits: 'enabled',
-      semanticCommitType: 'chore',
-      semanticCommitScope: 'deps',
-      automerge: false,
-      postUpgradeTasks: {
-        commands: [
-          'make manifests',
-          'make build-installer',
-        ],
-        installTools: {
-          golang: {},
-        },
-        fileFilters: [
-          'config/**',
-          'test/**',
-          'dist/**',
-        ],
-        executionMode: 'branch',
-      },
-    },
-    {
       // NOTE: kubebuilder must stay in sync with the external gitops-promoter-helm
       // repo (see the comment in kubebuilder_helm.yaml); review/coordinate manually.
       description: 'kubebuilder version must match the external gitops-promoter-helm repo; review manually',
@@ -552,20 +527,6 @@
       datasourceTemplate: 'github-releases',
       versioningTemplate: 'semver',
       extractVersionTemplate: '^v(?<version>.*)$',
-    },
-    // ===== kube-rbac-proxy (runtime sidecar image) =====
-    {
-      customType: 'regex',
-      description: 'Update kube-rbac-proxy image version',
-      managerFilePatterns: [
-        '/^config/default/manager_auth_proxy_patch\\.yaml$/',
-      ],
-      matchStrings: [
-        'image:\\s*quay\\.io/brancz/kube-rbac-proxy:(?<currentValue>v\\d+\\.\\d+\\.\\d+)',
-      ],
-      depNameTemplate: 'quay.io/brancz/kube-rbac-proxy',
-      datasourceTemplate: 'docker',
-      versioningTemplate: 'semver',
     },
     // ===== Kubernetes platform: envtest tooling + assets + e2e matrix =====
     {

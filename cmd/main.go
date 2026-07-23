@@ -22,6 +22,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"runtime/debug"
 	"syscall"
@@ -38,6 +39,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
 
+	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	"github.com/spf13/cobra"
@@ -52,11 +54,13 @@ import (
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
@@ -71,6 +75,7 @@ var (
 
 func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	var metricsAddr string
+	var metricsCertPath, metricsCertName, metricsCertKey string
 	var enableLeaderElection bool
 	var probeAddr string
 	var secureMetrics bool
@@ -87,20 +92,29 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 				pprofAddr,
 				enableLeaderElection,
 				secureMetrics,
+				metricsCertPath,
+				metricsCertName,
+				metricsCertKey,
 				enableHTTP2,
 				clientConfig,
 			)
 		},
 	}
 
-	cmd.Flags().StringVar(&metricsAddr, "metrics-bind-address", ":9080", "The address the metric endpoint binds to.")
+	cmd.Flags().StringVar(&metricsAddr, "metrics-bind-address", ":9080", "The address the metrics endpoint binds to. "+
+		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	cmd.Flags().StringVar(&probeAddr, "health-probe-bind-address", ":9081", "The address the probe endpoint binds to.")
 	cmd.Flags().StringVar(&pprofAddr, "pprof-bind-address", "",
 		"The address the pprof endpoint binds to. If unset, pprof is disabled.")
 	cmd.Flags().BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-	cmd.Flags().BoolVar(&secureMetrics, "metrics-secure", false, "If set the metrics endpoint is served securely")
+	cmd.Flags().BoolVar(&secureMetrics, "metrics-secure", false,
+		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
+	cmd.Flags().StringVar(&metricsCertPath, "metrics-cert-path", "",
+		"The directory that contains the metrics server certificate.")
+	cmd.Flags().StringVar(&metricsCertName, "metrics-cert-name", "tls.crt", "The name of the metrics server certificate file.")
+	cmd.Flags().StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	cmd.Flags().BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 
@@ -114,6 +128,9 @@ func runController(
 	pprofAddr string,
 	enableLeaderElection bool,
 	secureMetrics bool,
+	metricsCertPath string,
+	metricsCertName string,
+	metricsCertKey string,
 	enableHTTP2 bool,
 	clientConfig clientcmd.ClientConfig,
 ) error {
@@ -187,15 +204,55 @@ func runController(
 
 	runCtx, shutdown := context.WithCancel(processSignalsCtx)
 
+	// Metrics endpoint is enabled in 'config/default/kustomization.yaml'. The Metrics options configure the server.
+	// More info:
+	// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.24.1/pkg/metrics/server
+	// - https://book.kubebuilder.io/reference/metrics.html
+	metricsServerOptions := metricsserver.Options{
+		BindAddress:   metricsAddr,
+		SecureServing: secureMetrics,
+		TLSOpts:       tlsOpts,
+	}
+
+	metricsServerOptions.FilterProvider = metrics.ScrapeLogFilterProvider()
+	if secureMetrics {
+		// FilterProvider is used to protect the metrics endpoint with authn/authz.
+		// These configurations ensure that only authorized users and service accounts
+		// can access the metrics endpoint. The RBAC are configured in 'config/rbac/kustomization.yaml'. More info:
+		// https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.24.1/pkg/metrics/filters#WithAuthenticationAndAuthorization
+		metricsServerOptions.FilterProvider = func(c *rest.Config, httpClient *http.Client) (metricsserver.Filter, error) {
+			// Wrap filters.WithAuthenticationAndAuthorization in metrics.ScrapeLogFilterProvider
+			return func(log logr.Logger, handler http.Handler) (http.Handler, error) {
+				authFilter, _ := filters.WithAuthenticationAndAuthorization(c, httpClient)
+				authHandler, _ := authFilter(log, handler)
+				logFilterProvider := metrics.ScrapeLogFilterProvider()
+				logFilter, _ := logFilterProvider(c, httpClient)
+				return logFilter(log, authHandler)
+			}, nil
+		}
+	}
+
+	// If the certificate is not specified, controller-runtime will automatically
+	// generate self-signed certificates for the metrics server. While convenient for development and testing,
+	// this setup is not recommended for production.
+	//
+	// TODO(user): If you enable certManager, uncomment the following lines:
+	// - [METRICS-WITH-CERTS] at config/default/kustomization.yaml to generate and use certificates
+	// managed by cert-manager for the metrics server.
+	// - [PROMETHEUS-WITH-CERTS] at config/prometheus/kustomization.yaml for TLS certification.
+	if len(metricsCertPath) > 0 {
+		setupLog.Info("Initializing metrics certificate watcher using provided certificates",
+			"metrics-cert-path", metricsCertPath, "metrics-cert-name", metricsCertName, "metrics-cert-key", metricsCertKey)
+
+		metricsServerOptions.CertDir = metricsCertPath
+		metricsServerOptions.CertName = metricsCertName
+		metricsServerOptions.KeyName = metricsCertKey
+	}
+
 	mcMgr, err := mcmanager.New(restConfig, provider, ctrl.Options{
-		Scheme: scheme,
-		Cache:  promotercache.OptionsForInstanceID(instanceID, controllerNamespace),
-		Metrics: metricsserver.Options{
-			BindAddress:    metricsAddr,
-			SecureServing:  secureMetrics,
-			TLSOpts:        tlsOpts,
-			FilterProvider: metrics.ScrapeLogFilterProvider(),
-		},
+		Scheme:                 scheme,
+		Cache:                  promotercache.OptionsForInstanceID(instanceID, controllerNamespace),
+		Metrics:                metricsServerOptions,
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
 		PprofBindAddress:       pprofAddr,
