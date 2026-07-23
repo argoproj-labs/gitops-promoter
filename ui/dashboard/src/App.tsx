@@ -1,4 +1,11 @@
-import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useParams,
+  useLocation,
+} from 'react-router-dom';
 import DashboardPage from './pages/DashboardPage';
 import PromotionStrategyPage from './pages/PromotionStrategyPage';
 import HistoryPage from './pages/HistoryPage';
@@ -7,6 +14,11 @@ import { TopBar } from '../src/components/TopBar';
 function PromotionStrategyPageWithNamespace() {
   const { namespace } = useParams();
   return <PromotionStrategyPage namespace={namespace} />;
+}
+
+function RootRedirect() {
+  const { search } = useLocation();
+  return <Navigate to={{ pathname: '/promotion-strategies', search }} replace />;
 }
 
 function App() {
@@ -19,7 +31,7 @@ function App() {
     <BrowserRouter basename={basename}>
       <TopBar />
       <Routes>
-        <Route path="/" element={<Navigate to="/promotion-strategies" replace />} />
+        <Route path="/" element={<RootRedirect />} />
         <Route path="/promotion-strategies" element={<DashboardPage />} />
         <Route
           path="/promotion-strategies/:namespace/:name"
