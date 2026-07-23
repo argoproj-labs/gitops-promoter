@@ -52,6 +52,8 @@ type PullRequestStatusApplyConfiguration struct {
 	// SCMSyncedSpecDigest fingerprints title and description last successfully synced
 	// to the SCM via provider.Update on an open pull request.
 	SCMSyncedSpecDigest *string `json:"scmSyncedSpecDigest,omitempty"`
+	// AppliedLabels lists SCM labels successfully applied by gitops-promoter (for sync and retraction).
+	AppliedLabels []string `json:"appliedLabels,omitempty"`
 	// Conditions Represents the observations of the current state.
 	Conditions []metav1.ConditionApplyConfiguration `json:"conditions,omitempty"`
 	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
@@ -119,6 +121,16 @@ func (b *PullRequestStatusApplyConfiguration) WithExternallyMergedOrClosed(value
 // If called multiple times, the SCMSyncedSpecDigest field is set to the value of the last call.
 func (b *PullRequestStatusApplyConfiguration) WithSCMSyncedSpecDigest(value string) *PullRequestStatusApplyConfiguration {
 	b.SCMSyncedSpecDigest = &value
+	return b
+}
+
+// WithAppliedLabels adds the given value to the AppliedLabels field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the AppliedLabels field.
+func (b *PullRequestStatusApplyConfiguration) WithAppliedLabels(values ...string) *PullRequestStatusApplyConfiguration {
+	for i := range values {
+		b.AppliedLabels = append(b.AppliedLabels, values[i])
+	}
 	return b
 }
 

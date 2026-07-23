@@ -42,7 +42,7 @@ Labels:
 * `api`: The SCM API being called (CommitStatus, PullRequest)
 * `operation`: The type of SCM operation.
   * For CommitStatus, this is always create.
-  * For PullRequest, this is create, update, merge, close, or list.
+  * For PullRequest, this is create, update, merge, close, list, get, create-label, add-labels, or remove-labels.
 * `response_code`: The HTTP response code.
 
 ## scm_calls_duration_seconds
@@ -57,7 +57,7 @@ Labels:
 * `api`: The SCM API being called (CommitStatus, PullRequest)
 * `operation`: The type of SCM operation.
   * For CommitStatus, this is always create.
-  * For PullRequest, this is create, update, merge, close, or list.
+  * For PullRequest, this is create, update, merge, close, list, get, create-label, add-labels, or remove-labels.
 * `response_code`: The HTTP response code.
 
 ## webrequest_commit_status_http_requests_total
