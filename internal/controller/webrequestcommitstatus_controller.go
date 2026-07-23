@@ -268,10 +268,10 @@ func (r *WebRequestCommitStatusReconciler) SetupWithManager(ctx context.Context,
 		case externalEnqueueChan <- event.GenericEvent{Object: wrcs}:
 			// Sent successfully
 		default:
-			// Channel is full, log a warning and block until space is available
-			log.FromContext(ctx).Info("WRCS enqueue channel is full, blocking until space is available",
+			// Channel is full: drop rather than block the webhook HTTP handler.
+			// Polling / trigger mode remains the reliability fallback.
+			log.FromContext(ctx).Info("WRCS enqueue channel is full, dropping webhook enqueue",
 				"namespace", namespace, "name", name)
-			externalEnqueueChan <- event.GenericEvent{Object: wrcs}
 		}
 	}
 

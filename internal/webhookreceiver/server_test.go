@@ -548,6 +548,31 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 		Expect(wrcsEnqueues.count()).To(Equal(1))
 	})
 
+	It("rejects with 500 when ScmProvider Secret cannot be resolved for matching GitRepositories", func() {
+		scm, _ := newScmProviderWithSecret("scm-missing-sec", "sec-missing", map[string][]byte{
+			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: []byte(webhookSecretValue),
+		})
+		gitRepo := newGitRepoWithScm("gr-missing-sec", scm.Name)
+		ps := newPS("ps-missing-sec", gitRepo.Name)
+		wrcs := newWRCS("wrcs-missing-sec", ps.Name)
+
+		ctpEnqueues := &enqueueRecorder{}
+		wrcsEnqueues := &enqueueRecorder{}
+		wr := &WebhookReceiver{
+			// ScmProvider is present but its Secret is omitted so resolution fails.
+			k8sClient:           newFakeClient(scm, gitRepo, ps, wrcs),
+			enqueueCTP:          ctpEnqueues.enqueue,
+			enqueueWRCS:         wrcsEnqueues.enqueue,
+			controllerNamespace: testNamespace,
+		}
+
+		body := githubStatusPayload()
+		rec := postGitHubWithHeaders(wr, body, nil)
+		Expect(rec.Code).To(Equal(http.StatusInternalServerError))
+		Expect(ctpEnqueues.count()).To(Equal(0))
+		Expect(wrcsEnqueues.count()).To(Equal(0))
+	})
+
 	It("rejects with 401 and enqueues neither CTP nor WRCS when payload lacks repository identity and webhookSecret is configured", func() {
 		scm, secret := newScmProviderWithSecret("scm-noid", "sec-noid", map[string][]byte{
 			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: []byte(webhookSecretValue),

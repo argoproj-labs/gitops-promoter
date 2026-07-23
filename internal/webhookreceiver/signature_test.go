@@ -70,7 +70,10 @@ var _ = Describe("webhookSecretFromSecret", func() {
 })
 
 var _ = Describe("evaluateWebhookFilter", func() {
-	payload := []byte(`{"context":"ArgoCD/my-app","state":"success"}`)
+	payload := map[string]any{
+		"context": "ArgoCD/my-app",
+		"state":   "success",
+	}
 
 	It("returns true when the expression matches Payload", func() {
 		matched, err := evaluateWebhookFilter(`Payload.context startsWith "ArgoCD/"`, payload)

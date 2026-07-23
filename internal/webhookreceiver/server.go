@@ -3,6 +3,7 @@ package webhookreceiver
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -571,6 +572,8 @@ func (wr *WebhookReceiver) verifyWebhookIfConfigured(ctx context.Context, provid
 	}
 	var candidates []candidate
 	seenSecrets := map[string]struct{}{}
+	var resolutionErrors int
+	var successfulResolutions int
 
 	for i := range gitRepos.Items {
 		gr := &gitRepos.Items[i]
@@ -579,10 +582,12 @@ func (wr *WebhookReceiver) verifyWebhookIfConfigured(ctx context.Context, provid
 		}
 		_, secret, getErr := utils.GetScmProviderAndSecretFromGitRepository(ctx, wr.k8sClient, wr.controllerNamespace, gr)
 		if getErr != nil {
+			resolutionErrors++
 			logger.V(4).Info("skipping GitRepository for webhook verification; could not resolve ScmProvider Secret",
 				"namespace", gr.Namespace, "name", gr.Name, "error", getErr.Error())
 			continue
 		}
+		successfulResolutions++
 		secretBytes, headerName, ok := webhookSecretFromSecret(secret, provider)
 		if !ok {
 			continue
@@ -596,6 +601,11 @@ func (wr *WebhookReceiver) verifyWebhookIfConfigured(ctx context.Context, provid
 	}
 
 	if len(candidates) == 0 {
+		// Fail closed when every ScmProvider Secret resolution failed: otherwise we would
+		// skip verification on misconfiguration and accept unverified deliveries.
+		if successfulResolutions == 0 && resolutionErrors > 0 {
+			return false, fmt.Errorf("could not resolve ScmProvider Secret for %d matching GitRepository(ies)", resolutionErrors)
+		}
 		return true, nil
 	}
 
@@ -626,6 +636,10 @@ func (wr *WebhookReceiver) enqueueWRCSForRepo(ctx context.Context, owner, name, 
 		return
 	}
 
+	var payloadObj map[string]any
+	var payloadErr error
+	payloadChecked := false
+
 	for i := range gitRepos.Items {
 		gr := &gitRepos.Items[i]
 		var psList promoterv1alpha1.PromotionStrategyList
@@ -653,7 +667,16 @@ func (wr *WebhookReceiver) enqueueWRCSForRepo(ctx context.Context, owner, name, 
 			for k := range wrcsList.Items {
 				item := &wrcsList.Items[k]
 				if item.Spec.Mode.Webhook != nil && item.Spec.Mode.Webhook.Filter != nil && item.Spec.Mode.Webhook.Filter.Expression != "" {
-					matched, filterErr := evaluateWebhookFilter(item.Spec.Mode.Webhook.Filter.Expression, payload)
+					if !payloadChecked {
+						payloadErr = json.Unmarshal(payload, &payloadObj)
+						payloadChecked = true
+					}
+					if payloadErr != nil {
+						logger.Error(payloadErr, "failed to unmarshal webhook payload for WRCS filter; skipping filtered WRCS enqueue",
+							"namespace", item.Namespace, "name", item.Name)
+						continue
+					}
+					matched, filterErr := evaluateWebhookFilter(item.Spec.Mode.Webhook.Filter.Expression, payloadObj)
 					if filterErr != nil {
 						logger.Error(filterErr, "webhook filter evaluation failed; skipping WRCS enqueue",
 							"namespace", item.Namespace, "name", item.Name)

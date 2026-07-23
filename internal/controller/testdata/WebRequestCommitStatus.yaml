@@ -51,7 +51,7 @@ spec:
     # webhook:
     #   filter:
     #     expression: 'Payload.context startsWith "ArgoCD/"'
-rm    # Trigger: use this instead of polling for expression-based triggering.
+    # Trigger: use this instead of polling for expression-based triggering.
     # trigger:
     #   requeueDuration: 1m     # optional, default 1m
     #   when:
