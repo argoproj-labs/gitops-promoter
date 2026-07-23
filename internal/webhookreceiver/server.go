@@ -68,24 +68,16 @@ type EnqueueFunc func(namespace, name string)
 type WebhookReceiver struct {
 	mgr                 controllerruntime.Manager
 	k8sClient           client.Client
+	baseCtx             context.Context //nolint:containedctx // server-lifetime context set once in Start, not a request context
 	enqueueCTP          EnqueueFunc
 	enqueueWRCS         EnqueueFunc
 	controllerNamespace string
-
-	// baseCtx is the context passed to Start. Async miss-retries derive their contexts from
-	// it so they are cancelled on shutdown without watching a separate signal.
-	baseCtx context.Context //nolint:containedctx // server-lifetime context set once in Start, not a request context
-
-	// pendingMissRetries counts in-flight miss-retry goroutines; new retries are dropped
-	// once it reaches the max pending capacity. Nothing ever blocks on it.
-	pendingMissRetries atomic.Int64
-
-	// Optional overrides for tests (zero values use the package constants).
-	retryTimeout      time.Duration
-	retryBaseDelay    time.Duration
-	retryMaxDelay     time.Duration
-	retryFactor       float64
-	maxPendingRetries int
+	pendingMissRetries  atomic.Int64
+	retryTimeout        time.Duration
+	retryBaseDelay      time.Duration
+	retryMaxDelay       time.Duration
+	retryFactor         float64
+	maxPendingRetries   int
 }
 
 // NewWebhookReceiver creates a new instance of WebhookReceiver.
@@ -221,42 +213,10 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 	ctx := log.IntoContext(r.Context(), reqLogger)
 
 	owner, name := parseWebhookRepo(provider, jsonBytes)
-	if owner == "" || name == "" {
-		// Without repository identity we cannot select ScmProvider Secrets to verify against,
-		// and cannot fan out to WRCS. If any webhookSecret is configured, fail closed so CTP
-		// cannot be enqueued via an unverified delivery either.
-		configured, secretErr := wr.anyWebhookSecretConfigured(ctx)
-		if secretErr != nil {
-			reqLogger.Error(secretErr, "failed to check for configured webhook secrets")
-			responseCode = http.StatusInternalServerError
-			http.Error(w, "error verifying webhook", responseCode)
-			return
-		}
-		if configured {
-			reqLogger.V(4).Info("webhook lacks repository identity; rejecting because webhookSecret is configured")
-			responseCode = http.StatusUnauthorized
-			http.Error(w, "unauthorized", responseCode)
-			return
-		}
-	} else {
-		authorized, verifyErr := wr.verifyWebhookIfConfigured(ctx, provider, owner, name, r.Header, jsonBytes)
-		if verifyErr != nil {
-			reqLogger.Error(verifyErr, "failed to resolve webhook secrets for verification")
-			responseCode = http.StatusInternalServerError
-			http.Error(w, "error verifying webhook", responseCode)
-			return
-		}
-		if !authorized {
-			reqLogger.V(4).Info("webhook signature verification failed")
-			responseCode = http.StatusUnauthorized
-			http.Error(w, "unauthorized", responseCode)
-			return
-		}
-
-		// Fan out to WebRequestCommitStatus by repository identity for any webhook event
-		// (push and non-push). Failures here are logged inside enqueueWRCSForRepo and never
-		// affect the HTTP response or the CTP path below.
-		wr.enqueueWRCSForRepo(ctx, owner, name, "webhook", jsonBytes)
+	if status, msg := wr.authorizeWebhookAndEnqueueWRCS(ctx, provider, owner, name, r.Header, jsonBytes); status != 0 {
+		responseCode = status
+		http.Error(w, msg, responseCode)
+		return
 	}
 
 	beforeSha, ref := parseWebhookPush(provider, jsonBytes)
@@ -283,6 +243,44 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 
 	responseCode = http.StatusNoContent
 	w.WriteHeader(responseCode)
+}
+
+// authorizeWebhookAndEnqueueWRCS verifies the inbound delivery when webhook secrets are
+// configured, then fans out to matching WRCS when repository identity is present.
+// A non-zero status means the HTTP handler should reject immediately.
+func (wr *WebhookReceiver) authorizeWebhookAndEnqueueWRCS(ctx context.Context, provider, owner, name string, headers http.Header, body []byte) (status int, msg string) {
+	logger := log.FromContext(ctx)
+	if owner == "" || name == "" {
+		// Without repository identity we cannot select ScmProvider Secrets to verify against,
+		// and cannot fan out to WRCS. If any webhookSecret is configured, fail closed so CTP
+		// cannot be enqueued via an unverified delivery either.
+		configured, err := wr.anyWebhookSecretConfigured(ctx)
+		if err != nil {
+			logger.Error(err, "failed to check for configured webhook secrets")
+			return http.StatusInternalServerError, "error verifying webhook"
+		}
+		if configured {
+			logger.V(4).Info("webhook lacks repository identity; rejecting because webhookSecret is configured")
+			return http.StatusUnauthorized, "unauthorized"
+		}
+		return 0, ""
+	}
+
+	authorized, err := wr.verifyWebhookIfConfigured(ctx, provider, owner, name, headers, body)
+	if err != nil {
+		logger.Error(err, "failed to resolve webhook secrets for verification")
+		return http.StatusInternalServerError, "error verifying webhook"
+	}
+	if !authorized {
+		logger.V(4).Info("webhook signature verification failed")
+		return http.StatusUnauthorized, "unauthorized"
+	}
+
+	// Fan out to WebRequestCommitStatus by repository identity for any webhook event
+	// (push and non-push). Failures here are logged inside enqueueWRCSForRepo and never
+	// affect the HTTP response or the CTP path below.
+	wr.enqueueWRCSForRepo(ctx, owner, name, "webhook", body)
+	return 0, ""
 }
 
 // scheduleMissRetry starts an async retry of the CTP lookup, bounded by the pending-retry
@@ -568,8 +566,8 @@ func (wr *WebhookReceiver) verifyWebhookIfConfigured(ctx context.Context, provid
 	}
 
 	type candidate struct {
-		secret []byte
 		header string
+		secret []byte
 	}
 	var candidates []candidate
 	seenSecrets := map[string]struct{}{}

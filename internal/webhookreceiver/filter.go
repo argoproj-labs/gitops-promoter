@@ -2,6 +2,7 @@ package webhookreceiver
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/expr-lang/expr"
@@ -25,7 +26,7 @@ func evaluateWebhookFilter(expression string, payloadJSON []byte) (bool, error) 
 	}
 	matched, ok := out.(bool)
 	if !ok {
-		return false, fmt.Errorf("webhook filter expression did not return bool")
+		return false, errors.New("webhook filter expression did not return bool")
 	}
 	return matched, nil
 }

@@ -393,15 +393,15 @@ func githubHMACSignature(secret, body []byte) string {
 	return sha256Prefix + hex.EncodeToString(mac.Sum(nil))
 }
 
-func githubStatusPayload(owner, repoName, context string) []byte {
+func githubStatusPayload() []byte {
 	payload := map[string]any{
-		"context": context,
+		"context": "ArgoCD/app",
 		"state":   "success",
 		"repository": map[string]any{
-			"name":      repoName,
-			"full_name": owner + "/" + repoName,
+			"name":      testRepoName,
+			"full_name": testRepoOwner + "/" + testRepoName,
 			"owner": map[string]any{
-				"login": owner,
+				"login": testRepoOwner,
 			},
 		},
 	}
@@ -431,8 +431,8 @@ func newScmProviderWithSecret(scmName, secretName string, secretData map[string]
 	return scm, secret
 }
 
-func newGitRepoWithScm(name, owner, repoName, scmName string) *promoterv1alpha1.GitRepository {
-	gr := newGitRepo(name, owner, repoName)
+func newGitRepoWithScm(name, scmName string) *promoterv1alpha1.GitRepository {
+	gr := newGitRepo(name, testRepoOwner, testRepoName)
 	gr.Spec.ScmProviderRef = promoterv1alpha1.ScmProviderObjectReference{
 		Name: scmName,
 		Kind: promoterv1alpha1.ScmProviderKind,
@@ -460,7 +460,7 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 		scm, secret := newScmProviderWithSecret("scm-nosig", "sec-nosig", map[string][]byte{
 			"token": []byte("scm-token"),
 		})
-		gitRepo := newGitRepoWithScm("gr-nosig", testRepoOwner, testRepoName, scm.Name)
+		gitRepo := newGitRepoWithScm("gr-nosig", scm.Name)
 		ps := newPS("ps-nosig", gitRepo.Name)
 		wrcs := newWRCS("wrcs-nosig", ps.Name)
 
@@ -471,7 +471,7 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 			controllerNamespace: testNamespace,
 		}
 
-		body := githubStatusPayload(testRepoOwner, testRepoName, "ArgoCD/app")
+		body := githubStatusPayload()
 		rec := postGitHubWithHeaders(wr, body, nil)
 		Expect(rec.Code).To(Equal(http.StatusNoContent))
 		Expect(wrcsEnqueues.count()).To(Equal(1))
@@ -482,7 +482,7 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 			"token": []byte("scm-token"),
 			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: []byte(webhookSecretValue),
 		})
-		gitRepo := newGitRepoWithScm("gr-miss", testRepoOwner, testRepoName, scm.Name)
+		gitRepo := newGitRepoWithScm("gr-miss", scm.Name)
 		ps := newPS("ps-miss", gitRepo.Name)
 		wrcs := newWRCS("wrcs-miss", ps.Name)
 
@@ -495,7 +495,7 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 			controllerNamespace: testNamespace,
 		}
 
-		body := githubStatusPayload(testRepoOwner, testRepoName, "ArgoCD/app")
+		body := githubStatusPayload()
 		rec := postGitHubWithHeaders(wr, body, nil)
 		Expect(rec.Code).To(Equal(http.StatusUnauthorized))
 		Expect(ctpEnqueues.count()).To(Equal(0))
@@ -506,7 +506,7 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 		scm, secret := newScmProviderWithSecret("scm-bad", "sec-bad", map[string][]byte{
 			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: []byte(webhookSecretValue),
 		})
-		gitRepo := newGitRepoWithScm("gr-bad", testRepoOwner, testRepoName, scm.Name)
+		gitRepo := newGitRepoWithScm("gr-bad", scm.Name)
 		ps := newPS("ps-bad", gitRepo.Name)
 		wrcs := newWRCS("wrcs-bad", ps.Name)
 
@@ -517,7 +517,7 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 			controllerNamespace: testNamespace,
 		}
 
-		body := githubStatusPayload(testRepoOwner, testRepoName, "ArgoCD/app")
+		body := githubStatusPayload()
 		rec := postGitHubWithHeaders(wr, body, map[string]string{
 			"X-Hub-Signature-256": sha256Prefix + "0000000000000000000000000000000000000000000000000000000000000000",
 		})
@@ -529,7 +529,7 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 		scm, secret := newScmProviderWithSecret("scm-ok", "sec-ok", map[string][]byte{
 			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: []byte(webhookSecretValue),
 		})
-		gitRepo := newGitRepoWithScm("gr-ok", testRepoOwner, testRepoName, scm.Name)
+		gitRepo := newGitRepoWithScm("gr-ok", scm.Name)
 		ps := newPS("ps-ok", gitRepo.Name)
 		wrcs := newWRCS("wrcs-ok", ps.Name)
 
@@ -540,7 +540,7 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 			controllerNamespace: testNamespace,
 		}
 
-		body := githubStatusPayload(testRepoOwner, testRepoName, "ArgoCD/app")
+		body := githubStatusPayload()
 		rec := postGitHubWithHeaders(wr, body, map[string]string{
 			"X-Hub-Signature-256": githubHMACSignature([]byte(webhookSecretValue), body),
 		})
@@ -553,7 +553,7 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: []byte(webhookSecretValue),
 		})
 		ctp := newCTP("ctp-noid")
-		gitRepo := newGitRepoWithScm("gr-noid", testRepoOwner, testRepoName, scm.Name)
+		gitRepo := newGitRepoWithScm("gr-noid", scm.Name)
 		ps := newPS("ps-noid", gitRepo.Name)
 		wrcs := newWRCS("wrcs-noid", ps.Name)
 
@@ -620,7 +620,7 @@ var _ = Describe("WebhookReceiver WRCS filter", func() {
 			enqueueWRCS: wrcsEnqueues.enqueue,
 		}
 
-		body := githubStatusPayload(testRepoOwner, testRepoName, "ArgoCD/app")
+		body := githubStatusPayload()
 		rec := postGitHubWithHeaders(wr, body, nil)
 		Expect(rec.Code).To(Equal(http.StatusNoContent))
 		Expect(wrcsEnqueues.all()).To(ConsistOf(
