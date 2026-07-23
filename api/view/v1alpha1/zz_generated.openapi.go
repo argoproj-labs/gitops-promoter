@@ -6035,7 +6035,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_URLConfig(ref common.Refe
 				Properties: map[string]spec.Schema{
 					"template": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Template is a go text template and receives .Environment and .ArgoCDCommitStatus variables. A function called urlQueryEscape is available to escape url query parameters. The template can be configured with options to control the behavior during execution if a variable is not present.\n\nExample:\n\n  {{- $baseURL := \"https://dev.argocd.local\" -}}\n  {{- if eq .Environment \"environment/development\" -}}\n  {{- $baseURL = \"https://dev.argocd.local\" -}}\n  {{- else if eq .Environment \"environment/staging\" -}}\n  {{- $baseURL = \"https://staging.argocd.local\" -}}\n  {{- else if eq .Environment \"environment/production\" -}}\n  {{- $baseURL = \"https://prod.argocd.local\" -}}\n  {{- end -}}\n  {{- $labels := \"\" -}}\n  {{- range $key, $value := .ArgoCDCommitStatus.Spec.ApplicationSelector.MatchLabels -}}\n  {{- $labels = printf \"%s%s=%s,\" $labels $key $value -}}\n  {{- end -}}\n  {{ printf \"%s/applications?labels=%s\" $baseURL (urlQueryEscape $labels) }}",
+							Description: "Template is a Go text template used to generate the CommitStatus URL. A function called urlQueryEscape is available to escape URL query parameters. The template can be configured with options (url.options) to control behavior when a variable is not present.\n\nAvailable template variables depend on the parent resource that embeds URLConfig (ArgoCDCommitStatus, DAGCommitStatus, or PreviousEnvironmentCommitStatus). See the corresponding gate documentation for the variable set and examples.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
