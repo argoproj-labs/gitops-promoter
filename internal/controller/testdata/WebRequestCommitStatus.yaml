@@ -38,7 +38,7 @@ spec:
       # output:
       #   expression: ""      # optional; expr returning map, stored in status.successOutput (available as SuccessOutput)
 
-  # Exactly one of polling or trigger must be set.
+  # Exactly one of polling or trigger must be set. webhook is optional and additive.
   mode:
     # context: environments (default) — one HTTP request per environment; status.environments[] below.
     # Use context: promotionstrategy for one shared request; then status.promotionStrategyContext is set instead.
@@ -46,7 +46,12 @@ spec:
     # Polling: single optional field. Interval (default 1m) controls how often the HTTP request runs.
     polling:
       interval: 2m
-    # Trigger: use this instead of polling for expression-based triggering.
+    # Optional fast path: filter inbound SCM webhooks before enqueueing a reconcile.
+    # Webhook secrets live on the ScmProvider Secret (webhookSecret / webhookSignatureHeader).
+    # webhook:
+    #   filter:
+    #     expression: 'Payload.context startsWith "ArgoCD/"'
+rm    # Trigger: use this instead of polling for expression-based triggering.
     # trigger:
     #   requeueDuration: 1m     # optional, default 1m
     #   when:

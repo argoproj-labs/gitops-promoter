@@ -4736,3 +4736,147 @@ var _ = Describe("WebRequestCommitStatus Controller - Stale Cache Guard", Ordere
 				"will grow unbounded over the controller's lifetime")
 	})
 })
+
+var _ = Describe("WebRequestCommitStatus Controller - Webhook repo fan-out", func() {
+	var (
+		ctx               context.Context
+		name              string
+		scmSecret         *corev1.Secret
+		scmProvider       *promoterv1alpha1.ScmProvider
+		gitRepo           *promoterv1alpha1.GitRepository
+		promotionStrategy *promoterv1alpha1.PromotionStrategy
+		wrcs              *promoterv1alpha1.WebRequestCommitStatus
+		testServer        *httptest.Server
+		requestCount      int
+		requestMu         sync.Mutex
+	)
+
+	BeforeEach(func() {
+		ctx = context.Background()
+		requestCount = 0
+
+		By("Setting up PromotionStrategy resources")
+		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "wrcs-webhook-fanout", "default")
+		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+			{Key: "webhook-fanout"},
+		}
+		setupInitialTestGitRepoOnServer(ctx, gitRepo)
+		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+		By("Waiting for PromotionStrategy environments to populate")
+		Eventually(func(g Gomega) {
+			var ps promoterv1alpha1.PromotionStrategy
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, &ps)).To(Succeed())
+			g.Expect(ps.Status.Environments).ToNot(BeEmpty())
+			g.Expect(ps.Status.Environments[0].Proposed.Hydrated.Sha).NotTo(BeEmpty())
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		By("Creating a counting HTTP server")
+		testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			requestMu.Lock()
+			requestCount++
+			requestMu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		}))
+
+		By("Creating a trigger-mode WRCS with a very large RequeueDuration")
+		wrcs = &promoterv1alpha1.WebRequestCommitStatus{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name + "-webhook",
+				Namespace: "default",
+			},
+			Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+				Key:                  "webhook-fanout",
+				ReportOn:             constants.CommitRefProposed,
+				HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+					URLTemplate:    testServer.URL + "/validate",
+					MethodTemplate: "GET",
+					Timeout:        metav1.Duration{Duration: 10 * time.Second},
+				},
+				Success: promoterv1alpha1.SuccessSpec{
+					When: promoterv1alpha1.WhenWithOutputSpec{
+						Expression: `Response != nil ? Response.StatusCode == 200 : Phase == "success"`,
+					},
+				},
+				Mode: promoterv1alpha1.ModeSpec{
+					Trigger: &promoterv1alpha1.TriggerModeSpec{
+						// Large enough that polling cannot explain a new request within EventuallyTimeout.
+						RequeueDuration: metav1.Duration{Duration: time.Hour},
+						When: promoterv1alpha1.WhenWithOutputSpec{
+							// Always fire so a webhook-driven reconcile is observable via the HTTP counter.
+							Expression: `true`,
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, wrcs)).To(Succeed())
+	})
+
+	AfterEach(func() {
+		if testServer != nil {
+			testServer.Close()
+		}
+		if wrcs != nil {
+			_ = k8sClient.Delete(ctx, wrcs)
+		}
+		if promotionStrategy != nil {
+			_ = k8sClient.Delete(ctx, promotionStrategy)
+		}
+		if gitRepo != nil {
+			_ = k8sClient.Delete(ctx, gitRepo)
+		}
+		if scmProvider != nil {
+			_ = k8sClient.Delete(ctx, scmProvider)
+		}
+		if scmSecret != nil {
+			_ = k8sClient.Delete(ctx, scmSecret)
+		}
+	})
+
+	It("reconciles WRCS when an SCM webhook arrives for the configured repository", func() {
+		By("Waiting for the initial trigger-mode reconcile to make HTTP requests")
+		Eventually(func(g Gomega) {
+			requestMu.Lock()
+			c := requestCount
+			requestMu.Unlock()
+			g.Expect(c).To(BeNumerically(">=", 1))
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		By("Waiting for request count to stabilize (no polling; RequeueDuration is 1h)")
+		var stableCount int
+		Eventually(func() bool {
+			requestMu.Lock()
+			before := requestCount
+			requestMu.Unlock()
+			time.Sleep(3 * time.Second)
+			requestMu.Lock()
+			after := requestCount
+			requestMu.Unlock()
+			if before == after && before >= 1 {
+				stableCount = after
+				return true
+			}
+			return false
+		}, constants.EventuallyTimeout, time.Second).Should(BeTrue(), "HTTP request count should stabilize after initial reconciles")
+
+		By("Sending a non-push webhook matching the GitRepository Fake owner/name")
+		Expect(gitRepo.Spec.Fake).NotTo(BeNil())
+		sendWebhookForRepoEvent(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+
+		By("Asserting the webhook drove a new HTTP request")
+		Eventually(func(g Gomega) {
+			requestMu.Lock()
+			c := requestCount
+			requestMu.Unlock()
+			g.Expect(c).To(BeNumerically(">", stableCount),
+				"webhook should enqueue WRCS and fire HTTP; stable=%d current=%d", stableCount, c)
+		}, constants.EventuallyTimeout).Should(Succeed())
+	})
+})

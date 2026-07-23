@@ -38,9 +38,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
@@ -53,6 +55,11 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/webrequest"
 )
 
+// WRCSEnqueueFunc is a function type that can be used to enqueue WebRequestCommitStatus
+// reconcile requests without modifying the object. Used by the webhook receiver to fan out
+// repo-matched webhook events to WRCS resources.
+type WRCSEnqueueFunc func(namespace, name string)
+
 // WebRequestCommitStatusReconciler reconciles WebRequestCommitStatus resources by running HTTP requests
 // per environment, evaluating trigger/validation/response expressions, and upserting CommitStatus resources
 // so the SCM (e.g. GitHub) shows success or pending based on the validation result.
@@ -63,6 +70,9 @@ type WebRequestCommitStatusReconciler struct {
 	SettingsMgr *settings.Manager
 	EnqueueCTP  CTPEnqueueFunc
 	httpClient  *http.Client
+	// enqueueFunc is set during SetupWithManager and can be retrieved via GetEnqueueFunc.
+	// It allows the webhook receiver to enqueue WRCS reconcile requests.
+	enqueueFunc WRCSEnqueueFunc
 	// rvTracker remembers the ResourceVersion of the last successful status patch this
 	// reconciler made for each object key, so Reconcile can short-circuit (with a brief
 	// requeue) when the informer cache hasn't yet observed our previous write. Without
@@ -72,6 +82,12 @@ type WebRequestCommitStatusReconciler struct {
 	// state, causing trigger expressions to re-fire HTTP side effects against stale
 	// inputs.
 	rvTracker *utils.ResourceVersionTracker
+}
+
+// GetEnqueueFunc returns a function that can be used to enqueue WRCS reconcile requests.
+// This should be called after SetupWithManager has been called.
+func (r *WebRequestCommitStatusReconciler) GetEnqueueFunc() WRCSEnqueueFunc {
+	return r.enqueueFunc
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=webrequestcommitstatuses,verbs=get;list;watch
@@ -238,9 +254,31 @@ func (r *WebRequestCommitStatusReconciler) SetupWithManager(ctx context.Context,
 		return fmt.Errorf("failed to get WebRequestCommitStatus max concurrent reconciles: %w", err)
 	}
 
+	// Create a channel for external enqueue requests (e.g. webhook receiver). This allows
+	// triggering WRCS reconciliation without modifying the WRCS object.
+	// We use a buffer of 1024 to match the default internal buffer size of source.Channel.
+	externalEnqueueChan := make(chan event.GenericEvent, 1024)
+
+	r.enqueueFunc = func(namespace, name string) {
+		wrcs := &promoterv1alpha1.WebRequestCommitStatus{}
+		wrcs.SetNamespace(namespace)
+		wrcs.SetName(name)
+
+		select {
+		case externalEnqueueChan <- event.GenericEvent{Object: wrcs}:
+			// Sent successfully
+		default:
+			// Channel is full, log a warning and block until space is available
+			log.FromContext(ctx).Info("WRCS enqueue channel is full, blocking until space is available",
+				"namespace", namespace, "name", name)
+			externalEnqueueChan <- event.GenericEvent{Object: wrcs}
+		}
+	}
+
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.WebRequestCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueWebRequestCommitStatusForPromotionStrategy()).
+		WatchesRawSource(source.Channel(externalEnqueueChan, &handler.EnqueueRequestForObject{})).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Named("webrequestcommitstatus").
 		Complete(r)

@@ -112,9 +112,12 @@ type WebRequestCommitStatusSpec struct {
 	Mode ModeSpec `json:"mode"`
 }
 
-// ModeSpec defines how the WebRequestCommitStatus controller issues HTTP requests.
+// ModeSpec defines how the WebRequestCommitStatus controller issues HTTP requests
+// and optionally accelerates reconciles from inbound SCM webhooks.
 //
-// Exactly one of Polling or Trigger must be set.
+// Exactly one of Polling or Trigger must be set. Webhook is optional and additive:
+// it does not replace polling or trigger; it filters which inbound webhook deliveries
+// enqueue an immediate reconcile (with polling/trigger as the reliability fallback).
 //
 // Context (the context field below) controls request fan-out and what data is available in templates and trigger expressions:
 //
@@ -136,10 +139,36 @@ type ModeSpec struct {
 	// +optional
 	Trigger *TriggerModeSpec `json:"trigger,omitempty"`
 
+	// Webhook optionally configures inbound SCM webhook filtering for this WRCS.
+	// When set with a filter expression, only matching webhook payloads enqueue a reconcile.
+	// When omitted (or filter omitted), any webhook for the referenced repository still enqueues
+	// as today. Webhook secret verification uses keys on the ScmProvider Secret (webhookSecret,
+	// webhookSignatureHeader), not fields on this CR.
+	// +optional
+	Webhook *WebhookModeSpec `json:"webhook,omitempty"`
+
 	// Context is "environments" (default) or "promotionstrategy". See the ModeSpec type documentation for behavior, template limits, and success expression rules.
 	// +optional
 	// +kubebuilder:default=environments
 	Context ContextMode `json:"context,omitempty"`
+}
+
+// WebhookModeSpec configures inbound webhook acceleration for WebRequestCommitStatus.
+// Authentication secrets live on the ScmProvider Secret referenced by the GitRepository;
+// this block only controls optional payload filtering before enqueue.
+type WebhookModeSpec struct {
+	// Filter optionally discards inbound payloads before enqueueing a reconcile.
+	// +optional
+	Filter *WebhookFilterSpec `json:"filter,omitempty"`
+}
+
+// WebhookFilterSpec holds a boolean expr evaluated against the inbound webhook JSON body.
+type WebhookFilterSpec struct {
+	// Expression is a boolean expr expression. The only binding is Payload, a map decoded
+	// from the webhook JSON body (e.g. Payload.context startsWith "ArgoCD/").
+	// Evaluated by the webhook receiver before enqueue; not available to trigger/success expressions.
+	// +required
+	Expression string `json:"expression"`
 }
 
 // PollingModeSpec defines interval-based polling configuration.
