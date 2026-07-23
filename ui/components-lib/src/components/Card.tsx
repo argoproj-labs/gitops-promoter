@@ -1,6 +1,5 @@
-import { FaServer, FaHistory } from 'react-icons/fa';
+import { FaServer } from 'react-icons/fa';
 import { StatusIcon, StatusType } from './StatusIcon';
-import { Tooltip } from './Tooltip';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import CommitInfo from './CommitInfo';
 import {
@@ -13,10 +12,9 @@ import './Card.scss';
 
 export interface CardProps {
   environments: Environment[];
-  onHistoryNavigate?: (_branch: string) => void;
 }
 
-const Card: React.FC<CardProps> = ({ environments, onHistoryNavigate }) => {
+const Card: React.FC<CardProps> = ({ environments }) => {
   const [isVerticalLayout, setIsVerticalLayout] = useState<boolean>(true);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -48,8 +46,6 @@ const Card: React.FC<CardProps> = ({ environments, onHistoryNavigate }) => {
           const branch = env.branch;
           const proposedStatus = env.promotionStatus;
           const isProcessing = processingEnvs.has(branch);
-          const environment = environments.find((e) => e.branch === branch);
-          const history = environment?.history || [];
 
           const activeDeploymentCommit = {
             sha: env.activeSha,
@@ -94,21 +90,6 @@ const Card: React.FC<CardProps> = ({ environments, onHistoryNavigate }) => {
                         <span className="env-card__env-name">{branch}</span>
                       </div>
                     </div>
-
-                    {onHistoryNavigate && history.length > 0 && (
-                      <div className="history-controls">
-                        <Tooltip content="View promotion history">
-                          <button
-                            type="button"
-                            className="history-toggle"
-                            onClick={() => onHistoryNavigate(branch)}
-                          >
-                            <FaHistory />
-                            <span className="history-toggle__label">History</span>
-                          </button>
-                        </Tooltip>
-                      </div>
-                    )}
                   </div>
 
                   <CommitInfo
