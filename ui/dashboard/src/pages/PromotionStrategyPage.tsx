@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
+import { useNavigateWithParams } from '../hooks/useNavigateWithParams';
 import { namespaceStore } from '../stores/NamespaceStore';
 import { viewStore } from '../stores/ViewStore';
 import { PromotionStrategyStore } from '../stores/PromotionStrategyStore';
@@ -59,7 +60,7 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
     selectedStrategy,
   ]);
 
-  const navigate = useNavigate();
+  const navigate = useNavigateWithParams();
 
   const handleBack = () => {
     setNamespace(currentNamespace);
@@ -101,6 +102,13 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
             </button>
 
             <button
+              className="strategy-page-tab"
+              onClick={() => navigate(`/promotion-strategies/${namespace}/${strategyName}/history`)}
+            >
+              History
+            </button>
+
+            <button
               className={`strategy-page-tab ${currentView === 'yaml' ? 'active' : ''}`}
               onClick={() => setView('yaml')}
             >
@@ -113,7 +121,7 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
       </div>
 
       {currentView === 'cards' ? (
-        <div style={{ marginTop: '8px' }}>
+        <div className="strategy-page-cards">
           <PromotionStrategyDetailsView strategy={selectedStrategy} />
         </div>
       ) : (

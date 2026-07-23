@@ -18,20 +18,26 @@ $extension-wrapper-gap: 20px;
     flex-direction: row;
     overflow-x: auto;
     width: 100%;
+    height: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
     gap: 20px;
-    justify-content: center;
+    justify-content: safe center;
     scroll-behavior: smooth;
     box-sizing: border-box;
     margin: 0;
+    padding: 8px 0;
   }
 
   .env-cards-wrapper {
     padding: 0;
     display: flex;
-    margin: 0 auto;
+    margin: 0;
+    width: max-content;
     align-items: stretch;
-    justify-content: center;
+    justify-content: safe center;
     gap: $card-gap-vertical;
+    flex: 0 0 auto;
   }
 
   .env-card-column {
@@ -71,13 +77,18 @@ $extension-wrapper-gap: 20px;
     flex-direction: column;
     align-items: center;
     width: 100%;
+    height: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-x: auto;
+    padding: 8px 0;
   }
 
   .env-cards-wrapper {
     flex-direction: column;
     align-items: center;
     padding: 0 5px;
+    width: 100%;
     max-width: $card-max-width;
     box-sizing: border-box;
     justify-content: center;
@@ -111,14 +122,15 @@ $extension-wrapper-gap: 20px;
     margin-bottom: 20px;
   }
 
-  .commit-group:not(.proposed) {
+  .commit-group:not(.proposed):not(.env-card__proposed-loading) {
     grid-column: 1;
     grid-row: 2;
     min-width: 0;
     padding-right: 16px;
   }
 
-  .commit-group.proposed {
+  .commit-group.proposed,
+  .commit-group.env-card__proposed-loading {
     grid-column: 2;
     grid-row: 1 / -1;
     margin: 0;
@@ -126,12 +138,41 @@ $extension-wrapper-gap: 20px;
     margin-right: -$card-padding;
     margin-bottom: -$card-padding;
     padding: 12px;
-    padding-top: 65px;
+    padding-top: 24px;
     border-radius: 8px 0 0 8px;
     border-left: 3px solid $argo-running;
     border-top: 0;
     background: linear-gradient(135deg, rgba(13, 173, 234, 0.06) 0%, rgba(13, 173, 234, 0.03) 100%);
     min-width: 0;
+  }
+
+  .commit-group.proposed .promote-flow,
+  .commit-group.proposed .promote-banner__label {
+    display: none;
+  }
+
+  .commit-group.proposed .promote-banner {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    transform: translate(-50%, -50%);
+    margin: 0;
+    padding: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border-bottom: 0;
+    color: #fff;
+    background: $argo-running;
+    box-shadow: 0 1px 4px rgba(13, 173, 234, 0.45);
+  }
+
+  .commit-group.proposed .promote-banner__icon {
+    width: 14px;
+    height: 8px;
+    margin: 0;
+    transform: rotate(-90deg);
+    animation: promote-banner-pulse 2s ease-in-out infinite;
   }
 
   .arrow-separator {
