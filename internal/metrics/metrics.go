@@ -75,6 +75,12 @@ const (
 	SCMOperationList SCMOperation = "list"
 	// SCMOperationGet is used when getting a single resource, such as a specific pull request.
 	SCMOperationGet SCMOperation = "get"
+	// SCMOperationAddLabels is used when adding labels to pull requests.
+	SCMOperationAddLabels SCMOperation = "add-labels"
+	// SCMOperationCreateLabel is used when creating repository or project labels before applying them to pull requests.
+	SCMOperationCreateLabel SCMOperation = "create-label"
+	// SCMOperationRemoveLabels is used when removing labels from pull requests.
+	SCMOperationRemoveLabels SCMOperation = "remove-labels"
 )
 
 // RateLimit represents the rate limit information for SCM API calls.

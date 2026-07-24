@@ -80,6 +80,16 @@ type PullRequestSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Enum=closed;merged;open
 	State PullRequestState `json:"state"`
+
+	// Labels is the desired set of SCM pull request labels (not Kubernetes metadata labels).
+	// Written by the ChangeTransferPolicy controller from pullRequest.labels.expression evaluation.
+	// +kubebuilder:validation:Optional
+	// +listType=set
+	// +kubebuilder:validation:MaxItems=10
+	// +kubebuilder:validation:items:MinLength=1
+	// +kubebuilder:validation:items:MaxLength=50
+	// +kubebuilder:validation:items:Pattern=`^[^\n\r\x00]+$`
+	Labels []string `json:"labels,omitempty"`
 }
 
 // CommitConfiguration defines the commit configuration for how we will merge/squash/etc the pull request.
@@ -124,6 +134,15 @@ type PullRequestStatus struct {
 	// to the SCM via provider.Update on an open pull request.
 	// +optional
 	SCMSyncedSpecDigest string `json:"scmSyncedSpecDigest,omitempty"`
+
+	// AppliedLabels lists SCM labels successfully applied by gitops-promoter (for sync and retraction).
+	// +kubebuilder:validation:Optional
+	// +listType=set
+	// +kubebuilder:validation:MaxItems=10
+	// +kubebuilder:validation:items:MinLength=1
+	// +kubebuilder:validation:items:MaxLength=50
+	// +kubebuilder:validation:items:Pattern=`^[^\n\r\x00]+$`
+	AppliedLabels []string `json:"appliedLabels,omitempty"`
 
 	// Conditions Represents the observations of the current state.
 	// +patchMergeKey=type

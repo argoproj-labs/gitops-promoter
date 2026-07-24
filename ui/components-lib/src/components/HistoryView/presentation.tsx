@@ -18,6 +18,7 @@ export const CELL_KIND_LABELS: Record<CellKind, string> = {
   failed: 'Failed',
   'no-op': 'No-op',
   'no-changes': 'No changes',
+  'unknown-history': 'History unavailable',
 };
 
 export const DRAWER_MIN_WIDTH = 320;
@@ -50,6 +51,8 @@ export function cellPillTooltip(cell: CellState, branch: string): string {
       return cell.noopNote || `No change in ${branch}`;
     case 'no-changes':
       return `Never reached ${branch}`;
+    case 'unknown-history':
+      return `Predates ${branch}'s available history — no longer recorded`;
     default:
       return '';
   }

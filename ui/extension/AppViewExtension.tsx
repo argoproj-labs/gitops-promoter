@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import Select, { SingleValue } from 'react-select';
 import Card from '@components-lib/components/Card';
 import HistoryView from '@components-lib/components/HistoryView/HistoryView';
+import type { CellSelection } from '@components-lib/components/HistoryView/HistoryView';
 import { PromotionStrategy } from '@shared/types/promotion';
 import { AppViewComponentProps } from '@shared/types/extension';
 import { sortStrategyCommitStatuses } from '@shared/utils/util';
@@ -30,6 +31,28 @@ const setParam = (name: string) => {
     url.searchParams.set(PARAM, name);
   } else {
     url.searchParams.delete(PARAM);
+  }
+  window.history.replaceState(null, '', url.toString());
+};
+
+const COMMIT_PARAM = 'psCommit';
+const ENV_PARAM = 'psEnv';
+
+const getSelectionFromUrl = (): CellSelection | null => {
+  const params = new URLSearchParams(window.location.search);
+  const rowId = params.get(COMMIT_PARAM);
+  const branch = params.get(ENV_PARAM);
+  return rowId && branch ? { rowId, branch } : null;
+};
+
+const setSelectionInUrl = (selection: CellSelection | null) => {
+  const url = new URL(window.location.href);
+  if (selection) {
+    url.searchParams.set(COMMIT_PARAM, selection.rowId);
+    url.searchParams.set(ENV_PARAM, selection.branch);
+  } else {
+    url.searchParams.delete(COMMIT_PARAM);
+    url.searchParams.delete(ENV_PARAM);
   }
   window.history.replaceState(null, '', url.toString());
 };
@@ -66,7 +89,7 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
     () => getParam() || getStored(application.metadata.namespace, application.metadata.name),
   );
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const [view, setView] = useState<ViewMode>('card');
+  const [view, setView] = useState<ViewMode>(() => (getSelectionFromUrl() ? 'history' : 'card'));
 
   useEffect(() => {
     const appName = application.metadata.name;
@@ -201,7 +224,11 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
       {selected && view === 'card' && <Card environments={selected.status?.environments || []} />}
       {selected && view === 'history' && (
         <div className="gp-history-wrapper">
-          <HistoryView strategy={selected} />
+          <HistoryView
+            strategy={selected}
+            initialSelection={getSelectionFromUrl()}
+            onSelectionChange={setSelectionInUrl}
+          />
         </div>
       )}
     </div>

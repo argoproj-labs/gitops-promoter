@@ -2,7 +2,14 @@ import type { Commit, CommitStatus, PullRequest, ReferenceCommit } from '@shared
 
 export type HealthKey = 'success' | 'failure' | 'pending' | 'unknown';
 
-export type CellKind = 'live' | 'in-flight' | 'was-here' | 'failed' | 'no-op' | 'no-changes';
+export type CellKind =
+  | 'live'
+  | 'in-flight'
+  | 'was-here'
+  | 'failed'
+  | 'no-op'
+  | 'no-changes'
+  | 'unknown-history';
 
 export interface CellState {
   kind: CellKind;

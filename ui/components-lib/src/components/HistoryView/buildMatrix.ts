@@ -105,6 +105,7 @@ const cellRank: Record<CellKind, number> = {
   failed: 4,
   'was-here': 3,
   'no-op': 2,
+  'unknown-history': 1,
   'no-changes': 1,
 };
 
@@ -171,7 +172,40 @@ function processHistory(rowsById: Map<string, CommitRow>, env: StatusEnvironment
   });
 }
 
-function finalizeRow(row: CommitRow, envs: StatusEnvironment[]): CommitRow {
+// The CRD caps per-environment history at 5 entries. A commit older than a capped
+// env's oldest surviving entry may have run there but its record was dropped, so such
+// cells render as 'unknown-history' rather than claiming 'no-changes'.
+const HISTORY_CAP = 5;
+
+interface EnvHorizon {
+  oldestKnownAt: number;
+  truncated: boolean;
+}
+
+function computeHorizons(envs: StatusEnvironment[]): Map<string, EnvHorizon> {
+  const horizons = new Map<string, EnvHorizon>();
+  for (const env of envs) {
+    const times: number[] = [];
+    const push = (raw?: string) => {
+      if (!raw) return;
+      const t = new Date(raw).getTime();
+      if (Number.isFinite(t)) times.push(t);
+    };
+    push(env.active?.dry?.commitTime);
+    for (const h of env.history ?? []) push(h.active?.dry?.commitTime);
+    horizons.set(env.branch, {
+      oldestKnownAt: times.length ? Math.min(...times) : Infinity,
+      truncated: (env.history?.length ?? 0) >= HISTORY_CAP,
+    });
+  }
+  return horizons;
+}
+
+function finalizeRow(
+  row: CommitRow,
+  envs: StatusEnvironment[],
+  horizons: Map<string, EnvHorizon>,
+): CommitRow {
   const times: number[] = [];
   for (const branch of envs.map((e) => e.branch)) {
     const c = row.cells[branch];
@@ -193,10 +227,19 @@ function finalizeRow(row: CommitRow, envs: StatusEnvironment[]): CommitRow {
     : 0;
   if (!Number.isFinite(row.earliestAt)) row.earliestAt = row.freshestAt;
 
+  const rowCommitAt = row.freshestAt;
+
   for (const e of envs) {
     if (!row.cells[e.branch]) {
+      const horizon = horizons.get(e.branch);
+      const agedOut =
+        !!horizon &&
+        horizon.truncated &&
+        rowCommitAt > 0 &&
+        Number.isFinite(horizon.oldestKnownAt) &&
+        rowCommitAt < horizon.oldestKnownAt;
       row.cells[e.branch] = {
-        kind: 'no-changes',
+        kind: agedOut ? 'unknown-history' : 'no-changes',
         commitStatuses: [],
         health: 'unknown',
       };
@@ -274,7 +317,8 @@ export function buildMatrix(strategy: PromotionStrategy): {
     processHistory(rowsById, env);
   });
 
-  const rows = Array.from(rowsById.values()).map((row) => finalizeRow(row, envs));
+  const horizons = computeHorizons(envs);
+  const rows = Array.from(rowsById.values()).map((row) => finalizeRow(row, envs, horizons));
 
   rows.sort((a, b) => b.freshestAt - a.freshestAt);
 

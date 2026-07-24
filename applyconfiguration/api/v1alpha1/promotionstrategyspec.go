@@ -45,6 +45,8 @@ type PromotionStrategySpecApplyConfiguration struct {
 	// When set, proposed branches are created as <environment-branch>-next/<activePath>.
 	// Individual environments can override this value via their own activePath field.
 	ActivePath *string `json:"activePath,omitempty"`
+	// PullRequest configures SCM pull request behavior for all environments in this strategy.
+	PullRequest *PullRequestPolicySpecApplyConfiguration `json:"pullRequest,omitempty"`
 }
 
 // PromotionStrategySpecApplyConfiguration constructs a declarative configuration of the PromotionStrategySpec type for use with
@@ -105,5 +107,13 @@ func (b *PromotionStrategySpecApplyConfiguration) WithEnvironments(values ...*En
 // If called multiple times, the ActivePath field is set to the value of the last call.
 func (b *PromotionStrategySpecApplyConfiguration) WithActivePath(value string) *PromotionStrategySpecApplyConfiguration {
 	b.ActivePath = &value
+	return b
+}
+
+// WithPullRequest sets the PullRequest field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the PullRequest field is set to the value of the last call.
+func (b *PromotionStrategySpecApplyConfiguration) WithPullRequest(value *PullRequestPolicySpecApplyConfiguration) *PromotionStrategySpecApplyConfiguration {
+	b.PullRequest = value
 	return b
 }

@@ -11,6 +11,7 @@ import {
 } from '@shared/utils/util';
 import type { CellState, CommitRow, EnvColumn, HealthKey } from '../types';
 import { DRAWER_MIN_WIDTH, DRAWER_MAX_WIDTH, HEALTH_LABELS, healthIcon } from '../presentation';
+import { isEmptyCellKind } from '../helpers';
 import Tooltip from '../Tooltip/Tooltip';
 
 const DetailDrawer: React.FC<{
@@ -119,6 +120,7 @@ const DetailDrawer: React.FC<{
               {cell.kind === 'failed' && 'FAILED'}
               {cell.kind === 'no-op' && 'NO-OP'}
               {cell.kind === 'no-changes' && 'NO CHANGES'}
+              {cell.kind === 'unknown-history' && 'HISTORY UNAVAILABLE'}
             </span>
             <span className="hp-drawer__branch">{branch}</span>
           </div>
@@ -299,7 +301,7 @@ const DetailDrawer: React.FC<{
             {envs.map((e) => {
               const c = row.cells[e.branch];
               const isHere = e.branch === branch;
-              const selectable = !isHere && c.kind !== 'no-changes';
+              const selectable = !isHere && !isEmptyCellKind(c.kind);
               const inner = (
                 <>
                   <span className="hp-drawer__presence-branch">{e.branch}</span>
@@ -318,6 +320,7 @@ const DetailDrawer: React.FC<{
                       </>
                     )}
                     {c.kind === 'no-changes' && '—'}
+                    {c.kind === 'unknown-history' && '?'}
                   </span>
                   {c.at && (
                     <Tooltip label={formatDate(c.at)}>

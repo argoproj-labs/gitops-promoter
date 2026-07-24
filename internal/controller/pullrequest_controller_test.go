@@ -1367,6 +1367,12 @@ var _ = Describe("shouldSkipSCMSync", func() {
 		Expect(shouldSkipSCMSync(pr)).To(BeFalse())
 	})
 
+	It("does not skip when labels need syncing", func() {
+		pr := openPRWithStatus()
+		pr.Spec.Labels = []string{"lgtm", "approved"}
+		Expect(shouldSkipSCMSync(pr)).To(BeFalse())
+	})
+
 	It("does not skip when the PR has not been created in SCM yet", func() {
 		pr := openPRWithStatus()
 		pr.Status.ID = ""

@@ -92,6 +92,37 @@
   }
 }
 
+.cell--unknown-history {
+  border: 1px dashed $stroke-strong;
+  border-radius: $radius-md;
+  color: $text-muted;
+  font-size: 10.5px;
+  font-style: italic;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 54px;
+  padding: 6px;
+  cursor: default;
+  background-color: $bg-soft;
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 5px,
+    rgba(15, 35, 60, 0.05) 5px,
+    rgba(15, 35, 60, 0.05) 10px
+  );
+  &::before {
+    background: transparent;
+  }
+}
+.cell__unknown-label {
+  line-height: 1.15;
+  text-align: center;
+}
+
 .cell__top {
   display: flex;
   align-items: center;
@@ -137,6 +168,11 @@
   }
   &--no-changes {
     background: transparent;
+    color: $text-muted;
+    border: 1px dashed $stroke-strong;
+  }
+  &--unknown-history {
+    background: $bg-soft;
     color: $text-muted;
     border: 1px dashed $stroke-strong;
   }

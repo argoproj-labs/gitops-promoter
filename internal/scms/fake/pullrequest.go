@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -38,12 +39,15 @@ var (
 	// mergeShaMismatchCount is incremented every time Merge is called with a PR
 	// whose Spec.MergeSha does not match origin/<sourceBranch> (for tests).
 	mergeShaMismatchCount atomic.Uint64
+	// labelCallCount is incremented on AddLabels and RemoveLabels calls (for tests).
+	labelCallCount atomic.Uint64
 )
 
 type pullRequestProviderState struct {
 	createdAt time.Time
 	id        string
 	state     v1alpha1.PullRequestState
+	labels    []string
 }
 
 // PullRequest implements the scms.PullRequestProvider interface for testing purposes.
@@ -122,6 +126,7 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullReque
 		id:        prev.id,
 		state:     v1alpha1.PullRequestClosed,
 		createdAt: prev.createdAt,
+		labels:    prev.labels,
 	}
 	return nil
 }
@@ -224,6 +229,7 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 		id:        prev.id,
 		state:     v1alpha1.PullRequestMerged,
 		createdAt: prev.createdAt,
+		labels:    prev.labels,
 	}
 	return nil
 }
@@ -266,10 +272,20 @@ func ResetMergeShaMismatchCount() {
 	mergeShaMismatchCount.Store(0)
 }
 
+// ResetLabelCallCount resets the test-only counter of AddLabels/RemoveLabels invocations.
+func ResetLabelCallCount() {
+	labelCallCount.Store(0)
+}
+
+// LabelCallCount returns how many times AddLabels or RemoveLabels has been invoked since the last reset.
+func LabelCallCount() uint64 {
+	return labelCallCount.Load()
+}
+
 // MergeShaMismatchCount returns how many times Merge has been called with a PR whose
 // Spec.MergeSha did not match origin/<sourceBranch> since the last reset. A non-zero value
 // means the controller asked the SCM to merge a sha the SCM no longer has on the source
-// branch — typically because the controller pushed a fresh commit to the proposed branch
+// branch, typically because the controller pushed a fresh commit to the proposed branch
 // (for example via MergeWithOursStrategy) without updating PR.Spec.MergeSha to match.
 func MergeShaMismatchCount() uint64 {
 	return mergeShaMismatchCount.Load()
@@ -295,33 +311,43 @@ func (pr *PullRequest) GetRecordedState(ctx context.Context, pullRequest v1alpha
 }
 
 // FindOpen checks if a pull request is open and returns its status.
-func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string, time.Time, error) {
+func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.FindOpenResult, error) {
 	findOpenCallCount.Add(1)
 
 	mutexPR.RLock()
-	found, id, createdAt := pr.findOpen(ctx, pullRequest)
+	found, id, createdAt, scmLabels := pr.findOpen(ctx, pullRequest)
 	mutexPR.RUnlock()
 
-	return found, id, createdAt, nil
+	if !found {
+		return scms.FindOpenResult{}, nil
+	}
+
+	return scms.FindOpenResult{
+		Found:          true,
+		ID:             id,
+		CreationTime:   createdAt,
+		SCMLabels:      scmLabels,
+		LabelsReported: true,
+	}, nil
 }
 
-func (pr *PullRequest) findOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string, time.Time) {
+func (pr *PullRequest) findOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string, time.Time, []string) {
 	log.FromContext(ctx).Info("Finding open pull request", "pullRequest", pullRequest)
 	if pullRequests == nil {
-		return false, "", time.Time{}
+		return false, "", time.Time{}, nil
 	}
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
 		log.FromContext(ctx).Error(err, "failed to get GitRepository")
-		return false, "", time.Time{}
+		return false, "", time.Time{}, nil
 	}
 
 	pullRequestState, ok := pullRequests[pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)]
 	if !ok || pullRequestState.state != v1alpha1.PullRequestOpen {
-		return false, "", time.Time{}
+		return false, "", time.Time{}, nil
 	}
-	return true, pullRequestState.id, pullRequestState.createdAt
+	return true, pullRequestState.id, pullRequestState.createdAt, slices.Clone(pullRequestState.labels)
 }
 
 func (pr *PullRequest) getMapKey(pullRequest v1alpha1.PullRequest, owner, name string) string {
@@ -451,4 +477,109 @@ func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequ
 
 	logger.Info("Pull request not found", "pullRequest", pullRequest)
 	return "", errors.New("pull request not found")
+}
+
+// AddLabels adds labels to a pull request in the fake provider.
+func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labelNames []string) error {
+	labelCallCount.Add(1)
+	if len(labelNames) == 0 {
+		return nil
+	}
+
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	mutexPR.Lock()
+	defer mutexPR.Unlock()
+	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+	st, ok := pullRequests[prKey]
+	if !ok {
+		return errors.New("pull request not found")
+	}
+	for _, name := range labelNames {
+		if !slices.Contains(st.labels, name) {
+			st.labels = append(st.labels, name)
+		}
+	}
+	pullRequests[prKey] = st
+	return nil
+}
+
+// RemoveLabels removes labels from a pull request in the fake provider.
+func (pr *PullRequest) RemoveLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labelNames []string) error {
+	labelCallCount.Add(1)
+	if len(labelNames) == 0 {
+		return nil
+	}
+
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	mutexPR.Lock()
+	defer mutexPR.Unlock()
+	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+	st, ok := pullRequests[prKey]
+	if !ok {
+		return nil
+	}
+	remove := make(map[string]struct{}, len(labelNames))
+	for _, name := range labelNames {
+		remove[name] = struct{}{}
+	}
+	filtered := st.labels[:0]
+	for _, existing := range st.labels {
+		if _, drop := remove[existing]; !drop {
+			filtered = append(filtered, existing)
+		}
+	}
+	st.labels = filtered
+	pullRequests[prKey] = st
+	return nil
+}
+
+// SetScmLabels sets SCM-side labels on an open pull request without going through RemoveLabels (for tests).
+func SetScmLabels(ctx context.Context, k8sClient client.Client, pullRequest v1alpha1.PullRequest, labelNames []string) error {
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	pr := &PullRequest{k8sClient: k8sClient}
+	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+
+	mutexPR.Lock()
+	defer mutexPR.Unlock()
+	if pullRequests == nil {
+		return errors.New("pull request not found")
+	}
+	st, ok := pullRequests[prKey]
+	if !ok {
+		return errors.New("pull request not found")
+	}
+	st.labels = slices.Clone(labelNames)
+	pullRequests[prKey] = st
+	return nil
+}
+
+// GetAppliedLabels returns labels stored on the fake provider for testing.
+func (pr *PullRequest) GetAppliedLabels(ctx context.Context, pullRequest v1alpha1.PullRequest) ([]string, error) {
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	mutexPR.RLock()
+	defer mutexPR.RUnlock()
+	if pullRequests == nil {
+		return nil, nil
+	}
+	st, ok := pullRequests[pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)]
+	if !ok {
+		return nil, nil
+	}
+	return slices.Clone(st.labels), nil
 }
