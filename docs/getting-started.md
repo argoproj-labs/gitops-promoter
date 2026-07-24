@@ -488,7 +488,17 @@ spec:
 ## Promotion Strategy
 
 The PromotionStrategy resource is the main resource that you will use to configure the promotion of your application to different environments.
-Here is an example PromotionStrategy resource:
+
+Promotion ordering is **not** injected automatically. For the common linear
+dev → staging → production pipeline, create a
+[PreviousEnvironmentCommitStatus](gating-promotions/built-in-gates/previous-environment-commit-status.md)
+and declare its `key` on the PromotionStrategy. Without an ordering gate
+(PreviousEnvironmentCommitStatus or
+[DAGCommitStatus](gating-promotions/built-in-gates/dag-commit-status.md)), the
+PromotionStrategy controller fails its reconcile so environments cannot promote
+out of order by accident.
+
+Here is a minimal example:
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
@@ -496,6 +506,8 @@ kind: PromotionStrategy
 metadata:
   name: demo
 spec:
+  proposedCommitStatuses:
+  - key: promoter-previous-environment # must match PreviousEnvironmentCommitStatus.spec.key
   environments:
   - autoMerge: false
     branch: environment/development
@@ -505,6 +517,15 @@ spec:
     branch: environment/production
   gitRepositoryRef:
     name: <git-repository-ref-name> # The name of the GitRepository resource
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PreviousEnvironmentCommitStatus
+metadata:
+  name: demo
+spec:
+  key: promoter-previous-environment
+  promotionStrategyRef:
+    name: demo
 ```
 
 > [!IMPORTANT]
@@ -516,6 +537,11 @@ spec:
 > (Note the difference between the `syncSource` and the `hydrateTo` fields.)
 
 > [!TIP]
+> For non-linear promotion graphs, use a
+> [DAGCommitStatus](gating-promotions/built-in-gates/dag-commit-status.md) instead of
+> PreviousEnvironmentCommitStatus.
+
+> [!TIP]
 > For monorepos, you can share a single active branch across multiple PromotionStrategies by setting
 > `spec.activePath` (for example `apps/payments`). In that mode, proposed branches are created as
 > `<environment-branch>-next/<activePath>`, and the hydrator metadata is read from `<activePath>/hydrator.metadata`.
@@ -525,8 +551,8 @@ spec:
 > Notice that the branches are prefixed with `environment/`. This is a convention that we recommend you follow.
 
 > [!NOTE]
-> The `autoMerge` field is optional and defaults to `true`. We set it to `false` here because we do not have any
-> CommitStatus checks configured. With these all set to `false` we will have to manually merge the PRs.
+> The `autoMerge` field is optional and defaults to `true`. We set it to `false` here so you can
+> inspect and merge each promotion PR manually while getting started.
 
 ## Dashboard
 

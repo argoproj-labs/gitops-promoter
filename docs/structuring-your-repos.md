@@ -77,12 +77,23 @@ spec:
   gitRepositoryRef:
     name: platform-config
   activePath: apps/payments
+  proposedCommitStatuses:
+    - key: promoter-previous-environment # required ordering gate; see PreviousEnvironmentCommitStatus
   activeCommitStatuses:
     - key: argocd-health-payments
   environments:
     - branch: environment/dev
     - branch: environment/test
     - branch: environment/prod
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PreviousEnvironmentCommitStatus
+metadata:
+  name: payments
+spec:
+  key: promoter-previous-environment
+  promotionStrategyRef:
+    name: payments
 ---
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: ArgoCDCommitStatus

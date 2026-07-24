@@ -31,6 +31,10 @@ const TimedCommitStatusDefaultKey = "timer"
 // Changing it will break branch protection rules and rulesets that reference this name.
 const PreviousEnvironmentCommitStatusKey = "promoter-previous-environment"
 
+// DAGCommitStatusKey is the commit status key name used to indicate that an environment's
+// DAG dependencies are satisfied.
+const DAGCommitStatusKey = "promoter-dag"
+
 // CommitStatusPreviousEnvironmentStatusesAnnotation is the label used to identify commit statuses that make up the aggregated active commit status
 const CommitStatusPreviousEnvironmentStatusesAnnotation = "promoter.argoproj.io/previous-environment-statuses"
 

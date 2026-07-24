@@ -121,6 +121,24 @@ resources:
   controller: true
   domain: argoproj.io
   group: promoter
+  kind: PreviousEnvironmentCommitStatus
+  path: github.com/argoproj-labs/gitops-promoter/api/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: argoproj.io
+  group: promoter
+  kind: DAGCommitStatus
+  path: github.com/argoproj-labs/gitops-promoter/api/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: argoproj.io
+  group: promoter
   kind: ScheduledCommitStatus
   path: github.com/argoproj-labs/gitops-promoter/api/v1alpha1
   version: v1alpha1

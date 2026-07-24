@@ -3,6 +3,9 @@ kind: PromotionStrategy
 metadata:
   name: demo-github
 spec:
+  proposedCommitStatuses:
+  # The PreviousEnvironmentCommitStatus CR will maintain this ordering gate.
+  - key: promoter-previous-environment
   activeCommitStatuses:
   # The ArgoCDCommitStatus CR will maintain this commit status based on the application health.
   - key: argocd-health
@@ -15,3 +18,12 @@ spec:
       branch: environment/prod
   gitRepositoryRef:
     name: gitops-promoter-demo-repo
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PreviousEnvironmentCommitStatus
+metadata:
+  name: demo-github
+spec:
+  key: promoter-previous-environment
+  promotionStrategyRef:
+    name: demo-github

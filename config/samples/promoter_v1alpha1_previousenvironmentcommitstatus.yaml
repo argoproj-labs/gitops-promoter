@@ -1,0 +1,11 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PreviousEnvironmentCommitStatus
+metadata:
+  labels:
+    app.kubernetes.io/name: promoter
+    app.kubernetes.io/managed-by: kustomize
+  name: previousenvironmentcommitstatus-sample
+spec:
+  key: promoter-previous-environment
+  promotionStrategyRef:
+    name: promotionstrategy-sample

@@ -140,6 +140,20 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 		Recorder:           localMgr.GetEventRecorder("ArgoCDCommitStatus"),
 	}).SetupWithManager(mgrCtx, mcMgr)).To(Succeed())
 
+	// Ordering gates: PECS generates a chain-shaped DAGCommitStatus; PS hard-fails without one.
+	Expect((&PreviousEnvironmentCommitStatusReconciler{
+		Client:      localMgr.GetClient(),
+		Scheme:      localMgr.GetScheme(),
+		Recorder:    localMgr.GetEventRecorder("PreviousEnvironmentCommitStatus"),
+		SettingsMgr: settingsMgr,
+	}).SetupWithManager(mgrCtx, localMgr)).To(Succeed())
+	Expect((&DAGCommitStatusReconciler{
+		Client:      localMgr.GetClient(),
+		Scheme:      localMgr.GetScheme(),
+		Recorder:    localMgr.GetEventRecorder("DAGCommitStatus"),
+		SettingsMgr: settingsMgr,
+	}).SetupWithManager(mgrCtx, localMgr)).To(Succeed())
+
 	Expect((&PromotionStrategyReconciler{
 		Client:      localMgr.GetClient(),
 		Scheme:      localMgr.GetScheme(),

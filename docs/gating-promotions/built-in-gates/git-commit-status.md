@@ -92,6 +92,7 @@ spec:
   gitRepositoryRef:
     name: webservice-tier-1
   proposedCommitStatuses:
+    - key: promoter-previous-environment # required ordering gate; see PreviousEnvironmentCommitStatus
     - key: commit-format  # Must match GitCommitStatus.spec.key
   environments:
     - branch: environment/development
@@ -111,6 +112,8 @@ metadata:
 spec:
   gitRepositoryRef:
     name: webservice-tier-1
+  proposedCommitStatuses:
+    - key: promoter-previous-environment # required ordering gate; see PreviousEnvironmentCommitStatus
   environments:
     - branch: environment/development
     - branch: environment/staging

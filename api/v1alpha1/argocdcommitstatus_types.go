@@ -64,25 +64,13 @@ func (s *ArgoCDCommitStatusSpec) CommitStatusKey() string {
 
 // URLConfig is a template that can be rendered using the Go template engine.
 type URLConfig struct {
-	// Template is a go text template and receives .Environment and .ArgoCDCommitStatus variables. A function called urlQueryEscape
-	// is available to escape url query parameters. The template can be configured with options to control the behavior
-	// during execution if a variable is not present.
+	// Template is a Go text template used to generate the CommitStatus URL. A function called
+	// urlQueryEscape is available to escape URL query parameters. The template can be configured
+	// with options (url.options) to control behavior when a variable is not present.
 	//
-	// Example:
-	//
-	//   {{- $baseURL := "https://dev.argocd.local" -}}
-	//   {{- if eq .Environment "environment/development" -}}
-	//   {{- $baseURL = "https://dev.argocd.local" -}}
-	//   {{- else if eq .Environment "environment/staging" -}}
-	//   {{- $baseURL = "https://staging.argocd.local" -}}
-	//   {{- else if eq .Environment "environment/production" -}}
-	//   {{- $baseURL = "https://prod.argocd.local" -}}
-	//   {{- end -}}
-	//   {{- $labels := "" -}}
-	//   {{- range $key, $value := .ArgoCDCommitStatus.Spec.ApplicationSelector.MatchLabels -}}
-	//   {{- $labels = printf "%s%s=%s," $labels $key $value -}}
-	//   {{- end -}}
-	//   {{ printf "%s/applications?labels=%s" $baseURL (urlQueryEscape $labels) }}
+	// Available template variables depend on the parent resource that embeds URLConfig
+	// (ArgoCDCommitStatus, DAGCommitStatus, or PreviousEnvironmentCommitStatus). See the
+	// corresponding gate documentation for the variable set and examples.
 	//
 	// +kubebuilder:validation:Optional
 	Template string `json:"template,omitempty"`
