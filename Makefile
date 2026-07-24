@@ -254,20 +254,22 @@ build: manifests generate fmt vet ## Build manager binary.
 	go build -o bin/manager cmd/main.go
 
 .PHONY: install-ui-deps
-install-ui-deps: ## Install shared UI workspace dependencies (ui/shared, ui/components-lib).
-	cd ui/shared && npm install
-	cd ui/components-lib && npm install
+install-ui-deps: ## Install all UI workspace dependencies (ui/shared, ui/components-lib, ui/dashboard, ui/extension).
+	cd ui/shared && npm ci
+	cd ui/components-lib && npm ci
+	cd ui/dashboard && npm ci
+	cd ui/extension && npm ci
 
 .PHONY: build-dashboard-ui
 build-dashboard-ui: ## Build dashboard UI and embed it (requires install-ui-deps).
-	cd ui/dashboard && npm install && npm run build:embed
+	cd ui/dashboard && npm run build:embed
 
 .PHONY: build-dashboard
 build-dashboard: install-ui-deps build-dashboard-ui ## Install UI deps and build dashboard.
 
 .PHONY: build-extension-ui
 build-extension-ui: ## Build ArgoCD extension (requires install-ui-deps).
-	cd ui/extension && npm install && npm run build
+	cd ui/extension && npm run build
 
 .PHONY: build-extension
 build-extension: install-ui-deps build-extension-ui ## Install UI deps and build extension.
