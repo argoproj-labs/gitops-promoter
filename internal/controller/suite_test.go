@@ -916,7 +916,7 @@ func sendWebhookForRepoEvent(ctx context.Context, owner, name string) {
 	resp, err := httpClient.Do(req)
 	Expect(err).NotTo(HaveOccurred())
 	defer func() {
-		_ = resp.Body.Close()
+		Expect(resp.Body.Close()).To(Succeed())
 	}()
 	Expect(resp.StatusCode).To(Equal(http.StatusNoContent))
 }

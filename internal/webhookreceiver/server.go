@@ -58,6 +58,9 @@ const (
 	missRetryMaxDelay     = 2 * time.Second
 	missRetryFactor       = 2.0
 	maxPendingMissRetries = 256
+
+	// wrcsFanoutTimeout bounds async WRCS fan-out work after the HTTP handler returns.
+	wrcsFanoutTimeout = 15 * time.Second
 )
 
 // EnqueueFunc is a function type that can be used to enqueue reconcile requests
@@ -277,10 +280,16 @@ func (wr *WebhookReceiver) authorizeWebhookAndEnqueueWRCS(ctx context.Context, p
 		return http.StatusUnauthorized, "unauthorized"
 	}
 
-	// Fan out to WebRequestCommitStatus by repository identity for any webhook event
-	// (push and non-push). Failures here are logged inside enqueueWRCSForRepo and never
-	// affect the HTTP response or the CTP path below.
-	wr.enqueueWRCSForRepo(ctx, owner, name, "webhook", body)
+	// Fan out to WebRequestCommitStatus asynchronously so List/filter work does not delay
+	// the HTTP response (SCM providers retry on slow acknowledgements). Failures are logged
+	// inside enqueueWRCSForRepo and never affect the CTP path below.
+	bodyCopy := append([]byte(nil), body...)
+	//nolint:contextcheck // fan-out must outlive the HTTP request; inherits server-lifetime context
+	go func() {
+		fanoutCtx, cancel := context.WithTimeout(wr.getBaseContext(), wrcsFanoutTimeout)
+		defer cancel()
+		wr.enqueueWRCSForRepo(fanoutCtx, owner, name, "webhook", bodyCopy)
+	}()
 	return 0, ""
 }
 
@@ -573,7 +582,6 @@ func (wr *WebhookReceiver) verifyWebhookIfConfigured(ctx context.Context, provid
 	var candidates []candidate
 	seenSecrets := map[string]struct{}{}
 	var resolutionErrors int
-	var successfulResolutions int
 
 	for i := range gitRepos.Items {
 		gr := &gitRepos.Items[i]
@@ -587,7 +595,6 @@ func (wr *WebhookReceiver) verifyWebhookIfConfigured(ctx context.Context, provid
 				"namespace", gr.Namespace, "name", gr.Name, "error", getErr.Error())
 			continue
 		}
-		successfulResolutions++
 		secretBytes, headerName, ok := webhookSecretFromSecret(secret, provider)
 		if !ok {
 			continue
@@ -601,9 +608,9 @@ func (wr *WebhookReceiver) verifyWebhookIfConfigured(ctx context.Context, provid
 	}
 
 	if len(candidates) == 0 {
-		// Fail closed when every ScmProvider Secret resolution failed: otherwise we would
-		// skip verification on misconfiguration and accept unverified deliveries.
-		if successfulResolutions == 0 && resolutionErrors > 0 {
+		// Fail closed when any ScmProvider Secret resolution failed and no verification
+		// candidates were built: a failed-to-resolve Secret might have had webhookSecret set.
+		if resolutionErrors > 0 {
 			return false, fmt.Errorf("could not resolve ScmProvider Secret for %d matching GitRepository(ies)", resolutionErrors)
 		}
 		return true, nil

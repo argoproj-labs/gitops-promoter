@@ -472,6 +472,7 @@ spec:
                               Expression is a boolean expr expression. The only binding is Payload, a map decoded
                               from the webhook JSON body (e.g. Payload.context startsWith "ArgoCD/").
                               Evaluated by the webhook receiver before enqueue; not available to trigger/success expressions.
+                            minLength: 1
                             type: string
                         required:
                         - expression

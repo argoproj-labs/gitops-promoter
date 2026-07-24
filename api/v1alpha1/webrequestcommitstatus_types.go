@@ -168,6 +168,7 @@ type WebhookFilterSpec struct {
 	// from the webhook JSON body (e.g. Payload.context startsWith "ArgoCD/").
 	// Evaluated by the webhook receiver before enqueue; not available to trigger/success expressions.
 	// +required
+	// +kubebuilder:validation:MinLength=1
 	Expression string `json:"expression"`
 }
 

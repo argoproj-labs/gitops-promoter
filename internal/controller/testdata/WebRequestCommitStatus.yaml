@@ -47,7 +47,7 @@ spec:
     polling:
       interval: 2m
     # Optional fast path: filter inbound SCM webhooks before enqueueing a reconcile.
-    # Webhook secrets live on the ScmProvider Secret (webhookSecret / webhookSignatureHeader).
+    # Webhook secrets live on the ScmProvider or ClusterScmProvider Secret (webhookSecret / webhookSignatureHeader).
     # webhook:
     #   filter:
     #     expression: 'Payload.context startsWith "ArgoCD/"'

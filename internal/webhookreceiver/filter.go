@@ -1,23 +1,35 @@
 package webhookreceiver
 
 import (
-	"errors"
 	"fmt"
 	"sync"
 
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
+	"github.com/golang/groupcache/lru"
 )
 
-// webhookFilterProgramCache caches compiled filter expressions keyed by expression string.
-// Expressions are stable per WRCS spec, so compiling once avoids a hot path under frequent webhooks.
-var webhookFilterProgramCache sync.Map
+// maxWebhookFilterCacheEntries bounds the compiled-filter LRU so unique expressions from
+// churned WRCS resources cannot grow controller memory without bound.
+const maxWebhookFilterCacheEntries = 2048
+
+// webhookFilterProgramCache is an LRU of compiled webhook filter programs keyed by expression.
+// The upstream lru.Cache is not safe for concurrent use; mu serializes get/put.
+var webhookFilterProgramCache = struct {
+	mu  sync.Mutex
+	lru *lru.Cache
+}{
+	lru: lru.New(maxWebhookFilterCacheEntries),
+}
 
 func getCompiledWebhookFilter(expression string) (*vm.Program, error) {
-	if cached, ok := webhookFilterProgramCache.Load(expression); ok {
+	webhookFilterProgramCache.mu.Lock()
+	defer webhookFilterProgramCache.mu.Unlock()
+
+	if cached, ok := webhookFilterProgramCache.lru.Get(expression); ok {
 		program, ok := cached.(*vm.Program)
 		if !ok {
-			return nil, errors.New("cached webhook filter value is not a *vm.Program")
+			return nil, fmt.Errorf("cached webhook filter value is not a *vm.Program")
 		}
 		return program, nil
 	}
@@ -28,7 +40,7 @@ func getCompiledWebhookFilter(expression string) (*vm.Program, error) {
 	if err != nil {
 		return nil, fmt.Errorf("compile webhook filter expression: %w", err)
 	}
-	webhookFilterProgramCache.Store(expression, program)
+	webhookFilterProgramCache.lru.Add(expression, program)
 	return program, nil
 }
 
@@ -44,7 +56,7 @@ func evaluateWebhookFilter(expression string, payload map[string]any) (bool, err
 	}
 	matched, ok := out.(bool)
 	if !ok {
-		return false, errors.New("webhook filter expression did not return bool")
+		return false, fmt.Errorf("webhook filter expression did not return bool")
 	}
 	return matched, nil
 }

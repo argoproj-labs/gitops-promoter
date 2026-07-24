@@ -474,7 +474,7 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 		body := githubStatusPayload()
 		rec := postGitHubWithHeaders(wr, body, nil)
 		Expect(rec.Code).To(Equal(http.StatusNoContent))
-		Expect(wrcsEnqueues.count()).To(Equal(1))
+		Eventually(func() int { return wrcsEnqueues.count() }, time.Second, 10*time.Millisecond).Should(Equal(1))
 	})
 
 	It("rejects with 401 when webhookSecret is set but signature is missing", func() {
@@ -545,7 +545,7 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 			"X-Hub-Signature-256": githubHMACSignature([]byte(webhookSecretValue), body),
 		})
 		Expect(rec.Code).To(Equal(http.StatusNoContent))
-		Expect(wrcsEnqueues.count()).To(Equal(1))
+		Eventually(func() int { return wrcsEnqueues.count() }, time.Second, 10*time.Millisecond).Should(Equal(1))
 	})
 
 	It("rejects with 500 when ScmProvider Secret cannot be resolved for matching GitRepositories", func() {
@@ -561,6 +561,32 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 		wr := &WebhookReceiver{
 			// ScmProvider is present but its Secret is omitted so resolution fails.
 			k8sClient:           newFakeClient(scm, gitRepo, ps, wrcs),
+			enqueueCTP:          ctpEnqueues.enqueue,
+			enqueueWRCS:         wrcsEnqueues.enqueue,
+			controllerNamespace: testNamespace,
+		}
+
+		body := githubStatusPayload()
+		rec := postGitHubWithHeaders(wr, body, nil)
+		Expect(rec.Code).To(Equal(http.StatusInternalServerError))
+		Expect(ctpEnqueues.count()).To(Equal(0))
+		Expect(wrcsEnqueues.count()).To(Equal(0))
+	})
+
+	It("rejects with 500 when one matching GitRepository resolves without webhookSecret and another fails to resolve", func() {
+		scmOK, secretOK := newScmProviderWithSecret("scm-partial-ok", "sec-partial-ok", map[string][]byte{
+			"token": []byte("scm-token"),
+		})
+		scmMissing, _ := newScmProviderWithSecret("scm-partial-missing", "sec-partial-missing", map[string][]byte{
+			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: []byte(webhookSecretValue),
+		})
+		gitRepoOK := newGitRepoWithScm("gr-partial-ok", scmOK.Name)
+		gitRepoMissing := newGitRepoWithScm("gr-partial-missing", scmMissing.Name)
+
+		ctpEnqueues := &enqueueRecorder{}
+		wrcsEnqueues := &enqueueRecorder{}
+		wr := &WebhookReceiver{
+			k8sClient:           newFakeClient(scmOK, secretOK, scmMissing, gitRepoOK, gitRepoMissing),
 			enqueueCTP:          ctpEnqueues.enqueue,
 			enqueueWRCS:         wrcsEnqueues.enqueue,
 			controllerNamespace: testNamespace,
@@ -648,7 +674,7 @@ var _ = Describe("WebhookReceiver WRCS filter", func() {
 		body := githubStatusPayload()
 		rec := postGitHubWithHeaders(wr, body, nil)
 		Expect(rec.Code).To(Equal(http.StatusNoContent))
-		Expect(wrcsEnqueues.all()).To(ConsistOf(
+		Eventually(func() [][2]string { return wrcsEnqueues.all() }, time.Second, 10*time.Millisecond).Should(ConsistOf(
 			[2]string{testNamespace, "wrcs-match"},
 			[2]string{testNamespace, "wrcs-all"},
 		))
@@ -875,8 +901,7 @@ var _ = Describe("WebhookReceiver WRCS repo fan-out", func() {
 		rec := postGitHubPush(wr, testShaA, testRepoOwner, testRepoName)
 		Expect(rec.Code).To(Equal(http.StatusNoContent))
 		Expect(ctpEnqueues.count()).To(Equal(1))
-		Expect(wrcsEnqueues.count()).To(Equal(2))
-		Expect(wrcsEnqueues.all()).To(ConsistOf(
+		Eventually(func() [][2]string { return wrcsEnqueues.all() }, time.Second, 10*time.Millisecond).Should(ConsistOf(
 			[2]string{testNamespace, "wrcs-one"},
 			[2]string{testNamespace, "wrcs-two"},
 		))
@@ -898,7 +923,7 @@ var _ = Describe("WebhookReceiver WRCS repo fan-out", func() {
 		rec := postGitHubLabelEvent(wr, testRepoOwner, testRepoName)
 		Expect(rec.Code).To(Equal(http.StatusNoContent))
 		Expect(ctpEnqueues.count()).To(Equal(0))
-		Expect(wrcsEnqueues.count()).To(Equal(1))
+		Eventually(func() int { return wrcsEnqueues.count() }, time.Second, 10*time.Millisecond).Should(Equal(1))
 		ns, name := wrcsEnqueues.last()
 		Expect(ns).To(Equal(testNamespace))
 		Expect(name).To(Equal("wrcs-label"))
@@ -917,7 +942,7 @@ var _ = Describe("WebhookReceiver WRCS repo fan-out", func() {
 
 		rec := postGitHubLabelEvent(wr, "Acme", "App")
 		Expect(rec.Code).To(Equal(http.StatusNoContent))
-		Expect(wrcsEnqueues.count()).To(Equal(1))
+		Eventually(func() int { return wrcsEnqueues.count() }, time.Second, 10*time.Millisecond).Should(Equal(1))
 	})
 
 	It("skips fan-out when the payload has no repository identity", func() {

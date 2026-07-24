@@ -4781,7 +4781,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Webhook repo fan-out", fun
 			requestMu.Unlock()
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+			Expect(json.NewEncoder(w).Encode(map[string]any{"ok": true})).To(Succeed())
 		}))
 
 		By("Creating a trigger-mode WRCS with a very large RequeueDuration")
@@ -4824,19 +4824,19 @@ var _ = Describe("WebRequestCommitStatus Controller - Webhook repo fan-out", fun
 			testServer.Close()
 		}
 		if wrcs != nil {
-			_ = k8sClient.Delete(ctx, wrcs)
+			Expect(ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, wrcs))).To(Succeed())
 		}
 		if promotionStrategy != nil {
-			_ = k8sClient.Delete(ctx, promotionStrategy)
+			Expect(ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, promotionStrategy))).To(Succeed())
 		}
 		if gitRepo != nil {
-			_ = k8sClient.Delete(ctx, gitRepo)
+			Expect(ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, gitRepo))).To(Succeed())
 		}
 		if scmProvider != nil {
-			_ = k8sClient.Delete(ctx, scmProvider)
+			Expect(ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, scmProvider))).To(Succeed())
 		}
 		if scmSecret != nil {
-			_ = k8sClient.Delete(ctx, scmSecret)
+			Expect(ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, scmSecret))).To(Succeed())
 		}
 	})
 
