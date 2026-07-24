@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router';
 import { namespaceStore } from '../stores/NamespaceStore';
 import { viewStore } from '../stores/ViewStore';
 import { PromotionStrategyStore } from '../stores/PromotionStrategyStore';
