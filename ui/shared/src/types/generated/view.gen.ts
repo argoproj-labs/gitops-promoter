@@ -212,6 +212,8 @@ export type components = {
             proposedBranch: string;
             /** @description ProposedCommitStatuses lists the statuses to be monitored on the proposed branch */
             proposedCommitStatuses: components["schemas"]["CommitStatusSelector"][];
+            /** @description PullRequest configures SCM pull request behavior for this change transfer policy. Copied from the owning PromotionStrategy by the PromotionStrategy controller. */
+            pullRequest?: components["schemas"]["PullRequestPolicySpec"];
         };
         /** @description ChangeTransferPolicyStatus defines the observed state of ChangeTransferPolicy */
         ChangeTransferPolicyStatus: {
@@ -1375,6 +1377,8 @@ export type components = {
              *     The commit statuses specified in this field apply to all environments in the promotion sequence. You can also specify commit statuses for individual environments in the `environments` field.
              */
             proposedCommitStatuses?: components["schemas"]["CommitStatusSelector"][];
+            /** @description PullRequest configures SCM pull request behavior for all environments in this strategy. */
+            pullRequest?: components["schemas"]["PullRequestPolicySpec"];
         };
         /** @description PromotionStrategyStatus defines the observed state of PromotionStrategy */
         PromotionStrategyStatus: {
@@ -1418,6 +1422,11 @@ export type components = {
             /** @description Url is the URL of the pull request. */
             url?: string;
         };
+        /** @description PullRequestPolicySpec configures SCM pull request behavior for a promotion policy. */
+        PullRequestPolicySpec: {
+            /** @description Labels configures dynamic SCM labels applied to promotion pull requests. */
+            labels?: components["schemas"]["ScmLabelsSpec"];
+        };
         /** @description PullRequestSpec defines the desired state of PullRequest */
         PullRequestSpec: {
             /**
@@ -1432,6 +1441,8 @@ export type components = {
              * @default {}
              */
             gitRepositoryRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /** @description Labels is the desired set of SCM pull request labels (not Kubernetes metadata labels). Written by the ChangeTransferPolicy controller from pullRequest.labels.expression evaluation. */
+            labels?: string[];
             /**
              * @description MergeSha is the commit SHA that the head branch must match before the PR can be merged. This prevents a race condition where a PR is merged with a different commit than intended. Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
              * @default
@@ -1460,6 +1471,8 @@ export type components = {
         };
         /** @description PullRequestStatus defines the observed state of PullRequest */
         PullRequestStatus: {
+            /** @description AppliedLabels lists SCM labels successfully applied by gitops-promoter (for sync and retraction). */
+            appliedLabels?: string[];
             /** @description Conditions Represents the observations of the current state. */
             conditions?: components["schemas"]["Condition"][];
             /** @description ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the resource still desired it open (spec.state is "open"): either it was merged or closed outside the controller, or it was closed on the SCM because the PullRequest resource was deleted (finalizer) and a subsequent sync observed it missing. The controller does not distinguish those cases here. When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider. The PullRequest resource will be deleted after this flag is set when possible, but the status is preserved in the owning ChangeTransferPolicy to maintain a record. */
@@ -1592,6 +1605,21 @@ export type components = {
          *     This authentication method uses the credentials from the ScmProvider referenced by the PromotionStrategy. The controller retrieves the SCM provider and secret and applies the appropriate authentication based on the provider type.
          */
         Scm: Record<string, never>;
+        /** @description ScmLabelsSpec configures dynamic SCM pull request labels via an expression. */
+        ScmLabelsSpec: {
+            /**
+             * @description Expression is evaluated using the expr library (github.com/expr-lang/expr) against ChangeTransferPolicy status and spec. It must return a list of SCM label name strings.
+             *
+             *     Available variables:
+             *       - Status: ChangeTransferPolicy status (Proposed/Active commit statuses, branch SHAs, etc.)
+             *       - Spec: ChangeTransferPolicy spec (ActiveBranch, ProposedBranch, etc.)
+             *       - PromotionStrategy: owning PromotionStrategy spec and status when available
+             *
+             *     Each returned label name must satisfy the same validation as PullRequest.spec.labels (non-empty, max 50 characters, no newlines, max 10 labels, unique).
+             * @default
+             */
+            expression: string;
+        };
         /** @description ScmProvider is the Schema for the scmproviders API */
         ScmProvider: {
             /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */

@@ -189,6 +189,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.PullRequestCommonStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PullRequestConfiguration"):
 		return &apiv1alpha1.PullRequestConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("PullRequestPolicySpec"):
+		return &apiv1alpha1.PullRequestPolicySpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PullRequestSpec"):
 		return &apiv1alpha1.PullRequestSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PullRequestStatus"):
@@ -219,6 +221,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ScheduledEnvironmentApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ScheduledEnvironmentStatus"):
 		return &apiv1alpha1.ScheduledEnvironmentStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ScmLabelsSpec"):
+		return &apiv1alpha1.ScmLabelsSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ScmProvider"):
 		return &apiv1alpha1.ScmProviderApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ScmProviderObjectReference"):

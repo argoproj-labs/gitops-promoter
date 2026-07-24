@@ -311,6 +311,15 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 		ctpSpec = ctpSpec.WithAutoMerge(*environment.AutoMerge)
 	}
 
+	if ps.Spec.PullRequest != nil {
+		prPolicy := acv1alpha1.PullRequestPolicySpec()
+		if ps.Spec.PullRequest.Labels != nil {
+			prPolicy = prPolicy.WithLabels(
+				acv1alpha1.ScmLabelsSpec().WithExpression(ps.Spec.PullRequest.Labels.Expression))
+		}
+		ctpSpec = ctpSpec.WithPullRequest(prPolicy)
+	}
+
 	// Build the apply configuration
 	ctpLabels := utils.StampInstanceIDLabel(map[string]string{
 		promoterv1alpha1.PromotionStrategyLabel: utils.KubeSafeLabel(ps.Name),

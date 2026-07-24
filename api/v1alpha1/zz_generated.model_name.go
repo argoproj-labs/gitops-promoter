@@ -476,6 +476,11 @@ func (in PullRequestList) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in PullRequestPolicySpec) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.PullRequestPolicySpec"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in PullRequestSpec) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.PullRequestSpec"
 }
@@ -568,6 +573,11 @@ func (in ScheduledEnvironmentStatus) OpenAPIModelName() string {
 // OpenAPIModelName returns the OpenAPI model name for this type.
 func (in Scm) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.Scm"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ScmLabelsSpec) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ScmLabelsSpec"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.

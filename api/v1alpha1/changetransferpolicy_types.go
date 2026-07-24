@@ -74,6 +74,11 @@ type ChangeTransferPolicySpec struct {
 	// +listType:=map
 	// +listMapKey=key
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
+
+	// PullRequest configures SCM pull request behavior for this change transfer policy.
+	// Copied from the owning PromotionStrategy by the PromotionStrategy controller.
+	// +kubebuilder:validation:Optional
+	PullRequest *PullRequestPolicySpec `json:"pullRequest,omitempty"`
 }
 
 // ChangeRequestPolicyCommitStatusPhase defines the phase of a commit status in a ChangeTransferPolicy.
