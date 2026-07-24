@@ -472,13 +472,7 @@ export type components = {
         };
         /** @description DAGCommitStatusStatus defines the observed state of DAGCommitStatus. */
         DAGCommitStatusStatus: {
-            /**
-             * @description conditions represent the current state of the DAGCommitStatus resource. Each condition has a unique type and reflects the status of a specific aspect of the resource.
-             *
-             *     Standard condition types include: - "Available": the resource is fully functional - "Progressing": the resource is being created or updated - "Degraded": the resource failed to reach or maintain its desired state
-             *
-             *     The status of each condition is one of True, False, or Unknown.
-             */
+            /** @description Conditions represent the latest available observations of an object's state */
             conditions?: components["schemas"]["Condition"][];
             /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
             instanceID?: string;
@@ -1271,13 +1265,7 @@ export type components = {
         };
         /** @description PreviousEnvironmentCommitStatusStatus defines the observed state of PreviousEnvironmentCommitStatus. */
         PreviousEnvironmentCommitStatusStatus: {
-            /**
-             * @description conditions represent the current state of the PreviousEnvironmentCommitStatus resource. Each condition has a unique type and reflects the status of a specific aspect of the resource.
-             *
-             *     Standard condition types include: - "Available": the resource is fully functional - "Progressing": the resource is being created or updated - "Degraded": the resource failed to reach or maintain its desired state
-             *
-             *     The status of each condition is one of True, False, or Unknown.
-             */
+            /** @description Conditions represent the latest available observations of an object's state */
             conditions?: components["schemas"]["Condition"][];
             /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
             instanceID?: string;

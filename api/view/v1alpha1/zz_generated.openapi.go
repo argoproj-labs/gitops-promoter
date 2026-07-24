@@ -2425,7 +2425,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatusStatus(ref
 							},
 						},
 						SchemaProps: spec.SchemaProps{
-							Description: "conditions represent the current state of the DAGCommitStatus resource. Each condition has a unique type and reflects the status of a specific aspect of the resource.\n\nStandard condition types include: - \"Available\": the resource is fully functional - \"Progressing\": the resource is being created or updated - \"Degraded\": the resource failed to reach or maintain its desired state\n\nThe status of each condition is one of True, False, or Unknown.",
+							Description: "Conditions represent the latest available observations of an object's state",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
@@ -4064,7 +4064,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PreviousEnvironmentCommit
 							},
 						},
 						SchemaProps: spec.SchemaProps{
-							Description: "conditions represent the current state of the PreviousEnvironmentCommitStatus resource. Each condition has a unique type and reflects the status of a specific aspect of the resource.\n\nStandard condition types include: - \"Available\": the resource is fully functional - \"Progressing\": the resource is being created or updated - \"Degraded\": the resource failed to reach or maintain its desired state\n\nThe status of each condition is one of True, False, or Unknown.",
+							Description: "Conditions represent the latest available observations of an object's state",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
