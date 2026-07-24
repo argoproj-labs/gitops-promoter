@@ -66,3 +66,13 @@ const ClusterScmProviderSecretFinalizer = "clusterscmprovider.promoter.argoproj.
 // Each install configures ControllerConfiguration.spec.instanceID (exact label match) or leaves it
 // unset (only unlabeled resources). Labeled and unlabeled resources are never reconciled together.
 const InstanceIDLabel = "promoter.argoproj.io/instance-id"
+
+// ScmProvider Secret keys for inbound webhook verification (same Secret as outbound SCM credentials).
+const (
+	// ScmProviderSecretKeyWebhookSecret is the shared secret / HMAC key for verifying inbound webhooks.
+	ScmProviderSecretKeyWebhookSecret = "webhookSecret"
+	// ScmProviderSecretKeyWebhookSignatureHeader is the HTTP header that carries the signature or token.
+	// Optional; when omitted the webhook receiver uses a provider-sensible default
+	// (X-Hub-Signature-256 for GitHub-style providers, X-Gitlab-Token for GitLab).
+	ScmProviderSecretKeyWebhookSignatureHeader = "webhookSignatureHeader"
+)

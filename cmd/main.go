@@ -341,13 +341,14 @@ func runController(
 		setupLog.Error(err, "unable to create controller", "controller", "GitCommitStatus")
 		panic(fmt.Errorf("unable to create GitCommitStatus controller: %w", err))
 	}
-	if err := (&controller.WebRequestCommitStatusReconciler{
+	wrcsReconciler := &controller.WebRequestCommitStatusReconciler{
 		Client:      localManager.GetClient(),
 		Scheme:      localManager.GetScheme(),
 		Recorder:    localManager.GetEventRecorder("WebRequestCommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
-	}).SetupWithManager(runCtx, localManager); err != nil {
+	}
+	if err := wrcsReconciler.SetupWithManager(runCtx, localManager); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "WebRequestCommitStatus")
 		panic(fmt.Errorf("unable to create WebRequestCommitStatus controller: %w", err))
 	}
@@ -369,7 +370,12 @@ func runController(
 		panic(fmt.Errorf("unable to set up ready check: %w", err))
 	}
 
-	whr := webhookreceiver.NewWebhookReceiver(localManager, webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()))
+	whr := webhookreceiver.NewWebhookReceiver(
+		localManager,
+		webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()),
+		webhookreceiver.EnqueueFunc(wrcsReconciler.GetEnqueueFunc()),
+		controllerNamespace,
+	)
 
 	g, ctx := errgroup.WithContext(runCtx)
 

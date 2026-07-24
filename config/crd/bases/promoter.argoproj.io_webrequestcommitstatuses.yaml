@@ -455,6 +455,29 @@ spec:
                     required:
                     - when
                     type: object
+                  webhook:
+                    description: |-
+                      Webhook optionally configures inbound SCM webhook filtering for this WRCS.
+                      When set with a filter expression, only matching webhook payloads enqueue a reconcile.
+                      When omitted (or filter omitted), any webhook for the referenced repository still enqueues
+                      as today. Webhook secret verification uses keys on the ScmProvider Secret (webhookSecret,
+                      webhookSignatureHeader), not fields on this CR.
+                    properties:
+                      filter:
+                        description: Filter optionally discards inbound payloads before
+                          enqueueing a reconcile.
+                        properties:
+                          expression:
+                            description: |-
+                              Expression is a boolean expr expression. The only binding is Payload, a map decoded
+                              from the webhook JSON body (e.g. Payload.context startsWith "ArgoCD/").
+                              Evaluated by the webhook receiver before enqueue; not available to trigger/success expressions.
+                            minLength: 1
+                            type: string
+                        required:
+                        - expression
+                        type: object
+                    type: object
                 type: object
                 x-kubernetes-validations:
                 - message: exactly one of the fields in [polling trigger] must be

@@ -118,7 +118,7 @@ variables, and examples.
 
 ### WebRequestCommitStatus
 
-A WebRequestCommitStatus gates promotions on external HTTP/HTTPS API validation. It makes HTTP requests to configurable endpoints, evaluates a validation expression against the response, and creates or updates CommitStatus resources. It supports polling mode (fixed interval) or trigger mode (expression-based triggering). See the [Web Request Commit Status](gating-promotions/built-in-gates/web-request-commit-status/index.md) documentation for full configuration, examples, and template variables.
+A WebRequestCommitStatus gates promotions on external HTTP/HTTPS API validation. It makes HTTP requests to configurable endpoints, evaluates a validation expression against the response, and creates or updates CommitStatus resources. It supports polling mode (fixed interval) or trigger mode (expression-based triggering), plus an optional `mode.webhook` filter to accelerate reconciles from inbound SCM webhooks. See the [Web Request Commit Status](gating-promotions/built-in-gates/web-request-commit-status/index.md) documentation for full configuration, examples, and template variables.
 
 ```yaml
 {!internal/controller/testdata/WebRequestCommitStatus.yaml!}
