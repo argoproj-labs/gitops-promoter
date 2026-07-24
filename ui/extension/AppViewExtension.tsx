@@ -100,23 +100,29 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
     // Gated on process.env.NODE_ENV so the production webpack build inlines the
     // constant, folds the branch to `false`, and drops the dynamic mockData chunk.
     if (process.env.NODE_ENV !== 'production' && isMockMode()) {
-      void import('@shared/fixtures/mockData').then(({ mockBundles }) => {
-        const parsed = mockBundles().map((b) =>
-          sortStrategyCommitStatuses(bundleToPromotionStrategy(b)),
-        );
-        setFetchError(null);
-        setStrategies(parsed);
-        const keys = parsed.map(strategyKey);
-        const fromUrl = getParam();
-        const fromStored = getStored(appNamespace, appName);
-        const initial =
-          (keys.includes(fromUrl) && fromUrl) ||
-          (keys.includes(fromStored) && fromStored) ||
-          keys[0];
-        setSelectedKey(initial);
-        setParam(initial);
-        setStored(appNamespace, appName, initial);
-      });
+      void import('@shared/fixtures/mockData')
+        .then(({ mockBundles }) => {
+          const parsed = mockBundles().map((b) =>
+            sortStrategyCommitStatuses(bundleToPromotionStrategy(b)),
+          );
+          setFetchError(null);
+          setStrategies(parsed);
+          const keys = parsed.map(strategyKey);
+          const fromUrl = getParam();
+          const fromStored = getStored(appNamespace, appName);
+          const initial =
+            (keys.includes(fromUrl) && fromUrl) ||
+            (keys.includes(fromStored) && fromStored) ||
+            keys[0];
+          setSelectedKey(initial);
+          setParam(initial);
+          setStored(appNamespace, appName, initial);
+        })
+        .catch((err: unknown) => {
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          setFetchError('Failed to load mock PromotionStrategy data: ' + errorMessage);
+          setStrategies([]);
+        });
       return;
     }
 

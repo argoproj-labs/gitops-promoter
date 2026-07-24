@@ -47,13 +47,18 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
 
     fetchItems: async (namespace: string) => {
       if (mockEnabled(kind)) {
-        const { mockBundles } = await import('@shared/fixtures/mockData');
-        set({
-          items: mockBundles().map((b) => bundleToItem<T>(b)),
-          loading: false,
-          error: null,
-          connectionStatus: 'open',
-        });
+        try {
+          const { mockBundles } = await import('@shared/fixtures/mockData');
+          set({
+            items: mockBundles().map((b) => bundleToItem<T>(b)),
+            loading: false,
+            error: null,
+            connectionStatus: 'open',
+          });
+        } catch (err: unknown) {
+          const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+          set({ error: errorMessage, loading: false });
+        }
         return;
       }
 
