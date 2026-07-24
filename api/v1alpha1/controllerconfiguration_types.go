@@ -211,10 +211,13 @@ type ScheduledCommitStatusConfiguration struct {
 // These settings control fail-closed behavior around signature verification when a matching
 // GitRepository or ScmProvider Secret cannot be resolved.
 type WebhookReceiverConfiguration struct {
-	// Strict disables the backward-compatible bypass that accepts webhook deliveries when no
-	// matching GitRepository is found for the payload repository identity, when an ScmProvider
-	// Secret cannot be resolved, or when no matching Secret configures webhookSecret.
-	// When true, the receiver rejects those deliveries instead of processing them unverified.
+	// Strict controls fail-closed behavior for webhook signature verification.
+	// When false (default), verification is per matching ScmProvider: providers whose Secret
+	// configures webhookSecret must pass signature checks; providers without webhookSecret,
+	// unresolvable Secrets, and missing matching GitRepositories are skipped so the delivery
+	// may still be processed. When true, missing repository identity, missing matching
+	// GitRepository, unresolvable ScmProvider Secret, or absence of webhookSecret on matching
+	// Secrets rejects the delivery instead of processing it unverified.
 	// +required
 	// +kubebuilder:default=false
 	Strict bool `json:"strict"`

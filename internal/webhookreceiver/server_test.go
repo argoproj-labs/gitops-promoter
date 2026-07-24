@@ -548,32 +548,33 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 		Eventually(func() int { return wrcsEnqueues.count() }, time.Second, 10*time.Millisecond).Should(Equal(1))
 	})
 
-	It("rejects with 500 when ScmProvider Secret cannot be resolved for matching GitRepositories", func() {
+	It("accepts when ScmProvider Secret cannot be resolved in non-strict mode", func() {
 		scm, _ := newScmProviderWithSecret("scm-missing-sec", "sec-missing", map[string][]byte{
 			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: []byte(webhookSecretValue),
 		})
 		gitRepo := newGitRepoWithScm("gr-missing-sec", scm.Name)
 		ps := newPS("ps-missing-sec", gitRepo.Name)
 		wrcs := newWRCS("wrcs-missing-sec", ps.Name)
+		ctp := newCTP("ctp-missing-sec")
 
 		ctpEnqueues := &enqueueRecorder{}
 		wrcsEnqueues := &enqueueRecorder{}
 		wr := &WebhookReceiver{
 			// ScmProvider is present but its Secret is omitted so resolution fails.
-			k8sClient:           newFakeClient(scm, gitRepo, ps, wrcs),
+			k8sClient:           newFakeClient(scm, gitRepo, ps, wrcs, ctp),
 			enqueueCTP:          ctpEnqueues.enqueue,
 			enqueueWRCS:         wrcsEnqueues.enqueue,
 			controllerNamespace: testNamespace,
 		}
 
-		body := githubStatusPayload()
-		rec := postGitHubWithHeaders(wr, body, nil)
-		Expect(rec.Code).To(Equal(http.StatusInternalServerError))
-		Expect(ctpEnqueues.count()).To(Equal(0))
-		Expect(wrcsEnqueues.count()).To(Equal(0))
+		// Push with repo identity so verification runs; unresolved Secret is skipped in non-strict.
+		rec := postGitHubPush(wr, testShaA, testRepoOwner, testRepoName)
+		Expect(rec.Code).To(Equal(http.StatusNoContent))
+		Expect(ctpEnqueues.count()).To(Equal(1))
+		Eventually(func() int { return wrcsEnqueues.count() }, time.Second, 10*time.Millisecond).Should(Equal(1))
 	})
 
-	It("rejects with 500 when one matching GitRepository resolves without webhookSecret and another fails to resolve", func() {
+	It("accepts when one matching GitRepository has no webhookSecret and another fails to resolve", func() {
 		scmOK, secretOK := newScmProviderWithSecret("scm-partial-ok", "sec-partial-ok", map[string][]byte{
 			"token": []byte("scm-token"),
 		})
@@ -582,45 +583,42 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 		})
 		gitRepoOK := newGitRepoWithScm("gr-partial-ok", scmOK.Name)
 		gitRepoMissing := newGitRepoWithScm("gr-partial-missing", scmMissing.Name)
+		ctp := newCTP("ctp-partial")
 
 		ctpEnqueues := &enqueueRecorder{}
 		wrcsEnqueues := &enqueueRecorder{}
 		wr := &WebhookReceiver{
-			k8sClient:           newFakeClient(scmOK, secretOK, scmMissing, gitRepoOK, gitRepoMissing),
+			k8sClient:           newFakeClient(scmOK, secretOK, scmMissing, gitRepoOK, gitRepoMissing, ctp),
 			enqueueCTP:          ctpEnqueues.enqueue,
 			enqueueWRCS:         wrcsEnqueues.enqueue,
 			controllerNamespace: testNamespace,
 		}
 
-		body := githubStatusPayload()
-		rec := postGitHubWithHeaders(wr, body, nil)
-		Expect(rec.Code).To(Equal(http.StatusInternalServerError))
-		Expect(ctpEnqueues.count()).To(Equal(0))
-		Expect(wrcsEnqueues.count()).To(Equal(0))
+		rec := postGitHubPush(wr, testShaA, testRepoOwner, testRepoName)
+		Expect(rec.Code).To(Equal(http.StatusNoContent))
+		Expect(ctpEnqueues.count()).To(Equal(1))
 	})
 
-	It("rejects with 401 and enqueues neither CTP nor WRCS when payload lacks repository identity and webhookSecret is configured", func() {
+	It("allows CTP enqueue without repository identity in non-strict mode even when unrelated ScmProviders have webhookSecret", func() {
 		scm, secret := newScmProviderWithSecret("scm-noid", "sec-noid", map[string][]byte{
 			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: []byte(webhookSecretValue),
 		})
 		ctp := newCTP("ctp-noid")
 		gitRepo := newGitRepoWithScm("gr-noid", scm.Name)
-		ps := newPS("ps-noid", gitRepo.Name)
-		wrcs := newWRCS("wrcs-noid", ps.Name)
 
 		ctpEnqueues := &enqueueRecorder{}
 		wrcsEnqueues := &enqueueRecorder{}
 		wr := &WebhookReceiver{
-			k8sClient:           newFakeClient(scm, secret, ctp, gitRepo, ps, wrcs),
+			k8sClient:           newFakeClient(scm, secret, ctp, gitRepo),
 			enqueueCTP:          ctpEnqueues.enqueue,
 			enqueueWRCS:         wrcsEnqueues.enqueue,
 			controllerNamespace: testNamespace,
 		}
 
-		// Push SHA matches the CTP, but without repository identity verification cannot run.
+		// No repository identity: non-strict skips verification and still processes CTP by SHA.
 		rec := postGitHubPush(wr, testShaA, "", "")
-		Expect(rec.Code).To(Equal(http.StatusUnauthorized))
-		Expect(ctpEnqueues.count()).To(Equal(0))
+		Expect(rec.Code).To(Equal(http.StatusNoContent))
+		Expect(ctpEnqueues.count()).To(Equal(1))
 		Expect(wrcsEnqueues.count()).To(Equal(0))
 	})
 

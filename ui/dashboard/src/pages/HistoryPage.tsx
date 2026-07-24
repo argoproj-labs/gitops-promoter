@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router';
 import HistoryView from '@lib/components/HistoryView/HistoryView';
 import type { CellSelection } from '@lib/components/HistoryView/HistoryView';
 import { PromotionStrategyStore } from '../stores/PromotionStrategyStore';
