@@ -641,6 +641,115 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 	})
 })
 
+var _ = Describe("WebhookReceiver strict mode", func() {
+	strictTrue := true
+
+	It("rejects when no matching GitRepository is found", func() {
+		ctpEnqueues := &enqueueRecorder{}
+		wrcsEnqueues := &enqueueRecorder{}
+		wr := &WebhookReceiver{
+			k8sClient:           newFakeClient(),
+			enqueueCTP:          ctpEnqueues.enqueue,
+			enqueueWRCS:         wrcsEnqueues.enqueue,
+			controllerNamespace: testNamespace,
+			strictOverride:      &strictTrue,
+		}
+
+		body := githubStatusPayload()
+		rec := postGitHubWithHeaders(wr, body, nil)
+		Expect(rec.Code).To(Equal(http.StatusUnauthorized))
+		Expect(ctpEnqueues.count()).To(Equal(0))
+		Expect(wrcsEnqueues.count()).To(Equal(0))
+	})
+
+	It("rejects when ScmProvider Secret cannot be resolved", func() {
+		scm, _ := newScmProviderWithSecret("scm-strict-miss", "sec-strict-miss", map[string][]byte{
+			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: []byte("whsec"),
+		})
+		gitRepo := newGitRepoWithScm("gr-strict-miss", scm.Name)
+
+		ctpEnqueues := &enqueueRecorder{}
+		wrcsEnqueues := &enqueueRecorder{}
+		wr := &WebhookReceiver{
+			k8sClient:           newFakeClient(scm, gitRepo),
+			enqueueCTP:          ctpEnqueues.enqueue,
+			enqueueWRCS:         wrcsEnqueues.enqueue,
+			controllerNamespace: testNamespace,
+			strictOverride:      &strictTrue,
+		}
+
+		body := githubStatusPayload()
+		rec := postGitHubWithHeaders(wr, body, nil)
+		Expect(rec.Code).To(Equal(http.StatusInternalServerError))
+		Expect(ctpEnqueues.count()).To(Equal(0))
+		Expect(wrcsEnqueues.count()).To(Equal(0))
+	})
+
+	It("rejects when matching GitRepository resolves but no webhookSecret is configured", func() {
+		scm, secret := newScmProviderWithSecret("scm-strict-nosec", "sec-strict-nosec", map[string][]byte{
+			"token": []byte("scm-token"),
+		})
+		gitRepo := newGitRepoWithScm("gr-strict-nosec", scm.Name)
+		ps := newPS("ps-strict-nosec", gitRepo.Name)
+		wrcs := newWRCS("wrcs-strict-nosec", ps.Name)
+
+		ctpEnqueues := &enqueueRecorder{}
+		wrcsEnqueues := &enqueueRecorder{}
+		wr := &WebhookReceiver{
+			k8sClient:           newFakeClient(scm, secret, gitRepo, ps, wrcs),
+			enqueueCTP:          ctpEnqueues.enqueue,
+			enqueueWRCS:         wrcsEnqueues.enqueue,
+			controllerNamespace: testNamespace,
+			strictOverride:      &strictTrue,
+		}
+
+		body := githubStatusPayload()
+		rec := postGitHubWithHeaders(wr, body, nil)
+		Expect(rec.Code).To(Equal(http.StatusUnauthorized))
+		Expect(ctpEnqueues.count()).To(Equal(0))
+		Expect(wrcsEnqueues.count()).To(Equal(0))
+	})
+
+	It("rejects deliveries without repository identity even when no webhookSecret exists", func() {
+		ctp := newCTP("ctp-strict-noid")
+		ctpEnqueues := &enqueueRecorder{}
+		wr := &WebhookReceiver{
+			k8sClient:      newFakeClient(ctp),
+			enqueueCTP:     ctpEnqueues.enqueue,
+			strictOverride: &strictTrue,
+		}
+
+		rec := postGitHubPush(wr, testShaA, "", "")
+		Expect(rec.Code).To(Equal(http.StatusUnauthorized))
+		Expect(ctpEnqueues.count()).To(Equal(0))
+	})
+
+	It("accepts and enqueues when signature is valid", func() {
+		const webhookSecretValue = "whsec_strict_ok"
+		scm, secret := newScmProviderWithSecret("scm-strict-ok", "sec-strict-ok", map[string][]byte{
+			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: []byte(webhookSecretValue),
+		})
+		gitRepo := newGitRepoWithScm("gr-strict-ok", scm.Name)
+		ps := newPS("ps-strict-ok", gitRepo.Name)
+		wrcs := newWRCS("wrcs-strict-ok", ps.Name)
+
+		wrcsEnqueues := &enqueueRecorder{}
+		wr := &WebhookReceiver{
+			k8sClient:           newFakeClient(scm, secret, gitRepo, ps, wrcs),
+			enqueueWRCS:         wrcsEnqueues.enqueue,
+			controllerNamespace: testNamespace,
+			strictOverride:      &strictTrue,
+		}
+
+		body := githubStatusPayload()
+		rec := postGitHubWithHeaders(wr, body, map[string]string{
+			"X-Hub-Signature-256": githubHMACSignature([]byte(webhookSecretValue), body),
+		})
+		Expect(rec.Code).To(Equal(http.StatusNoContent))
+		Eventually(func() int { return wrcsEnqueues.count() }, time.Second, 10*time.Millisecond).Should(Equal(1))
+	})
+})
+
 var _ = Describe("WebhookReceiver WRCS filter", func() {
 	It("enqueues only WRCS whose webhook filter matches Payload", func() {
 		gitRepo := newGitRepo("gr-filter", testRepoOwner, testRepoName)

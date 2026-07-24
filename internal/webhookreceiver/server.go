@@ -15,6 +15,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 
 	"github.com/tidwall/gjson"
@@ -61,6 +62,8 @@ const (
 
 	// wrcsFanoutTimeout bounds async WRCS fan-out work after the HTTP handler returns.
 	wrcsFanoutTimeout = 15 * time.Second
+
+	unauthorizedMessage = "unauthorized"
 )
 
 // EnqueueFunc is a function type that can be used to enqueue reconcile requests
@@ -70,27 +73,31 @@ type EnqueueFunc func(namespace, name string)
 // WebhookReceiver is a server that listens for webhooks and triggers reconciles of
 // ChangeTransferPolicies (by hydrated SHA) and WebRequestCommitStatuses (by repository).
 type WebhookReceiver struct {
-	mgr                 controllerruntime.Manager
 	k8sClient           client.Client
 	baseCtx             context.Context //nolint:containedctx // server-lifetime context set once in Start, not a request context
+	mgr                 controllerruntime.Manager
+	strictOverride      *bool
+	settingsMgr         *settings.Manager
 	enqueueCTP          EnqueueFunc
 	enqueueWRCS         EnqueueFunc
 	controllerNamespace string
-	pendingMissRetries  atomic.Int64
 	retryTimeout        time.Duration
 	retryBaseDelay      time.Duration
 	retryMaxDelay       time.Duration
 	retryFactor         float64
 	maxPendingRetries   int
+	pendingMissRetries  atomic.Int64
 }
 
 // NewWebhookReceiver creates a new instance of WebhookReceiver.
 // enqueueWRCS may be nil when WRCS fan-out is not needed (tests that only cover the CTP path).
 // controllerNamespace is used to resolve ClusterScmProvider Secrets for webhook verification.
-func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP, enqueueWRCS EnqueueFunc, controllerNamespace string) *WebhookReceiver {
+// settingsMgr supplies ControllerConfiguration.spec.webhookReceiver (may be nil in unit tests).
+func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP, enqueueWRCS EnqueueFunc, controllerNamespace string, settingsMgr *settings.Manager) *WebhookReceiver {
 	return &WebhookReceiver{
 		mgr:                 mgr,
 		k8sClient:           mgr.GetClient(),
+		settingsMgr:         settingsMgr,
 		enqueueCTP:          enqueueCTP,
 		enqueueWRCS:         enqueueWRCS,
 		controllerNamespace: controllerNamespace,
@@ -254,10 +261,16 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 // A non-zero status means the HTTP handler should reject immediately.
 func (wr *WebhookReceiver) authorizeWebhookAndEnqueueWRCS(ctx context.Context, provider, owner, name string, headers http.Header, body []byte) (status int, msg string) {
 	logger := log.FromContext(ctx)
+	strict := wr.isStrict(ctx)
 	if owner == "" || name == "" {
 		// Without repository identity we cannot select ScmProvider Secrets to verify against,
-		// and cannot fan out to WRCS. If any webhookSecret is configured, fail closed so CTP
-		// cannot be enqueued via an unverified delivery either.
+		// and cannot fan out to WRCS.
+		if strict {
+			logger.V(4).Info("webhook lacks repository identity; rejecting because webhookReceiver.strict is enabled")
+			return http.StatusUnauthorized, unauthorizedMessage
+		}
+		// If any webhookSecret is configured, fail closed so CTP cannot be enqueued via an
+		// unverified delivery either.
 		configured, err := wr.anyWebhookSecretConfigured(ctx)
 		if err != nil {
 			logger.Error(err, "failed to check for configured webhook secrets")
@@ -265,19 +278,19 @@ func (wr *WebhookReceiver) authorizeWebhookAndEnqueueWRCS(ctx context.Context, p
 		}
 		if configured {
 			logger.V(4).Info("webhook lacks repository identity; rejecting because webhookSecret is configured")
-			return http.StatusUnauthorized, "unauthorized"
+			return http.StatusUnauthorized, unauthorizedMessage
 		}
 		return 0, ""
 	}
 
-	authorized, err := wr.verifyWebhookIfConfigured(ctx, provider, owner, name, headers, body)
+	authorized, err := wr.verifyWebhookIfConfigured(ctx, provider, owner, name, headers, body, strict)
 	if err != nil {
 		logger.Error(err, "failed to resolve webhook secrets for verification")
 		return http.StatusInternalServerError, "error verifying webhook"
 	}
 	if !authorized {
 		logger.V(4).Info("webhook signature verification failed")
-		return http.StatusUnauthorized, "unauthorized"
+		return http.StatusUnauthorized, unauthorizedMessage
 	}
 
 	// Fan out to WebRequestCommitStatus asynchronously so List/filter work does not delay
@@ -382,6 +395,23 @@ func (wr *WebhookReceiver) getMaxPendingRetries() int {
 		return wr.maxPendingRetries
 	}
 	return maxPendingMissRetries
+}
+
+// isStrict reports whether webhookReceiver.strict is enabled. Test overrides win;
+// otherwise the live ControllerConfiguration is read. Missing settings default to false.
+func (wr *WebhookReceiver) isStrict(ctx context.Context) bool {
+	if wr.strictOverride != nil {
+		return *wr.strictOverride
+	}
+	if wr.settingsMgr == nil {
+		return false
+	}
+	strict, err := wr.settingsMgr.GetWebhookReceiverStrict(ctx)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "failed to read webhookReceiver.strict; treating as non-strict")
+		return false
+	}
+	return strict
 }
 
 // tryLookupAndEnqueue performs a single hydrated-SHA lookup and enqueues the matching
@@ -560,11 +590,19 @@ func (wr *WebhookReceiver) secretRefHasWebhookSecret(ctx context.Context, secret
 }
 
 // verifyWebhookIfConfigured checks inbound webhook authenticity against ScmProvider Secrets
-// for GitRepositories matching owner/name. If no matching Secret has webhookSecret configured,
+// for GitRepositories matching owner/name.
+//
+// When strict is false (default): if no matching Secret has webhookSecret configured,
 // verification is skipped (backward compatible). If any such Secret exists, at least one must
-// successfully verify the request.
-func (wr *WebhookReceiver) verifyWebhookIfConfigured(ctx context.Context, provider, owner, name string, headers http.Header, body []byte) (authorized bool, err error) {
+// successfully verify the request. Resolution failures with no remaining candidates fail closed.
+//
+// When strict is true: missing matching GitRepository, unresolvable ScmProvider Secret, or
+// absence of webhookSecret on matching Secrets rejects the delivery instead of bypassing.
+func (wr *WebhookReceiver) verifyWebhookIfConfigured(ctx context.Context, provider, owner, name string, headers http.Header, body []byte, strict bool) (authorized bool, err error) {
 	if wr.k8sClient == nil || owner == "" || name == "" {
+		if strict {
+			return false, nil
+		}
 		return true, nil
 	}
 	logger := log.FromContext(ctx)
@@ -573,6 +611,14 @@ func (wr *WebhookReceiver) verifyWebhookIfConfigured(ctx context.Context, provid
 	var gitRepos promoterv1alpha1.GitRepositoryList
 	if listErr := wr.k8sClient.List(ctx, &gitRepos, client.MatchingFields{gitRepositoryRepoKeyField: repoKey}); listErr != nil {
 		return false, fmt.Errorf("list GitRepositories for webhook verification: %w", listErr)
+	}
+
+	if len(gitRepos.Items) == 0 {
+		if strict {
+			logger.V(4).Info("strict mode: no matching GitRepository for webhook verification", "repoKey", repoKey)
+			return false, nil
+		}
+		return true, nil
 	}
 
 	type candidate struct {
@@ -593,6 +639,10 @@ func (wr *WebhookReceiver) verifyWebhookIfConfigured(ctx context.Context, provid
 			resolutionErrors++
 			logger.V(4).Info("skipping GitRepository for webhook verification; could not resolve ScmProvider Secret",
 				"namespace", gr.Namespace, "name", gr.Name, "error", getErr.Error())
+			if strict {
+				return false, fmt.Errorf("strict mode: could not resolve ScmProvider Secret for GitRepository %s/%s: %w",
+					gr.Namespace, gr.Name, getErr)
+			}
 			continue
 		}
 		secretBytes, headerName, ok := webhookSecretFromSecret(secret, provider)
@@ -612,6 +662,10 @@ func (wr *WebhookReceiver) verifyWebhookIfConfigured(ctx context.Context, provid
 		// candidates were built: a failed-to-resolve Secret might have had webhookSecret set.
 		if resolutionErrors > 0 {
 			return false, fmt.Errorf("could not resolve ScmProvider Secret for %d matching GitRepository(ies)", resolutionErrors)
+		}
+		if strict {
+			logger.V(4).Info("strict mode: no webhookSecret configured for matching GitRepositories", "repoKey", repoKey)
+			return false, nil
 		}
 		return true, nil
 	}

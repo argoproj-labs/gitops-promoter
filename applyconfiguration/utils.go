@@ -237,6 +237,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.WebhookFilterSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("WebhookModeSpec"):
 		return &apiv1alpha1.WebhookModeSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("WebhookReceiverConfiguration"):
+		return &apiv1alpha1.WebhookReceiverConfigurationApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("WebRequestCommitStatus"):
 		return &apiv1alpha1.WebRequestCommitStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("WebRequestCommitStatusConfiguration"):

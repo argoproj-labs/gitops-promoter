@@ -128,3 +128,8 @@ spec:
               fastDelay: "1s"
               slowDelay: "5m"
               maxFastAttempts: 3
+  webhookReceiver:
+    # When false (default), missing GitRepository / ScmProvider Secret / webhookSecret
+    # falls back to accepting the delivery unverified (backward compatible).
+    # When true, those cases reject the delivery instead.
+    strict: false

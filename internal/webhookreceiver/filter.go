@@ -1,6 +1,7 @@
 package webhookreceiver
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 
@@ -16,8 +17,8 @@ const maxWebhookFilterCacheEntries = 2048
 // webhookFilterProgramCache is an LRU of compiled webhook filter programs keyed by expression.
 // The upstream lru.Cache is not safe for concurrent use; mu serializes get/put.
 var webhookFilterProgramCache = struct {
-	mu  sync.Mutex
 	lru *lru.Cache
+	mu  sync.Mutex
 }{
 	lru: lru.New(maxWebhookFilterCacheEntries),
 }
@@ -29,7 +30,7 @@ func getCompiledWebhookFilter(expression string) (*vm.Program, error) {
 	if cached, ok := webhookFilterProgramCache.lru.Get(expression); ok {
 		program, ok := cached.(*vm.Program)
 		if !ok {
-			return nil, fmt.Errorf("cached webhook filter value is not a *vm.Program")
+			return nil, errors.New("cached webhook filter value is not a *vm.Program")
 		}
 		return program, nil
 	}
@@ -56,7 +57,7 @@ func evaluateWebhookFilter(expression string, payload map[string]any) (bool, err
 	}
 	matched, ok := out.(bool)
 	if !ok {
-		return false, fmt.Errorf("webhook filter expression did not return bool")
+		return false, errors.New("webhook filter expression did not return bool")
 	}
 	return matched, nil
 }

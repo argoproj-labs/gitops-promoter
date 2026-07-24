@@ -87,6 +87,11 @@ type ControllerConfigurationSpec struct {
 	// including WorkQueue settings that control reconciliation behavior.
 	// +required
 	ScheduledCommitStatus ScheduledCommitStatusConfiguration `json:"scheduledCommitStatus"`
+
+	// WebhookReceiver contains configuration for the inbound SCM webhook receiver
+	// (signature verification and related fail-closed behavior).
+	// +required
+	WebhookReceiver WebhookReceiverConfiguration `json:"webhookReceiver"`
 }
 
 // PromotionStrategyConfiguration defines the configuration for the PromotionStrategy controller.
@@ -199,6 +204,20 @@ type ScheduledCommitStatusConfiguration struct {
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
 	WorkQueue WorkQueue `json:"workQueue"`
+}
+
+// WebhookReceiverConfiguration defines configuration for the inbound SCM webhook receiver.
+//
+// These settings control fail-closed behavior around signature verification when a matching
+// GitRepository or ScmProvider Secret cannot be resolved.
+type WebhookReceiverConfiguration struct {
+	// Strict disables the backward-compatible bypass that accepts webhook deliveries when no
+	// matching GitRepository is found for the payload repository identity, when an ScmProvider
+	// Secret cannot be resolved, or when no matching Secret configures webhookSecret.
+	// When true, the receiver rejects those deliveries instead of processing them unverified.
+	// +required
+	// +kubebuilder:default=false
+	Strict bool `json:"strict"`
 }
 
 // WorkQueue defines the work queue configuration for a controller.

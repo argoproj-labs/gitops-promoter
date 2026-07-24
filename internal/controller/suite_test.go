@@ -312,6 +312,7 @@ var _ = BeforeSuite(func() {
 		webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()),
 		webhookreceiver.EnqueueFunc(wrcsReconciler.GetEnqueueFunc()),
 		"default",
+		settingsMgr,
 	)
 	go func() {
 		err = whr.Start(ctx, fmt.Sprintf(":%d", webhookReceiverPort))
