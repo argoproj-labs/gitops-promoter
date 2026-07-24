@@ -80,6 +80,16 @@ type PullRequestSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Enum=closed;merged;open
 	State PullRequestState `json:"state"`
+
+	// Labels is the desired set of SCM pull request labels (not Kubernetes metadata labels).
+	// Written by the ChangeTransferPolicy controller from pullRequest.labels.expression evaluation.
+	// +kubebuilder:validation:Optional
+	// +listType=set
+	// +kubebuilder:validation:MaxItems=10
+	// +kubebuilder:validation:items:MinLength=1
+	// +kubebuilder:validation:items:MaxLength=50
+	// +kubebuilder:validation:items:Pattern=`^[^\n\r\x00]+$`
+	Labels []string `json:"labels,omitempty"`
 }
 
 // CommitConfiguration defines the commit configuration for how we will merge/squash/etc the pull request.
@@ -120,12 +130,35 @@ type PullRequestStatus struct {
 	// preserved in the owning ChangeTransferPolicy to maintain a record.
 	ExternallyMergedOrClosed *bool `json:"externallyMergedOrClosed,omitempty"`
 
+	// SCMSyncedSpecDigest fingerprints title and description last successfully synced
+	// to the SCM via provider.Update on an open pull request.
+	// +optional
+	SCMSyncedSpecDigest string `json:"scmSyncedSpecDigest,omitempty"`
+
+	// AppliedLabels lists SCM labels successfully applied by gitops-promoter (for sync and retraction).
+	// +kubebuilder:validation:Optional
+	// +listType=set
+	// +kubebuilder:validation:MaxItems=10
+	// +kubebuilder:validation:items:MinLength=1
+	// +kubebuilder:validation:items:MaxLength=50
+	// +kubebuilder:validation:items:Pattern=`^[^\n\r\x00]+$`
+	AppliedLabels []string `json:"appliedLabels,omitempty"`
+
 	// Conditions Represents the observations of the current state.
 	// +patchMergeKey=type
 	// +patchStrategy=merge
 	// +listType=map
 	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+
+	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+	// reconcile attempt by this install's controller, including when Ready=False; omitted
+	// when the resource has no instance-id label (default install).
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$`
+	InstanceID *string `json:"instanceID,omitempty"`
 }
 
 // GetConditions returns the conditions of the PullRequest.
@@ -136,6 +169,11 @@ func (ps *PullRequest) GetConditions() *[]metav1.Condition {
 // SetObservedGeneration records the object generation that produced the current status.
 func (ps *PullRequest) SetObservedGeneration(generation int64) {
 	ps.Status.ObservedGeneration = generation
+}
+
+// SetStatusInstanceID records the instance-id label mirrored into status on each reconcile attempt.
+func (ps *PullRequest) SetStatusInstanceID(v *string) {
+	ps.Status.InstanceID = v
 }
 
 // +kubebuilder:ac:generate=true

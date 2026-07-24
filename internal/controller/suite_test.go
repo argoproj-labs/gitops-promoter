@@ -180,21 +180,31 @@ var _ = BeforeSuite(func() {
 
 	k8sManager := multiClusterManager.GetLocalManager()
 
-	controllerConfiguration, err := loadShippedControllerConfigurationForTests("default", settings.ControllerConfigurationName)
+	controllerConfiguration, err := loadShippedControllerConfigurationForTests(settings.ControllerConfigurationName)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient.Create(ctx, controllerConfiguration)).To(Succeed())
+	Expect(settings.BootstrapControllerInstanceID(ctx, cfg, "default")).To(Succeed())
 
 	settingsMgr := settings.NewManager(k8sManager.GetClient(), k8sManager.GetAPIReader(), settings.ManagerConfig{
 		ControllerNamespace: "default",
 	})
 
-	// ChangeTransferPolicy controller must be set up first so we can
-	// get the enqueue function to pass to other controllers.
+	// PullRequest controller is set up before ChangeTransferPolicy so CTP can enqueue PR reconciles.
+	prReconciler := &PullRequestReconciler{
+		Client:      k8sManager.GetClient(),
+		Scheme:      k8sManager.GetScheme(),
+		Recorder:    k8sManager.GetEventRecorder("PullRequest"),
+		SettingsMgr: settingsMgr,
+	}
+	err = prReconciler.SetupWithManager(ctx, k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
 	ctpReconciler := &ChangeTransferPolicyReconciler{
 		Client:      k8sManager.GetClient(),
 		Scheme:      k8sManager.GetScheme(),
 		Recorder:    k8sManager.GetEventRecorder("ChangeTransferPolicy"),
 		SettingsMgr: settingsMgr,
+		EnqueuePR:   prReconciler.GetEnqueueFunc(),
 	}
 	err = ctpReconciler.SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
@@ -229,14 +239,6 @@ var _ = BeforeSuite(func() {
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
-	err = (&PullRequestReconciler{
-		Client:      k8sManager.GetClient(),
-		Scheme:      k8sManager.GetScheme(),
-		Recorder:    k8sManager.GetEventRecorder("PullRequest"),
-		SettingsMgr: settingsMgr,
-	}).SetupWithManager(ctx, k8sManager)
-	Expect(err).ToNot(HaveOccurred())
-
 	err = (&RevertCommitReconciler{
 		Client:   k8sManager.GetClient(),
 		Scheme:   k8sManager.GetScheme(),
@@ -245,16 +247,18 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&ScmProviderReconciler{
-		Client:   k8sManager.GetClient(),
-		Scheme:   k8sManager.GetScheme(),
-		Recorder: k8sManager.GetEventRecorder("ScmProvider"),
+		Client:      k8sManager.GetClient(),
+		Scheme:      k8sManager.GetScheme(),
+		Recorder:    k8sManager.GetEventRecorder("ScmProvider"),
+		SettingsMgr: settingsMgr,
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&GitRepositoryReconciler{
-		Client:   k8sManager.GetClient(),
-		Scheme:   k8sManager.GetScheme(),
-		Recorder: k8sManager.GetEventRecorder("GitRepository"),
+		Client:      k8sManager.GetClient(),
+		Scheme:      k8sManager.GetScheme(),
+		Recorder:    k8sManager.GetEventRecorder("GitRepository"),
+		SettingsMgr: settingsMgr,
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
@@ -287,6 +291,15 @@ var _ = BeforeSuite(func() {
 		Client:      k8sManager.GetClient(),
 		Scheme:      k8sManager.GetScheme(),
 		Recorder:    k8sManager.GetEventRecorder("WebRequestCommitStatus"),
+		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+	}).SetupWithManager(ctx, k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&ScheduledCommitStatusReconciler{
+		Client:      k8sManager.GetClient(),
+		Scheme:      k8sManager.GetScheme(),
+		Recorder:    k8sManager.GetEventRecorder("ScheduledCommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(ctx, k8sManager)

@@ -3,6 +3,7 @@ package forgejo
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -188,7 +189,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj promoterv1alpha1.PullReq
 }
 
 // FindOpen checks if a pull request with the specified source and target branches exists and is open.
-func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest promoterv1alpha1.PullRequest) (bool, string, time.Time, error) {
+func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest promoterv1alpha1.PullRequest) (scms.FindOpenResult, error) {
 	logger := log.FromContext(ctx)
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, k8sClient.ObjectKey{
@@ -196,7 +197,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest promoterv1alpha
 		Name:      pullRequest.Spec.RepositoryReference.Name,
 	})
 	if err != nil {
-		return false, "", time.Time{}, fmt.Errorf("failed to get git repository from object: %w", err)
+		return scms.FindOpenResult{}, fmt.Errorf("failed to get git repository from object: %w", err)
 	}
 
 	options := forgejo.ListPullRequestsOptions{
@@ -209,7 +210,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest promoterv1alpha
 		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
-		return false, "", time.Time{}, fmt.Errorf("failed to list pull requests: %w", err)
+		return scms.FindOpenResult{}, fmt.Errorf("failed to list pull requests: %w", err)
 	}
 	logger.V(4).Info("forgejo response status", "status", resp.Status)
 
@@ -218,10 +219,22 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest promoterv1alpha
 			prItem.Base.Name != pullRequest.Spec.TargetBranch {
 			continue
 		}
-		return true, strconv.FormatInt(prItem.Index, 10), *prItem.Created, nil
+		scmLabels := make([]string, 0, len(prItem.Labels))
+		for _, label := range prItem.Labels {
+			if label != nil {
+				scmLabels = append(scmLabels, label.Name)
+			}
+		}
+		return scms.FindOpenResult{
+			Found:          true,
+			ID:             strconv.FormatInt(prItem.Index, 10),
+			CreationTime:   *prItem.Created,
+			SCMLabels:      scmLabels,
+			LabelsReported: true,
+		}, nil
 	}
 
-	return false, "", time.Time{}, nil
+	return scms.FindOpenResult{}, nil
 }
 
 func checkOpenPR(ctx context.Context, pr PullRequest, repo *promoterv1alpha1.GitRepository, prID int64) (bool, error) {
@@ -248,4 +261,157 @@ func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest promoterv1alpha1.
 	}
 
 	return fmt.Sprintf("https://%s/%s/%s/pulls/%s", pr.domain, gitRepo.Spec.Forgejo.Owner, gitRepo.Spec.Forgejo.Name, pullRequest.Status.ID), nil
+}
+
+// AddLabels adds labels to a pull request on Forgejo, creating missing repository labels first.
+func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest promoterv1alpha1.PullRequest, labelNames []string) error {
+	if len(labelNames) == 0 {
+		return nil
+	}
+
+	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, k8sClient.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	prIndex, err := strconv.ParseInt(pullRequest.Status.ID, 10, 64)
+	if err != nil {
+		return fmt.Errorf("failed to convert PR ID to int: %w", err)
+	}
+
+	labelIDs, err := pr.labelIDsForNames(ctx, repo, repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, labelNames, true)
+	if err != nil {
+		return err
+	}
+
+	start := time.Now()
+	_, resp, err := pr.foregejoClient.AddIssueLabels(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, prIndex, forgejo.IssueLabelsOption{Labels: labelIDs})
+	if resp != nil {
+		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationAddLabels, resp.StatusCode, time.Since(start), nil)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to add labels to pull request: %w", err)
+	}
+
+	return nil
+}
+
+// RemoveLabels removes labels from a pull request on Forgejo.
+func (pr *PullRequest) RemoveLabels(ctx context.Context, pullRequest promoterv1alpha1.PullRequest, labelNames []string) error {
+	if len(labelNames) == 0 {
+		return nil
+	}
+
+	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, k8sClient.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	prIndex, err := strconv.ParseInt(pullRequest.Status.ID, 10, 64)
+	if err != nil {
+		return fmt.Errorf("failed to convert PR ID to int: %w", err)
+	}
+
+	labelIDs, err := pr.labelIDsForNames(ctx, repo, repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, labelNames, false)
+	if err != nil {
+		return err
+	}
+
+	for _, labelID := range labelIDs {
+		start := time.Now()
+		resp, err := pr.foregejoClient.DeleteIssueLabel(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, prIndex, labelID)
+		if resp != nil {
+			metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationRemoveLabels, resp.StatusCode, time.Since(start), nil)
+		}
+		if err != nil {
+			if resp != nil && resp.StatusCode == http.StatusNotFound {
+				continue
+			}
+			return fmt.Errorf("failed to remove label from pull request: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (pr *PullRequest) labelIDsForNames(ctx context.Context, gitRepo *promoterv1alpha1.GitRepository, owner, repo string, labelNames []string, createMissing bool) ([]int64, error) {
+	nameToID, err := pr.repoLabelNameToID(owner, repo)
+	if err != nil {
+		return nil, err
+	}
+
+	ids := make([]int64, 0, len(labelNames))
+	for _, name := range labelNames {
+		id, ok := nameToID[name]
+		if !ok {
+			if !createMissing {
+				continue
+			}
+			var createErr error
+			id, createErr = pr.createRepoLabelID(ctx, gitRepo, owner, repo, name)
+			if createErr != nil {
+				return nil, createErr
+			}
+			nameToID[name] = id
+		}
+		ids = append(ids, id)
+	}
+
+	return ids, nil
+}
+
+func (pr *PullRequest) createRepoLabelID(ctx context.Context, gitRepo *promoterv1alpha1.GitRepository, owner, repo, name string) (int64, error) {
+	start := time.Now()
+	created, resp, err := pr.foregejoClient.CreateLabel(owner, repo, forgejo.CreateLabelOption{
+		Name:  name,
+		Color: scms.AutoCreatedLabelColor,
+	})
+	if resp != nil {
+		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreateLabel, resp.StatusCode, time.Since(start), nil)
+	}
+	if err == nil {
+		return created.ID, nil
+	}
+	if resp != nil && resp.StatusCode == http.StatusUnprocessableEntity {
+		nameToID, listErr := pr.repoLabelNameToID(owner, repo)
+		if listErr != nil {
+			return 0, listErr
+		}
+		if id, ok := nameToID[name]; ok {
+			return id, nil
+		}
+	}
+	return 0, fmt.Errorf("failed to create repository label %q: %w", name, err)
+}
+
+func (pr *PullRequest) repoLabelNameToID(owner, repo string) (map[string]int64, error) {
+	repoLabels, err := pr.listAllRepoLabels(owner, repo)
+	if err != nil {
+		return nil, err
+	}
+
+	nameToID := make(map[string]int64, len(repoLabels))
+	for _, label := range repoLabels {
+		nameToID[label.Name] = label.ID
+	}
+	return nameToID, nil
+}
+
+func (pr *PullRequest) listAllRepoLabels(owner, repo string) ([]*forgejo.Label, error) {
+	var allLabels []*forgejo.Label
+	page := 1
+	for {
+		repoLabels, resp, err := pr.foregejoClient.ListRepoLabels(owner, repo, forgejo.ListLabelsOptions{
+			ListOptions: forgejo.ListOptions{Page: page, PageSize: 50},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list repository labels: %w", err)
+		}
+		allLabels = append(allLabels, repoLabels...)
+		if len(repoLabels) == 0 || resp == nil || page >= resp.LastPage {
+			break
+		}
+		page++
+	}
+	return allLabels, nil
 }

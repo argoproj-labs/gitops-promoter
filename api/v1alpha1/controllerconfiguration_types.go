@@ -31,6 +31,18 @@ import (
 // rate limiters, and other controller-specific parameters. All fields should be required,
 // with defaults set in manifests rather than in code.
 type ControllerConfigurationSpec struct {
+	// InstanceID scopes which Promoter CRs this install reconciles. When set, only resources
+	// labeled promoter.argoproj.io/instance-id with this exact value enter the informer cache.
+	// When unset (nil), only resources without that label are reconciled. There is no mode that
+	// reconciles labeled and unlabeled resources together. Changing this value rebuilds the
+	// informer cache partition: a single-replica install shuts down and restarts automatically;
+	// HA installs (multiple replicas with leader election) require a rolling restart of all pods.
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$`
+	InstanceID *string `json:"instanceID,omitempty"`
+
 	// PromotionStrategy contains the configuration for the PromotionStrategy controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	// +required
@@ -70,6 +82,11 @@ type ControllerConfigurationSpec struct {
 	// including WorkQueue settings that control reconciliation behavior.
 	// +required
 	WebRequestCommitStatus WebRequestCommitStatusConfiguration `json:"webRequestCommitStatus"`
+
+	// ScheduledCommitStatus contains the configuration for the ScheduledCommitStatus controller,
+	// including WorkQueue settings that control reconciliation behavior.
+	// +required
+	ScheduledCommitStatus ScheduledCommitStatusConfiguration `json:"scheduledCommitStatus"`
 }
 
 // PromotionStrategyConfiguration defines the configuration for the PromotionStrategy controller.
@@ -168,6 +185,17 @@ type GitCommitStatusConfiguration struct {
 // requests, including requeue intervals, concurrency limits, and rate limiting behavior.
 type WebRequestCommitStatusConfiguration struct {
 	// WorkQueue contains the work queue configuration for the WebRequestCommitStatus controller.
+	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+	// +required
+	WorkQueue WorkQueue `json:"workQueue"`
+}
+
+// ScheduledCommitStatusConfiguration defines the configuration for the ScheduledCommitStatus controller.
+//
+// This configuration controls how the ScheduledCommitStatus controller processes reconciliation
+// requests, including requeue intervals, concurrency limits, and rate limiting behavior.
+type ScheduledCommitStatusConfiguration struct {
+	// WorkQueue contains the work queue configuration for the ScheduledCommitStatus controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
 	WorkQueue WorkQueue `json:"workQueue"`
@@ -342,11 +370,30 @@ type PullRequestTemplate struct {
 }
 
 // ControllerConfigurationStatus defines the observed state of ControllerConfiguration.
-//
-// Currently, this resource does not maintain any status information as it is a configuration-only
-// resource. Status fields may be added in the future to track configuration validation or
-// controller health metrics.
-type ControllerConfigurationStatus struct{}
+type ControllerConfigurationStatus struct {
+	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
+	// Because status is written via Server-Side Apply with ForceOwnership (which has no
+	// optimistic-concurrency check), this field is the canonical way to detect stale
+	// status writes: compare status.observedGeneration with metadata.generation.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
+	// Conditions Represents the observations of the current state.
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+
+	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+	// reconcile attempt by this install's controller, including when Ready=False; omitted
+	// when the resource has no instance-id label (default install).
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$`
+	InstanceID *string `json:"instanceID,omitempty"`
+}
 
 // +kubebuilder:ac:generate=true
 // +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#controllerconfiguration",description="CRD reference (examples and behavior)"
@@ -360,6 +407,21 @@ type ControllerConfiguration struct {
 
 	Spec   ControllerConfigurationSpec   `json:"spec,omitempty"`
 	Status ControllerConfigurationStatus `json:"status,omitempty"`
+}
+
+// GetConditions returns the conditions of the ControllerConfiguration.
+func (cc *ControllerConfiguration) GetConditions() *[]metav1.Condition {
+	return &cc.Status.Conditions
+}
+
+// SetObservedGeneration records the object generation that produced the current status.
+func (cc *ControllerConfiguration) SetObservedGeneration(generation int64) {
+	cc.Status.ObservedGeneration = generation
+}
+
+// SetStatusInstanceID records the instance-id label mirrored into status on each reconcile attempt.
+func (cc *ControllerConfiguration) SetStatusInstanceID(v *string) {
+	cc.Status.InstanceID = v
 }
 
 // +kubebuilder:object:root=true

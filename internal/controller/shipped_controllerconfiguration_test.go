@@ -30,7 +30,7 @@ import (
 // (the same manifest wired into kustomize) and applies test metadata. Tests run with the
 // working directory set to this package (standard `go test`), so the path is resolved from
 // internal/controller.
-func loadShippedControllerConfigurationForTests(namespace, name string) (*promoterv1alpha1.ControllerConfiguration, error) {
+func loadShippedControllerConfigurationForTests(name string) (*promoterv1alpha1.ControllerConfiguration, error) {
 	path := filepath.Join("..", "..", "config", "config", "controllerconfiguration.yaml")
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -41,7 +41,7 @@ func loadShippedControllerConfigurationForTests(namespace, name string) (*promot
 		return nil, err
 	}
 	cc.ObjectMeta = metav1.ObjectMeta{
-		Namespace:   namespace,
+		Namespace:   "default",
 		Name:        name,
 		Labels:      cc.Labels,
 		Annotations: cc.Annotations,

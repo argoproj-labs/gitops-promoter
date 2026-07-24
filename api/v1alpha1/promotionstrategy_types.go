@@ -67,6 +67,10 @@ type PromotionStrategySpec struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MinLength=1
 	ActivePath string `json:"activePath,omitempty"`
+
+	// PullRequest configures SCM pull request behavior for all environments in this strategy.
+	// +kubebuilder:validation:Optional
+	PullRequest *PullRequestPolicySpec `json:"pullRequest,omitempty"`
 }
 
 // Environment defines a single environment in the promotion sequence.
@@ -129,6 +133,32 @@ type CommitStatusSelector struct {
 	Key string `json:"key"`
 }
 
+// ScmLabelsSpec configures dynamic SCM pull request labels via an expression.
+type ScmLabelsSpec struct {
+	// Expression is evaluated using the expr library (github.com/expr-lang/expr) against
+	// ChangeTransferPolicy status and spec. It must return a list of SCM label name strings.
+	//
+	// Available variables:
+	//   - Status: ChangeTransferPolicy status (Proposed/Active commit statuses, branch SHAs, etc.)
+	//   - Spec: ChangeTransferPolicy spec (ActiveBranch, ProposedBranch, etc.)
+	//   - PromotionStrategy: owning PromotionStrategy spec and status when available
+	//
+	// Each returned label name must satisfy the same validation as PullRequest.spec.labels
+	// (non-empty, max 50 characters, no newlines, max 10 labels, unique).
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=8192
+	Expression string `json:"expression"`
+}
+
+// PullRequestPolicySpec configures SCM pull request behavior for a promotion policy.
+type PullRequestPolicySpec struct {
+	// Labels configures dynamic SCM labels applied to promotion pull requests.
+	// +kubebuilder:validation:Optional
+	Labels *ScmLabelsSpec `json:"labels,omitempty"`
+}
+
 // PromotionStrategyStatus defines the observed state of PromotionStrategy
 type PromotionStrategyStatus struct {
 	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
@@ -149,6 +179,15 @@ type PromotionStrategyStatus struct {
 	// +listType=map
 	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+
+	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+	// reconcile attempt by this install's controller, including when Ready=False; omitted
+	// when the resource has no instance-id label (default install).
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$`
+	InstanceID *string `json:"instanceID,omitempty"`
 }
 
 // GetConditions returns the conditions of the PromotionStrategy.
@@ -159,6 +198,11 @@ func (ps *PromotionStrategy) GetConditions() *[]metav1.Condition {
 // SetObservedGeneration records the object generation that produced the current status.
 func (ps *PromotionStrategy) SetObservedGeneration(generation int64) {
 	ps.Status.ObservedGeneration = generation
+}
+
+// SetStatusInstanceID records the instance-id label mirrored into status on each reconcile attempt.
+func (ps *PromotionStrategy) SetStatusInstanceID(v *string) {
+	ps.Status.InstanceID = v
 }
 
 // EnvironmentStatus defines the observed state of an environment in a PromotionStrategy.
@@ -208,7 +252,7 @@ type PromotionStrategy struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   PromotionStrategySpec   `json:"spec,omitempty"`
+	Spec   PromotionStrategySpec   `json:"spec"`
 	Status PromotionStrategyStatus `json:"status,omitempty"`
 }
 

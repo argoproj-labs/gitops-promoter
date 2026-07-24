@@ -413,6 +413,15 @@ type WebRequestCommitStatusStatus struct {
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+	// reconcile attempt by this install's controller, including when Ready=False; omitted
+	// when the resource has no instance-id label (default install).
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$`
+	InstanceID *string `json:"instanceID,omitempty"`
 }
 
 // WebRequestCommitStatusPhasePerBranchItem is one branch's resolved phase in promotionstrategy context status.
@@ -593,6 +602,11 @@ func (wrcs *WebRequestCommitStatus) GetConditions() *[]metav1.Condition {
 // SetObservedGeneration records the object generation that produced the current status.
 func (wrcs *WebRequestCommitStatus) SetObservedGeneration(generation int64) {
 	wrcs.Status.ObservedGeneration = generation
+}
+
+// SetStatusInstanceID records the instance-id label mirrored into status on each reconcile attempt.
+func (wrcs *WebRequestCommitStatus) SetStatusInstanceID(v *string) {
+	wrcs.Status.InstanceID = v
 }
 
 func init() {

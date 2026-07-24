@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router';
 import { namespaceStore } from '../stores/NamespaceStore';
 import { viewStore } from '../stores/ViewStore';
 import { PromotionStrategyStore } from '../stores/PromotionStrategyStore';
@@ -34,10 +34,7 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
 
   const { items, fetchItems, subscribe, unsubscribe } = PromotionStrategyStore();
 
-  // Find the selected strategy
-  const selectedStrategy = items.find(
-    (ps: PromotionStrategy) => ps.metadata?.name === strategyName,
-  );
+  const selectedStrategy = items.find((ps: PromotionStrategy) => ps.metadata.name === strategyName);
 
   useEffect(() => {
     if (!namespace) return;
@@ -69,16 +66,16 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
     navigate('/promotion-strategies');
   };
 
-  // Loading State
   if (items.length === 0) {
-    return <div style={{ textAlign: 'center', marginTop: '20px' }}>Loading strategies...</div>;
+    return (
+      <div style={{ textAlign: 'center', marginTop: '20px' }}>Loading promotion strategies…</div>
+    );
   }
 
-  // Not found state
   if (!selectedStrategy) {
     return (
       <div style={{ textAlign: 'center', marginTop: '20px' }}>
-        No strategy found for {strategyName}
+        We couldn't find a promotion strategy named {strategyName}.
       </div>
     );
   }
@@ -109,14 +106,14 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
             >
               Live
               <br />
-              Manifest
+              manifest
             </button>
           </div>
         </div>
       </div>
 
       {currentView === 'cards' ? (
-        <div style={{ marginTop: '40px' }}>
+        <div style={{ marginTop: '8px' }}>
           <PromotionStrategyDetailsView strategy={selectedStrategy} />
         </div>
       ) : (

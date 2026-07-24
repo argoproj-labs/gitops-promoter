@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router';
 import Card from '@lib/components/Card';
 import { type PromotionStrategy } from '@shared/utils/PSData';
 
@@ -9,11 +10,17 @@ interface PromotionStrategyDetailsViewProps {
 export const PromotionStrategyDetailsView: React.FC<PromotionStrategyDetailsViewProps> = ({
   strategy,
 }) => {
-  if (!strategy) return <div>No strategy found</div>;
+  const navigate = useNavigate();
 
-  //Pass raw data
   const environments = strategy.status?.environments || [];
-  return <Card environments={environments} />;
+  const ns = strategy.metadata.namespace || '';
+  const name = strategy.metadata.name || '';
+
+  const handleHistoryNavigate = (_branch: string) => {
+    navigate(`/promotion-strategies/${ns}/${name}/history`);
+  };
+
+  return <Card environments={environments} onHistoryNavigate={handleHistoryNavigate} />;
 };
 
 export default PromotionStrategyDetailsView;

@@ -1,9 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import Select, { SingleValue } from 'react-select';
 import Card from '@components-lib/components/Card';
+import HistoryView from '@components-lib/components/HistoryView/HistoryView';
+import type { CellSelection } from '@components-lib/components/HistoryView/HistoryView';
 import { PromotionStrategy } from '@shared/types/promotion';
 import { AppViewComponentProps } from '@shared/types/extension';
+import { sortStrategyCommitStatuses } from '@shared/utils/util';
 import './StrategyDropdown.scss';
+
+type ViewMode = 'card' | 'history';
 
 const GROUP = 'promoter.argoproj.io';
 const KIND = 'PromotionStrategy';
@@ -26,6 +31,28 @@ const setParam = (name: string) => {
     url.searchParams.set(PARAM, name);
   } else {
     url.searchParams.delete(PARAM);
+  }
+  window.history.replaceState(null, '', url.toString());
+};
+
+const COMMIT_PARAM = 'psCommit';
+const ENV_PARAM = 'psEnv';
+
+const getSelectionFromUrl = (): CellSelection | null => {
+  const params = new URLSearchParams(window.location.search);
+  const rowId = params.get(COMMIT_PARAM);
+  const branch = params.get(ENV_PARAM);
+  return rowId && branch ? { rowId, branch } : null;
+};
+
+const setSelectionInUrl = (selection: CellSelection | null) => {
+  const url = new URL(window.location.href);
+  if (selection) {
+    url.searchParams.set(COMMIT_PARAM, selection.rowId);
+    url.searchParams.set(ENV_PARAM, selection.branch);
+  } else {
+    url.searchParams.delete(COMMIT_PARAM);
+    url.searchParams.delete(ENV_PARAM);
   }
   window.history.replaceState(null, '', url.toString());
 };
@@ -62,12 +89,13 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
     () => getParam() || getStored(application.metadata.namespace, application.metadata.name),
   );
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [view, setView] = useState<ViewMode>(() => (getSelectionFromUrl() ? 'history' : 'card'));
 
   useEffect(() => {
     const appName = application.metadata.name;
     const appNamespace = application.metadata.namespace;
 
-    const strategyNodes = (tree.nodes || []).filter(
+    const strategyNodes = (tree.nodes ?? []).filter(
       (node) => node.group === GROUP && node.kind === KIND,
     );
 
@@ -106,7 +134,7 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
           throw new Error(messageParts.join(' - '));
         }
         const data: { manifest: string } = await response.json();
-        return JSON.parse(data.manifest) as PromotionStrategy;
+        return sortStrategyCommitStatuses(JSON.parse(data.manifest) as PromotionStrategy);
       }),
     )
       .then((parsed) => {
@@ -151,25 +179,58 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
 
   return (
     <div className="extension-container">
-      {strategies.length > 1 && (
-        <div className="strategy-dropdown-wrapper">
-          <Select<SelectOption>
-            classNamePrefix="strategy-dropdown"
-            options={options}
-            placeholder="Select a PromotionStrategy"
-            value={options.find((opt) => opt.value === selectedKey) || null}
-            menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
-            styles={{ menuPortal: (base) => ({ ...base, zIndex: 2000 }) }}
-            onChange={(option: SingleValue<SelectOption>) => {
-              const key = option ? option.value : '';
-              setSelectedKey(key);
-              setParam(key);
-              setStored(application.metadata.namespace, application.metadata.name, key);
-            }}
+      <div className="gp-controls">
+        {strategies.length > 1 && (
+          <div className="strategy-dropdown-wrapper">
+            <Select<SelectOption>
+              classNamePrefix="strategy-dropdown"
+              options={options}
+              placeholder="Select a PromotionStrategy"
+              value={options.find((opt) => opt.value === selectedKey) || null}
+              menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+              styles={{ menuPortal: (base) => ({ ...base, zIndex: 2000 }) }}
+              onChange={(option: SingleValue<SelectOption>) => {
+                const key = option ? option.value : '';
+                setSelectedKey(key);
+                setParam(key);
+                setStored(application.metadata.namespace, application.metadata.name, key);
+              }}
+            />
+          </div>
+        )}
+        {selected && (
+          <div className="gp-view-toggle" role="tablist" aria-label="View">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === 'card'}
+              className={`gp-view-toggle__btn ${view === 'card' ? 'gp-view-toggle__btn--active' : ''}`}
+              onClick={() => setView('card')}
+            >
+              Overview
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === 'history'}
+              className={`gp-view-toggle__btn ${view === 'history' ? 'gp-view-toggle__btn--active' : ''}`}
+              onClick={() => setView('history')}
+            >
+              History
+            </button>
+          </div>
+        )}
+      </div>
+      {selected && view === 'card' && <Card environments={selected.status?.environments || []} />}
+      {selected && view === 'history' && (
+        <div className="gp-history-wrapper">
+          <HistoryView
+            strategy={selected}
+            initialSelection={getSelectionFromUrl()}
+            onSelectionChange={setSelectionInUrl}
           />
         </div>
       )}
-      {selected && <Card environments={selected.status?.environments || []} />}
     </div>
   );
 };

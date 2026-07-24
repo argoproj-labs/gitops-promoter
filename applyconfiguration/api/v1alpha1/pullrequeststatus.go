@@ -49,8 +49,17 @@ type PullRequestStatusApplyConfiguration struct {
 	// The PullRequest resource will be deleted after this flag is set when possible, but the status is
 	// preserved in the owning ChangeTransferPolicy to maintain a record.
 	ExternallyMergedOrClosed *bool `json:"externallyMergedOrClosed,omitempty"`
+	// SCMSyncedSpecDigest fingerprints title and description last successfully synced
+	// to the SCM via provider.Update on an open pull request.
+	SCMSyncedSpecDigest *string `json:"scmSyncedSpecDigest,omitempty"`
+	// AppliedLabels lists SCM labels successfully applied by gitops-promoter (for sync and retraction).
+	AppliedLabels []string `json:"appliedLabels,omitempty"`
 	// Conditions Represents the observations of the current state.
 	Conditions []metav1.ConditionApplyConfiguration `json:"conditions,omitempty"`
+	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+	// reconcile attempt by this install's controller, including when Ready=False; omitted
+	// when the resource has no instance-id label (default install).
+	InstanceID *string `json:"instanceID,omitempty"`
 }
 
 // PullRequestStatusApplyConfiguration constructs a declarative configuration of the PullRequestStatus type for use with
@@ -107,6 +116,24 @@ func (b *PullRequestStatusApplyConfiguration) WithExternallyMergedOrClosed(value
 	return b
 }
 
+// WithSCMSyncedSpecDigest sets the SCMSyncedSpecDigest field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the SCMSyncedSpecDigest field is set to the value of the last call.
+func (b *PullRequestStatusApplyConfiguration) WithSCMSyncedSpecDigest(value string) *PullRequestStatusApplyConfiguration {
+	b.SCMSyncedSpecDigest = &value
+	return b
+}
+
+// WithAppliedLabels adds the given value to the AppliedLabels field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the AppliedLabels field.
+func (b *PullRequestStatusApplyConfiguration) WithAppliedLabels(values ...string) *PullRequestStatusApplyConfiguration {
+	for i := range values {
+		b.AppliedLabels = append(b.AppliedLabels, values[i])
+	}
+	return b
+}
+
 // WithConditions adds the given value to the Conditions field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the Conditions field.
@@ -117,5 +144,13 @@ func (b *PullRequestStatusApplyConfiguration) WithConditions(values ...*metav1.C
 		}
 		b.Conditions = append(b.Conditions, *values[i])
 	}
+	return b
+}
+
+// WithInstanceID sets the InstanceID field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the InstanceID field is set to the value of the last call.
+func (b *PullRequestStatusApplyConfiguration) WithInstanceID(value string) *PullRequestStatusApplyConfiguration {
+	b.InstanceID = &value
 	return b
 }

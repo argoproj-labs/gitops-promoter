@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import logoSecondary from '../assets/logo-one-row-secondary.svg';
 import './TopBar.scss';
 

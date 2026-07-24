@@ -3,6 +3,7 @@ extend-exclude = [
     "docs/assets/**",
     "config/crd/bases/**",
     "dist/**",
+    "ui/shared/src/types/generated/**",
     # Generated OpenAPI definitions embed upstream Kubernetes type descriptions
     # verbatim (e.g. "ANDed", "mutatation"); don't spell-check generated code.
     "**/zz_generated.openapi.go",

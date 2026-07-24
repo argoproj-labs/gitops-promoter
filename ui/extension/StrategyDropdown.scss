@@ -1,7 +1,33 @@
+.gp-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+// ArgoCD mounts the extension into `application-details__tree`, a
+// definite-height, scroll-capable flex child. We fill it with a flex column so
+// the History view's `height: 100%` resolves natively — no viewport
+// measurement. The toggle/controls take their natural height; the history
+// wrapper flexes to the remaining space and contains the inner `.hp`.
+.extension-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.gp-history-wrapper {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .strategy-dropdown-wrapper {
   display: flex;
   justify-content: center;
-  margin-bottom: 16px;
 }
 
 .strategy-dropdown__option {
@@ -89,4 +115,42 @@
 
 .strategy-dropdown__single-value {
   color: #2d3748 !important;
+}
+
+.gp-view-toggle {
+  display: flex;
+  justify-content: center;
+}
+
+.gp-view-toggle__btn {
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 16px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #4a5a6a;
+  background: white;
+  border: 1px solid #ccd6dd;
+  cursor: pointer;
+
+  &:first-child {
+    border-radius: 8px 0 0 8px;
+  }
+
+  &:last-child {
+    border-radius: 0 8px 8px 0;
+    border-left: none;
+  }
+
+  &:hover {
+    border-color: #0dadea;
+    color: #0dadea;
+  }
+
+  &--active {
+    background: #e6f6ff;
+    color: #0dadea;
+    border-color: #0dadea;
+  }
 }

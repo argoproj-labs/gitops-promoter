@@ -6,9 +6,9 @@ package mock
 
 import (
 	"context"
-	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -332,6 +332,69 @@ func (_m *MockPullRequestProvider) EXPECT() *MockPullRequestProvider_Expecter {
 	return &MockPullRequestProvider_Expecter{mock: &_m.Mock}
 }
 
+// AddLabels provides a mock function for the type MockPullRequestProvider
+func (_mock *MockPullRequestProvider) AddLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labels []string) error {
+	ret := _mock.Called(ctx, pullRequest, labels)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AddLabels")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, v1alpha1.PullRequest, []string) error); ok {
+		r0 = returnFunc(ctx, pullRequest, labels)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockPullRequestProvider_AddLabels_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AddLabels'
+type MockPullRequestProvider_AddLabels_Call struct {
+	*mock.Call
+}
+
+// AddLabels is a helper method to define mock.On call
+//   - ctx context.Context
+//   - pullRequest v1alpha1.PullRequest
+//   - labels []string
+func (_e *MockPullRequestProvider_Expecter) AddLabels(ctx any, pullRequest any, labels any) *MockPullRequestProvider_AddLabels_Call {
+	return &MockPullRequestProvider_AddLabels_Call{Call: _e.mock.On("AddLabels", ctx, pullRequest, labels)}
+}
+
+func (_c *MockPullRequestProvider_AddLabels_Call) Run(run func(ctx context.Context, pullRequest v1alpha1.PullRequest, labels []string)) *MockPullRequestProvider_AddLabels_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 v1alpha1.PullRequest
+		if args[1] != nil {
+			arg1 = args[1].(v1alpha1.PullRequest)
+		}
+		var arg2 []string
+		if args[2] != nil {
+			arg2 = args[2].([]string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockPullRequestProvider_AddLabels_Call) Return(err error) *MockPullRequestProvider_AddLabels_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockPullRequestProvider_AddLabels_Call) RunAndReturn(run func(ctx context.Context, pullRequest v1alpha1.PullRequest, labels []string) error) *MockPullRequestProvider_AddLabels_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Close provides a mock function for the type MockPullRequestProvider
 func (_mock *MockPullRequestProvider) Close(ctx context.Context, pullRequest v1alpha1.PullRequest) error {
 	ret := _mock.Called(ctx, pullRequest)
@@ -480,41 +543,29 @@ func (_c *MockPullRequestProvider_Create_Call) RunAndReturn(run func(ctx context
 }
 
 // FindOpen provides a mock function for the type MockPullRequestProvider
-func (_mock *MockPullRequestProvider) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string, time.Time, error) {
+func (_mock *MockPullRequestProvider) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.FindOpenResult, error) {
 	ret := _mock.Called(ctx, pullRequest)
 
 	if len(ret) == 0 {
 		panic("no return value specified for FindOpen")
 	}
 
-	var r0 bool
-	var r1 string
-	var r2 time.Time
-	var r3 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, v1alpha1.PullRequest) (bool, string, time.Time, error)); ok {
+	var r0 scms.FindOpenResult
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, v1alpha1.PullRequest) (scms.FindOpenResult, error)); ok {
 		return returnFunc(ctx, pullRequest)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, v1alpha1.PullRequest) bool); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, v1alpha1.PullRequest) scms.FindOpenResult); ok {
 		r0 = returnFunc(ctx, pullRequest)
 	} else {
-		r0 = ret.Get(0).(bool)
+		r0 = ret.Get(0).(scms.FindOpenResult)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, v1alpha1.PullRequest) string); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, v1alpha1.PullRequest) error); ok {
 		r1 = returnFunc(ctx, pullRequest)
 	} else {
-		r1 = ret.Get(1).(string)
+		r1 = ret.Error(1)
 	}
-	if returnFunc, ok := ret.Get(2).(func(context.Context, v1alpha1.PullRequest) time.Time); ok {
-		r2 = returnFunc(ctx, pullRequest)
-	} else {
-		r2 = ret.Get(2).(time.Time)
-	}
-	if returnFunc, ok := ret.Get(3).(func(context.Context, v1alpha1.PullRequest) error); ok {
-		r3 = returnFunc(ctx, pullRequest)
-	} else {
-		r3 = ret.Error(3)
-	}
-	return r0, r1, r2, r3
+	return r0, r1
 }
 
 // MockPullRequestProvider_FindOpen_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FindOpen'
@@ -547,12 +598,12 @@ func (_c *MockPullRequestProvider_FindOpen_Call) Run(run func(ctx context.Contex
 	return _c
 }
 
-func (_c *MockPullRequestProvider_FindOpen_Call) Return(found bool, id string, creationTime time.Time, err error) *MockPullRequestProvider_FindOpen_Call {
-	_c.Call.Return(found, id, creationTime, err)
+func (_c *MockPullRequestProvider_FindOpen_Call) Return(findOpenResult scms.FindOpenResult, err error) *MockPullRequestProvider_FindOpen_Call {
+	_c.Call.Return(findOpenResult, err)
 	return _c
 }
 
-func (_c *MockPullRequestProvider_FindOpen_Call) RunAndReturn(run func(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string, time.Time, error)) *MockPullRequestProvider_FindOpen_Call {
+func (_c *MockPullRequestProvider_FindOpen_Call) RunAndReturn(run func(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.FindOpenResult, error)) *MockPullRequestProvider_FindOpen_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -676,6 +727,69 @@ func (_c *MockPullRequestProvider_Merge_Call) Return(err error) *MockPullRequest
 }
 
 func (_c *MockPullRequestProvider_Merge_Call) RunAndReturn(run func(ctx context.Context, pullRequest v1alpha1.PullRequest) error) *MockPullRequestProvider_Merge_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RemoveLabels provides a mock function for the type MockPullRequestProvider
+func (_mock *MockPullRequestProvider) RemoveLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labels []string) error {
+	ret := _mock.Called(ctx, pullRequest, labels)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RemoveLabels")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, v1alpha1.PullRequest, []string) error); ok {
+		r0 = returnFunc(ctx, pullRequest, labels)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockPullRequestProvider_RemoveLabels_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RemoveLabels'
+type MockPullRequestProvider_RemoveLabels_Call struct {
+	*mock.Call
+}
+
+// RemoveLabels is a helper method to define mock.On call
+//   - ctx context.Context
+//   - pullRequest v1alpha1.PullRequest
+//   - labels []string
+func (_e *MockPullRequestProvider_Expecter) RemoveLabels(ctx any, pullRequest any, labels any) *MockPullRequestProvider_RemoveLabels_Call {
+	return &MockPullRequestProvider_RemoveLabels_Call{Call: _e.mock.On("RemoveLabels", ctx, pullRequest, labels)}
+}
+
+func (_c *MockPullRequestProvider_RemoveLabels_Call) Run(run func(ctx context.Context, pullRequest v1alpha1.PullRequest, labels []string)) *MockPullRequestProvider_RemoveLabels_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 v1alpha1.PullRequest
+		if args[1] != nil {
+			arg1 = args[1].(v1alpha1.PullRequest)
+		}
+		var arg2 []string
+		if args[2] != nil {
+			arg2 = args[2].([]string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockPullRequestProvider_RemoveLabels_Call) Return(err error) *MockPullRequestProvider_RemoveLabels_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockPullRequestProvider_RemoveLabels_Call) RunAndReturn(run func(ctx context.Context, pullRequest v1alpha1.PullRequest, labels []string) error) *MockPullRequestProvider_RemoveLabels_Call {
 	_c.Call.Return(run)
 	return _c
 }

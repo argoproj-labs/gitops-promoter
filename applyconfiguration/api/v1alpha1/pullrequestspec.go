@@ -49,6 +49,9 @@ type PullRequestSpecApplyConfiguration struct {
 	// State of the pull request (closed, merged, or open). Must always be "open" when creating a new pull request.
 	// This value may not be changed to "closed" or "merged" unless the pull request status.id is set.
 	State *apiv1alpha1.PullRequestState `json:"state,omitempty"`
+	// Labels is the desired set of SCM pull request labels (not Kubernetes metadata labels).
+	// Written by the ChangeTransferPolicy controller from pullRequest.labels.expression evaluation.
+	Labels []string `json:"labels,omitempty"`
 }
 
 // PullRequestSpecApplyConfiguration constructs a declarative configuration of the PullRequestSpec type for use with
@@ -118,5 +121,15 @@ func (b *PullRequestSpecApplyConfiguration) WithMergeSha(value string) *PullRequ
 // If called multiple times, the State field is set to the value of the last call.
 func (b *PullRequestSpecApplyConfiguration) WithState(value apiv1alpha1.PullRequestState) *PullRequestSpecApplyConfiguration {
 	b.State = &value
+	return b
+}
+
+// WithLabels adds the given value to the Labels field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the Labels field.
+func (b *PullRequestSpecApplyConfiguration) WithLabels(values ...string) *PullRequestSpecApplyConfiguration {
+	for i := range values {
+		b.Labels = append(b.Labels, values[i])
+	}
 	return b
 }

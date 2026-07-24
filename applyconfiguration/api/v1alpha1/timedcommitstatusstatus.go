@@ -35,6 +35,10 @@ type TimedCommitStatusStatusApplyConfiguration struct {
 	Environments []TimedCommitStatusEnvironmentsStatusApplyConfiguration `json:"environments,omitempty"`
 	// Conditions represent the latest available observations of an object's state
 	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
+	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+	// reconcile attempt by this install's controller, including when Ready=False; omitted
+	// when the resource has no instance-id label (default install).
+	InstanceID *string `json:"instanceID,omitempty"`
 }
 
 // TimedCommitStatusStatusApplyConfiguration constructs a declarative configuration of the TimedCommitStatusStatus type for use with
@@ -74,5 +78,13 @@ func (b *TimedCommitStatusStatusApplyConfiguration) WithConditions(values ...*v1
 		}
 		b.Conditions = append(b.Conditions, *values[i])
 	}
+	return b
+}
+
+// WithInstanceID sets the InstanceID field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the InstanceID field is set to the value of the last call.
+func (b *TimedCommitStatusStatusApplyConfiguration) WithInstanceID(value string) *TimedCommitStatusStatusApplyConfiguration {
+	b.InstanceID = &value
 	return b
 }

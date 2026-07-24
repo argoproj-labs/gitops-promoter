@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "npx vite build",
-    "lint": "eslint \"src/**/*.{ts,tsx}\"",
-    "lint:fix": "eslint \"src/**/*.{ts,tsx}\" --fix",
+    "lint": "cd .. && eslint -c dashboard/eslint.config.js \"dashboard/src/**/*.{ts,tsx}\" \"shared/src/**/*.{ts,tsx}\"",
+    "lint:fix": "cd .. && eslint -c dashboard/eslint.config.js \"dashboard/src/**/*.{ts,tsx}\" \"shared/src/**/*.{ts,tsx}\" --fix",
     "type-check": "tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -35,10 +35,10 @@
     "vitest": "^4.0.18"
   },
   "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "react-icons": "^5.0.0",
-    "react-router-dom": "^6.30.4",
+    "react-router": "^8.3.0",
     "react-select": "^5.8.0",
     "sass": "^1.89.2",
     "zustand": "^5.0.0"

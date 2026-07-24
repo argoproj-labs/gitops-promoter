@@ -81,11 +81,7 @@ const CommitMessageModal: React.FC<ModalProps> = ({
               {author && commitTime && (
                 <div className="modal-commit-author">
                   <span>
-                    by <strong>{author}</strong> (authored{' '}
-                    <span title={commitTime}>
-                      <TimeAgo date={commitTime} />
-                    </span>
-                    )
+                    by <strong>{author}</strong> (authored <TimeAgo date={commitTime} />)
                   </span>
                 </div>
               )}

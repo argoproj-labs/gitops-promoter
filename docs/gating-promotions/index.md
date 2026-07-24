@@ -2,6 +2,8 @@
 
 Most environment promotion strategies will involve enforcing some kind of "gates" between promotions.
 
+> **Multiple controller installs:** When more than one Promoter controller runs in the same cluster, label gate CRs, `PromotionStrategy` resources, and user-created roots (`GitRepository`, `ScmProvider`, `ClusterScmProvider`) with `promoter.argoproj.io/instance-id` so each install only reconciles its own gates and CommitStatuses. See [Multiple Controller Installs](../multi-install.md).
+
 GitOps promoter uses the [PromotionStrategy API](../crd-specs.md#promotionstrategy) to configure checks that must pass
 between environments. It uses the [CommitStatus API](../crd-specs.md#commitstatus) to understand the state of the checks.
 
@@ -167,6 +169,19 @@ Key features:
 - `spec.key` (default `timer` when omitted; set explicitly, including the default value)
 - Reports pending until the required duration is met
 - Prevents promotions when there are pending changes in lower environments
+
+### Scheduled Gating
+
+The [ScheduledCommitStatus](built-in-gates/scheduled-commit-status.md) controller gates promotions based on cron-based time windows. It evaluates recurring allow and exclude windows to determine whether promotions are permitted at the current time, enabling business-hours-only rollouts, maintenance windows, and deployment freezes.
+
+Key features:
+
+- Cron-based allow/exclude windows with durations
+- `spec.key` (required)
+- Global windows shared across all listed environments, with per-environment overrides
+- Per-environment timezone support (IANA names)
+- Precise requeuing at window transition times (no polling)
+- Exclusion-only mode (allow everything except during blackout periods)
 
 ### Web Request (HTTP) Validation
 

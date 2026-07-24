@@ -13,6 +13,7 @@ interface EnvOverrides {
 
 const makeEnv = (o: EnvOverrides = {}): Environment => ({
   branch: o.branch ?? 'main',
+  lastHealthyDryShas: [],
   active: {
     dry: o.activeDrySha ? { sha: o.activeDrySha } : undefined,
   },
@@ -20,7 +21,7 @@ const makeEnv = (o: EnvOverrides = {}): Environment => ({
     dry: o.proposedDrySha ? { sha: o.proposedDrySha } : undefined,
     hydrated:
       o.hydratedSha || o.hydratedCommitTime
-        ? { sha: o.hydratedSha, commitTime: o.hydratedCommitTime ?? null }
+        ? { sha: o.hydratedSha, commitTime: o.hydratedCommitTime }
         : undefined,
     note: o.noteDrySha ? { drySha: o.noteDrySha } : undefined,
   },

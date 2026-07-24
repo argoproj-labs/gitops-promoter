@@ -74,9 +74,11 @@ type WebRequestCommitStatusReconciler struct {
 	rvTracker *utils.ResourceVersionTracker
 }
 
-// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=webrequestcommitstatuses,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=webrequestcommitstatuses,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=webrequestcommitstatuses/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=webrequestcommitstatuses/finalizers,verbs=update
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch;patch;create;delete
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 
@@ -145,6 +147,10 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 
 	// Remove any existing Ready condition. We want to start fresh.
 	previousReady = utils.RemoveReadyCondition(&wrcs)
+
+	if err := ensureControllerInstanceIDStable(ctx, r.SettingsMgr); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	// 2. Fetch the referenced PromotionStrategy
 	var ps promoterv1alpha1.PromotionStrategy
@@ -496,8 +502,9 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 	}
 
 	// Build the apply configuration
+	commitStatusLabels := utils.CommitStatusStandardLabels(wrcs, branch, wrcs.Spec.Key)
 	commitStatusApply := acv1alpha1.CommitStatus(commitStatusName, wrcs.Namespace).
-		WithLabels(utils.CommitStatusStandardLabels(wrcs, branch, wrcs.Spec.Key)).
+		WithLabels(commitStatusLabels).
 		WithOwnerReferences(acmetav1.OwnerReference().
 			WithAPIVersion(gvk.GroupVersion().String()).
 			WithKind(gvk.Kind).
