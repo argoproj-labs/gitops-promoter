@@ -175,4 +175,4 @@ spec:
 > As a safety check, the PromotionStrategy controller fails its reconcile if a DAGCommitStatus
 > references the PromotionStrategy but its `key` is not present in the PromotionStrategy's
 > `proposedCommitStatuses` — otherwise the gate it produces would never be enforced. This safety
-> check is intended to be removed in v1.0; see [Roadmap](../../roadmap.md).
+> check is intended to be removed in v1.0.
