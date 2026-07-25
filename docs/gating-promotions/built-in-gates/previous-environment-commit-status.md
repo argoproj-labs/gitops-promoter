@@ -9,7 +9,7 @@ A linear pipeline is just a chain-shaped dependency graph, so this controller is
 the [DAGCommitStatus](dag-commit-status.md) controller: it takes the PromotionStrategy's environments
 in spec order, builds a chain where each environment `dependsOn` the one before it, and hands that to
 the DAG controller, which does the actual gating. Use this controller when your pipeline is linear;
-use DAGCommitStatus directly when you need fan-out/fan-in.
+use DAGCommitStatus directly for non-linear dependency graphs.
 
 > [!IMPORTANT]
 > The gate is not created or injected automatically. You must create a
