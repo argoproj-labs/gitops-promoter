@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import Card from '@lib/components/Card';
 import { type PromotionStrategy } from '@shared/utils/PSData';
 

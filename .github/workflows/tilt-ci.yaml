@@ -54,7 +54,7 @@ jobs:
 
       - name: Install Tilt
         run: |
-          TILT_VERSION=v0.33.15
+          TILT_VERSION=v0.37.5
           curl -fsSL "https://raw.githubusercontent.com/tilt-dev/tilt/${TILT_VERSION}/scripts/install.sh" -o /tmp/tilt-install.sh
           chmod +x /tmp/tilt-install.sh
           /tmp/tilt-install.sh

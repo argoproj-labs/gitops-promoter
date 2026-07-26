@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import type { PromotionStrategy } from '@shared/utils/PSData';
 import { PromotionStrategyTile } from '../PromotionStrategySummary/PromotionStrategyTile';
 import { getLastCommitTime, formatDate, getOverallPromotionStatus } from '@shared/utils/util';
