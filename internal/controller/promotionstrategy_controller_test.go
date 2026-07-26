@@ -5679,6 +5679,11 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 							DrySha: "old123", // Git note SHA (out-of-sync with target)
 						},
 					},
+					Active: promoterv1alpha1.CommitBranchState{
+						Dry: promoterv1alpha1.CommitShaState{
+							Sha: "different123",
+						},
+					},
 				},
 			}
 		}
@@ -5698,6 +5703,160 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 			return reconciler, enqueuedCTPs, mutex
 		}
+
+		enqueuedNames := func(enqueuedCTPs *[]client.ObjectKey, mutex *sync.Mutex) []string {
+			mutex.Lock()
+			defer mutex.Unlock()
+
+			names := make([]string, 0, len(*enqueuedCTPs))
+			for _, key := range *enqueuedCTPs {
+				names = append(names, key.Name)
+			}
+			return names
+		}
+
+		makeCTPWithShas := func(name, proposedDrySha, activeDrySha string, note *promoterv1alpha1.HydratorMetadata, commitTime metav1.Time) *promoterv1alpha1.ChangeTransferPolicy {
+			return &promoterv1alpha1.ChangeTransferPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: "test-ns",
+				},
+				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+					Proposed: promoterv1alpha1.CommitBranchState{
+						Dry: promoterv1alpha1.CommitShaState{
+							Sha: proposedDrySha,
+						},
+						Hydrated: promoterv1alpha1.CommitShaState{
+							CommitTime: commitTime,
+						},
+						Note: note,
+					},
+					Active: promoterv1alpha1.CommitBranchState{
+						Dry: promoterv1alpha1.CommitShaState{
+							Sha: activeDrySha,
+						},
+					},
+				},
+			}
+		}
+
+		It("should not enqueue when note metadata differs but proposed dry is already active", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+			now := metav1.Now()
+			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
+				makeCTPWithShas("test-ctp", "abc123", "abc123", &promoterv1alpha1.HydratorMetadata{DrySha: "old123"}, now),
+			}
+
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(BeEmpty())
+		})
+
+		It("should enqueue a real diff when note metadata differs", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+			now := metav1.Now()
+			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
+				makeCTPWithShas("test-ctp", "abc123", "def456", &promoterv1alpha1.HydratorMetadata{DrySha: "old123"}, now),
+			}
+
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp"}))
+		})
+
+		DescribeTable("should enqueue when note is missing or empty",
+			func(name string, note *promoterv1alpha1.HydratorMetadata) {
+				reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+				olderTime := metav1.NewTime(time.Now().Add(-1 * time.Minute))
+				newerTime := metav1.Now()
+				ctps := []*promoterv1alpha1.ChangeTransferPolicy{
+					makeCTPWithShas(name, "abc123", "abc123", note, olderTime),
+					makeCTPWithShas("newest-ctp", "def456", "def456", &promoterv1alpha1.HydratorMetadata{DrySha: "def456"}, newerTime),
+				}
+
+				reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+
+				Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{name}))
+			},
+			Entry("missing", "missing-note-ctp", nil),
+			Entry("empty", "empty-note-ctp", &promoterv1alpha1.HydratorMetadata{}),
+		)
+
+		It("should enqueue during partial initialization when proposed dry is empty", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+			olderTime := metav1.NewTime(time.Now().Add(-1 * time.Minute))
+			newerTime := metav1.Now()
+			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
+				makeCTPWithShas("initializing-ctp", "", "", &promoterv1alpha1.HydratorMetadata{DrySha: "old123"}, olderTime),
+				makeCTPWithShas("newest-ctp", "abc123", "abc123", &promoterv1alpha1.HydratorMetadata{DrySha: "abc123"}, newerTime),
+			}
+
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"initializing-ctp"}))
+		})
+
+		It("should only enqueue actionable CTPs in a mixed batch", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+			olderTime := metav1.NewTime(time.Now().Add(-1 * time.Minute))
+			newerTime := metav1.Now()
+			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
+				makeCTPWithShas("no-op-note-mismatch", "xyz789", "xyz789", &promoterv1alpha1.HydratorMetadata{DrySha: "old123"}, olderTime),
+				makeCTPWithShas("real-diff", "abc123", "def456", &promoterv1alpha1.HydratorMetadata{DrySha: "old123"}, olderTime),
+				makeCTPWithShas("missing-note", "abc123", "abc123", nil, olderTime),
+				makeCTPWithShas("newest-ctp", "xyz789", "xyz789", &promoterv1alpha1.HydratorMetadata{DrySha: "xyz789"}, newerTime),
+			}
+
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"real-diff", "missing-note"}))
+		})
+
+		It("should enqueue a settled environment when another environment has a newer target", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+			olderTime := metav1.NewTime(time.Now().Add(-1 * time.Minute))
+			newerTime := metav1.Now()
+			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
+				makeCTPWithShas("settled-environment", "abc123", "abc123", &promoterv1alpha1.HydratorMetadata{DrySha: "abc123"}, olderTime),
+				makeCTPWithShas("newest-environment", "def456", "def456", &promoterv1alpha1.HydratorMetadata{DrySha: "def456"}, newerTime),
+			}
+
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"settled-environment"}))
+		})
+
+		It("should suppress repeated no-op hydration note mismatches", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+			now := metav1.Now()
+			ctps := make([]*promoterv1alpha1.ChangeTransferPolicy, 0, 25)
+			for i := 0; i < 25; i++ {
+				ctps = append(ctps, makeCTPWithShas(fmt.Sprintf("test-ctp-%d", i), "abc123", "abc123", &promoterv1alpha1.HydratorMetadata{DrySha: "old123"}, now))
+			}
+
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(BeEmpty())
+		})
+
+		It("should remain quiet across owner-watch loops and enqueue the next output change", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+			now := metav1.Now()
+			ctp := makeCTPWithShas("test-ctp", "abc123", "abc123", &promoterv1alpha1.HydratorMetadata{DrySha: "old123"}, now)
+
+			// PromotionStrategy is reconciled whenever its owned CTP status changes. A
+			// terminal no-op hydration must stay quiet across repeated owner-watch loops.
+			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{ctp})
+			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{ctp})
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(BeEmpty())
+
+			// A later output-changing hydration must still enqueue immediately.
+			ctp.Status.Proposed.Dry.Sha = "def456"
+			ctp.Status.Proposed.Note.DrySha = "abc123"
+			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{ctp})
+
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp"}))
+		})
 
 		It("should enqueue CTP on first call", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()

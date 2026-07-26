@@ -468,6 +468,19 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 			continue
 		}
 
+		proposedDrySha := ctp.Status.Proposed.Dry.Sha
+		activeDrySha := ctp.Status.Active.Dry.Sha
+		noteDrySha := ""
+		if ctp.Status.Proposed.Note != nil {
+			noteDrySha = ctp.Status.Proposed.Note.DrySha
+		}
+		// A non-empty note mismatch with the proposed dry SHA already active at the
+		// current batch target is a terminal no-op hydration; there is no promotable
+		// metadata diff to retry.
+		if noteDrySha != "" && proposedDrySha != "" && proposedDrySha == activeDrySha && proposedDrySha == targetSha {
+			continue
+		}
+
 		// Add SHA information to context for logging
 		ctxWithLog := log.IntoContext(ctx, log.FromContext(ctx).WithValues(
 			"effectiveSha", effectiveSha,
