@@ -5476,7 +5476,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			return makeEnvStatusWithTime(activeDrySha, proposedDrySha, noteSha, olderTime)
 		}
 
-		// Truth table for upstreamPending, exercised through a linear chain (per environment):
+		// Truth table for isUpstreamPending, exercised through a linear chain (per environment):
 		// | Hydrated | NoOp | Pending | Merged | Healthy | Result |
 		// |----------|------|---------|--------|---------|--------|
 		// | N        | -    | -       | -      | -       | BLOCK (hydrator) |

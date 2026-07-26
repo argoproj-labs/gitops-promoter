@@ -183,11 +183,10 @@ func (r *DAGCommitStatusReconciler) updateDAGCommitStatus(ctx context.Context, d
 	for _, branch := range graph.branches {
 		envStatus := statusByBranch[branch]
 
-		// Skip if there's no proposed change for this environment (active and proposed dry SHAs
-		// match): there is no in-flight PR to gate, so creating/updating a commit status would
-		// only churn an already-merged change. This mirrors the PreviousEnvironmentCommitStatus
-		// controller and, since a proposed change implies the hydrator has produced a SHA, also
-		// keeps us from writing a CommitStatus with an empty sha.
+		// Skip when there is no proposed change (active and proposed dry SHAs match):
+		// there is no in-flight PR to gate, so updating a CommitStatus would only cause
+		// unnecessary updates. This also avoids writing a CommitStatus with an empty
+		// proposed hydrated SHA.
 		//
 		// Keep any existing CommitStatus in the valid set so orphan cleanup leaves the last
 		// evaluated (stale-but-real) gate status alone until a new proposed change appears.
@@ -228,8 +227,7 @@ func (r *DAGCommitStatusReconciler) updateDAGCommitStatus(ctx context.Context, d
 
 		// Bind the CommitStatus to the proposed branch's hydrated SHA: that is the commit the
 		// ChangeTransferPolicy inspects when gating the promotion PR. Binding to the dry SHA
-		// instead leaves the gate undetectable, so the promotion never advances. Mirrors the
-		// PreviousEnvironmentCommitStatus controller.
+		// instead leaves the gate undetectable, so the promotion never advances.
 		proposedHydratedSha := envStatus.Proposed.Hydrated.Sha
 		cs, err := r.createOrUpdateDAGCommitStatus(ctx, dcs, ps, branch, proposedHydratedSha, phase, reason)
 		if err != nil {
@@ -247,26 +245,23 @@ func (r *DAGCommitStatusReconciler) updateDAGCommitStatus(ctx context.Context, d
 	return nil
 }
 
-// upstreamsPending reports whether ANY of branch's direct dependsOn upstreams is not yet satisfied
-// for targetDrySha. An upstream is satisfied when it has hydrated and merged the target dry SHA
-// (with a commit time no older than the current environment's) and is healthy. Upstreams for which
-// the target dry SHA is a no-op (git note advanced without a new commit) are transparently skipped
-// by recursing into their own upstreams. This mirrors the per-environment checks in the
-// PreviousEnvironmentCommitStatus controller's isPreviousEnvironmentPending, adapted from a linear
-// chain to the DAG's dependsOn edges (all upstreams must be satisfied for a fan-in to pass).
+// upstreamsPending reports whether any of branch's direct dependsOn upstreams is not yet
+// satisfied for targetDrySha. An upstream is satisfied when it has hydrated and merged the
+// target dry SHA (with a commit time no older than the current environment's) and is healthy.
+// No-op upstreams (git note advanced without a new commit) are skipped by recursing into
+// their own upstreams. All direct upstreams must be satisfied.
 func upstreamsPending(g *dag, branch, targetDrySha string, currentActiveCommitTime metav1.Time, statusByBranch map[string]promoterv1alpha1.EnvironmentStatus) (isPending bool, reason string) {
 	for _, upstream := range g.dependsOn[branch] {
-		if pending, r := upstreamPending(g, upstream, targetDrySha, currentActiveCommitTime, statusByBranch); pending {
+		if pending, r := isUpstreamPending(g, upstream, targetDrySha, currentActiveCommitTime, statusByBranch); pending {
 			return true, r
 		}
 	}
 	return false, ""
 }
 
-// upstreamPending checks a single upstream (and, for no-op upstreams, its own upstreams) against
-// targetDrySha. The checks are a direct port of isPreviousEnvironmentPending's per-environment
-// logic.
-func upstreamPending(g *dag, branch, targetDrySha string, currentActiveCommitTime metav1.Time, statusByBranch map[string]promoterv1alpha1.EnvironmentStatus) (isPending bool, reason string) {
+// isUpstreamPending checks a single upstream (and, for no-op upstreams, its own upstreams) against
+// targetDrySha.
+func isUpstreamPending(g *dag, branch, targetDrySha string, currentActiveCommitTime metav1.Time, statusByBranch map[string]promoterv1alpha1.EnvironmentStatus) (isPending bool, reason string) {
 	envStatus := statusByBranch[branch]
 	envHydratedForDrySha := getEffectiveHydratedDrySha(envStatus)
 	envProposedDrySha := envStatus.Proposed.Dry.Sha
@@ -306,8 +301,7 @@ func upstreamPending(g *dag, branch, targetDrySha string, currentActiveCommitTim
 }
 
 // checkCommitStatusesPassing reports whether an environment's active commit statuses are all
-// passing, returning a pending reason if not. Ported unchanged from the
-// PreviousEnvironmentCommitStatus controller.
+// passing, returning a pending reason if not.
 func checkCommitStatusesPassing(commitStatuses []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase, branch string) (isPending bool, reason string) {
 	if utils.AreCommitStatusesPassing(commitStatuses) {
 		return false, ""

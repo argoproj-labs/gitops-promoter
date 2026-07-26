@@ -78,7 +78,7 @@ func dagEnvStatus(branch, activeDry, hydratedDry string, healthy bool, commitTim
 // dagEnvStatusWithNote is like dagEnvStatus but also sets the hydrator git note. The note dry SHA
 // is what getEffectiveHydratedDrySha treats as the branch's effective hydrated dry, so when it
 // differs from Proposed.Dry.Sha the branch is a no-op for that SHA (the note advanced without a new
-// hydrated commit). This is required to exercise upstreamPending's no-op recursion, which the
+// hydrated commit). This is required to exercise isUpstreamPending's no-op recursion, which the
 // note-less dagEnvStatus cannot reach.
 //
 //nolint:unparam // branch is always "stg" in current tests but kept for consistency with dagEnvStatus
@@ -315,7 +315,7 @@ var _ = Describe("DAG graph logic", func() {
 	// logic is a direct port of the PreviousEnvironmentCommitStatus controller's linear
 	// isPreviousEnvironmentPending, generalized to a DAG.
 	//
-	// Truth table for upstreamPending (per upstream):
+	// Truth table for isUpstreamPending (per upstream):
 	// | Hydrated | NoOp | Pending | Merged | Healthy | Result |
 	// |----------|------|---------|--------|---------|--------|
 	// | N        | -    | -       | -      | -       | BLOCK (hydrator) |
@@ -412,10 +412,9 @@ var _ = Describe("DAG graph logic", func() {
 			Expect(pending).To(BeFalse())
 		})
 
-		// Fan-in (DAG generalization): the fan-in cases above only assert the boolean. Verify the
-		// pending reason names the upstream that is actually blocking, so users can see which one to
-		// look at.
-		It("fan-in: pending reason names the upstream that has not promoted the target", func() {
+		// Fan-in pending reason comes from the first unsatisfied upstream. The
+		// "not promoted" path still uses the legacy generic message (no branch name).
+		It("fan-in: returns the blocking upstream's pending reason", func() {
 			status := map[string]promoterv1alpha1.EnvironmentStatus{
 				"e2e":  dagEnvStatus("e2e", newDry, newDry, true, newer),
 				"perf": dagEnvStatus("perf", oldDry, newDry, true, old),
