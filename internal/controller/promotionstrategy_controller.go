@@ -46,9 +46,23 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-// ctpEnqueueState tracks rate limiting state for enqueuing out-of-sync CTPs.
+// enqueuePair identifies one distinct note disagreement: the CTP's own effective dry SHA
+// versus the batch target it was compared against. A reconcile triggered for a pair
+// refetches git state; if the pair is unchanged afterwards, git held nothing the status
+// hadn't already seen, so re-enqueueing the same pair can never accomplish anything.
+type enqueuePair struct {
+	effectiveSha string
+	targetSha    string
+}
+
+// ctpEnqueueState tracks rate limiting and futility state for enqueuing out-of-sync CTPs.
 type ctpEnqueueState struct {
-	lastEnqueueTime   time.Time
+	lastEnqueueTime time.Time
+	// lastPair is the disagreement that was last enqueued (or is covered by a scheduled
+	// retry). Seeing the same pair again means the nudge already happened and changed
+	// nothing — skip it. The periodic CTP requeue remains the discovery path for git
+	// state that no status reflects yet.
+	lastPair          enqueuePair
 	hasScheduledRetry bool
 }
 
@@ -413,7 +427,21 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 // (Note.DrySha if set, otherwise Proposed.Dry.Sha). If they differ, the CTPs with
 // different values need to reconcile to fetch updated git notes or proposed dry sha. This is needed
 // because GitHub doesn't send webhooks when git notes are pushed.
-// Rate limiting: Only enqueues a CTP once per 15 seconds. If rate limited, schedules a delayed enqueue.
+//
+// Target selection: the target is the effective dry SHA of the CTP with the newest
+// proposed hydrated commit — the environment with the freshest knowledge of hydrator
+// output. Using the effective (note-preferred) SHA rather than the hydrator.metadata file
+// means a no-op hydration (git note updated to a newer dry SHA without a new commit)
+// moves the target too, so environments whose notes lag behind a sibling's are the ones
+// nudged, and a batch where every note already agrees is left alone.
+//
+// Futility control: a triggered reconcile refetches the branch and its git notes; if the
+// (effective, target) disagreement is unchanged afterwards, git held nothing the status
+// hadn't already seen, and re-enqueueing the same disagreement can never accomplish
+// anything. Each CTP is therefore enqueued at most once per distinct (effective, target)
+// pair, with a 15s floor between enqueues when the pair does change rapidly. Discovery of
+// note pushes that no status reflects yet is (and always was) the periodic CTP requeue —
+// an unseen note cannot trigger anything here, because this function only reads statuses.
 func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, ctps []*promoterv1alpha1.ChangeTransferPolicy) {
 	if len(ctps) == 0 {
 		return
@@ -438,20 +466,20 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 		return ctp.Status.Proposed.Dry.Sha
 	}
 
-	// Find the target SHA - the Proposed.Dry.Sha from the CTP with the newest proposed hydrated commit.
-	// We use the hydrated commit time to find the most recently hydrated environment, then use its
-	// Proposed.Dry.Sha as the target. CTPs whose effective dry SHA (from git note) doesn't match
-	// this target need to reconcile to fetch the updated git note.
+	// Find the target SHA - the effective dry SHA from the CTP with the newest proposed
+	// hydrated commit. CTPs whose own effective dry SHA doesn't match this target need to
+	// reconcile to fetch the updated git note. Note a single-environment strategy can
+	// never disagree with itself: its own effective SHA is the target.
 	var targetSha string
 	var newestTime metav1.Time
 	for _, ctp := range ctps {
-		proposedDrySha := ctp.Status.Proposed.Dry.Sha
-		if proposedDrySha == "" {
+		effectiveSha := getEffectiveDrySha(ctp)
+		if effectiveSha == "" {
 			continue
 		}
 		commitTime := ctp.Status.Proposed.Hydrated.CommitTime
 		if targetSha == "" || commitTime.After(newestTime.Time) {
-			targetSha = proposedDrySha
+			targetSha = effectiveSha
 			newestTime = commitTime
 		}
 	}
@@ -460,8 +488,8 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 		return
 	}
 
-	// Trigger reconcile only for CTPs that have a different effective dry SHA.
-	// Rate limiting: Only enqueue if not enqueued recently.
+	// Trigger reconcile only for CTPs that have a different effective dry SHA, at most
+	// once per distinct disagreement.
 	for _, ctp := range ctps {
 		effectiveSha := getEffectiveDrySha(ctp)
 		if effectiveSha == targetSha {
@@ -473,7 +501,7 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 			"effectiveSha", effectiveSha,
 			"targetSha", targetSha,
 		))
-		r.handleRateLimitedEnqueue(ctxWithLog, ctp)
+		r.handleRateLimitedEnqueue(ctxWithLog, ctp, enqueuePair{effectiveSha: effectiveSha, targetSha: targetSha})
 	}
 }
 
@@ -513,14 +541,17 @@ func (r *PromotionStrategyReconciler) startCleanupTimer() {
 	scheduleCleanup()
 }
 
-// handleRateLimitedEnqueue applies rate limiting to a CTP enqueue request.
-// It checks if the CTP was enqueued recently and either:
-// - Skips if a delayed retry is already scheduled
-// - Schedules a delayed retry if within the rate limit threshold
-// - Enqueues immediately if not rate limited
+// handleRateLimitedEnqueue applies futility and rate-limiting controls to a CTP enqueue
+// request for the given (effective, target) disagreement. It either:
+//   - Skips if the same disagreement was already enqueued (or a scheduled retry covers it):
+//     the triggered reconcile refetched git and changed nothing, so repeating it is futile
+//   - Skips if a delayed retry is already scheduled (updating it to cover the new pair)
+//   - Schedules a delayed retry if within the rate limit threshold
+//   - Enqueues immediately otherwise
 func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 	ctx context.Context,
 	ctp *promoterv1alpha1.ChangeTransferPolicy,
+	pair enqueuePair,
 ) {
 	const enqueueThreshold = 15 * time.Second
 
@@ -541,11 +572,24 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 	r.enqueueStateMutex.Lock()
 	state := getOrCreateState(key)
 
+	// Futility check: this exact disagreement was already enqueued (or is covered by a
+	// pending retry). The reconcile it triggered refetched the branch and its notes; the
+	// pair being unchanged means git held nothing new, so another reconcile cannot help.
+	// The pair re-arms as soon as either side changes (a fetched note, a new target).
+	if state.lastPair == pair {
+		r.enqueueStateMutex.Unlock()
+		logger.V(4).Info("Skipping enqueue, this disagreement was already enqueued and is unresolvable by refetching",
+			"ctp", ctp.Name)
+		return
+	}
+
 	// Check if rate limited
 	timeSinceLastEnqueue := now.Sub(state.lastEnqueueTime)
 	if timeSinceLastEnqueue < enqueueThreshold {
-		// Already have a delayed enqueue scheduled, nothing to do
+		// Already have a delayed enqueue scheduled; record the newest pair as covered by
+		// it — the retry fires a reconcile, which reads current git state regardless.
 		if state.hasScheduledRetry {
+			state.lastPair = pair
 			r.enqueueStateMutex.Unlock()
 			logger.V(4).Info("Rate limited, delayed enqueue already scheduled",
 				"ctp", ctp.Name,
@@ -553,8 +597,9 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 			return
 		}
 
-		// Schedule a delayed enqueue
+		// Schedule a delayed enqueue covering this pair
 		state.hasScheduledRetry = true
+		state.lastPair = pair
 		timeUntilThreshold := enqueueThreshold - timeSinceLastEnqueue
 		r.enqueueStateMutex.Unlock()
 
@@ -584,6 +629,7 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 
 	// Not rate limited - enqueue immediately
 	state.lastEnqueueTime = now
+	state.lastPair = pair
 	state.hasScheduledRetry = false
 	r.enqueueStateMutex.Unlock()
 

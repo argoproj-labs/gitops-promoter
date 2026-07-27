@@ -5658,10 +5658,13 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 	// acquire the lock to append to enqueuedCTPs during time.Sleep() calls. Using defer to hold
 	// the lock for an entire test would cause deadlock: the test would wait for timers to fire,
 	// but timers would block waiting for the lock that won't release until the test completes.
-	Context("Rate limiting for enqueueOutOfSyncCTPs", func() {
-		// Helper to create out-of-sync CTP that will trigger rate limiting.
-		// Creates a CTP where the git note SHA differs from the target SHA.
-		makeCTP := func(name string) *promoterv1alpha1.ChangeTransferPolicy {
+	Context("Enqueue decisions and rate limiting for enqueueOutOfSyncCTPs", func() {
+		// The target is the effective dry SHA (Note.DrySha if set, else Proposed.Dry.Sha)
+		// of the CTP with the newest proposed hydrated commit. A CTP is enqueued when its
+		// own effective dry SHA disagrees with that target — at most once per distinct
+		// (effective, target) disagreement, because a nudge that refetched git and left
+		// the disagreement unchanged proves there is nothing new to fetch.
+		makeCTPWithShas := func(name, proposedDrySha string, note *promoterv1alpha1.HydratorMetadata, commitTime metav1.Time) *promoterv1alpha1.ChangeTransferPolicy { //nolint:unparam // proposedDrySha is a fixture knob; the current specs all model note-vs-file divergence on the same file SHA
 			return &promoterv1alpha1.ChangeTransferPolicy{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name,
@@ -5670,17 +5673,27 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
 					Proposed: promoterv1alpha1.CommitBranchState{
 						Dry: promoterv1alpha1.CommitShaState{
-							Sha: "abc123", // Proposed dry SHA (becomes target since newest)
+							Sha: proposedDrySha,
 						},
 						Hydrated: promoterv1alpha1.CommitShaState{
-							CommitTime: metav1.Now(),
+							CommitTime: commitTime,
 						},
-						Note: &promoterv1alpha1.HydratorMetadata{
-							DrySha: "old123", // Git note SHA (out-of-sync with target)
-						},
+						Note: note,
 					},
 				},
 			}
+		}
+
+		// The environment with the newest hydrated commit; its note agrees with its file,
+		// so it establishes target "abc123" and is never itself a candidate.
+		makeTargetCTP := func() *promoterv1alpha1.ChangeTransferPolicy {
+			return makeCTPWithShas("newest-ctp", "abc123", &promoterv1alpha1.HydratorMetadata{DrySha: "abc123"}, metav1.Now())
+		}
+
+		// An environment whose git note lags the target: file already at abc123 but the
+		// note still reports old123, so its effective dry SHA disagrees with the target.
+		makeLaggingCTP := func(name string) *promoterv1alpha1.ChangeTransferPolicy {
+			return makeCTPWithShas(name, "abc123", &promoterv1alpha1.HydratorMetadata{DrySha: "old123"}, metav1.NewTime(time.Now().Add(-time.Minute)))
 		}
 
 		// Helper to create reconciler with enqueue tracking
@@ -5699,11 +5712,88 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			return reconciler, enqueuedCTPs, mutex
 		}
 
-		It("should enqueue CTP on first call", func() {
+		enqueuedNames := func(enqueuedCTPs *[]client.ObjectKey, mutex *sync.Mutex) []string {
+			mutex.Lock()
+			defer mutex.Unlock()
+
+			names := make([]string, 0, len(*enqueuedCTPs))
+			for _, key := range *enqueuedCTPs {
+				names = append(names, key.Name)
+			}
+			return names
+		}
+
+		It("should not enqueue a single-environment strategy", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+
+			// A lone environment's own effective dry SHA is the target by definition, even
+			// when its note disagrees with its hydrator.metadata file (a no-op hydration).
+			// There is no sibling to catch up with and nothing a refetch could change.
+			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{
+				makeLaggingCTP("lonely-ctp"),
+			})
+
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(BeEmpty())
+		})
+
+		It("should stay silent when every environment's note already agrees", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+
+			// The terminal no-op hydration batch: the hydrator updated every environment's
+			// git note to newnote456 without new commits, so every file still reads abc123.
+			// All effective dry SHAs agree, so the batch is converged — this exact state
+			// used to re-enqueue every CTP forever because the target was file-derived.
+			note := func() *promoterv1alpha1.HydratorMetadata {
+				return &promoterv1alpha1.HydratorMetadata{DrySha: "newnote456"}
+			}
+			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{
+				makeCTPWithShas("dev-ctp", "abc123", note(), metav1.NewTime(time.Now().Add(-time.Minute))),
+				makeCTPWithShas("prod-ctp", "abc123", note(), metav1.Now()),
+			})
+
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(BeEmpty())
+		})
+
+		It("should enqueue the environment whose note lags a sibling's", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+
+			// The newest environment's note moved to newnote456 (a no-op hydration); the
+			// lagging environment still reports abc123. The laggard is the environment
+			// with something to fetch — it must be the one selected, not the sibling that
+			// already has the note.
+			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{
+				makeCTPWithShas("lagging-ctp", "abc123", &promoterv1alpha1.HydratorMetadata{DrySha: "abc123"}, metav1.NewTime(time.Now().Add(-time.Minute))),
+				makeCTPWithShas("newest-ctp", "abc123", &promoterv1alpha1.HydratorMetadata{DrySha: "newnote456"}, metav1.Now()),
+			})
+
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"lagging-ctp"}))
+		})
+
+		It("should fall back to the file SHA for environments without notes, at most once per target", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+
+			// Mixed fleet: the newest environment's hydrator writes notes (target moves to
+			// its note newnote456); the other environment's hydrator does not, so it can
+			// never represent newnote456 and a refetch cannot help it. It gets exactly one
+			// nudge for the disagreement — not a 15s live-lock loop.
+			noteless := makeCTPWithShas("noteless-ctp", "abc123", nil, metav1.NewTime(time.Now().Add(-time.Minute)))
+			newest := makeCTPWithShas("newest-ctp", "abc123", &promoterv1alpha1.HydratorMetadata{DrySha: "newnote456"}, metav1.Now())
+
+			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{noteless, newest})
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"noteless-ctp"}))
+
+			// Repeated owner-watch loops with the identical disagreement stay quiet.
+			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{noteless, newest})
+			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{noteless, newest})
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"noteless-ctp"}))
+		})
+
+		It("should enqueue a lagging CTP on first call", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
-				makeCTP("test-ctp"),
+				makeLaggingCTP("test-ctp"),
+				makeTargetCTP(),
 			}
 
 			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
@@ -5715,144 +5805,93 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			enqueueMutex.Unlock()
 		})
 
-		It("should rate limit second call within threshold", func() {
+		It("should never retry an identical disagreement", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
-				makeCTP("test-ctp"),
+				makeLaggingCTP("test-ctp"),
+				makeTargetCTP(),
 			}
 
-			// First call
+			// First call enqueues; the triggered reconcile refetches git. The disagreement
+			// being unchanged on subsequent calls means the refetch found nothing, so
+			// repeating it is futile — no immediate enqueue AND no delayed retry.
 			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
-			enqueueMutex.Lock()
-			firstCallCount := len(*enqueuedCTPs)
-			enqueueMutex.Unlock()
-			Expect(firstCallCount).To(Equal(1))
-
-			// Second call immediately after (within 15s threshold)
-			time.Sleep(100 * time.Millisecond)
-			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
-			enqueueMutex.Lock()
-			secondCallCount := len(*enqueuedCTPs)
-			enqueueMutex.Unlock()
-
-			// Should still be 1 - rate limited (delayed enqueue scheduled for later)
-			Expect(secondCallCount).To(Equal(1), "second call should be rate limited")
-		})
-
-		It("should schedule delayed enqueue on rate limited call", func() {
-			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
-
-			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
-				makeCTP("test-ctp"),
+			for range 3 {
+				time.Sleep(100 * time.Millisecond)
+				reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
 			}
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp"}))
 
-			// First call
-			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
-			enqueueMutex.Lock()
-			firstCount := len(*enqueuedCTPs)
-			enqueueMutex.Unlock()
-			Expect(firstCount).To(Equal(1))
-
-			// Second call - should be rate limited and schedule delayed enqueue
-			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
-
-			// Wait for delayed enqueue to fire (15s + small buffer)
+			// Outlast the 15s rate-limit threshold: under the previous semantics a delayed
+			// retry would fire here; under futility control nothing may.
 			time.Sleep(16 * time.Second)
-
-			enqueueMutex.Lock()
-			finalCount := len(*enqueuedCTPs)
-			enqueueMutex.Unlock()
-
-			// Should now be 2 - original + delayed
-			Expect(finalCount).To(Equal(2), "delayed enqueue should have fired")
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp"}),
+				"an identical disagreement must not schedule delayed retries")
 		})
 
-		It("should not accumulate multiple delayed enqueues", func() {
+		It("should re-arm when the disagreement changes, rate limited to one delayed enqueue", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
-			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
-				makeCTP("test-ctp"),
-			}
+			lagging := makeLaggingCTP("test-ctp")
+			ctps := []*promoterv1alpha1.ChangeTransferPolicy{lagging, makeTargetCTP()}
 
-			// First call
+			// First call enqueues for disagreement (old123 vs abc123).
 			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp"}))
 
-			// Multiple rapid calls - should only schedule ONE delayed enqueue
+			// The CTP's note moves (a fetched note, a different value): a NEW disagreement
+			// within the rate-limit window schedules exactly one delayed enqueue, no matter
+			// how many owner-watch loops repeat it.
+			lagging.Status.Proposed.Note.DrySha = "older999"
 			for range 5 {
 				time.Sleep(100 * time.Millisecond)
 				reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
 			}
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp"}),
+				"changed disagreement within the threshold must defer, not enqueue immediately")
 
-			// Wait for delayed enqueue to fire
+			// Wait for the single delayed enqueue to fire (15s + small buffer).
 			time.Sleep(16 * time.Second)
-
-			enqueueMutex.Lock()
-			finalCount := len(*enqueuedCTPs)
-			enqueueMutex.Unlock()
-
-			// Should be 2, not 6 (original + one delayed, not 5 delayed)
-			Expect(finalCount).To(Equal(2), "should only have one delayed enqueue, not accumulate")
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp", "test-ctp"}),
+				"exactly one delayed enqueue should fire for the changed disagreement")
 		})
 
-		It("should rate limit multiple CTPs independently", func() {
+		It("should track disagreements per CTP independently", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
-				makeCTP("ctp-1"),
-				makeCTP("ctp-2"),
+				makeLaggingCTP("ctp-1"),
+				makeLaggingCTP("ctp-2"),
+				makeTargetCTP(),
 			}
 
-			// First call - both should enqueue
+			// First call - both lagging CTPs should enqueue
 			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
-			enqueueMutex.Lock()
-			firstCount := len(*enqueuedCTPs)
-			enqueueMutex.Unlock()
-			Expect(firstCount).To(Equal(2))
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"ctp-1", "ctp-2"}))
 
-			// Second call immediately - both should be rate limited
+			// Second call immediately - both disagreements are unchanged, so neither
+			// enqueues again
 			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
-			enqueueMutex.Lock()
-			secondCount := len(*enqueuedCTPs)
-			enqueueMutex.Unlock()
-			Expect(secondCount).To(Equal(2), "both should be rate limited")
-
-			// Wait for delayed enqueues
-			time.Sleep(16 * time.Second)
-
-			enqueueMutex.Lock()
-			finalCount := len(*enqueuedCTPs)
-			enqueueMutex.Unlock()
-			Expect(finalCount).To(Equal(4), "both delayed enqueues should fire")
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"ctp-1", "ctp-2"}))
 		})
 
-		It("should rate limit one CTP while allowing others through", func() {
+		It("should skip a consumed disagreement while allowing a fresh CTP through", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
-			ctp1 := makeCTP("ctp-1")
-			ctp2 := makeCTP("ctp-2")
+			ctp1 := makeLaggingCTP("ctp-1")
+			ctp2 := makeLaggingCTP("ctp-2")
 
 			// First call - enqueue ctp-1 only
-			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{ctp1})
-			enqueueMutex.Lock()
-			firstCount := len(*enqueuedCTPs)
-			enqueueMutex.Unlock()
-			Expect(firstCount).To(Equal(1), "ctp-1 should enqueue")
+			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{ctp1, makeTargetCTP()})
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"ctp-1"}))
 
-			// Immediately call again with both CTPs
-			// ctp-1 should be rate limited, ctp-2 should enqueue (first time)
+			// Immediately call again with both CTPs: ctp-1's disagreement is already
+			// consumed, ctp-2's is fresh and enqueues immediately.
 			time.Sleep(100 * time.Millisecond)
-			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{ctp1, ctp2})
+			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{ctp1, ctp2, makeTargetCTP()})
 
-			enqueueMutex.Lock()
-			secondCount := len(*enqueuedCTPs)
-			lastEnqueuedName := (*enqueuedCTPs)[len(*enqueuedCTPs)-1].Name
-			enqueueMutex.Unlock()
-
-			// Should be 2 total now (ctp-1 from first call, ctp-2 from second call)
-			// ctp-1 was rate limited in the second call
-			Expect(secondCount).To(Equal(2), "only ctp-2 should have enqueued in second call")
-			Expect(lastEnqueuedName).To(Equal("ctp-2"), "ctp-2 should be the last enqueued")
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"ctp-1", "ctp-2"}))
 		})
 	})
 })
