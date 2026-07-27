@@ -5855,6 +5855,228 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(lastEnqueuedName).To(Equal("ctp-2"), "ctp-2 should be the last enqueued")
 		})
 	})
+
+	// Coverage for the note-refresh path that enqueueOutOfSyncCTPs is solely
+	// responsible for.
+	//
+	// The invariant these specs pin: a CTP whose git note lags behind its
+	// already-active, already-target dry SHA (Proposed.Dry.Sha == Active.Dry.Sha ==
+	// targetSha, but Proposed.Note.DrySha differs) MUST remain eligible for
+	// enqueueOutOfSyncCTPs. That note is not cosmetic — getEffectiveHydratedDrySha
+	// prefers Note.DrySha, so while it is stale a downstream environment's
+	// previous-environment gate reports "Waiting for the hydrator to finish processing
+	// the proposed dry commit". Git notes do not emit webhooks, so enqueueOutOfSyncCTPs
+	// is the only prompt path that refreshes the note (the alternative is the 5m
+	// periodic CTP requeue). A guard that skips this state re-opens exactly that stall.
+	//
+	// Both specs fail (the settled CTP never enqueues) against a build that adds such a
+	// guard and pass against main, so they are the regression guard for PR #1824's
+	// approach. There are two, by design:
+	//   1. A deterministic spec that feeds the two production consumers of the effective
+	//      dry SHA — the real enqueueOutOfSyncCTPs decision and the real
+	//      isPreviousEnvironmentPending gate — the exact status shape reconciliation
+	//      produces. It is the fast, non-flaky red/green gate.
+	//   2. An envtest spec that drives a real CTP into the guarded state through actual
+	//      reconciliation: hydrate the first environment, let it settle
+	//      (Active.Dry == Proposed.Dry), then push a git note for a different dry SHA onto
+	//      the settled proposed hydrated commit WITHOUT a webhook — the exact way a note
+	//      lands out-of-band in production. The controller's per-reconcile FetchNotes
+	//      picks the note up and the status stabilises on the stale DrySha (once the push
+	//      has propagated; a handful of reconciles that started before the push read no
+	//      note, then every reconcile after reads the stale value and stays there). This
+	//      is the end-to-end proof that the guarded state is reachable through real
+	//      reconciliation, not just constructible in memory. Note: the stale DrySha MUST
+	//      be valid 40-char hex — the CRD validates status.proposed.note.drySha, and an
+	//      invalid value makes the controller's full-status apply fail (only the Ready
+	//      condition persists), so the note would never reach the persisted status.
+	Context("Note-refresh enqueue for a settled CTP with a stale git note", func() {
+		const (
+			// SHAs must be valid 40-char hex to satisfy the CRD's drySha validation
+			// (^([a-f0-9]{40}|[a-f0-9]{64})$); the envtest spec below persists them.
+			settledSha     = "abc1230000000000000000000000000000000000"
+			staleNoteSha   = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+			downstreamName = "prod"
+			settledName    = "dev"
+		)
+
+		makeSettledCTPWithStaleNote := func() *promoterv1alpha1.ChangeTransferPolicy {
+			// The guarded state, exactly as reconciliation records it after a note push
+			// lands on the current hydrated commit without a webhook:
+			//   Proposed.Dry.Sha == Active.Dry.Sha == settledSha (the batch target),
+			//   but Proposed.Note.DrySha still points at an older dry SHA.
+			return &promoterv1alpha1.ChangeTransferPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: settledName, Namespace: "test-ns"},
+				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+					Proposed: promoterv1alpha1.CommitBranchState{
+						Dry:      promoterv1alpha1.CommitShaState{Sha: settledSha},
+						Hydrated: promoterv1alpha1.CommitShaState{CommitTime: metav1.Now()},
+						Note:     &promoterv1alpha1.HydratorMetadata{DrySha: staleNoteSha},
+					},
+					Active: promoterv1alpha1.CommitBranchState{
+						Dry: promoterv1alpha1.CommitShaState{Sha: settledSha},
+					},
+				},
+			}
+		}
+
+		It("keeps a settled CTP with a stale git note eligible for enqueue, and that note gates downstream until refreshed", func() {
+			settled := makeSettledCTPWithStaleNote()
+
+			By("Confirming the stale note actually gates a downstream environment via the real previous-environment check")
+			// getEffectiveHydratedDrySha prefers Note.DrySha, so a downstream env whose
+			// target is settledSha sees this environment as "not yet hydrated" for the
+			// target while the note is stale. This is the concrete harm: a wedged promotion.
+			settledEnvStatus := promoterv1alpha1.EnvironmentStatus{
+				Branch:   "environment/development",
+				Proposed: settled.Status.Proposed,
+				Active:   settled.Status.Active,
+			}
+			Expect(getEffectiveHydratedDrySha(settledEnvStatus)).To(Equal(staleNoteSha))
+			isPending, reason := isPreviousEnvironmentPending(
+				[]promoterv1alpha1.EnvironmentStatus{settledEnvStatus},
+				settledSha, // the downstream environment's target dry SHA
+				settled.Status.Active.Dry.CommitTime,
+			)
+			Expect(isPending).To(BeTrue(), "a downstream env must block while this env's note is stale for the target")
+			Expect(reason).To(ContainSubstring("Waiting for the hydrator"))
+
+			By("Exercising the real enqueueOutOfSyncCTPs decision on that same status")
+			// Git notes never emit webhooks, so enqueueOutOfSyncCTPs is the prompt path
+			// that refreshes the note (else a downstream env waits for the 5m periodic
+			// requeue). The batch here also includes the downstream env already at target
+			// with a matching note, so it is correctly NOT enqueued — proving the settled
+			// env is selected on its own merits (stale note), not because everything is.
+			enqueued := &[]client.ObjectKey{}
+			enqueueMutex := &sync.Mutex{}
+			reconciler := &PromotionStrategyReconciler{
+				EnqueueCTP: func(namespace, ctpName string) {
+					enqueueMutex.Lock()
+					defer enqueueMutex.Unlock()
+					*enqueued = append(*enqueued, client.ObjectKey{Namespace: namespace, Name: ctpName})
+				},
+			}
+			downstreamAtTarget := &promoterv1alpha1.ChangeTransferPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: downstreamName, Namespace: "test-ns"},
+				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+					Proposed: promoterv1alpha1.CommitBranchState{
+						Dry:      promoterv1alpha1.CommitShaState{Sha: settledSha},
+						Hydrated: promoterv1alpha1.CommitShaState{CommitTime: metav1.NewTime(time.Now().Add(-time.Minute))},
+						Note:     &promoterv1alpha1.HydratorMetadata{DrySha: settledSha},
+					},
+					Active: promoterv1alpha1.CommitBranchState{
+						Dry: promoterv1alpha1.CommitShaState{Sha: settledSha},
+					},
+				},
+			}
+			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{settled, downstreamAtTarget})
+
+			By("Asserting the settled CTP with the stale note is still selected for enqueue")
+			enqueueMutex.Lock()
+			enqueuedKeys := append([]client.ObjectKey(nil), *enqueued...)
+			enqueueMutex.Unlock()
+			Expect(enqueuedKeys).To(ContainElement(client.ObjectKey{Namespace: "test-ns", Name: settledName}),
+				"a settled CTP with a stale git note must remain eligible for enqueueOutOfSyncCTPs; "+
+					"suppressing it re-opens the downstream 'Waiting for the hydrator' stall")
+			Expect(enqueuedKeys).NotTo(ContainElement(client.ObjectKey{Namespace: "test-ns", Name: downstreamName}),
+				"an env already at target with a matching note has nothing to refresh")
+		})
+
+		It("reaches the guarded state through real reconciliation and still enqueues the settled CTP (envtest)", func() {
+			By("Creating a PromotionStrategy backed by a real git repo")
+			_, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-no-commit-status", "default")
+			setupInitialTestGitRepoOnServer(ctx, gitRepo)
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, promotionStrategy) })
+
+			devCTPName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch))
+			devCTPKey := types.NamespacedName{Name: devCTPName, Namespace: "default"}
+			var ctpDev promoterv1alpha1.ChangeTransferPolicy
+
+			By("Adding a dry change and hydrating so development promotes")
+			gitPath, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+			makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+
+			// The first environment has no gating commit statuses, so it auto-merges to a
+			// settled state: Active.Dry.Sha == Proposed.Dry.Sha (the batch target). Capture
+			// that settled dry SHA and the proposed hydrated commit to pin the note to.
+			var settledSha, settledProposedHydratedSha string
+			By("Waiting for development to settle (Active.Dry == Proposed.Dry, non-empty)")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, devCTPKey, &ctpDev)).To(Succeed())
+				g.Expect(ctpDev.Status.Proposed.Dry.Sha).NotTo(BeEmpty())
+				g.Expect(ctpDev.Status.Proposed.Hydrated.Sha).NotTo(BeEmpty())
+				g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(ctpDev.Status.Proposed.Dry.Sha))
+				settledSha = ctpDev.Status.Proposed.Dry.Sha
+				settledProposedHydratedSha = ctpDev.Status.Proposed.Hydrated.Sha
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Landing a stale git note on the settled proposed hydrated commit (no webhook, as real SCMs never emit one for notes)")
+			// Must be valid 40-char hex: the CRD validates status.proposed.note.drySha and
+			// the controller's full-status apply is rejected (only the Ready condition
+			// persists) if it is not, which would keep the note out of the persisted status.
+			const staleNoteSha = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+			Expect(staleNoteSha).NotTo(Equal(settledSha))
+			Expect(pushGitNote(ctx, gitPath, settledProposedHydratedSha, staleNoteSha)).To(Succeed())
+
+			// The controller's per-reconcile FetchNotes picks the pushed note up. We nudge
+			// once per poll and read back until the status reflects the stale note, then
+			// snapshot the CTP in that same poll so the enqueue decision below is fed the
+			// guarded state regardless of any later reconcile. We deliberately do NOT gate
+			// on Proposed.Hydrated.Sha here — the settled dry SHA plus the observed stale
+			// note are what define the guarded state.
+			var guarded promoterv1alpha1.ChangeTransferPolicy
+			By("Nudging development until its status reflects the stale note")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, devCTPKey, &ctpDev)).To(Succeed())
+				g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(settledSha))
+				g.Expect(ctpDev.Status.Proposed.Dry.Sha).To(Equal(settledSha))
+				if getNoteDrySha(ctpDev.Status.Proposed.Note) != staleNoteSha {
+					enqueueCTP(ctpDev.Namespace, ctpDev.Name)
+				}
+				g.Expect(getNoteDrySha(ctpDev.Status.Proposed.Note)).To(Equal(staleNoteSha))
+				ctpDev.DeepCopyInto(&guarded)
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Confirming the stale note gates a would-be downstream environment via the real previous-environment check")
+			guardedEnvStatus := promoterv1alpha1.EnvironmentStatus{
+				Branch:   guarded.Spec.ActiveBranch,
+				Proposed: guarded.Status.Proposed,
+				Active:   guarded.Status.Active,
+			}
+			Expect(getEffectiveHydratedDrySha(guardedEnvStatus)).To(Equal(staleNoteSha))
+			isPending, reason := isPreviousEnvironmentPending(
+				[]promoterv1alpha1.EnvironmentStatus{guardedEnvStatus},
+				settledSha,
+				guarded.Status.Active.Dry.CommitTime,
+			)
+			Expect(isPending).To(BeTrue(), "downstream env should block while dev's note is stale")
+			Expect(reason).To(ContainSubstring("Waiting for the hydrator"))
+
+			By("Exercising the real enqueueOutOfSyncCTPs decision against the reconciler-produced status")
+			enqueued := &[]client.ObjectKey{}
+			enqueueMutex := &sync.Mutex{}
+			reconciler := &PromotionStrategyReconciler{
+				EnqueueCTP: func(namespace, ctpName string) {
+					enqueueMutex.Lock()
+					defer enqueueMutex.Unlock()
+					*enqueued = append(*enqueued, client.ObjectKey{Namespace: namespace, Name: ctpName})
+				},
+			}
+			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{&guarded})
+
+			By("Asserting development is still selected for enqueue so its note gets refreshed")
+			enqueueMutex.Lock()
+			enqueuedKeys := append([]client.ObjectKey(nil), *enqueued...)
+			enqueueMutex.Unlock()
+			Expect(enqueuedKeys).To(ContainElement(client.ObjectKey{Namespace: guarded.Namespace, Name: guarded.Name}),
+				"a real settled CTP with a stale git note must remain eligible for enqueueOutOfSyncCTPs; "+
+					"suppressing it re-opens the downstream 'Waiting for the hydrator' stall")
+		})
+	})
 })
 
 var _ = Describe("Child creation instance-id label propagation", func() {
