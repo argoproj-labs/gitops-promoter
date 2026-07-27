@@ -189,11 +189,6 @@ func (r *PreviousEnvironmentCommitStatusReconciler) enqueuePreviousEnvironmentCo
 // commit status key.
 func (r *PreviousEnvironmentCommitStatusReconciler) upsertDAGCommitStatus(ctx context.Context, pecs *promoterv1alpha1.PreviousEnvironmentCommitStatus, ps *promoterv1alpha1.PromotionStrategy) (*promoterv1alpha1.DAGCommitStatus, error) {
 	key := pecs.Spec.Key
-	if key == "" {
-		// Spec.Key is defaulted by the CRD on the API-server write path; fall back here so objects
-		// built directly (e.g. in tests) still get the canonical gate key.
-		key = promoterv1alpha1.PreviousEnvironmentCommitStatusKey
-	}
 
 	// Build the dependsOn chain: each environment depends on the one before it in spec order; the
 	// first environment is a root with no dependency.

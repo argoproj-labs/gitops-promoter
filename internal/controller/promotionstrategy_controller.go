@@ -241,13 +241,7 @@ func (r *PromotionStrategyReconciler) checkDAGCommitStatusKeysDeclared(ctx conte
 	}
 
 	for i := range dcsList.Items {
-		// Resolve the effective key the same way the DAGCommitStatus controller does: the CRD
-		// defaults an empty key to DAGCommitStatusKey, but an object built in memory may still be
-		// empty, so default it here too before comparing.
 		key := dcsList.Items[i].Spec.Key
-		if key == "" {
-			key = promoterv1alpha1.DAGCommitStatusKey
-		}
 		if !declared[key] {
 			return fmt.Errorf("DAGCommitStatus %q references PromotionStrategy %q with key %q, "+
 				"but that key is not in the PromotionStrategy's proposedCommitStatuses; add it so the gate is enforced",

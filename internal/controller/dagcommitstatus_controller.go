@@ -328,11 +328,6 @@ func (r *DAGCommitStatusReconciler) createOrUpdateDAGCommitStatus(
 	pendingReason string,
 ) (*promoterv1alpha1.CommitStatus, error) {
 	key := dcs.Spec.Key
-	if key == "" {
-		// Spec.Key is defaulted by the CRD on the API-server write path; fall back here so
-		// objects built directly (e.g. in tests) still get the canonical gate key.
-		key = promoterv1alpha1.DAGCommitStatusKey
-	}
 	commitStatusName := utils.CommitStatusResourceName(ctx, dcs, branch)
 
 	kind := reflect.TypeOf(promoterv1alpha1.DAGCommitStatus{}).Name()
