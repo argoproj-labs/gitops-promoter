@@ -120,6 +120,60 @@ local_resource(
 # Deploy the controller using kustomize
 k8s_yaml(kustomize('config/default'))
 
+# Apply CRDs before any custom resources (ControllerConfiguration lives in
+# config/default). Applying CRD+CR in one batch races Tilt's RESTMapper and
+# intermittently fails with "no matches for kind ControllerConfiguration".
+_crd_objects = [
+    'argocdcommitstatuses.promoter.argoproj.io:customresourcedefinition',
+    'changetransferpolicies.promoter.argoproj.io:customresourcedefinition',
+    'clusterscmproviders.promoter.argoproj.io:customresourcedefinition',
+    'commitstatuses.promoter.argoproj.io:customresourcedefinition',
+    'controllerconfigurations.promoter.argoproj.io:customresourcedefinition',
+    'dagcommitstatuses.promoter.argoproj.io:customresourcedefinition',
+    'gitcommitstatuses.promoter.argoproj.io:customresourcedefinition',
+    'gitrepositories.promoter.argoproj.io:customresourcedefinition',
+    'previousenvironmentcommitstatuses.promoter.argoproj.io:customresourcedefinition',
+    'promotionstrategies.promoter.argoproj.io:customresourcedefinition',
+    'pullrequests.promoter.argoproj.io:customresourcedefinition',
+    'revertcommits.promoter.argoproj.io:customresourcedefinition',
+    'scheduledcommitstatuses.promoter.argoproj.io:customresourcedefinition',
+    'scmproviders.promoter.argoproj.io:customresourcedefinition',
+    'timedcommitstatuses.promoter.argoproj.io:customresourcedefinition',
+    'webrequestcommitstatuses.promoter.argoproj.io:customresourcedefinition',
+]
+
+k8s_resource(
+    new_name='crds',
+    resource_deps=['generate-manifests'],
+    labels=['promoter'],
+    objects=_crd_objects,
+)
+
+local_resource(
+    'wait-crds',
+    # Wait until apiserver discovery knows the kinds before applying CRs.
+    cmd='''kubectl wait --for=condition=Established --timeout=120s \
+  crd/argocdcommitstatuses.promoter.argoproj.io \
+  crd/changetransferpolicies.promoter.argoproj.io \
+  crd/clusterscmproviders.promoter.argoproj.io \
+  crd/commitstatuses.promoter.argoproj.io \
+  crd/controllerconfigurations.promoter.argoproj.io \
+  crd/dagcommitstatuses.promoter.argoproj.io \
+  crd/gitcommitstatuses.promoter.argoproj.io \
+  crd/gitrepositories.promoter.argoproj.io \
+  crd/previousenvironmentcommitstatuses.promoter.argoproj.io \
+  crd/promotionstrategies.promoter.argoproj.io \
+  crd/pullrequests.promoter.argoproj.io \
+  crd/revertcommits.promoter.argoproj.io \
+  crd/scheduledcommitstatuses.promoter.argoproj.io \
+  crd/scmproviders.promoter.argoproj.io \
+  crd/timedcommitstatuses.promoter.argoproj.io \
+  crd/webrequestcommitstatuses.promoter.argoproj.io
+''',
+    resource_deps=['crds'],
+    labels=['setup'],
+)
+
 # Configure the controller resource
 k8s_resource(
     'promoter-controller-manager',
@@ -135,7 +189,7 @@ k8s_resource(
 
 k8s_resource(
     new_name='cluster-objects',
-    resource_deps=['generate-manifests'],
+    resource_deps=['wait-crds'],
     labels=['promoter'],
     objects=[
         'promoter-controller-manager:serviceaccount',
@@ -144,20 +198,6 @@ k8s_resource(
         'promoter-leader-election-role:role',
         'promoter-leader-election-rolebinding:rolebinding',
         'promoter-system:namespace',
-        'argocdcommitstatuses.promoter.argoproj.io:customresourcedefinition',
-        'changetransferpolicies.promoter.argoproj.io:customresourcedefinition',
-        'clusterscmproviders.promoter.argoproj.io:customresourcedefinition',
-        'commitstatuses.promoter.argoproj.io:customresourcedefinition',
-        'controllerconfigurations.promoter.argoproj.io:customresourcedefinition',
-        'dagcommitstatuses.promoter.argoproj.io:customresourcedefinition',
-        'gitcommitstatuses.promoter.argoproj.io:customresourcedefinition',
-        'gitrepositories.promoter.argoproj.io:customresourcedefinition',
-        'previousenvironmentcommitstatuses.promoter.argoproj.io:customresourcedefinition',
-        'promotionstrategies.promoter.argoproj.io:customresourcedefinition',
-        'pullrequests.promoter.argoproj.io:customresourcedefinition',
-        'revertcommits.promoter.argoproj.io:customresourcedefinition',
-        'scmproviders.promoter.argoproj.io:customresourcedefinition',
-        'timedcommitstatuses.promoter.argoproj.io:customresourcedefinition',
         'promoter-argocdcommitstatus-editor-role:clusterrole',
         'promoter-argocdcommitstatus-viewer-role:clusterrole',
         'promoter-clusterscmprovider-admin-role:clusterrole',
@@ -177,9 +217,15 @@ k8s_resource(
         'promoter-dagcommitstatus-viewer-role:clusterrole',
         'promoter-metrics-reader:clusterrole',
         'promoter-proxy-role:clusterrole',
+        'promoter-scheduledcommitstatus-admin-role:clusterrole',
+        'promoter-scheduledcommitstatus-editor-role:clusterrole',
+        'promoter-scheduledcommitstatus-viewer-role:clusterrole',
         'promoter-timedcommitstatus-admin-role:clusterrole',
         'promoter-timedcommitstatus-editor-role:clusterrole',
         'promoter-timedcommitstatus-viewer-role:clusterrole',
+        'promoter-webrequestcommitstatus-admin-role:clusterrole',
+        'promoter-webrequestcommitstatus-editor-role:clusterrole',
+        'promoter-webrequestcommitstatus-viewer-role:clusterrole',
         'promoter-proxy-rolebinding:clusterrolebinding',
         'promoter-controller-configuration:controllerconfiguration',
     ]
