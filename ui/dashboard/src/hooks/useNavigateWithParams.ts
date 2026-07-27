@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { useLocation, useNavigate, type NavigateOptions } from 'react-router-dom';
+import { useLocation, useNavigate, type NavigateOptions } from 'react-router';
 
 /**
  * Like useNavigate, but preserves the current query string when navigating to a
