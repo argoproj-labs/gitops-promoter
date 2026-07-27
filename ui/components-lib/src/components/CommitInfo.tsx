@@ -207,7 +207,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
                 strokeLinejoin="round"
               />
             </svg>
-            Pushing to Active
+            <span className="promote-banner__label">Pushing to Active</span>
           </div>
         </>
       )}
