@@ -5922,10 +5922,10 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		It("keeps a settled CTP with a stale git note eligible for enqueue, and that note gates downstream until refreshed", func() {
 			settled := makeSettledCTPWithStaleNote()
 
-			By("Confirming the stale note actually gates a downstream environment via the real previous-environment check")
-			// getEffectiveHydratedDrySha prefers Note.DrySha, so a downstream env whose
-			// target is settledSha sees this environment as "not yet hydrated" for the
-			// target while the note is stale. This is the concrete harm: a wedged promotion.
+			// Confirm the stale note actually gates a downstream environment via the real
+			// previous-environment check. getEffectiveHydratedDrySha prefers Note.DrySha, so
+			// a downstream env whose target is settledSha sees this environment as "not yet
+			// hydrated" for the target while the note is stale — a wedged promotion.
 			settledEnvStatus := promoterv1alpha1.EnvironmentStatus{
 				Branch:   "environment/development",
 				Proposed: settled.Status.Proposed,
@@ -5940,12 +5940,12 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(isPending).To(BeTrue(), "a downstream env must block while this env's note is stale for the target")
 			Expect(reason).To(ContainSubstring("Waiting for the hydrator"))
 
-			By("Exercising the real enqueueOutOfSyncCTPs decision on that same status")
-			// Git notes never emit webhooks, so enqueueOutOfSyncCTPs is the prompt path
-			// that refreshes the note (else a downstream env waits for the 5m periodic
-			// requeue). The batch here also includes the downstream env already at target
-			// with a matching note, so it is correctly NOT enqueued — proving the settled
-			// env is selected on its own merits (stale note), not because everything is.
+			// Exercise the real enqueueOutOfSyncCTPs decision on that same status. Git notes
+			// never emit webhooks, so enqueueOutOfSyncCTPs is the prompt path that refreshes
+			// the note (else a downstream env waits for the 5m periodic requeue). The batch
+			// here also includes the downstream env already at target with a matching note,
+			// so it is correctly NOT enqueued — proving the settled env is selected on its
+			// own merits (stale note), not because everything is.
 			enqueued := &[]client.ObjectKey{}
 			enqueueMutex := &sync.Mutex{}
 			reconciler := &PromotionStrategyReconciler{
@@ -5970,7 +5970,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			}
 			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{settled, downstreamAtTarget})
 
-			By("Asserting the settled CTP with the stale note is still selected for enqueue")
+			// The settled CTP with the stale note must still be selected for enqueue.
 			enqueueMutex.Lock()
 			enqueuedKeys := append([]client.ObjectKey(nil), *enqueued...)
 			enqueueMutex.Unlock()
@@ -5998,6 +5998,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			By("Adding a dry change and hydrating so development promotes")
 			gitPath, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
+			defer func() { _ = os.RemoveAll(gitPath) }()
 			makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 
 			// The first environment has no gating commit statuses, so it auto-merges to a
@@ -6023,20 +6024,20 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(pushGitNote(ctx, gitPath, settledProposedHydratedSha, staleNoteSha)).To(Succeed())
 
 			// The controller's per-reconcile FetchNotes picks the pushed note up. We nudge
-			// once per poll and read back until the status reflects the stale note, then
-			// snapshot the CTP in that same poll so the enqueue decision below is fed the
-			// guarded state regardless of any later reconcile. We deliberately do NOT gate
-			// on Proposed.Hydrated.Sha here — the settled dry SHA plus the observed stale
-			// note are what define the guarded state.
+			// each poll and read back until the status reflects the stale note, then snapshot
+			// the CTP in that same poll so the enqueue decision below is fed the guarded
+			// state regardless of any later reconcile. We deliberately do NOT gate on
+			// Proposed.Hydrated.Sha here — the settled dry SHA plus the observed stale note
+			// are what define the guarded state.
 			var guarded promoterv1alpha1.ChangeTransferPolicy
 			By("Nudging development until its status reflects the stale note")
 			Eventually(func(g Gomega) {
+				// SCMs don't webhook git notes, so production relies on
+				// enqueueOutOfSyncCTPs / periodic requeue; we drive that in-process here.
+				enqueueCTP(devCTPKey.Namespace, devCTPKey.Name)
 				g.Expect(k8sClient.Get(ctx, devCTPKey, &ctpDev)).To(Succeed())
 				g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(settledSha))
 				g.Expect(ctpDev.Status.Proposed.Dry.Sha).To(Equal(settledSha))
-				if getNoteDrySha(ctpDev.Status.Proposed.Note) != staleNoteSha {
-					enqueueCTP(ctpDev.Namespace, ctpDev.Name)
-				}
 				g.Expect(getNoteDrySha(ctpDev.Status.Proposed.Note)).To(Equal(staleNoteSha))
 				ctpDev.DeepCopyInto(&guarded)
 			}, constants.EventuallyTimeout).Should(Succeed())
