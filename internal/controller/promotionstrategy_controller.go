@@ -58,11 +58,21 @@ type enqueuePair struct {
 // ctpEnqueueState tracks rate limiting and futility state for enqueuing out-of-sync CTPs.
 type ctpEnqueueState struct {
 	lastEnqueueTime time.Time
+	// lastSeenTime is when the enqueue decision last considered this CTP, including
+	// futility skips. The hourly cleanup sweeps on this rather than lastEnqueueTime: a
+	// converged CTP is deliberately never re-enqueued, so its lastEnqueueTime goes stale
+	// while it is still live — sweeping on that would evict its futility memory every
+	// hour and cause a spurious hourly re-enqueue. A deleted CTP stops being considered
+	// and is swept within the hour either way.
+	lastSeenTime time.Time
 	// lastPair is the disagreement that was last enqueued (or is covered by a scheduled
-	// retry). Seeing the same pair again means the nudge already happened and changed
-	// nothing — skip it. The periodic CTP requeue remains the discovery path for git
-	// state that no status reflects yet.
-	lastPair          enqueuePair
+	// retry). Repeats of the same pair are retried with exponential backoff: the nudge
+	// already refetched git and changed nothing, but a git note may still land later
+	// (note pushes have no webhooks), so retries must continue — just increasingly
+	// rarely. A changed pair resets the backoff.
+	lastPair enqueuePair
+	// pairAttempts counts consecutive enqueues for lastPair; it drives the backoff.
+	pairAttempts      int
 	hasScheduledRetry bool
 }
 
@@ -435,13 +445,14 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 // moves the target too, so environments whose notes lag behind a sibling's are the ones
 // nudged, and a batch where every note already agrees is left alone.
 //
-// Futility control: a triggered reconcile refetches the branch and its git notes; if the
+// Backoff control: a triggered reconcile refetches the branch and its git notes; if the
 // (effective, target) disagreement is unchanged afterwards, git held nothing the status
-// hadn't already seen, and re-enqueueing the same disagreement can never accomplish
-// anything. Each CTP is therefore enqueued at most once per distinct (effective, target)
-// pair, with a 15s floor between enqueues when the pair does change rapidly. Discovery of
-// note pushes that no status reflects yet is (and always was) the periodic CTP requeue —
-// an unseen note cannot trigger anything here, because this function only reads statuses.
+// hadn't already seen at that moment. The note the disagreement is waiting on may still
+// land later (note pushes have no webhooks), so the same disagreement is retried — but
+// with exponential backoff (15s, 30s, 60s, ... capped at 5m) rather than a fixed 15s
+// loop, so a persistent no-op disagreement decays to requeue-scale noise instead of
+// re-enqueueing forever. A changed disagreement (a fetched note, a new target) resets
+// the backoff and is nudged promptly again.
 func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, ctps []*promoterv1alpha1.ChangeTransferPolicy) {
 	if len(ctps) == 0 {
 		return
@@ -513,16 +524,19 @@ func (r *PromotionStrategyReconciler) startCleanupTimer() {
 	//       * Struct: 32 bytes (2 string headers, 16 bytes each)
 	//       * String content: namespace (32 chars) + name (32 chars) = 64 bytes
 	//   - *ctpEnqueueState pointer: 8 bytes
-	//   - ctpEnqueueState struct: 32 bytes
-	//       * time.Time: 24 bytes
-	//       * bool: 1 byte + 7 bytes padding = 8 bytes
+	//   - ctpEnqueueState struct: ~96 bytes
+	//       * 2x time.Time: 48 bytes
+	//       * enqueuePair (2 string headers): 32 bytes
+	//       * int + bool: 9 bytes + 7 bytes padding = 16 bytes
+	//   - enqueuePair string content: 2 SHAs at 40-64 chars = ~80-128 bytes
 	//   - Map overhead: ~8 bytes per entry
-	//   Total: ~144 bytes per CTP
+	//   Total: ~300 bytes per CTP. The pair is a single value overwritten on each
+	//   enqueue, never an accumulating set, so entries do not grow over time.
 	//
 	// Memory bounds (assuming 32-char namespace and name):
-	//   - 100 stale entries = ~14 KB
-	//   - 1,000 stale entries = ~144 KB
-	//   - 10,000 stale entries = ~1.4 MB
+	//   - 100 stale entries = ~30 KB
+	//   - 1,000 stale entries = ~300 KB
+	//   - 10,000 stale entries = ~3 MB
 	//
 	// With 1 hour cleanup interval, worst case is 1 hour of deleted CTPs in memory.
 	var scheduleCleanup func()
@@ -530,7 +544,12 @@ func (r *PromotionStrategyReconciler) startCleanupTimer() {
 		time.AfterFunc(1*time.Hour, func() {
 			r.enqueueStateMutex.Lock()
 			for key, state := range r.enqueueStates {
-				if time.Since(state.lastEnqueueTime) > 1*time.Hour {
+				// Sweep on lastSeenTime, not lastEnqueueTime: converged CTPs are
+				// deliberately never re-enqueued (futility control), but they are still
+				// considered on every PromotionStrategy reconcile, which keeps
+				// lastSeenTime fresh. Only CTPs that stopped being reconciled entirely
+				// (deleted, or their PromotionStrategy is gone) go stale here.
+				if time.Since(state.lastSeenTime) > 1*time.Hour {
 					delete(r.enqueueStates, key)
 				}
 			}
@@ -541,19 +560,26 @@ func (r *PromotionStrategyReconciler) startCleanupTimer() {
 	scheduleCleanup()
 }
 
-// handleRateLimitedEnqueue applies futility and rate-limiting controls to a CTP enqueue
+// handleRateLimitedEnqueue applies backoff and rate-limiting controls to a CTP enqueue
 // request for the given (effective, target) disagreement. It either:
-//   - Skips if the same disagreement was already enqueued (or a scheduled retry covers it):
-//     the triggered reconcile refetched git and changed nothing, so repeating it is futile
-//   - Skips if a delayed retry is already scheduled (updating it to cover the new pair)
-//   - Schedules a delayed retry if within the rate limit threshold
-//   - Enqueues immediately otherwise
+//   - Enqueues immediately when the required wait for this disagreement has elapsed
+//     (15s base, doubling per consecutive attempt at the SAME disagreement, capped at 5m —
+//     a nudge that refetched git and changed nothing probably has nothing new to find, but
+//     a late-landing git note means it must still be retried occasionally)
+//   - Schedules one delayed enqueue for when the required wait elapses
+//   - Skips if a delayed enqueue is already scheduled
+//
+// A changed disagreement (a fetched note, a new target) resets the backoff so it is
+// nudged promptly again.
 func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 	ctx context.Context,
 	ctp *promoterv1alpha1.ChangeTransferPolicy,
 	pair enqueuePair,
 ) {
-	const enqueueThreshold = 15 * time.Second
+	const (
+		enqueueThreshold  = 15 * time.Second
+		maxEnqueueBackoff = 5 * time.Minute
+	)
 
 	logger := log.FromContext(ctx)
 	now := time.Now()
@@ -571,39 +597,41 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 
 	r.enqueueStateMutex.Lock()
 	state := getOrCreateState(key)
+	// Mark the CTP as still live so the hourly cleanup keeps its backoff memory.
+	state.lastSeenTime = now
 
-	// Futility check: this exact disagreement was already enqueued (or is covered by a
-	// pending retry). The reconcile it triggered refetched the branch and its notes; the
-	// pair being unchanged means git held nothing new, so another reconcile cannot help.
-	// The pair re-arms as soon as either side changes (a fetched note, a new target).
-	if state.lastPair == pair {
-		r.enqueueStateMutex.Unlock()
-		logger.V(4).Info("Skipping enqueue, this disagreement was already enqueued and is unresolvable by refetching",
-			"ctp", ctp.Name)
-		return
+	// A new disagreement resets the backoff; a repeat of the last one keeps growing it.
+	if state.lastPair != pair {
+		state.lastPair = pair
+		state.pairAttempts = 0
 	}
 
-	// Check if rate limited
+	// The wait required before (re-)enqueueing this disagreement: the 15s floor for a
+	// fresh disagreement, doubling per consecutive attempt at the same one, capped at 5m.
+	requiredWait := enqueueThreshold
+	if state.pairAttempts > 0 {
+		shift := min(state.pairAttempts-1, 5)
+		requiredWait = min(enqueueThreshold<<shift, maxEnqueueBackoff)
+	}
+
 	timeSinceLastEnqueue := now.Sub(state.lastEnqueueTime)
-	if timeSinceLastEnqueue < enqueueThreshold {
-		// Already have a delayed enqueue scheduled; record the newest pair as covered by
-		// it — the retry fires a reconcile, which reads current git state regardless.
+	if timeSinceLastEnqueue < requiredWait {
+		// Already have a delayed enqueue scheduled, nothing to do — the retry fires a
+		// reconcile, which reads current git state regardless of which pair spawned it.
 		if state.hasScheduledRetry {
-			state.lastPair = pair
 			r.enqueueStateMutex.Unlock()
-			logger.V(4).Info("Rate limited, delayed enqueue already scheduled",
+			logger.V(4).Info("Backing off, delayed enqueue already scheduled",
 				"ctp", ctp.Name,
 				"lastEnqueuedAgo", timeSinceLastEnqueue)
 			return
 		}
 
-		// Schedule a delayed enqueue covering this pair
+		// Schedule a delayed enqueue for when the required wait elapses
 		state.hasScheduledRetry = true
-		state.lastPair = pair
-		timeUntilThreshold := enqueueThreshold - timeSinceLastEnqueue
+		timeUntilThreshold := requiredWait - timeSinceLastEnqueue
 		r.enqueueStateMutex.Unlock()
 
-		logger.V(4).Info("Rate limited, scheduling delayed enqueue",
+		logger.V(4).Info("Backing off, scheduling delayed enqueue",
 			"ctp", ctp.Name,
 			"lastEnqueuedAgo", timeSinceLastEnqueue,
 			"retryIn", timeUntilThreshold)
@@ -614,6 +642,7 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 
 			// Update state and enqueue
 			state.lastEnqueueTime = time.Now()
+			state.pairAttempts++
 			state.hasScheduledRetry = false
 			r.enqueueStateMutex.Unlock()
 
@@ -627,9 +656,9 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 		return
 	}
 
-	// Not rate limited - enqueue immediately
+	// Required wait has elapsed - enqueue immediately
 	state.lastEnqueueTime = now
-	state.lastPair = pair
+	state.pairAttempts++
 	state.hasScheduledRetry = false
 	r.enqueueStateMutex.Unlock()
 

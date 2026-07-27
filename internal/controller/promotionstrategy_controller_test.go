@@ -5769,20 +5769,22 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"lagging-ctp"}))
 		})
 
-		It("should fall back to the file SHA for environments without notes, at most once per target", func() {
+		It("should fall back to the file SHA for environments without notes", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
 			// Mixed fleet: the newest environment's hydrator writes notes (target moves to
 			// its note newnote456); the other environment's hydrator does not, so it can
-			// never represent newnote456 and a refetch cannot help it. It gets exactly one
-			// nudge for the disagreement — not a 15s live-lock loop.
+			// never represent newnote456 and a refetch cannot help it. It gets one prompt
+			// nudge for the disagreement; repeats defer to backed-off delayed retries — not
+			// a fixed-rate live-lock loop.
 			noteless := makeCTPWithShas("noteless-ctp", "abc123", nil, metav1.NewTime(time.Now().Add(-time.Minute)))
 			newest := makeCTPWithShas("newest-ctp", "abc123", &promoterv1alpha1.HydratorMetadata{DrySha: "newnote456"}, metav1.Now())
 
 			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{noteless, newest})
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"noteless-ctp"}))
 
-			// Repeated owner-watch loops with the identical disagreement stay quiet.
+			// Repeated owner-watch loops with the identical disagreement do not enqueue
+			// again immediately (they defer to the single scheduled retry).
 			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{noteless, newest})
 			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{noteless, newest})
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"noteless-ctp"}))
@@ -5805,7 +5807,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			enqueueMutex.Unlock()
 		})
 
-		It("should never retry an identical disagreement", func() {
+		It("should back off retries of an identical disagreement", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
@@ -5813,9 +5815,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				makeTargetCTP(),
 			}
 
-			// First call enqueues; the triggered reconcile refetches git. The disagreement
-			// being unchanged on subsequent calls means the refetch found nothing, so
-			// repeating it is futile — no immediate enqueue AND no delayed retry.
+			// First call enqueues; repeats within the 15s floor defer to one delayed retry.
 			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
 			for range 3 {
 				time.Sleep(100 * time.Millisecond)
@@ -5823,11 +5823,22 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			}
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp"}))
 
-			// Outlast the 15s rate-limit threshold: under the previous semantics a delayed
-			// retry would fire here; under futility control nothing may.
+			// The first retry of the unchanged disagreement fires at the 15s floor — a git
+			// note the disagreement is waiting on can land after the first nudge, so the
+			// prompt first retry matters.
 			time.Sleep(16 * time.Second)
-			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp"}),
-				"an identical disagreement must not schedule delayed retries")
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp", "test-ctp"}),
+				"the first delayed retry should fire at the 15s floor")
+
+			// The disagreement is still unchanged, so the backoff doubles: the next retry
+			// is not due for 30s. Under the previous fixed-15s semantics another enqueue
+			// would land inside this window — the backoff is what keeps a terminal no-op
+			// disagreement from re-enqueueing at a constant rate forever.
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			time.Sleep(16 * time.Second)
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp", "test-ctp"}),
+				"an unchanged disagreement must back off, not retry at a fixed 15s cadence")
 		})
 
 		It("should re-arm when the disagreement changes, rate limited to one delayed enqueue", func() {
