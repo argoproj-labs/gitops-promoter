@@ -227,7 +227,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Sha).To(Equal(ctpDev.Status.Proposed.Hydrated.Sha))
 					// The proposed environment has no in-flight change (active and proposed dry SHAs match),
 					// so the previous-environment gate was never evaluated by the DAG controller; the
-					// ChangeTransferPolicy reports the placeholder pending status for the undeclared CommitStatus.
+					// ChangeTransferPolicy reports the placeholder pending status for the unreported CommitStatus.
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses).To(Equal(
 						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 							{
@@ -248,7 +248,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.Hydrated.Sha).To(Equal(ctpStaging.Status.Proposed.Hydrated.Sha))
 					// The proposed environment has no in-flight change (active and proposed dry SHAs match),
 					// so the previous-environment gate was never evaluated by the DAG controller; the
-					// ChangeTransferPolicy reports the placeholder pending status for the undeclared CommitStatus.
+					// ChangeTransferPolicy reports the placeholder pending status for the unreported CommitStatus.
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses).To(Equal(
 						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 							{
@@ -269,7 +269,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.Hydrated.Sha).To(Equal(ctpProd.Status.Proposed.Hydrated.Sha))
 					// The proposed environment has no in-flight change (active and proposed dry SHAs match),
 					// so the previous-environment gate was never evaluated by the DAG controller; the
-					// ChangeTransferPolicy reports the placeholder pending status for the undeclared CommitStatus.
+					// ChangeTransferPolicy reports the placeholder pending status for the unreported CommitStatus.
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses).To(Equal(
 						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 							{
@@ -533,7 +533,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Sha).To(Equal(ctpDev.Status.Proposed.Hydrated.Sha))
 					// The proposed environment has no in-flight change (active and proposed dry SHAs match),
 					// so the previous-environment gate was never evaluated by the DAG controller; the
-					// ChangeTransferPolicy reports the placeholder pending status for the undeclared CommitStatus.
+					// ChangeTransferPolicy reports the placeholder pending status for the unreported CommitStatus.
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses).To(Equal(
 						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 							{
@@ -554,7 +554,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.Hydrated.Sha).To(Equal(ctpStaging.Status.Proposed.Hydrated.Sha))
 					// The proposed environment has no in-flight change (active and proposed dry SHAs match),
 					// so the previous-environment gate was never evaluated by the DAG controller; the
-					// ChangeTransferPolicy reports the placeholder pending status for the undeclared CommitStatus.
+					// ChangeTransferPolicy reports the placeholder pending status for the unreported CommitStatus.
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses).To(Equal(
 						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 							{
@@ -575,7 +575,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.Hydrated.Sha).To(Equal(ctpProd.Status.Proposed.Hydrated.Sha))
 					// The proposed environment has no in-flight change (active and proposed dry SHAs match),
 					// so the previous-environment gate was never evaluated by the DAG controller; the
-					// ChangeTransferPolicy reports the placeholder pending status for the undeclared CommitStatus.
+					// ChangeTransferPolicy reports the placeholder pending status for the unreported CommitStatus.
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses).To(Equal(
 						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 							{
@@ -983,7 +983,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Sha).To(Equal(ctpDev.Status.Proposed.Hydrated.Sha))
 					// The proposed environment has no in-flight change (active and proposed dry SHAs match),
 					// so the previous-environment gate was never evaluated by the DAG controller; the
-					// ChangeTransferPolicy reports the placeholder pending status for the undeclared CommitStatus.
+					// ChangeTransferPolicy reports the placeholder pending status for the unreported CommitStatus.
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses).To(Equal(
 						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 							{
@@ -1004,7 +1004,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.Hydrated.Sha).To(Equal(ctpStaging.Status.Proposed.Hydrated.Sha))
 					// The proposed environment has no in-flight change (active and proposed dry SHAs match),
 					// so the previous-environment gate was never evaluated by the DAG controller; the
-					// ChangeTransferPolicy reports the placeholder pending status for the undeclared CommitStatus.
+					// ChangeTransferPolicy reports the placeholder pending status for the unreported CommitStatus.
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses).To(Equal(
 						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 							{
@@ -1025,7 +1025,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.Hydrated.Sha).To(Equal(ctpProd.Status.Proposed.Hydrated.Sha))
 					// The proposed environment has no in-flight change (active and proposed dry SHAs match),
 					// so the previous-environment gate was never evaluated by the DAG controller; the
-					// ChangeTransferPolicy reports the placeholder pending status for the undeclared CommitStatus.
+					// ChangeTransferPolicy reports the placeholder pending status for the unreported CommitStatus.
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses).To(Equal(
 						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 							{
@@ -5689,18 +5689,37 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			})
 
 			// Regression test: newer no-op dry SHA causes premature promotion through all envs.
+			//
+			// Scenario (dev → staging → prod, all with activeCommitStatuses: [argocd-health]):
+			// - COMMIT1 changes all three envs, gets promoted through dev (healthy), staging merges
+			// - COMMIT2 arrives and is a no-op for all envs (note updated, no new hydrated commit)
+			// - Staging just merged COMMIT1 but argocd-health is still pending (apps deploying)
+			// - Production should NOT be allowed to promote because staging is not healthy
+			//
+			// Bug: the no-op check saw staging as (note=COMMIT2 != proposed=COMMIT1 → no-op) and
+			// (active=COMMIT1 == proposed=COMMIT1 → no pending changes), so it recursed past staging.
+			// Same for dev. Hit the base case and allowed promotion without checking any health.
 			It("blocks when newer no-op SHA causes all preceding envs to look like no-ops but staging is unhealthy", func() {
 				dev := makeEnv("environments/development",
-					"COMMIT1", "COMMIT1", "COMMIT2",
-					newerTime, string(promoterv1alpha1.CommitPhaseSuccess))
+					"COMMIT1", // active: merged COMMIT1, healthy
+					"COMMIT1", // proposed: same as active
+					"COMMIT2", // note: hydrator saw COMMIT2 (no-op)
+					newerTime,
+					string(promoterv1alpha1.CommitPhaseSuccess))
 
 				staging := makeEnv("environments/staging",
-					"COMMIT1", "COMMIT1", "COMMIT2",
-					newerTime, string(promoterv1alpha1.CommitPhasePending)) // apps still deploying
+					"COMMIT1", // active: just merged COMMIT1, NOT healthy yet
+					"COMMIT1", // proposed: same as active
+					"COMMIT2", // note: hydrator saw COMMIT2 (no-op)
+					newerTime,
+					string(promoterv1alpha1.CommitPhasePending)) // apps still deploying
 
 				prod := makeEnv("environments/production",
-					"OLD", "COMMIT1", "COMMIT2",
-					olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+					"OLD",     // active: still on previous version
+					"COMMIT1", // proposed: trying to promote COMMIT1
+					"COMMIT2", // note: hydrator saw COMMIT2 (no-op)
+					olderTime,
+					string(promoterv1alpha1.CommitPhaseSuccess))
 
 				isPending, reason := linearUpstreamsPending(
 					[]promoterv1alpha1.EnvironmentStatus{dev, staging},
@@ -5711,6 +5730,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				Expect(reason).To(Equal(`Waiting for "environments/staging" environment's "health" commit status to be successful`))
 			})
 
+			// Same scenario but staging IS healthy - should allow promotion
 			It("allows when newer no-op SHA and all preceding envs are healthy", func() {
 				dev := makeEnv("environments/development",
 					"COMMIT1", "COMMIT1", "COMMIT2",
@@ -5733,38 +5753,67 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				Expect(reason).To(BeEmpty())
 			})
 
+			// Edge case: no-op for current commit but has pending changes from previous commit
+			// Scenario:
+			// - Commit 1 (COMMIT1) changes env1 (autoMerge=false, PR not merged)
+			// - Commit 2 (COMMIT2) does NOT change env1 (no-op for commit 2)
+			// - env2 should still wait for env1's PR from commit 1 to be merged
+			//
+			// This tests the fix for the bug where a no-op environment with pending changes
+			// was incorrectly skipped, allowing downstream environments to promote prematurely.
 			It("blocks when no-op for current commit but has pending changes from previous commit", func() {
+				// env1: Commit 1 changed it, PR created but not merged (autoMerge=false)
+				//       Commit 2 is a no-op (note=COMMIT2, proposed=COMMIT1, active=OLD)
 				env1 := makeEnv("env1",
-					"OLD", "COMMIT1", "COMMIT2",
-					olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+					"OLD",     // active: still on OLD (PR not merged)
+					"COMMIT1", // proposed: has changes from commit 1
+					"COMMIT2", // note: hydrator processed commit 2 (no-op)
+					olderTime,
+					string(promoterv1alpha1.CommitPhaseSuccess))
 
+				// env2: Both commits changed it, trying to promote commit 2
 				env2 := makeEnv("env2",
-					"OLD", "COMMIT2", "COMMIT2",
-					olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+					"OLD",     // active: still on OLD
+					"COMMIT2", // proposed: has changes from commit 2
+					"COMMIT2", // note: hydrator processed commit 2
+					olderTime,
+					string(promoterv1alpha1.CommitPhaseSuccess))
 
 				isPending, reason := linearUpstreamsPending(
 					[]promoterv1alpha1.EnvironmentStatus{env1},
 					getEffectiveHydratedDrySha(env2),
 					env2.Active.Dry.CommitTime)
 
+				// Should block because env1 has pending changes (active=OLD != proposed=COMMIT1)
+				// even though commit 2 is a no-op for env1
 				Expect(isPending).To(BeTrue())
 				Expect(reason).To(Equal("Waiting for previous environment to be promoted"))
 			})
 
+			// Same scenario but env1's PR has been merged - should allow
 			It("allows when no-op for current commit and previous changes have been merged", func() {
+				// env1: Commit 1 changed it and was merged, Commit 2 is a no-op
 				env1 := makeEnv("env1",
-					"COMMIT1", "COMMIT1", "COMMIT2",
-					newerTime, string(promoterv1alpha1.CommitPhaseSuccess))
+					"COMMIT1", // active: merged commit 1
+					"COMMIT1", // proposed: same as active (no pending changes)
+					"COMMIT2", // note: hydrator processed commit 2 (no-op)
+					newerTime,
+					string(promoterv1alpha1.CommitPhaseSuccess))
 
+				// env2: Both commits changed it, trying to promote commit 2
 				env2 := makeEnv("env2",
-					"OLD", "COMMIT2", "COMMIT2",
-					olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+					"OLD",     // active: still on OLD
+					"COMMIT2", // proposed: has changes from commit 2
+					"COMMIT2", // note: hydrator processed commit 2
+					olderTime,
+					string(promoterv1alpha1.CommitPhaseSuccess))
 
 				isPending, reason := linearUpstreamsPending(
 					[]promoterv1alpha1.EnvironmentStatus{env1},
 					getEffectiveHydratedDrySha(env2),
 					env2.Active.Dry.CommitTime)
 
+				// Should allow because env1 has no pending changes (active=proposed=COMMIT1)
 				Expect(isPending).To(BeFalse())
 				Expect(reason).To(BeEmpty())
 			})
@@ -5830,6 +5879,22 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		})
 
 		// Edge case: previous env has already moved past the commit we're trying to promote.
+		// This can happen when:
+		// 1. Dry commit ABC is made
+		// 2. All environments get hydrated for ABC
+		// 3. Before production merges ABC, someone makes dry commit DEF
+		// 4. Staging hydrates and merges DEF (skipping ABC)
+		// 5. Production is still trying to promote ABC, but staging is now ahead
+		//
+		// In this case, we allow promotion because:
+		// - Both environments have the same Note.DrySha (DEF), confirming they've seen the same dry commits
+		// - Staging has already merged a newer commit (which includes ABC's changes), so it's safe for production to proceed
+		//
+		// Note on timing: In practice, there's a race between staging and production merging.
+		// If staging merges DEF first but hasn't become healthy yet (Argo CD sync, health checks,
+		// timers, etc.), production will temporarily block until staging's health checks pass.
+		// This is the expected behavior - we wait for the newer commit to be validated before
+		// allowing the older commit to proceed. The two tests below cover both outcomes of this race.
 		It("allows when previous env merged newer commit with matching Note.DrySha", func() {
 			// Staging: merged DEF, Note.DrySha=DEF (has processed up to DEF), healthy
 			prevEnvStatus := makeEnvStatusWithTime("DEF", "DEF", "DEF", newerTime)
@@ -5856,7 +5921,8 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		// Same scenario as above, but staging merged first and is still becoming healthy.
 		// Production should block until staging's health checks pass.
 		It("blocks when previous env merged newer commit but is unhealthy", func() {
-			// Staging: merged DEF, Note.DrySha=DEF, but UNHEALTHY
+			// Staging: merged DEF, Note.DrySha=DEF (has processed up to DEF), but UNHEALTHY
+			// (e.g., Argo CD is still syncing, or health checks haven't passed yet)
 			prevEnvStatus := promoterv1alpha1.EnvironmentStatus{
 				Branch: "environment/staging",
 				Active: promoterv1alpha1.CommitBranchState{
@@ -5870,7 +5936,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 					Note: &promoterv1alpha1.HydratorMetadata{DrySha: "DEF"},
 				},
 			}
-			// Production: trying to promote ABC, but Note.DrySha=DEF
+			// Production: trying to promote ABC, but Note.DrySha=DEF (hydrator has also processed up to DEF)
 			currEnvStatus := promoterv1alpha1.EnvironmentStatus{
 				Active: promoterv1alpha1.CommitBranchState{
 					Dry: promoterv1alpha1.CommitShaState{Sha: "OLD", CommitTime: olderTime},
