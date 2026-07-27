@@ -26,6 +26,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -98,7 +99,47 @@ var _ = Describe("DAGCommitStatus Controller", func() {
 		})
 	})
 
-	Context("When reconciling with a URL template", func() {
+	Context("When the PromotionStrategy is missing", func() {
+		var (
+			ctx             context.Context
+			dagCommitStatus *promoterv1alpha1.DAGCommitStatus
+		)
+
+		BeforeEach(func() {
+			ctx = context.Background()
+			By("Creating a DAGCommitStatus that references a non-existent PromotionStrategy")
+			dagCommitStatus = &promoterv1alpha1.DAGCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "dag-missing-ps",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.DAGCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "non-existent"},
+					Key:                  promoterv1alpha1.DAGCommitStatusKey,
+					Environments: []promoterv1alpha1.DAGEnvironment{
+						{Branch: testBranchDevelopment},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, dagCommitStatus)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			_ = k8sClient.Delete(ctx, dagCommitStatus)
+		})
+
+		It("should set Ready=False when the PromotionStrategy is not found", func() {
+			Eventually(func(g Gomega) {
+				updated := &promoterv1alpha1.DAGCommitStatus{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dagCommitStatus), updated)).To(Succeed())
+				readyCondition := meta.FindStatusCondition(updated.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(readyCondition).ToNot(BeNil())
+				g.Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	Context("When reconciling against a PromotionStrategy", func() {
 		var (
 			ctx               context.Context
 			name              string
@@ -111,9 +152,10 @@ var _ = Describe("DAGCommitStatus Controller", func() {
 
 		BeforeEach(func() {
 			ctx = context.Background()
+			dagCommitStatus = nil
 
 			By("Setting up test git repository and PromotionStrategy")
-			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "dag-commit-status-url-test", "default")
+			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "dag-commit-status-controller-test", "default")
 
 			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 				{Key: promoterv1alpha1.DAGCommitStatusKey},
@@ -149,7 +191,7 @@ var _ = Describe("DAGCommitStatus Controller", func() {
 			By("Creating a DAGCommitStatus with a URL template that includes the environment")
 			dagCommitStatus = &promoterv1alpha1.DAGCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-dag",
+					Name:      name + "-dag-url",
 					Namespace: "default",
 				},
 				Spec: promoterv1alpha1.DAGCommitStatusSpec{
@@ -191,6 +233,124 @@ var _ = Describe("DAGCommitStatus Controller", func() {
 					g.Expect(cs.Spec.Url).To(Equal("https://example.com/ui?env=" + branch))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			}
+		})
+
+		It("should set Ready=False when the dependency graph contains a cycle", func() {
+			By("Creating a DAGCommitStatus whose environments form a dependency cycle")
+			dagCommitStatus = &promoterv1alpha1.DAGCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-dag-cycle",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.DAGCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  promoterv1alpha1.DAGCommitStatusKey,
+					// Branches still match the PromotionStrategy, but staging⇄production cycle.
+					Environments: []promoterv1alpha1.DAGEnvironment{
+						{Branch: testBranchDevelopment},
+						{Branch: testBranchStaging, DependsOn: []string{testBranchProduction}},
+						{Branch: testBranchProduction, DependsOn: []string{testBranchStaging}},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, dagCommitStatus)).To(Succeed())
+
+			By("Waiting for Ready=False from graph validation")
+			Eventually(func(g Gomega) {
+				updated := &promoterv1alpha1.DAGCommitStatus{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dagCommitStatus), updated)).To(Succeed())
+				readyCondition := meta.FindStatusCondition(updated.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(readyCondition).ToNot(BeNil())
+				g.Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should cleanup orphaned CommitStatus resources when environments are removed", func() {
+			By("Creating a DAGCommitStatus tracking all three environments")
+			dagCommitStatus = &promoterv1alpha1.DAGCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-dag-cleanup",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.DAGCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  promoterv1alpha1.DAGCommitStatusKey,
+					Environments: []promoterv1alpha1.DAGEnvironment{
+						{Branch: testBranchDevelopment},
+						{Branch: testBranchStaging, DependsOn: []string{testBranchDevelopment}},
+						{Branch: testBranchProduction, DependsOn: []string{testBranchStaging}},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, dagCommitStatus)).To(Succeed())
+
+			By("Waiting for the DAGCommitStatus to become Ready")
+			Eventually(func(g Gomega) {
+				updated := &promoterv1alpha1.DAGCommitStatus{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dagCommitStatus), updated)).To(Succeed())
+				readyCondition := meta.FindStatusCondition(updated.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(readyCondition).ToNot(BeNil())
+				g.Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Creating a proposed change so the DAG writes CommitStatuses")
+			gitPath, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() { _ = os.RemoveAll(gitPath) })
+			makeChangeAndHydrateRepo(gitPath, gitRepo, "cleanup test change", "")
+
+			By("Waiting for all three CommitStatus resources to be created")
+			var (
+				oldCommitStatusDevName     string
+				oldCommitStatusStagingName string
+				oldCommitStatusProdName    string
+			)
+			Eventually(func(g Gomega) {
+				oldCommitStatusDevName = utils.CommitStatusResourceName(ctx, dagCommitStatus, testBranchDevelopment)
+				oldCommitStatusStagingName = utils.CommitStatusResourceName(ctx, dagCommitStatus, testBranchStaging)
+				oldCommitStatusProdName = utils.CommitStatusResourceName(ctx, dagCommitStatus, testBranchProduction)
+
+				for _, csName := range []string{oldCommitStatusDevName, oldCommitStatusStagingName, oldCommitStatusProdName} {
+					cs := &promoterv1alpha1.CommitStatus{}
+					g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: csName}, cs)).To(Succeed())
+				}
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Shrinking PromotionStrategy and DAGCommitStatus to development + staging together")
+			// DAG requires an exact environment match with the PromotionStrategy, so both must be
+			// updated together; otherwise reconcile fails before orphan cleanup runs.
+			Eventually(func(g Gomega) {
+				ps := &promoterv1alpha1.PromotionStrategy{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(promotionStrategy), ps)).To(Succeed())
+				ps.Spec.Environments = []promoterv1alpha1.Environment{
+					{Branch: testBranchDevelopment},
+					{Branch: testBranchStaging},
+				}
+				g.Expect(k8sClient.Update(ctx, ps)).To(Succeed())
+
+				dcs := &promoterv1alpha1.DAGCommitStatus{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dagCommitStatus), dcs)).To(Succeed())
+				dcs.Spec.Environments = []promoterv1alpha1.DAGEnvironment{
+					{Branch: testBranchDevelopment},
+					{Branch: testBranchStaging, DependsOn: []string{testBranchDevelopment}},
+				}
+				g.Expect(k8sClient.Update(ctx, dcs)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying development and staging CommitStatuses still exist")
+			Eventually(func(g Gomega) {
+				for _, csName := range []string{oldCommitStatusDevName, oldCommitStatusStagingName} {
+					cs := &promoterv1alpha1.CommitStatus{}
+					g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: csName}, cs)).To(Succeed())
+				}
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying the production CommitStatus is deleted as an orphan")
+			Eventually(func(g Gomega) {
+				cs := &promoterv1alpha1.CommitStatus{}
+				err := k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: oldCommitStatusProdName}, cs)
+				g.Expect(k8serrors.IsNotFound(err)).To(BeTrue(), "production CommitStatus should be deleted")
+			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
 })
