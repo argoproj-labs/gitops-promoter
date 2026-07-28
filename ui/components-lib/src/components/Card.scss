@@ -56,6 +56,17 @@
   color: $argo-color-gray-7;
 }
 
+// "Current status" disclosure, rendered directly beneath the active commit
+// group. The shared .health-summary carries a negative top margin tuned for
+// its old in-commit-group placement; reset it here so the disclosure sits
+// normally in the card flow.
+.env-card__current-status {
+  .health-summary {
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+}
+
 .env-card__proposed-loading-bar {
   width: 100%;
   height: 2px;

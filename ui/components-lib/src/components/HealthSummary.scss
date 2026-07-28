@@ -39,6 +39,20 @@
   }
 }
 
+// Always-expanded variant: a plain, non-interactive "Checks" heading above the
+// rows. No chevron, no hover affordance, no pointer.
+.health-header--static {
+  cursor: default;
+  user-select: auto;
+
+  &:hover,
+  &:active {
+    color: $argo-color-gray-7;
+    background: transparent;
+    border-color: transparent;
+  }
+}
+
 .health-count {
   flex: 1;
 }

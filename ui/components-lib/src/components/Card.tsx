@@ -2,6 +2,7 @@ import { FaServer } from 'react-icons/fa';
 import { StatusIcon, StatusType, statusLabel } from './StatusIcon';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import CommitInfo from './CommitInfo';
+import HealthSummary from './HealthSummary';
 import {
   EnrichedEnvDetails,
   enrichFromEnvironments,
@@ -104,13 +105,21 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                     status={env.activeStatus as StatusType}
                     deploymentCommitUrl={env.activeCommitUrl}
                     codeCommitUrl={env.activeReferenceCommitUrl}
-                    checks={env.activeChecks}
-                    healthSummary={env.activeChecksSummary}
                     prUrl={env.activePrUrl}
                     prNumber={env.activePrNumber?.toString()}
                     mergeTimeAgo={mergeTimeAgo}
                     prTooltip={env.activePrTooltip}
                   />
+
+                  <div className="env-card__current-status">
+                    <HealthSummary
+                      checks={env.activeChecks}
+                      title="Current status"
+                      healthSummary={env.activeChecksSummary}
+                      variant="collapsible"
+                      headerLabel="Current status"
+                    />
+                  </div>
 
                   {isProcessing ? (
                     <div className="commit-group env-card__proposed-loading">
@@ -139,6 +148,7 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                       codeCommitUrl={env.proposedReferenceCommitUrl}
                       checks={env.proposedChecks}
                       healthSummary={env.proposedChecksSummary}
+                      checksVariant="always-expanded"
                       prUrl={env.prUrl}
                       prNumber={env.prNumber?.toString()}
                     />

@@ -14,47 +14,43 @@ export interface HealthSummaryProps {
   additionalChecksTitleTooltip?: string;
   primaryChecksTitle?: string;
   primaryChecksTitleTooltip?: string;
+  // 'collapsible' (default) renders a disclosure header ("Current status" + chevron)
+  // that respects the small-list auto-expand heuristic and the user's manual toggle.
+  // 'always-expanded' renders a static, non-interactive "Checks" heading with the
+  // rows always visible (the proposed-card context).
+  variant?: 'collapsible' | 'always-expanded';
+  // Header label for the collapsible variant only.
+  headerLabel?: string;
 }
 
 const HealthSummary: React.FC<HealthSummaryProps> = ({
   checks,
   title,
-  status,
   healthSummary,
   additionalChecks,
   additionalChecksTitle,
   additionalChecksTitleTooltip,
   primaryChecksTitle,
   primaryChecksTitleTooltip,
+  variant = 'collapsible',
+  headerLabel = 'Current status',
 }) => {
   const allChecks = additionalChecks ? [...checks, ...additionalChecks] : checks;
-  const { successCount, totalCount, shouldDisplay } = healthSummary
+  const { totalCount, shouldDisplay } = healthSummary
     ? additionalChecks
       ? {
-          successCount:
-            healthSummary.successCount +
-            additionalChecks.filter((c) => c.status === 'success').length,
           totalCount: healthSummary.totalCount + additionalChecks.length,
           shouldDisplay: healthSummary.shouldDisplay || additionalChecks.length > 0,
         }
       : healthSummary
     : {
-        successCount: allChecks.filter((check) => check.status === 'success').length,
         totalCount: allChecks.length,
         shouldDisplay: allChecks && allChecks.length > 0,
       };
 
-  const displayStatus: StatusType = additionalChecks
-    ? allChecks.some((c) => c.status === 'failure')
-      ? 'failure'
-      : allChecks.some((c) => c.status === 'pending')
-        ? 'pending'
-        : allChecks.every((c) => c.status === 'success')
-          ? 'success'
-          : 'unknown'
-    : status || 'unknown';
+  const isAlwaysExpanded = variant === 'always-expanded';
 
-  // Auto-expand if less than 3 checks
+  // Auto-expand if less than 3 checks (collapsible variant only)
   const shouldAutoExpand = totalCount < 3;
   const [isExpanded, setIsExpanded] = useState(shouldAutoExpand);
 
@@ -66,17 +62,22 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({
     setIsExpanded(!isExpanded);
   };
 
+  const showDetails = isAlwaysExpanded || isExpanded;
+
   return (
     <div className="health-summary">
-      <div className="health-header" onClick={handleClick}>
-        <StatusIcon phase={displayStatus} type="health" />
-        <span className="health-count">
-          {successCount}/{totalCount} Checks
-        </span>
-        <span className="health-toggle">{isExpanded ? <FiChevronUp /> : <FiChevronDown />}</span>
-      </div>
+      {isAlwaysExpanded ? (
+        <div className="health-header health-header--static">
+          <span className="health-count">Checks</span>
+        </div>
+      ) : (
+        <div className="health-header" onClick={handleClick}>
+          <span className="health-count">{headerLabel}</span>
+          <span className="health-toggle">{isExpanded ? <FiChevronUp /> : <FiChevronDown />}</span>
+        </div>
+      )}
 
-      {isExpanded && (
+      {showDetails && (
         <div className="health-details">
           {primaryChecksTitle && (
             <div className="health-subheading">

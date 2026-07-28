@@ -31,6 +31,10 @@ export interface CommitInfoProps {
   primaryChecksTitleTooltip?: string;
   mergeTimeAgo?: string;
   prTooltip?: PrTooltip | null;
+  // Presentation variant forwarded to the rendered HealthSummary. The proposed
+  // group uses 'always-expanded' so its checks are always shown; others default
+  // to the collapsible disclosure.
+  checksVariant?: 'collapsible' | 'always-expanded';
 }
 
 const CommitInfo: React.FC<CommitInfoProps> = ({
@@ -54,6 +58,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
   primaryChecksTitleTooltip,
   mergeTimeAgo,
   prTooltip,
+  checksVariant = 'collapsible',
 }) => {
   const [showDeploymentTooltip, setShowDeploymentTooltip] = useState(false);
   const [showCodeTooltip, setShowCodeTooltip] = useState(false);
@@ -258,6 +263,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
             additionalChecksTitleTooltip={additionalChecksTitleTooltip}
             primaryChecksTitle={primaryChecksTitle}
             primaryChecksTitleTooltip={primaryChecksTitleTooltip}
+            variant={checksVariant}
           />
         )}
     </div>
