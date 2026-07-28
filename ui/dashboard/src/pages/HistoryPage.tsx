@@ -1,12 +1,13 @@
 import React, { useEffect, useCallback } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router';
 import HistoryView from '@lib/components/HistoryView/HistoryView';
 import type { CellSelection } from '@lib/components/HistoryView/HistoryView';
 import { PromotionStrategyStore } from '../stores/PromotionStrategyStore';
+import { useNavigateWithParams } from '../hooks/useNavigateWithParams';
 
 const HistoryPage: React.FC = () => {
   const { namespace, name } = useParams();
-  const navigate = useNavigate();
+  const navigate = useNavigateWithParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const { items, fetchItems } = PromotionStrategyStore();
 
