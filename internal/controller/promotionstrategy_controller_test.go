@@ -5902,13 +5902,14 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"ctp-1", "ctp-2"}))
 
-			// Second call immediately - both disagreements are unchanged, so neither
-			// enqueues again
+			// Second call immediately - both disagreements are unchanged and within the
+			// rate-limit window, so neither enqueues immediately (each defers to a single
+			// scheduled delayed retry instead, tracked independently per CTP).
 			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"ctp-1", "ctp-2"}))
 		})
 
-		It("should skip a consumed disagreement while allowing a fresh CTP through", func() {
+		It("should rate limit one CTP while allowing a fresh CTP through", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
 			ctp1 := makeLaggingCTP("ctp-1")
@@ -5918,8 +5919,9 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{ctp1, makeTargetCTP()})
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"ctp-1"}))
 
-			// Immediately call again with both CTPs: ctp-1's disagreement is already
-			// consumed, ctp-2's is fresh and enqueues immediately.
+			// Immediately call again with both CTPs: ctp-1 is inside its rate-limit
+			// window, so it does not enqueue immediately (it defers to a scheduled
+			// delayed retry); ctp-2 has never been enqueued and goes through right away.
 			time.Sleep(100 * time.Millisecond)
 			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{ctp1, ctp2, makeTargetCTP()})
 
