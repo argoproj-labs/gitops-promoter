@@ -40,10 +40,6 @@ type Info struct {
 	Platform  string
 }
 
-func (v Info) String() string {
-	return v.Version
-}
-
 // Get returns the version information for the current binary.
 func Get() Info {
 	return Info{
