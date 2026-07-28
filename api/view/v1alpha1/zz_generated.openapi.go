@@ -6219,7 +6219,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebhookReceiverConfigurat
 				Properties: map[string]spec.Schema{
 					"strict": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Strict disables the backward-compatible bypass that accepts webhook deliveries when no matching GitRepository is found for the payload repository identity, when an ScmProvider Secret cannot be resolved, or when no matching Secret configures webhookSecret. When true, the receiver rejects those deliveries instead of processing them unverified.",
+							Description: "Strict controls fail-closed behavior for webhook signature verification. When false (default), verification is per matching ScmProvider: providers whose Secret configures webhookSecret must pass signature checks; providers without webhookSecret, unresolvable Secrets, and missing matching GitRepositories are skipped so the delivery may still be processed. When true, missing repository identity, missing matching GitRepository, unresolvable ScmProvider Secret, or absence of webhookSecret on matching Secrets rejects the delivery instead of processing it unverified.",
 							Default:     false,
 							Type:        []string{"boolean"},
 							Format:      "",
