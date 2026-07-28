@@ -120,6 +120,35 @@ local_resource(
 # Deploy the controller using kustomize
 k8s_yaml(kustomize('config/default'))
 
+# Promoter CRD names (must stay in sync with config/crd/kustomization.yaml).
+promoter_crds = [
+    'argocdcommitstatuses.promoter.argoproj.io',
+    'changetransferpolicies.promoter.argoproj.io',
+    'clusterscmproviders.promoter.argoproj.io',
+    'commitstatuses.promoter.argoproj.io',
+    'controllerconfigurations.promoter.argoproj.io',
+    'gitcommitstatuses.promoter.argoproj.io',
+    'gitrepositories.promoter.argoproj.io',
+    'promotionstrategies.promoter.argoproj.io',
+    'pullrequests.promoter.argoproj.io',
+    'revertcommits.promoter.argoproj.io',
+    'scheduledcommitstatuses.promoter.argoproj.io',
+    'scmproviders.promoter.argoproj.io',
+    'timedcommitstatuses.promoter.argoproj.io',
+    'webrequestcommitstatuses.promoter.argoproj.io',
+]
+
+promoter_crd_objects = [
+    crd + ':customresourcedefinition' for crd in promoter_crds
+]
+
+# Tilt marks CRD resources ready as soon as apply succeeds, not when the
+# Established condition is true. Apply ControllerConfiguration in a separate
+# step after kubectl wait, or the mapper can fail with "no matches for kind".
+wait_for_crds_cmd = 'kubectl wait --for=condition=Established --timeout=120s ' + ' '.join([
+    'crd/' + crd for crd in promoter_crds
+])
+
 # Configure the controller resource
 k8s_resource(
     'promoter-controller-manager',
@@ -134,28 +163,31 @@ k8s_resource(
 )
 
 k8s_resource(
-    new_name='cluster-objects',
+    new_name='cluster-crds',
     resource_deps=['generate-manifests'],
     labels=['promoter'],
+    pod_readiness='ignore',
+    objects=['promoter-system:namespace'] + promoter_crd_objects,
+)
+
+local_resource(
+    'wait-for-crds',
+    cmd=wait_for_crds_cmd,
+    resource_deps=['cluster-crds'],
+    labels=['promoter'],
+)
+
+k8s_resource(
+    new_name='cluster-objects',
+    resource_deps=['wait-for-crds'],
+    labels=['promoter'],
+    pod_readiness='ignore',
     objects=[
         'promoter-controller-manager:serviceaccount',
         'promoter-manager-role:clusterrole',
         'promoter-manager-rolebinding:clusterrolebinding',
         'promoter-leader-election-role:role',
         'promoter-leader-election-rolebinding:rolebinding',
-        'promoter-system:namespace',
-        'argocdcommitstatuses.promoter.argoproj.io:customresourcedefinition',
-        'changetransferpolicies.promoter.argoproj.io:customresourcedefinition',
-        'clusterscmproviders.promoter.argoproj.io:customresourcedefinition',
-        'commitstatuses.promoter.argoproj.io:customresourcedefinition',
-        'controllerconfigurations.promoter.argoproj.io:customresourcedefinition',
-        'gitcommitstatuses.promoter.argoproj.io:customresourcedefinition',
-        'gitrepositories.promoter.argoproj.io:customresourcedefinition',
-        'promotionstrategies.promoter.argoproj.io:customresourcedefinition',
-        'pullrequests.promoter.argoproj.io:customresourcedefinition',
-        'revertcommits.promoter.argoproj.io:customresourcedefinition',
-        'scmproviders.promoter.argoproj.io:customresourcedefinition',
-        'timedcommitstatuses.promoter.argoproj.io:customresourcedefinition',
         'promoter-argocdcommitstatus-editor-role:clusterrole',
         'promoter-argocdcommitstatus-viewer-role:clusterrole',
         'promoter-clusterscmprovider-admin-role:clusterrole',
@@ -174,5 +206,5 @@ k8s_resource(
         'promoter-timedcommitstatus-viewer-role:clusterrole',
         'promoter-proxy-rolebinding:clusterrolebinding',
         'promoter-controller-configuration:controllerconfiguration',
-    ]
+    ],
 )
