@@ -60,6 +60,18 @@ export interface Check {
   url?: string;
 }
 
+/**
+ * State-aware tooltip descriptor for the active PR indicator, derived in
+ * enrichment ({@link EnrichedEnvDetails.activePrTooltip}). `label` is the
+ * verb the tooltip renders (`merged` or `opened`); `time` is the matching
+ * RFC 3339 timestamp (merge time when merged, creation time when open),
+ * formatted at render time via `formatDate`.
+ */
+export interface PrTooltip {
+  label: 'merged' | 'opened';
+  time: Rfc3339DateTime;
+}
+
 export interface EnrichedEnvDetails {
   // Environment info
   branch: string;
@@ -78,6 +90,18 @@ export interface EnrichedEnvDetails {
   activeStatus: 'success' | 'failure' | 'pending' | 'unknown';
   activePrUrl: string | null;
   activePrNumber: number | null;
+  /** Active PR creation time. RFC 3339 for `formatDate`; null when absent. */
+  activePrCreationTime: Rfc3339DateTime | null;
+  /** Active PR merge time. RFC 3339 for `formatDate`; null when absent. */
+  activePrMergeTime: Rfc3339DateTime | null;
+  /** Raw active PR `state` from the CRD (e.g. `merged`, `open`, or `""`). */
+  activePrState: string | null;
+  /**
+   * Derived merged-vs-open descriptor for the active PR tooltip, or null when
+   * there is no active PR. Merged when `state === 'merged'` or (`state` is
+   * empty and a merge time is present); otherwise open.
+   */
+  activePrTooltip: PrTooltip | null;
 
   activeReferenceCommit: ReferenceCommit | null;
   activeReferenceCommitUrl: string | null;

@@ -6,6 +6,7 @@ import {
   FaHeart,
   FaHeartBroken,
 } from 'react-icons/fa';
+import { BsDashCircleDotted } from 'react-icons/bs';
 import './StatusIcon.scss';
 
 export type StatusType = 'promoted' | 'pending' | 'failure' | 'unknown' | 'success';
@@ -32,7 +33,7 @@ export const StatusIcon: React.FC<{ phase: StatusType; type?: 'status' | 'health
       case 'failure':
         return <FaTimesCircle className={iconClass} />;
       default:
-        return <FaCircleNotch className={iconClass} />;
+        return <BsDashCircleDotted className={iconClass} />;
     }
   }
 

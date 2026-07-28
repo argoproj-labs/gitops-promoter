@@ -105,6 +105,7 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                     prUrl={env.activePrUrl}
                     prNumber={env.activePrNumber?.toString()}
                     mergeTimeAgo={mergeTimeAgo}
+                    prTooltip={env.activePrTooltip}
                   />
 
                   {isProcessing ? (

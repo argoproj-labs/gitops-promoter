@@ -4,9 +4,11 @@ import type {
   BranchCommitStatus,
   Commit,
   Environment,
+  EnvironmentPullRequest,
   PromotionStrategy,
   Check,
   EnrichedEnvDetails,
+  PrTooltip,
   PromotionPhase,
   ReferenceCommit,
   RelativeTimeAgo,
@@ -51,6 +53,23 @@ function extractReferenceCommitData(dryCommit: Commit): null | ReferenceCommit {
   const url = getCommitUrl(referenceCommit.repoURL || '', referenceCommit.sha || '');
 
   return { sha, author, subject, body, date, url };
+}
+
+// Derive the state-aware tooltip descriptor for a PR indicator.
+// Merged when state === 'merged', or when state is empty/falsy but a merge
+// time is present (the externallyMergedOrClosed case). Otherwise open.
+// Merged uses prMergeTime; open uses prCreationTime. Returns null only when
+// no PR or no usable timestamp exists, so callers never render a blank tooltip.
+function derivePrTooltip(pr: EnvironmentPullRequest | null): PrTooltip | null {
+  if (!pr) {
+    return null;
+  }
+  const state = pr.state || '';
+  const isMerged = state === 'merged' || (!state && !!pr.prMergeTime);
+  if (isMerged) {
+    return pr.prMergeTime ? { label: 'merged', time: pr.prMergeTime } : null;
+  }
+  return pr.prCreationTime ? { label: 'opened', time: pr.prCreationTime } : null;
 }
 
 function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnvDetails {
@@ -118,6 +137,11 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
     activeStatus: getHealthStatus(activeChecks),
     activePrUrl: activePr?.url || null,
     activePrNumber: activePr?.id ? parseInt(activePr.id, 10) : null,
+    // RFC 3339 passthrough; format at render time via formatDate.
+    activePrCreationTime: activePr?.prCreationTime || null,
+    activePrMergeTime: activePr?.prMergeTime || null,
+    activePrState: activePr?.state ?? null,
+    activePrTooltip: derivePrTooltip(activePr),
     activeCommitSubject: activeCommitInfo.subject || '-',
     activeCommitMessage: extractBodyPreTrailer(activeCommitInfo.body || '-'),
     activeCommitAuthor: extractNameOnly(activeCommitInfo.author || '-'),

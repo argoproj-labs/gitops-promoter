@@ -7,7 +7,8 @@ import React, { useState, useRef, useCallback } from 'react';
 import TimeAgo from './TimeAgo';
 import HealthSummary from './HealthSummary';
 import './CommitInfo.scss';
-import { ReferenceCommit } from '@shared/types/promotion';
+import { PrTooltip, ReferenceCommit } from '@shared/types/promotion';
+import { formatDate } from '@shared/utils/util';
 
 export interface CommitInfoProps {
   title?: string;
@@ -29,6 +30,7 @@ export interface CommitInfoProps {
   primaryChecksTitle?: string;
   primaryChecksTitleTooltip?: string;
   mergeTimeAgo?: string;
+  prTooltip?: PrTooltip | null;
 }
 
 const CommitInfo: React.FC<CommitInfoProps> = ({
@@ -51,6 +53,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
   primaryChecksTitle,
   primaryChecksTitleTooltip,
   mergeTimeAgo,
+  prTooltip,
 }) => {
   const [showDeploymentTooltip, setShowDeploymentTooltip] = useState(false);
   const [showCodeTooltip, setShowCodeTooltip] = useState(false);
@@ -216,7 +219,13 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
         <h4 className="commit-group-title">
           {title}
           {prUrl && prNumber && (
-            <Tooltip content={`Open PR #${prNumber} on GitHub${isActive ? ' (Merged)' : ''}`}>
+            <Tooltip
+              content={
+                prTooltip
+                  ? `${prTooltip.label} ${formatDate(prTooltip.time)}`
+                  : `Open PR #${prNumber} on GitHub`
+              }
+            >
               <a
                 href={prUrl}
                 target="_blank"
