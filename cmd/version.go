@@ -19,7 +19,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/argoproj-labs/gitops-promoter/common"
+	"github.com/argoproj-labs/gitops-promoter/internal/version"
 	"github.com/spf13/cobra"
 )
 
@@ -30,13 +30,13 @@ func newVersionCommand() *cobra.Command {
 		Use:   "version",
 		Short: "Print version information",
 		Run: func(cmd *cobra.Command, args []string) {
-			v := common.GetVersion()
+			v := version.Get()
 			if short {
 				fmt.Fprintln(cmd.OutOrStdout(), v.Version)
 				return
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "%s: %s\n", common.CommandCLI, v.Version)
+			fmt.Fprintf(cmd.OutOrStdout(), "%s: %s\n", version.CommandCLI, v.Version)
 			fmt.Fprintf(cmd.OutOrStdout(), "  BuildDate: %s\n", v.BuildDate)
 			fmt.Fprintf(cmd.OutOrStdout(), "  GoVersion: %s\n", v.GoVersion)
 			fmt.Fprintf(cmd.OutOrStdout(), "  Compiler: %s\n", v.Compiler)

@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package common
+package version
 
 import (
 	"fmt"
@@ -31,8 +31,8 @@ var (
 	buildDate = "unknown"
 )
 
-// Version contains gitops-promoter version information.
-type Version struct {
+// Info contains gitops-promoter version information.
+type Info struct {
 	Version   string
 	BuildDate string
 	GoVersion string
@@ -40,13 +40,13 @@ type Version struct {
 	Platform  string
 }
 
-func (v Version) String() string {
+func (v Info) String() string {
 	return v.Version
 }
 
-// GetVersion returns the version information for the current binary.
-func GetVersion() Version {
-	return Version{
+// Get returns the version information for the current binary.
+func Get() Info {
+	return Info{
 		Version:   version,
 		BuildDate: buildDate,
 		GoVersion: runtime.Version(),

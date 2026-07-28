@@ -14,27 +14,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package common
+package version
 
 import (
-	"runtime"
 	"testing"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
-func TestGetVersionDefaults(t *testing.T) {
+func TestVersion(t *testing.T) {
 	t.Parallel()
 
-	v := GetVersion()
-	if v.Version != "dev" {
-		t.Fatalf("expected default version dev, got %q", v.Version)
-	}
-	if v.BuildDate != "unknown" {
-		t.Fatalf("expected default buildDate unknown, got %q", v.BuildDate)
-	}
-	if v.GoVersion != runtime.Version() {
-		t.Fatalf("expected GoVersion %q, got %q", runtime.Version(), v.GoVersion)
-	}
-	if v.Compiler != runtime.Compiler {
-		t.Fatalf("expected Compiler %q, got %q", runtime.Compiler, v.Compiler)
-	}
+	RegisterFailHandler(Fail)
+
+	c, _ := GinkgoConfiguration()
+
+	RunSpecs(t, "Version Suite", c)
 }
