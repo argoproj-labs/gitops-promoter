@@ -546,6 +546,31 @@ func newAPIServerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	return cmd
 }
 
+func newVersionCommand() *cobra.Command {
+	var short bool
+
+	cmd := &cobra.Command{
+		Use:   "version",
+		Short: "Print version information",
+		Run: func(cmd *cobra.Command, args []string) {
+			v := version.Get()
+			if short {
+				fmt.Fprintln(cmd.OutOrStdout(), v.Version)
+				return
+			}
+
+			fmt.Fprintf(cmd.OutOrStdout(), "%s: %s\n", version.CommandCLI, v.Version)
+			fmt.Fprintf(cmd.OutOrStdout(), "  BuildDate: %s\n", v.BuildDate)
+			fmt.Fprintf(cmd.OutOrStdout(), "  GoVersion: %s\n", v.GoVersion)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Compiler: %s\n", v.Compiler)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Platform: %s\n", v.Platform)
+		},
+	}
+
+	cmd.Flags().BoolVar(&short, "short", false, "Print just the version number")
+	return cmd
+}
+
 func newCommand() *cobra.Command {
 	var clientConfig clientcmd.ClientConfig
 
