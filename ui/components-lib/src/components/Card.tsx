@@ -1,5 +1,5 @@
 import { FaServer } from 'react-icons/fa';
-import { StatusIcon, StatusType } from './StatusIcon';
+import { StatusIcon, StatusType, statusLabel } from './StatusIcon';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import CommitInfo from './CommitInfo';
 import {
@@ -89,6 +89,10 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                       <div>
                         <span className="env-card__env-name">{branch}</span>
                       </div>
+                      <span className="env-card__health-chip">
+                        <StatusIcon phase={env.activeStatus as StatusType} type="health" />
+                        {statusLabel(env.activeStatus as StatusType)}
+                      </span>
                     </div>
                   </div>
 

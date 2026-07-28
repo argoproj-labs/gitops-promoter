@@ -45,6 +45,17 @@
   color: $argo-color-gray-7;
 }
 
+.env-card__health-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 12px;
+  font-family: 'Heebo', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: $argo-color-gray-7;
+}
+
 .env-card__proposed-loading-bar {
   width: 100%;
   height: 2px;

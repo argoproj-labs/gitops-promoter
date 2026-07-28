@@ -1,7 +1,7 @@
 import { GoArchive } from 'react-icons/go';
 import { BsBraces } from 'react-icons/bs';
 import { GoGitPullRequest } from 'react-icons/go';
-import { StatusIcon, StatusType } from './StatusIcon';
+import { StatusType } from './StatusIcon';
 import { Tooltip } from './Tooltip';
 import React, { useState, useRef, useCallback } from 'react';
 import TimeAgo from './TimeAgo';
@@ -215,7 +215,6 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
         </>
       )}
       <div className="commit-group-header">
-        <StatusIcon phase={status} type="health" />
         <h4 className="commit-group-title">
           {title}
           {prUrl && prNumber && (
