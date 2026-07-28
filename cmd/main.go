@@ -32,12 +32,12 @@ import (
 
 	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/cmd/demo"
-	"github.com/argoproj-labs/gitops-promoter/internal/version"
 	"github.com/argoproj-labs/gitops-promoter/internal/apiserver"
 	promotercache "github.com/argoproj-labs/gitops-promoter/internal/cache"
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	"github.com/argoproj-labs/gitops-promoter/internal/version"
 	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
 
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -555,15 +555,12 @@ func newVersionCommand() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			v := version.Get()
 			if short {
-				fmt.Fprintln(cmd.OutOrStdout(), v.Version)
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), v.Version)
 				return
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "%s: %s\n", version.CommandCLI, v.Version)
-			fmt.Fprintf(cmd.OutOrStdout(), "  BuildDate: %s\n", v.BuildDate)
-			fmt.Fprintf(cmd.OutOrStdout(), "  GoVersion: %s\n", v.GoVersion)
-			fmt.Fprintf(cmd.OutOrStdout(), "  Compiler: %s\n", v.Compiler)
-			fmt.Fprintf(cmd.OutOrStdout(), "  Platform: %s\n", v.Platform)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s: %s\n  BuildDate: %s\n  GoVersion: %s\n  Compiler: %s\n  Platform: %s\n",
+				version.CommandCLI, v.Version, v.BuildDate, v.GoVersion, v.Compiler, v.Platform)
 		},
 	}
 
