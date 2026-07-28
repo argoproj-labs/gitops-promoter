@@ -32,6 +32,7 @@ import (
 
 	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/cmd/demo"
+	"github.com/argoproj-labs/gitops-promoter/common"
 	"github.com/argoproj-labs/gitops-promoter/internal/apiserver"
 	promotercache "github.com/argoproj-labs/gitops-promoter/internal/cache"
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
@@ -555,8 +556,9 @@ func newCommand() *cobra.Command {
 	}
 
 	cmd := &cobra.Command{
-		Use:   "promoter",
-		Short: "GitOps Promoter",
+		Use:     "promoter",
+		Short:   "GitOps Promoter",
+		Version: common.GetVersion().Version,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			// Create the zap logger
 			zapLogger := zap.New(zap.UseFlagOptions(&opts))
@@ -569,6 +571,7 @@ func newCommand() *cobra.Command {
 			klog.SetLogger(zapLogger)
 		},
 	}
+	cmd.SetVersionTemplate(common.CommandCLI + ": {{.Version}}\n")
 
 	// Zap only operates on go-type flags. Cobra doesn't give us direct access to those flags.
 	// So we apply the zap flags to a temp go flags set and then transfer them to the cobra flags.
@@ -584,6 +587,7 @@ func newCommand() *cobra.Command {
 	cmd.AddCommand(newDashboardCommand(clientConfig))
 	cmd.AddCommand(newAPIServerCommand(clientConfig))
 	cmd.AddCommand(demo.NewDemoCommand())
+	cmd.AddCommand(newVersionCommand())
 	return cmd
 }
 
