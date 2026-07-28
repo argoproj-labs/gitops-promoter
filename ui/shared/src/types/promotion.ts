@@ -110,6 +110,8 @@ export interface EnrichedEnvDetails {
   proposedSha: string;
   prNumber: number | null;
   prUrl: string | null;
+  /** Derived merged-vs-open tooltip for the proposed-card PR link; null when no PR. */
+  prTooltip: PrTooltip | null;
   proposedDryCommitAuthor: string;
   proposedDryCommitSubject: string;
   proposedDryCommitBody: string;

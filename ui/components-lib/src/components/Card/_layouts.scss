@@ -12,6 +12,19 @@ $extension-card-width: 400px;
 $extension-card-gap: 30px;
 $extension-wrapper-gap: 20px;
 
+// Visible card chrome (white box). Applied to whichever element is the visible
+// card in the active layout: the inner active/proposed cards in the row layout,
+// or the single `.env-card` grid box in the stacked layout.
+@mixin card-chrome {
+  background: white;
+  border: 1px solid $argo-color-gray-4;
+  border-radius: 4px;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.1),
+    0 1px 2px rgba(0, 0, 0, 0.06);
+  box-sizing: border-box;
+}
+
 @mixin vertical-layout {
   .env-cards-container {
     display: flex;
@@ -34,7 +47,9 @@ $extension-wrapper-gap: 20px;
     display: flex;
     margin: 0;
     width: max-content;
-    align-items: stretch;
+    // Each column is as tall as its own content; do not stretch shorter columns
+    // to match the tallest, which would leave dead space under short cards.
+    align-items: flex-start;
     justify-content: safe center;
     gap: $card-gap-vertical;
     flex: 0 0 auto;
@@ -45,30 +60,69 @@ $extension-wrapper-gap: 20px;
     display: flex;
   }
 
+  // Row layout: two detached cards stacked flush in a column with no gap
+  // between them. `.env-card` is a bare column (no chrome); the chrome lives on
+  // each child card so their left/right edges align and the two cards sit
+  // directly against each other.
   .env-card {
     flex: 1;
     width: 425px;
-    min-height: 400px;
     display: flex;
     flex-direction: column;
-
-    &.single-commit-group {
-      min-height: 250px;
-    }
+    gap: 0;
+    // No fixed min-height: the column fits its content. The old 400px minimum
+    // forced a tall floor that piled up as dead space below the last element.
   }
 
-  .env-card.single-commit-group {
-    min-height: 300px;
+  // Active card: a detached white box carrying the standard card chrome.
+  .active-card {
+    @include card-chrome;
+    display: flex;
+    flex-direction: column;
+    padding: 24px;
   }
 
-  .commit-group.proposed {
-    flex: 1;
+  // Proposed card: the in-flight promotion as its own detached box, edges
+  // aligned with the active card above it. Same chrome, overridden to the blue
+  // accent border the design calls for.
+  .proposed-changes-card {
+    @include card-chrome;
+    padding: 24px;
+    border: 1px solid $argo-running;
   }
 
+  // The "preparing newer commit" placeholder occupies the proposed slot while a
+  // promotion is in flight; give it the same detached-card chrome so it doesn't
+  // read as bare text on the environment background.
+  .commit-group.env-card__proposed-loading {
+    @include card-chrome;
+    padding: 24px;
+  }
+
+  // Conjoin the active card with whatever follows it (a proposed card or the
+  // loading placeholder) so the two cards sit flush and read as conjoined:
+  // keep both borders intact and only square the corners where they meet.
+  // Scoped with :has(+ ...) / sibling selectors so the active card keeps all
+  // four rounded corners when it stands alone (the fully promoted / success
+  // case).
+  .active-card:has(+ .proposed-changes-card),
+  .active-card:has(+ .commit-group.env-card__proposed-loading) {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  .active-card + .proposed-changes-card,
+  .active-card + .commit-group.env-card__proposed-loading {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+  }
+
+  // Align the inter-environment arrow with the active card's commit area rather
+  // than the very top of the (now content-fit, top-aligned) column.
   .arrow-separator {
     display: flex;
-    align-items: start;
-    padding-top: 150px;
+    align-items: flex-start;
+    padding-top: 90px;
   }
 }
 
@@ -101,25 +155,41 @@ $extension-wrapper-gap: 20px;
     margin-bottom: $card-gap-horizontal;
   }
 
+  // Stacked layout: `.env-card` is the single visible card (grid box) wrapping
+  // the active content and the bleed-out proposed panel.
   .env-card {
+    @include card-chrome;
     display: grid;
     grid-template-columns: 1fr 1fr;
     grid-template-rows: auto 1fr;
     max-width: 100%;
-    box-sizing: border-box;
+    padding: $card-padding;
 
     &.single-commit-group {
       grid-template-columns: 1fr;
       max-width: 70%;
       margin: 0;
-      min-height: 250px;
     }
+  }
+
+  // Unwrap the active card so its children (title, active commit group,
+  // current-status) participate directly in the `.env-card` grid, preserving
+  // the pre-wrapper grid placement. The card carries no chrome here.
+  .active-card {
+    display: contents;
   }
 
   .env-card__title {
     grid-column: 1 / -1;
     grid-row: 1;
     margin-bottom: 20px;
+  }
+
+  // Current-status disclosure sits under the active commit group in column 1.
+  .env-card__current-status {
+    grid-column: 1;
+    min-width: 0;
+    padding-right: 16px;
   }
 
   .commit-group:not(.proposed):not(.env-card__proposed-loading) {
@@ -129,7 +199,11 @@ $extension-wrapper-gap: 20px;
     padding-right: 16px;
   }
 
-  .commit-group.proposed,
+  // Stacked layout: the proposed card is not a detached card here. It occupies
+  // the second grid column, bleeding out to the environment card's right edge.
+  // Suppress the row-layout detached chrome (border/radius/shadow/bg/margin)
+  // and restore the bleed-out panel treatment.
+  .proposed-changes-card,
   .commit-group.env-card__proposed-loading {
     grid-column: 2;
     grid-row: 1 / -1;
@@ -139,9 +213,10 @@ $extension-wrapper-gap: 20px;
     margin-bottom: -$card-padding;
     padding: 12px;
     padding-top: 24px;
-    border-radius: 8px 0 0 8px;
+    border: 0;
     border-left: 3px solid $argo-running;
-    border-top: 0;
+    border-radius: 4px 0 0 4px;
+    box-shadow: none;
     background: linear-gradient(135deg, rgba(13, 173, 234, 0.06) 0%, rgba(13, 173, 234, 0.03) 100%);
     min-width: 0;
   }

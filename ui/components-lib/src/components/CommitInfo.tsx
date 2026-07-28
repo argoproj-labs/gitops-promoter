@@ -141,6 +141,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
         <div className={`commit-info ${getStatusClass(type)}`}>
           <div className="commit-content">
             <div className="commit-header">
+              <span className="commit-icon-wrapper">{getIcon(iconType)}</span>
               {renderSha(commit, commitUrl)}
               <span
                 className="commit-subject"
@@ -168,7 +169,6 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
               </div>
             )}
           </div>
-          <div className="commit-icon-wrapper">{getIcon(iconType)}</div>
         </div>
       );
     } else {
@@ -176,6 +176,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
         <div className={`commit-info ${getStatusClass(type)}`}>
           <div className="commit-content">
             <div className="commit-header">
+              <span className="commit-icon-wrapper">{getIcon(iconType)}</span>
               <span className="commit-sha">N/A</span>
               <span className="commit-subject"></span>
             </div>
@@ -183,7 +184,6 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
               <span className="commit-author"></span>
             </div>
           </div>
-          <div className="commit-icon-wrapper">{getIcon(iconType)}</div>
         </div>
       );
     }
@@ -192,6 +192,30 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
   if (!title) {
     return (
       <div className="commits-section">
+        {prUrl && prNumber && (
+          <div className="commit-group-header">
+            <h4 className="commit-group-title">
+              <Tooltip
+                content={
+                  prTooltip
+                    ? `${prTooltip.label} ${formatDate(prTooltip.time)}`
+                    : `Open PR #${prNumber} on GitHub`
+                }
+              >
+                <a
+                  href={prUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`pr-indicator ${isActive ? 'pr-merged' : ''}`}
+                >
+                  <GoGitPullRequest className="pr-icon" />
+                  PR #{prNumber}
+                  {mergeTimeAgo && <span className="pr-merge-time">{mergeTimeAgo}</span>}
+                </a>
+              </Tooltip>
+            </h4>
+          </div>
+        )}
         {renderCommit(deploymentCommit, 'deployment', deploymentCommitUrl)}
         {codeCommit && renderCommit(codeCommit, 'code', codeCommitUrl || '')}
       </div>

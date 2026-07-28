@@ -161,6 +161,7 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
         : getHealthStatus(proposedChecks),
     prNumber: pullRequest?.id ? parseInt(pullRequest.id, 10) : null,
     prUrl: pullRequest?.url || null,
+    prTooltip: derivePrTooltip(pullRequest ?? null),
     proposedDryCommitSubject: proposedDry.subject || '-',
     proposedDryCommitBody: extractBodyPreTrailer(proposedDry.body || '-'),
     proposedDryCommitAuthor: extractNameOnly(proposedDry.author || '-'),

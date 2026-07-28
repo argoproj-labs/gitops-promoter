@@ -1,8 +1,7 @@
-import { FaServer } from 'react-icons/fa';
-import { StatusIcon, StatusType, statusLabel } from './StatusIcon';
+import { StatusIcon, StatusType } from './StatusIcon';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import CommitInfo from './CommitInfo';
-import HealthSummary from './HealthSummary';
+import ActiveCard from './ActiveCard';
+import ProposedChangesCard from './ProposedChangesCard';
 import {
   EnrichedEnvDetails,
   enrichFromEnvironments,
@@ -76,50 +75,20 @@ const Card: React.FC<CardProps> = ({ environments }) => {
             <React.Fragment key={env.branch}>
               <div className="env-card-column">
                 <div className={cardClassName}>
-                  <div
-                    className="env-card__title"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      position: 'relative',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center' }}>
-                      <FaServer className="env-card__icon" />
-                      <div>
-                        <span className="env-card__env-name">{branch}</span>
-                      </div>
-                      <span className="env-card__health-chip">
-                        <StatusIcon phase={env.activeStatus as StatusType} type="health" />
-                        {statusLabel(env.activeStatus as StatusType)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <CommitInfo
-                    title="Active"
+                  <ActiveCard
+                    branch={branch}
+                    activeStatus={env.activeStatus as StatusType}
                     deploymentCommit={activeDeploymentCommit}
                     codeCommit={env.activeReferenceCommit}
-                    isActive={true}
-                    status={env.activeStatus as StatusType}
                     deploymentCommitUrl={env.activeCommitUrl}
                     codeCommitUrl={env.activeReferenceCommitUrl}
                     prUrl={env.activePrUrl}
                     prNumber={env.activePrNumber?.toString()}
                     mergeTimeAgo={mergeTimeAgo}
                     prTooltip={env.activePrTooltip}
+                    checks={env.activeChecks}
+                    healthSummary={env.activeChecksSummary}
                   />
-
-                  <div className="env-card__current-status">
-                    <HealthSummary
-                      checks={env.activeChecks}
-                      title="Current status"
-                      healthSummary={env.activeChecksSummary}
-                      variant="collapsible"
-                      headerLabel="Current status"
-                    />
-                  </div>
 
                   {isProcessing ? (
                     <div className="commit-group env-card__proposed-loading">
@@ -137,20 +106,17 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                       </div>
                     </div>
                   ) : proposedStatus !== 'promoted' && proposedStatus !== 'success' ? (
-                    <CommitInfo
-                      title="Proposed"
+                    <ProposedChangesCard
                       deploymentCommit={proposedDeploymentCommit}
                       codeCommit={env.proposedReferenceCommit}
-                      isActive={false}
                       status={env.proposedStatus as StatusType}
-                      className="proposed"
                       deploymentCommitUrl={env.proposedDryCommitUrl}
                       codeCommitUrl={env.proposedReferenceCommitUrl}
                       checks={env.proposedChecks}
                       healthSummary={env.proposedChecksSummary}
-                      checksVariant="always-expanded"
                       prUrl={env.prUrl}
                       prNumber={env.prNumber?.toString()}
+                      prTooltip={env.prTooltip}
                     />
                   ) : null}
                 </div>

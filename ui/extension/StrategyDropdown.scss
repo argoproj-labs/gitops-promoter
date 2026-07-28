@@ -45,7 +45,7 @@
 
 .strategy-dropdown__control {
   width: 400px !important;
-  border-radius: 10px !important;
+  border-radius: 4px !important;
   min-height: 38px !important;
   background-color: white !important;
 
@@ -135,11 +135,11 @@
   cursor: pointer;
 
   &:first-child {
-    border-radius: 8px 0 0 8px;
+    border-radius: 4px 0 0 4px;
   }
 
   &:last-child {
-    border-radius: 0 8px 8px 0;
+    border-radius: 0 4px 4px 0;
     border-left: none;
   }
 

@@ -3,68 +3,24 @@
 
 @include layouts.vertical-layout;
 
-.env-card {
-  background: white;
-  padding: 24px;
-  flex-direction: column;
-  border-radius: 8px;
-  box-sizing: border-box;
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.1),
-    0 1px 2px rgba(0, 0, 0, 0.06);
-  border: 1px solid $argo-color-gray-4;
-  min-height: 270px;
-  transition: min-height 0.3s ease;
-  display: flex;
-  flex-direction: column;
-  max-height: fit-content;
-
-  &.single-commit-group {
-    min-height: 250px;
-  }
-}
-
-.env-card__title {
-  display: flex;
-  align-items: center;
-  font-weight: 600;
-  font-size: 18px;
-  margin-bottom: 15px;
-  color: $argo-color-gray-7;
-}
-
-.env-card__icon {
-  font-size: 18px;
-  color: $argo-color-gray-7;
-  margin-right: 12px;
-}
-
-.env-card__env-name {
-  font-weight: 600;
-  font-size: 18px;
-  color: $argo-color-gray-7;
-}
-
-.env-card__health-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: 12px;
+// Heebo is the typeface for the entire environment-card view; set it on the
+// root container so every descendant inherits it (individual elements may still
+// override size/weight/decoration).
+.env-cards-container {
   font-family: 'Heebo', sans-serif;
-  font-size: 13px;
-  font-weight: 500;
-  color: $argo-color-gray-7;
 }
 
-// "Current status" disclosure, rendered directly beneath the active commit
-// group. The shared .health-summary carries a negative top margin tuned for
-// its old in-commit-group placement; reset it here so the disclosure sits
-// normally in the card flow.
-.env-card__current-status {
-  .health-summary {
-    margin-top: 0;
-    margin-bottom: 0;
-  }
+// `.env-card` is a layout container only; the visible card chrome (bg, border,
+// radius, shadow, padding) is applied per-layout. In the row layout it is a bare
+// column with a gap and the chrome lives on the two child cards (`.active-card`
+// and `.proposed-changes-card`) so they read as two detached boxes; in the
+// stacked layout the chrome lives on `.env-card` itself, which is the single
+// grid box wrapping the active content and the bleed-out panel.
+.env-card {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  height: fit-content;
 }
 
 .env-card__proposed-loading-bar {
@@ -76,10 +32,24 @@
 }
 
 .env-card__proposed-loading-text {
+  // Mirrors .proposed-changes-card__progress: aligns under the title (past the
+  // 16px icon + 8px gap) and uses Argo Secondary at Body 13px.
   margin-top: 4px;
-  font-size: 0.75rem;
-  font-style: italic;
-  color: $argo-color-gray-7;
+  margin-left: 24px;
+  font-size: 13px;
+  font-weight: 400;
+  color: $argo-color-gray-3;
+}
+
+// The proposed-loading card is the placeholder for the real ProposedChangesCard,
+// so its heading matches that card's title (Heebo Heading 3, 14px/500/130%)
+// rather than the larger shared .commit-group-title. Scoped to this card only.
+.env-card__proposed-loading .commit-group-title {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: 0;
+  color: $argo-color-black;
 }
 
 @keyframes proposed-loading-pulse {
