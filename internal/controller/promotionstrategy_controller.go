@@ -72,7 +72,9 @@ type ctpEnqueueState struct {
 	// (note pushes have no webhooks), so a few prompt retries cover that race. Beyond
 	// them the periodic CTP requeue is the retry path. A changed pair resets the count.
 	lastPair enqueuePair
-	// pairAttempts counts enqueues for lastPair, capped at maxEnqueueAttemptsPerPair.
+	// pairAttempts counts enqueues for lastPair. The budget per distinct pair is one
+	// immediate enqueue plus maxEnqueueRetriesPerPair delayed retries, so it is
+	// exhausted once pairAttempts exceeds maxEnqueueRetriesPerPair.
 	pairAttempts      int
 	hasScheduledRetry bool
 }
@@ -91,6 +93,11 @@ type PromotionStrategyReconciler struct {
 	// Key is client.ObjectKey of the CTP. Protected by enqueueStateMutex.
 	enqueueStates     map[client.ObjectKey]*ctpEnqueueState
 	enqueueStateMutex sync.Mutex
+
+	// enqueueThreshold is the minimum spacing between enqueues of the same CTP.
+	// The zero value means the production default (defaultEnqueueThreshold); tests
+	// override it so retry behavior can be exercised without real 15s waits.
+	enqueueThreshold time.Duration
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
@@ -549,8 +556,11 @@ func (r *PromotionStrategyReconciler) startCleanupTimer() {
 				// Sweep on lastSeenTime, not lastEnqueueTime: CTPs with exhausted
 				// retries are deliberately not enqueued anymore, but they are still
 				// considered on every PromotionStrategy reconcile, which keeps
-				// lastSeenTime fresh. Only CTPs that stopped being reconciled entirely
-				// (deleted, or their PromotionStrategy is gone) go stale here.
+				// lastSeenTime fresh. Entries go stale here only when the enqueue
+				// decision stops considering the CTP — it was deleted, its
+				// PromotionStrategy is gone, or it converged with the target
+				// (harmless to sweep: a future disagreement re-arms from a fresh
+				// entry anyway).
 				if time.Since(state.lastSeenTime) > 1*time.Hour {
 					delete(r.enqueueStates, key)
 				}
@@ -569,8 +579,9 @@ func (r *PromotionStrategyReconciler) startCleanupTimer() {
 //     and changed nothing probably has nothing new to find; the few retries cover a git
 //     note landing shortly after the nudge (note pushes have no webhooks), and beyond
 //     them the periodic CTP requeue is the retry path.
-//   - Enqueues immediately when 15s have elapsed since the last enqueue
-//   - Schedules one delayed enqueue for when the 15s elapse
+//   - Enqueues immediately when the rate-limit threshold (15s by default) has elapsed
+//     since the last enqueue
+//   - Schedules one delayed enqueue for when the threshold elapses
 //   - Skips if a delayed enqueue is already scheduled
 //
 // A changed disagreement (a fetched note, a new target) resets the budget so it is
@@ -581,10 +592,15 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 	pair enqueuePair,
 ) {
 	const (
-		enqueueThreshold = 15 * time.Second
+		defaultEnqueueThreshold = 15 * time.Second
 		// One immediate enqueue plus this many delayed retries per disagreement.
 		maxEnqueueRetriesPerPair = 3
 	)
+
+	enqueueThreshold := r.enqueueThreshold
+	if enqueueThreshold <= 0 {
+		enqueueThreshold = defaultEnqueueThreshold
+	}
 
 	logger := log.FromContext(ctx)
 	now := time.Now()

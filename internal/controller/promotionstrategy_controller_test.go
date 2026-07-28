@@ -5655,9 +5655,10 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 	// Mutex locking pattern: After each call to enqueueOutOfSyncCTPs, tests acquire the lock,
 	// read enqueuedCTPs, then immediately release the lock before calling enqueueOutOfSyncCTPs
 	// again. This fine-grained locking is required because background timer goroutines need to
-	// acquire the lock to append to enqueuedCTPs during time.Sleep() calls. Using defer to hold
-	// the lock for an entire test would cause deadlock: the test would wait for timers to fire,
-	// but timers would block waiting for the lock that won't release until the test completes.
+	// acquire the lock to append to enqueuedCTPs while the test waits (Eventually/Consistently
+	// polling). Using defer to hold the lock for an entire test would cause deadlock: the test
+	// would wait for timers to fire, but timers would block waiting for the lock that won't
+	// release until the test completes.
 	Context("Enqueue decisions and rate limiting for enqueueOutOfSyncCTPs", func() {
 		// The target is the effective dry SHA (Note.DrySha if set, else Proposed.Dry.Sha)
 		// of the CTP with the newest proposed hydrated commit. A CTP is enqueued when its
@@ -5703,6 +5704,10 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			mutex := &sync.Mutex{}
 
 			reconciler := &PromotionStrategyReconciler{
+				// Shrink the rate-limit window from the 15s production default so
+				// delayed-retry behavior can be exercised without real 15s waits;
+				// the semantics under test are all threshold-relative.
+				enqueueThreshold: 500 * time.Millisecond,
 				EnqueueCTP: func(namespace, name string) {
 					mutex.Lock()
 					defer mutex.Unlock()
@@ -5817,33 +5822,39 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			}
 
 			// The immediate enqueue consumes the first slot of the disagreement's budget.
-			// Repeats within the 15s window defer to a single delayed retry.
+			// Repeats within the rate-limit window defer to a single delayed retry.
 			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
 			for range 3 {
-				time.Sleep(100 * time.Millisecond)
 				reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
 			}
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(HaveLen(1))
 
-			// Each 15s-spaced delayed retry covers a git note landing shortly after the
-			// previous nudge (note pushes have no webhooks). The budget allows 3 retries
-			// for the same unchanged disagreement.
+			// Each threshold-spaced delayed retry covers a git note landing shortly after
+			// the previous nudge (note pushes have no webhooks). The budget allows 3
+			// retries for the same unchanged disagreement.
 			for expected := 2; expected <= 4; expected++ {
-				time.Sleep(16 * time.Second)
-				Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(HaveLen(expected),
-					"delayed retry %d should have fired at the 15s floor", expected-1)
+				Eventually(func() []string {
+					return enqueuedNames(enqueuedCTPs, enqueueMutex)
+				}, 5*time.Second, 20*time.Millisecond).Should(HaveLen(expected),
+					"delayed retry %d should have fired at the threshold floor", expected-1)
 				reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
 			}
 
 			// The budget is exhausted: further owner-watch loops neither enqueue nor
-			// schedule retries. Under the previous fixed-15s semantics another enqueue
-			// would land inside this window — forever. The periodic CTP requeue is the
-			// retry path from here on.
-			time.Sleep(16 * time.Second)
-			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
-			time.Sleep(16 * time.Second)
-			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(HaveLen(4),
+			// schedule retries. Under the previous fixed-interval semantics another
+			// enqueue would land inside every window — forever. The periodic CTP requeue
+			// is the retry path from here on.
+			Consistently(func() []string {
+				return enqueuedNames(enqueuedCTPs, enqueueMutex)
+			}, 2*time.Second, 100*time.Millisecond).Should(HaveLen(4),
 				"an unchanged disagreement must stop retrying once its budget is exhausted")
+
+			// Even outside the rate-limit window, the exhausted budget blocks enqueues.
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			Consistently(func() []string {
+				return enqueuedNames(enqueuedCTPs, enqueueMutex)
+			}, time.Second, 100*time.Millisecond).Should(HaveLen(4),
+				"an exhausted disagreement must not re-enqueue even after the threshold elapses")
 		})
 
 		It("should re-arm when the disagreement changes, rate limited to one delayed enqueue", func() {
@@ -5861,16 +5872,21 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			// how many owner-watch loops repeat it.
 			lagging.Status.Proposed.Note.DrySha = "older999"
 			for range 5 {
-				time.Sleep(100 * time.Millisecond)
 				reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
 			}
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp"}),
 				"changed disagreement within the threshold must defer, not enqueue immediately")
 
-			// Wait for the single delayed enqueue to fire (15s + small buffer).
-			time.Sleep(16 * time.Second)
-			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp", "test-ctp"}),
+			// Wait for the single delayed enqueue to fire at the threshold, then confirm
+			// no further enqueue follows it.
+			Eventually(func() []string {
+				return enqueuedNames(enqueuedCTPs, enqueueMutex)
+			}, 5*time.Second, 20*time.Millisecond).Should(Equal([]string{"test-ctp", "test-ctp"}),
 				"exactly one delayed enqueue should fire for the changed disagreement")
+			Consistently(func() []string {
+				return enqueuedNames(enqueuedCTPs, enqueueMutex)
+			}, time.Second, 100*time.Millisecond).Should(HaveLen(2),
+				"no additional enqueue may fire without a new call presenting a disagreement")
 		})
 
 		It("should track disagreements per CTP independently", func() {
