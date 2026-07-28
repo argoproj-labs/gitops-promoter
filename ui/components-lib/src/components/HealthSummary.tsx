@@ -98,25 +98,23 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({
             <Tooltip key={index} content={check.description}>
               <div className="health-check-item">
                 <StatusIcon phase={check.status as StatusType} type="status" />
-                <span className="health-check-name">
-                  <span className="check-name-text">{check.name}</span>
-                  {check.description && (
-                    <span className="check-description-preview">
-                      &nbsp;—&nbsp;{check.description}
-                    </span>
+                <div className="health-check-body">
+                  {check.url ? (
+                    <a
+                      href={check.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="health-check-name-link"
+                    >
+                      {check.name}
+                    </a>
+                  ) : (
+                    <span className="check-name-text">{check.name}</span>
                   )}
-                </span>
-                {check.url && (
-                  <a
-                    href={check.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="health-check-link"
-                    title="View details"
-                  >
-                    View Details
-                  </a>
-                )}
+                  {check.description && (
+                    <span className="check-description">{check.description}</span>
+                  )}
+                </div>
               </div>
             </Tooltip>
           ))}
@@ -140,25 +138,23 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({
                 <Tooltip key={`additional-${index}`} content={check.description}>
                   <div className="health-check-item">
                     <StatusIcon phase={check.status as StatusType} type="status" />
-                    <span className="health-check-name">
-                      <span className="check-name-text">{check.name}</span>
-                      {check.description && (
-                        <span className="check-description-preview">
-                          &nbsp;—&nbsp;{check.description}
-                        </span>
+                    <div className="health-check-body">
+                      {check.url ? (
+                        <a
+                          href={check.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="health-check-name-link"
+                        >
+                          {check.name}
+                        </a>
+                      ) : (
+                        <span className="check-name-text">{check.name}</span>
                       )}
-                    </span>
-                    {check.url && (
-                      <a
-                        href={check.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="health-check-link"
-                        title="View details"
-                      >
-                        View Details
-                      </a>
-                    )}
+                      {check.description && (
+                        <span className="check-description">{check.description}</span>
+                      )}
+                    </div>
                   </div>
                 </Tooltip>
               ))}
