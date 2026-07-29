@@ -127,8 +127,6 @@ export interface EnrichedEnvDetails {
 
   /** Relative display string; do not pass to `TimeAgo`. */
   historyMergeTimeAgo: RelativeTimeAgo | null;
-  /** Relative display string; do not pass to `TimeAgo`. */
-  activeMergeTimeAgo: RelativeTimeAgo | null;
 }
 
 export type PromotionPhase = 'promoted' | 'failure' | 'pending' | 'unknown';

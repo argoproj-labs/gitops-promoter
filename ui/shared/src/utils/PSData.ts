@@ -119,12 +119,6 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
     historyMergeTimeAgo = mergeTimeStr ? timeAgo(mergeTimeStr) : null;
   }
 
-  // Merge time for the live (index 0) active PR
-  const liveMergeTimeStr = activePr?.prMergeTime || history[0]?.pullRequest?.prMergeTime || null;
-  const activeMergeTimeAgo: RelativeTimeAgo | null = liveMergeTimeStr
-    ? timeAgo(liveMergeTimeStr)
-    : null;
-
   // In historical view, proposed cards should only show status info, not commit details
   const isHistoric = index > 0;
 
@@ -175,7 +169,6 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
 
     // History
     historyMergeTimeAgo,
-    activeMergeTimeAgo,
   };
 }
 

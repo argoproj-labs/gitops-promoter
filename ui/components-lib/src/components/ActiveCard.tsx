@@ -17,7 +17,6 @@ export interface ActiveCardProps {
   codeCommitUrl: string | null;
   prUrl: string | null;
   prNumber?: string;
-  mergeTimeAgo?: string;
   prTooltip?: PrTooltip | null;
   checks: any[];
   healthSummary?: { successCount: number; totalCount: number; shouldDisplay: boolean };
@@ -36,7 +35,6 @@ const ActiveCard: React.FC<ActiveCardProps> = ({
   codeCommitUrl,
   prUrl,
   prNumber,
-  mergeTimeAgo,
   prTooltip,
   checks,
   healthSummary,

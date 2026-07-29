@@ -63,8 +63,6 @@ const Card: React.FC<CardProps> = ({ environments }) => {
             date: env.proposedDryCommitDate,
           };
 
-          const mergeTimeAgo = env.activeMergeTimeAgo ?? undefined;
-
           const hasPendingProposal =
             proposedStatus !== undefined && ['pending', 'failure'].includes(proposedStatus);
           const cardClassName = ['env-card', hasPendingProposal ? '' : 'single-commit-group']
@@ -84,7 +82,6 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                     codeCommitUrl={env.activeReferenceCommitUrl}
                     prUrl={env.activePrUrl}
                     prNumber={env.activePrNumber?.toString()}
-                    mergeTimeAgo={mergeTimeAgo}
                     prTooltip={env.activePrTooltip}
                     checks={env.activeChecks}
                     healthSummary={env.activeChecksSummary}
