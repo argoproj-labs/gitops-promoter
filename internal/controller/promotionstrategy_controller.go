@@ -82,10 +82,21 @@ type ctpEnqueueState struct {
 	// retries, so it is exhausted once disagreementAttempts exceeds
 	// maxEnqueueRetriesPerDisagreement.
 	disagreementAttempts int
-	// hasScheduledRetry is true while a delayed re-invocation of handleRateLimitedEnqueue
-	// is pending for this CTP.
+	// hasScheduledRetry is a best-effort guard against arming redundant retry timers for
+	// the same CTP while one is already pending. It is not required for correctness — the
+	// timer callback re-derives everything through handleRateLimitedEnqueue — so the
+	// callback clears it unconditionally on wake without any generation tracking; the
+	// worst case of a lost update is one extra harmless timer.
 	hasScheduledRetry bool
 }
+
+const (
+	// defaultEnqueueThreshold is the minimum spacing between enqueues of the same CTP.
+	defaultEnqueueThreshold = 15 * time.Second
+	// maxEnqueueRetriesPerDisagreement is the number of delayed retries allowed per
+	// distinct disagreement, after the one immediate enqueue.
+	maxEnqueueRetriesPerDisagreement = 3
+)
 
 // PromotionStrategyReconciler reconciles a PromotionStrategy object
 type PromotionStrategyReconciler struct {
@@ -607,12 +618,6 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 	ctp *promoterv1alpha1.ChangeTransferPolicy,
 	disagreement ctpDisagreement,
 ) {
-	const (
-		defaultEnqueueThreshold = 15 * time.Second
-		// One immediate enqueue plus this many delayed retries per disagreement.
-		maxEnqueueRetriesPerDisagreement = 3
-	)
-
 	enqueueThreshold := r.enqueueThreshold
 	if enqueueThreshold <= 0 {
 		enqueueThreshold = defaultEnqueueThreshold
@@ -642,25 +647,27 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 	}
 
 	if state.disagreementAttempts > maxEnqueueRetriesPerDisagreement {
+		attempts := state.disagreementAttempts
 		r.enqueueStateMutex.Unlock()
 		logger.V(4).Info("Skipping enqueue, retries for this disagreement are exhausted until it changes",
 			"ctp", ctp.Name,
-			"disagreementAttempts", state.disagreementAttempts)
+			"disagreementAttempts", attempts)
 		return
 	}
 
 	timeSinceLastEnqueue := now.Sub(state.lastEnqueueTime)
 	if timeSinceLastEnqueue < enqueueThreshold {
+		attempts := state.disagreementAttempts
 		if state.hasScheduledRetry {
 			r.enqueueStateMutex.Unlock()
 			logger.V(4).Info("Rate limited, delayed enqueue already scheduled",
 				"ctp", ctp.Name,
 				"lastEnqueuedAgo", timeSinceLastEnqueue,
-				"disagreementAttempts", state.disagreementAttempts)
+				"disagreementAttempts", attempts)
 			return
 		}
-
 		delay := enqueueThreshold - timeSinceLastEnqueue
+		state.hasScheduledRetry = true
 		r.enqueueStateMutex.Unlock()
 
 		r.scheduleRetryAfter(ctx, key, disagreement, delay)
@@ -669,7 +676,7 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 			"ctp", ctp.Name,
 			"lastEnqueuedAgo", timeSinceLastEnqueue,
 			"retryIn", delay,
-			"disagreementAttempts", state.disagreementAttempts)
+			"disagreementAttempts", attempts)
 		return
 	}
 
@@ -677,6 +684,9 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 	state.disagreementAttempts++
 	attempt := state.disagreementAttempts
 	shouldScheduleNext := state.disagreementAttempts <= maxEnqueueRetriesPerDisagreement
+	if shouldScheduleNext {
+		state.hasScheduledRetry = true
+	}
 	r.enqueueStateMutex.Unlock()
 
 	logger.V(4).Info("Enqueueing out-of-sync CTP",
@@ -692,42 +702,36 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 	}
 }
 
-// scheduleRetryAfter re-invokes handleRateLimitedEnqueue after delay so each attempt
-// naturally enqueues (when the threshold has elapsed) and schedules the next one.
-// Idempotent while a retry is already pending. Timer callbacks no-op when the
-// disagreement has changed since the schedule call.
+// scheduleRetryAfter schedules a re-invocation of handleRateLimitedEnqueue after delay
+// so each attempt naturally enqueues (when the threshold has elapsed) and schedules the
+// next one, up to the per-disagreement budget.
+//
+// On wake the callback clears hasScheduledRetry and re-checks, under the lock, that the
+// disagreement it was scheduled for is still the current one. If the disagreement has
+// since changed or the CTP converged (which resets lastDisagreement), the timer is stale
+// and no-ops without re-enqueuing — the newer disagreement, if any, already has its own
+// chain. Only a still-current disagreement re-enters handleRateLimitedEnqueue, which
+// re-checks the remaining budget and either enqueues or schedules the next retry.
+// hasScheduledRetry is only a best-effort guard against arming redundant timers, so it is
+// cleared unconditionally here without any generation tracking.
 func (r *PromotionStrategyReconciler) scheduleRetryAfter(
 	ctx context.Context,
 	key client.ObjectKey,
 	disagreement ctpDisagreement,
 	delay time.Duration,
 ) {
-	const maxEnqueueRetriesPerDisagreement = 3
-
-	r.enqueueStateMutex.Lock()
-	state := r.enqueueStates[key]
-	if state == nil ||
-		state.hasScheduledRetry ||
-		state.lastDisagreement != disagreement ||
-		state.disagreementAttempts > maxEnqueueRetriesPerDisagreement {
-		r.enqueueStateMutex.Unlock()
-		return
-	}
-	state.hasScheduledRetry = true
-	r.enqueueStateMutex.Unlock()
-
 	time.AfterFunc(delay, func() {
 		r.enqueueStateMutex.Lock()
 		state := r.enqueueStates[key]
-		if state == nil || state.lastDisagreement != disagreement {
-			if state != nil {
-				state.hasScheduledRetry = false
-			}
-			r.enqueueStateMutex.Unlock()
+		if state != nil {
+			state.hasScheduledRetry = false
+		}
+		stale := state == nil || state.lastDisagreement != disagreement
+		r.enqueueStateMutex.Unlock()
+
+		if stale {
 			return
 		}
-		state.hasScheduledRetry = false
-		r.enqueueStateMutex.Unlock()
 
 		ctp := &promoterv1alpha1.ChangeTransferPolicy{
 			ObjectMeta: metav1.ObjectMeta{
@@ -739,9 +743,9 @@ func (r *PromotionStrategyReconciler) scheduleRetryAfter(
 	})
 }
 
-// clearEnqueueRetryOnConvergence drops any pending retry timer state when a CTP's
-// effective dry SHA matches the batch target. Timer callbacks compare against
-// lastDisagreement, so clearing it makes already-scheduled retries no-op.
+// clearEnqueueRetryOnConvergence resets the retry budget when a CTP's effective dry SHA
+// matches the batch target. Any timer still pending from before convergence re-enters
+// handleRateLimitedEnqueue, sees a disagreement that no longer matches, and no-ops.
 func (r *PromotionStrategyReconciler) clearEnqueueRetryOnConvergence(key client.ObjectKey) {
 	r.enqueueStateMutex.Lock()
 	defer r.enqueueStateMutex.Unlock()
