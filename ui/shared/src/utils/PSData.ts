@@ -52,11 +52,6 @@ function extractReferenceCommitData(dryCommit: Commit): null | ReferenceCommit {
   return { sha, author, subject, body, date, url };
 }
 
-// Derive the state-aware tooltip descriptor for a PR indicator.
-// Merged when state === 'merged', or when state is empty/falsy but a merge
-// time is present (the externallyMergedOrClosed case). Otherwise open.
-// Merged uses prMergeTime; open uses prCreationTime. Returns null only when
-// no PR or no usable timestamp exists, so callers never render a blank tooltip.
 function derivePrTooltip(pr: EnvironmentPullRequest | null): PrTooltip | null {
   if (!pr) {
     return null;
@@ -128,7 +123,6 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
     activeStatus: getHealthStatus(activeChecks),
     activePrUrl: activePr?.url || null,
     activePrNumber: activePr?.id ? parseInt(activePr.id, 10) : null,
-    // RFC 3339 passthrough; format at render time via formatDate.
     activePrCreationTime: activePr?.prCreationTime || null,
     activePrMergeTime: activePr?.prMergeTime || null,
     activePrState: activePr?.state ?? null,

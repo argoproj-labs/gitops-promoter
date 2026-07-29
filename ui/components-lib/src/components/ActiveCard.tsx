@@ -26,10 +26,6 @@ export interface ActiveCardProps {
   healthSummary?: HealthSummaryResult;
 }
 
-// The active/live side of an environment card. In the row layout it renders as a
-// detached card (chrome applied via the layout mixin); in the stacked layout it
-// unwraps (`display: contents`) so its children participate directly in the
-// `.env-card` grid.
 const ActiveCard: React.FC<ActiveCardProps> = ({
   branch,
   activeStatus,

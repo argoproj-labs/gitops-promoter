@@ -1,24 +1,14 @@
 @use '../styles/colors' as *;
 
-// Base (layout-agnostic) styling for the active card. The detached card chrome
-// (bg / border / radius / shadow / padding) is applied by the row-layout mixin
-// (`vertical-layout`); in the stacked layout the element unwraps
-// (`display: contents`) so its children join the `.env-card` grid directly.
 .active-card {
   box-sizing: border-box;
 
-  // Reused CommitInfo renders a bare `.commits-section`. Neutralize its base
-  // `margin-top: -10px` (which assumed a preceding group title) so a clear gap
-  // opens between the environment title and the first commit, per the design.
-  // Also drop the trailing space so the "Current status" disclosure sits close
-  // to the last commit. Scoped here so other CommitInfo usages are unaffected.
   .commits-section {
     margin-top: 0;
     margin-bottom: 0;
     padding-bottom: 0;
   }
 
-  // The last commit row adds a 12px bottom margin tail; neutralize it here.
   .commits-section .commit-info:last-child {
     margin-bottom: 0;
   }
@@ -26,8 +16,6 @@
 
 .env-card__title {
   display: flex;
-  // Top-align so the health chip and PR indicator sit on the first line of a
-  // wrapping environment name instead of centering against a two-line title.
   align-items: flex-start;
   justify-content: space-between;
   position: relative;
@@ -38,27 +26,21 @@
   color: $argo-color-gray-7;
 }
 
-// The env-name + health-chip cluster, kept on the left with the PR indicator
-// pushed to the far right by the parent's `justify-content: space-between`.
 .env-card__title-main {
   display: flex;
   align-items: flex-start;
   min-width: 0;
 }
 
-// Allow the environment name to shrink/wrap instead of forcing the row wider.
 .env-card__env-name-wrap {
   min-width: 0;
 }
 
 .env-card__env-name {
-  // Figma "environment title": Heebo Argo CD Heading 2 (16px / 500 / 130%, #000000).
   font-weight: 500;
   font-size: 16px;
   line-height: 1.3;
   color: $argo-color-black;
-  // Break long environment names on word boundaries first, falling back to
-  // mid-"word" breaks so a segment like "ap-northeast-1" can't overflow.
   overflow-wrap: anywhere;
 }
 
@@ -72,24 +54,15 @@
   font-weight: 500;
   color: $argo-color-gray-7;
   flex-shrink: 0;
-  // Sit on the first line of a wrapping environment name rather than
-  // vertically centering against the whole (possibly two-line) title.
   align-self: flex-start;
 }
 
-// "Current status" disclosure, rendered directly beneath the active commit
-// group. The shared .health-summary carries a negative top margin tuned for
-// its old in-commit-group placement; reset it here so the disclosure sits
-// normally in the card flow.
 .env-card__current-status {
   .health-summary {
     margin-top: 0;
     margin-bottom: 0;
   }
 
-  // Pull the collapsible header left by its own left inset (8px padding + 1px
-  // transparent border) so the "Current status" label aligns with the commit-row
-  // icon above it, while preserving the header's padding/hover hit-area.
   .health-header {
     margin-left: -9px;
   }

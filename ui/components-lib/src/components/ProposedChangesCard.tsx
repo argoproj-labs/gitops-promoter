@@ -25,9 +25,6 @@ export interface ProposedChangesCardProps {
   prTooltip?: PrTooltip | null;
 }
 
-// Build a faithful, simple progress message from the proposed checks summary.
-// Anything that is not yet a success is treated as "in progress"; when every
-// check has passed we report completion instead.
 function progressMessage(
   healthSummary?: Pick<HealthSummaryResult, 'successCount' | 'totalCount'>,
 ): string | null {
@@ -42,9 +39,6 @@ function progressMessage(
   return `${inProgress} of ${totalCount} checks in progress`;
 }
 
-// The proposed-changes card. Emitted in a single DOM slot as a child of the
-// environment card (after the active commit group). Row-vs-stacked presentation
-// is chosen entirely in CSS by the layout mixins keyed off `.proposed-changes-card`.
 const ProposedChangesCard: React.FC<ProposedChangesCardProps> = ({
   deploymentCommit,
   codeCommit,
@@ -61,9 +55,6 @@ const ProposedChangesCard: React.FC<ProposedChangesCardProps> = ({
 
   return (
     <div className="proposed-changes-card">
-      {/* "Pushing to Active" promotion indicator: a banner across the card top in
-          the row layout, restyled by the stacked-layout mixin into a pulsing
-          chevron badge on the active/proposed seam. */}
       <div className="promote-flow" aria-hidden="true" />
       <div className="promote-banner">
         <svg className="promote-banner__icon" viewBox="0 0 16 7" fill="none" aria-hidden="true">
@@ -85,14 +76,17 @@ const ProposedChangesCard: React.FC<ProposedChangesCardProps> = ({
           </span>
           <h4 className="proposed-changes-card__title">Proposed changes</h4>
           {prUrl && prNumber && (
-            <PrIndicator prUrl={prUrl} prNumber={prNumber} prTooltip={prTooltip} variant="proposed" />
+            <PrIndicator
+              prUrl={prUrl}
+              prNumber={prNumber}
+              prTooltip={prTooltip}
+              variant="proposed"
+            />
           )}
         </div>
         {message && <div className="proposed-changes-card__progress">{message}</div>}
       </div>
 
-      {/* Reuse CommitInfo to render the commit rows rather than duplicating the
-          commit JSX. */}
       <CommitInfo
         deploymentCommit={deploymentCommit}
         codeCommit={codeCommit}

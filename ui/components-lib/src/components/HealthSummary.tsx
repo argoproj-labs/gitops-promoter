@@ -15,12 +15,7 @@ export interface HealthSummaryProps {
   additionalChecksTitleTooltip?: string;
   primaryChecksTitle?: string;
   primaryChecksTitleTooltip?: string;
-  // 'collapsible' (default) renders a disclosure header ("Current status" + chevron)
-  // that respects the small-list auto-expand heuristic and the user's manual toggle.
-  // 'always-expanded' renders a static, non-interactive "Checks" heading with the
-  // rows always visible (the proposed-card context).
   variant?: 'collapsible' | 'always-expanded';
-  // Header label for the collapsible variant only.
   headerLabel?: string;
 }
 
@@ -51,7 +46,7 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({
 
   const isAlwaysExpanded = variant === 'always-expanded';
 
-  // Auto-expand if less than 3 checks (collapsible variant only)
+  // Auto-expand if less than 3 checks
   const shouldAutoExpand = totalCount < 3;
   const [isExpanded, setIsExpanded] = useState(shouldAutoExpand);
 

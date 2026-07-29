@@ -60,23 +60,12 @@ export interface Check {
   url?: string;
 }
 
-/**
- * Result of {@link calculateHealthSummary}: how many checks passed out of the
- * total, plus whether the summary is worth rendering at all (`totalCount > 0`).
- * Shared by the card components and their `HealthSummary` so the shape stays in
- * one place.
- */
 export interface HealthSummaryResult {
   successCount: number;
   totalCount: number;
   shouldDisplay: boolean;
 }
 
-/**
- * Flattened commit shape built by enrichment ({@link EnrichedEnvDetails}) and
- * passed to the card components / `CommitInfo`. All fields are display strings
- * already formatted for render (sha truncated at the source is not assumed).
- */
 export interface DeploymentCommit {
   sha: string;
   author: string;
@@ -85,13 +74,6 @@ export interface DeploymentCommit {
   date: string;
 }
 
-/**
- * State-aware tooltip descriptor for the active PR indicator, derived in
- * enrichment ({@link EnrichedEnvDetails.activePrTooltip}). `label` is the
- * verb the tooltip renders (`merged` or `opened`); `time` is the matching
- * RFC 3339 timestamp (merge time when merged, creation time when open),
- * formatted at render time via `formatDate`.
- */
 export interface PrTooltip {
   label: 'merged' | 'opened';
   time: Rfc3339DateTime;
@@ -115,17 +97,9 @@ export interface EnrichedEnvDetails {
   activeStatus: 'success' | 'failure' | 'pending' | 'unknown';
   activePrUrl: string | null;
   activePrNumber: number | null;
-  /** Active PR creation time. RFC 3339 for `formatDate`; null when absent. */
   activePrCreationTime: Rfc3339DateTime | null;
-  /** Active PR merge time. RFC 3339 for `formatDate`; null when absent. */
   activePrMergeTime: Rfc3339DateTime | null;
-  /** Raw active PR `state` from the CRD (e.g. `merged`, `open`, or `""`). */
   activePrState: string | null;
-  /**
-   * Derived merged-vs-open descriptor for the active PR tooltip, or null when
-   * there is no active PR. Merged when `state === 'merged'` or (`state` is
-   * empty and a merge time is present); otherwise open.
-   */
   activePrTooltip: PrTooltip | null;
 
   activeReferenceCommit: ReferenceCommit | null;
@@ -135,7 +109,6 @@ export interface EnrichedEnvDetails {
   proposedSha: string;
   prNumber: number | null;
   prUrl: string | null;
-  /** Derived merged-vs-open tooltip for the proposed-card PR link; null when no PR. */
   prTooltip: PrTooltip | null;
   proposedDryCommitAuthor: string;
   proposedDryCommitSubject: string;

@@ -1,21 +1,9 @@
 @use '../styles/colors' as *;
 
-// Base (layout-agnostic) styling for the proposed-changes card. The detached
-// card chrome (bg / border / radius / shadow / padding) is applied by the
-// row-layout mixin (`vertical-layout`), where it reads as its own box stacked
-// below the active card, and deliberately suppressed by the stacked-layout
-// mixin (`horizontal-layout`), where this element instead becomes the "bleed
-// out to the right" grid panel. See Card/_layouts.scss.
 .proposed-changes-card {
   box-sizing: border-box;
-  // Anchor for the absolutely-positioned promote-flow strip / stacked badge.
   position: relative;
 
-  // "Pushing to Active" promotion indicator (row layout). Bleeds to the card's
-  // top edge by cancelling the 24px card padding, sitting above the header. The
-  // stacked-layout mixin restyles this into a seam badge (see Card/_layouts.scss).
-  // Keyframes (promote-flow-streak, promote-banner-bob) are defined in
-  // CommitInfo.scss.
   .promote-flow {
     position: absolute;
     top: 0;
@@ -50,8 +38,6 @@
     align-items: center;
     justify-content: center;
     gap: 6px;
-    // Cancel the card's 24px padding so the banner spans the full card width and
-    // sits flush at the top; 14px gap below it before the header.
     margin: -24px -24px 14px;
     padding: 6px 16px;
     background: rgba(13, 173, 234, 0.14);
@@ -89,16 +75,11 @@
     align-items: center;
     gap: 8px;
 
-    // The PR chip is wrapped by Tooltip's `.promoter-popover-wrapper`, which is
-    // the actual flex child here; push THAT to the right so the chip skews to
-    // the far edge of the header row (the `margin-left: auto` on `&__pr` itself
-    // has no effect because the wrapper, not the <a>, is the flex item).
     .promoter-popover-wrapper {
       margin-left: auto;
     }
   }
 
-  // In-progress spinner icon to the left of the title (per the design).
   &__status-icon {
     display: inline-flex;
     align-items: center;
@@ -112,7 +93,6 @@
 
   &__title {
     margin: 0;
-    // Heebo, Argo CD Heading 3 (14px / 500 / 130%, #000000) per the design.
     font-family: 'Heebo', sans-serif;
     font-size: 14px;
     font-weight: 500;
@@ -121,8 +101,6 @@
     color: $argo-color-black;
   }
 
-  // Progress message on its own line beneath the title, aligned under the title
-  // text (past the status icon: 16px icon + 8px gap).
   &__progress {
     margin-top: 4px;
     margin-left: 24px;
@@ -173,26 +151,16 @@
     }
   }
 
-  // The reused CommitInfo (title-less) renders a bare `.commits-section`. Reset
-  // the legacy negative top margin that assumed a preceding group header, and
-  // drop the trailing space (base rule adds 16px padding + 10px margin) so the
-  // Checks header sits close to the last commit per the compact design. Scoped
-  // here so the active card's shared CommitInfo spacing is unaffected.
   .commits-section {
     margin-top: 0;
-    margin-bottom: 0; // was inheriting 10px from the base rule
-    padding-bottom: 0; // was inheriting 16px from the base rule
+    margin-bottom: 0;
+    padding-bottom: 0;
   }
 
-  // The last commit row adds a 12px bottom margin as a tail; neutralize it here
-  // (scoped to the proposed card) so it doesn't reopen the commits→checks gap.
   .commits-section .commit-info:last-child {
     margin-bottom: 0;
   }
 
-  // The always-expanded HealthSummary carries negative margins tuned for its old
-  // in-commit-group placement; neutralize them so the checks sit normally in the
-  // card flow (consistent with the .env-card__current-status reset).
   .health-summary {
     margin-top: 0;
     margin-bottom: 0;

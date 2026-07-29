@@ -13,14 +13,8 @@ export interface CommitInfoProps {
   codeCommitUrl: string | null;
 }
 
-// The render helpers below accept either a flattened DeploymentCommit or a
-// ReferenceCommit; they only read this common subset of display fields, each
-// guarded at the access site, so every field is optional here.
 type CommitView = Partial<Pick<DeploymentCommit, 'sha' | 'subject' | 'body' | 'author' | 'date'>>;
 
-// Renders an environment's commit rows: the deployment commit and, when
-// present, the code commit. The surrounding card chrome (title, PR chip,
-// promote banner, checks) is owned by ActiveCard / ProposedChangesCard.
 const CommitInfo: React.FC<CommitInfoProps> = ({
   deploymentCommit,
   codeCommit,

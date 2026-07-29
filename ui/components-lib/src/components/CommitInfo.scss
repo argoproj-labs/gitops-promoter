@@ -69,15 +69,9 @@
   margin-top: -10px;
   margin-bottom: 10px;
   padding-bottom: 16px;
-  // Reserve space for two commit rows (deployment + code, ~48px each) so cards
-  // whose commit data has no code commit don't collapse shorter than the rest.
-  // The code-commit row is only rendered when a code commit exists (CommitInfo.tsx).
   min-height: 96px;
 }
 
-// Promotion-indicator keyframes. The markup and per-layout styling live in
-// ProposedChangesCard.scss and Card/_layouts.scss; the keyframes are defined
-// here so both the row banner and the stacked-layout badge can reference them.
 @keyframes promote-flow-streak {
   0% {
     transform: translateX(-120%);
@@ -202,7 +196,7 @@
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
-  align-self: flex-start; // sit on the first line of a wrapping title
+  align-self: flex-start;
 }
 
 .commit-icon {

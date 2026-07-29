@@ -3,19 +3,10 @@
 
 @include layouts.vertical-layout;
 
-// Heebo is the typeface for the entire environment-card view; set it on the
-// root container so every descendant inherits it (individual elements may still
-// override size/weight/decoration).
 .env-cards-container {
   font-family: 'Heebo', sans-serif;
 }
 
-// `.env-card` is a layout container only; the visible card chrome (bg, border,
-// radius, shadow, padding) is applied per-layout. In the row layout it is a bare
-// column with a gap and the chrome lives on the two child cards (`.active-card`
-// and `.proposed-changes-card`) so they read as two detached boxes; in the
-// stacked layout the chrome lives on `.env-card` itself, which is the single
-// grid box wrapping the active content and the bleed-out panel.
 .env-card {
   box-sizing: border-box;
   display: flex;
@@ -32,8 +23,6 @@
 }
 
 .env-card__proposed-loading-text {
-  // Mirrors .proposed-changes-card__progress: aligns under the title (past the
-  // 16px icon + 8px gap) and uses Argo Secondary at Body 13px.
   margin-top: 4px;
   margin-left: 24px;
   font-size: 13px;
@@ -41,9 +30,6 @@
   color: $argo-color-gray-3;
 }
 
-// The proposed-loading card is the placeholder for the real ProposedChangesCard,
-// so its heading matches that card's title (Heebo Heading 3, 14px/500/130%)
-// rather than the larger shared .commit-group-title. Scoped to this card only.
 .env-card__proposed-loading .commit-group-title {
   font-size: 14px;
   font-weight: 500;

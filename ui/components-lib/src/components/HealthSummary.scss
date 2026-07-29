@@ -1,12 +1,5 @@
 @use '../styles/colors' as *;
 
-// The health summary sits in normal card flow. The old negative top/bottom
-// margins (-30px / 25px, and the single-commit-group -20px variant) were tuned
-// to pull the checks up into the old in-commit-group placement; after the
-// card was restructured into active + detached-proposed sections those hacks
-// were mistuned. Both live placements (the env-card current-status footer and
-// the proposed-changes card) now flow the summary normally, so the default is
-// zero.
 .health-summary {
   margin-top: 0;
   margin-bottom: 0;
@@ -42,14 +35,9 @@
   }
 }
 
-// Always-expanded variant: a plain, non-interactive "Checks" heading above the
-// rows. No chevron, no hover affordance, no pointer.
 .health-header--static {
   cursor: default;
   user-select: auto;
-  // Align the "Checks" label's left edge with the commit-row icon above it:
-  // drop the base header's left padding (and the transparent 1px left border's
-  // contribution) so the text starts at the commits-section left edge.
   padding-left: 0;
   border-left-width: 0;
 
@@ -99,8 +87,6 @@
   svg {
     width: 16px;
     height: 16px;
-    // Nudge the icon down so it centers on the first (name) line rather than
-    // sitting flush with the top; the row stays top-aligned for tall bodies.
     margin-top: 1px;
     flex-shrink: 0;
   }
@@ -111,12 +97,11 @@
   flex-direction: column;
   gap: 6px;
   flex: 1;
-  min-width: 0; // Allow flex item to shrink/ellipsize below content size
+  min-width: 0;
 }
 
 .health-check-name-link {
   color: $argo-link;
-  // Figma "check title": Heebo Argo CD Body Text (13px / 400 / 130%), underlined.
   font-size: 13px;
   font-weight: 400;
   line-height: 1.3;
@@ -132,8 +117,6 @@
 
 .check-name-text {
   color: $argo-color-gray-7;
-  // Figma "check title" size/line-height (13px / 400 / 130%). No underline: this
-  // is the non-link fallback, so underlining it would falsely imply a hyperlink.
   font-size: 13px;
   font-weight: 400;
   line-height: 1.3;

@@ -11,8 +11,6 @@
     color: $argo-success;
   }
   &.status-pending {
-    // Shared spinner color: the bright running accent, aligned with the
-    // ArgoCD color scheme.
     color: $argo-running;
   }
   &.status-failure {
