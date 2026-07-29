@@ -1,11 +1,9 @@
 import React from 'react';
-import { GoGitPullRequest } from 'react-icons/go';
 import { StatusIcon, StatusType, statusLabel } from './StatusIcon';
 import CommitInfo from './CommitInfo';
 import HealthSummary from './HealthSummary';
-import { Tooltip } from './Tooltip';
+import PrIndicator from './PrIndicator';
 import { Check, DeploymentCommit, PrTooltip, ReferenceCommit } from '@shared/types/promotion';
-import { formatDate, timeAgo } from '@shared/utils/util';
 import './ActiveCard.scss';
 
 export interface ActiveCardProps {
@@ -60,24 +58,7 @@ const ActiveCard: React.FC<ActiveCardProps> = ({
           </span>
         </div>
         {prUrl && prNumber && (
-          <Tooltip
-            content={
-              prTooltip
-                ? `${prTooltip.label} ${formatDate(prTooltip.time)}`
-                : `Open PR #${prNumber} on GitHub`
-            }
-          >
-            <a
-              href={prUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`pr-indicator ${prTooltip?.label === 'merged' ? 'pr-merged' : ''}`}
-            >
-              <GoGitPullRequest className="pr-icon" />
-              #{prNumber}
-              {prTooltip && <span className="pr-merge-time">{timeAgo(prTooltip.time)}</span>}
-            </a>
-          </Tooltip>
+          <PrIndicator prUrl={prUrl} prNumber={prNumber} prTooltip={prTooltip} variant="active" />
         )}
       </div>
 

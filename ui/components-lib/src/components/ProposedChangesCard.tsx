@@ -1,11 +1,9 @@
 import React from 'react';
-import { GoGitPullRequest } from 'react-icons/go';
 import { StatusIcon, StatusType } from './StatusIcon';
 import CommitInfo from './CommitInfo';
 import HealthSummary from './HealthSummary';
-import { Tooltip } from './Tooltip';
+import PrIndicator from './PrIndicator';
 import { Check, DeploymentCommit, PrTooltip, ReferenceCommit } from '@shared/types/promotion';
-import { formatDate, timeAgo } from '@shared/utils/util';
 import './ProposedChangesCard.scss';
 
 export interface ProposedChangesCardProps {
@@ -82,24 +80,7 @@ const ProposedChangesCard: React.FC<ProposedChangesCardProps> = ({
           </span>
           <h4 className="proposed-changes-card__title">Proposed changes</h4>
           {prUrl && prNumber && (
-            <Tooltip
-              content={
-                prTooltip
-                  ? `${prTooltip.label} ${formatDate(prTooltip.time)}`
-                  : `Open PR #${prNumber} on GitHub`
-              }
-            >
-              <a
-                href={prUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="proposed-changes-card__pr"
-              >
-                <GoGitPullRequest className="pr-icon" />
-                #{prNumber}
-                {prTooltip && <span className="pr-merge-time">{timeAgo(prTooltip.time)}</span>}
-              </a>
-            </Tooltip>
+            <PrIndicator prUrl={prUrl} prNumber={prNumber} prTooltip={prTooltip} variant="proposed" />
           )}
         </div>
         {message && <div className="proposed-changes-card__progress">{message}</div>}
