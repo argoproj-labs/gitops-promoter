@@ -42,8 +42,8 @@ var _ = Describe("VerifyCommitRange", func() {
 	})
 
 	It("verifies a commit signed by a trusted key", func() {
-		fpr, pub := generateGPGKey(signerHome, "Trusted Signer", "trusted@example.com")
-		sha := commitToRepo(remoteDir, signerHome, fpr)
+		signer, pub := generateGPGKey(signerHome, "Trusted Signer", "trusted@example.com")
+		sha := commitToRepo(remoteDir, signerHome, signer)
 
 		sigs := verifyRange(remoteDir, "", sha, newKeyring(pub))
 		Expect(sigs).To(HaveLen(1))
@@ -80,8 +80,8 @@ var _ = Describe("VerifyCommitRange", func() {
 	})
 
 	It("reports unverified when no trusted keys are provided", func() {
-		fpr, _ := generateGPGKey(signerHome, "Trusted Signer", "trusted@example.com")
-		sha := commitToRepo(remoteDir, signerHome, fpr)
+		signer, _ := generateGPGKey(signerHome, "Trusted Signer", "trusted@example.com")
+		sha := commitToRepo(remoteDir, signerHome, signer)
 
 		sigs := verifyRange(remoteDir, "", sha, newKeyring())
 		Expect(sigs).To(HaveLen(1))
@@ -89,12 +89,12 @@ var _ = Describe("VerifyCommitRange", func() {
 	})
 
 	It("verifies every commit the range adds, not just its tip", func() {
-		fpr, pub := generateGPGKey(signerHome, "Trusted Signer", "trusted@example.com")
+		signer, pub := generateGPGKey(signerHome, "Trusted Signer", "trusted@example.com")
 
 		workDir := initWorkRepo(remoteDir)
-		base := addCommit(workDir, signerHome, fpr, "base")
-		middle := addCommit(workDir, signerHome, fpr, "middle")
-		tip := addCommit(workDir, signerHome, fpr, "tip")
+		base := addCommit(workDir, signerHome, signer, "base")
+		middle := addCommit(workDir, signerHome, signer, "middle")
+		tip := addCommit(workDir, signerHome, signer, "tip")
 		pushWorkRepo(workDir)
 
 		sigs := verifyRange(remoteDir, base, tip, newKeyring(pub))
@@ -106,12 +106,12 @@ var _ = Describe("VerifyCommitRange", func() {
 	})
 
 	It("catches an unsigned commit hidden under a signed tip", func() {
-		fpr, pub := generateGPGKey(signerHome, "Trusted Signer", "trusted@example.com")
+		signer, pub := generateGPGKey(signerHome, "Trusted Signer", "trusted@example.com")
 
 		workDir := initWorkRepo(remoteDir)
-		base := addCommit(workDir, signerHome, fpr, "base")
+		base := addCommit(workDir, signerHome, signer, "base")
 		sneaked := addCommit(workDir, "", "", "sneaked in unsigned")
-		tip := addCommit(workDir, signerHome, fpr, "signed tip")
+		tip := addCommit(workDir, signerHome, signer, "signed tip")
 		pushWorkRepo(workDir)
 
 		keyring := newKeyring(pub)
@@ -134,8 +134,8 @@ var _ = Describe("VerifyCommitRange", func() {
 	})
 
 	It("returns no results when the range adds nothing", func() {
-		fpr, pub := generateGPGKey(signerHome, "Trusted Signer", "trusted@example.com")
-		sha := commitToRepo(remoteDir, signerHome, fpr)
+		signer, pub := generateGPGKey(signerHome, "Trusted Signer", "trusted@example.com")
+		sha := commitToRepo(remoteDir, signerHome, signer)
 
 		Expect(verifyRange(remoteDir, sha, sha, newKeyring(pub))).To(BeEmpty())
 	})
@@ -181,27 +181,20 @@ func newVerifyOps(remote string) *git.EnvironmentOperations {
 	return git.NewEnvironmentOperations(repo, gap, "default/verifyrepo")
 }
 
-func generateGPGKey(home, name, email string) (fingerprint, armoredPublic string) {
+// generateGPGKey creates an unprotected signing key in home, returning the identity to sign with
+// and its armored public key. gpg resolves a user id anywhere it accepts a fingerprint, so the
+// email doubles as the key spec and no key listing has to be parsed.
+func generateGPGKey(home, name, email string) (signer, armoredPublic string) {
 	GinkgoHelper()
 	params := "%no-protection\nKey-Type: eddsa\nKey-Curve: ed25519\nName-Real: " + name +
 		"\nName-Email: " + email + "\nExpire-Date: 0\n%commit\n"
 	_, stderr, err := gpgRun(home, params, "--gen-key")
 	Expect(err).NotTo(HaveOccurred(), stderr)
 
-	listing, stderr, err := gpgRun(home, "", "--list-secret-keys", "--with-colons", email)
-	Expect(err).NotTo(HaveOccurred(), stderr)
-	for line := range strings.SplitSeq(listing, "\n") {
-		if f := strings.Split(line, ":"); f[0] == "fpr" && len(f) >= 10 {
-			fingerprint = f[9]
-			break
-		}
-	}
-	Expect(fingerprint).NotTo(BeEmpty())
-
-	armoredPublic, stderr, err = gpgRun(home, "", "--armor", "--export", fingerprint)
+	armoredPublic, stderr, err = gpgRun(home, "", "--armor", "--export", email)
 	Expect(err).NotTo(HaveOccurred(), stderr)
 	Expect(armoredPublic).NotTo(BeEmpty())
-	return fingerprint, armoredPublic
+	return email, armoredPublic
 }
 
 func gpgRun(home, stdin string, args ...string) (string, string, error) {
@@ -217,11 +210,11 @@ func gpgRun(home, stdin string, args ...string) (string, string, error) {
 }
 
 // commitToRepo initializes remoteBare, commits a file, and pushes it, returning the commit SHA.
-// A non-empty signerHome signs the commit with fpr using that home as GNUPGHOME; empty leaves it unsigned.
-func commitToRepo(remoteBare, signerHome, fpr string) string {
+// A non-empty signerHome signs the commit with signer using that home as GNUPGHOME; empty leaves it unsigned.
+func commitToRepo(remoteBare, signerHome, signer string) string {
 	GinkgoHelper()
 	workDir := initWorkRepo(remoteBare)
-	sha := addCommit(workDir, signerHome, fpr, "commit")
+	sha := addCommit(workDir, signerHome, signer, "commit")
 	pushWorkRepo(workDir)
 	return sha
 }
@@ -244,8 +237,8 @@ func initWorkRepo(remoteBare string) string {
 }
 
 // addCommit commits a file whose content is msg, returning the commit SHA. A non-empty signerHome
-// signs with fpr using that home as GNUPGHOME; empty leaves the commit unsigned.
-func addCommit(workDir, signerHome, fpr, msg string) string {
+// signs with signer using that home as GNUPGHOME; empty leaves the commit unsigned.
+func addCommit(workDir, signerHome, signer, msg string) string {
 	GinkgoHelper()
 	Expect(os.WriteFile(filepath.Join(workDir, "file.txt"), []byte(msg), 0o644)).To(Succeed())
 	mustGit(workDir, "add", "file.txt")
@@ -253,7 +246,7 @@ func addCommit(workDir, signerHome, fpr, msg string) string {
 	if signerHome == "" {
 		mustGit(workDir, "commit", "--no-gpg-sign", "-m", msg)
 	} else {
-		mustGit(workDir, "config", "user.signingkey", fpr)
+		mustGit(workDir, "config", "user.signingkey", signer)
 		cmd := exec.CommandContext(context.Background(), "git", "commit", "-S", "-m", msg)
 		cmd.Dir = workDir
 		cmd.Env = append(os.Environ(), "GNUPGHOME="+signerHome, "GIT_TERMINAL_PROMPT=0")

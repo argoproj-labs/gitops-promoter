@@ -46,7 +46,7 @@ func (g *EnvironmentOperations) VerifyCommitRange(ctx context.Context, fromSha, 
 	// identity containing a newline, which a %n-separated format would allow.
 	args := []string{"log", "-z", "--format=%H%x00%G?%x00%GK%x00%GS"}
 	if fromSha == "" {
-		args = append(args, toSha, "-1")
+		args = append(args, "-1", toSha)
 	} else {
 		args = append(args, fromSha+".."+toSha)
 	}

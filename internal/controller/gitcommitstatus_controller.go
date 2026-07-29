@@ -200,7 +200,7 @@ type VerificationData struct {
 // check that claim against.
 type VerificationCommit struct {
 	SHA      string `expr:"SHA"`
-	Typ      string `expr:"Type"`
+	Type     string `expr:"Type"`
 	KeyID    string `expr:"KeyID"`
 	Signer   string `expr:"Signer"`
 	Verified bool   `expr:"Verified"`
@@ -288,7 +288,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 		}
 
 		var verification *VerificationData
-		if keyring != nil {
+		if gitOperations != nil && keyring != nil {
 			// Verification always covers the promotion range, independent of Target: Target selects
 			// whose commit message the expression reads, but a promotion merges the whole range.
 			verification, err = verifyPromotionRange(ctx, gitOperations, keyring,
@@ -439,7 +439,7 @@ func verifyPromotionRange(ctx context.Context, ops *git.EnvironmentOperations, k
 		result.Commits = append(result.Commits, VerificationCommit{
 			SHA:      sig.SHA,
 			Verified: sig.Verified,
-			Typ:      sig.Type,
+			Type:     sig.Type,
 			KeyID:    sig.KeyID,
 			Signer:   sig.Signer,
 		})

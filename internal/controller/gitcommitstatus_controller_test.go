@@ -78,7 +78,7 @@ AheAAAoJEP76LKCAeILrt3MBAN/F7PAo3Q88ch4w/SDFED7JXTcOWnk7UQTFFOFN
 
 // signingKey is a throwaway GPG key living in its own GNUPGHOME, both removed when the spec ends.
 type signingKey struct {
-	fingerprint   string
+	signer        string
 	armoredPublic string
 	home          string
 }
@@ -115,16 +115,10 @@ func newSigningKey(ctx context.Context, email string) *signingKey {
 	gpg("%no-protection\nKey-Type: eddsa\nKey-Curve: ed25519\nName-Real: Promoter Signing Test"+
 		"\nName-Email: "+email+"\nExpire-Date: 0\n%commit\n", "--gen-key")
 
-	key := &signingKey{home: home}
-	for line := range strings.SplitSeq(gpg("", "--list-secret-keys", "--with-colons", email), "\n") {
-		if fields := strings.Split(line, ":"); fields[0] == "fpr" && len(fields) >= 10 {
-			key.fingerprint = fields[9]
-			break
-		}
-	}
-	Expect(key.fingerprint).NotTo(BeEmpty())
-
-	key.armoredPublic = gpg("", "--armor", "--export", key.fingerprint)
+	// gpg resolves a user id anywhere it accepts a fingerprint, so the email doubles as the key
+	// spec and no key listing has to be parsed.
+	key := &signingKey{home: home, signer: email}
+	key.armoredPublic = gpg("", "--armor", "--export", email)
 	Expect(key.armoredPublic).NotTo(BeEmpty())
 	return key
 }
@@ -153,7 +147,7 @@ func newPromotionRepo(ctx context.Context, repo *promoterv1alpha1.GitRepository,
 	r.git(ctx, "config", "user.name", "testuser")
 	r.git(ctx, "config", "user.email", "testemail@test.com")
 	if key != nil {
-		r.git(ctx, "config", "user.signingkey", key.fingerprint)
+		r.git(ctx, "config", "user.signingkey", key.signer)
 	}
 	return r
 }

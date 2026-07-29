@@ -4397,6 +4397,43 @@ spec:
                 - active
                 - proposed
                 type: string
+              verification:
+                description: |-
+                  Verification allows enabling GPG signature verification for every commit the promotion would
+                  add, independent of Target. When set, the expression additionally sees a top-level
+                  Verification variable with the fields Verified and Commits; each entry in Commits has SHA,
+                  Verified, Type, KeyID and Signer, and every field other than SHA and Verified is empty unless
+                  that commit verified. Verification is nil when this field is unset.
+                properties:
+                  gpg:
+                    description: GPG verifies the commit against a set of trusted
+                      GPG public keys.
+                    properties:
+                      publicKeys:
+                        description: |-
+                          PublicKeys are the keys a signature must verify against. A commit signed by a key outside this
+                          set is reported as unverified, so the list is the complete trust anchor for this validation.
+                        items:
+                          description: GitCommitVerificationGPGPublicKey is a single
+                            trusted GPG public key.
+                          properties:
+                            armored:
+                              description: Armored is the ASCII-armored public key,
+                                as produced by `gpg --armor --export <fingerprint>`.
+                              minLength: 1
+                              type: string
+                          required:
+                          - armored
+                          type: object
+                        minItems: 1
+                        type: array
+                    required:
+                    - publicKeys
+                    type: object
+                type: object
+                x-kubernetes-validations:
+                - message: verification requires gpg
+                  rule: has(self.gpg)
             required:
             - expression
             - key
