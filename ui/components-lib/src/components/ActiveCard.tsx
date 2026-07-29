@@ -39,17 +39,9 @@ const ActiveCard: React.FC<ActiveCardProps> = ({
 }) => {
   return (
     <div className="active-card">
-      <div
-        className="env-card__title"
-        style={{
-          display: 'flex',
-          alignItems: 'flex-start',
-          justifyContent: 'space-between',
-          position: 'relative',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'flex-start', minWidth: 0 }}>
-          <div style={{ minWidth: 0 }}>
+      <div className="env-card__title">
+        <div className="env-card__title-main">
+          <div className="env-card__env-name-wrap">
             <span className="env-card__env-name">{branch}</span>
           </div>
           <span className="env-card__health-chip">

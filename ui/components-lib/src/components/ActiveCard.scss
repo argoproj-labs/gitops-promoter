@@ -29,11 +29,26 @@
   // Top-align so the health chip and PR indicator sit on the first line of a
   // wrapping environment name instead of centering against a two-line title.
   align-items: flex-start;
+  justify-content: space-between;
+  position: relative;
   gap: 12px;
   font-weight: 600;
   font-size: 18px;
   margin-bottom: 22px;
   color: $argo-color-gray-7;
+}
+
+// The env-name + health-chip cluster, kept on the left with the PR indicator
+// pushed to the far right by the parent's `justify-content: space-between`.
+.env-card__title-main {
+  display: flex;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+// Allow the environment name to shrink/wrap instead of forcing the row wider.
+.env-card__env-name-wrap {
+  min-width: 0;
 }
 
 .env-card__env-name {
