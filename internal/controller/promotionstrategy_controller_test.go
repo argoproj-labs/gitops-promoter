@@ -5866,8 +5866,9 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp"}))
 
 			// The CTP's note moves (a fetched note, a different value): a NEW disagreement
-			// within the rate-limit window cancels the old chain and schedules one delayed
-			// enqueue, no matter how many owner-watch loops repeat it.
+			// within the rate-limit window replaces the old retry chain with a fresh one and
+			// defers its first nudge to the chain (no immediate enqueue while rate limited),
+			// no matter how many owner-watch loops repeat it.
 			lagging.Status.Proposed.Note.DrySha = "older999"
 			for range 5 {
 				reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
@@ -5875,15 +5876,15 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp"}),
 				"changed disagreement within the threshold must defer, not enqueue immediately")
 
-			// The delayed enqueue for the new disagreement fires, then auto-chains the
-			// remaining budget: 1 (old, immediate) + 4 (new) = 5 total.
+			// The new chain delivers its budget of threshold-spaced nudges:
+			// 1 (old, immediate) + maxEnqueueRetriesPerDisagreement (new chain) = 4 total.
 			Eventually(func() []string {
 				return enqueuedNames(enqueuedCTPs, enqueueMutex)
-			}, 5*time.Second, 20*time.Millisecond).Should(HaveLen(5),
-				"new disagreement should get one delayed enqueue plus a chained retry budget")
+			}, 5*time.Second, 20*time.Millisecond).Should(HaveLen(4),
+				"new disagreement should get a fresh chained retry budget")
 			Consistently(func() []string {
 				return enqueuedNames(enqueuedCTPs, enqueueMutex)
-			}, 2*time.Second, 100*time.Millisecond).Should(HaveLen(5),
+			}, 2*time.Second, 100*time.Millisecond).Should(HaveLen(4),
 				"no additional enqueue may fire without a new disagreement")
 		})
 
