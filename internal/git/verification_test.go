@@ -133,6 +133,15 @@ var _ = Describe("VerifyCommitRange", func() {
 			"the commit under the signed tip must be reported unverified")
 	})
 
+	It("refuses a range with no end commit rather than falling back to HEAD", func() {
+		sha := commitToRepo(remoteDir, "", "")
+
+		g := newVerifyOps(remoteDir)
+		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
+		_, err := g.VerifyCommitRange(GinkgoT().Context(), sha, "", newKeyring())
+		Expect(err).To(MatchError(ContainSubstring("without an end commit")))
+	})
+
 	It("returns no results when the range adds nothing", func() {
 		signer, pub := generateGPGKey(signerHome, "Trusted Signer", "trusted@example.com")
 		sha := commitToRepo(remoteDir, signerHome, signer)

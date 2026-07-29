@@ -407,6 +407,10 @@ type commitRef struct {
 // to walk back to and only to.sha is checked. Walking to the repository root instead would verify
 // the entire hydrated history the first time an environment is gated.
 func verifyPromotionRange(ctx context.Context, ops *git.EnvironmentOperations, keyring *git.GPGKeyring, from, to commitRef) (*VerificationData, error) {
+	if to.sha == "" {
+		return nil, fmt.Errorf("proposed commit SHA not yet available for branch %q: PromotionStrategy may not be fully reconciled", to.branch)
+	}
+
 	for _, ref := range []commitRef{from, to} {
 		if ref.sha == "" {
 			continue

@@ -222,7 +222,7 @@ Each expression has access to two top-level variables.
 - `Commit.Subject` (string): The first line of the commit message
 - `Commit.Body` (string): The commit message body (everything after the subject line)
 - `Commit.Author` (string): Commit author email address
-- `Commit.Trailers` (map[string][]string): Git trailers parsed from commit message
+- `Commit.Trailers` (`map[string][]string`): Git trailers parsed from commit message
 
 `Verification` covers **all** the commits the promotion would add, not just the one `spec.target` selects. It is `nil` unless [`spec.verification`](#verifying-commit-signatures) is configured. See [Available Signature Fields](#available-signature-fields).
 

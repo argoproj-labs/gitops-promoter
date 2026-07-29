@@ -40,6 +40,10 @@ func (g *EnvironmentOperations) VerifyCommitRange(ctx context.Context, fromSha, 
 	if keyring == nil {
 		return nil, fmt.Errorf("cannot verify range %q..%q without a keyring", fromSha, toSha)
 	}
+	// git reads "<from>.." as "<from>..HEAD" and exits 0, silently verifying the checked-out branch.
+	if toSha == "" {
+		return nil, fmt.Errorf("cannot verify range %q..%q without an end commit", fromSha, toSha)
+	}
 
 	// -z terminates each commit with NUL and %x00 separates the fields within one, so the output is a
 	// flat NUL-terminated stream of 4 fields per commit. Parsing cannot be desynchronised by a signer

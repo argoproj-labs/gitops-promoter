@@ -1639,3 +1639,13 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 		})
 	})
 })
+
+var _ = Describe("verifyPromotionRange", func() {
+	It("refuses a range whose proposed commit is not published yet", func(ctx SpecContext) {
+		result, err := verifyPromotionRange(ctx, nil, nil,
+			commitRef{sha: "0123456789abcdef0123456789abcdef01234567", branch: "environment/development"},
+			commitRef{branch: "environment/development-next"})
+		Expect(err).To(MatchError(ContainSubstring("environment/development-next")))
+		Expect(result).To(BeNil())
+	})
+})
