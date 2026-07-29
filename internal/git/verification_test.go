@@ -55,8 +55,8 @@ var _ = Describe("VerifyCommitRange", func() {
 	})
 
 	It("does not verify when the trusted key does not match the signer", func() {
-		signerFpr, _ := generateGPGKey(signerHome, "Real Signer", "real@example.com")
-		sha := commitToRepo(remoteDir, signerHome, signerFpr)
+		signer, _ := generateGPGKey(signerHome, "Real Signer", "real@example.com")
+		sha := commitToRepo(remoteDir, signerHome, signer)
 
 		otherHome, err := os.MkdirTemp("", "git-verify-other-*")
 		Expect(err).NotTo(HaveOccurred())
