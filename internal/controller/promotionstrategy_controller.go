@@ -663,7 +663,7 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 		delay := enqueueThreshold - timeSinceLastEnqueue
 		r.enqueueStateMutex.Unlock()
 
-		r.scheduleRetryAfter(key, disagreement, delay)
+		r.scheduleRetryAfter(ctx, key, disagreement, delay)
 
 		logger.V(4).Info("Rate limited, scheduling delayed enqueue",
 			"ctp", ctp.Name,
@@ -688,7 +688,7 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 	}
 
 	if shouldScheduleNext {
-		r.scheduleRetryAfter(key, disagreement, enqueueThreshold)
+		r.scheduleRetryAfter(ctx, key, disagreement, enqueueThreshold)
 	}
 }
 
@@ -697,6 +697,7 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 // Idempotent while a retry is already pending. Timer callbacks no-op when the
 // disagreement has changed since the schedule call.
 func (r *PromotionStrategyReconciler) scheduleRetryAfter(
+	ctx context.Context,
 	key client.ObjectKey,
 	disagreement ctpDisagreement,
 	delay time.Duration,
@@ -734,11 +735,6 @@ func (r *PromotionStrategyReconciler) scheduleRetryAfter(
 				Name:      key.Name,
 			},
 		}
-		ctx := log.IntoContext(context.Background(), log.Log.WithValues(
-			"ctp", key.Name,
-			"ctpEffectiveProposedDrySha", disagreement.ctpEffectiveProposedDrySha,
-			"newestEffectiveProposedDrySha", disagreement.newestEffectiveProposedDrySha,
-		))
 		r.handleRateLimitedEnqueue(ctx, ctp, disagreement)
 	})
 }
