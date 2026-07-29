@@ -8,6 +8,77 @@
 // out to the right" grid panel. See Card/_layouts.scss.
 .proposed-changes-card {
   box-sizing: border-box;
+  // Anchor for the absolutely-positioned promote-flow strip / stacked badge.
+  position: relative;
+
+  // "Pushing to Active" promotion indicator (row layout). Bleeds to the card's
+  // top edge by cancelling the 24px card padding, sitting above the header. The
+  // stacked-layout mixin restyles this into a seam badge (see Card/_layouts.scss).
+  // Keyframes (promote-flow-streak, promote-banner-bob) are defined in
+  // CommitInfo.scss.
+  .promote-flow {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 2;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 35%;
+      height: 100%;
+      background: linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0) 0%,
+        rgba(255, 255, 255, 0.95) 50%,
+        rgba(255, 255, 255, 0) 100%
+      );
+      animation: promote-flow-streak 2.2s linear infinite;
+    }
+  }
+
+  .promote-banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    // Cancel the card's 24px padding so the banner spans the full card width and
+    // sits flush at the top; 14px gap below it before the header.
+    margin: -24px -24px 14px;
+    padding: 6px 16px;
+    background: rgba(13, 173, 234, 0.14);
+    border-bottom: 1px solid rgba(13, 173, 234, 0.35);
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    color: $argo-running;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    line-height: 1;
+  }
+
+  .promote-banner__icon {
+    width: 12px;
+    height: 6px;
+    margin-right: 10px;
+    animation: promote-banner-bob 2s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .promote-banner__icon,
+    .promote-flow::before {
+      animation: none;
+    }
+  }
 
   &__header {
     margin-bottom: 12px;

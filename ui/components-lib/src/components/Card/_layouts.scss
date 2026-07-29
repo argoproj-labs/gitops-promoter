@@ -233,6 +233,41 @@ $extension-wrapper-gap: 20px;
     border-bottom-left-radius: 0;
   }
 
+  // Stacked layout: the "Pushing to Active" banner is restyled into a pulsing
+  // circular chevron badge sitting on the seam between the active card (left)
+  // and the proposed card (right). The full-width banner strip and its text
+  // label are hidden; the chevron points left, toward the active card.
+  .proposed-changes-card .promote-flow,
+  .proposed-changes-card .promote-banner__label {
+    display: none;
+  }
+
+  .proposed-changes-card .promote-banner {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    transform: translate(-50%, -50%);
+    margin: 0;
+    padding: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border-bottom: 0;
+    color: #fff;
+    background: $argo-running;
+    box-shadow: 0 1px 4px rgba(13, 173, 234, 0.45);
+    z-index: 2;
+  }
+
+  .proposed-changes-card .promote-banner__icon {
+    width: 14px;
+    height: 8px;
+    margin: 0;
+    // Base chevron points up; rotate so it points left toward the active card.
+    transform: rotate(-90deg);
+    animation: promote-banner-pulse 2s ease-in-out infinite;
+  }
+
   // Align the inter-environment arrow under the active card (the left, 425px
   // column) rather than centering it across the wider two-card row.
   .arrow-separator {

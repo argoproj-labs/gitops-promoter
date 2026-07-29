@@ -58,6 +58,23 @@ const ProposedChangesCard: React.FC<ProposedChangesCardProps> = ({
 
   return (
     <div className="proposed-changes-card">
+      {/* "Pushing to Active" promotion indicator: a banner across the card top in
+          the row layout, restyled by the stacked-layout mixin into a pulsing
+          chevron badge on the active/proposed seam. */}
+      <div className="promote-flow" aria-hidden="true" />
+      <div className="promote-banner">
+        <svg className="promote-banner__icon" viewBox="0 0 16 7" fill="none" aria-hidden="true">
+          <path
+            d="M1 6 L8 1 L15 6"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        <span className="promote-banner__label">Pushing to Active</span>
+      </div>
+
       <div className="proposed-changes-card__header">
         <div className="proposed-changes-card__header-row">
           <span className="proposed-changes-card__status-icon">
