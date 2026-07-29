@@ -206,6 +206,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
   font-size: 13px;
   font-weight: 500;
   color: $argo-running;
@@ -249,6 +250,7 @@
     opacity: 0.7;
     font-size: 11px;
     font-weight: 400;
+    white-space: nowrap;
 
     &::before {
       content: '·';

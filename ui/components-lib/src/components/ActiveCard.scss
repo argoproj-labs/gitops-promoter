@@ -26,7 +26,10 @@
 
 .env-card__title {
   display: flex;
-  align-items: center;
+  // Top-align so the health chip and PR indicator sit on the first line of a
+  // wrapping environment name instead of centering against a two-line title.
+  align-items: flex-start;
+  gap: 12px;
   font-weight: 600;
   font-size: 18px;
   margin-bottom: 22px;
@@ -39,6 +42,9 @@
   font-size: 16px;
   line-height: 1.3;
   color: $argo-color-black;
+  // Break long environment names on word boundaries first, falling back to
+  // mid-"word" breaks so a segment like "ap-northeast-1" can't overflow.
+  overflow-wrap: anywhere;
 }
 
 .env-card__health-chip {
@@ -50,6 +56,10 @@
   font-size: 13px;
   font-weight: 500;
   color: $argo-color-gray-7;
+  flex-shrink: 0;
+  // Sit on the first line of a wrapping environment name rather than
+  // vertically centering against the whole (possibly two-line) title.
+  align-self: flex-start;
 }
 
 // "Current status" disclosure, rendered directly beneath the active commit
