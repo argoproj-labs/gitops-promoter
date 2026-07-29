@@ -105,15 +105,13 @@ const ProposedChangesCard: React.FC<ProposedChangesCardProps> = ({
         {message && <div className="proposed-changes-card__progress">{message}</div>}
       </div>
 
-      {/* Reuse CommitInfo's commit rendering (title-less path renders just the
-          commits section) rather than duplicating the commit JSX. */}
+      {/* Reuse CommitInfo to render the commit rows rather than duplicating the
+          commit JSX. */}
       <CommitInfo
         deploymentCommit={deploymentCommit}
         codeCommit={codeCommit}
         deploymentCommitUrl={deploymentCommitUrl}
         codeCommitUrl={codeCommitUrl}
-        prUrl={prUrl}
-        status={status}
       />
 
       {healthSummary?.shouldDisplay && checks && (

@@ -1,64 +1,26 @@
 import { GoArchive } from 'react-icons/go';
 import { BsBraces } from 'react-icons/bs';
-import { GoGitPullRequest } from 'react-icons/go';
-import { StatusType } from './StatusIcon';
 import { Tooltip } from './Tooltip';
 import React, { useState, useRef, useCallback } from 'react';
 import TimeAgo from './TimeAgo';
-import HealthSummary from './HealthSummary';
 import './CommitInfo.scss';
-import { PrTooltip, ReferenceCommit } from '@shared/types/promotion';
-import { formatDate } from '@shared/utils/util';
+import { ReferenceCommit } from '@shared/types/promotion';
 
 export interface CommitInfoProps {
-  title?: string;
   deploymentCommit: any;
   codeCommit: ReferenceCommit | null;
-  isActive?: boolean;
-  status?: StatusType;
-  className?: string;
   deploymentCommitUrl?: string;
   codeCommitUrl: string | null;
-  checks?: any[];
-  healthSummary?: { successCount: number; totalCount: number; shouldDisplay: boolean };
-  prUrl: string | null;
-  prNumber?: string;
-  hideCommitDetails?: boolean;
-  additionalChecks?: any[];
-  additionalChecksTitle?: string;
-  additionalChecksTitleTooltip?: string;
-  primaryChecksTitle?: string;
-  primaryChecksTitleTooltip?: string;
-  mergeTimeAgo?: string;
-  prTooltip?: PrTooltip | null;
-  // Presentation variant forwarded to the rendered HealthSummary. The proposed
-  // group uses 'always-expanded' so its checks are always shown; others default
-  // to the collapsible disclosure.
-  checksVariant?: 'collapsible' | 'always-expanded';
 }
 
+// Renders an environment's commit rows: the deployment commit and, when
+// present, the code commit. The surrounding card chrome (title, PR chip,
+// promote banner, checks) is owned by ActiveCard / ProposedChangesCard.
 const CommitInfo: React.FC<CommitInfoProps> = ({
-  title,
   deploymentCommit,
   codeCommit,
-  isActive = false,
-  status = 'unknown',
-  className = '',
   deploymentCommitUrl,
   codeCommitUrl,
-  checks,
-  healthSummary,
-  prUrl,
-  prNumber,
-  hideCommitDetails = false,
-  additionalChecks,
-  additionalChecksTitle,
-  additionalChecksTitleTooltip,
-  primaryChecksTitle,
-  primaryChecksTitleTooltip,
-  mergeTimeAgo,
-  prTooltip,
-  checksVariant = 'collapsible',
 }) => {
   const [showDeploymentTooltip, setShowDeploymentTooltip] = useState(false);
   const [showCodeTooltip, setShowCodeTooltip] = useState(false);
@@ -189,107 +151,10 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
     }
   };
 
-  if (!title) {
-    return (
-      <div className="commits-section">
-        {prUrl && prNumber && (
-          <div className="commit-group-header">
-            <h4 className="commit-group-title">
-              <Tooltip
-                content={
-                  prTooltip
-                    ? `${prTooltip.label} ${formatDate(prTooltip.time)}`
-                    : `Open PR #${prNumber} on GitHub`
-                }
-              >
-                <a
-                  href={prUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`pr-indicator ${isActive ? 'pr-merged' : ''}`}
-                >
-                  <GoGitPullRequest className="pr-icon" />
-                  PR #{prNumber}
-                  {mergeTimeAgo && <span className="pr-merge-time">{mergeTimeAgo}</span>}
-                </a>
-              </Tooltip>
-            </h4>
-          </div>
-        )}
-        {renderCommit(deploymentCommit, 'deployment', deploymentCommitUrl)}
-        {codeCommit && renderCommit(codeCommit, 'code', codeCommitUrl || '')}
-      </div>
-    );
-  }
-
-  const isProposed = className.includes('proposed');
-
   return (
-    <div className={`commit-group ${className}`}>
-      {isProposed && (
-        <>
-          <div className="promote-flow" aria-hidden="true" />
-          <div className="promote-banner">
-            <svg className="promote-banner__icon" viewBox="0 0 16 7" fill="none" aria-hidden="true">
-              <path
-                d="M1 6 L8 1 L15 6"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <span className="promote-banner__label">Pushing to Active</span>
-          </div>
-        </>
-      )}
-      <div className="commit-group-header">
-        <h4 className="commit-group-title">
-          {title}
-          {prUrl && prNumber && (
-            <Tooltip
-              content={
-                prTooltip
-                  ? `${prTooltip.label} ${formatDate(prTooltip.time)}`
-                  : `Open PR #${prNumber} on GitHub`
-              }
-            >
-              <a
-                href={prUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`pr-indicator ${isActive ? 'pr-merged' : ''}`}
-              >
-                <GoGitPullRequest className="pr-icon" />
-                PR #{prNumber}
-                {mergeTimeAgo && <span className="pr-merge-time">{mergeTimeAgo}</span>}
-              </a>
-            </Tooltip>
-          )}
-        </h4>
-      </div>
-      {!hideCommitDetails && (
-        <div className="commits-section">
-          {renderCommit(deploymentCommit, 'deployment', deploymentCommitUrl)}
-          {codeCommit && renderCommit(codeCommit, 'code', codeCommitUrl || '')}
-        </div>
-      )}
-
-      {(healthSummary?.shouldDisplay || (additionalChecks && additionalChecks.length > 0)) &&
-        checks && (
-          <HealthSummary
-            checks={checks}
-            title={`${title || 'Section'} Checks`}
-            status={status}
-            healthSummary={healthSummary}
-            additionalChecks={additionalChecks}
-            additionalChecksTitle={additionalChecksTitle}
-            additionalChecksTitleTooltip={additionalChecksTitleTooltip}
-            primaryChecksTitle={primaryChecksTitle}
-            primaryChecksTitleTooltip={primaryChecksTitleTooltip}
-            variant={checksVariant}
-          />
-        )}
+    <div className="commits-section">
+      {renderCommit(deploymentCommit, 'deployment', deploymentCommitUrl)}
+      {codeCommit && renderCommit(codeCommit, 'code', codeCommitUrl || '')}
     </div>
   );
 };

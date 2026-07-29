@@ -86,11 +86,8 @@ const ActiveCard: React.FC<ActiveCardProps> = ({
       <CommitInfo
         deploymentCommit={deploymentCommit}
         codeCommit={codeCommit}
-        isActive={true}
-        status={activeStatus as StatusType}
         deploymentCommitUrl={deploymentCommitUrl}
         codeCommitUrl={codeCommitUrl}
-        prUrl={null}
       />
 
       <div className="env-card__current-status">
