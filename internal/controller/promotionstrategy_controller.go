@@ -73,12 +73,19 @@ type ctpEnqueueState struct {
 	// retries. A deleted CTP stops being considered and is swept within the hour
 	// either way.
 	lastSeenTime time.Time
-	// lastDisagreement is the disagreement the currently-running retry chain is for.
-	// It is the single source of truth for chain liveness: a chain re-nudges only while
-	// lastDisagreement still equals the value it was armed with. A changed disagreement
-	// overwrites it (starting a new chain and stranding the old one); convergence clears
-	// it to the zero value. In both cases the stranded chain sees a mismatch on its next
-	// tick and stops — no per-chain flag or generation counter is needed.
+	// lastDisagreement is the disagreement this CTP is currently armed for — the value a
+	// retry chain was started with. It is the single source of truth for two things:
+	//   - Chain liveness: a chain re-nudges only while lastDisagreement still equals the
+	//     value it was armed with. A changed disagreement overwrites it (starting a new
+	//     chain and stranding the old one); convergence clears it to the zero value. In
+	//     both cases the stranded chain sees a mismatch on its next tick and stops — no
+	//     per-chain flag or generation counter is needed.
+	//   - Enqueue suppression: while lastDisagreement still matches, handleRateLimitedEnqueue
+	//     treats the disagreement as already handled and does nothing. This holds even after
+	//     the retry budget is exhausted and no chain is running: the CTP is deliberately not
+	//     re-enqueued until the disagreement changes or the periodic CTP requeue fires. So a
+	//     set lastDisagreement means "armed for this disagreement" (pending retries OR
+	//     exhausted budget), not necessarily "a chain is still ticking".
 	lastDisagreement ctpDisagreement
 }
 
@@ -593,13 +600,17 @@ func (r *PromotionStrategyReconciler) startCleanupTimer() {
 // handleRateLimitedEnqueue nudges a CTP to reconcile for the given disagreement, rate
 // limited so the same CTP is not enqueued more than once per threshold (15s by default).
 //
-// A disagreement that differs from the one the CTP's retry chain is currently running
-// for (a brand-new gap, a fetched note, a new target) starts a fresh bounded retry chain
-// and enqueues right away — unless the CTP was enqueued within the threshold, in which
-// case the immediate nudge is skipped and the chain's first tick delivers it once the
-// window elapses. A disagreement identical to the running chain's is already covered by
-// that chain, so it is ignored here. The chain (see startRetryChain) owns all subsequent
-// re-nudging and its own termination; this function never schedules directly.
+// A disagreement that differs from the one the CTP is currently armed for (a brand-new
+// gap, a fetched note, a new target) starts a fresh bounded retry chain and enqueues
+// right away — unless the CTP was enqueued within the threshold, in which case the
+// immediate nudge is skipped and the chain delivers it on its first tick. That tick is a
+// full threshold after the chain starts (not just the time remaining in the rate-limit
+// window), so a deferred first nudge can land up to nearly two thresholds after the
+// previous enqueue; this is acceptable because the note being waited on typically lands
+// within that window anyway. A disagreement identical to the one already armed is left to
+// the existing chain (or, if its budget is exhausted, to the periodic CTP requeue), so it
+// is ignored here. The chain (see startRetryChain) owns all subsequent re-nudging and its
+// own termination; this function never schedules directly.
 func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 	ctx context.Context,
 	ctp *promoterv1alpha1.ChangeTransferPolicy,
@@ -618,9 +629,11 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 	state := r.getOrCreateState(key)
 	state.lastSeenTime = now
 	if state.lastDisagreement == disagreement {
-		// The running chain already covers this exact disagreement.
+		// Already armed for this exact disagreement: either a retry chain is still ticking,
+		// or its budget is exhausted and we are deliberately waiting for the periodic CTP
+		// requeue. Either way there is nothing to do here until the disagreement changes.
 		r.enqueueStateMutex.Unlock()
-		logger.V(4).Info("Enqueue already covered by an active retry chain", "ctp", ctp.Name)
+		logger.V(4).Info("Enqueue skipped, already armed for this disagreement (active retries or exhausted budget)", "ctp", ctp.Name)
 		return
 	}
 	state.lastDisagreement = disagreement
