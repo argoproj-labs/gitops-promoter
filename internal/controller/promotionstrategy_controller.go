@@ -644,7 +644,8 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 	if state.disagreementAttempts > maxEnqueueRetriesPerDisagreement {
 		r.enqueueStateMutex.Unlock()
 		logger.V(4).Info("Skipping enqueue, retries for this disagreement are exhausted until it changes",
-			"ctp", ctp.Name)
+			"ctp", ctp.Name,
+			"disagreementAttempts", state.disagreementAttempts)
 		return
 	}
 
@@ -657,7 +658,8 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 			r.enqueueStateMutex.Unlock()
 			logger.V(4).Info("Rate limited, delayed enqueue already scheduled",
 				"ctp", ctp.Name,
-				"lastEnqueuedAgo", timeSinceLastEnqueue)
+				"lastEnqueuedAgo", timeSinceLastEnqueue,
+				"disagreementAttempts", state.disagreementAttempts)
 			return
 		}
 
@@ -669,7 +671,8 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 		logger.V(4).Info("Rate limited, scheduling delayed enqueue",
 			"ctp", ctp.Name,
 			"lastEnqueuedAgo", timeSinceLastEnqueue,
-			"retryIn", timeUntilThreshold)
+			"retryIn", timeUntilThreshold,
+			"disagreementAttempts", state.disagreementAttempts)
 
 		time.AfterFunc(timeUntilThreshold, func() {
 			r.enqueueStateMutex.Lock()
@@ -678,13 +681,15 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 			// Update state and enqueue
 			state.lastEnqueueTime = time.Now()
 			state.disagreementAttempts++
+			attempt := state.disagreementAttempts
 			state.hasScheduledRetry = false
 			r.enqueueStateMutex.Unlock()
 
 			if r.EnqueueCTP != nil {
 				r.EnqueueCTP(key.Namespace, key.Name)
 				logger.V(4).Info("Delayed enqueue succeeded",
-					"ctp", key.Name)
+					"ctp", key.Name,
+					"disagreementAttempts", attempt)
 			}
 		})
 
@@ -694,11 +699,13 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 	// Not rate limited - enqueue immediately
 	state.lastEnqueueTime = now
 	state.disagreementAttempts++
+	attempt := state.disagreementAttempts
 	state.hasScheduledRetry = false
 	r.enqueueStateMutex.Unlock()
 
 	logger.V(4).Info("Enqueueing out-of-sync CTP",
-		"ctp", ctp.Name)
+		"ctp", ctp.Name,
+		"disagreementAttempts", attempt)
 
 	if r.EnqueueCTP != nil {
 		r.EnqueueCTP(key.Namespace, key.Name)
