@@ -942,3 +942,45 @@ func (g *EnvironmentOperations) GetTrailers(ctx context.Context, sha string) (ma
 	// Use the standalone parser
 	return ParseTrailersFromMessage(ctx, msgStdout)
 }
+
+// HasCommit checks if a commit with the given SHA exists in the repository.
+//
+// Read-only: never mutates the clone's index/worktree/HEAD.
+func (g *EnvironmentOperations) HasCommit(ctx context.Context, sha string) (bool, error) {
+	gitPath := g.ClonePath()
+	if gitPath == "" {
+		return false, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	_, stderr, err := g.runCmd(ctx, gitPath, "cat-file", "-e", sha+"^{commit}")
+	if err != nil {
+		if strings.Contains(strings.ToLower(stderr), "not a valid object name") {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to check if commit exists for sha %q: %w (stderr: %s)", sha, err, stderr)
+	}
+
+	return true, nil
+}
+
+// FetchBranch fetches branch from origin into this clone, making its commits available to read.
+// It is the minimal counterpart to GetBranchShas for callers that only need the objects present
+// (for example before reading a specific SHA) and not the branch's hydrated/dry SHAs or metadata.
+func (g *EnvironmentOperations) FetchBranch(ctx context.Context, branch string) error {
+	logger := log.FromContext(ctx)
+
+	gitPath := g.ClonePath()
+	if gitPath == "" {
+		return fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	start := time.Now()
+	_, stderr, err := g.runCmd(ctx, gitPath, "fetch", "origin", branch)
+	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetch, metrics.GitOperationResultFromError(err), time.Since(start))
+	if err != nil {
+		logger.Error(err, "could not fetch branch", "gitError", stderr)
+		return fmt.Errorf("failed to fetch branch %q: %w", branch, err)
+	}
+
+	return nil
+}

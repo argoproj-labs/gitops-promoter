@@ -97,6 +97,39 @@ type GitCommitStatusSpec struct {
 	//
 	// +required
 	Expression string `json:"expression"`
+
+	// Verification allows enabling GPG signature verification for every commit the promotion would
+	// add, independent of Target. When set, the expression additionally sees a top-level
+	// Verification variable with the fields Verified and Commits; each entry in Commits has SHA,
+	// Verified, Type, KeyID and Signer, and every field other than SHA and Verified is empty unless
+	// that commit verified. Verification is nil when this field is unset.
+	// +optional
+	Verification *GitCommitVerification `json:"verification,omitempty"`
+}
+
+// GitCommitVerification configures how a commit's signature is verified.
+// +kubebuilder:validation:XValidation:rule="has(self.gpg)",message="verification requires gpg"
+type GitCommitVerification struct {
+	// GPG verifies the commit against a set of trusted GPG public keys.
+	// +optional
+	GPG *GitCommitVerificationGPG `json:"gpg,omitempty"`
+}
+
+// GitCommitVerificationGPG holds the GPG public keys a commit signature is trusted against.
+type GitCommitVerificationGPG struct {
+	// PublicKeys are the keys a signature must verify against. A commit signed by a key outside this
+	// set is reported as unverified, so the list is the complete trust anchor for this validation.
+	// +required
+	// +kubebuilder:validation:MinItems=1
+	PublicKeys []GitCommitVerificationGPGPublicKey `json:"publicKeys"`
+}
+
+// GitCommitVerificationGPGPublicKey is a single trusted GPG public key.
+type GitCommitVerificationGPGPublicKey struct {
+	// Armored is the ASCII-armored public key, as produced by `gpg --armor --export <fingerprint>`.
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	Armored string `json:"armored"`
 }
 
 // GitCommitStatusStatus defines the observed state of GitCommitStatus.

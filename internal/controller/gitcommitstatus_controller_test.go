@@ -17,8 +17,10 @@ limitations under the License.
 package controller
 
 import (
+	"bytes"
 	"context"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -59,6 +61,148 @@ func setPromotionStrategyGlobalProposedCommitStatusKey(ctx context.Context, psNa
 		g.Expect(k8sClient.Update(ctx, &ps)).To(Succeed())
 	}, constants.EventuallyTimeout).Should(Succeed())
 }
+
+// testGPGPublicKey is a throwaway key that never signs anything here. Verification only needs a
+// keyring to import, so its presence is what forces the signature path to actually run.
+const testGPGPublicKey = `-----BEGIN PGP PUBLIC KEY BLOCK-----
+
+mDMEamh8QBYJKwYBBAHaRw8BAQdA5/MyI4v8BbhmEUnAQes8rsA8QTX+gV9lThb+
+70h8sGa0LVByb21vdGVyIFRlc3QgS2V5IDxwcm9tb3Rlci10ZXN0QGV4YW1wbGUu
+Y29tPoivBBMWCgBXFiEEnNKnRZshHWKuCq/J/vosoIB4gusFAmpofEAbFIAAAAAA
+BAAObWFudTIsMi41KzEuMTIsMCwzAhsjBQsJCAcCAiICBhUKCQgLAgQWAgMBAh4H
+AheAAAoJEP76LKCAeILrt3MBAN/F7PAo3Q88ch4w/SDFED7JXTcOWnk7UQTFFOFN
+/35LAQDYMmOgD1kNRX+7V0QOLNcY1+0nnF6h/Hk4lBPHxkcWBQ==
+=LMd0
+-----END PGP PUBLIC KEY BLOCK-----
+`
+
+// signingKey is a throwaway GPG key living in its own GNUPGHOME, both removed when the spec ends.
+type signingKey struct {
+	fingerprint   string
+	armoredPublic string
+	home          string
+}
+
+func newSigningKey(ctx context.Context, email string) *signingKey {
+	GinkgoHelper()
+	if _, err := exec.LookPath("gpg"); err != nil {
+		Skip("gpg not installed")
+	}
+
+	home, err := os.MkdirTemp("", "gcs-signing-*")
+	Expect(err).NotTo(HaveOccurred())
+	Expect(os.Chmod(home, 0o700)).To(Succeed())
+	//nolint:contextcheck // The spec's context is cancelled before cleanup runs, so killing the
+	// agent needs the fresh context Ginkgo supplies here.
+	DeferCleanup(func(ctx SpecContext) {
+		_ = exec.CommandContext(ctx, "gpgconf", "--homedir", home, "--kill", "all").Run()
+		_ = os.RemoveAll(home)
+	})
+
+	gpg := func(stdin string, args ...string) string {
+		GinkgoHelper()
+		cmd := exec.CommandContext(ctx, "gpg", append([]string{"--homedir", home, "--batch", "--no-tty"}, args...)...)
+		cmd.Env = append(os.Environ(), "GNUPGHOME="+home)
+		if stdin != "" {
+			cmd.Stdin = strings.NewReader(stdin)
+		}
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		Expect(cmd.Run()).To(Succeed(), stderr.String())
+		return stdout.String()
+	}
+
+	gpg("%no-protection\nKey-Type: eddsa\nKey-Curve: ed25519\nName-Real: Promoter Signing Test"+
+		"\nName-Email: "+email+"\nExpire-Date: 0\n%commit\n", "--gen-key")
+
+	key := &signingKey{home: home}
+	for line := range strings.SplitSeq(gpg("", "--list-secret-keys", "--with-colons", email), "\n") {
+		if fields := strings.Split(line, ":"); fields[0] == "fpr" && len(fields) >= 10 {
+			key.fingerprint = fields[9]
+			break
+		}
+	}
+	Expect(key.fingerprint).NotTo(BeEmpty())
+
+	key.armoredPublic = gpg("", "--armor", "--export", key.fingerprint)
+	Expect(key.armoredPublic).NotTo(BeEmpty())
+	return key
+}
+
+// promotionRepo is a clone of the suite repository that drives the environment branches directly,
+// so a spec can shape the promotion range it wants verified. It exists instead of runGitCmd because
+// signing needs PATH, so git can find gpg, and GNUPGHOME, so gpg can find the key; runGitCmd
+// exports neither.
+type promotionRepo struct {
+	dir string
+	env []string
+}
+
+func newPromotionRepo(ctx context.Context, repo *promoterv1alpha1.GitRepository, key *signingKey) *promotionRepo {
+	GinkgoHelper()
+	dir, err := os.MkdirTemp("", "gcs-promotion-clone-*")
+	Expect(err).NotTo(HaveOccurred())
+	DeferCleanup(func() { _ = os.RemoveAll(dir) })
+
+	r := &promotionRepo{dir: dir, env: []string{"GIT_TERMINAL_PROMPT=0", "PATH=" + os.Getenv("PATH")}}
+	if key != nil {
+		r.env = append(r.env, "GNUPGHOME="+key.home)
+	}
+
+	r.git(ctx, "clone", testGitRepoCloneURL(repo), ".")
+	r.git(ctx, "config", "user.name", "testuser")
+	r.git(ctx, "config", "user.email", "testemail@test.com")
+	if key != nil {
+		r.git(ctx, "config", "user.signingkey", key.fingerprint)
+	}
+	return r
+}
+
+func (r *promotionRepo) git(ctx context.Context, args ...string) string {
+	GinkgoHelper()
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = r.dir
+	cmd.Env = r.env
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	Expect(cmd.Run()).To(Succeed(), "git %v failed: %s", args, stderr.String())
+	return strings.TrimSpace(stdout.String())
+}
+
+// alignActiveWithProposed fast-forwards every active branch onto its proposed branch, emptying the
+// promotion range so that whatever a spec pushes next is the whole of what gets verified.
+func (r *promotionRepo) alignActiveWithProposed(ctx context.Context) {
+	GinkgoHelper()
+	r.git(ctx, "fetch", "origin")
+	for _, active := range testEnvironmentBranches {
+		before := r.git(ctx, "rev-parse", "origin/"+active)
+		r.git(ctx, "push", "origin", "origin/"+active+"-next:refs/heads/"+active)
+		sendWebhookForPush(ctx, before, active)
+	}
+}
+
+// commitToProposedBranches adds one commit to every proposed branch, signed by the repo's key when
+// sign is set.
+func (r *promotionRepo) commitToProposedBranches(ctx context.Context, sign bool, message string) {
+	GinkgoHelper()
+	r.git(ctx, "fetch", "origin")
+	for _, active := range testEnvironmentBranches {
+		proposed := active + "-next"
+		r.git(ctx, "checkout", "-B", proposed, "origin/"+proposed)
+		before := r.git(ctx, "rev-parse", "HEAD")
+
+		signing := "--no-gpg-sign"
+		if sign {
+			signing = "-S"
+		}
+		r.git(ctx, "commit", "--allow-empty", signing, "-m", message+" for "+active)
+
+		r.git(ctx, "push", "origin", proposed)
+		sendWebhookForPush(ctx, before, proposed)
+	}
+}
+
+var testEnvironmentBranches = []string{testBranchDevelopment, testBranchStaging, testBranchProduction}
 
 var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 	var (
@@ -172,6 +316,153 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				g.Expect(k8sClient.List(ctx, &eventList, ctrlclient.InNamespace("default"))).To(Succeed())
 				g.Expect(hasEventWithReasonAndMessage(eventList, name+"-simple", constants.CommitStatusPhaseChangedReason, "to success")).To(BeTrue())
 			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	Describe("Commit Signature Verification", func() {
+		AfterEach(func() {
+			if gitCommitStatus != nil {
+				_ = k8sClient.Delete(ctx, gitCommitStatus)
+			}
+		})
+
+		expectAllEnvironmentsToSucceed := func(gcsName string) {
+			GinkgoHelper()
+			Eventually(func(g Gomega) {
+				var gcs promoterv1alpha1.GitCommitStatus
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: gcsName, Namespace: "default"}, &gcs)).To(Succeed())
+				g.Expect(gcs.Status.Environments).To(HaveLen(3))
+				for _, env := range gcs.Status.Environments {
+					g.Expect(env.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)), "Environment "+env.Branch+" should succeed")
+					g.Expect(env.ExpressionResult).ToNot(BeNil())
+					g.Expect(*env.ExpressionResult).To(BeTrue())
+				}
+			}, constants.EventuallyTimeout).Should(Succeed())
+		}
+
+		It("leaves the signature unset when verification is not configured", func() {
+			setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, "gcs-nosig")
+
+			gitCommitStatus = &promoterv1alpha1.GitCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-nosig",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.GitCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key:        "gcs-nosig",
+					Expression: `Verification == nil`,
+				},
+			}
+			Expect(k8sClient.Create(ctx, gitCommitStatus)).To(Succeed())
+
+			expectAllEnvironmentsToSucceed(name + "-nosig")
+		})
+
+		It("reports an unsigned commit as unverified when verification is configured", func() {
+			repo := newPromotionRepo(ctx, gitRepo, nil)
+			repo.alignActiveWithProposed(ctx)
+			repo.commitToProposedBranches(ctx, false, "unsigned promotion")
+
+			setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, "gcs-unsigned")
+
+			gitCommitStatus = &promoterv1alpha1.GitCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-unsigned",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.GitCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key:        "gcs-unsigned",
+					Expression: `Verification != nil && !Verification.Verified`,
+					Verification: &promoterv1alpha1.GitCommitVerification{
+						GPG: &promoterv1alpha1.GitCommitVerificationGPG{
+							PublicKeys: []promoterv1alpha1.GitCommitVerificationGPGPublicKey{
+								{Armored: testGPGPublicKey},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, gitCommitStatus)).To(Succeed())
+
+			expectAllEnvironmentsToSucceed(name + "-unsigned")
+		})
+
+		It("reports a promotion as verified when every commit it adds is signed by a trusted key", func() {
+			key := newSigningKey(ctx, "promoter-signed@example.com")
+			repo := newPromotionRepo(ctx, gitRepo, key)
+			repo.alignActiveWithProposed(ctx)
+			repo.commitToProposedBranches(ctx, true, "signed promotion")
+
+			setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, "gcs-signed")
+
+			By("Creating a GitCommitStatus that only passes when the whole range verifies")
+			gitCommitStatus = &promoterv1alpha1.GitCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-signed",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.GitCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key: "gcs-signed",
+					// The length check keeps the spec honest: an empty range verifies vacuously.
+					Expression: `Verification != nil && Verification.Verified && len(Verification.Commits) > 0`,
+					Verification: &promoterv1alpha1.GitCommitVerification{
+						GPG: &promoterv1alpha1.GitCommitVerificationGPG{
+							PublicKeys: []promoterv1alpha1.GitCommitVerificationGPGPublicKey{
+								{Armored: key.armoredPublic},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, gitCommitStatus)).To(Succeed())
+
+			expectAllEnvironmentsToSucceed(name + "-signed")
+		})
+
+		It("reports the promotion unverified when an unsigned commit hides under a signed tip", func() {
+			key := newSigningKey(ctx, "promoter-hidden@example.com")
+			repo := newPromotionRepo(ctx, gitRepo, key)
+			repo.alignActiveWithProposed(ctx)
+			repo.commitToProposedBranches(ctx, false, "sneaked in unsigned")
+			repo.commitToProposedBranches(ctx, true, "signed tip")
+
+			setPromotionStrategyGlobalProposedCommitStatusKey(ctx, name, "gcs-hidden")
+
+			By("Creating a GitCommitStatus asserting the commit beneath the tip is reported unverified")
+			gitCommitStatus = &promoterv1alpha1.GitCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-hidden",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.GitCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key: "gcs-hidden",
+					Expression: `Verification != nil && !Verification.Verified &&
+						len(Verification.Commits) == 2 &&
+						len(filter(Verification.Commits, .Verified)) == 1`,
+					Verification: &promoterv1alpha1.GitCommitVerification{
+						GPG: &promoterv1alpha1.GitCommitVerificationGPG{
+							PublicKeys: []promoterv1alpha1.GitCommitVerificationGPGPublicKey{
+								{Armored: key.armoredPublic},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, gitCommitStatus)).To(Succeed())
+
+			expectAllEnvironmentsToSucceed(name + "-hidden")
 		})
 	})
 

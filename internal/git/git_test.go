@@ -1104,6 +1104,200 @@ exit 1
 	})
 })
 
+var _ = Describe("HasCommit", func() {
+	var (
+		tempRepoDir string
+		workDir     string
+		headSha     string
+		g           *git.EnvironmentOperations
+	)
+
+	BeforeEach(func() {
+		var err error
+		tempRepoDir, err = os.MkdirTemp("", "git-test-*")
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Setting up a bare git repository")
+		_, err = runGitCmd(tempRepoDir, "init", "--bare")
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Creating a working directory with an initial commit and pushing it")
+		workDir, err = os.MkdirTemp("", "git-work-*")
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = runGitCmd(workDir, "clone", tempRepoDir, ".")
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = runGitCmd(workDir, "config", "user.name", "Test User")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "config", "user.email", "test@example.com")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "config", "commit.gpgsign", "false")
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(os.WriteFile(filepath.Join(workDir, "README.md"), []byte("# Test Repo"), 0o644)).To(Succeed())
+		_, err = runGitCmd(workDir, "add", "README.md")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", "Initial commit")
+		Expect(err).NotTo(HaveOccurred())
+
+		defaultBranch, err := runGitCmd(workDir, "rev-parse", "--abbrev-ref", "HEAD")
+		Expect(err).NotTo(HaveOccurred())
+		defaultBranch = strings.TrimSpace(defaultBranch)
+
+		_, err = runGitCmd(workDir, "push", "origin", defaultBranch)
+		Expect(err).NotTo(HaveOccurred())
+
+		headSha, err = runGitCmd(workDir, "rev-parse", "HEAD")
+		Expect(err).NotTo(HaveOccurred())
+		headSha = strings.TrimSpace(headSha)
+
+		By("Cloning the repository through EnvironmentOperations")
+		repo := &v1alpha1.GitRepository{
+			Spec: v1alpha1.GitRepositorySpec{
+				GitHub: &v1alpha1.GitHubRepo{Owner: "test-owner", Name: "testrepo"},
+				ScmProviderRef: v1alpha1.ScmProviderObjectReference{
+					Kind: "ScmProvider",
+					Name: "testprovider",
+				},
+			},
+			ObjectMeta: metav1.ObjectMeta{Name: "testrepo", Namespace: "default"},
+		}
+		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
+		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
+		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
+	})
+
+	AfterEach(func() {
+		if tempRepoDir != "" {
+			Expect(os.RemoveAll(tempRepoDir)).To(Succeed())
+		}
+		if workDir != "" {
+			Expect(os.RemoveAll(workDir)).To(Succeed())
+		}
+	})
+
+	It("returns true for a commit present in the clone", func() {
+		ok, err := g.HasCommit(GinkgoT().Context(), headSha)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ok).To(BeTrue())
+	})
+
+	It("returns false for a well-formed SHA that is not present", func() {
+		ok, err := g.HasCommit(GinkgoT().Context(), "1111111111111111111111111111111111111111")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ok).To(BeFalse())
+	})
+
+	It("returns false for a malformed SHA", func() {
+		ok, err := g.HasCommit(GinkgoT().Context(), "invalid-sha")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ok).To(BeFalse())
+	})
+})
+
+var _ = Describe("FetchBranch", func() {
+	var (
+		tempRepoDir string
+		workDir     string
+		oldSha      string
+		g           *git.EnvironmentOperations
+	)
+
+	// The clone is a promisor (partial) clone, so reading an object can lazily fetch it from origin;
+	// that makes HasCommit an unreliable witness for "not fetched yet". FetchBranch's deterministic,
+	// un-lazy-fetched effect is advancing the remote-tracking ref origin/main, so the specs assert on
+	// that ref (read through the exported ClonePath) rather than on object presence.
+	originMain := func() string {
+		out, err := runGitCmd(g.ClonePath(), "rev-parse", "origin/main")
+		Expect(err).NotTo(HaveOccurred())
+		return strings.TrimSpace(out)
+	}
+
+	BeforeEach(func() {
+		var err error
+		tempRepoDir, err = os.MkdirTemp("", "git-fetch-repo-*")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(tempRepoDir, "init", "--bare")
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Creating a working directory with an initial commit on main and pushing it")
+		workDir, err = os.MkdirTemp("", "git-fetch-work-*")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "clone", tempRepoDir, ".")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "config", "user.name", "Test User")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "config", "user.email", "test@example.com")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "config", "commit.gpgsign", "false")
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(os.WriteFile(filepath.Join(workDir, "a.txt"), []byte("one"), 0o644)).To(Succeed())
+		_, err = runGitCmd(workDir, "add", "a.txt")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", "one")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "branch", "-M", "main")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "origin", "main")
+		Expect(err).NotTo(HaveOccurred())
+
+		oldSha, err = runGitCmd(workDir, "rev-parse", "HEAD")
+		Expect(err).NotTo(HaveOccurred())
+		oldSha = strings.TrimSpace(oldSha)
+
+		By("Cloning the repository through EnvironmentOperations")
+		repo := &v1alpha1.GitRepository{
+			Spec: v1alpha1.GitRepositorySpec{
+				GitHub: &v1alpha1.GitHubRepo{Owner: "test-owner", Name: "fetchrepo"},
+				ScmProviderRef: v1alpha1.ScmProviderObjectReference{
+					Kind: "ScmProvider",
+					Name: "testprovider",
+				},
+			},
+			ObjectMeta: metav1.ObjectMeta{Name: "fetchrepo", Namespace: "default"},
+		}
+		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
+		g = git.NewEnvironmentOperations(repo, gap, "default/fetchrepo")
+		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
+	})
+
+	AfterEach(func() {
+		if tempRepoDir != "" {
+			Expect(os.RemoveAll(tempRepoDir)).To(Succeed())
+		}
+		if workDir != "" {
+			Expect(os.RemoveAll(workDir)).To(Succeed())
+		}
+	})
+
+	It("advances the remote-tracking ref to a newly pushed commit", func() {
+		By("pushing a new commit to main after the clone was created")
+		Expect(os.WriteFile(filepath.Join(workDir, "b.txt"), []byte("two"), 0o644)).To(Succeed())
+		_, err := runGitCmd(workDir, "add", "b.txt")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", "two")
+		Expect(err).NotTo(HaveOccurred())
+		newSha, err := runGitCmd(workDir, "rev-parse", "HEAD")
+		Expect(err).NotTo(HaveOccurred())
+		newSha = strings.TrimSpace(newSha)
+		_, err = runGitCmd(workDir, "push", "origin", "main")
+		Expect(err).NotTo(HaveOccurred())
+
+		By("the clone's remote-tracking ref still points at the old tip before fetching")
+		Expect(originMain()).To(Equal(oldSha))
+
+		By("FetchBranch advances the remote-tracking ref to the new tip")
+		Expect(g.FetchBranch(GinkgoT().Context(), "main")).To(Succeed())
+		Expect(originMain()).To(Equal(newSha))
+	})
+
+	It("returns an error for a branch that does not exist on origin", func() {
+		Expect(g.FetchBranch(GinkgoT().Context(), "does-not-exist")).NotTo(Succeed())
+	})
+})
+
 type fakeGitProvider struct {
 	tempDirPath string
 }

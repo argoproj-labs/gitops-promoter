@@ -17,6 +17,9 @@ limitations under the License.
 package utils
 
 import (
+	"fmt"
+	"path"
+
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 )
@@ -54,4 +57,19 @@ func GetApplicableEnvironments(ps *promoterv1alpha1.PromotionStrategy, key strin
 		}
 	}
 	return applicable
+}
+
+// ProposedBranchName returns the proposed branch for env within ps: the active branch suffixed
+// with "-next", joined with the effective active path (the per-environment ActivePath when set,
+// otherwise the strategy-wide ActivePath).
+func ProposedBranchName(ps *promoterv1alpha1.PromotionStrategy, env promoterv1alpha1.Environment) string {
+	activePath := ps.Spec.ActivePath
+	if env.ActivePath != "" {
+		activePath = env.ActivePath
+	}
+	proposedBranch := fmt.Sprintf("%s-%s", env.Branch, "next")
+	if activePath != "" {
+		proposedBranch = path.Join(proposedBranch, activePath)
+	}
+	return proposedBranch
 }

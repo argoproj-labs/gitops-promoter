@@ -78,6 +78,12 @@ type GitCommitStatusSpecApplyConfiguration struct {
 	// - Commit.Author (string): commit author email address
 	// - Commit.Trailers (map[string][]string): git trailers parsed from commit message
 	Expression *string `json:"expression,omitempty"`
+	// Verification allows enabling GPG signature verification for every commit the promotion would
+	// add, independent of Target. When set, the expression additionally sees a top-level
+	// Verification variable with the fields Verified and Commits; each entry in Commits has SHA,
+	// Verified, Type, KeyID and Signer, and every field other than SHA and Verified is empty unless
+	// that commit verified. Verification is nil when this field is unset.
+	Verification *GitCommitVerificationApplyConfiguration `json:"verification,omitempty"`
 }
 
 // GitCommitStatusSpecApplyConfiguration constructs a declarative configuration of the GitCommitStatusSpec type for use with
@@ -123,5 +129,13 @@ func (b *GitCommitStatusSpecApplyConfiguration) WithTarget(value string) *GitCom
 // If called multiple times, the Expression field is set to the value of the last call.
 func (b *GitCommitStatusSpecApplyConfiguration) WithExpression(value string) *GitCommitStatusSpecApplyConfiguration {
 	b.Expression = &value
+	return b
+}
+
+// WithVerification sets the Verification field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Verification field is set to the value of the last call.
+func (b *GitCommitStatusSpecApplyConfiguration) WithVerification(value *GitCommitVerificationApplyConfiguration) *GitCommitStatusSpecApplyConfiguration {
+	b.Verification = value
 	return b
 }
