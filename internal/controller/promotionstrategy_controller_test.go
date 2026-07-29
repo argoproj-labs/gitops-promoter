@@ -5663,7 +5663,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		// The batch target is the effective proposed dry SHA (Note.DrySha if set, else
 		// Proposed.Dry.Sha) of the CTP with the newest proposed hydrated commit. A CTP is
 		// enqueued when its own effective proposed dry SHA disagrees with that target — one
-		// immediate enqueue plus at most 3 delayed retries per distinct disagreement (a
+		// immediate enqueue plus at most 3 chained delayed retries per distinct disagreement (a
 		// retried nudge covers a git note landing shortly after the previous one), after
 		// which the periodic CTP requeue is the retry path until the disagreement changes.
 		makeCTPWithShas := func(name, proposedDrySha string, note *promoterv1alpha1.HydratorMetadata, commitTime metav1.Time) *promoterv1alpha1.ChangeTransferPolicy { //nolint:unparam // proposedDrySha is a fixture knob; the current specs all model note-vs-file divergence on the same file SHA
@@ -5821,24 +5821,22 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				makeTargetCTP(),
 			}
 
-			// The immediate enqueue consumes the first slot of the disagreement's budget.
-			// Repeats within the rate-limit window defer to a single delayed retry.
+			// One call enqueues immediately and auto-chains threshold-spaced delayed
+			// retries until the disagreement budget is exhausted. Repeats within the
+			// rate-limit window do not enqueue again or arm duplicate chains.
 			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
 			for range 3 {
 				reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
 			}
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(HaveLen(1))
 
-			// Each threshold-spaced delayed retry covers a git note landing shortly after
-			// the previous nudge (note pushes have no webhooks). The budget allows 3
-			// retries for the same unchanged disagreement.
-			for expected := 2; expected <= 4; expected++ {
-				Eventually(func() []string {
-					return enqueuedNames(enqueuedCTPs, enqueueMutex)
-				}, 5*time.Second, 20*time.Millisecond).Should(HaveLen(expected),
-					"delayed retry %d should have fired at the threshold floor", expected-1)
-				reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
-			}
+			// The chained retries cover a git note landing shortly after each nudge (note
+			// pushes have no webhooks). The budget allows 3 delayed retries after the
+			// immediate enqueue — 4 total — without further reconcile calls.
+			Eventually(func() []string {
+				return enqueuedNames(enqueuedCTPs, enqueueMutex)
+			}, 5*time.Second, 20*time.Millisecond).Should(HaveLen(4),
+				"chained delayed retries should exhaust the disagreement budget")
 
 			// The budget is exhausted: further owner-watch loops neither enqueue nor
 			// schedule retries. Under the previous fixed-interval semantics another
@@ -5857,19 +5855,19 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				"an exhausted disagreement must not re-enqueue even after the threshold elapses")
 		})
 
-		It("should re-arm when the disagreement changes, rate limited to one delayed enqueue", func() {
+		It("should re-arm when the disagreement changes and auto-chain retries for the new disagreement", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
 			lagging := makeLaggingCTP("test-ctp")
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{lagging, makeTargetCTP()}
 
-			// First call enqueues for disagreement (old123 vs abc123).
+			// First call enqueues for disagreement (old123 vs abc123) and arms a retry chain.
 			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp"}))
 
 			// The CTP's note moves (a fetched note, a different value): a NEW disagreement
-			// within the rate-limit window schedules exactly one delayed enqueue, no matter
-			// how many owner-watch loops repeat it.
+			// within the rate-limit window cancels the old chain and schedules one delayed
+			// enqueue, no matter how many owner-watch loops repeat it.
 			lagging.Status.Proposed.Note.DrySha = "older999"
 			for range 5 {
 				reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
@@ -5877,16 +5875,16 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp"}),
 				"changed disagreement within the threshold must defer, not enqueue immediately")
 
-			// Wait for the single delayed enqueue to fire at the threshold, then confirm
-			// no further enqueue follows it.
+			// The delayed enqueue for the new disagreement fires, then auto-chains the
+			// remaining budget: 1 (old, immediate) + 4 (new) = 5 total.
 			Eventually(func() []string {
 				return enqueuedNames(enqueuedCTPs, enqueueMutex)
-			}, 5*time.Second, 20*time.Millisecond).Should(Equal([]string{"test-ctp", "test-ctp"}),
-				"exactly one delayed enqueue should fire for the changed disagreement")
+			}, 5*time.Second, 20*time.Millisecond).Should(HaveLen(5),
+				"new disagreement should get one delayed enqueue plus a chained retry budget")
 			Consistently(func() []string {
 				return enqueuedNames(enqueuedCTPs, enqueueMutex)
-			}, time.Second, 100*time.Millisecond).Should(HaveLen(2),
-				"no additional enqueue may fire without a new call presenting a disagreement")
+			}, 2*time.Second, 100*time.Millisecond).Should(HaveLen(5),
+				"no additional enqueue may fire without a new disagreement")
 		})
 
 		It("should track disagreements per CTP independently", func() {
