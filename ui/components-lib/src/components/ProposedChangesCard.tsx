@@ -4,17 +4,17 @@ import { StatusIcon, StatusType } from './StatusIcon';
 import CommitInfo from './CommitInfo';
 import HealthSummary from './HealthSummary';
 import { Tooltip } from './Tooltip';
-import { PrTooltip, ReferenceCommit } from '@shared/types/promotion';
+import { Check, DeploymentCommit, PrTooltip, ReferenceCommit } from '@shared/types/promotion';
 import { formatDate, timeAgo } from '@shared/utils/util';
 import './ProposedChangesCard.scss';
 
 export interface ProposedChangesCardProps {
-  deploymentCommit: any;
+  deploymentCommit: DeploymentCommit;
   codeCommit: ReferenceCommit | null;
   status?: StatusType;
   deploymentCommitUrl?: string;
   codeCommitUrl: string | null;
-  checks?: any[];
+  checks?: Check[];
   healthSummary?: { successCount: number; totalCount: number; shouldDisplay: boolean };
   prUrl: string | null;
   prNumber?: string;

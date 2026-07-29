@@ -61,6 +61,19 @@ export interface Check {
 }
 
 /**
+ * Flattened commit shape built by enrichment ({@link EnrichedEnvDetails}) and
+ * passed to the card components / `CommitInfo`. All fields are display strings
+ * already formatted for render (sha truncated at the source is not assumed).
+ */
+export interface DeploymentCommit {
+  sha: string;
+  author: string;
+  subject: string;
+  body: string;
+  date: string;
+}
+
+/**
  * State-aware tooltip descriptor for the active PR indicator, derived in
  * enrichment ({@link EnrichedEnvDetails.activePrTooltip}). `label` is the
  * verb the tooltip renders (`merged` or `opened`); `time` is the matching

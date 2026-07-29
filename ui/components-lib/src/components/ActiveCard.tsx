@@ -4,21 +4,21 @@ import { StatusIcon, StatusType, statusLabel } from './StatusIcon';
 import CommitInfo from './CommitInfo';
 import HealthSummary from './HealthSummary';
 import { Tooltip } from './Tooltip';
-import { PrTooltip, ReferenceCommit } from '@shared/types/promotion';
+import { Check, DeploymentCommit, PrTooltip, ReferenceCommit } from '@shared/types/promotion';
 import { formatDate, timeAgo } from '@shared/utils/util';
 import './ActiveCard.scss';
 
 export interface ActiveCardProps {
   branch: string;
   activeStatus?: StatusType;
-  deploymentCommit: any;
+  deploymentCommit: DeploymentCommit;
   codeCommit: ReferenceCommit | null;
   deploymentCommitUrl?: string;
   codeCommitUrl: string | null;
   prUrl: string | null;
   prNumber?: string;
   prTooltip?: PrTooltip | null;
-  checks: any[];
+  checks: Check[];
   healthSummary?: { successCount: number; totalCount: number; shouldDisplay: boolean };
 }
 

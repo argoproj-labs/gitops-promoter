@@ -4,14 +4,19 @@ import { Tooltip } from './Tooltip';
 import React, { useState, useRef, useCallback } from 'react';
 import TimeAgo from './TimeAgo';
 import './CommitInfo.scss';
-import { ReferenceCommit } from '@shared/types/promotion';
+import { DeploymentCommit, ReferenceCommit } from '@shared/types/promotion';
 
 export interface CommitInfoProps {
-  deploymentCommit: any;
+  deploymentCommit: DeploymentCommit;
   codeCommit: ReferenceCommit | null;
   deploymentCommitUrl?: string;
   codeCommitUrl: string | null;
 }
+
+// The render helpers below accept either a flattened DeploymentCommit or a
+// ReferenceCommit; they only read this common subset of display fields, each
+// guarded at the access site, so every field is optional here.
+type CommitView = Partial<Pick<DeploymentCommit, 'sha' | 'subject' | 'body' | 'author' | 'date'>>;
 
 // Renders an environment's commit rows: the deployment commit and, when
 // present, the code commit. The surrounding card chrome (title, PR chip,
@@ -37,7 +42,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
     return 'commit-code';
   };
 
-  const renderSha = (commit: any, commitUrl?: string) => {
+  const renderSha = (commit: CommitView, commitUrl?: string) => {
     const sha = commit.sha?.substring(0, 8) || 'N/A';
     if (commitUrl && commit.sha) {
       return (
@@ -51,7 +56,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
     return <span className="commit-sha">{sha}</span>;
   };
 
-  const getTooltipContent = (commit: any) => {
+  const getTooltipContent = (commit: CommitView) => {
     const subject = commit.subject || '';
     const body = commit.body || '';
 
@@ -94,7 +99,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
     }, 100);
   }, []);
 
-  const renderCommit = (commit: any, type: 'deployment' | 'code', commitUrl?: string) => {
+  const renderCommit = (commit: CommitView, type: 'deployment' | 'code', commitUrl?: string) => {
     const iconType = type === 'deployment' ? 'file' : 'code';
     const showTooltip = type === 'deployment' ? showDeploymentTooltip : showCodeTooltip;
 
