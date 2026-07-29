@@ -5887,6 +5887,26 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				"no additional enqueue may fire without a new disagreement")
 		})
 
+		It("should cancel pending retries when the CTP converges with the target", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+
+			lagging := makeLaggingCTP("test-ctp")
+			ctps := []*promoterv1alpha1.ChangeTransferPolicy{lagging, makeTargetCTP()}
+
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp"}))
+
+			// The lagging environment's note catches up to the batch target.
+			lagging.Status.Proposed.Note.DrySha = "abc123"
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+
+			// Without cancellation the auto-chain would reach 4 enqueues within a few seconds.
+			Consistently(func() []string {
+				return enqueuedNames(enqueuedCTPs, enqueueMutex)
+			}, 3*time.Second, 100*time.Millisecond).Should(Equal([]string{"test-ctp"}),
+				"convergence must cancel pending retry timers")
+		})
+
 		It("should track disagreements per CTP independently", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 

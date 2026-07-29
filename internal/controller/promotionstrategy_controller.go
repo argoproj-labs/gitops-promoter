@@ -522,6 +522,7 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 	for _, ctp := range ctps {
 		ctpEffectiveProposedDrySha := getEffectiveProposedDrySha(ctp)
 		if ctpEffectiveProposedDrySha == newestEffectiveProposedDrySha {
+			r.clearEnqueueRetryOnConvergence(client.ObjectKey{Namespace: ctp.Namespace, Name: ctp.Name})
 			continue
 		}
 
@@ -740,6 +741,24 @@ func (r *PromotionStrategyReconciler) scheduleRetryAfter(
 		))
 		r.handleRateLimitedEnqueue(ctx, ctp, disagreement)
 	})
+}
+
+// clearEnqueueRetryOnConvergence drops any pending retry timer state when a CTP's
+// effective dry SHA matches the batch target. Timer callbacks compare against
+// lastDisagreement, so clearing it makes already-scheduled retries no-op.
+func (r *PromotionStrategyReconciler) clearEnqueueRetryOnConvergence(key client.ObjectKey) {
+	r.enqueueStateMutex.Lock()
+	defer r.enqueueStateMutex.Unlock()
+
+	state := r.enqueueStates[key]
+	if state == nil {
+		return
+	}
+
+	state.lastSeenTime = time.Now()
+	state.hasScheduledRetry = false
+	state.lastDisagreement = ctpDisagreement{}
+	state.disagreementAttempts = 0
 }
 
 func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, pendingReason string, previousEnvironmentBranch string, previousCRPCSPhases []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) (*promoterv1alpha1.CommitStatus, error) {
