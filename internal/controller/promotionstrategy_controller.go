@@ -46,13 +46,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-// enqueuePair identifies one distinct note disagreement: the CTP's own effective dry SHA
-// versus the batch target it was compared against. A reconcile triggered for a pair
-// refetches git state; if the pair is unchanged afterwards, git held nothing the status
-// hadn't already seen, so re-enqueueing the same pair can never accomplish anything.
-type enqueuePair struct {
-	effectiveSha string
-	targetSha    string
+// ctpDisagreement identifies one distinct effective-dry-SHA gap for a CTP:
+// its own observed value versus the newest effective dry SHA among sibling CTPs.
+// Reconcile refetches git; if the gap is unchanged afterward, git had nothing new
+// for that snapshot, so re-enqueueing the same disagreement is bounded.
+type ctpDisagreement struct {
+	// ctpEffectiveProposedDrySha is this CTP's effective proposed dry SHA
+	// (Note.DrySha if set, else Proposed.Dry.Sha).
+	ctpEffectiveProposedDrySha string
+	// newestEffectiveProposedDrySha is the effective proposed dry SHA from the
+	// sibling CTP with the newest hydrated commit — the batch convergence target.
+	newestEffectiveProposedDrySha string
 }
 
 // ctpEnqueueState tracks rate limiting and retry state for enqueuing out-of-sync CTPs.
@@ -66,16 +70,18 @@ type ctpEnqueueState struct {
 	// retries. A deleted CTP stops being considered and is swept within the hour
 	// either way.
 	lastSeenTime time.Time
-	// lastPair is the disagreement that was last enqueued (or is covered by a scheduled
-	// retry). An unchanged pair is retried a bounded number of times: the nudge already
-	// refetched git and changed nothing, but a git note may still land shortly after
-	// (note pushes have no webhooks), so a few prompt retries cover that race. Beyond
-	// them the periodic CTP requeue is the retry path. A changed pair resets the count.
-	lastPair enqueuePair
-	// pairAttempts counts enqueues for lastPair. The budget per distinct pair is one
-	// immediate enqueue plus maxEnqueueRetriesPerPair delayed retries, so it is
-	// exhausted once pairAttempts exceeds maxEnqueueRetriesPerPair.
-	pairAttempts      int
+	// lastDisagreement is the disagreement that was last enqueued (or is covered by a
+	// scheduled retry). An unchanged disagreement is retried a bounded number of times:
+	// the nudge already refetched git and changed nothing, but a git note may still land
+	// shortly after (note pushes have no webhooks), so a few prompt retries cover that
+	// race. Beyond them the periodic CTP requeue is the retry path. A changed
+	// disagreement resets the count.
+	lastDisagreement ctpDisagreement
+	// disagreementAttempts counts enqueues for lastDisagreement. The budget per distinct
+	// disagreement is one immediate enqueue plus maxEnqueueRetriesPerDisagreement delayed
+	// retries, so it is exhausted once disagreementAttempts exceeds
+	// maxEnqueueRetriesPerDisagreement.
+	disagreementAttempts int
 	hasScheduledRetry bool
 }
 
@@ -454,8 +460,8 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 // nudged, and a batch where every note already agrees is left alone.
 //
 // Retry control: a triggered reconcile refetches the branch and its git notes; if the
-// (effective, target) disagreement is unchanged afterwards, git held nothing the status
-// hadn't already seen at that moment. The note the disagreement is waiting on may still
+// disagreement is unchanged afterwards, git held nothing the status hadn't already seen
+// at that moment. The note the disagreement is waiting on may still land shortly after
 // land shortly after (note pushes have no webhooks), so the same disagreement gets one
 // immediate enqueue plus a few 15s-spaced retries — and then nothing until the periodic
 // CTP requeue (changeTransferPolicy.workQueue.requeueDuration), which is the designed
@@ -478,50 +484,54 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 		r.startCleanupTimer()
 	}
 
-	// Get the effective dry SHA for each CTP (Note.DrySha if set, otherwise Proposed.Dry.Sha)
-	getEffectiveDrySha := func(ctp *promoterv1alpha1.ChangeTransferPolicy) string {
+	// Get the effective proposed dry SHA for each CTP (Note.DrySha if set, else Proposed.Dry.Sha).
+	getEffectiveProposedDrySha := func(ctp *promoterv1alpha1.ChangeTransferPolicy) string {
 		if ctp.Status.Proposed.Note != nil && ctp.Status.Proposed.Note.DrySha != "" {
 			return ctp.Status.Proposed.Note.DrySha
 		}
 		return ctp.Status.Proposed.Dry.Sha
 	}
 
-	// Find the target SHA - the effective dry SHA from the CTP with the newest proposed
-	// hydrated commit. CTPs whose own effective dry SHA doesn't match this target need to
-	// reconcile to fetch the updated git note. Note a single-environment strategy can
-	// never disagree with itself: its own effective SHA is the target.
-	var targetSha string
+	// Find the newest effective proposed dry SHA — from the CTP with the newest proposed
+	// hydrated commit. CTPs whose own effective proposed dry SHA doesn't match need to
+	// reconcile to fetch the updated git note. A single-environment strategy can never
+	// disagree with itself: its own effective SHA is the batch target.
+	var newestEffectiveProposedDrySha string
 	var newestTime metav1.Time
 	for _, ctp := range ctps {
-		effectiveSha := getEffectiveDrySha(ctp)
-		if effectiveSha == "" {
+		ctpEffectiveProposedDrySha := getEffectiveProposedDrySha(ctp)
+		if ctpEffectiveProposedDrySha == "" {
 			continue
 		}
 		commitTime := ctp.Status.Proposed.Hydrated.CommitTime
-		if targetSha == "" || commitTime.After(newestTime.Time) {
-			targetSha = effectiveSha
+		if newestEffectiveProposedDrySha == "" || commitTime.After(newestTime.Time) {
+			newestEffectiveProposedDrySha = ctpEffectiveProposedDrySha
 			newestTime = commitTime
 		}
 	}
 
-	if targetSha == "" {
+	if newestEffectiveProposedDrySha == "" {
 		return
 	}
 
-	// Trigger reconcile only for CTPs that have a different effective dry SHA, at most
-	// once per distinct disagreement.
+	// Consider enqueuing reconcile for CTPs whose effective proposed dry SHA differs
+	// from the batch target. Rate limiting in handleRateLimitedEnqueue bounds retries
+	// per distinct disagreement.
 	for _, ctp := range ctps {
-		effectiveSha := getEffectiveDrySha(ctp)
-		if effectiveSha == targetSha {
+		ctpEffectiveProposedDrySha := getEffectiveProposedDrySha(ctp)
+		if ctpEffectiveProposedDrySha == newestEffectiveProposedDrySha {
 			continue
 		}
 
 		// Add SHA information to context for logging
 		ctxWithLog := log.IntoContext(ctx, log.FromContext(ctx).WithValues(
-			"effectiveSha", effectiveSha,
-			"targetSha", targetSha,
+			"ctpEffectiveProposedDrySha", ctpEffectiveProposedDrySha,
+			"newestEffectiveProposedDrySha", newestEffectiveProposedDrySha,
 		))
-		r.handleRateLimitedEnqueue(ctxWithLog, ctp, enqueuePair{effectiveSha: effectiveSha, targetSha: targetSha})
+		r.handleRateLimitedEnqueue(ctxWithLog, ctp, ctpDisagreement{
+			ctpEffectiveProposedDrySha:    ctpEffectiveProposedDrySha,
+			newestEffectiveProposedDrySha: newestEffectiveProposedDrySha,
+		})
 	}
 }
 
@@ -535,12 +545,12 @@ func (r *PromotionStrategyReconciler) startCleanupTimer() {
 	//   - *ctpEnqueueState pointer: 8 bytes
 	//   - ctpEnqueueState struct: ~96 bytes
 	//       * 2x time.Time: 48 bytes
-	//       * enqueuePair (2 string headers): 32 bytes
+	//       * ctpDisagreement (2 string headers): 32 bytes
 	//       * int + bool: 9 bytes + 7 bytes padding = 16 bytes
-	//   - enqueuePair string content: 2 SHAs at 40-64 chars = ~80-128 bytes
+	//   - ctpDisagreement string content: 2 SHAs at 40-64 chars = ~80-128 bytes
 	//   - Map overhead: ~8 bytes per entry
-	//   Total: ~300 bytes per CTP. The pair is a single value overwritten on each
-	//   enqueue, never an accumulating set, so entries do not grow over time.
+	//   Total: ~300 bytes per CTP. The disagreement is a single value overwritten on
+	//   each enqueue, never an accumulating set, so entries do not grow over time.
 	//
 	// Memory bounds (assuming 32-char namespace and name):
 	//   - 100 stale entries = ~30 KB
@@ -573,9 +583,9 @@ func (r *PromotionStrategyReconciler) startCleanupTimer() {
 }
 
 // handleRateLimitedEnqueue applies retry and rate-limiting controls to a CTP enqueue
-// request for the given (effective, target) disagreement. It either:
+// request for the given disagreement. It either:
 //   - Skips if this disagreement has already used its enqueue budget (one immediate
-//     enqueue plus maxEnqueueRetriesPerPair delayed retries). A nudge that refetched git
+//     enqueue plus maxEnqueueRetriesPerDisagreement delayed retries). A nudge that refetched git
 //     and changed nothing probably has nothing new to find; the few retries cover a git
 //     note landing shortly after the nudge (note pushes have no webhooks), and beyond
 //     them the periodic CTP requeue is the retry path.
@@ -589,12 +599,12 @@ func (r *PromotionStrategyReconciler) startCleanupTimer() {
 func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 	ctx context.Context,
 	ctp *promoterv1alpha1.ChangeTransferPolicy,
-	pair enqueuePair,
+	disagreement ctpDisagreement,
 ) {
 	const (
 		defaultEnqueueThreshold = 15 * time.Second
 		// One immediate enqueue plus this many delayed retries per disagreement.
-		maxEnqueueRetriesPerPair = 3
+		maxEnqueueRetriesPerDisagreement = 3
 	)
 
 	enqueueThreshold := r.enqueueThreshold
@@ -622,16 +632,16 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 	state.lastSeenTime = now
 
 	// A new disagreement resets the enqueue budget; a repeat keeps consuming it.
-	if state.lastPair != pair {
-		state.lastPair = pair
-		state.pairAttempts = 0
+	if state.lastDisagreement != disagreement {
+		state.lastDisagreement = disagreement
+		state.disagreementAttempts = 0
 	}
 
 	// Budget exhausted: this exact disagreement was enqueued and retried enough times
 	// that another prompt refetch is very unlikely to find anything new. The periodic
 	// CTP requeue takes over; the budget re-arms as soon as either side of the
 	// disagreement changes (a fetched note, a new target).
-	if state.pairAttempts > maxEnqueueRetriesPerPair {
+	if state.disagreementAttempts > maxEnqueueRetriesPerDisagreement {
 		r.enqueueStateMutex.Unlock()
 		logger.V(4).Info("Skipping enqueue, retries for this disagreement are exhausted until it changes",
 			"ctp", ctp.Name)
@@ -642,7 +652,7 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 	timeSinceLastEnqueue := now.Sub(state.lastEnqueueTime)
 	if timeSinceLastEnqueue < enqueueThreshold {
 		// Already have a delayed enqueue scheduled, nothing to do — the retry fires a
-		// reconcile, which reads current git state regardless of which pair spawned it.
+		// reconcile, which reads current git state regardless of which disagreement spawned it.
 		if state.hasScheduledRetry {
 			r.enqueueStateMutex.Unlock()
 			logger.V(4).Info("Rate limited, delayed enqueue already scheduled",
@@ -667,7 +677,7 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 
 			// Update state and enqueue
 			state.lastEnqueueTime = time.Now()
-			state.pairAttempts++
+			state.disagreementAttempts++
 			state.hasScheduledRetry = false
 			r.enqueueStateMutex.Unlock()
 
@@ -683,7 +693,7 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 
 	// Not rate limited - enqueue immediately
 	state.lastEnqueueTime = now
-	state.pairAttempts++
+	state.disagreementAttempts++
 	state.hasScheduledRetry = false
 	r.enqueueStateMutex.Unlock()
 

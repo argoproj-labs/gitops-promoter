@@ -5660,12 +5660,12 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 	// would wait for timers to fire, but timers would block waiting for the lock that won't
 	// release until the test completes.
 	Context("Enqueue decisions and rate limiting for enqueueOutOfSyncCTPs", func() {
-		// The target is the effective dry SHA (Note.DrySha if set, else Proposed.Dry.Sha)
-		// of the CTP with the newest proposed hydrated commit. A CTP is enqueued when its
-		// own effective dry SHA disagrees with that target — one immediate enqueue plus at
-		// most 3 delayed retries per distinct (effective, target) disagreement (a retried
-		// nudge covers a git note landing shortly after the previous one), after which the
-		// periodic CTP requeue is the retry path until the disagreement changes.
+		// The batch target is the effective proposed dry SHA (Note.DrySha if set, else
+		// Proposed.Dry.Sha) of the CTP with the newest proposed hydrated commit. A CTP is
+		// enqueued when its own effective proposed dry SHA disagrees with that target — one
+		// immediate enqueue plus at most 3 delayed retries per distinct disagreement (a
+		// retried nudge covers a git note landing shortly after the previous one), after
+		// which the periodic CTP requeue is the retry path until the disagreement changes.
 		makeCTPWithShas := func(name, proposedDrySha string, note *promoterv1alpha1.HydratorMetadata, commitTime metav1.Time) *promoterv1alpha1.ChangeTransferPolicy { //nolint:unparam // proposedDrySha is a fixture knob; the current specs all model note-vs-file divergence on the same file SHA
 			return &promoterv1alpha1.ChangeTransferPolicy{
 				ObjectMeta: metav1.ObjectMeta{
