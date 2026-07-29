@@ -61,6 +61,18 @@ export interface Check {
 }
 
 /**
+ * Result of {@link calculateHealthSummary}: how many checks passed out of the
+ * total, plus whether the summary is worth rendering at all (`totalCount > 0`).
+ * Shared by the card components and their `HealthSummary` so the shape stays in
+ * one place.
+ */
+export interface HealthSummaryResult {
+  successCount: number;
+  totalCount: number;
+  shouldDisplay: boolean;
+}
+
+/**
  * Flattened commit shape built by enrichment ({@link EnrichedEnvDetails}) and
  * passed to the card components / `CommitInfo`. All fields are display strings
  * already formatted for render (sha truncated at the source is not assumed).
@@ -99,7 +111,7 @@ export interface EnrichedEnvDetails {
   activeCommitDate: Rfc3339DateTime | '';
   activeCommitUrl: string;
   activeChecks: Check[];
-  activeChecksSummary: { successCount: number; totalCount: number; shouldDisplay: boolean };
+  activeChecksSummary: HealthSummaryResult;
   activeStatus: 'success' | 'failure' | 'pending' | 'unknown';
   activePrUrl: string | null;
   activePrNumber: number | null;
@@ -132,7 +144,7 @@ export interface EnrichedEnvDetails {
   proposedDryCommitDate: Rfc3339DateTime | '';
   proposedDryCommitUrl: string;
   proposedChecks: Check[];
-  proposedChecksSummary: { successCount: number; totalCount: number; shouldDisplay: boolean };
+  proposedChecksSummary: HealthSummaryResult;
   proposedStatus: 'success' | 'failure' | 'pending' | 'unknown';
 
   proposedReferenceCommit: ReferenceCommit | null;

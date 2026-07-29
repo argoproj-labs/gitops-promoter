@@ -8,6 +8,7 @@ import type {
   PromotionStrategy,
   Check,
   EnrichedEnvDetails,
+  HealthSummaryResult,
   PrTooltip,
   PromotionPhase,
   ReferenceCommit,
@@ -24,11 +25,7 @@ function getChecks(commitStatuses: BranchCommitStatus[]): Check[] {
 }
 
 // Health check summary calculation functions
-function calculateHealthSummary(checks: Check[]): {
-  successCount: number;
-  totalCount: number;
-  shouldDisplay: boolean;
-} {
+function calculateHealthSummary(checks: Check[]): HealthSummaryResult {
   const totalCount = checks.length;
   const successCount = checks.filter((check) => check.status === 'success').length;
   const shouldDisplay = totalCount > 0;

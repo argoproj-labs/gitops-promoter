@@ -3,7 +3,13 @@ import { StatusIcon, StatusType } from './StatusIcon';
 import CommitInfo from './CommitInfo';
 import HealthSummary from './HealthSummary';
 import PrIndicator from './PrIndicator';
-import { Check, DeploymentCommit, PrTooltip, ReferenceCommit } from '@shared/types/promotion';
+import {
+  Check,
+  DeploymentCommit,
+  HealthSummaryResult,
+  PrTooltip,
+  ReferenceCommit,
+} from '@shared/types/promotion';
 import './ProposedChangesCard.scss';
 
 export interface ProposedChangesCardProps {
@@ -13,7 +19,7 @@ export interface ProposedChangesCardProps {
   deploymentCommitUrl?: string;
   codeCommitUrl: string | null;
   checks?: Check[];
-  healthSummary?: { successCount: number; totalCount: number; shouldDisplay: boolean };
+  healthSummary?: HealthSummaryResult;
   prUrl: string | null;
   prNumber?: string;
   prTooltip?: PrTooltip | null;
@@ -22,10 +28,9 @@ export interface ProposedChangesCardProps {
 // Build a faithful, simple progress message from the proposed checks summary.
 // Anything that is not yet a success is treated as "in progress"; when every
 // check has passed we report completion instead.
-function progressMessage(healthSummary?: {
-  successCount: number;
-  totalCount: number;
-}): string | null {
+function progressMessage(
+  healthSummary?: Pick<HealthSummaryResult, 'successCount' | 'totalCount'>,
+): string | null {
   if (!healthSummary || healthSummary.totalCount === 0) {
     return null;
   }

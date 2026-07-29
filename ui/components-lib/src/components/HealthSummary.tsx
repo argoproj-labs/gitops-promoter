@@ -2,13 +2,14 @@ import { FiChevronDown, FiChevronUp, FiInfo } from 'react-icons/fi';
 import { StatusIcon, StatusType } from './StatusIcon';
 import React, { useState } from 'react';
 import { Tooltip } from './Tooltip';
+import { HealthSummaryResult } from '@shared/types/promotion';
 import './HealthSummary.scss';
 
 export interface HealthSummaryProps {
   checks: any[];
   title: string;
   status?: StatusType;
-  healthSummary?: { successCount: number; totalCount: number; shouldDisplay: boolean };
+  healthSummary?: HealthSummaryResult;
   additionalChecks?: any[];
   additionalChecksTitle?: string;
   additionalChecksTitleTooltip?: string;

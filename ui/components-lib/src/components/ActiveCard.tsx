@@ -3,12 +3,18 @@ import { StatusIcon, StatusType, statusLabel } from './StatusIcon';
 import CommitInfo from './CommitInfo';
 import HealthSummary from './HealthSummary';
 import PrIndicator from './PrIndicator';
-import { Check, DeploymentCommit, PrTooltip, ReferenceCommit } from '@shared/types/promotion';
+import {
+  Check,
+  DeploymentCommit,
+  HealthSummaryResult,
+  PrTooltip,
+  ReferenceCommit,
+} from '@shared/types/promotion';
 import './ActiveCard.scss';
 
 export interface ActiveCardProps {
   branch: string;
-  activeStatus?: StatusType;
+  activeStatus: StatusType;
   deploymentCommit: DeploymentCommit;
   codeCommit: ReferenceCommit | null;
   deploymentCommitUrl?: string;
@@ -17,7 +23,7 @@ export interface ActiveCardProps {
   prNumber?: string;
   prTooltip?: PrTooltip | null;
   checks: Check[];
-  healthSummary?: { successCount: number; totalCount: number; shouldDisplay: boolean };
+  healthSummary?: HealthSummaryResult;
 }
 
 // The active/live side of an environment card. In the row layout it renders as a
@@ -45,8 +51,8 @@ const ActiveCard: React.FC<ActiveCardProps> = ({
             <span className="env-card__env-name">{branch}</span>
           </div>
           <span className="env-card__health-chip">
-            <StatusIcon phase={activeStatus as StatusType} type="health" />
-            {statusLabel(activeStatus as StatusType)}
+            <StatusIcon phase={activeStatus} type="health" />
+            {statusLabel(activeStatus)}
           </span>
         </div>
         {prUrl && prNumber && (
