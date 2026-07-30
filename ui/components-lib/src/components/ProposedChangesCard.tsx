@@ -95,13 +95,7 @@ const ProposedChangesCard: React.FC<ProposedChangesCardProps> = ({
       />
 
       {healthSummary?.shouldDisplay && checks && (
-        <HealthSummary
-          checks={checks}
-          title="Proposed Checks"
-          status={status}
-          healthSummary={healthSummary}
-          variant="always-expanded"
-        />
+        <HealthSummary checks={checks} healthSummary={healthSummary} variant="always-expanded" />
       )}
     </div>
   );

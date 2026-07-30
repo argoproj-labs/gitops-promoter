@@ -61,6 +61,9 @@ function derivePrTooltip(pr: EnvironmentPullRequest | null): PrTooltip | null {
   if (isMerged) {
     return pr.prMergeTime ? { label: 'merged', time: pr.prMergeTime } : null;
   }
+  if (state === 'closed') {
+    return { label: 'closed', time: null };
+  }
   return pr.prCreationTime ? { label: 'opened', time: pr.prCreationTime } : null;
 }
 

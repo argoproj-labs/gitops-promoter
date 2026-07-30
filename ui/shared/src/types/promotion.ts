@@ -71,12 +71,12 @@ export interface DeploymentCommit {
   author: string;
   subject: string;
   body: string;
-  date: string;
+  date: Rfc3339DateTime | '';
 }
 
 export interface PrTooltip {
-  label: 'merged' | 'opened';
-  time: Rfc3339DateTime;
+  label: 'merged' | 'opened' | 'closed';
+  time: Rfc3339DateTime | null;
 }
 
 export interface EnrichedEnvDetails {

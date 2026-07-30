@@ -21,13 +21,15 @@ const PrIndicator: React.FC<PrIndicatorProps> = ({ prUrl, prNumber, prTooltip, v
     <Tooltip
       content={
         prTooltip
-          ? `${prTooltip.label} ${formatDate(prTooltip.time)}`
+          ? prTooltip.time
+            ? `${prTooltip.label} ${formatDate(prTooltip.time)}`
+            : prTooltip.label
           : `Open PR #${prNumber} on GitHub`
       }
     >
       <a href={prUrl} target="_blank" rel="noopener noreferrer" className={className}>
         <GoGitPullRequest className="pr-icon" />#{prNumber}
-        {prTooltip && <span className="pr-merge-time">{timeAgo(prTooltip.time)}</span>}
+        {prTooltip?.time && <span className="pr-merge-time">{timeAgo(prTooltip.time)}</span>}
       </a>
     </Tooltip>
   );

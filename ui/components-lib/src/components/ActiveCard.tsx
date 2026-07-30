@@ -66,7 +66,6 @@ const ActiveCard: React.FC<ActiveCardProps> = ({
       <div className="env-card__current-status">
         <HealthSummary
           checks={checks}
-          title="Current status"
           healthSummary={healthSummary}
           variant="collapsible"
           headerLabel="Current status"

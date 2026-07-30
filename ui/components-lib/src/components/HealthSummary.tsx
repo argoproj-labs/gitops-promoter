@@ -2,15 +2,13 @@ import { FiChevronDown, FiChevronUp, FiInfo } from 'react-icons/fi';
 import { StatusIcon, StatusType } from './StatusIcon';
 import React, { useState } from 'react';
 import { Tooltip } from './Tooltip';
-import { HealthSummaryResult } from '@shared/types/promotion';
+import { Check, HealthSummaryResult } from '@shared/types/promotion';
 import './HealthSummary.scss';
 
 export interface HealthSummaryProps {
-  checks: any[];
-  title: string;
-  status?: StatusType;
+  checks: Check[];
   healthSummary?: HealthSummaryResult;
-  additionalChecks?: any[];
+  additionalChecks?: Check[];
   additionalChecksTitle?: string;
   additionalChecksTitleTooltip?: string;
   primaryChecksTitle?: string;
@@ -21,7 +19,6 @@ export interface HealthSummaryProps {
 
 const HealthSummary: React.FC<HealthSummaryProps> = ({
   checks,
-  title,
   healthSummary,
   additionalChecks,
   additionalChecksTitle,
@@ -108,9 +105,6 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({
                   ) : (
                     <span className="check-name-text">{check.name}</span>
                   )}
-                  {check.description && (
-                    <span className="check-description">{check.description}</span>
-                  )}
                 </div>
               </div>
             </Tooltip>
@@ -147,9 +141,6 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({
                         </a>
                       ) : (
                         <span className="check-name-text">{check.name}</span>
-                      )}
-                      {check.description && (
-                        <span className="check-description">{check.description}</span>
                       )}
                     </div>
                   </div>

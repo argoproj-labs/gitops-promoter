@@ -7,6 +7,7 @@ $card-min-width-single: 500px;
 $card-gap-vertical: 10px;
 $card-gap-horizontal: 10px;
 $card-padding: 24px;
+$card-width: 425px;
 
 $extension-card-width: 400px;
 $extension-card-gap: 30px;
@@ -57,7 +58,7 @@ $extension-wrapper-gap: 20px;
 
   .env-card {
     flex: 1;
-    width: 425px;
+    width: $card-width;
     display: flex;
     flex-direction: column;
     gap: 0;
@@ -65,6 +66,7 @@ $extension-wrapper-gap: 20px;
 
   .active-card {
     @include card-chrome;
+
     display: flex;
     flex-direction: column;
     padding: 24px;
@@ -72,12 +74,14 @@ $extension-wrapper-gap: 20px;
 
   .proposed-changes-card {
     @include card-chrome;
+
     padding: 24px;
     border: 1px solid $argo-running;
   }
 
   .commit-group.env-card__proposed-loading {
     @include card-chrome;
+
     padding: 24px;
   }
 
@@ -131,19 +135,20 @@ $extension-wrapper-gap: 20px;
 
   .env-card {
     display: grid;
-    grid-template-columns: 425px 425px;
+    grid-template-columns: $card-width $card-width;
     grid-template-rows: 1fr;
     column-gap: 0;
     width: fit-content;
     max-width: 100%;
 
     &.single-commit-group {
-      grid-template-columns: 425px;
+      grid-template-columns: $card-width;
     }
   }
 
   .active-card {
     @include card-chrome;
+
     grid-column: 1;
     display: flex;
     flex-direction: column;
@@ -161,6 +166,7 @@ $extension-wrapper-gap: 20px;
 
   .proposed-changes-card {
     @include card-chrome;
+
     grid-column: 2;
     padding: $card-padding;
     border: 1px solid $argo-running;
@@ -169,6 +175,7 @@ $extension-wrapper-gap: 20px;
 
   .commit-group.env-card__proposed-loading {
     @include card-chrome;
+
     grid-column: 2;
     padding: $card-padding;
     min-width: 0;
@@ -221,6 +228,6 @@ $extension-wrapper-gap: 20px;
     align-items: center;
     margin: 10px 0;
     padding-top: 0px;
-    width: 425px;
+    width: $card-width;
   }
 }

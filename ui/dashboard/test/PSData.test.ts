@@ -97,6 +97,34 @@ const environmentWithOpenPr: Environment = {
   lastHealthyDryShas: [],
 };
 
+// Active env carrying a closed-but-unmerged PR (state === 'closed') on the live history entry.
+const environmentWithClosedPr: Environment = {
+  branch: 'environments/uat',
+  active: {
+    dry: {
+      sha: 'af24f4de24ecf1a15bc3348f738ae3fd6fbbc73b',
+      commitTime: '2026-05-22T14:40:04Z',
+      author: 'deployment-bot <bot@example.com>',
+      repoURL: 'https://github.example.com/deployment',
+      subject: '[Changed] - infrastructure deployment',
+    },
+    hydrated: {},
+  },
+  proposed: { dry: {}, hydrated: {}, commitStatuses: [] },
+  history: [
+    {
+      pullRequest: {
+        id: '45',
+        url: 'https://github.example.com/deployment/pull/45',
+        state: 'closed',
+        prCreationTime: '2026-05-22T14:00:00Z',
+      },
+      active: { dry: {}, hydrated: {}, commitStatuses: [] },
+    },
+  ],
+  lastHealthyDryShas: [],
+};
+
 // Externally merged/closed PR: state is empty ("") but a merge time is present.
 // Lives on environment.pullRequest and is picked up via the mergedEnvPr fallback.
 const environmentWithExternallyMergedPr: Environment = {
@@ -164,6 +192,16 @@ describe('enrichFromEnvironments', () => {
     expect(env.activePrTooltip).toEqual({
       label: 'opened',
       time: '2026-05-22T14:00:00Z',
+    });
+  });
+
+  it('derives a closed tooltip (not "opened") for a closed-but-unmerged PR', () => {
+    const [env] = enrichFromEnvironments([environmentWithClosedPr], 0);
+
+    expect(env.activePrState).toBe('closed');
+    expect(env.activePrTooltip).toEqual({
+      label: 'closed',
+      time: null,
     });
   });
 
