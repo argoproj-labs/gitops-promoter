@@ -30,14 +30,15 @@ import (
 
 var logger = ctrl.Log.WithName("webhookReceiver")
 
-// Provider type constants
+// Provider type constants. Values are tied to utils.RepoKey's provider scoping,
+// so they alias the utils constants rather than duplicating the literals.
 const (
-	ProviderGitHub         = "github"
-	ProviderGitLab         = "gitlab"
-	ProviderForgejo        = "forgejo"
-	ProviderGitea          = "gitea"
-	ProviderBitbucketCloud = "bitbucketCloud"
-	ProviderAzureDevops    = "azureDevOps"
+	ProviderGitHub         = utils.ProviderGitHub
+	ProviderGitLab         = utils.ProviderGitLab
+	ProviderForgejo        = utils.ProviderForgejo
+	ProviderGitea          = utils.ProviderGitea
+	ProviderBitbucketCloud = utils.ProviderBitbucketCloud
+	ProviderAzureDevops    = utils.ProviderAzureDevOps
 	ProviderUnknown        = ""
 )
 
@@ -61,6 +62,15 @@ const (
 
 	// wrcsFanoutTimeout bounds async WRCS fan-out work after the HTTP handler returns.
 	wrcsFanoutTimeout = 15 * time.Second
+
+	// maxPendingWRCSFanout bounds concurrent in-flight WRCS fan-out goroutines so a
+	// burst of authorized webhook traffic cannot spawn unbounded concurrent List calls.
+	maxPendingWRCSFanout = 2048
+
+	// maxWebhookBodyBytes caps the inbound webhook body size read in postRoot, so an
+	// unauthenticated large-body request cannot force unbounded memory/HMAC/JSON-decode
+	// work before any rejection.
+	maxWebhookBodyBytes = 5 << 20 // 5 MiB
 
 	unauthorizedMessage = "unauthorized"
 )
@@ -86,6 +96,7 @@ type WebhookReceiver struct {
 	retryFactor         float64
 	maxPendingRetries   int
 	pendingMissRetries  atomic.Int64
+	pendingWRCSFanouts  atomic.Int64
 }
 
 // NewWebhookReceiver creates a new instance of WebhookReceiver.
@@ -165,7 +176,7 @@ func (wr *WebhookReceiver) DetectProvider(r *http.Request) string {
 	}
 
 	if r.ContentLength > 0 {
-		bodyBytes, err := io.ReadAll(r.Body)
+		bodyBytes, err := io.ReadAll(io.LimitReader(r.Body, maxWebhookBodyBytes+1))
 		if err != nil {
 			logger.Error(err, "error reading request body for provider detection")
 			return ProviderUnknown
@@ -212,11 +223,15 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: add a configurable payload max size for DoS protection.
-	jsonBytes, err := io.ReadAll(r.Body)
+	jsonBytes, err := io.ReadAll(io.LimitReader(r.Body, maxWebhookBodyBytes+1))
 	if err != nil {
 		responseCode = http.StatusInternalServerError
 		http.Error(w, "error reading body", responseCode)
+		return
+	}
+	if len(jsonBytes) > maxWebhookBodyBytes {
+		responseCode = http.StatusRequestEntityTooLarge
+		http.Error(w, "request body too large", responseCode)
 		return
 	}
 
@@ -283,13 +298,21 @@ func (wr *WebhookReceiver) authorizeWebhookAndEnqueueWRCS(ctx context.Context, p
 
 	// Fan out to WebRequestCommitStatus asynchronously so List/filter work does not delay
 	// the HTTP response (SCM providers retry on slow acknowledgements). Failures are logged
-	// inside enqueueWRCSForRepo and never affect the CTP path below.
-	bodyCopy := append([]byte(nil), body...)
+	// inside enqueueWRCSForRepo and never affect the CTP path below. Bounded by
+	// maxPendingWRCSFanout so a burst of authorized traffic cannot spawn unbounded
+	// concurrent List calls against the k8s API.
+	if wr.pendingWRCSFanouts.Add(1) > int64(maxPendingWRCSFanout) {
+		wr.pendingWRCSFanouts.Add(-1)
+		logger.V(4).Info("skipping WRCS webhook fan-out; at capacity")
+		return 0, ""
+	}
+	bodyCopy := bytes.Clone(body)
 	//nolint:contextcheck // fan-out must outlive the HTTP request; inherits server-lifetime context
 	go func() {
+		defer wr.pendingWRCSFanouts.Add(-1)
 		fanoutCtx, cancel := context.WithTimeout(wr.getBaseContext(), wrcsFanoutTimeout)
 		defer cancel()
-		wr.enqueueWRCSForRepo(fanoutCtx, owner, name, "webhook", bodyCopy)
+		wr.enqueueWRCSForRepo(fanoutCtx, provider, owner, name, "webhook", bodyCopy)
 	}()
 	return 0, ""
 }
@@ -549,7 +572,7 @@ func (wr *WebhookReceiver) verifyWebhookIfConfigured(ctx context.Context, provid
 		return true, nil
 	}
 	logger := log.FromContext(ctx)
-	repoKey := utils.RepoKey(owner, name)
+	repoKey := utils.RepoKey(provider, owner, name)
 
 	var gitRepos promoterv1alpha1.GitRepositoryList
 	if listErr := wr.k8sClient.List(ctx, &gitRepos, client.MatchingFields{gitRepositoryRepoKeyField: repoKey}); listErr != nil {
@@ -623,12 +646,12 @@ func (wr *WebhookReceiver) verifyWebhookIfConfigured(ctx context.Context, provid
 // are logged and ignored so they never affect the HTTP response or the CTP path.
 // When a WRCS has mode.webhook.filter set, the filter expression is evaluated against
 // Payload (decoded JSON body) and non-matching payloads are skipped.
-func (wr *WebhookReceiver) enqueueWRCSForRepo(ctx context.Context, owner, name, via string, payload []byte) {
+func (wr *WebhookReceiver) enqueueWRCSForRepo(ctx context.Context, provider, owner, name, via string, payload []byte) {
 	if wr.enqueueWRCS == nil || owner == "" || name == "" {
 		return
 	}
 	logger := log.FromContext(ctx)
-	repoKey := utils.RepoKey(owner, name)
+	repoKey := utils.RepoKey(provider, owner, name)
 
 	var gitRepos promoterv1alpha1.GitRepositoryList
 	if err := wr.k8sClient.List(ctx, &gitRepos, client.MatchingFields{gitRepositoryRepoKeyField: repoKey}); err != nil {

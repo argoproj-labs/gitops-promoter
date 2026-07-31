@@ -37,7 +37,8 @@ const (
 	PromotionStrategyRefField = ".spec.promotionStrategyRef.name"
 
 	// GitRepositoryRepoKeyField is a virtual field index on GitRepository keyed by
-	// the provider-agnostic lowercased "<owner>/<name>" identity (see utils.GitRepositoryRepoKey).
+	// the provider-scoped lowercased "<provider>\x00<owner>\x00<name>" identity
+	// (see utils.GitRepositoryRepoKey and utils.RepoKey).
 	GitRepositoryRepoKeyField = ".metadata.repoKey"
 
 	// GitRepositoryRefField is the cache field index path for PromotionStrategy
