@@ -37,6 +37,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	"github.com/argoproj-labs/gitops-promoter/internal/version"
 	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
 
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -552,6 +553,28 @@ func newAPIServerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	return cmd
 }
 
+func newVersionCommand() *cobra.Command {
+	var short bool
+
+	cmd := &cobra.Command{
+		Use:   "version",
+		Short: "Print version information",
+		Run: func(cmd *cobra.Command, args []string) {
+			v := version.Get()
+			if short {
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), v.Version)
+				return
+			}
+
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s: %s\n  BuildDate: %s\n  GoVersion: %s\n  Compiler: %s\n  Platform: %s\n",
+				version.CommandCLI, v.Version, v.BuildDate, v.GoVersion, v.Compiler, v.Platform)
+		},
+	}
+
+	cmd.Flags().BoolVar(&short, "short", false, "Print just the version number")
+	return cmd
+}
+
 func newCommand() *cobra.Command {
 	var clientConfig clientcmd.ClientConfig
 
@@ -562,8 +585,9 @@ func newCommand() *cobra.Command {
 	}
 
 	cmd := &cobra.Command{
-		Use:   "promoter",
-		Short: "GitOps Promoter",
+		Use:     "promoter",
+		Short:   "GitOps Promoter",
+		Version: version.Get().Version,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			// Create the zap logger
 			zapLogger := zap.New(zap.UseFlagOptions(&opts))
@@ -576,6 +600,7 @@ func newCommand() *cobra.Command {
 			klog.SetLogger(zapLogger)
 		},
 	}
+	cmd.SetVersionTemplate(version.CommandCLI + ": {{.Version}}\n")
 
 	// Zap only operates on go-type flags. Cobra doesn't give us direct access to those flags.
 	// So we apply the zap flags to a temp go flags set and then transfer them to the cobra flags.
@@ -591,6 +616,7 @@ func newCommand() *cobra.Command {
 	cmd.AddCommand(newDashboardCommand(clientConfig))
 	cmd.AddCommand(newAPIServerCommand(clientConfig))
 	cmd.AddCommand(demo.NewDemoCommand())
+	cmd.AddCommand(newVersionCommand())
 	return cmd
 }
 
