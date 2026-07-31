@@ -31,8 +31,8 @@ builds:
       - linux
       - darwin
     ldflags:
-      - -X github.com/argoproj-labs/gitops-promoter/common.version={{ .Version }}
-      - -X github.com/argoproj-labs/gitops-promoter/common.buildDate={{ .Date }}
+      - -X github.com/argoproj-labs/gitops-promoter/internal/version.version={{ .Version }}
+      - -X github.com/argoproj-labs/gitops-promoter/internal/version.buildDate={{ .Date }}
       - -extldflags="-static"
 
 dockers:

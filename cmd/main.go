@@ -25,6 +25,7 @@ import (
 	"os"
 	"runtime/debug"
 	"syscall"
+	"time"
 
 	"go.uber.org/zap/zapcore"
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
@@ -36,6 +37,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	"github.com/argoproj-labs/gitops-promoter/internal/version"
 	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
 
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -49,9 +51,13 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils/gitpaths"
 	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
 
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/discovery"
+
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 
@@ -453,13 +459,25 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 			// The dashboard watches the aggregated PromotionStrategyDetails bundle via
 			// the controller-runtime manager cache and forwards each bundle over SSE.
 			if err = ws.SetupWithManager(mgr); err != nil {
-				panic("unable to create WebServer controller")
+				return fmt.Errorf("failed to set up WebServer controller: %w", err)
+			}
+
+			// The aggregation apiserver that serves view.promoter.argoproj.io deploys
+			// independently, so on a cold start its APIService may not be Available yet.
+			// Wait for the group to be discoverable before starting the manager cache;
+			// otherwise the PromotionStrategyDetails informer's initial List fails with
+			// "no matches for kind" and the cache sync times out, crashing the process.
+			if err := waitForViewAPI(ctx, restConfig); err != nil {
+				return fmt.Errorf("dashboard aggregation API did not become available: %w", err)
 			}
 
 			// Start manager in background
 			go func() {
 				if err := mgr.Start(ctx); err != nil {
-					panic(err)
+					setupLog.Error(err, "dashboard manager exited")
+					if killErr := syscall.Kill(syscall.Getpid(), syscall.SIGTERM); killErr != nil {
+						setupLog.Error(killErr, "unable to kill process")
+					}
 				}
 			}()
 
@@ -473,6 +491,30 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	// Add default port flag
 	cmd.Flags().IntVarP(&port, "port", "p", 8080, "Port to run the dashboard on")
 	return cmd
+}
+
+// waitForViewAPI blocks until the view.promoter.argoproj.io/v1alpha1 group served by
+// the aggregation apiserver is discoverable, or the context is cancelled. This avoids
+// a startup race where the dashboard manager cache begins watching
+// PromotionStrategyDetails before the APIService is Available.
+func waitForViewAPI(ctx context.Context, restConfig *rest.Config) error {
+	discoveryClient, err := discovery.NewDiscoveryClientForConfig(restConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create discovery client: %w", err)
+	}
+
+	groupVersion := viewv1alpha1.GroupVersion.String()
+	err = wait.PollUntilContextCancel(ctx, 2*time.Second, true, func(_ context.Context) (bool, error) {
+		if _, err := discoveryClient.ServerResourcesForGroupVersion(groupVersion); err != nil {
+			setupLog.Info("Waiting for dashboard aggregation API to become available", "groupVersion", groupVersion)
+			return false, nil
+		}
+		return true, nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed waiting for group version %q: %w", groupVersion, err)
+	}
+	return nil
 }
 
 func newAPIServerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
@@ -504,6 +546,28 @@ func newAPIServerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	return cmd
 }
 
+func newVersionCommand() *cobra.Command {
+	var short bool
+
+	cmd := &cobra.Command{
+		Use:   "version",
+		Short: "Print version information",
+		Run: func(cmd *cobra.Command, args []string) {
+			v := version.Get()
+			if short {
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), v.Version)
+				return
+			}
+
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s: %s\n  BuildDate: %s\n  GoVersion: %s\n  Compiler: %s\n  Platform: %s\n",
+				version.CommandCLI, v.Version, v.BuildDate, v.GoVersion, v.Compiler, v.Platform)
+		},
+	}
+
+	cmd.Flags().BoolVar(&short, "short", false, "Print just the version number")
+	return cmd
+}
+
 func newCommand() *cobra.Command {
 	var clientConfig clientcmd.ClientConfig
 
@@ -514,8 +578,9 @@ func newCommand() *cobra.Command {
 	}
 
 	cmd := &cobra.Command{
-		Use:   "promoter",
-		Short: "GitOps Promoter",
+		Use:     "promoter",
+		Short:   "GitOps Promoter",
+		Version: version.Get().Version,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			// Create the zap logger
 			zapLogger := zap.New(zap.UseFlagOptions(&opts))
@@ -528,6 +593,7 @@ func newCommand() *cobra.Command {
 			klog.SetLogger(zapLogger)
 		},
 	}
+	cmd.SetVersionTemplate(version.CommandCLI + ": {{.Version}}\n")
 
 	// Zap only operates on go-type flags. Cobra doesn't give us direct access to those flags.
 	// So we apply the zap flags to a temp go flags set and then transfer them to the cobra flags.
@@ -543,6 +609,7 @@ func newCommand() *cobra.Command {
 	cmd.AddCommand(newDashboardCommand(clientConfig))
 	cmd.AddCommand(newAPIServerCommand(clientConfig))
 	cmd.AddCommand(demo.NewDemoCommand())
+	cmd.AddCommand(newVersionCommand())
 	return cmd
 }
 
