@@ -1,7 +1,6 @@
-import type { PromotionStrategy } from '@shared/utils/PSData';
-import { createCRDStore } from './CRDStore';
+import { createCRDStore, type PromotionStrategyItem } from './CRDStore';
 
-export const PromotionStrategyStore = createCRDStore<PromotionStrategy>(
+export const PromotionStrategyStore = createCRDStore<PromotionStrategyItem>(
   'PromotionStrategyDetails',
   'PromotionStrategyDetails',
 );
