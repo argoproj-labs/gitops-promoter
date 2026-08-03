@@ -27,14 +27,20 @@ export interface ProposedChangesCardProps {
 
 function progressMessage(
   healthSummary?: Pick<HealthSummaryResult, 'successCount' | 'totalCount'>,
+  checks?: Check[],
 ): string | null {
   if (!healthSummary || healthSummary.totalCount === 0) {
     return null;
   }
   const { successCount, totalCount } = healthSummary;
-  const inProgress = totalCount - successCount;
-  if (inProgress <= 0) {
+  const remaining = totalCount - successCount;
+  if (remaining <= 0) {
     return `${totalCount} of ${totalCount} checks passed`;
+  }
+  const failedCount = checks?.filter((check) => check.status === 'failure').length ?? 0;
+  const inProgress = remaining - failedCount;
+  if (failedCount > 0) {
+    return `${inProgress} of ${totalCount} checks in progress (${failedCount} failed)`;
   }
   return `${inProgress} of ${totalCount} checks in progress`;
 }
@@ -51,7 +57,7 @@ const ProposedChangesCard: React.FC<ProposedChangesCardProps> = ({
   prNumber,
   prTooltip,
 }) => {
-  const message = progressMessage(healthSummary);
+  const message = progressMessage(healthSummary, checks);
 
   return (
     <div className="proposed-changes-card">
