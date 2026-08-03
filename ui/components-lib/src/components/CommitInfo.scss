@@ -72,27 +72,6 @@
   min-height: 96px;
 }
 
-@keyframes promote-flow-streak {
-  0% {
-    transform: translateX(-120%);
-  }
-  100% {
-    transform: translateX(400%);
-  }
-}
-
-@keyframes promote-banner-bob {
-  0%,
-  100% {
-    transform: translateY(1px);
-    opacity: 0.75;
-  }
-  50% {
-    transform: translateY(-2px);
-    opacity: 1;
-  }
-}
-
 @keyframes promote-banner-pulse {
   0%,
   100% {
@@ -120,63 +99,6 @@
   line-height: 1;
   display: flex;
   align-items: center;
-}
-
-.pr-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-  font-size: 13px;
-  font-weight: 500;
-  color: $argo-running;
-  background: rgba(13, 173, 234, 0.08);
-  padding: 4px 8px;
-  border-radius: 12px;
-  border: 1px solid rgba(13, 173, 234, 0.2);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-decoration: none;
-
-  &:hover {
-    background: rgba(13, 173, 234, 0.15);
-    border-color: rgba(13, 173, 234, 0.4);
-    transform: translateY(-1px);
-    box-shadow: 0 2px 4px rgba(13, 173, 234, 0.2);
-  }
-
-  .pr-icon {
-    font-size: 14px;
-    color: $argo-running;
-  }
-
-  &.pr-merged {
-    color: $argo-merged;
-    background: rgba(111, 66, 193, 0.08);
-    border: 1px solid rgba(111, 66, 193, 0.2);
-
-    &:hover {
-      background: rgba(111, 66, 193, 0.15);
-      border-color: rgba(111, 66, 193, 0.4);
-      box-shadow: 0 2px 4px rgba(111, 66, 193, 0.2);
-    }
-
-    .pr-icon {
-      color: $argo-merged;
-    }
-  }
-
-  .pr-merge-time {
-    opacity: 0.7;
-    font-size: 11px;
-    font-weight: 400;
-    white-space: nowrap;
-
-    &::before {
-      content: '·';
-      margin-right: 4px;
-    }
-  }
 }
 
 .commit-info {

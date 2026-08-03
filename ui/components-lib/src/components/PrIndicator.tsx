@@ -3,6 +3,7 @@ import { GoGitPullRequest } from 'react-icons/go';
 import { Tooltip } from './Tooltip';
 import { PrTooltip } from '@shared/types/promotion';
 import { formatDate, timeAgo } from '@shared/utils/util';
+import './PrIndicator.scss';
 
 export interface PrIndicatorProps {
   prUrl: string;

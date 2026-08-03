@@ -1,5 +1,26 @@
 @use '../styles/colors' as *;
 
+@keyframes promote-flow-streak {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+@keyframes promote-banner-bob {
+  0%,
+  100% {
+    transform: translateY(1px);
+    opacity: 0.75;
+  }
+  50% {
+    transform: translateY(-2px);
+    opacity: 1;
+  }
+}
+
 .proposed-changes-card {
   box-sizing: border-box;
   position: relative;
