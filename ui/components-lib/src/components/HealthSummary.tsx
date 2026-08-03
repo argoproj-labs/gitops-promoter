@@ -57,14 +57,52 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({
 
   const showDetails = isAlwaysExpanded || isExpanded;
 
+  const handleHeaderKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Enter') {
+      handleClick();
+    } else if (event.key === ' ') {
+      event.preventDefault();
+      handleClick();
+    }
+  };
+
+  const renderCheckItem = (check: Check, key: React.Key) => (
+    <Tooltip key={key} content={check.description}>
+      <div className="health-check-item">
+        <StatusIcon phase={check.status as StatusType} type="status" />
+        <div className="health-check-body">
+          {check.url ? (
+            <a
+              href={check.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="health-check-name-link"
+            >
+              {check.name}
+            </a>
+          ) : (
+            <span className="check-name-text">{check.name}</span>
+          )}
+        </div>
+      </div>
+    </Tooltip>
+  );
+
   return (
     <div className="health-summary">
       {isAlwaysExpanded ? (
         <div className="health-header health-header--static">
-          <span className="health-count">Checks</span>
+          <span className="health-count">{headerLabel}</span>
         </div>
       ) : (
-        <div className="health-header" onClick={handleClick}>
+        <div
+          className="health-header"
+          onClick={handleClick}
+          role="button"
+          tabIndex={0}
+          aria-expanded={isExpanded}
+          onKeyDown={handleHeaderKeyDown}
+        >
           <span className="health-count">{headerLabel}</span>
           <span className="health-toggle">{isExpanded ? <FiChevronUp /> : <FiChevronDown />}</span>
         </div>
@@ -88,27 +126,7 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({
               )}
             </div>
           )}
-          {checks.map((check, index) => (
-            <Tooltip key={index} content={check.description}>
-              <div className="health-check-item">
-                <StatusIcon phase={check.status as StatusType} type="status" />
-                <div className="health-check-body">
-                  {check.url ? (
-                    <a
-                      href={check.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="health-check-name-link"
-                    >
-                      {check.name}
-                    </a>
-                  ) : (
-                    <span className="check-name-text">{check.name}</span>
-                  )}
-                </div>
-              </div>
-            </Tooltip>
-          ))}
+          {checks.map((check, index) => renderCheckItem(check, index))}
           {additionalChecks && additionalChecks.length > 0 && (
             <>
               <div className="health-subheading">
@@ -125,27 +143,9 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({
                   </Tooltip>
                 )}
               </div>
-              {additionalChecks.map((check, index) => (
-                <Tooltip key={`additional-${index}`} content={check.description}>
-                  <div className="health-check-item">
-                    <StatusIcon phase={check.status as StatusType} type="status" />
-                    <div className="health-check-body">
-                      {check.url ? (
-                        <a
-                          href={check.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="health-check-name-link"
-                        >
-                          {check.name}
-                        </a>
-                      ) : (
-                        <span className="check-name-text">{check.name}</span>
-                      )}
-                    </div>
-                  </div>
-                </Tooltip>
-              ))}
+              {additionalChecks.map((check, index) =>
+                renderCheckItem(check, `additional-${index}`),
+              )}
             </>
           )}
         </div>

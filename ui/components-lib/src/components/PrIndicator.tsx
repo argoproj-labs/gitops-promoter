@@ -25,7 +25,7 @@ const PrIndicator: React.FC<PrIndicatorProps> = ({ prUrl, prNumber, prTooltip, v
           ? prTooltip.time
             ? `${prTooltip.label} ${formatDate(prTooltip.time)}`
             : prTooltip.label
-          : `Open PR #${prNumber} on GitHub`
+          : `Open PR #${prNumber}`
       }
     >
       <a href={prUrl} target="_blank" rel="noopener noreferrer" className={className}>
