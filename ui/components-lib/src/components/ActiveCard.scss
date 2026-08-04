@@ -1,0 +1,69 @@
+@use '../styles/colors' as *;
+
+.active-card {
+  box-sizing: border-box;
+
+  .commits-section {
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  .commits-section .commit-info:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.env-card__title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  position: relative;
+  gap: 12px;
+  font-weight: 600;
+  font-size: 18px;
+  margin-bottom: 22px;
+  color: $argo-color-gray-7;
+}
+
+.env-card__title-main {
+  display: flex;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.env-card__env-name-wrap {
+  min-width: 0;
+}
+
+.env-card__env-name {
+  font-weight: 500;
+  font-size: 16px;
+  line-height: 1.3;
+  color: $argo-color-black;
+  overflow-wrap: anywhere;
+}
+
+.env-card__health-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 12px;
+  font-family: 'Heebo', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: $argo-color-gray-7;
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+
+.env-card__current-status {
+  .health-summary {
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+
+  .health-header {
+    margin-left: -9px;
+  }
+}
