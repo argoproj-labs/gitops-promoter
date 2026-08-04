@@ -60,6 +60,25 @@ export interface Check {
   url?: string;
 }
 
+export interface HealthSummaryResult {
+  successCount: number;
+  totalCount: number;
+  shouldDisplay: boolean;
+}
+
+export interface DeploymentCommit {
+  sha: string;
+  author: string;
+  subject: string;
+  body: string;
+  date: Rfc3339DateTime | '';
+}
+
+export interface PrTooltip {
+  label: 'merged' | 'opened' | 'closed';
+  time: Rfc3339DateTime | null;
+}
+
 export interface EnrichedEnvDetails {
   // Environment info
   branch: string;
@@ -74,10 +93,14 @@ export interface EnrichedEnvDetails {
   activeCommitDate: Rfc3339DateTime | '';
   activeCommitUrl: string;
   activeChecks: Check[];
-  activeChecksSummary: { successCount: number; totalCount: number; shouldDisplay: boolean };
+  activeChecksSummary: HealthSummaryResult;
   activeStatus: 'success' | 'failure' | 'pending' | 'unknown';
   activePrUrl: string | null;
   activePrNumber: number | null;
+  activePrCreationTime: Rfc3339DateTime | null;
+  activePrMergeTime: Rfc3339DateTime | null;
+  activePrState: string | null;
+  activePrTooltip: PrTooltip | null;
 
   activeReferenceCommit: ReferenceCommit | null;
   activeReferenceCommitUrl: string | null;
@@ -86,6 +109,7 @@ export interface EnrichedEnvDetails {
   proposedSha: string;
   prNumber: number | null;
   prUrl: string | null;
+  prTooltip: PrTooltip | null;
   proposedDryCommitAuthor: string;
   proposedDryCommitSubject: string;
   proposedDryCommitBody: string;
@@ -93,7 +117,7 @@ export interface EnrichedEnvDetails {
   proposedDryCommitDate: Rfc3339DateTime | '';
   proposedDryCommitUrl: string;
   proposedChecks: Check[];
-  proposedChecksSummary: { successCount: number; totalCount: number; shouldDisplay: boolean };
+  proposedChecksSummary: HealthSummaryResult;
   proposedStatus: 'success' | 'failure' | 'pending' | 'unknown';
 
   proposedReferenceCommit: ReferenceCommit | null;
@@ -101,8 +125,6 @@ export interface EnrichedEnvDetails {
 
   /** Relative display string; do not pass to `TimeAgo`. */
   historyMergeTimeAgo: RelativeTimeAgo | null;
-  /** Relative display string; do not pass to `TimeAgo`. */
-  activeMergeTimeAgo: RelativeTimeAgo | null;
 }
 
 export type PromotionPhase = 'promoted' | 'failure' | 'pending' | 'unknown';

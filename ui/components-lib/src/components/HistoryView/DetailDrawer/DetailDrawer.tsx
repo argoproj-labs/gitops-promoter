@@ -205,7 +205,7 @@ const DetailDrawer: React.FC<{
 
         {refs.length > 0 && (
           <div className="hp-drawer__section">
-            <h3>app commits ({refs.length})</h3>
+            <h3>referenced commits ({refs.length})</h3>
             <ul className="hp-drawer__refs">
               {refs.map((ref, i) => {
                 const body = ref.body ? extractBodyPreTrailer(ref.body) : '';

@@ -1,7 +1,7 @@
-import { FaServer } from 'react-icons/fa';
 import { StatusIcon, StatusType } from './StatusIcon';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import CommitInfo from './CommitInfo';
+import ActiveCard from './ActiveCard';
+import ProposedChangesCard from './ProposedChangesCard';
 import {
   EnrichedEnvDetails,
   enrichFromEnvironments,
@@ -63,8 +63,6 @@ const Card: React.FC<CardProps> = ({ environments }) => {
             date: env.proposedDryCommitDate,
           };
 
-          const mergeTimeAgo = env.activeMergeTimeAgo ?? undefined;
-
           const hasPendingProposal =
             proposedStatus !== undefined && ['pending', 'failure'].includes(proposedStatus);
           const cardClassName = ['env-card', hasPendingProposal ? '' : 'single-commit-group']
@@ -75,36 +73,18 @@ const Card: React.FC<CardProps> = ({ environments }) => {
             <React.Fragment key={env.branch}>
               <div className="env-card-column">
                 <div className={cardClassName}>
-                  <div
-                    className="env-card__title"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      position: 'relative',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center' }}>
-                      <FaServer className="env-card__icon" />
-                      <div>
-                        <span className="env-card__env-name">{branch}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <CommitInfo
-                    title="Active"
+                  <ActiveCard
+                    branch={branch}
+                    activeStatus={env.activeStatus as StatusType}
                     deploymentCommit={activeDeploymentCommit}
                     codeCommit={env.activeReferenceCommit}
-                    isActive={true}
-                    status={env.activeStatus as StatusType}
                     deploymentCommitUrl={env.activeCommitUrl}
                     codeCommitUrl={env.activeReferenceCommitUrl}
-                    checks={env.activeChecks}
-                    healthSummary={env.activeChecksSummary}
                     prUrl={env.activePrUrl}
                     prNumber={env.activePrNumber?.toString()}
-                    mergeTimeAgo={mergeTimeAgo}
+                    prTooltip={env.activePrTooltip}
+                    checks={env.activeChecks}
+                    healthSummary={env.activeChecksSummary}
                   />
 
                   {isProcessing ? (
@@ -123,19 +103,17 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                       </div>
                     </div>
                   ) : proposedStatus !== 'promoted' && proposedStatus !== 'success' ? (
-                    <CommitInfo
-                      title="Proposed"
+                    <ProposedChangesCard
                       deploymentCommit={proposedDeploymentCommit}
                       codeCommit={env.proposedReferenceCommit}
-                      isActive={false}
                       status={env.proposedStatus as StatusType}
-                      className="proposed"
                       deploymentCommitUrl={env.proposedDryCommitUrl}
                       codeCommitUrl={env.proposedReferenceCommitUrl}
                       checks={env.proposedChecks}
                       healthSummary={env.proposedChecksSummary}
                       prUrl={env.prUrl}
                       prNumber={env.prNumber?.toString()}
+                      prTooltip={env.prTooltip}
                     />
                   ) : null}
                 </div>
