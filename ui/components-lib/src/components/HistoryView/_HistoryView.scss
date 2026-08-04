@@ -1,3 +1,4 @@
+@use 'sass:color';
 @use 'tokens' as *;
 
 .hp {
@@ -289,6 +290,7 @@
   background: $bg-page;
   border-bottom: 1px solid $stroke;
   margin-bottom: 6px;
+  min-width: max-content;
   .hp-env-banner {
     margin: 16px 0 8px;
   }
@@ -296,8 +298,8 @@
 
 .hp-matrix__head {
   display: grid;
-  gap: 6px;
-  padding: 16px 10px 10px;
+  gap: 8px;
+  padding: 16px 8px 10px;
 }
 
 // When the banner is present it already provides the top spacing, so the
@@ -306,34 +308,90 @@
   padding-top: 0;
 }
 
+// Commit column header: primary COMMIT label beside a lowercase accent
+// "promotes" caption whose trailing arrow points into the first env pill.
+.hp-matrix__head-commit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  align-self: stretch;
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: $bg-page;
+  box-shadow: -16px 0 0 0 $bg-page;
+  clip-path: inset(0 0 0 -16px);
+  padding-right: 8px;
+  border-right: 1px solid $stroke;
+}
+
 .hp-matrix__head-label {
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: $text-muted;
+  color: $text-primary;
+}
+
+.hp-matrix__head-promotes {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: lowercase;
+  color: $accent;
+}
+
+.hp-matrix__head-promotes-arrow {
+  font-size: 9px;
 }
 
 .hp-matrix__head-env {
-  display: inline-flex;
+  // Positioning context for the connector, which overlaps the pill's left edge.
+  position: relative;
+  display: flex;
   align-items: center;
-  gap: 6px;
+  min-width: 0;
 }
 
-.hp-matrix__head-env-swatch {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
-  flex-shrink: 0;
-}
-
-.hp-matrix__head-env-branch {
+.hp-matrix__head-pill {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  padding: 6px 13px;
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  // Color set inline via env palette.
+  color: $accent;
+  background: color.change($accent, $alpha: 0.08);
+  border: 1px solid color.change($accent, $alpha: 0.22);
+  border-radius: $radius-md;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// Circular arrow connector between consecutive env pills. Sits on the pill's
+// left edge with a page-colored bg so it reads as cut into the border.
+.hp-matrix__head-connector {
+  position: absolute;
+  left: -13px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  background: $bg-page;
+  color: $accent;
+  svg {
+    font-size: 11px;
+  }
 }
 
 .hp-matrix__empty {
@@ -418,6 +476,7 @@
   border-radius: $radius-md;
   align-items: stretch;
   transition: border-color 0.14s ease;
+  min-width: max-content;
 
   &:hover {
     border-color: $stroke-strong;
@@ -435,14 +494,14 @@
   gap: 3px;
   padding: 4px 10px 4px 8px;
   min-width: 0;
-  position: relative;
-
+  position: sticky;
+  left: 0;
+  z-index: 2;
   background: $bg-surface;
+  box-shadow: -16px 0 0 0 $bg-surface;
+  clip-path: inset(0 0 0 -16px);
   margin: -7px 0 -7px -8px;
   padding: 11px 10px 11px 16px;
-  border-top-left-radius: $radius-md;
-  border-bottom-left-radius: $radius-md;
-
   border-right: 1px solid $stroke;
 }
 
