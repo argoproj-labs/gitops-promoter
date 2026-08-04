@@ -44,6 +44,22 @@
     }
   }
 
+  &.pr-closed {
+    color: $argo-terminating;
+    background: rgba(222, 48, 61, 0.08);
+    border: 1px solid rgba(222, 48, 61, 0.2);
+
+    &:hover {
+      background: rgba(222, 48, 61, 0.15);
+      border-color: rgba(222, 48, 61, 0.4);
+      box-shadow: 0 2px 4px rgba(222, 48, 61, 0.2);
+    }
+
+    .pr-icon {
+      color: $argo-terminating;
+    }
+  }
+
   .pr-merge-time {
     opacity: 0.7;
     font-size: 11px;

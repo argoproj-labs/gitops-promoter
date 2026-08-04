@@ -13,10 +13,14 @@ export interface PrIndicatorProps {
 }
 
 const PrIndicator: React.FC<PrIndicatorProps> = ({ prUrl, prNumber, prTooltip, variant }) => {
+  const terminalClass =
+    prTooltip?.status === 'merged'
+      ? 'pr-merged'
+      : prTooltip?.status === 'closed'
+        ? 'pr-closed'
+        : '';
   const className =
-    variant === 'active'
-      ? `pr-indicator ${prTooltip?.label === 'merged' ? 'pr-merged' : ''}`
-      : 'proposed-changes-card__pr';
+    variant === 'active' ? `pr-indicator ${terminalClass}` : 'proposed-changes-card__pr';
 
   return (
     <Tooltip
