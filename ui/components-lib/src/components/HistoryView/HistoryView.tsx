@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
-import { FaChevronLeft, FaFilter, FaSort, FaLayerGroup } from 'react-icons/fa';
+import { FaChevronLeft, FaFilter, FaSort, FaLayerGroup, FaArrowRight } from 'react-icons/fa';
 import { GoGitCommit } from 'react-icons/go';
 import { timeAgo, formatDate, getCommitUrl } from '@shared/utils/util';
 import type { PromotionStrategy } from '@shared/types/promotion';
@@ -330,16 +330,21 @@ const HistoryView: React.FC<HistoryViewProps> = ({
                 </div>
               )}
               <div className="hp-matrix__head" style={{ gridTemplateColumns: gridTemplate }}>
-                <span className="hp-matrix__head-label">Dry Commit</span>
-                {visibleEnvs.map((env) => (
+                <span className="hp-matrix__head-commit">
+                  <span className="hp-matrix__head-label">Commit</span>
+                  <span className="hp-matrix__head-promotes">
+                    Promotes
+                    <FaArrowRight className="hp-matrix__head-promotes-arrow" aria-hidden="true" />
+                  </span>
+                </span>
+                {visibleEnvs.map((env, i) => (
                   <span key={env.branch} className="hp-matrix__head-env">
-                    <span
-                      className="hp-matrix__head-env-swatch"
-                      style={{ background: env.color }}
-                    />
-                    <span className="hp-matrix__head-env-branch" style={{ color: env.color }}>
-                      {env.branch}
-                    </span>
+                    {i > 0 && (
+                      <span className="hp-matrix__head-connector" aria-hidden="true">
+                        <FaArrowRight />
+                      </span>
+                    )}
+                    <span className="hp-matrix__head-pill">{env.branch}</span>
                   </span>
                 ))}
               </div>
