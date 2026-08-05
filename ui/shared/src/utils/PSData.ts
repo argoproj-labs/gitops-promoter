@@ -4,9 +4,12 @@ import type {
   BranchCommitStatus,
   Commit,
   Environment,
+  EnvironmentPullRequest,
   PromotionStrategy,
   Check,
   EnrichedEnvDetails,
+  HealthSummaryResult,
+  PrTooltip,
   PromotionPhase,
   ReferenceCommit,
   RelativeTimeAgo,
@@ -22,11 +25,7 @@ function getChecks(commitStatuses: BranchCommitStatus[]): Check[] {
 }
 
 // Health check summary calculation functions
-function calculateHealthSummary(checks: Check[]): {
-  successCount: number;
-  totalCount: number;
-  shouldDisplay: boolean;
-} {
+function calculateHealthSummary(checks: Check[]): HealthSummaryResult {
   const totalCount = checks.length;
   const successCount = checks.filter((check) => check.status === 'success').length;
   const shouldDisplay = totalCount > 0;
@@ -51,6 +50,34 @@ function extractReferenceCommitData(dryCommit: Commit): null | ReferenceCommit {
   const url = getCommitUrl(referenceCommit.repoURL || '', referenceCommit.sha || '');
 
   return { sha, author, subject, body, date, url };
+}
+
+function derivePrTooltip(pr: EnvironmentPullRequest | null): PrTooltip | null {
+  if (!pr) {
+    return null;
+  }
+  const state = pr.state || '';
+  const isMerged = state === 'merged' || (!state && !!pr.prMergeTime);
+  if (isMerged) {
+    return { status: 'merged', label: 'merged', time: pr.prMergeTime ?? null };
+  }
+  if (state === 'closed') {
+    return { status: 'closed', label: 'closed', time: null };
+  }
+  if (pr.externallyMergedOrClosed && !pr.prMergeTime) {
+    return { status: 'closed', label: 'closed or merged externally', time: null };
+  }
+  return pr.prCreationTime ? { status: 'opened', label: 'opened', time: pr.prCreationTime } : null;
+}
+
+function deriveActivePrTooltip(pr: EnvironmentPullRequest | null): PrTooltip | null {
+  if (pr && pr.state === 'merged') {
+    return { status: 'merged', label: 'merged', time: pr.prMergeTime ?? null };
+  }
+  if (pr && pr.externallyMergedOrClosed) {
+    return { status: 'merged', label: 'merged externally', time: pr.prMergeTime ?? null };
+  }
+  return derivePrTooltip(pr);
 }
 
 function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnvDetails {
@@ -100,12 +127,6 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
     historyMergeTimeAgo = mergeTimeStr ? timeAgo(mergeTimeStr) : null;
   }
 
-  // Merge time for the live (index 0) active PR
-  const liveMergeTimeStr = activePr?.prMergeTime || history[0]?.pullRequest?.prMergeTime || null;
-  const activeMergeTimeAgo: RelativeTimeAgo | null = liveMergeTimeStr
-    ? timeAgo(liveMergeTimeStr)
-    : null;
-
   // In historical view, proposed cards should only show status info, not commit details
   const isHistoric = index > 0;
 
@@ -118,6 +139,10 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
     activeStatus: getHealthStatus(activeChecks),
     activePrUrl: activePr?.url || null,
     activePrNumber: activePr?.id ? parseInt(activePr.id, 10) : null,
+    activePrCreationTime: activePr?.prCreationTime || null,
+    activePrMergeTime: activePr?.prMergeTime || null,
+    activePrState: activePr?.state ?? null,
+    activePrTooltip: deriveActivePrTooltip(activePr),
     activeCommitSubject: activeCommitInfo.subject || '-',
     activeCommitMessage: extractBodyPreTrailer(activeCommitInfo.body || '-'),
     activeCommitAuthor: extractNameOnly(activeCommitInfo.author || '-'),
@@ -137,6 +162,7 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
         : getHealthStatus(proposedChecks),
     prNumber: pullRequest?.id ? parseInt(pullRequest.id, 10) : null,
     prUrl: pullRequest?.url || null,
+    prTooltip: derivePrTooltip(pullRequest ?? null),
     proposedDryCommitSubject: proposedDry.subject || '-',
     proposedDryCommitBody: extractBodyPreTrailer(proposedDry.body || '-'),
     proposedDryCommitAuthor: extractNameOnly(proposedDry.author || '-'),
@@ -150,7 +176,6 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
 
     // History
     historyMergeTimeAgo,
-    activeMergeTimeAgo,
   };
 }
 
