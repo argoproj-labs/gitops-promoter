@@ -59,12 +59,25 @@ function derivePrTooltip(pr: EnvironmentPullRequest | null): PrTooltip | null {
   const state = pr.state || '';
   const isMerged = state === 'merged' || (!state && !!pr.prMergeTime);
   if (isMerged) {
-    return { label: 'merged', time: pr.prMergeTime ?? null };
+    return { status: 'merged', label: 'merged', time: pr.prMergeTime ?? null };
   }
   if (state === 'closed') {
-    return { label: 'closed', time: null };
+    return { status: 'closed', label: 'closed', time: null };
   }
-  return pr.prCreationTime ? { label: 'opened', time: pr.prCreationTime } : null;
+  if (pr.externallyMergedOrClosed && !pr.prMergeTime) {
+    return { status: 'closed', label: 'closed or merged externally', time: null };
+  }
+  return pr.prCreationTime ? { status: 'opened', label: 'opened', time: pr.prCreationTime } : null;
+}
+
+function deriveActivePrTooltip(pr: EnvironmentPullRequest | null): PrTooltip | null {
+  if (pr && pr.state === 'merged') {
+    return { status: 'merged', label: 'merged', time: pr.prMergeTime ?? null };
+  }
+  if (pr && pr.externallyMergedOrClosed) {
+    return { status: 'merged', label: 'merged externally', time: pr.prMergeTime ?? null };
+  }
+  return derivePrTooltip(pr);
 }
 
 function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnvDetails {
@@ -129,7 +142,7 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
     activePrCreationTime: activePr?.prCreationTime || null,
     activePrMergeTime: activePr?.prMergeTime || null,
     activePrState: activePr?.state ?? null,
-    activePrTooltip: derivePrTooltip(activePr),
+    activePrTooltip: deriveActivePrTooltip(activePr),
     activeCommitSubject: activeCommitInfo.subject || '-',
     activeCommitMessage: extractBodyPreTrailer(activeCommitInfo.body || '-'),
     activeCommitAuthor: extractNameOnly(activeCommitInfo.author || '-'),

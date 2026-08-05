@@ -72,18 +72,6 @@
   min-height: 96px;
 }
 
-@keyframes promote-banner-pulse {
-  0%,
-  100% {
-    transform: rotate(-90deg) translateY(1px);
-    opacity: 0.8;
-  }
-  50% {
-    transform: rotate(-90deg) translateY(-2px);
-    opacity: 1;
-  }
-}
-
 .commit-group-header {
   display: flex;
   align-items: center;

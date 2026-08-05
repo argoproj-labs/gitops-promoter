@@ -151,6 +151,31 @@ const environmentWithExternallyMergedPr: Environment = {
   lastHealthyDryShas: [],
 };
 
+// Externally closed (not merged) PR: state is empty ("") and no merge time is present.
+// Lives on environment.pullRequest and is picked up via the mergedEnvPr fallback.
+const environmentWithExternallyClosedPr: Environment = {
+  branch: 'environments/int',
+  active: {
+    dry: {
+      sha: 'af24f4de24ecf1a15bc3348f738ae3fd6fbbc73b',
+      commitTime: '2026-05-22T14:40:04Z',
+      author: 'deployment-bot <bot@example.com>',
+      repoURL: 'https://github.example.com/deployment',
+      subject: '[Changed] - infrastructure deployment',
+    },
+    hydrated: {},
+  },
+  proposed: { dry: {}, hydrated: {}, commitStatuses: [] },
+  pullRequest: {
+    id: '46',
+    url: 'https://github.example.com/deployment/pull/46',
+    state: '',
+    externallyMergedOrClosed: true,
+    prCreationTime: '2026-05-22T14:00:00Z',
+  },
+  lastHealthyDryShas: [],
+};
+
 describe('enrichFromEnvironments', () => {
   it('preserves RFC 3339 commit timestamps so TimeAgo does not render "NaN days ago"', () => {
     const [env] = enrichFromEnvironments([environmentWithReferenceCommit], 0);
@@ -180,6 +205,7 @@ describe('enrichFromEnvironments', () => {
     const [env] = enrichFromEnvironments([environmentWithMergedPr], 0);
 
     expect(env.activePrTooltip).toEqual({
+      status: 'merged',
       label: 'merged',
       time: '2026-05-22T14:52:00Z',
     });
@@ -190,6 +216,7 @@ describe('enrichFromEnvironments', () => {
 
     expect(env.activePrState).toBe('open');
     expect(env.activePrTooltip).toEqual({
+      status: 'opened',
       label: 'opened',
       time: '2026-05-22T14:00:00Z',
     });
@@ -200,18 +227,40 @@ describe('enrichFromEnvironments', () => {
 
     expect(env.activePrState).toBe('closed');
     expect(env.activePrTooltip).toEqual({
+      status: 'closed',
       label: 'closed',
       time: null,
     });
   });
 
-  it('treats an empty state with a merge time as merged (externallyMergedOrClosed)', () => {
+  it('labels an externally merged PR (empty state + merge time) as merged externally', () => {
     const [env] = enrichFromEnvironments([environmentWithExternallyMergedPr], 0);
 
     expect(env.activePrState).toBe('');
     expect(env.activePrTooltip).toEqual({
-      label: 'merged',
+      status: 'merged',
+      label: 'merged externally',
       time: '2026-05-22T14:52:00Z',
+    });
+  });
+
+  it('shows merged externally in the live slot for an ambiguous externally merged-or-closed PR', () => {
+    const [env] = enrichFromEnvironments([environmentWithExternallyClosedPr], 0);
+
+    // A PR occupying the active/live slot is what made the commit live, so it merged;
+    // activePrState stays untouched ('') while the tooltip resolves the ambiguity to
+    // merged and notes it happened outside the controller.
+    expect(env.activePrState).toBe('');
+    expect(env.activePrTooltip).toEqual({
+      status: 'merged',
+      label: 'merged externally',
+      time: null,
+    });
+    // The non-live prTooltip still reflects the ambiguity with the hedged label.
+    expect(env.prTooltip).toEqual({
+      status: 'closed',
+      label: 'closed or merged externally',
+      time: null,
     });
   });
 });

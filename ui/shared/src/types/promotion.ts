@@ -75,7 +75,8 @@ export interface DeploymentCommit {
 }
 
 export interface PrTooltip {
-  label: 'merged' | 'opened' | 'closed';
+  status: 'merged' | 'opened' | 'closed';
+  label: string;
   time: Rfc3339DateTime | null;
 }
 
