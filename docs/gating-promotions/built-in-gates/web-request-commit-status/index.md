@@ -6,6 +6,9 @@ The Web Request Commit Status controller enables environment gating based on ext
 
 The WebRequestCommitStatus controller provides flexible validation by calling external HTTP APIs and evaluating the responses. It supports both simple polling and advanced expression-based triggering, making it suitable for a wide range of integration scenarios.
 
+> [!NOTE]
+> WebRequestCommitStatus uses the [expr](https://github.com/expr-lang/expr) library for expression evaluation. The library provides a powerful expression language with familiar syntax.
+
 ### How It Works
 
 Behavior depends on **`spec.mode.context`** (see [Request scope](#request-scope-environments-vs-promotionstrategy) below). By default (`environments`), the controller runs **one HTTP request per applicable environment**. With `promotionstrategy`, it runs **at most one HTTP request per WebRequestCommitStatus** and maps the result to every applicable environment’s `CommitStatus`.
@@ -138,8 +141,8 @@ This is the **carry-forward pattern**: when an HTTP response is available, evalu
 **Return types:**
 
 1. **Boolean** — `true`: all applicable environments get phase **success**; `false`: all get **pending** (not failure).
-2. **Object** — shape: `{ "defaultPhase"?: "success" \| "pending" \| "failure", "environments"?: [ { "branch": "<branch>", "phase": "..." }, ... ] }`  
-   - If `environments` is omitted or empty, every environment gets `defaultPhase` (default **`pending`** if `defaultPhase` is omitted).  
+2. **Object** — shape: `{ "defaultPhase"?: "success" \| "pending" \| "failure", "environments"?: [ { "branch": "<branch>", "phase": "..." }, ... ] }`
+   - If `environments` is omitted or empty, every environment gets `defaultPhase` (default **`pending`** if `defaultPhase` is omitted).
    - If `environments` is non-empty, each listed **branch** gets its `phase`; any applicable environment **not** listed uses `defaultPhase`.
 
 Branch strings must match **`PromotionStrategy.spec.environments[].branch`** for the environments this gate applies to.
@@ -515,8 +518,8 @@ spec:
       requeueDuration: 1m
       when:
         expression: |
-          ResponseOutput == nil || 
-          ResponseOutput.status == "retry" || 
+          ResponseOutput == nil ||
+          ResponseOutput.status == "retry" ||
           ResponseOutput.validated == false
         output:
           expression: |
@@ -603,7 +606,7 @@ spec:
   success:
     when:
       expression: |
-        Response.StatusCode == 200 && 
+        Response.StatusCode == 200 &&
         Response.Body.compliant == true &&
         Response.Body.score >= 0.8
   mode:
@@ -1044,7 +1047,3 @@ Field-level documentation (required/optional, template variables, expression var
 
 - **Godoc:** `api/v1alpha1/webrequestcommitstatus_types.go`
 - **CLI:** `kubectl explain webrequestcommitstatus.spec` (and drill down, e.g. `kubectl explain webrequestcommitstatus.spec.mode.trigger`)
-
-## Expression Language
-
-WebRequestCommitStatus uses the [expr](https://github.com/expr-lang/expr) library for expression evaluation. The library provides a powerful expression language with familiar syntax.
