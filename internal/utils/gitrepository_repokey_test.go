@@ -61,7 +61,6 @@ var _ = Describe("RepoKey", func() {
 
 var _ = Describe("GitRepositoryRepoKey", func() {
 	type testCase struct {
-		name string
 		repo *promoterv1alpha1.GitRepository
 		want string
 	}
