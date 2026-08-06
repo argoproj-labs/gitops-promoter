@@ -141,8 +141,8 @@ This is the **carry-forward pattern**: when an HTTP response is available, evalu
 **Return types:**
 
 1. **Boolean** — `true`: all applicable environments get phase **success**; `false`: all get **pending** (not failure).
-2. **Object** — shape: `{ "defaultPhase"?: "success" \| "pending" \| "failure", "environments"?: [ { "branch": "<branch>", "phase": "..." }, ... ] }`
-   - If `environments` is omitted or empty, every environment gets `defaultPhase` (default **`pending`** if `defaultPhase` is omitted).
+2. **Object** — shape: `{ "defaultPhase"?: "success" \| "pending" \| "failure", "environments"?: [ { "branch": "<branch>", "phase": "..." }, ... ] }`  
+   - If `environments` is omitted or empty, every environment gets `defaultPhase` (default **`pending`** if `defaultPhase` is omitted).  
    - If `environments` is non-empty, each listed **branch** gets its `phase`; any applicable environment **not** listed uses `defaultPhase`.
 
 Branch strings must match **`PromotionStrategy.spec.environments[].branch`** for the environments this gate applies to.
@@ -518,8 +518,8 @@ spec:
       requeueDuration: 1m
       when:
         expression: |
-          ResponseOutput == nil ||
-          ResponseOutput.status == "retry" ||
+          ResponseOutput == nil || 
+          ResponseOutput.status == "retry" || 
           ResponseOutput.validated == false
         output:
           expression: |
@@ -606,7 +606,7 @@ spec:
   success:
     when:
       expression: |
-        Response.StatusCode == 200 &&
+        Response.StatusCode == 200 && 
         Response.Body.compliant == true &&
         Response.Body.score >= 0.8
   mode:
