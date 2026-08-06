@@ -13,6 +13,18 @@ $extension-card-width: 400px;
 $extension-card-gap: 30px;
 $extension-wrapper-gap: 20px;
 
+@keyframes promote-banner-pulse {
+  0%,
+  100% {
+    transform: rotate(-90deg) translateY(1px);
+    opacity: 0.8;
+  }
+  50% {
+    transform: rotate(-90deg) translateY(-2px);
+    opacity: 1;
+  }
+}
+
 @mixin card-chrome {
   background: white;
   border: 1px solid $argo-color-gray-4;
@@ -221,6 +233,12 @@ $extension-wrapper-gap: 20px;
     margin: 0;
     transform: rotate(-90deg);
     animation: promote-banner-pulse 2s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .proposed-changes-card .promote-banner__icon {
+      animation: none;
+    }
   }
 
   .arrow-separator {

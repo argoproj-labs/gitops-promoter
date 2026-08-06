@@ -1,4 +1,4 @@
-import { FiChevronDown, FiChevronUp, FiInfo } from 'react-icons/fi';
+import { FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import { StatusIcon, StatusType } from './StatusIcon';
 import React, { useState } from 'react';
 import { Tooltip } from './Tooltip';
@@ -8,11 +8,6 @@ import './HealthSummary.scss';
 export interface HealthSummaryProps {
   checks: Check[];
   healthSummary?: HealthSummaryResult;
-  additionalChecks?: Check[];
-  additionalChecksTitle?: string;
-  additionalChecksTitleTooltip?: string;
-  primaryChecksTitle?: string;
-  primaryChecksTitleTooltip?: string;
   variant?: 'collapsible' | 'always-expanded';
   headerLabel?: string;
 }
@@ -20,25 +15,14 @@ export interface HealthSummaryProps {
 const HealthSummary: React.FC<HealthSummaryProps> = ({
   checks,
   healthSummary,
-  additionalChecks,
-  additionalChecksTitle,
-  additionalChecksTitleTooltip,
-  primaryChecksTitle,
-  primaryChecksTitleTooltip,
   variant = 'collapsible',
   headerLabel = 'Current status',
 }) => {
-  const allChecks = additionalChecks ? [...checks, ...additionalChecks] : checks;
   const { totalCount, shouldDisplay } = healthSummary
-    ? additionalChecks
-      ? {
-          totalCount: healthSummary.totalCount + additionalChecks.length,
-          shouldDisplay: healthSummary.shouldDisplay || additionalChecks.length > 0,
-        }
-      : healthSummary
+    ? healthSummary
     : {
-        totalCount: allChecks.length,
-        shouldDisplay: allChecks && allChecks.length > 0,
+        totalCount: checks.length,
+        shouldDisplay: checks.length > 0,
       };
 
   const isAlwaysExpanded = variant === 'always-expanded';
@@ -110,44 +94,7 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({
 
       {showDetails && (
         <div className="health-details">
-          {primaryChecksTitle && (
-            <div className="health-subheading">
-              {primaryChecksTitle}
-              {primaryChecksTitleTooltip && (
-                <Tooltip content={primaryChecksTitleTooltip}>
-                  <button
-                    type="button"
-                    className="health-subheading-info"
-                    aria-label="More information"
-                  >
-                    <FiInfo />
-                  </button>
-                </Tooltip>
-              )}
-            </div>
-          )}
           {checks.map((check, index) => renderCheckItem(check, index))}
-          {additionalChecks && additionalChecks.length > 0 && (
-            <>
-              <div className="health-subheading">
-                {additionalChecksTitle || 'Additional Checks'}
-                {additionalChecksTitleTooltip && (
-                  <Tooltip content={additionalChecksTitleTooltip}>
-                    <button
-                      type="button"
-                      className="health-subheading-info"
-                      aria-label="More information"
-                    >
-                      <FiInfo />
-                    </button>
-                  </Tooltip>
-                )}
-              </div>
-              {additionalChecks.map((check, index) =>
-                renderCheckItem(check, `additional-${index}`),
-              )}
-            </>
-          )}
         </div>
       )}
     </div>

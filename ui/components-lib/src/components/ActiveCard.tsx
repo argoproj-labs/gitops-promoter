@@ -3,6 +3,7 @@ import { StatusIcon, StatusType, statusLabel } from './StatusIcon';
 import CommitInfo from './CommitInfo';
 import HealthSummary from './HealthSummary';
 import PrIndicator from './PrIndicator';
+import { Tooltip } from './Tooltip';
 import {
   Check,
   DeploymentCommit,
@@ -44,7 +45,9 @@ const ActiveCard: React.FC<ActiveCardProps> = ({
       <div className="env-card__title">
         <div className="env-card__title-main">
           <div className="env-card__env-name-wrap">
-            <span className="env-card__env-name">{branch}</span>
+            <Tooltip content={branch}>
+              <span className="env-card__env-name">{branch}</span>
+            </Tooltip>
           </div>
           <span className="env-card__health-chip">
             <StatusIcon phase={activeStatus} type="health" />
