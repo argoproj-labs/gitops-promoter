@@ -269,16 +269,24 @@ build-dashboard: install-ui-deps build-dashboard-ui ## Install UI deps and build
 build-extension-ui: ## Build ArgoCD extension (requires install-ui-deps).
 	cd ui/extension && npm install && npm run build
 
+.PHONY: build-extension-ui-dev
+build-extension-ui-dev: ## Build ArgoCD extension in dev mode, retaining the ?mock=true fixture (requires install-ui-deps).
+	cd ui/extension && npm install && npm run build -- --mode development
+
 .PHONY: build-extension
 build-extension: install-ui-deps build-extension-ui ## Install UI deps and build extension.
+
+.PHONY: build-extension-dev
+build-extension-dev: install-ui-deps build-extension-ui-dev ## Install UI deps and build extension in dev mode (mock data retained).
 
 .PHONY: install-extension-local
 install-extension-local: ## Install ArgoCD extension to /tmp/extensions/promoter directory.
 	mkdir -p /tmp/extensions/promoter
-	cp ui/extension/dist/extension-promoter.js /tmp/extensions/promoter/
+	# Copy every chunk (main + async mock fixture); all match Argo CD's ^extension(.*)\.js$ scan.
+	cp ui/extension/dist/extension-promoter*.js /tmp/extensions/promoter/
 
 .PHONY: build-extension-local
-build-extension-local: build-extension install-extension-local ## Build ArgoCD extension and install it locally to /tmp/extensions/promoter directory.
+build-extension-local: build-extension-dev install-extension-local ## Build ArgoCD extension in dev mode (mock data via ?mock=true) and install it locally to /tmp/extensions/promoter directory.
 
 .PHONY: build-all
 build-all: build-dashboard build-extension build ## Build dashboard UI, extension, and then the manager binary.
