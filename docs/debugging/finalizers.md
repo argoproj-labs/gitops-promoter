@@ -12,7 +12,7 @@ All promoter-defined finalizer strings live in the API package as constants (see
 | Finalizer string | Kind(s) | Purpose |
 | ---------------- | ------- | ------- |
 | `pullrequest.promoter.argoproj.io/finalizer` | `PullRequest` | Blocks removal of the `PullRequest` CR until the controller has closed (or otherwise reconciled) the corresponding pull request in the SCM, when a real SCM ID exists. |
-| `changetransferpolicy.promoter.argoproj.io/pullrequest-finalizer` | `PullRequest` | Ensures the owning `ChangeTransferPolicy` can observe pull request status (for example ID and state) on the CR before the `PullRequest` is deleted, so promotion state stays consistent. |
+| `changetransferpolicy.promoter.argoproj.io/pullrequest-finalizer` | `PullRequest` | Ensures the owning `ChangeTransferPolicy` can observe pull request status (for example ID and state) on the CR and record the promotion-history git note for the merge commit before the `PullRequest` is deleted, so promotion state and history stay consistent. |
 | `changetransferpolicy.promoter.argoproj.io/finalizer` | `ChangeTransferPolicy` | On policy deletion, forces a reconcile pass that strips the CTP-owned finalizer from related `PullRequest`s (and related cleanup) before the policy object can finish deleting. |
 | `gitrepository.promoter.argoproj.io/finalizer` | `GitRepository` | Prevents deleting a `GitRepository` while non-deleting `PullRequest`s still reference that repository. |
 | `scmprovider.promoter.argoproj.io/finalizer` | `ScmProvider` | Prevents deleting an `ScmProvider` while `GitRepository`s in the same namespace still reference it. |
@@ -30,7 +30,7 @@ Removing a finalizer **does not run** the controller logic that would have run o
   **Risk:** The Kubernetes object is gone while the real pull request may still be **open** in GitHub/GitLab/etc. You lose a single place to drive closure and can strand automation or humans on a live PR.
 
 - **`PullRequest` (`changetransferpolicy.promoter.argoproj.io/pullrequest-finalizer`)**  
-  **Risk:** The `ChangeTransferPolicy` may never record the final PR identity/state from that object. Downstream status, history, or “externally closed” handling can be wrong or racy.
+  **Risk:** The `ChangeTransferPolicy` may never record the final PR identity/state from that object, and the promotion-history git note for the merge commit may never be written. Downstream status, history, or “externally closed” handling can be wrong or racy, and history for merges performed on the SCM (e.g. squash merges) can be permanently lost.
 
 - **`ChangeTransferPolicy` (`changetransferpolicy.promoter.argoproj.io/finalizer`)**  
   **Risk:** The policy CR can be removed from etcd while related `PullRequest`s still carry the CTP finalizer or are not cleaned up the way the controller expects. You can leave policies “gone” but PR objects stuck terminating or inconsistent with Git.
