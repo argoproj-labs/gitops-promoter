@@ -8,7 +8,7 @@ import BackButton from '../components/BackButton';
 import HeaderBar from '@lib/components/HeaderBar';
 import PromotionStrategyDetailsView from '../components/PromotionStrategyDetailsView';
 import { LiveManifestView } from '@lib/components/LiveManifestView';
-import type { PromotionStrategy } from '@shared/utils/PSData';
+import type { PromotionStrategyItem } from '../stores/CRDStore';
 import './PromotionStrategyPage.scss';
 
 interface NamespaceStore {
@@ -35,7 +35,9 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
 
   const { items, fetchItems, subscribe, unsubscribe } = PromotionStrategyStore();
 
-  const selectedStrategy = items.find((ps: PromotionStrategy) => ps.metadata.name === strategyName);
+  const selectedStrategy = items.find(
+    (ps: PromotionStrategyItem) => ps.metadata.name === strategyName,
+  );
 
   useEffect(() => {
     if (!namespace) return;
@@ -122,7 +124,10 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
 
       {currentView === 'cards' ? (
         <div className="strategy-page-cards">
-          <PromotionStrategyDetailsView strategy={selectedStrategy} />
+          <PromotionStrategyDetailsView
+            strategy={selectedStrategy}
+            details={selectedStrategy.details}
+          />
         </div>
       ) : (
         <LiveManifestView strategy={selectedStrategy} />

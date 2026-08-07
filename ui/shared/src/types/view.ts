@@ -29,6 +29,15 @@ export type PromotionStrategy = KubernetesResource<Schemas['PromotionStrategy']>
 /** Embedded in PromotionStrategyDetails.changeTransferPolicies. */
 export type ChangeTransferPolicy = Schemas['ChangeTransferPolicy'];
 
+/** Topology manager embedded in PromotionStrategyDetails.dagCommitStatuses. */
+export type DAGCommitStatus = Schemas['DAGCommitStatus'];
+
+/** Linear-ordering adapter embedded in PromotionStrategyDetails.previousEnvironmentCommitStatuses. */
+export type PreviousEnvironmentCommitStatus = Schemas['PreviousEnvironmentCommitStatus'];
+
+/** A branch and its upstream dependencies in a DAGCommitStatus. */
+export type DAGEnvironment = Schemas['DAGEnvironment'];
+
 /** Embedded in PromotionStrategyDetails (and list responses). */
 export type PullRequestResource = Schemas['PullRequest'];
 
