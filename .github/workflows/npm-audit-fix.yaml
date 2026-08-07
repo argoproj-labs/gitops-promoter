@@ -1,6 +1,8 @@
 name: npm audit fix
 
 on:
+  schedule:
+    - cron: '0 11 * * *'  # 06:00 Eastern (UTC-5) / 07:00 EDT (UTC-4)
   workflow_dispatch:
     inputs:
       force:
