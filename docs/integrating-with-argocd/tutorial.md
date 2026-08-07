@@ -274,7 +274,10 @@ EOF
 
 ## Create the promotion strategy
 
-Create the promotion strategy.
+Create the PromotionStrategy and a
+[PreviousEnvironmentCommitStatus](../gating-promotions/built-in-gates/previous-environment-commit-status.md)
+so promotions are ordered (development → staging → prod). Ordering is not injected automatically; without this gate the
+PromotionStrategy controller fails its reconcile.
 
 ```bash
 cat << EOF | kubectl apply -f-
@@ -283,6 +286,9 @@ kind: PromotionStrategy
 metadata:
   name: demo-github
 spec:
+  proposedCommitStatuses:
+  # The PreviousEnvironmentCommitStatus CR will maintain this ordering gate.
+  - key: promoter-previous-environment
   activeCommitStatuses:
   # The ArgoCDCommitStatus CR will maintain this commit status based on the application health.
   - key: argocd-health
@@ -295,6 +301,15 @@ spec:
       branch: environment/prod
   gitRepositoryRef:
     name: github-argocd-example-apps
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PreviousEnvironmentCommitStatus
+metadata:
+  name: demo-github
+spec:
+  key: promoter-previous-environment
+  promotionStrategyRef:
+    name: demo-github
 EOF
 ```
 
