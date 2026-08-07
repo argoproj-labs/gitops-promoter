@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"path"
 	"reflect"
 	"sync"
 	"time"
@@ -256,10 +255,7 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 		activePath = environment.ActivePath
 	}
 
-	proposedBranch := fmt.Sprintf("%s-%s", environment.Branch, "next")
-	if activePath != "" {
-		proposedBranch = path.Join(proposedBranch, activePath)
-	}
+	proposedBranch := utils.ProposedBranchName(ps, environment)
 
 	// Build the spec
 	ctpSpec := acv1alpha1.ChangeTransferPolicySpec().

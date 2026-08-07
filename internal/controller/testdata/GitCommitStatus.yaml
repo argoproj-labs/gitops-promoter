@@ -11,6 +11,15 @@ spec:
   # active (default) validates the deployed commit; proposed validates the incoming commit
   target: active
   expression: '!(Commit.Subject startsWith "Revert" || Commit.Body startsWith "Revert")'
+  # Optional: verify the signature of every commit the promotion adds, exposed as Verification
+  verification:
+    gpg:
+      # The complete set of keys a signature is trusted against; anything else is unverified
+      publicKeys:
+        - armored: |
+            -----BEGIN PGP PUBLIC KEY BLOCK-----
+            mDMEZ1exampleKeyMaterial...
+            -----END PGP PUBLIC KEY BLOCK-----
 status:
   observedGeneration: 123 # compare with metadata.generation to detect stale status
   conditions:

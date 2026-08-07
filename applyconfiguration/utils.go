@@ -119,6 +119,12 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.GitCommitStatusSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("GitCommitStatusStatus"):
 		return &apiv1alpha1.GitCommitStatusStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("GitCommitVerification"):
+		return &apiv1alpha1.GitCommitVerificationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("GitCommitVerificationGPG"):
+		return &apiv1alpha1.GitCommitVerificationGPGApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("GitCommitVerificationGPGPublicKey"):
+		return &apiv1alpha1.GitCommitVerificationGPGPublicKeyApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("Gitea"):
 		return &apiv1alpha1.GiteaApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("GiteaRepo"):
