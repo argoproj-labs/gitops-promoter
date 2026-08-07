@@ -582,7 +582,9 @@ kubectl get promotionstrategydetails -A
 
 ### Launch the UI
 
-To launch the UI, first download the gitops-promoter CLI from the [releases page](https://github.com/argoproj-labs/gitops-promoter/releases).
+/// tab | Local (CLI)
+
+Download the gitops-promoter CLI from the [releases page](https://github.com/argoproj-labs/gitops-promoter/releases).
 
 Make the file executable and add it to your PATH.
 
@@ -601,5 +603,22 @@ By default, the UI uses your current kubeconfig context. If you want to use a di
 ```bash
 gitops-promoter dashboard --port <your-port> --kubecontext <your-kube-context>
 ```
+
+///
+
+/// tab | In-cluster deployment
+
+For a shared, always-available dashboard that teams can access through your existing ingress
+infrastructure, deploy the dashboard as an in-cluster Deployment + Service:
+
+```bash
+kubectl apply -k config/dashboard
+```
+
+This deploys a `promoter-dashboard` Deployment (running `dashboard --port 8080`), a Service
+(port 80 → 8080), and minimal read-only RBAC. Add your own Ingress, Gateway API HTTPRoute, or
+other routing and authentication resources on top of the Service.
+
+///
 
 ![Video of the GitOps Promoter UI as a change is promoted through three environments](assets/demo.gif)
