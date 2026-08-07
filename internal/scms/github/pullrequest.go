@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/google/go-github/v89/github"
+	"github.com/google/go-github/v90/github"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -45,10 +45,10 @@ func NewGithubPullRequestProvider(ctx context.Context, k8sClient client.Client, 
 func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest v1alpha1.PullRequest) (string, error) {
 	logger := log.FromContext(ctx)
 
-	newPR := &github.NewPullRequest{
+	newPR := github.CreatePullRequest{
 		Title: new(title),
-		Head:  new(head),
-		Base:  new(base),
+		Head:  head,
+		Base:  base,
 		Body:  new(description),
 	}
 
@@ -227,8 +227,8 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 		pr0 := pullRequests[0]
 		scmLabels := make([]string, 0, len(pr0.Labels))
 		for _, label := range pr0.Labels {
-			if label != nil && label.Name != nil {
-				scmLabels = append(scmLabels, *label.Name)
+			if label != nil && label.Name != "" {
+				scmLabels = append(scmLabels, label.Name)
 			}
 		}
 		return scms.FindOpenResult{
@@ -330,8 +330,8 @@ func (pr *PullRequest) ensureRepositoryLabels(ctx context.Context, gitRepo *v1al
 
 func (pr *PullRequest) createRepositoryLabel(ctx context.Context, gitRepo *v1alpha1.GitRepository, owner, repo, name string) error {
 	start := time.Now()
-	_, response, err := pr.client.Issues.CreateLabel(ctx, owner, repo, &github.Label{
-		Name:  github.Ptr(name),
+	_, response, err := pr.client.Issues.CreateLabel(ctx, owner, repo, github.CreateIssueLabelRequest{
+		Name:  name,
 		Color: github.Ptr(scms.AutoCreatedLabelColor),
 	})
 	if response != nil {

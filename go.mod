@@ -15,7 +15,7 @@ require (
 	github.com/go-task/slim-sprig/v3 v3.0.0
 	github.com/goccy/go-yaml v1.19.2
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8
-	github.com/google/go-github/v89 v89.0.0
+	github.com/google/go-github/v90 v90.0.0
 	github.com/google/uuid v1.6.0
 	github.com/ktrysmt/go-bitbucket v0.10.0
 	github.com/microsoft/azure-devops-go-api/azuredevops/v7 v7.1.0
