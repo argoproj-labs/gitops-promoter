@@ -21,9 +21,11 @@ For each applicable environment (after resolving context):
 5. The controller creates/updates a **CommitStatus per environment**, each with that environment’s SHA and its own phase when using per-branch results.
 6. The PromotionStrategy checks the CommitStatus before allowing promotion
 
+Reconciles are driven by the configured polling/trigger interval, by watches on the referenced PromotionStrategy, and by **SCM webhooks** for the configured repository. When the webhook receiver gets any event for that repo (push, PR label changes, commit status events, and other provider events that carry repository identity), it fans out to matching WebRequestCommitStatus resources via `GitRepository` → `PromotionStrategy` → WRCS. Optional [`mode.webhook.filter`](#webhook-mode-inbound-accelerator) can discard irrelevant payloads before enqueue. That path is at-least-once and may enqueue extra reconciles; gate HTTP with `trigger.when` expressions and keep those expressions idempotent.
+
 ### Operating Modes
 
-WebRequestCommitStatus supports two distinct operating modes:
+WebRequestCommitStatus requires exactly one of **polling** or **trigger** for deciding when to make outbound HTTP requests. An optional **`mode.webhook`** block can accelerate reconciles from inbound SCM webhooks without replacing polling or trigger (use a longer polling interval as a reliability fallback for missed deliveries).
 
 #### Polling Mode
 
@@ -58,6 +60,38 @@ Uses expressions to dynamically control when HTTP requests are made. Powerful fo
 - Can access previous HTTP response data via `ResponseOutput` (via `response.output.expression`)
 - Can store and access custom state from success evaluation via `SuccessOutput` (via `success.when.output.expression`)
 - Always reconciles at `requeueDuration` interval (default: 1 minute)
+
+#### Webhook mode (inbound accelerator)
+
+Optional **`mode.webhook`** does not fire outbound HTTP by itself. It filters which inbound SCM webhook deliveries enqueue an immediate reconcile of this WRCS. Pair it with polling (or trigger) so missed webhooks are still picked up on the next interval.
+
+**Filter expression:** when `mode.webhook.filter.expression` is set, the webhook receiver evaluates a boolean [expr](https://expr-lang.org/) with a single binding:
+
+| Binding | Type | Meaning |
+|---------|------|---------|
+| `Payload` | `map` | Decoded JSON body of the inbound webhook |
+
+Example: only react to Argo CD commit-status contexts:
+
+```yaml
+mode:
+  polling:
+    interval: 10m
+  webhook:
+    filter:
+      expression: 'Payload.context startsWith "ArgoCD/"'
+```
+
+When `mode.webhook` is omitted, or the filter is omitted, any webhook for the referenced repository still enqueues this WRCS (same behavior as before). Filter compile/runtime failures skip enqueue for that WRCS and are logged; they do not change the HTTP response to the SCM.
+
+**Webhook secrets** are not fields on the WRCS. Put them on the **ScmProvider Secret** already referenced by `ScmProvider.spec.secretRef` / `ClusterScmProvider.spec.secretRef`:
+
+| Secret key | Required | Meaning |
+|------------|----------|---------|
+| `webhookSecret` | to enable verification | Shared secret / HMAC key |
+| `webhookSignatureHeader` | no | Header that carries the signature or token. Defaults to `X-Hub-Signature-256` (GitHub-style) or `X-Gitlab-Token` (GitLab) |
+
+When at least one ScmProvider Secret for the webhook’s repository has `webhookSecret` set, the receiver requires a valid signature (or shared token) before enqueueing WRCS or ChangeTransferPolicy work. Values with a `sha256=` prefix are verified as HMAC-SHA256 of the raw body; other values are compared as a shared token (constant-time). If no matching Secret configures `webhookSecret`, verification is skipped for backward compatibility. Deliveries without a parseable repository identity cannot be verified or fan out to WRCS; when any `webhookSecret` is configured they are rejected with **401** so CTP is not enqueued either. See [Webhook receiver hardening](../../../security.md#webhook-receiver-hardening).
 
 ### Shared trigger and success expr (`when.variables`)
 
@@ -179,13 +213,48 @@ The same caveat applies to:
 **Implications for integrators:**
 
 - **Treat WebRequestCommitStatus as at-least-once HTTP delivery, not exactly-once.** A given `(branch, sha)` may be re-checked more than once even though the persisted `triggerOutput` records that the SHA has already been tracked.
-- **Make external endpoints idempotent** for the same input. A retry must produce the same answer (or at least an answer the success expression treats the same way) so duplicate calls don't change the promotion outcome.
+- **Make external endpoints idempotent** for the same input. A retry must produce the same answer (or at least an answer the success expression treats the same way) so duplicate calls don't change the promotion outcome. The same requirement applies when SCM webhooks re-trigger WRCS reconciles for the repository (repo → PromotionStrategy → WRCS fan-out): those events are not deduped against prior HTTP fires except by your trigger expressions.
 - **Don't rely on trigger output to count attempts authoritatively.** Counters built with `{ attemptCount: (TriggerOutput["attemptCount"] ?? 0) + 1 }` are eventually-consistent: under cache lag, the controller may briefly read a stale older value and increment the same attempt twice, so use them only for backoff hints, not for hard "fail after N tries" gates.
 - This applies to both `environments` and `promotionstrategy` contexts; both rely on persisted status for dedup.
 
 **Testing tolerance.** Tests in this repository that assert "the controller stops calling the endpoint" check that the HTTP-request count **eventually stabilizes** after each environment has tracked its SHA, not that it stops growing immediately. New tests for trigger-based dedup should use the same pattern (a few stragglers from cache lag are acceptable; sustained growth under steady inputs is a regression).
 
 ### Examples
+
+#### Webhook filter with slow polling fallback
+
+Use a long polling interval for reliability and `mode.webhook.filter` so commit-status (or similar) events that match `Payload` enqueue immediately:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: argocd-health
+spec:
+  promotionStrategyRef:
+    name: global
+  key: argocd-health
+  reportOn: active
+  httpRequest:
+    urlTemplate: "https://api.github.com/repos/my-org/my-repo/commits/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Active.Hydrated.Sha }}{{ end }}{{ end }}/status"
+    methodTemplate: GET
+    authentication:
+      scm: {}
+  success:
+    when:
+      expression: |
+        Response != nil
+          ? (Response.StatusCode == 200 && Response.Body.state == "success")
+          : Phase == "success"
+  mode:
+    polling:
+      interval: 10m
+    webhook:
+      filter:
+        expression: 'Payload.context startsWith "ArgoCD/"'
+```
+
+Configure the ScmProvider Secret with `webhookSecret` (and optionally `webhookSignatureHeader`) so the receiver can verify deliveries. See [Webhook mode](#webhook-mode-inbound-accelerator).
 
 #### Trigger mode with `when.variables` (shared expr)
 

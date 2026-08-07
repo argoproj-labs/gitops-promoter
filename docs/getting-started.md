@@ -87,6 +87,8 @@ During the creation the GitHub App, you will need to configure the following set
 
 Webhook URL: `https://<your-promoter-webhook-receiver-ingress>/`
 
+For production, configure `webhookSecret` (and optionally `webhookSignatureHeader`) on the ScmProvider Secret so the receiver verifies deliveries. The receiver requires a parseable repository identity in the payload; see [Webhook receiver hardening](security.md#webhook-receiver-hardening).
+
 Here is an example Ingress configuration for the webhook receiver:
 
 ```yaml

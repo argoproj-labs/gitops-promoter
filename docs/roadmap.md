@@ -16,7 +16,7 @@
 - **Additional SCM providers** — Integrate providers beyond those supported today.
 - **[Bitbucket Server and Data Center](https://github.com/argoproj-labs/gitops-promoter/issues/1243)** — Support on-prem Bitbucket for repositories, pull requests, and commit statuses.
 - **[SCM webhooks for pull request changes](https://github.com/argoproj-labs/gitops-promoter/issues/360)** — Reconcile promotion state when the SCM signals PR updates; extend to multiple provider types ([#222](https://github.com/argoproj-labs/gitops-promoter/issues/222)).
-- **[Verified GitHub webhook signatures](https://github.com/argoproj-labs/gitops-promoter/issues/1285)** — Validate `X-Hub-Signature-256` using constant-time comparison.
+- **[Verified GitHub webhook signatures](https://github.com/argoproj-labs/gitops-promoter/issues/1285)** — Validate inbound webhooks using `webhookSecret` / `webhookSignatureHeader` on the ScmProvider Secret (HMAC-SHA256 or shared token).
 
 ### Operations, scaling, and observability
 

@@ -1971,6 +1971,25 @@ spec:
                 required:
                 - workQueue
                 type: object
+              webhookReceiver:
+                description: |-
+                  WebhookReceiver contains configuration for the inbound SCM webhook receiver
+                  (signature verification and related fail-closed behavior).
+                properties:
+                  strict:
+                    default: false
+                    description: |-
+                      Strict controls fail-closed behavior for webhook signature verification.
+                      When false (default), verification is per matching ScmProvider: providers whose Secret
+                      configures webhookSecret must pass signature checks; providers without webhookSecret,
+                      unresolvable Secrets, and missing matching GitRepositories are skipped so the delivery
+                      may still be processed. When true, missing repository identity, missing matching
+                      GitRepository, unresolvable ScmProvider Secret, or absence of webhookSecret on matching
+                      Secrets rejects the delivery instead of processing it unverified.
+                    type: boolean
+                required:
+                - strict
+                type: object
             required:
             - argocdCommitStatus
             - changeTransferPolicy
@@ -1981,6 +2000,7 @@ spec:
             - scheduledCommitStatus
             - timedCommitStatus
             - webRequestCommitStatus
+            - webhookReceiver
             type: object
           status:
             description: ControllerConfigurationStatus defines the observed state

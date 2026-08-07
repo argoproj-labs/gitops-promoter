@@ -3,16 +3,20 @@ package webhookreceiver
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"math"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 
 	"github.com/tidwall/gjson"
 
@@ -26,15 +30,25 @@ import (
 
 var logger = ctrl.Log.WithName("webhookReceiver")
 
-// Provider type constants
+// Provider type constants. Values are tied to utils.RepoKey's provider scoping,
+// so they alias the utils constants rather than duplicating the literals.
 const (
-	ProviderGitHub         = "github"
-	ProviderGitLab         = "gitlab"
-	ProviderForgejo        = "forgejo"
-	ProviderGitea          = "gitea"
-	ProviderBitbucketCloud = "bitbucketCloud"
-	ProviderAzureDevops    = "azureDevOps"
+	ProviderGitHub         = utils.ProviderGitHub
+	ProviderGitLab         = utils.ProviderGitLab
+	ProviderForgejo        = utils.ProviderForgejo
+	ProviderGitea          = utils.ProviderGitea
+	ProviderBitbucketCloud = utils.ProviderBitbucketCloud
+	ProviderAzureDevops    = utils.ProviderAzureDevOps
 	ProviderUnknown        = ""
+)
+
+// Field index path literals duplicated here to avoid an import cycle with internal/controller
+// (suite_test.go imports webhookreceiver). Keep in sync with controller.GitRepositoryRepoKeyField,
+// controller.GitRepositoryRefField, and controller.PromotionStrategyRefField.
+const (
+	gitRepositoryRepoKeyField              = ".metadata.repoKey"
+	promotionStrategyGitRepositoryRefField = ".spec.gitRepositoryRef.name"
+	promotionStrategyRefField              = ".spec.promotionStrategyRef.name"
 )
 
 // Miss-retry defaults for async field-index lookups after an initial webhook miss.
@@ -45,40 +59,58 @@ const (
 	missRetryMaxDelay     = 2 * time.Second
 	missRetryFactor       = 2.0
 	maxPendingMissRetries = 256
+
+	// wrcsFanoutTimeout bounds async WRCS fan-out work after the HTTP handler returns.
+	wrcsFanoutTimeout = 15 * time.Second
+
+	// maxPendingWRCSFanout bounds concurrent in-flight WRCS fan-out goroutines so a
+	// burst of authorized webhook traffic cannot spawn unbounded concurrent List calls.
+	maxPendingWRCSFanout = 2048
+
+	// maxWebhookBodyBytes caps the inbound webhook body size read in postRoot, so an
+	// unauthenticated large-body request cannot force unbounded memory/HMAC/JSON-decode
+	// work before any rejection.
+	maxWebhookBodyBytes = 5 << 20 // 5 MiB
+
+	unauthorizedMessage = "unauthorized"
 )
 
-// EnqueueFunc is a function type that can be used to enqueue CTP reconcile requests
-// without modifying the CTP object. This matches controller.CTPEnqueueFunc.
+// EnqueueFunc is a function type that can be used to enqueue reconcile requests
+// without modifying the object. This matches controller.CTPEnqueueFunc / WRCSEnqueueFunc.
 type EnqueueFunc func(namespace, name string)
 
-// WebhookReceiver is a server that listens for webhooks and triggers reconciles of ChangeTransferPolicies.
+// WebhookReceiver is a server that listens for webhooks and triggers reconciles of
+// ChangeTransferPolicies (by hydrated SHA) and WebRequestCommitStatuses (by repository).
 type WebhookReceiver struct {
-	mgr        controllerruntime.Manager
-	k8sClient  client.Client
-	enqueueCTP EnqueueFunc
-
-	// baseCtx is the context passed to Start. Async miss-retries derive their contexts from
-	// it so they are cancelled on shutdown without watching a separate signal.
-	baseCtx context.Context //nolint:containedctx // server-lifetime context set once in Start, not a request context
-
-	// pendingMissRetries counts in-flight miss-retry goroutines; new retries are dropped
-	// once it reaches the max pending capacity. Nothing ever blocks on it.
-	pendingMissRetries atomic.Int64
-
-	// Optional overrides for tests (zero values use the package constants).
-	retryTimeout      time.Duration
-	retryBaseDelay    time.Duration
-	retryMaxDelay     time.Duration
-	retryFactor       float64
-	maxPendingRetries int
+	k8sClient           client.Client
+	baseCtx             context.Context //nolint:containedctx // server-lifetime context set once in Start, not a request context
+	mgr                 controllerruntime.Manager
+	strictOverride      *bool
+	settingsMgr         *settings.Manager
+	enqueueCTP          EnqueueFunc
+	enqueueWRCS         EnqueueFunc
+	controllerNamespace string
+	retryTimeout        time.Duration
+	retryBaseDelay      time.Duration
+	retryMaxDelay       time.Duration
+	retryFactor         float64
+	maxPendingRetries   int
+	pendingMissRetries  atomic.Int64
+	pendingWRCSFanouts  atomic.Int64
 }
 
 // NewWebhookReceiver creates a new instance of WebhookReceiver.
-func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP EnqueueFunc) *WebhookReceiver {
+// enqueueWRCS may be nil when WRCS fan-out is not needed (tests that only cover the CTP path).
+// controllerNamespace is used to resolve ClusterScmProvider Secrets for webhook verification.
+// settingsMgr supplies ControllerConfiguration.spec.webhookReceiver (may be nil in unit tests).
+func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP, enqueueWRCS EnqueueFunc, controllerNamespace string, settingsMgr *settings.Manager) *WebhookReceiver {
 	return &WebhookReceiver{
-		mgr:        mgr,
-		k8sClient:  mgr.GetClient(),
-		enqueueCTP: enqueueCTP,
+		mgr:                 mgr,
+		k8sClient:           mgr.GetClient(),
+		settingsMgr:         settingsMgr,
+		enqueueCTP:          enqueueCTP,
+		enqueueWRCS:         enqueueWRCS,
+		controllerNamespace: controllerNamespace,
 	}
 }
 
@@ -144,7 +176,7 @@ func (wr *WebhookReceiver) DetectProvider(r *http.Request) string {
 	}
 
 	if r.ContentLength > 0 {
-		bodyBytes, err := io.ReadAll(r.Body)
+		bodyBytes, err := io.ReadAll(io.LimitReader(r.Body, maxWebhookBodyBytes+1))
 		if err != nil {
 			logger.Error(err, "error reading request body for provider detection")
 			return ProviderUnknown
@@ -191,15 +223,27 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: add a configurable payload max size for DoS protection.
-	jsonBytes, err := io.ReadAll(r.Body)
+	jsonBytes, err := io.ReadAll(io.LimitReader(r.Body, maxWebhookBodyBytes+1))
 	if err != nil {
 		responseCode = http.StatusInternalServerError
 		http.Error(w, "error reading body", responseCode)
 		return
 	}
+	if len(jsonBytes) > maxWebhookBodyBytes {
+		responseCode = http.StatusRequestEntityTooLarge
+		http.Error(w, "request body too large", responseCode)
+		return
+	}
 
 	ctx := log.IntoContext(r.Context(), reqLogger)
+
+	owner, name := parseWebhookRepo(provider, jsonBytes)
+	if status, msg := wr.authorizeWebhookAndEnqueueWRCS(ctx, provider, owner, name, r.Header, jsonBytes); status != 0 {
+		responseCode = status
+		http.Error(w, msg, responseCode)
+		return
+	}
+
 	beforeSha, ref := parseWebhookPush(provider, jsonBytes)
 	if beforeSha == "" {
 		reqLogger.V(4).Info("unable to extract commit SHA from provider payload", "provider", provider)
@@ -224,6 +268,53 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 
 	responseCode = http.StatusNoContent
 	w.WriteHeader(responseCode)
+}
+
+// authorizeWebhookAndEnqueueWRCS verifies the inbound delivery against ScmProvider Secrets
+// for the payload repository identity, then fans out to matching WRCS.
+// A non-zero status means the HTTP handler should reject immediately.
+func (wr *WebhookReceiver) authorizeWebhookAndEnqueueWRCS(ctx context.Context, provider, owner, name string, headers http.Header, body []byte) (status int, msg string) {
+	logger := log.FromContext(ctx)
+	strict := wr.isStrict(ctx)
+	if owner == "" || name == "" {
+		// Without repository identity we cannot select ScmProvider Secrets to verify against,
+		// and cannot fan out to WRCS. Strict mode rejects; otherwise the CTP SHA path may still run.
+		if strict {
+			logger.V(4).Info("webhook lacks repository identity; rejecting because webhookReceiver.strict is enabled")
+			return http.StatusUnauthorized, unauthorizedMessage
+		}
+		return 0, ""
+	}
+
+	authorized, err := wr.verifyWebhookIfConfigured(ctx, provider, owner, name, headers, body, strict)
+	if err != nil {
+		logger.Error(err, "failed to resolve webhook secrets for verification")
+		return http.StatusInternalServerError, "error verifying webhook"
+	}
+	if !authorized {
+		logger.V(4).Info("webhook signature verification failed")
+		return http.StatusUnauthorized, unauthorizedMessage
+	}
+
+	// Fan out to WebRequestCommitStatus asynchronously so List/filter work does not delay
+	// the HTTP response (SCM providers retry on slow acknowledgements). Failures are logged
+	// inside enqueueWRCSForRepo and never affect the CTP path below. Bounded by
+	// maxPendingWRCSFanout so a burst of authorized traffic cannot spawn unbounded
+	// concurrent List calls against the k8s API.
+	if wr.pendingWRCSFanouts.Add(1) > int64(maxPendingWRCSFanout) {
+		wr.pendingWRCSFanouts.Add(-1)
+		logger.V(4).Info("skipping WRCS webhook fan-out; at capacity")
+		return 0, ""
+	}
+	bodyCopy := bytes.Clone(body)
+	//nolint:contextcheck // fan-out must outlive the HTTP request; inherits server-lifetime context
+	go func() {
+		defer wr.pendingWRCSFanouts.Add(-1)
+		fanoutCtx, cancel := context.WithTimeout(wr.getBaseContext(), wrcsFanoutTimeout)
+		defer cancel()
+		wr.enqueueWRCSForRepo(fanoutCtx, provider, owner, name, "webhook", bodyCopy)
+	}()
+	return 0, ""
 }
 
 // scheduleMissRetry starts an async retry of the CTP lookup, bounded by the pending-retry
@@ -317,6 +408,23 @@ func (wr *WebhookReceiver) getMaxPendingRetries() int {
 	return maxPendingMissRetries
 }
 
+// isStrict reports whether webhookReceiver.strict is enabled. Test overrides win;
+// otherwise the live ControllerConfiguration is read. Missing settings default to false.
+func (wr *WebhookReceiver) isStrict(ctx context.Context) bool {
+	if wr.strictOverride != nil {
+		return *wr.strictOverride
+	}
+	if wr.settingsMgr == nil {
+		return false
+	}
+	strict, err := wr.settingsMgr.GetWebhookReceiverStrict(ctx)
+	if err != nil {
+		log.FromContext(ctx).Error(err, "failed to read webhookReceiver.strict; treating as non-strict")
+		return false
+	}
+	return strict
+}
+
 // tryLookupAndEnqueue performs a single hydrated-SHA lookup and enqueues the matching
 // ChangeTransferPolicy when exactly one is found. via distinguishes the synchronous webhook
 // path from the deferred retry path in logs. found reports whether a CTP was enqueued;
@@ -403,6 +511,212 @@ func parseWebhookPush(provider string, jsonBytes []byte) (beforeSha, ref string)
 		// Unsupported or unknown provider: leave beforeSha empty so the caller no-ops.
 	}
 	return beforeSha, ref
+}
+
+// parseWebhookRepo extracts repository owner and name from a provider webhook payload.
+// Returns empty strings when the payload has no usable repository identity.
+func parseWebhookRepo(provider string, jsonBytes []byte) (owner, name string) {
+	switch provider {
+	case ProviderGitHub, ProviderForgejo, ProviderGitea:
+		owner = gjson.GetBytes(jsonBytes, "repository.owner.login").String()
+		if owner == "" {
+			owner = gjson.GetBytes(jsonBytes, "repository.owner.username").String()
+		}
+		name = gjson.GetBytes(jsonBytes, "repository.name").String()
+		if owner == "" || name == "" {
+			if fullName := gjson.GetBytes(jsonBytes, "repository.full_name").String(); fullName != "" {
+				owner, name = splitOwnerName(fullName)
+			}
+		}
+	case ProviderGitLab:
+		if pathWithNS := gjson.GetBytes(jsonBytes, "project.path_with_namespace").String(); pathWithNS != "" {
+			owner, name = splitOwnerName(pathWithNS)
+		}
+	case ProviderBitbucketCloud:
+		if fullName := gjson.GetBytes(jsonBytes, "repository.full_name").String(); fullName != "" {
+			owner, name = splitOwnerName(fullName)
+		}
+	case ProviderAzureDevops:
+		owner = gjson.GetBytes(jsonBytes, "resource.repository.project.name").String()
+		name = gjson.GetBytes(jsonBytes, "resource.repository.name").String()
+	default:
+		// Unsupported or unknown provider: leave owner/name empty so the caller skips fan-out.
+	}
+	return owner, name
+}
+
+// splitOwnerName splits "owner/name" or "group/subgroup/name" on the last '/'.
+func splitOwnerName(fullName string) (owner, name string) {
+	i := strings.LastIndex(fullName, "/")
+	if i <= 0 || i == len(fullName)-1 {
+		return "", ""
+	}
+	return fullName[:i], fullName[i+1:]
+}
+
+// verifyWebhookIfConfigured checks inbound webhook authenticity against ScmProvider Secrets
+// for GitRepositories matching owner/name (per-provider configuration).
+//
+// When strict is false (default):
+//   - Matching ScmProviders with webhookSecret require a valid signature (at least one must pass).
+//   - Matching ScmProviders without webhookSecret are ignored for verification.
+//   - Unresolvable Secrets and missing matching GitRepositories are skipped (delivery accepted).
+//
+// When strict is true: missing matching GitRepository, unresolvable ScmProvider Secret, or
+// absence of webhookSecret on matching Secrets rejects the delivery instead of bypassing.
+func (wr *WebhookReceiver) verifyWebhookIfConfigured(ctx context.Context, provider, owner, name string, headers http.Header, body []byte, strict bool) (authorized bool, err error) {
+	if wr.k8sClient == nil || owner == "" || name == "" {
+		if strict {
+			return false, nil
+		}
+		return true, nil
+	}
+	logger := log.FromContext(ctx)
+	repoKey := utils.RepoKey(provider, owner, name)
+
+	var gitRepos promoterv1alpha1.GitRepositoryList
+	if listErr := wr.k8sClient.List(ctx, &gitRepos, client.MatchingFields{gitRepositoryRepoKeyField: repoKey}); listErr != nil {
+		return false, fmt.Errorf("list GitRepositories for webhook verification: %w", listErr)
+	}
+
+	if len(gitRepos.Items) == 0 {
+		if strict {
+			logger.V(4).Info("strict mode: no matching GitRepository for webhook verification", "repoKey", repoKey)
+			return false, nil
+		}
+		return true, nil
+	}
+
+	type candidate struct {
+		header string
+		secret []byte
+	}
+	var candidates []candidate
+	seenSecrets := map[string]struct{}{}
+
+	for i := range gitRepos.Items {
+		gr := &gitRepos.Items[i]
+		if gr.Spec.ScmProviderRef.Name == "" {
+			continue
+		}
+		_, secret, getErr := utils.GetScmProviderAndSecretFromGitRepository(ctx, wr.k8sClient, wr.controllerNamespace, gr)
+		if getErr != nil {
+			logger.V(4).Info("skipping GitRepository for webhook verification; could not resolve ScmProvider Secret",
+				"namespace", gr.Namespace, "name", gr.Name, "error", getErr.Error())
+			if strict {
+				return false, fmt.Errorf("strict mode: could not resolve ScmProvider Secret for GitRepository %s/%s: %w",
+					gr.Namespace, gr.Name, getErr)
+			}
+			// Non-strict: treat unresolvable Secrets as unverified providers and continue.
+			continue
+		}
+		secretBytes, headerName, ok := webhookSecretFromSecret(secret, provider)
+		if !ok {
+			// This ScmProvider is not configured for webhook verification.
+			continue
+		}
+		secretKey := secret.Namespace + "/" + secret.Name
+		if _, seen := seenSecrets[secretKey]; seen {
+			continue
+		}
+		seenSecrets[secretKey] = struct{}{}
+		candidates = append(candidates, candidate{secret: secretBytes, header: headerName})
+	}
+
+	if len(candidates) == 0 {
+		if strict {
+			logger.V(4).Info("strict mode: no webhookSecret configured for matching GitRepositories", "repoKey", repoKey)
+			return false, nil
+		}
+		// No matching ScmProvider opted into webhook verification — accept unverified.
+		return true, nil
+	}
+
+	for _, c := range candidates {
+		headerValue := []byte(headers.Get(c.header))
+		if verifyWebhookSignature(c.secret, headerValue, body) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// enqueueWRCSForRepo fans out webhook deliveries to WebRequestCommitStatus resources
+// whose PromotionStrategy references a GitRepository matching owner/name. List failures
+// are logged and ignored so they never affect the HTTP response or the CTP path.
+// When a WRCS has mode.webhook.filter set, the filter expression is evaluated against
+// Payload (decoded JSON body) and non-matching payloads are skipped.
+func (wr *WebhookReceiver) enqueueWRCSForRepo(ctx context.Context, provider, owner, name, via string, payload []byte) {
+	if wr.enqueueWRCS == nil || owner == "" || name == "" {
+		return
+	}
+	logger := log.FromContext(ctx)
+	repoKey := utils.RepoKey(provider, owner, name)
+
+	var gitRepos promoterv1alpha1.GitRepositoryList
+	if err := wr.k8sClient.List(ctx, &gitRepos, client.MatchingFields{gitRepositoryRepoKeyField: repoKey}); err != nil {
+		logger.Error(err, "failed to list GitRepositories for WRCS webhook fan-out", "repoKey", repoKey)
+		return
+	}
+
+	var payloadObj map[string]any
+	var payloadErr error
+	payloadChecked := false
+
+	for i := range gitRepos.Items {
+		gr := &gitRepos.Items[i]
+		var psList promoterv1alpha1.PromotionStrategyList
+		if err := wr.k8sClient.List(ctx, &psList,
+			client.InNamespace(gr.Namespace),
+			client.MatchingFields{promotionStrategyGitRepositoryRefField: gr.Name},
+		); err != nil {
+			logger.Error(err, "failed to list PromotionStrategies for WRCS webhook fan-out",
+				"namespace", gr.Namespace, "gitRepository", gr.Name)
+			continue
+		}
+
+		for j := range psList.Items {
+			ps := &psList.Items[j]
+			var wrcsList promoterv1alpha1.WebRequestCommitStatusList
+			if err := wr.k8sClient.List(ctx, &wrcsList,
+				client.InNamespace(ps.Namespace),
+				client.MatchingFields{promotionStrategyRefField: ps.Name},
+			); err != nil {
+				logger.Error(err, "failed to list WebRequestCommitStatuses for WRCS webhook fan-out",
+					"namespace", ps.Namespace, "promotionStrategy", ps.Name)
+				continue
+			}
+
+			for k := range wrcsList.Items {
+				item := &wrcsList.Items[k]
+				if item.Spec.Mode.Webhook != nil && item.Spec.Mode.Webhook.Filter != nil && item.Spec.Mode.Webhook.Filter.Expression != "" {
+					if !payloadChecked {
+						payloadErr = json.Unmarshal(payload, &payloadObj)
+						payloadChecked = true
+					}
+					if payloadErr != nil {
+						logger.Error(payloadErr, "failed to unmarshal webhook payload for WRCS filter; skipping filtered WRCS enqueue",
+							"namespace", item.Namespace, "name", item.Name)
+						continue
+					}
+					matched, filterErr := evaluateWebhookFilter(item.Spec.Mode.Webhook.Filter.Expression, payloadObj)
+					if filterErr != nil {
+						logger.Error(filterErr, "webhook filter evaluation failed; skipping WRCS enqueue",
+							"namespace", item.Namespace, "name", item.Name)
+						continue
+					}
+					if !matched {
+						logger.V(4).Info("webhook filter did not match; skipping WRCS enqueue",
+							"namespace", item.Namespace, "name", item.Name)
+						continue
+					}
+				}
+				wr.enqueueWRCS(item.Namespace, item.Name)
+				logger.Info("Triggered reconcile of WebRequestCommitStatus via "+via,
+					"namespace", item.Namespace, "name", item.Name)
+			}
+		}
+	}
 }
 
 // lookupCTPByHydratedSHA finds a ChangeTransferPolicy by proposed (then active) hydrated SHA.

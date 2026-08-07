@@ -102,6 +102,11 @@ func getScmProviderAndSecretFromGitRepository(ctx context.Context, k8sClient cli
 		secretNamespace = scmProvider.GetNamespace()
 	}
 
+	if scmProvider.GetSpec().SecretRef == nil || scmProvider.GetSpec().SecretRef.Name == "" {
+		kind := scmProvider.GetObjectKind().GroupVersionKind().Kind
+		return nil, nil, fmt.Errorf("secretRef is required on %s %s/%s", kind, secretNamespace, scmProvider.GetName())
+	}
+
 	var secret v1.Secret
 	objectKey := client.ObjectKey{
 		Namespace: secretNamespace,
@@ -120,6 +125,12 @@ func getScmProviderAndSecretFromGitRepository(ctx context.Context, k8sClient cli
 	}
 
 	return scmProvider, &secret, nil
+}
+
+// GetScmProviderAndSecretFromGitRepository retrieves the ScmProvider and its associated Secret for a GitRepository.
+// The GitRepository itself is used as the namespace scope for namespaced ScmProvider lookups.
+func GetScmProviderAndSecretFromGitRepository(ctx context.Context, k8sClient client.Client, controllerNamespace string, gitRepo *promoterv1alpha1.GitRepository) (promoterv1alpha1.GenericScmProvider, *v1.Secret, error) {
+	return getScmProviderAndSecretFromGitRepository(ctx, k8sClient, controllerNamespace, gitRepo, gitRepo)
 }
 
 // GetScmProviderAndSecretFromRepositoryReference retrieves the ScmProvider and its associated Secret from a GitRepository reference.

@@ -161,6 +161,9 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus{}.OpenAPIModelName(): schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusPromotionStrategyContextStatus(ref),
 		apiv1alpha1.WebRequestCommitStatusSpec{}.OpenAPIModelName():                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusSpec(ref),
 		apiv1alpha1.WebRequestCommitStatusStatus{}.OpenAPIModelName():                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusStatus(ref),
+		apiv1alpha1.WebhookFilterSpec{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebhookFilterSpec(ref),
+		apiv1alpha1.WebhookModeSpec{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebhookModeSpec(ref),
+		apiv1alpha1.WebhookReceiverConfiguration{}.OpenAPIModelName():                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebhookReceiverConfiguration(ref),
 		apiv1alpha1.WhenWithOutputSpec{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_WhenWithOutputSpec(ref),
 		apiv1alpha1.WindowStatus{}.OpenAPIModelName():                                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_WindowStatus(ref),
 		apiv1alpha1.WorkQueue{}.OpenAPIModelName():                                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_WorkQueue(ref),
@@ -2091,12 +2094,19 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSp
 							Ref:         ref(apiv1alpha1.ScheduledCommitStatusConfiguration{}.OpenAPIModelName()),
 						},
 					},
+					"webhookReceiver": {
+						SchemaProps: spec.SchemaProps{
+							Description: "WebhookReceiver contains configuration for the inbound SCM webhook receiver (signature verification and related fail-closed behavior).",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.WebhookReceiverConfiguration{}.OpenAPIModelName()),
+						},
+					},
 				},
-				Required: []string{"promotionStrategy", "changeTransferPolicy", "pullRequest", "commitStatus", "argocdCommitStatus", "timedCommitStatus", "gitCommitStatus", "webRequestCommitStatus", "scheduledCommitStatus"},
+				Required: []string{"promotionStrategy", "changeTransferPolicy", "pullRequest", "commitStatus", "argocdCommitStatus", "timedCommitStatus", "gitCommitStatus", "webRequestCommitStatus", "scheduledCommitStatus", "webhookReceiver"},
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.ArgoCDCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyConfiguration{}.OpenAPIModelName(), apiv1alpha1.CommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategyConfiguration{}.OpenAPIModelName(), apiv1alpha1.PullRequestConfiguration{}.OpenAPIModelName(), apiv1alpha1.ScheduledCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName()},
+			apiv1alpha1.ArgoCDCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyConfiguration{}.OpenAPIModelName(), apiv1alpha1.CommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategyConfiguration{}.OpenAPIModelName(), apiv1alpha1.PullRequestConfiguration{}.OpenAPIModelName(), apiv1alpha1.ScheduledCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.WebhookReceiverConfiguration{}.OpenAPIModelName()},
 	}
 }
 
@@ -3450,7 +3460,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ModeSpec(ref common.Refer
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "ModeSpec defines how the WebRequestCommitStatus controller issues HTTP requests.\n\nExactly one of Polling or Trigger must be set.\n\nContext (the context field below) controls request fan-out and what data is available in templates and trigger expressions:\n\n  - \"environments\" (default): one HTTP request per environment; each environment has its own phase and status; success.when.expression is evaluated per response and must return a boolean (true → success, false → pending; failure is not expressible).\n\n  - \"promotionstrategy\": at most one HTTP request per WebRequestCommitStatus resource; CommitStatuses remain one per environment on each environment's reportOn SHA. success.when.expression runs once on that shared response — see WhenWithOutputSpec.Expression for boolean vs per-branch object return shapes.\n\nWhen context is \"promotionstrategy\", Branch is empty for the shared HTTP request and trigger expressions. Use PromotionStrategy (e.g. status environments) for branch-specific values. For description and url templates, {{ .Branch }} and {{ .Phase }} are set per environment when rendering that environment's CommitStatus.",
+				Description: "ModeSpec defines how the WebRequestCommitStatus controller issues HTTP requests and optionally accelerates reconciles from inbound SCM webhooks.\n\nExactly one of Polling or Trigger must be set. Webhook is optional and additive: it does not replace polling or trigger; it filters which inbound webhook deliveries enqueue an immediate reconcile (with polling/trigger as the reliability fallback).\n\nContext (the context field below) controls request fan-out and what data is available in templates and trigger expressions:\n\n  - \"environments\" (default): one HTTP request per environment; each environment has its own phase and status; success.when.expression is evaluated per response and must return a boolean (true → success, false → pending; failure is not expressible).\n\n  - \"promotionstrategy\": at most one HTTP request per WebRequestCommitStatus resource; CommitStatuses remain one per environment on each environment's reportOn SHA. success.when.expression runs once on that shared response — see WhenWithOutputSpec.Expression for boolean vs per-branch object return shapes.\n\nWhen context is \"promotionstrategy\", Branch is empty for the shared HTTP request and trigger expressions. Use PromotionStrategy (e.g. status environments) for branch-specific values. For description and url templates, {{ .Branch }} and {{ .Phase }} are set per environment when rendering that environment's CommitStatus.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"polling": {
@@ -3465,6 +3475,12 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ModeSpec(ref common.Refer
 							Ref:         ref(apiv1alpha1.TriggerModeSpec{}.OpenAPIModelName()),
 						},
 					},
+					"webhook": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Webhook optionally configures inbound SCM webhook filtering for this WRCS. When set with a filter expression, only matching webhook payloads enqueue a reconcile. When omitted (or filter omitted), any webhook for the referenced repository still enqueues as today. Webhook secret verification uses keys on the ScmProvider Secret (webhookSecret, webhookSignatureHeader), not fields on this CR.",
+							Ref:         ref(apiv1alpha1.WebhookModeSpec{}.OpenAPIModelName()),
+						},
+					},
 					"context": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Context is \"environments\" (default) or \"promotionstrategy\". See the ModeSpec type documentation for behavior, template limits, and success expression rules.",
@@ -3476,7 +3492,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ModeSpec(ref common.Refer
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.PollingModeSpec{}.OpenAPIModelName(), apiv1alpha1.TriggerModeSpec{}.OpenAPIModelName()},
+			apiv1alpha1.PollingModeSpec{}.OpenAPIModelName(), apiv1alpha1.TriggerModeSpec{}.OpenAPIModelName(), apiv1alpha1.WebhookModeSpec{}.OpenAPIModelName()},
 	}
 }
 
@@ -6148,6 +6164,71 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusSta
 		},
 		Dependencies: []string{
 			apiv1alpha1.WebRequestCommitStatusEnvironmentStatus{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus{}.OpenAPIModelName(), metav1.Condition{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebhookFilterSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "WebhookFilterSpec holds a boolean expr evaluated against the inbound webhook JSON body.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"expression": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Expression is a boolean expr expression. The only binding is Payload, a map decoded from the webhook JSON body (e.g. Payload.context startsWith \"ArgoCD/\"). Evaluated by the webhook receiver before enqueue; not available to trigger/success expressions.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"expression"},
+			},
+		},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebhookModeSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "WebhookModeSpec configures inbound webhook acceleration for WebRequestCommitStatus. Authentication secrets live on the ScmProvider Secret referenced by the GitRepository; this block only controls optional payload filtering before enqueue.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"filter": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Filter optionally discards inbound payloads before enqueueing a reconcile.",
+							Ref:         ref(apiv1alpha1.WebhookFilterSpec{}.OpenAPIModelName()),
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.WebhookFilterSpec{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebhookReceiverConfiguration(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "WebhookReceiverConfiguration defines configuration for the inbound SCM webhook receiver.\n\nThese settings control fail-closed behavior around signature verification when a matching GitRepository or ScmProvider Secret cannot be resolved.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"strict": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Strict controls fail-closed behavior for webhook signature verification. When false (default), verification is per matching ScmProvider: providers whose Secret configures webhookSecret must pass signature checks; providers without webhookSecret, unresolvable Secrets, and missing matching GitRepositories are skipped so the delivery may still be processed. When true, missing repository identity, missing matching GitRepository, unresolvable ScmProvider Secret, or absence of webhookSecret on matching Secrets rejects the delivery instead of processing it unverified.",
+							Default:     false,
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"strict"},
+			},
+		},
 	}
 }
 

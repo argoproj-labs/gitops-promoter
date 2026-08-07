@@ -24,9 +24,12 @@ import (
 // ModeSpecApplyConfiguration represents a declarative configuration of the ModeSpec type for use
 // with apply.
 //
-// ModeSpec defines how the WebRequestCommitStatus controller issues HTTP requests.
+// ModeSpec defines how the WebRequestCommitStatus controller issues HTTP requests
+// and optionally accelerates reconciles from inbound SCM webhooks.
 //
-// Exactly one of Polling or Trigger must be set.
+// Exactly one of Polling or Trigger must be set. Webhook is optional and additive:
+// it does not replace polling or trigger; it filters which inbound webhook deliveries
+// enqueue an immediate reconcile (with polling/trigger as the reliability fallback).
 //
 // Context (the context field below) controls request fan-out and what data is available in templates and trigger expressions:
 //
@@ -42,6 +45,12 @@ type ModeSpecApplyConfiguration struct {
 	// Trigger enables expression-based triggering mode.
 	// The controller will evaluate the expression to determine when to make HTTP requests.
 	Trigger *TriggerModeSpecApplyConfiguration `json:"trigger,omitempty"`
+	// Webhook optionally configures inbound SCM webhook filtering for this WRCS.
+	// When set with a filter expression, only matching webhook payloads enqueue a reconcile.
+	// When omitted (or filter omitted), any webhook for the referenced repository still enqueues
+	// as today. Webhook secret verification uses keys on the ScmProvider Secret (webhookSecret,
+	// webhookSignatureHeader), not fields on this CR.
+	Webhook *WebhookModeSpecApplyConfiguration `json:"webhook,omitempty"`
 	// Context is "environments" (default) or "promotionstrategy". See the ModeSpec type documentation for behavior, template limits, and success expression rules.
 	Context *apiv1alpha1.ContextMode `json:"context,omitempty"`
 }
@@ -65,6 +74,14 @@ func (b *ModeSpecApplyConfiguration) WithPolling(value *PollingModeSpecApplyConf
 // If called multiple times, the Trigger field is set to the value of the last call.
 func (b *ModeSpecApplyConfiguration) WithTrigger(value *TriggerModeSpecApplyConfiguration) *ModeSpecApplyConfiguration {
 	b.Trigger = value
+	return b
+}
+
+// WithWebhook sets the Webhook field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Webhook field is set to the value of the last call.
+func (b *ModeSpecApplyConfiguration) WithWebhook(value *WebhookModeSpecApplyConfiguration) *ModeSpecApplyConfiguration {
+	b.Webhook = value
 	return b
 }
 

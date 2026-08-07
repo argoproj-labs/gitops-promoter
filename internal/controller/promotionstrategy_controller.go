@@ -180,6 +180,17 @@ func (r *PromotionStrategyReconciler) SetupWithManager(ctx context.Context, mgr 
 		return fmt.Errorf("failed to set field index for .spec.sha: %w", err)
 	}
 
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.PromotionStrategy{}, GitRepositoryRefField, func(rawObj client.Object) []string {
+		//nolint:forcetypeassert // type is guaranteed by the IndexField API
+		ps := rawObj.(*promoterv1alpha1.PromotionStrategy)
+		if ps.Spec.RepositoryReference.Name == "" {
+			return nil
+		}
+		return []string{ps.Spec.RepositoryReference.Name}
+	}); err != nil {
+		return fmt.Errorf("failed to set field index for %s: %w", GitRepositoryRefField, err)
+	}
+
 	if err := RegisterGatePromotionStrategyRefFieldIndexes(ctx, mgr.GetFieldIndexer()); err != nil {
 		return err
 	}

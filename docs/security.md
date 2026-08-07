@@ -34,3 +34,43 @@ make fuzz-explore   # exploratory run per target; duration is FUZZ_TIME in the M
 **CI:** pull requests run **`make fuzz-replay`** (regression: seeds + corpus, no `-fuzz`). The scheduled workflow runs **`make fuzz-explore`** (same **`FUZZ_TIME`** default from the Makefile).
 
 **Practice:** bound inputs (`t.Skip` on very large values), register **seeds** with `f.Add` (fixed inputs in source), and assert properties the code is supposed to guarantee. When `go test -fuzz=…` writes a minimized failure, commit it under `testdata/fuzz/<FuzzName>/` (**corpus**: replayed like seeds, but as files). For behavior you also want spelled out in prose, add or extend a [unit test](contributing/index.md#testing-expectations).
+
+## Webhook receiver hardening
+
+The in-process webhook receiver (`POST /` on the webhook service, default port `3333`) accepts SCM webhook deliveries and enqueues ChangeTransferPolicy / WebRequestCommitStatus reconciles.
+
+By default, if no matching ScmProvider or ClusterScmProvider Secret configures a webhook secret, deliveries are accepted without signature checks. **Production deployments that expose the webhook receiver on the internet should enable verification** (set `webhookSecret` on the relevant ScmProvider Secrets, and consider `webhookReceiver.strict: true`).
+
+Add these keys to the same Secret already referenced by `ScmProvider.spec.secretRef` or `ClusterScmProvider.spec.secretRef`:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: scm-credentials
+type: Opaque
+stringData:
+  # existing SCM credentials (token, githubAppPrivateKey, …)
+  webhookSecret: "your-webhook-shared-secret"
+  # optional; defaults to X-Hub-Signature-256 (GitHub-style) or X-Gitlab-Token (GitLab)
+  webhookSignatureHeader: "X-Hub-Signature-256"
+```
+
+Verification is **per matching ScmProvider** for the repository identity in the payload: if that provider’s Secret has `webhookSecret` set, the receiver requires a valid signature (HMAC-SHA256 when the header value has a `sha256=` prefix, otherwise a shared-token compare) before processing. Providers without `webhookSecret` are left unverified. Invalid or missing signatures for providers that do configure `webhookSecret` return **401**.
+
+**Strict mode.** With `ControllerConfiguration.spec.webhookReceiver.strict: false` (default), missing repository identity, missing matching `GitRepository`, unresolvable ScmProvider Secrets, and matching providers without `webhookSecret` do not block the delivery (CTP SHA matching can still run). Set `strict: true` to fail closed on those cases (**401** / **500**).
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ControllerConfiguration
+metadata:
+  name: promoter-controller-configuration
+spec:
+  webhookReceiver:
+    strict: true
+  # …other required controller sections…
+```
+
+**Repository identity.** Signature verification and WebRequestCommitStatus fan-out use a parseable repository identity in the payload (provider-specific fields such as GitHub `repository.full_name` / `repository.owner.login` + `repository.name`, GitLab `project.path_with_namespace`, Bitbucket Cloud `repository.full_name`, or Azure DevOps `resource.repository`). ChangeTransferPolicy push events can still be processed without that identity when strict mode is off. When strict mode is on and a delivery lacks repository identity, the receiver returns **401** so neither path is enqueued.
+
+WebRequestCommitStatus can further filter payloads with `spec.mode.webhook.filter.expression` (binding `Payload`); see [Web Request Commit Status](gating-promotions/built-in-gates/web-request-commit-status/index.md#webhook-mode-inbound-accelerator).
