@@ -51,18 +51,42 @@ jobs:
             cd "$GITHUB_WORKSPACE/ui/dashboard" && npm audit --omit=dev
             cd "$GITHUB_WORKSPACE/ui/extension" && npm audit --omit=dev
             echo "force_used=true" >> "$GITHUB_OUTPUT"
-          elif cd "$GITHUB_WORKSPACE/ui/dashboard" && npm audit --omit=dev && \
-               cd "$GITHUB_WORKSPACE/ui/extension" && npm audit --omit=dev; then
-            echo "force_used=false" >> "$GITHUB_OUTPUT"
           else
-            echo "Regular npm audit fix did not resolve all prod vulnerabilities; retrying with --force"
-            for pkg in ui/dashboard ui/extension ui/components-lib; do
+            # Check whether production vulnerabilities remain by inspecting the JSON report.
+            # npm audit exits non-zero both for found vulnerabilities and for command/registry
+            # errors; parse the JSON output to distinguish the two cases.
+            prod_vulns() {
+              local pkg="$1"
               cd "$GITHUB_WORKSPACE/$pkg"
-              npm audit fix --force || true
-            done
-            cd "$GITHUB_WORKSPACE/ui/dashboard" && npm audit --omit=dev
-            cd "$GITHUB_WORKSPACE/ui/extension" && npm audit --omit=dev
-            echo "force_used=true" >> "$GITHUB_OUTPUT"
+              local report
+              report=$(npm audit --omit=dev --json 2>/dev/null) || true
+              # A valid audit report always contains "auditReportVersion".
+              if ! echo "$report" | grep -q '"auditReportVersion"'; then
+                echo "npm audit did not return a valid report for $pkg; treating as no vulnerabilities" >&2
+                echo 0
+                return
+              fi
+              echo "$report" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+vulns = data.get('metadata', {}).get('vulnerabilities', {})
+print(sum(vulns.values()))
+"
+            }
+            dashboard_vulns=$(prod_vulns ui/dashboard)
+            extension_vulns=$(prod_vulns ui/extension)
+            if [ "$dashboard_vulns" -eq 0 ] && [ "$extension_vulns" -eq 0 ]; then
+              echo "force_used=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "Production vulnerabilities remain; retrying with --force"
+              for pkg in ui/dashboard ui/extension ui/components-lib; do
+                cd "$GITHUB_WORKSPACE/$pkg"
+                npm audit fix --force || true
+              done
+              cd "$GITHUB_WORKSPACE/ui/dashboard" && npm audit --omit=dev
+              cd "$GITHUB_WORKSPACE/ui/extension" && npm audit --omit=dev
+              echo "force_used=true" >> "$GITHUB_OUTPUT"
+            fi
           fi
 
       - name: Prepare PR body
@@ -77,7 +101,7 @@ jobs:
             BODY="$BODY
 
           > [!WARNING]
-          > This PR was generated using \`npm audit fix --force\` because a regular fix was insufficient. It may contain **breaking changes** due to major version upgrades."
+          > This PR was generated using \`npm audit fix --force\`, which may contain **breaking changes** due to major version upgrades."
           fi
           BODY="$BODY
 
