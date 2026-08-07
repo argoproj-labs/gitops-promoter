@@ -59,7 +59,7 @@ spec:
 The PromotionStrategy controller would automatically inject a `promoter-previous-environment` proposedCommitStatus
 for each environment (except the first one, since there is no previous environment).
 
-Despite being "magic," this waw reasonably intuitive.
+Despite being "magic," this was reasonably intuitive.
 
 But when we started to introduce DAG support, we realized things would get complicated quickly.
 
