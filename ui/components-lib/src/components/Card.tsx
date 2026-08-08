@@ -1,8 +1,7 @@
-import { FaServer, FaHistory } from 'react-icons/fa';
 import { StatusIcon, StatusType } from './StatusIcon';
-import { Tooltip } from './Tooltip';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import CommitInfo from './CommitInfo';
+import ActiveCard from './ActiveCard';
+import ProposedChangesCard from './ProposedChangesCard';
 import {
   EnrichedEnvDetails,
   enrichFromEnvironments,
@@ -13,25 +12,25 @@ import './Card.scss';
 
 export interface CardProps {
   environments: Environment[];
-  onHistoryNavigate?: (_branch: string) => void;
 }
 
-const Card: React.FC<CardProps> = ({ environments, onHistoryNavigate }) => {
+const Card: React.FC<CardProps> = ({ environments }) => {
   const [isVerticalLayout, setIsVerticalLayout] = useState<boolean>(true);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
+
     const detectFlexDirection = () => {
-      if (wrapperRef.current) {
-        const styles = window.getComputedStyle(wrapperRef.current);
-        const flexDirection = styles.flexDirection;
-        setIsVerticalLayout(flexDirection === 'row');
-      }
+      const flexDirection = window.getComputedStyle(wrapper).flexDirection;
+      setIsVerticalLayout(flexDirection === 'row');
     };
 
     detectFlexDirection();
-    window.addEventListener('resize', detectFlexDirection);
-    return () => window.removeEventListener('resize', detectFlexDirection);
+    const observer = new ResizeObserver(detectFlexDirection);
+    observer.observe(wrapper);
+    return () => observer.disconnect();
   }, []);
 
   const processingEnvs = useMemo(() => getProcessingEnvs(environments), [environments]);
@@ -47,8 +46,6 @@ const Card: React.FC<CardProps> = ({ environments, onHistoryNavigate }) => {
           const branch = env.branch;
           const proposedStatus = env.promotionStatus;
           const isProcessing = processingEnvs.has(branch);
-          const environment = environments.find((e) => e.branch === branch);
-          const history = environment?.history || [];
 
           const activeDeploymentCommit = {
             sha: env.activeSha,
@@ -66,8 +63,6 @@ const Card: React.FC<CardProps> = ({ environments, onHistoryNavigate }) => {
             date: env.proposedDryCommitDate,
           };
 
-          const mergeTimeAgo = env.activeMergeTimeAgo ?? undefined;
-
           const hasPendingProposal =
             proposedStatus !== undefined && ['pending', 'failure'].includes(proposedStatus);
           const cardClassName = ['env-card', hasPendingProposal ? '' : 'single-commit-group']
@@ -78,51 +73,18 @@ const Card: React.FC<CardProps> = ({ environments, onHistoryNavigate }) => {
             <React.Fragment key={env.branch}>
               <div className="env-card-column">
                 <div className={cardClassName}>
-                  <div
-                    className="env-card__title"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      position: 'relative',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center' }}>
-                      <FaServer className="env-card__icon" />
-                      <div>
-                        <span className="env-card__env-name">{branch}</span>
-                      </div>
-                    </div>
-
-                    {onHistoryNavigate && history.length > 0 && (
-                      <div className="history-controls">
-                        <Tooltip content="View promotion history">
-                          <button
-                            type="button"
-                            className="history-toggle"
-                            onClick={() => onHistoryNavigate(branch)}
-                          >
-                            <FaHistory />
-                            <span className="history-toggle__label">History</span>
-                          </button>
-                        </Tooltip>
-                      </div>
-                    )}
-                  </div>
-
-                  <CommitInfo
-                    title="Active"
+                  <ActiveCard
+                    branch={branch}
+                    activeStatus={env.activeStatus as StatusType}
                     deploymentCommit={activeDeploymentCommit}
                     codeCommit={env.activeReferenceCommit}
-                    isActive={true}
-                    status={env.activeStatus as StatusType}
                     deploymentCommitUrl={env.activeCommitUrl}
                     codeCommitUrl={env.activeReferenceCommitUrl}
-                    checks={env.activeChecks}
-                    healthSummary={env.activeChecksSummary}
                     prUrl={env.activePrUrl}
                     prNumber={env.activePrNumber?.toString()}
-                    mergeTimeAgo={mergeTimeAgo}
+                    prTooltip={env.activePrTooltip}
+                    checks={env.activeChecks}
+                    healthSummary={env.activeChecksSummary}
                   />
 
                   {isProcessing ? (
@@ -141,19 +103,17 @@ const Card: React.FC<CardProps> = ({ environments, onHistoryNavigate }) => {
                       </div>
                     </div>
                   ) : proposedStatus !== 'promoted' && proposedStatus !== 'success' ? (
-                    <CommitInfo
-                      title="Proposed"
+                    <ProposedChangesCard
                       deploymentCommit={proposedDeploymentCommit}
                       codeCommit={env.proposedReferenceCommit}
-                      isActive={false}
                       status={env.proposedStatus as StatusType}
-                      className="proposed"
                       deploymentCommitUrl={env.proposedDryCommitUrl}
                       codeCommitUrl={env.proposedReferenceCommitUrl}
                       checks={env.proposedChecks}
                       healthSummary={env.proposedChecksSummary}
                       prUrl={env.prUrl}
                       prNumber={env.prNumber?.toString()}
+                      prTooltip={env.prTooltip}
                     />
                   ) : null}
                 </div>

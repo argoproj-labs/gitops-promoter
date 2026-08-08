@@ -1,5 +1,5 @@
 argocd:
-  upstream: https://raw.githubusercontent.com/argoproj/argo-cd/v3.4.5/manifests/install-with-hydrator.yaml
+  upstream: https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.0/manifests/install-with-hydrator.yaml
 
 gitops-promoter:
-  upstream: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.34.0/install-without-ui.yaml
+  upstream: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.35.0/install-without-ui.yaml

@@ -111,3 +111,6 @@ hack/view2ts/dist/
 .claude
 CLAUDE.md
 
+# Playwright MCP output
+.playwright-mcp/
+

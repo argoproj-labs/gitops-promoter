@@ -1,56 +1,25 @@
 import { GoArchive } from 'react-icons/go';
 import { BsBraces } from 'react-icons/bs';
-import { GoGitPullRequest } from 'react-icons/go';
-import { StatusIcon, StatusType } from './StatusIcon';
 import { Tooltip } from './Tooltip';
 import React, { useState, useRef, useCallback } from 'react';
 import TimeAgo from './TimeAgo';
-import HealthSummary from './HealthSummary';
 import './CommitInfo.scss';
-import { ReferenceCommit } from '@shared/types/promotion';
+import { DeploymentCommit, ReferenceCommit } from '@shared/types/promotion';
 
 export interface CommitInfoProps {
-  title?: string;
-  deploymentCommit: any;
+  deploymentCommit: DeploymentCommit;
   codeCommit: ReferenceCommit | null;
-  isActive?: boolean;
-  status?: StatusType;
-  className?: string;
   deploymentCommitUrl?: string;
   codeCommitUrl: string | null;
-  checks?: any[];
-  healthSummary?: { successCount: number; totalCount: number; shouldDisplay: boolean };
-  prUrl: string | null;
-  prNumber?: string;
-  hideCommitDetails?: boolean;
-  additionalChecks?: any[];
-  additionalChecksTitle?: string;
-  additionalChecksTitleTooltip?: string;
-  primaryChecksTitle?: string;
-  primaryChecksTitleTooltip?: string;
-  mergeTimeAgo?: string;
 }
 
+type CommitView = Partial<Pick<DeploymentCommit, 'sha' | 'subject' | 'body' | 'author' | 'date'>>;
+
 const CommitInfo: React.FC<CommitInfoProps> = ({
-  title,
   deploymentCommit,
   codeCommit,
-  isActive = false,
-  status = 'unknown',
-  className = '',
   deploymentCommitUrl,
   codeCommitUrl,
-  checks,
-  healthSummary,
-  prUrl,
-  prNumber,
-  hideCommitDetails = false,
-  additionalChecks,
-  additionalChecksTitle,
-  additionalChecksTitleTooltip,
-  primaryChecksTitle,
-  primaryChecksTitleTooltip,
-  mergeTimeAgo,
 }) => {
   const [showDeploymentTooltip, setShowDeploymentTooltip] = useState(false);
   const [showCodeTooltip, setShowCodeTooltip] = useState(false);
@@ -67,7 +36,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
     return 'commit-code';
   };
 
-  const renderSha = (commit: any, commitUrl?: string) => {
+  const renderSha = (commit: CommitView, commitUrl?: string) => {
     const sha = commit.sha?.substring(0, 8) || 'N/A';
     if (commitUrl && commit.sha) {
       return (
@@ -81,7 +50,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
     return <span className="commit-sha">{sha}</span>;
   };
 
-  const getTooltipContent = (commit: any) => {
+  const getTooltipContent = (commit: CommitView) => {
     const subject = commit.subject || '';
     const body = commit.body || '';
 
@@ -124,7 +93,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
     }, 100);
   }, []);
 
-  const renderCommit = (commit: any, type: 'deployment' | 'code', commitUrl?: string) => {
+  const renderCommit = (commit: CommitView, type: 'deployment' | 'code', commitUrl?: string) => {
     const iconType = type === 'deployment' ? 'file' : 'code';
     const showTooltip = type === 'deployment' ? showDeploymentTooltip : showCodeTooltip;
 
@@ -133,6 +102,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
         <div className={`commit-info ${getStatusClass(type)}`}>
           <div className="commit-content">
             <div className="commit-header">
+              <span className="commit-icon-wrapper">{getIcon(iconType)}</span>
               {renderSha(commit, commitUrl)}
               <span
                 className="commit-subject"
@@ -160,7 +130,6 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
               </div>
             )}
           </div>
-          <div className="commit-icon-wrapper">{getIcon(iconType)}</div>
         </div>
       );
     } else {
@@ -168,6 +137,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
         <div className={`commit-info ${getStatusClass(type)}`}>
           <div className="commit-content">
             <div className="commit-header">
+              <span className="commit-icon-wrapper">{getIcon(iconType)}</span>
               <span className="commit-sha">N/A</span>
               <span className="commit-subject"></span>
             </div>
@@ -175,83 +145,15 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
               <span className="commit-author"></span>
             </div>
           </div>
-          <div className="commit-icon-wrapper">{getIcon(iconType)}</div>
         </div>
       );
     }
   };
 
-  if (!title) {
-    return (
-      <div className="commits-section">
-        {renderCommit(deploymentCommit, 'deployment', deploymentCommitUrl)}
-        {codeCommit && renderCommit(codeCommit, 'code', codeCommitUrl || '')}
-      </div>
-    );
-  }
-
-  const isProposed = className.includes('proposed');
-
   return (
-    <div className={`commit-group ${className}`}>
-      {isProposed && (
-        <>
-          <div className="promote-flow" aria-hidden="true" />
-          <div className="promote-banner">
-            <svg className="promote-banner__icon" viewBox="0 0 16 7" fill="none" aria-hidden="true">
-              <path
-                d="M1 6 L8 1 L15 6"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            Pushing to Active
-          </div>
-        </>
-      )}
-      <div className="commit-group-header">
-        <StatusIcon phase={status} type="health" />
-        <h4 className="commit-group-title">
-          {title}
-          {prUrl && prNumber && (
-            <Tooltip content={`Open PR #${prNumber} on GitHub${isActive ? ' (Merged)' : ''}`}>
-              <a
-                href={prUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`pr-indicator ${isActive ? 'pr-merged' : ''}`}
-              >
-                <GoGitPullRequest className="pr-icon" />
-                PR #{prNumber}
-                {mergeTimeAgo && <span className="pr-merge-time">{mergeTimeAgo}</span>}
-              </a>
-            </Tooltip>
-          )}
-        </h4>
-      </div>
-      {!hideCommitDetails && (
-        <div className="commits-section">
-          {renderCommit(deploymentCommit, 'deployment', deploymentCommitUrl)}
-          {codeCommit && renderCommit(codeCommit, 'code', codeCommitUrl || '')}
-        </div>
-      )}
-
-      {(healthSummary?.shouldDisplay || (additionalChecks && additionalChecks.length > 0)) &&
-        checks && (
-          <HealthSummary
-            checks={checks}
-            title={`${title || 'Section'} Checks`}
-            status={status}
-            healthSummary={healthSummary}
-            additionalChecks={additionalChecks}
-            additionalChecksTitle={additionalChecksTitle}
-            additionalChecksTitleTooltip={additionalChecksTitleTooltip}
-            primaryChecksTitle={primaryChecksTitle}
-            primaryChecksTitleTooltip={primaryChecksTitleTooltip}
-          />
-        )}
+    <div className="commits-section">
+      {renderCommit(deploymentCommit, 'deployment', deploymentCommitUrl)}
+      {codeCommit && renderCommit(codeCommit, 'code', codeCommitUrl || '')}
     </div>
   );
 };
