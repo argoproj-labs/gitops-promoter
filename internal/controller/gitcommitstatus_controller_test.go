@@ -50,7 +50,11 @@ func setPromotionStrategyGlobalProposedCommitStatusKey(ctx context.Context, psNa
 	Eventually(func(g Gomega) {
 		var ps promoterv1alpha1.PromotionStrategy
 		g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: psName, Namespace: "default"}, &ps)).To(Succeed())
+		// Keep the previous-environment gate declared alongside the test's key: the PS's
+		// PreviousEnvironmentCommitStatus generates a DAGCommitStatus that reports this key, and
+		// the safety check rejects a DAG gate key that isn't declared in proposedCommitStatuses.
 		ps.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+			{Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey},
 			{Key: key},
 		}
 		for i := range ps.Spec.Environments {
@@ -82,7 +86,9 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		declarePreviousEnvironmentGate(promotionStrategy)
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+		createPreviousEnvironmentCommitStatus(ctx, promotionStrategy)
 	})
 
 	AfterAll(func() {
@@ -926,7 +932,9 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			declarePreviousEnvironmentGate(gatingPS)
 			Expect(k8sClient.Create(ctx, gatingPS)).To(Succeed())
+			createPreviousEnvironmentCommitStatus(ctx, gatingPS)
 		})
 
 		AfterEach(func() {

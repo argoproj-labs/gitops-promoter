@@ -1,0 +1,69 @@
+.dag-graph {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 64px;
+  padding: 24px 0;
+  width: 100%;
+}
+
+.dag-graph__row {
+  display: flex;
+  justify-content: center;
+  gap: 48px;
+  flex-wrap: nowrap;
+}
+
+.dag-graph__node {
+  width: 420px;
+  flex: 0 0 auto;
+  z-index: 1;
+
+  .env-cards-container,
+  .env-cards-wrapper,
+  .env-card-column {
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .env-card {
+    width: 100%;
+    max-width: 100%;
+  }
+}
+
+.dag-graph__edges {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+  overflow: visible;
+}
+
+.dag-graph__edge {
+  fill: none;
+  stroke: #6b7688;
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.dag-graph__arrowhead {
+  fill: #6b7688;
+  stroke: none;
+}
+
+.dag-graph__node-missing {
+  border: 1px dashed #c4ccd8;
+  border-radius: 8px;
+  padding: 24px;
+  text-align: center;
+  color: #8a94a6;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}

@@ -1,0 +1,28 @@
+.topology-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.topology-controls__selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+
+  select {
+    min-width: 220px;
+    padding: 6px 8px;
+  }
+}
+
+.topology-controls__layout {
+  display: flex;
+  gap: 8px;
+}
+
+.topology-controls__pending {
+  color: #6b7688;
+  font-size: 13px;
+}

@@ -5,7 +5,8 @@ import type { PromotionStrategy } from '@shared/utils/PSData';
 import type { Environment } from '@shared/types/promotion';
 import type { ChangeTransferPolicy, PromotionStrategyDetails } from '@shared/types/view';
 
-interface CRDItem extends PromotionStrategy {
+export interface PromotionStrategyItem extends PromotionStrategy {
+  details: PromotionStrategyDetails;
   enriched?: unknown;
 }
 
@@ -36,7 +37,7 @@ function environmentsFromCTPs(
   });
 }
 
-function bundleToItem<T extends CRDItem>(bundle: PromotionStrategyDetails): T {
+function bundleToItem<T extends PromotionStrategyItem>(bundle: PromotionStrategyDetails): T {
   const ps = bundle.promotionStrategy;
   const environments = environmentsFromCTPs(ps.spec, bundle.changeTransferPolicies ?? []);
   const psWithEnvironments = {
@@ -51,11 +52,12 @@ function bundleToItem<T extends CRDItem>(bundle: PromotionStrategyDetails): T {
   sortStrategyCommitStatuses(psWithEnvironments);
   return {
     ...psWithEnvironments,
+    details: bundle,
     enriched: enrichFromCRD(psWithEnvironments),
   } as T;
 }
 
-export function createCRDStore<T extends CRDItem>(kind: string, eventName: string) {
+export function createCRDStore<T extends PromotionStrategyItem>(kind: string, eventName: string) {
   let eventSource: EventSource | null = null;
 
   return create<{

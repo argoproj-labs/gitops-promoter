@@ -42,6 +42,7 @@ spec:
   activeCommitStatuses:
     - key: argocd-app-health
   proposedCommitStatuses:
+    - key: promoter-previous-environment # ordering gate; see PreviousEnvironmentCommitStatus
     - key: security-scan
   environments:
     - branch: environment/dev
@@ -52,6 +53,15 @@ spec:
       - key: performance-test
       proposedCommitStatuses:
       - key: deployment-freeze
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PreviousEnvironmentCommitStatus
+metadata:
+  name: example-promotion-strategy
+spec:
+  key: promoter-previous-environment
+  promotionStrategyRef:
+    name: example-promotion-strategy
 ```
 
 ## Getting Started

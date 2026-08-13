@@ -39,6 +39,10 @@ const (
 const (
 	// ChangeTransferPolicyNotReady is the condition type for a change transfer policy not being ready.
 	ChangeTransferPolicyNotReady CommonReason = "ChangeTransferPolicyNotReady"
-	// PreviousEnvironmentCommitStatusNotReady is the condition type for a previous environment commit status not being ready.
-	PreviousEnvironmentCommitStatusNotReady CommonReason = "PreviousEnvironmentCommitStatusNotReady"
+)
+
+// Reasons that apply to PreviousEnvironmentCommitStatus.
+const (
+	// DAGCommitStatusNotReady is the reason when an owned DAGCommitStatus is not Ready.
+	DAGCommitStatusNotReady CommonReason = "DAGCommitStatusNotReady"
 )
