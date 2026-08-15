@@ -413,7 +413,7 @@ func (r *PullRequestReconciler) handleStateTransitions(ctx context.Context, pr *
 // pullRequestImmediatelySyncedSpecDigest fingerprints title and description, the fields
 // pushed to the SCM via provider.Update while the pull request is open.
 func pullRequestImmediatelySyncedSpecDigest(pr *promoterv1alpha1.PullRequest) string {
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s", pr.Spec.Title, pr.Spec.Description)))
+	sum := sha256.Sum256(fmt.Appendf(nil, "%s\x00%s", pr.Spec.Title, pr.Spec.Description))
 	return hex.EncodeToString(sum[:])
 }
 

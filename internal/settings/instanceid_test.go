@@ -8,7 +8,6 @@ import (
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -38,14 +37,14 @@ var _ = Describe("ControllerInstanceID", func() {
 	})
 
 	It("returns the configured value after test bootstrap", func() {
-		settings.SetControllerInstanceIDForTest(ptr.To("wave-0"))
+		settings.SetControllerInstanceIDForTest(new("wave-0"))
 		got := settings.ControllerInstanceID()
 		Expect(got).NotTo(BeNil())
 		Expect(*got).To(Equal("wave-0"))
 	})
 
 	It("returns early when already bootstrapped", func() {
-		settings.SetControllerInstanceIDForTest(ptr.To("wave-0"))
+		settings.SetControllerInstanceIDForTest(new("wave-0"))
 		Expect(settings.BootstrapControllerInstanceID(context.Background(), nil, "default")).To(Succeed())
 		got := settings.ControllerInstanceID()
 		Expect(got).NotTo(BeNil())
@@ -55,7 +54,7 @@ var _ = Describe("ControllerInstanceID", func() {
 
 var _ = Describe("DriftMessage", func() {
 	It("formats cached and live values", func() {
-		msg := settings.DriftMessage(ptr.To("wave-0"), ptr.To("wave-1"))
+		msg := settings.DriftMessage(new("wave-0"), new("wave-1"))
 		Expect(msg).To(ContainSubstring("wave-0"))
 		Expect(msg).To(ContainSubstring("wave-1"))
 	})
@@ -74,14 +73,14 @@ var _ = Describe("EnsureInstanceIDStable", func() {
 	})
 
 	It("returns nil when cached and live instance IDs match", func() {
-		settings.SetControllerInstanceIDForTest(ptr.To("wave-0"))
+		settings.SetControllerInstanceIDForTest(new("wave-0"))
 		cc := &promoterv1alpha1.ControllerConfiguration{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      settings.ControllerConfigurationName,
 				Namespace: "default",
 			},
 			Spec: promoterv1alpha1.ControllerConfigurationSpec{
-				InstanceID: ptr.To("wave-0"),
+				InstanceID: new("wave-0"),
 			},
 		}
 		scheme := runtime.NewScheme()
@@ -100,7 +99,7 @@ var _ = Describe("EnsureInstanceIDStable", func() {
 				Namespace: "default",
 			},
 			Spec: promoterv1alpha1.ControllerConfigurationSpec{
-				InstanceID: ptr.To("wave-0"),
+				InstanceID: new("wave-0"),
 			},
 		}
 		scheme := runtime.NewScheme()
