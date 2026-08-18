@@ -395,7 +395,7 @@ func (pr *PullRequest) ensureProjectLabels(ctx context.Context, repo *v1alpha1.G
 
 		start := time.Now()
 		_, resp, err := pr.client.Labels.CreateLabel(repo.Spec.GitLab.ProjectID, &gitlab.CreateLabelOptions{
-			Name:  gitlab.Ptr(name),
+			Name:  new(name),
 			Color: gitlab.Ptr(scms.AutoCreatedLabelColorHex),
 		}, gitlab.WithContext(ctx))
 		if resp != nil {

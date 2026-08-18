@@ -3,7 +3,6 @@ package utils_test
 import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"k8s.io/utils/ptr"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
@@ -37,7 +36,7 @@ var _ = Describe("StampInstanceIDLabel", func() {
 	})
 
 	It("stamps instance-id from settings.ControllerInstanceID", func() {
-		settings.SetControllerInstanceIDForTest(ptr.To(testInstanceID))
+		settings.SetControllerInstanceIDForTest(new(testInstanceID))
 		labels := utils.StampInstanceIDLabel(map[string]string{"k": "v"})
 		Expect(labels[promoterv1alpha1.InstanceIDLabel]).To(Equal(testInstanceID))
 		Expect(labels["k"]).To(Equal("v"))
