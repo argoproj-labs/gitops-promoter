@@ -164,7 +164,6 @@ func promotionStrategyDetailsGateSliceFields() map[reflect.Type]string {
 	detailsType := reflect.TypeFor[viewv1alpha1.PromotionStrategyDetails]()
 	out := make(map[reflect.Type]string)
 	for field := range detailsType.Fields() {
-
 		if field.Type.Kind() != reflect.Slice {
 			continue
 		}
