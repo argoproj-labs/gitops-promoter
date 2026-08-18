@@ -5,22 +5,27 @@
 ### Promotion strategy and pipelines
 
 - **DAG-style promotion strategies** — Model promotion flows beyond a linear environment chain, including environment dependencies and parallel branch targets within a step ([#1364](https://github.com/argoproj-labs/gitops-promoter/issues/1364)).
+- **[Configurable promotion merge commit message template](https://github.com/argoproj-labs/gitops-promoter/issues/1562)** — Customize the commit message when Promoter merges a `-next` branch into an environment branch.
 
 ### Commit status and gating
 
-- **Deployment window gates** — Gate promotions on allowed time-of-day or calendar windows.
 - **[Self-registering commit status controllers](https://github.com/argoproj-labs/gitops-promoter/issues/1154)** — Register commit status keys with Promoter without listing them on every PromotionStrategy.
+- **[JobCommitStatus](https://github.com/argoproj-labs/gitops-promoter/issues/1597)** — Gate promotions on Kubernetes Job results via a new built-in commit status controller.
+- **[Commit signature verification via GitCommitStatus](https://github.com/argoproj-labs/gitops-promoter/issues/1801)** — Require that promoted commits are signed and verify against trusted keys.
+- **[Webhook-triggered reconciliation in WebRequestCommitStatus](https://github.com/argoproj-labs/gitops-promoter/issues/1704)** — Accept push notifications from external systems to trigger gate checks instead of polling only.
+- **[URL templates on WebRequestCommitStatus](https://github.com/argoproj-labs/gitops-promoter/issues/1857)** — Link commit status details to the source system, matching ArgoCDCommitStatus URL support.
 
 ### SCM providers and integrations
 
 - **Additional SCM providers** — Integrate providers beyond those supported today.
 - **[Bitbucket Server and Data Center](https://github.com/argoproj-labs/gitops-promoter/issues/1243)** — Support on-prem Bitbucket for repositories, pull requests, and commit statuses.
+- **[SSH protocol for git operations](https://github.com/argoproj-labs/gitops-promoter/issues/254)** — Clone and push via SSH for self-hosted GitLab and other SSH-only setups.
+- **[Sign commits during conflict resolution](https://github.com/argoproj-labs/gitops-promoter/issues/1800)** — GPG-sign commits created when Promoter resolves merge conflicts.
 - **[SCM webhooks for pull request changes](https://github.com/argoproj-labs/gitops-promoter/issues/360)** — Reconcile promotion state when the SCM signals PR updates; extend to multiple provider types ([#222](https://github.com/argoproj-labs/gitops-promoter/issues/222)).
 - **[Verified GitHub webhook signatures](https://github.com/argoproj-labs/gitops-promoter/issues/1285)** — Validate inbound webhooks using `webhookSecret` / `webhookSignatureHeader` on the ScmProvider Secret (HMAC-SHA256 or shared token).
 
 ### Operations, scaling, and observability
 
-- **Multiple instances per cluster** — Run separate Promoter deployments for scale, blast-radius isolation, or tenancy.
 - **[Namespaced operation mode](https://github.com/argoproj-labs/gitops-promoter/issues/310)** — Restrict watches and permissions to configured namespaces.
 - **[DORA metrics](https://github.com/argoproj-labs/gitops-promoter/issues/574)** — Export deployment frequency, lead time, and related delivery metrics.
 - **[SLSA release provenance](https://github.com/argoproj-labs/gitops-promoter/issues/1445)** — Publish SLSA attestations for release binaries and images.

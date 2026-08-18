@@ -27,7 +27,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -47,7 +46,7 @@ var _ = Describe("When ControllerConfiguration.spec.instanceID drifts from boots
 
 	BeforeEach(func() {
 		ctx = context.Background()
-		restoreControllerConfiguration = patchControllerConfigurationInstanceID(ctx, ptr.To("wave-0"))
+		restoreControllerConfiguration = patchControllerConfigurationInstanceID(ctx, new("wave-0"))
 	})
 
 	AfterEach(func() {
