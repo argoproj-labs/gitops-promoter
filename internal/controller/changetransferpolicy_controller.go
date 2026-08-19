@@ -1271,7 +1271,7 @@ func findDrySha(ctx context.Context, gitOperations *git.EnvironmentOperations, s
 				logger.V(4).Info("malformed hydrator metadata while locating merge commit", "sha", sha, "err", err)
 				return "", nil
 			}
-			return "", err
+			return "", fmt.Errorf("read hydrator metadata at %q: %w", sha, err)
 		}
 		return meta.Sha, nil
 	}
