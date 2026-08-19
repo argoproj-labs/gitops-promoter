@@ -1150,12 +1150,15 @@ func (r *ChangeTransferPolicyReconciler) writePromotionHistoryNote(ctx context.C
 // branch tip recorded on the PullRequest). It walks first-parent history newest to oldest looking for, in
 // order of preference:
 //
-//  1. the commit itself (fast-forward merge),
-//  2. a merge commit whose second parent is mergeSha or a descendant of it (regular or external merge of a
-//     possibly newer proposed tip),
+//  1. the commit itself (fast-forward merge) or a merge commit whose second parent is mergeSha (regular
+//     merge),
+//  2. a merge commit whose second parent is a descendant of mergeSha (external merge of a possibly newer
+//     proposed tip) — only after the whole window has been scanned for an exact match, because on a shared
+//     active branch a sibling's newer merge commit can descend from our mergeSha and must not shadow our own
+//     exact match deeper in the window,
 //  3. the commit where <activePath>/hydrator.metadata transitioned to the PR's proposed dry sha (squash and
 //     rebase merges leave no parent link, but a promotion by definition changes the recorded dry sha; run as
-//     a second pass so it can never shadow an exact match).
+//     a final pass so it can never shadow a parent-link match).
 //
 // Returns "" when no matching commit is found, which usually means the PR was closed without merging.
 //
@@ -1191,7 +1194,13 @@ func findMergeCommitOnActiveBranch(ctx context.Context, gitOperations *git.Envir
 		return "", fmt.Errorf("failed to get rev-list for branch %q: %w", activeBranch, err)
 	}
 
-	// Pass 1: exact fast-forward or merge-commit matches.
+	// Pass 1: exact fast-forward or merge-commit matches. The whole window must be scanned for an exact
+	// match before any ancestry match is accepted: on a shared active branch (activePath mode), a sibling
+	// ChangeTransferPolicy that merged the active branch into its proposed branch produces a NEWER merge
+	// commit whose second parent descends from our mergeSha, and accepting it inline would shadow our own
+	// exact match deeper in the window — writing the note onto (and clobbering the note of) the sibling's
+	// merge commit. Cache the second parents so the ancestry fallback does not re-run git for each commit.
+	secondParents := make(map[string]string, len(shas))
 	for _, sha := range shas {
 		if sha == mergeSha {
 			return sha, nil
@@ -1206,9 +1215,18 @@ func findMergeCommitOnActiveBranch(ctx context.Context, gitOperations *git.Envir
 		if parents[1] == mergeSha {
 			return sha, nil
 		}
-		if mergeShaIsLocal {
-			// An external merge may have merged a proposed tip newer than the recorded mergeSha.
-			isAncestor, err := gitOperations.IsAncestor(ctx, mergeSha, parents[1])
+		secondParents[sha] = parents[1]
+	}
+
+	// Ancestry fallback: an external merge may have merged a proposed tip newer than the recorded mergeSha.
+	// Only reached when no exact match exists anywhere in the window.
+	if mergeShaIsLocal {
+		for _, sha := range shas {
+			secondParent, ok := secondParents[sha]
+			if !ok {
+				continue
+			}
+			isAncestor, err := gitOperations.IsAncestor(ctx, mergeSha, secondParent)
 			if err != nil {
 				return "", fmt.Errorf("failed to check ancestry of merge sha %q: %w", mergeSha, err)
 			}

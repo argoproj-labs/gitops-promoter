@@ -2649,6 +2649,101 @@ var _ = Describe("findDrySha merge-commit location", func() {
 	})
 })
 
+var _ = Describe("findMergeCommitOnActiveBranch match preference", func() {
+	var workDir string
+	var bareDir string
+	var activeBranch string
+	var gitOps *git.EnvironmentOperations
+
+	mustRunGit := func(dir string, args ...string) string {
+		GinkgoHelper()
+		out, err := runGitCmd(ctx, dir, args...)
+		Expect(err).NotTo(HaveOccurred())
+		return strings.TrimSpace(out)
+	}
+
+	commitFile := func(fileName, message string) string {
+		GinkgoHelper()
+		Expect(os.WriteFile(path.Join(workDir, fileName), []byte(fileName), 0o644)).To(Succeed())
+		mustRunGit(workDir, "add", "-A")
+		mustRunGit(workDir, "commit", "-m", message)
+		return mustRunGit(workDir, "rev-parse", "HEAD")
+	}
+
+	BeforeEach(func() {
+		var err error
+		bareDir, err = os.MkdirTemp("", "find-merge-commit-bare-*")
+		Expect(err).NotTo(HaveOccurred())
+		mustRunGit(bareDir, "init", "--bare")
+
+		workDir, err = os.MkdirTemp("", "find-merge-commit-work-*")
+		Expect(err).NotTo(HaveOccurred())
+		mustRunGit(workDir, "clone", bareDir, ".")
+		mustRunGit(workDir, "config", "user.name", "Test User")
+		mustRunGit(workDir, "config", "user.email", "test@example.com")
+		mustRunGit(workDir, "config", "commit.gpgsign", "false")
+
+		commitFile("base.txt", "base commit")
+		activeBranch = mustRunGit(workDir, "rev-parse", "--abbrev-ref", "HEAD")
+
+		gitRepo := &promoterv1alpha1.GitRepository{
+			ObjectMeta: metav1.ObjectMeta{Name: "find-merge-commit-repo", Namespace: "default"},
+			Spec: promoterv1alpha1.GitRepositorySpec{
+				Fake: &promoterv1alpha1.FakeRepo{Owner: "test-owner", Name: "find-merge-commit-repo"},
+			},
+		}
+		gitOps = git.NewEnvironmentOperations(gitRepo, &localGitProvider{repoPath: bareDir}, "default/find-merge-commit-"+bareDir)
+	})
+
+	AfterEach(func() {
+		_ = os.RemoveAll(bareDir)
+		_ = os.RemoveAll(workDir)
+	})
+
+	It("prefers the exact second-parent match over a newer merge whose second parent merely descends from the merge sha", func() {
+		// Shared-active-branch scenario: our PR merges as M1 (parents[1] == S1). Before our note is written,
+		// a sibling ChangeTransferPolicy merges the active branch into its proposed branch (making its tip a
+		// descendant of S1) and its PR merges as M2. The newest-first walk must still return M1, not M2.
+		mustRunGit(workDir, "checkout", "-b", "our-proposed")
+		s1 := commitFile("ours.txt", "our change")
+		mustRunGit(workDir, "checkout", activeBranch)
+		mustRunGit(workDir, "merge", "--no-ff", "our-proposed", "-m", "merge our change")
+		m1 := mustRunGit(workDir, "rev-parse", "HEAD")
+
+		mustRunGit(workDir, "checkout", "-b", "sibling-proposed")
+		commitFile("sibling.txt", "sibling change")
+		mustRunGit(workDir, "checkout", activeBranch)
+		mustRunGit(workDir, "merge", "--no-ff", "sibling-proposed", "-m", "merge sibling change")
+		m2 := mustRunGit(workDir, "rev-parse", "HEAD")
+
+		mustRunGit(workDir, "push", "-u", "origin", activeBranch, "our-proposed", "sibling-proposed")
+		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
+
+		got, err := findMergeCommitOnActiveBranch(ctx, gitOps, activeBranch, "our-proposed", "", s1, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).NotTo(Equal(m2), "the sibling's merge commit must not shadow the exact match")
+		Expect(got).To(Equal(m1), "the exact parents[1] == mergeSha match must win over a newer ancestry match")
+	})
+
+	It("falls back to the ancestry match when the merged tip is newer than the recorded merge sha", func() {
+		// External merge of a proposed tip newer than the PR's recorded mergeSha: no exact match exists in
+		// the window, so the descendant check must still locate the merge commit.
+		mustRunGit(workDir, "checkout", "-b", "our-proposed")
+		s1 := commitFile("ours.txt", "our change")
+		commitFile("ours-newer.txt", "our newer change")
+		mustRunGit(workDir, "checkout", activeBranch)
+		mustRunGit(workDir, "merge", "--no-ff", "our-proposed", "-m", "merge our newer tip")
+		m := mustRunGit(workDir, "rev-parse", "HEAD")
+
+		mustRunGit(workDir, "push", "-u", "origin", activeBranch, "our-proposed")
+		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
+
+		got, err := findMergeCommitOnActiveBranch(ctx, gitOps, activeBranch, "our-proposed", "", s1, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(m), "a merge of a descendant of the merge sha must still be found when no exact match exists")
+	})
+})
+
 var _ = Describe("commit status description trailers", func() {
 	var ctx context.Context
 
