@@ -1245,50 +1245,65 @@ func findMergeCommitOnActiveBranch(ctx context.Context, gitOperations *git.Envir
 	// ChangeTransferPolicies after ours (activePath repos sharing the active branch) do not touch our
 	// path's metadata, so they extend the run and never break it; our own next promotion cannot exist yet
 	// because the PullRequest finalizer serializes promotions per ChangeTransferPolicy.
-	return findDrySha(ctx, gitOperations, shas, activePath, dryProposedSha), nil
+	mergeCommitSha, err := findDrySha(ctx, gitOperations, shas, activePath, dryProposedSha)
+	if err != nil {
+		return "", fmt.Errorf("failed to locate merge commit via hydrator metadata: %w", err)
+	}
+	return mergeCommitSha, nil
 }
 
 // findDrySha returns the oldest commit of the newest contiguous first-parent run whose
 // <activePath>/hydrator.metadata dry sha equals dryProposedSha, or "" when the tip does not carry it (no
-// promotion visible) or the transition is not visible inside the window (ambiguous). Metadata read errors
-// are treated as non-matching: a missing or malformed file must degrade to "no note", never block PR
-// finalization forever.
-func findDrySha(ctx context.Context, gitOperations *git.EnvironmentOperations, shas []string, activePath, dryProposedSha string) string {
+// promotion visible) or the transition is not visible inside the window (ambiguous). A missing path or
+// malformed metadata file degrades to a non-match; genuine read failures (network, promisor/lazy-fetch,
+// unknown revisions) are returned as errors so PR finalization can retry.
+func findDrySha(ctx context.Context, gitOperations *git.EnvironmentOperations, shas []string, activePath, dryProposedSha string) (string, error) {
 	logger := log.FromContext(ctx)
 
 	if dryProposedSha == "" || len(shas) == 0 {
-		return ""
+		return "", nil
 	}
 
-	dryShaAt := func(sha string) string {
+	dryShaAt := func(sha string) (string, error) {
 		meta, err := gitOperations.GetShaMetadataFromFile(ctx, sha, activePath)
 		if err != nil {
-			logger.V(4).Info("failed to read hydrator metadata while locating merge commit", "sha", sha, "err", err)
-			return ""
+			if git.IsHydratorMetadataMalformed(err) {
+				logger.V(4).Info("malformed hydrator metadata while locating merge commit", "sha", sha, "err", err)
+				return "", nil
+			}
+			return "", err
 		}
-		return meta.Sha
+		return meta.Sha, nil
 	}
 
-	if dryShaAt(shas[0]) != dryProposedSha {
+	tipDry, err := dryShaAt(shas[0])
+	if err != nil {
+		return "", fmt.Errorf("failed to read hydrator metadata at active branch tip %q: %w", shas[0], err)
+	}
+	if tipDry != dryProposedSha {
 		// The active branch tip does not carry the proposed dry sha: the promotion never landed
 		// (closed-not-merged), or something newer already replaced it and the merge commit is no longer
 		// attributable from content alone.
-		return ""
+		return "", nil
 	}
 	for i := 1; i < len(shas); i++ {
-		if dryShaAt(shas[i]) != dryProposedSha {
-			return shas[i-1]
+		dry, err := dryShaAt(shas[i])
+		if err != nil {
+			return "", fmt.Errorf("failed to read hydrator metadata at commit %q while locating merge commit: %w", shas[i], err)
+		}
+		if dry != dryProposedSha {
+			return shas[i-1], nil
 		}
 	}
 	if len(shas) < mergeCommitSearchWindow {
 		// The walk reached the root of the branch with every commit carrying the dry sha; the oldest one is
 		// the promotion that introduced it.
-		return shas[len(shas)-1]
+		return shas[len(shas)-1], nil
 	}
 	// Every commit in a full window carries the dry sha, so the transition happened before the window and
 	// the oldest entry merely inherits it: the merge commit cannot be identified.
 	logger.V(4).Info("dry sha transition not visible within the merge commit search window", "drySha", dryProposedSha)
-	return ""
+	return "", nil
 }
 
 // ctpPullRequestListOptions returns list options for PullRequests owned by this ChangeTransferPolicy.

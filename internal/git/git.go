@@ -209,6 +209,23 @@ func buildHydratorMetadataPath(activePath string) string {
 	return path.Join(activePath, "hydrator.metadata")
 }
 
+// IsGitShowPathMissingInCommit reports whether git show failed because the path is absent from the
+// given revision's tree (including the worktree-only case). Other git show failures — invalid
+// revisions, promisor/lazy-fetch errors, network outages — return false and should be propagated.
+func IsGitShowPathMissingInCommit(stderr string) bool {
+	stderr = strings.ToLower(stderr)
+	return strings.Contains(stderr, "does not exist in") ||
+		strings.Contains(stderr, "exists on disk, but not in")
+}
+
+// IsHydratorMetadataMalformed reports whether GetShaMetadataFromFile failed because the blob was
+// present but not valid hydrator.metadata JSON. Callers that intentionally degrade on missing or
+// malformed metadata (for example findDrySha during PR finalization) should treat this as a
+// non-match rather than a retryable infrastructure error.
+func IsHydratorMetadataMalformed(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "could not unmarshal metadata file")
+}
+
 // GetBranchShas fetches the given branch and returns its hydrated and dry SHAs.
 //
 // Before fetching, it first checks - via a cheap, live ls-remote against this same clone's
@@ -325,6 +342,10 @@ func (g *EnvironmentOperations) FetchBranch(ctx context.Context, branch string) 
 //
 // Read-only: never mutates the clone's index/worktree/HEAD. Requires the SHA's objects to have been
 // fetched.
+//
+// When the path is absent from the commit's tree, returns an empty CommitShaState and a nil error so
+// callers can degrade gracefully (for example pre-promotion commits without activePath metadata).
+// Transient read failures (network, promisor/lazy-fetch, unknown revisions) are returned as errors.
 func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha, activePath string) (v1alpha1.CommitShaState, error) {
 	logger := log.FromContext(ctx)
 
@@ -333,10 +354,16 @@ func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha,
 		return v1alpha1.CommitShaState{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
-	metadataFileStdout, stderr, err := g.runCmd(ctx, gitPath, "show", sha+":"+buildHydratorMetadataPath(activePath))
+	metaPath := buildHydratorMetadataPath(activePath)
+	metadataFileStdout, stderr, err := g.runCmd(ctx, gitPath, "show", sha+":"+metaPath)
 	if err != nil {
-		logger.V(4).Info("could not git show file", "sha", sha, "gitError", stderr, "err", err)
-		return v1alpha1.CommitShaState{}, nil
+		trimmedStderr := strings.TrimSpace(stderr)
+		if IsGitShowPathMissingInCommit(trimmedStderr) && g.CommitExists(ctx, sha) {
+			logger.V(4).Info("hydrator metadata path not present in commit", "sha", sha, "path", metaPath)
+			return v1alpha1.CommitShaState{}, nil
+		}
+		logger.V(4).Info("could not git show hydrator metadata file", "sha", sha, "path", metaPath, "gitError", trimmedStderr, "err", err)
+		return v1alpha1.CommitShaState{}, fmt.Errorf("failed to read hydrator.metadata from commit %q: %w (stderr: %s)", sha, err, trimmedStderr)
 	}
 	logger.V(4).Info("Got metadata file", "sha", sha, "file", metadataFileStdout)
 

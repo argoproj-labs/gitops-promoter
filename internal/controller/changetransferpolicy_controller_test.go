@@ -2605,7 +2605,9 @@ var _ = Describe("findDrySha merge-commit location", func() {
 		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
 
 		shas := revList()
-		Expect(findDrySha(ctx, gitOps, shas, "", "dry-a")).To(Equal(rePromoteSha),
+		got, err := findDrySha(ctx, gitOps, shas, "", "dry-a")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(rePromoteSha),
 			"the newest contiguous run wins; the ancient dry-a commit must not match")
 	})
 
@@ -2617,8 +2619,12 @@ var _ = Describe("findDrySha merge-commit location", func() {
 		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
 
 		shas := revList()
-		Expect(findDrySha(ctx, gitOps, shas, "", "dry-never-merged")).To(BeEmpty())
-		Expect(findDrySha(ctx, gitOps, shas, "", "")).To(BeEmpty(), "no dry sha trailer means no match")
+		got, err := findDrySha(ctx, gitOps, shas, "", "dry-never-merged")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(BeEmpty())
+		got, err = findDrySha(ctx, gitOps, shas, "", "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(BeEmpty(), "no dry sha trailer means no match")
 	})
 
 	It("returns the root commit when the whole (short) history carries the dry sha", func() {
@@ -2629,7 +2635,9 @@ var _ = Describe("findDrySha merge-commit location", func() {
 		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
 
 		shas := revList()
-		Expect(findDrySha(ctx, gitOps, shas, "", "dry-a")).To(Equal(first),
+		got, err := findDrySha(ctx, gitOps, shas, "", "dry-a")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(first),
 			"reaching the branch root means the oldest commit introduced the dry sha")
 	})
 
@@ -2644,8 +2652,21 @@ var _ = Describe("findDrySha merge-commit location", func() {
 
 		shas := revList()
 		Expect(shas).To(HaveLen(mergeCommitSearchWindow))
-		Expect(findDrySha(ctx, gitOps, shas, "", "dry-a")).To(BeEmpty(),
+		got, err := findDrySha(ctx, gitOps, shas, "", "dry-a")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(BeEmpty(),
 			"a full window of matches is ambiguous: the transition commit is older than the window")
+	})
+
+	It("propagates hydrator metadata read failures instead of treating them as closed-not-merged", func() {
+		commitWithDrySha("dry-a", "one.txt")
+		branch = mustRunGit(workDir, "rev-parse", "--abbrev-ref", "HEAD")
+		mustRunGit(workDir, "push", "-u", "origin", branch)
+		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
+
+		tip := revList()[0]
+		_, err := findDrySha(ctx, gitOps, []string{tip, "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"}, "", "dry-a")
+		Expect(err).To(HaveOccurred(), "an unreadable commit in the walk must retry, not skip the note")
 	})
 })
 
