@@ -28,7 +28,21 @@ export default {
       },
       {
         test: /\.s?css$/,
-        use: ['style-loader', 'css-loader', 'sass-loader'],
+        use: [
+          'style-loader',
+          'css-loader',
+          {
+            loader: 'sass-loader',
+            options: {
+              sassOptions: {
+                // style-loader injects this CSS into a <style> tag, so a leading
+                // @charset (emitted by Sass when the source has non-ASCII chars) is
+                // an invalid at-rule the browser drops — taking the next rule with it.
+                charset: false,
+              },
+            },
+          },
+        ],
         exclude: /node_modules/,
       },
     ],

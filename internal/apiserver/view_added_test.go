@@ -161,10 +161,9 @@ var _ = Describe("Gate commit-status managers stay in sync with the view aggrega
 // promoterv1alpha1.TimedCommitStatus) to the PromotionStrategyDetails field name
 // that holds []T for that gate.
 func promotionStrategyDetailsGateSliceFields() map[reflect.Type]string {
-	detailsType := reflect.TypeOf(viewv1alpha1.PromotionStrategyDetails{})
+	detailsType := reflect.TypeFor[viewv1alpha1.PromotionStrategyDetails]()
 	out := make(map[reflect.Type]string)
-	for i := 0; i < detailsType.NumField(); i++ {
-		field := detailsType.Field(i)
+	for field := range detailsType.Fields() {
 		if field.Type.Kind() != reflect.Slice {
 			continue
 		}

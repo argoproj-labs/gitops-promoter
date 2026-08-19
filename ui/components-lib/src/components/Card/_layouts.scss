@@ -7,10 +7,33 @@ $card-min-width-single: 500px;
 $card-gap-vertical: 10px;
 $card-gap-horizontal: 10px;
 $card-padding: 24px;
+$card-width: 425px;
 
 $extension-card-width: 400px;
 $extension-card-gap: 30px;
 $extension-wrapper-gap: 20px;
+
+@keyframes promote-banner-pulse {
+  0%,
+  100% {
+    transform: rotate(-90deg) translateY(1px);
+    opacity: 0.8;
+  }
+  50% {
+    transform: rotate(-90deg) translateY(-2px);
+    opacity: 1;
+  }
+}
+
+@mixin card-chrome {
+  background: white;
+  border: 1px solid $argo-color-gray-4;
+  border-radius: 4px;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.1),
+    0 1px 2px rgba(0, 0, 0, 0.06);
+  box-sizing: border-box;
+}
 
 @mixin vertical-layout {
   .env-cards-container {
@@ -34,7 +57,7 @@ $extension-wrapper-gap: 20px;
     display: flex;
     margin: 0;
     width: max-content;
-    align-items: stretch;
+    align-items: flex-start;
     justify-content: safe center;
     gap: $card-gap-vertical;
     flex: 0 0 auto;
@@ -47,28 +70,49 @@ $extension-wrapper-gap: 20px;
 
   .env-card {
     flex: 1;
-    width: 425px;
-    min-height: 400px;
+    width: $card-width;
     display: flex;
     flex-direction: column;
-
-    &.single-commit-group {
-      min-height: 250px;
-    }
+    gap: 0;
   }
 
-  .env-card.single-commit-group {
-    min-height: 300px;
+  .active-card {
+    @include card-chrome;
+
+    display: flex;
+    flex-direction: column;
+    padding: 24px;
   }
 
-  .commit-group.proposed {
-    flex: 1;
+  .proposed-changes-card {
+    @include card-chrome;
+
+    padding: 24px;
+    border: 1px solid $argo-running;
+  }
+
+  .commit-group.env-card__proposed-loading {
+    @include card-chrome;
+
+    padding: 24px;
+  }
+
+  .active-card:has(+ .proposed-changes-card),
+  .active-card:has(+ .commit-group.env-card__proposed-loading) {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  .active-card + .proposed-changes-card,
+  .active-card + .commit-group.env-card__proposed-loading {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
   }
 
   .arrow-separator {
     display: flex;
-    align-items: start;
-    padding-top: 150px;
+    align-items: flex-start;
+    padding-top: 90px;
   }
 }
 
@@ -103,55 +147,70 @@ $extension-wrapper-gap: 20px;
 
   .env-card {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: auto 1fr;
+    grid-template-columns: $card-width $card-width;
+    grid-template-rows: 1fr;
+    column-gap: 0;
+    width: fit-content;
     max-width: 100%;
-    box-sizing: border-box;
 
     &.single-commit-group {
-      grid-template-columns: 1fr;
-      max-width: 70%;
-      margin: 0;
-      min-height: 250px;
+      grid-template-columns: $card-width;
     }
   }
 
+  .active-card {
+    @include card-chrome;
+
+    grid-column: 1;
+    display: flex;
+    flex-direction: column;
+    padding: $card-padding;
+    min-width: 0;
+  }
+
   .env-card__title {
-    grid-column: 1 / -1;
-    grid-row: 1;
     margin-bottom: 20px;
   }
 
-  .commit-group:not(.proposed):not(.env-card__proposed-loading) {
-    grid-column: 1;
-    grid-row: 2;
-    min-width: 0;
-    padding-right: 16px;
+  .env-card__current-status {
+    margin-top: auto;
   }
 
-  .commit-group.proposed,
-  .commit-group.env-card__proposed-loading {
+  .proposed-changes-card {
+    @include card-chrome;
+
     grid-column: 2;
-    grid-row: 1 / -1;
-    margin: 0;
-    margin-top: -$card-padding;
-    margin-right: -$card-padding;
-    margin-bottom: -$card-padding;
-    padding: 12px;
-    padding-top: 24px;
-    border-radius: 8px 0 0 8px;
-    border-left: 3px solid $argo-running;
-    border-top: 0;
-    background: linear-gradient(135deg, rgba(13, 173, 234, 0.06) 0%, rgba(13, 173, 234, 0.03) 100%);
+    padding: $card-padding;
+    border: 1px solid $argo-running;
     min-width: 0;
   }
 
-  .commit-group.proposed .promote-flow,
-  .commit-group.proposed .promote-banner__label {
+  .commit-group.env-card__proposed-loading {
+    @include card-chrome;
+
+    grid-column: 2;
+    padding: $card-padding;
+    min-width: 0;
+  }
+
+  .active-card:has(+ .proposed-changes-card),
+  .active-card:has(+ .commit-group.env-card__proposed-loading) {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  .active-card + .proposed-changes-card,
+  .active-card + .commit-group.env-card__proposed-loading {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+  }
+
+  .proposed-changes-card .promote-flow,
+  .proposed-changes-card .promote-banner__label {
     display: none;
   }
 
-  .commit-group.proposed .promote-banner {
+  .proposed-changes-card .promote-banner {
     position: absolute;
     top: 50%;
     left: 0;
@@ -165,9 +224,10 @@ $extension-wrapper-gap: 20px;
     color: #fff;
     background: $argo-running;
     box-shadow: 0 1px 4px rgba(13, 173, 234, 0.45);
+    z-index: 2;
   }
 
-  .commit-group.proposed .promote-banner__icon {
+  .proposed-changes-card .promote-banner__icon {
     width: 14px;
     height: 8px;
     margin: 0;
@@ -175,12 +235,17 @@ $extension-wrapper-gap: 20px;
     animation: promote-banner-pulse 2s ease-in-out infinite;
   }
 
+  @media (prefers-reduced-motion: reduce) {
+    .proposed-changes-card .promote-banner__icon {
+      animation: none;
+    }
+  }
+
   .arrow-separator {
     display: flex;
     align-items: center;
     margin: 10px 0;
     padding-top: 0px;
-    width: 100%;
-    margin-left: 70%;
+    width: $card-width;
   }
 }

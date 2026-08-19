@@ -3,8 +3,6 @@ package utils_test
 import (
 	"context"
 
-	"k8s.io/utils/ptr"
-
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -55,7 +53,7 @@ var _ = Describe("CommitStatusStandardLabels", func() {
 	})
 
 	It("stamps instance-id from settings.ControllerInstanceID when configured", func() {
-		settings.SetControllerInstanceIDForTest(ptr.To("wave-0"))
+		settings.SetControllerInstanceIDForTest(new("wave-0"))
 		parent := &promoterv1alpha1.WebRequestCommitStatus{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "wrcs",
