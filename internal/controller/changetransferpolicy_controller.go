@@ -1189,7 +1189,8 @@ func findMergeCommitOnActiveBranch(ctx context.Context, gitOperations *git.Envir
 	}
 	mergeShaIsLocal := gitOperations.CommitExists(ctx, mergeSha)
 
-	shas, err := gitOperations.GetRevListFirstParent(ctx, "origin/"+activeBranch, mergeCommitSearchWindow)
+	// Fetch one extra commit so findDrySha can tell "saw the whole branch" from "transition before the window".
+	shas, err := gitOperations.GetRevListFirstParent(ctx, "origin/"+activeBranch, mergeCommitSearchWindow+1)
 	if err != nil {
 		return "", fmt.Errorf("failed to get rev-list for branch %q: %w", activeBranch, err)
 	}
@@ -1295,13 +1296,22 @@ func findDrySha(ctx context.Context, gitOperations *git.EnvironmentOperations, s
 			return shas[i-1], nil
 		}
 	}
-	if len(shas) < mergeCommitSearchWindow {
-		// The walk reached the root of the branch with every commit carrying the dry sha; the oldest one is
-		// the promotion that introduced it.
+	if len(shas) < mergeCommitSearchWindow+1 {
+		// Fewer commits than the probe limit: the walk covered the whole branch and every commit carried
+		// the dry sha; the oldest one introduced it.
 		return shas[len(shas)-1], nil
 	}
-	// Every commit in a full window carries the dry sha, so the transition happened before the window and
-	// the oldest entry merely inherits it: the merge commit cannot be identified.
+	// Fetched a full probe window with every commit still matching: the transition is only identifiable
+	// when the oldest commit we saw is the branch root; otherwise it lies before the window.
+	parents, err := gitOperations.GetCommitParents(ctx, shas[len(shas)-1])
+	if err != nil {
+		return "", fmt.Errorf("failed to get parents of commit %q while locating merge commit: %w", shas[len(shas)-1], err)
+	}
+	if len(parents) == 0 {
+		return shas[len(shas)-1], nil
+	}
+	// Every commit in a full probe window carries the dry sha and the oldest has a parent, so the
+	// transition happened before the window and the merge commit cannot be identified.
 	logger.V(4).Info("dry sha transition not visible within the merge commit search window", "drySha", dryProposedSha)
 	return "", nil
 }

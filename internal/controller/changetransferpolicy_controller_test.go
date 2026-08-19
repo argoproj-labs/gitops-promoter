@@ -2561,7 +2561,7 @@ var _ = Describe("findDrySha merge-commit location", func() {
 	revList := func() []string {
 		GinkgoHelper()
 		Expect(gitOps.FetchBranch(ctx, branch)).To(Succeed())
-		shas, err := gitOps.GetRevListFirstParent(ctx, "origin/"+branch, mergeCommitSearchWindow)
+		shas, err := gitOps.GetRevListFirstParent(ctx, "origin/"+branch, mergeCommitSearchWindow+1)
 		Expect(err).NotTo(HaveOccurred())
 		return shas
 	}
@@ -2641,9 +2641,9 @@ var _ = Describe("findDrySha merge-commit location", func() {
 			"reaching the branch root means the oldest commit introduced the dry sha")
 	})
 
-	It("returns empty when the transition is not visible inside a full search window", func() {
-		commitWithDrySha("dry-old", "zero.txt")
-		for i := 0; i < mergeCommitSearchWindow; i++ {
+	It("returns the root commit when exactly mergeCommitSearchWindow commits all carry the dry sha", func() {
+		first := commitWithDrySha("dry-a", "zero.txt")
+		for i := 1; i < mergeCommitSearchWindow; i++ {
 			commitWithDrySha("dry-a", fmt.Sprintf("file-%d.txt", i))
 		}
 		branch = mustRunGit(workDir, "rev-parse", "--abbrev-ref", "HEAD")
@@ -2654,8 +2654,25 @@ var _ = Describe("findDrySha merge-commit location", func() {
 		Expect(shas).To(HaveLen(mergeCommitSearchWindow))
 		got, err := findDrySha(ctx, gitOps, shas, "", "dry-a")
 		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(first),
+			"exactly mergeCommitSearchWindow matching commits means the branch root introduced the dry sha")
+	})
+
+	It("returns empty when the transition is not visible inside a full search window", func() {
+		commitWithDrySha("dry-old", "zero.txt")
+		for i := 0; i < mergeCommitSearchWindow+1; i++ {
+			commitWithDrySha("dry-a", fmt.Sprintf("file-%d.txt", i))
+		}
+		branch = mustRunGit(workDir, "rev-parse", "--abbrev-ref", "HEAD")
+		mustRunGit(workDir, "push", "-u", "origin", branch)
+		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
+
+		shas := revList()
+		Expect(shas).To(HaveLen(mergeCommitSearchWindow + 1))
+		got, err := findDrySha(ctx, gitOps, shas, "", "dry-a")
+		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(BeEmpty(),
-			"a full window of matches is ambiguous: the transition commit is older than the window")
+			"a full probe window of matches with a parent on the oldest commit is ambiguous")
 	})
 
 	It("propagates hydrator metadata read failures instead of treating them as closed-not-merged", func() {
