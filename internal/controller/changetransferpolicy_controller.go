@@ -1491,6 +1491,19 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 		prExists = false
 	}
 
+	// A PullRequest that has actually merged on the SCM (status, not spec — spec.State == merged only records
+	// the intent to merge, and such a PR still needs MergeSha refreshes when the proposed branch moves, e.g.
+	// after conflict resolution) exists only to have its promotion history note written and its finalizer
+	// released. Overwriting its spec here (MergeSha, dry-sha trailers) would point the note-writing logic at a
+	// merge that never happened for this PR, silently losing the history entry. Leave it alone; a new
+	// PullRequest is created once this one is gone.
+	if prExists && (existingPR.Status.State == promoterv1alpha1.PullRequestMerged || !existingPR.DeletionTimestamp.IsZero()) {
+		logger.V(4).Info("Skipping PullRequest apply because the existing PullRequest is merged or terminating",
+			"pullRequest", existingPR.Name, "statusState", existingPR.Status.State,
+			"deletionTimestamp", existingPR.DeletionTimestamp)
+		return existingPR, nil
+	}
+
 	// Build owner reference
 	kind := reflect.TypeFor[promoterv1alpha1.ChangeTransferPolicy]().Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)

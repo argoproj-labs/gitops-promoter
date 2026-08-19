@@ -30,6 +30,7 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -2381,6 +2382,155 @@ var _ = Describe("buildHistoryEntry trailer sources", func() {
 		Expect(include).To(BeTrue())
 		Expect(entry.PullRequest.ID).To(Equal("88"), "the note must win over the commit message trailers")
 		Expect(entry.PullRequest.Url).To(Equal("https://example.com/pr/88"))
+	})
+})
+
+var _ = Describe("createOrUpdatePullRequest with a merged or terminating PullRequest", func() {
+	var name string
+	var scmSecret *v1.Secret
+	var scmProvider *promoterv1alpha1.ScmProvider
+	var gitRepo *promoterv1alpha1.GitRepository
+	var ctp *promoterv1alpha1.ChangeTransferPolicy
+	var pr *promoterv1alpha1.PullRequest
+	var prKey types.NamespacedName
+	var reconciler *ChangeTransferPolicyReconciler
+	var gitPath string
+	var originalMergeSha string
+
+	originalCommitMessage := "original commit message"
+
+	BeforeEach(func() {
+		name, scmSecret, scmProvider, gitRepo, _, ctp = changeTransferPolicyResources(ctx, "ctp-merged-pr-guard", "default")
+
+		ctp.Spec.ProposedBranch = testBranchDevelopmentNext
+		ctp.Spec.ActiveBranch = testBranchDevelopment
+
+		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+
+		// The fake SCM performs a real git merge, so the active branch must exist on the test git server and
+		// spec.mergeSha must be the real head of the proposed branch.
+		var err error
+		gitPath, err = os.MkdirTemp("", "*")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(ctx, gitPath, "clone", testGitRepoCloneURL(gitRepo), ".")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(ctx, gitPath, "checkout", "-b", ctp.Spec.ActiveBranch, "origin/"+ctp.Spec.ProposedBranch)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(ctx, gitPath, "push", "origin", ctp.Spec.ActiveBranch)
+		Expect(err).NotTo(HaveOccurred())
+		originalMergeSha, err = runGitCmd(ctx, gitPath, "rev-parse", "origin/"+ctp.Spec.ProposedBranch)
+		Expect(err).NotTo(HaveOccurred())
+		originalMergeSha = strings.TrimSpace(originalMergeSha)
+
+		// The CTP is deliberately NOT created in the cluster: the method under test is called directly so the
+		// live CTP controller cannot interleave with the exact state this test constructs. Status models the
+		// race: the previous promotion (originalMergeSha) merged, then a NEW dry commit hydrated proposed
+		// before the merged PullRequest finished finalizing. The UID is faked because owner references built
+		// from the CTP must be non-empty for SSA to accept them.
+		ctp.UID = types.UID("11111111-1111-1111-1111-111111111111")
+		ctp.Status.Active.Dry.Sha = strings.Repeat("c", 40)
+		ctp.Status.Proposed.Dry.Sha = strings.Repeat("d", 40)
+		ctp.Status.Proposed.Hydrated.Sha = strings.Repeat("b", 40)
+
+		prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch))
+		prKey = types.NamespacedName{Name: prName, Namespace: "default"}
+		pr = &promoterv1alpha1.PullRequest{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       prName,
+				Namespace:  "default",
+				Finalizers: []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
+			},
+			Spec: promoterv1alpha1.PullRequestSpec{
+				RepositoryReference: promoterv1alpha1.ObjectReference{Name: name},
+				Title:               "previous promotion",
+				TargetBranch:        ctp.Spec.ActiveBranch,
+				SourceBranch:        ctp.Spec.ProposedBranch,
+				Commit:              promoterv1alpha1.CommitConfiguration{Message: originalCommitMessage},
+				MergeSha:            originalMergeSha,
+				State:               promoterv1alpha1.PullRequestOpen,
+			},
+		}
+		Expect(k8sClient.Create(ctx, pr)).To(Succeed())
+
+		// Wait for the live PullRequest controller to open the PR on the fake SCM and populate status.id.
+		Eventually(func(g Gomega) {
+			var livePR promoterv1alpha1.PullRequest
+			g.Expect(k8sClient.Get(ctx, prKey, &livePR)).To(Succeed())
+			g.Expect(livePR.Status.ID).NotTo(BeEmpty())
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		reconciler = &ChangeTransferPolicyReconciler{
+			Client:      k8sClient,
+			Scheme:      k8sClient.Scheme(),
+			SettingsMgr: settings.NewManager(k8sClient, k8sClient, settings.ManagerConfig{ControllerNamespace: "default"}),
+		}
+	})
+
+	AfterEach(func() {
+		// Strip finalizers so the PullRequest can actually go away, then best-effort delete everything.
+		Eventually(func(g Gomega) {
+			var livePR promoterv1alpha1.PullRequest
+			err := k8sClient.Get(ctx, prKey, &livePR)
+			if errors.IsNotFound(err) {
+				return
+			}
+			g.Expect(err).NotTo(HaveOccurred())
+			livePR.Finalizers = nil
+			g.Expect(k8sClient.Update(ctx, &livePR)).To(Succeed())
+			g.Expect(ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, &livePR))).To(Succeed())
+		}, constants.EventuallyTimeout).Should(Succeed())
+		Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+		Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+		Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+		_ = os.RemoveAll(gitPath)
+	})
+
+	// expectSpecUntouched asserts the merged PullRequest kept the spec of the promotion it actually performed,
+	// so the finalizer's note-writing logic still looks for the right merge commit.
+	expectSpecUntouched := func() {
+		GinkgoHelper()
+		var livePR promoterv1alpha1.PullRequest
+		Expect(k8sClient.Get(ctx, prKey, &livePR)).To(Succeed())
+		Expect(livePR.Spec.MergeSha).To(Equal(originalMergeSha))
+		Expect(livePR.Spec.Commit.Message).To(Equal(originalCommitMessage))
+	}
+
+	It("does not overwrite the spec of a merged PullRequest when a newer dry commit is pending", func() {
+		By("Merging the PullRequest for real via the fake SCM")
+		Eventually(func(g Gomega) {
+			var livePR promoterv1alpha1.PullRequest
+			g.Expect(k8sClient.Get(ctx, prKey, &livePR)).To(Succeed())
+			if livePR.Spec.State != promoterv1alpha1.PullRequestMerged {
+				livePR.Spec.State = promoterv1alpha1.PullRequestMerged
+				g.Expect(k8sClient.Update(ctx, &livePR)).To(Succeed())
+			}
+			g.Expect(k8sClient.Get(ctx, prKey, &livePR)).To(Succeed())
+			g.Expect(livePR.Status.State).To(Equal(promoterv1alpha1.PullRequestMerged))
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		returnedPR, err := reconciler.createOrUpdatePullRequest(ctx, ctp)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(returnedPR).NotTo(BeNil())
+		Expect(returnedPR.Name).To(Equal(prKey.Name))
+		expectSpecUntouched()
+	})
+
+	It("does not overwrite the spec of a terminating PullRequest when a newer dry commit is pending", func() {
+		By("Deleting the still-open PullRequest so it is held Terminating by the CTP finalizer")
+		Expect(k8sClient.Delete(ctx, pr)).To(Succeed())
+		Eventually(func(g Gomega) {
+			var livePR promoterv1alpha1.PullRequest
+			g.Expect(k8sClient.Get(ctx, prKey, &livePR)).To(Succeed())
+			g.Expect(livePR.DeletionTimestamp.IsZero()).To(BeFalse())
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		returnedPR, err := reconciler.createOrUpdatePullRequest(ctx, ctp)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(returnedPR).NotTo(BeNil())
+		Expect(returnedPR.Name).To(Equal(prKey.Name))
+		expectSpecUntouched()
 	})
 })
 
