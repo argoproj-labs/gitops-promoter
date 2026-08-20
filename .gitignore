@@ -62,6 +62,7 @@ out/
 *.js.map
 # Allow eslint.config.js files
 !**/eslint.config.js
+!ui/extension/env.d.ts
 
 # Node.js
 node_modules/
