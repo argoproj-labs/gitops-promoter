@@ -45,5 +45,8 @@
   },
   "overrides": {
     "picomatch": "2.3.2"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

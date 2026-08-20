@@ -31,9 +31,20 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
-// PromotionStrategyRefField is the cache field index path for gate CRDs that
-// reference a PromotionStrategy via spec.promotionStrategyRef.name.
-const PromotionStrategyRefField = ".spec.promotionStrategyRef.name"
+const (
+	// PromotionStrategyRefField is the cache field index path for gate CRDs that
+	// reference a PromotionStrategy via spec.promotionStrategyRef.name.
+	PromotionStrategyRefField = ".spec.promotionStrategyRef.name"
+
+	// GitRepositoryRepoKeyField is a virtual field index on GitRepository keyed by
+	// the provider-scoped lowercased "<provider>\x00<owner>\x00<name>" identity
+	// (see utils.GitRepositoryRepoKey and utils.RepoKey).
+	GitRepositoryRepoKeyField = ".metadata.repoKey"
+
+	// GitRepositoryRefField is the cache field index path for PromotionStrategy
+	// resources that reference a GitRepository via spec.gitRepositoryRef.name.
+	GitRepositoryRefField = ".spec.gitRepositoryRef.name"
+)
 
 var (
 	gateCommitStatusKindsOnce sync.Once

@@ -1002,9 +1002,9 @@ export type components = {
             time?: components["schemas"]["Time"];
         };
         /**
-         * @description ModeSpec defines how the WebRequestCommitStatus controller issues HTTP requests.
+         * @description ModeSpec defines how the WebRequestCommitStatus controller issues HTTP requests and optionally accelerates reconciles from inbound SCM webhooks.
          *
-         *     Exactly one of Polling or Trigger must be set.
+         *     Exactly one of Polling or Trigger must be set. Webhook is optional and additive: it does not replace polling or trigger; it filters which inbound webhook deliveries enqueue an immediate reconcile (with polling/trigger as the reliability fallback).
          *
          *     Context (the context field below) controls request fan-out and what data is available in templates and trigger expressions:
          *
@@ -1021,6 +1021,8 @@ export type components = {
             polling?: components["schemas"]["PollingModeSpec"];
             /** @description Trigger enables expression-based triggering mode. The controller will evaluate the expression to determine when to make HTTP requests. */
             trigger?: components["schemas"]["TriggerModeSpec"];
+            /** @description Webhook optionally configures inbound SCM webhook filtering for this WRCS. When set with a filter expression, only matching webhook payloads enqueue a reconcile. When omitted (or filter omitted), any webhook for the referenced repository still enqueues as today. Webhook verification policy is spec.inboundWebhookVerification on the ScmProvider; signing material is webhookSecret on the ScmProvider Secret when spec.inboundWebhookVerification is RequireVerification. */
+            webhook?: components["schemas"]["WebhookModeSpec"];
         };
         /**
          * @description OAuth2Auth defines OAuth2 client credentials authentication.
@@ -1530,6 +1532,8 @@ export type components = {
             github?: components["schemas"]["GitHub"];
             /** @description GitLab required configuration for GitLab as the SCM provider */
             gitlab?: components["schemas"]["GitLab"];
+            /** @description InboundWebhookVerification controls signature verification for inbound SCM webhooks delivered to the promoter webhook receiver for GitRepositories using this provider. RequireVerification needs webhookSecret on the Secret referenced by secretRef. */
+            inboundWebhookVerification?: string;
             /** @description SecretRef contains the credentials required to auth to a specific provider */
             secretRef?: components["schemas"]["LocalObjectReference"];
         };
@@ -1904,6 +1908,19 @@ export type components = {
             observedGeneration?: number;
             /** @description PromotionStrategyContext holds the result of the one HTTP run when context is "promotionstrategy". At most one request is made per WebRequestCommitStatus; phase(s) are reported on each environment's CommitStatus. */
             promotionStrategyContext?: components["schemas"]["WebRequestCommitStatusPromotionStrategyContextStatus"];
+        };
+        /** @description WebhookFilterSpec holds a boolean expr evaluated against the inbound webhook JSON body. */
+        WebhookFilterSpec: {
+            /**
+             * @description Expression is a boolean expr expression. The only binding is Payload, a map decoded from the webhook JSON body (e.g. Payload.context startsWith "ArgoCD/"). Evaluated by the webhook receiver before enqueue; not available to trigger/success expressions.
+             * @default
+             */
+            expression: string;
+        };
+        /** @description WebhookModeSpec configures inbound webhook acceleration for WebRequestCommitStatus. Authentication secrets live on the ScmProvider Secret referenced by the GitRepository; this block only controls optional payload filtering before enqueue. */
+        WebhookModeSpec: {
+            /** @description Filter optionally discards inbound payloads before enqueueing a reconcile. */
+            filter?: components["schemas"]["WebhookFilterSpec"];
         };
         /** @description WhenWithOutputSpec holds a when condition (boolean expression) and optional output (map expression). */
         WhenWithOutputSpec: {
