@@ -426,38 +426,6 @@ func (wr *WebhookReceiver) getMaxPendingRetries() int {
 	return maxPendingMissRetries
 }
 
-// tryLookupAndEnqueue performs a single hydrated-SHA lookup and enqueues the matching
-// ChangeTransferPolicy when exactly one is found. via distinguishes the synchronous webhook
-// path from the deferred retry path in logs. found reports whether a CTP was enqueued;
-// retryable reports whether a later attempt could still succeed (no match yet, or a
-// transient list failure). err is non-nil only for terminal outcomes.
-func (wr *WebhookReceiver) tryLookupAndEnqueue(ctx context.Context, sha, ref, via string) (found, retryable bool, err error) {
-	logger := log.FromContext(ctx)
-	ctp, outcome, lookupErr := wr.lookupCTPByHydratedSHA(ctx, sha, ref)
-	switch outcome {
-	case ctpLookupFound:
-		if ctp == nil {
-			// Defensive: lookupCTPByHydratedSHA should never return Found with a nil CTP.
-			return false, false, errors.New("CTP lookup reported found but returned nil")
-		}
-		if wr.enqueueCTP != nil {
-			wr.enqueueCTP(ctp.Namespace, ctp.Name)
-		}
-		logger.Info("Triggered reconcile of ChangeTransferPolicy via "+via, "namespace", ctp.Namespace, "name", ctp.Name)
-		return true, false, nil
-	case ctpLookupNotFound:
-		return false, true, nil
-	case ctpLookupListError:
-		// Transient API/index failures: a retry may succeed.
-		logger.V(4).Info("transient CTP lookup failure", "error", lookupErr)
-		return false, true, nil
-	case ctpLookupTooManyMatches:
-		return false, false, fmt.Errorf("too many changetransferpolicies found for sha: %s, ref: %s", sha, ref)
-	default:
-		return false, false, fmt.Errorf("unexpected CTP lookup outcome: %v", outcome)
-	}
-}
-
 // ctpLookupOutcome is the result of a hydrated-SHA field-index lookup.
 type ctpLookupOutcome int
 

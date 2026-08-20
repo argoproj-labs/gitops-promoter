@@ -96,7 +96,6 @@ func (wr *WebhookReceiver) verifyInboundWebhook(ctx context.Context, provider, o
 }
 
 func (wr *WebhookReceiver) collectGitRepositoriesForVerification(ctx context.Context, provider, owner, name string, ctp *promoterv1alpha1.ChangeTransferPolicy) ([]promoterv1alpha1.GitRepository, error) {
-	logger := log.FromContext(ctx)
 	seen := map[string]struct{}{}
 	var repos []promoterv1alpha1.GitRepository
 
@@ -123,24 +122,33 @@ func (wr *WebhookReceiver) collectGitRepositoriesForVerification(ctx context.Con
 		}
 	}
 
-	if ctp != nil && ctp.Spec.RepositoryReference.Name != "" {
-		gr, err := utils.GetGitRepositoryFromObjectKey(ctx, wr.k8sClient, client.ObjectKey{
-			Namespace: ctp.Namespace,
-			Name:      ctp.Spec.RepositoryReference.Name,
-		})
-		if err != nil {
-			if client.IgnoreNotFound(err) == nil {
-				logger.V(4).Info("CTP gitRepositoryRef not found for webhook verification",
-					"namespace", ctp.Namespace, "name", ctp.Spec.RepositoryReference.Name)
-			} else {
-				return nil, fmt.Errorf("get GitRepository for CTP webhook verification: %w", err)
-			}
-		} else {
-			add(gr)
-		}
+	gr, err := wr.gitRepositoryFromCTP(ctx, ctp)
+	if err != nil {
+		return nil, err
 	}
+	add(gr)
 
 	return repos, nil
+}
+
+func (wr *WebhookReceiver) gitRepositoryFromCTP(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) (*promoterv1alpha1.GitRepository, error) {
+	if ctp == nil || ctp.Spec.RepositoryReference.Name == "" {
+		return nil, nil
+	}
+	logger := log.FromContext(ctx)
+	gr, err := utils.GetGitRepositoryFromObjectKey(ctx, wr.k8sClient, client.ObjectKey{
+		Namespace: ctp.Namespace,
+		Name:      ctp.Spec.RepositoryReference.Name,
+	})
+	if err == nil {
+		return gr, nil
+	}
+	if client.IgnoreNotFound(err) != nil {
+		return nil, fmt.Errorf("get GitRepository for CTP webhook verification: %w", err)
+	}
+	logger.V(4).Info("CTP gitRepositoryRef not found for webhook verification",
+		"namespace", ctp.Namespace, "name", ctp.Spec.RepositoryReference.Name)
+	return nil, nil
 }
 
 func cloneHeader(h http.Header) http.Header {

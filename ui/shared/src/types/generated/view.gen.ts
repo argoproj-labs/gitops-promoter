@@ -1021,7 +1021,7 @@ export type components = {
             polling?: components["schemas"]["PollingModeSpec"];
             /** @description Trigger enables expression-based triggering mode. The controller will evaluate the expression to determine when to make HTTP requests. */
             trigger?: components["schemas"]["TriggerModeSpec"];
-            /** @description Webhook optionally configures inbound SCM webhook filtering for this WRCS. When set with a filter expression, only matching webhook payloads enqueue a reconcile. When omitted (or filter omitted), any webhook for the referenced repository still enqueues as today. Webhook secret verification uses keys on the ScmProvider Secret (webhookSecret, webhookSignatureHeader), not fields on this CR. */
+            /** @description Webhook optionally configures inbound SCM webhook filtering for this WRCS. When set with a filter expression, only matching webhook payloads enqueue a reconcile. When omitted (or filter omitted), any webhook for the referenced repository still enqueues as today. Webhook verification policy is spec.inboundWebhookVerification on the ScmProvider; signing material is webhookSecret on the ScmProvider Secret when spec.inboundWebhookVerification is RequireVerification. */
             webhook?: components["schemas"]["WebhookModeSpec"];
         };
         /**
@@ -1532,6 +1532,8 @@ export type components = {
             github?: components["schemas"]["GitHub"];
             /** @description GitLab required configuration for GitLab as the SCM provider */
             gitlab?: components["schemas"]["GitLab"];
+            /** @description InboundWebhookVerification controls signature verification for inbound SCM webhooks delivered to the promoter webhook receiver for GitRepositories using this provider. RequireVerification needs webhookSecret on the Secret referenced by secretRef. */
+            inboundWebhookVerification?: string;
             /** @description SecretRef contains the credentials required to auth to a specific provider */
             secretRef?: components["schemas"]["LocalObjectReference"];
         };
