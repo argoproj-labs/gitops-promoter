@@ -61,5 +61,5 @@ commit status protections, since each change is uniquely identified by a single 
 
 This mode would require GitOps Promoter to maintain historical data about past commits' success/failure so that gates
 can be applied potentially much later when higher environments' tags are advanced to newer commits. But the storage
-problem should be solveable in a way that is transparent to the user. Keep an eye on the [roadmap](roadmap.md) for
+problem should be solvable in a way that is transparent to the user. Keep an eye on the [roadmap](roadmap.md) for
 updates about the progress of this approach.

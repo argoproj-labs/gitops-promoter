@@ -41,7 +41,7 @@ nav:
   - Architecture: architecture.md
   - Getting Started: getting-started.md
   - Structuring Your Repos: structuring-your-repos.md
-      - Structuring Your Changes: structuring-your-changes.md
+  - Structuring Your Changes: structuring-your-changes.md
   - Gating Promotions:
       - Overview: gating-promotions/index.md
       - Built-In Gates:
