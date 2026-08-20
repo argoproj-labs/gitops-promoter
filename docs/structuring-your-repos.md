@@ -16,6 +16,21 @@ workflow, not the user authoring workflow.
 This does **not** conflict with the "don't manually manage branch-per-environment content" best practice: users only
 author in one DRY branch, while environment branches are machine-managed read interfaces.
 
+### Structuring Environments
+
+GitOps Promoter is not opinionated about how environments are represented within the DRY branch, just as long as all
+relevant environments are represented. Typical setups, especially those taking advantage of Argo CD's built-in source
+hydrator, could involve directory-based overlays for Kustomize or base- and override-values files for Helm.
+
+### How to Make Changes Across Environments
+
+The best way to make changes is to make a single commit to the DRY branch applying the same change to all applicable
+environments. This fits best with how GitOps Promoter applies gating based on lower environments' active commit 
+statuses.
+
+However, this technique doesn't work perfectly for all use cases. See 
+[structuring your changes](structuring-your-changes.md) to understand how to accommodate different use cases.
+
 ## Read Interface: Environment Branches
 
 Environment and proposed branches are read-only operational outputs. Use them to inspect what is deployed or about to be
