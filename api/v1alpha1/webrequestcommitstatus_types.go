@@ -118,9 +118,9 @@ type WebRequestCommitStatusSpec struct {
 //
 // Context (the context field below) controls request fan-out and what data is available in templates and trigger expressions:
 //
-//   - "environments" (default): one HTTP request per environment; each environment has its own phase and status; success.when.expression is evaluated per response and must return a boolean (true → success, false → pending; failure is not expressible).
+//   - "environments" (default): one HTTP request per environment; each environment has its own phase and status; success.when.expression is evaluated per response and returns the phase for that one environment — see SuccessSpec for the boolean and object return shapes.
 //
-//   - "promotionstrategy": at most one HTTP request per WebRequestCommitStatus resource; CommitStatuses remain one per environment on each environment's reportOn SHA. success.when.expression runs once on that shared response — see WhenWithOutputSpec.Expression for boolean vs per-branch object return shapes.
+//   - "promotionstrategy": at most one HTTP request per WebRequestCommitStatus resource; CommitStatuses remain one per environment on each environment's reportOn SHA. success.when.expression runs once on that shared response — see SuccessSpec for boolean vs per-branch object return shapes.
 //
 // When context is "promotionstrategy", Branch is empty for the shared HTTP request and trigger expressions. Use PromotionStrategy (e.g. status environments) for branch-specific values. For description and url templates, {{ .Branch }} and {{ .Phase }} are set per environment when rendering that environment's CommitStatus.
 //
@@ -152,9 +152,31 @@ type PollingModeSpec struct {
 	Interval metav1.Duration `json:"interval,omitempty"`
 }
 
-// SuccessSpec defines when the commit status phase is success.
+// SuccessSpec defines the phase reported on the CommitStatus.
+//
+// When.Expression is evaluated every reconcile (whether or not an HTTP request was made). Its variables are
+// documented on WhenWithOutputSpec.Expression, plus Response (nil when no request was made this reconcile).
+// The accepted return values depend on spec.mode.context:
+//
+//   - "environments" (default): a boolean (true → success, false → pending), or an object { phase } where phase
+//     is "success", "pending", or "failure". An omitted or empty phase means "pending". Each evaluation is
+//     already scoped to one environment, so the per-branch keys below are rejected in this context.
+//
+//   - "promotionstrategy": a boolean (all applicable environments get success or pending), or an object
+//     { defaultPhase?, environments? } where environments is a list of { branch, phase }. Branches not listed
+//     (or all of them, when environments is omitted or empty) get defaultPhase, which is "pending" when omitted.
+//
+// Any other return type, or an unrecognized phase string, fails the reconcile.
+//
+// Examples:
+//
+//	# environments context: fail fast on a 5xx instead of waiting for a timeout
+//	- "Response == nil ? Phase == 'success' : (Response.StatusCode >= 500 ? {phase: 'failure'} : Response.StatusCode == 200)"
+//
+//	# promotionstrategy context: map a batch payload to per-branch phases
+//	- "{ defaultPhase: 'pending', environments: map(Response.Body.results, {{branch: .env, phase: .state}}) }"
 type SuccessSpec struct {
-	// When is evaluated every reconcile. See WhenWithOutputSpec.Expression.
+	// When is evaluated every reconcile. See SuccessSpec for return values and WhenWithOutputSpec.Expression for variables.
 	// +required
 	When WhenWithOutputSpec `json:"when"`
 }
@@ -522,7 +544,8 @@ type WebRequestCommitStatusEnvironmentStatus struct {
 	LastSuccessfulSha string `json:"lastSuccessfulSha,omitempty"`
 
 	// Phase represents the current phase of the validation.
-	// This controller sets only "pending" or "success"; it never sets "failure" (failure is allowed by the enum for API consistency).
+	// A boolean success expression yields only "pending" or "success"; "failure" requires the { phase } object
+	// return form documented on SuccessSpec.
 	// +kubebuilder:validation:Enum=pending;success;failure
 	// +required
 	Phase CommitStatusPhase `json:"phase"`

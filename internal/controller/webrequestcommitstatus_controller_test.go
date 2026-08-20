@@ -540,6 +540,96 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
+	Describe("Polling Mode - Failure Phase (environments context)", func() {
+		var webRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
+
+		BeforeEach(func() {
+			By("Creating a test HTTP server that returns 503")
+			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"status": "rejected",
+				})
+			}))
+
+			By("Creating a WebRequestCommitStatus whose success expression returns a { phase } object")
+			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-polling-phase-failure",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key:      "external-approval",
+					ReportOn: constants.CommitRefProposed,
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate:    testServer.URL + "/validate",
+						MethodTemplate: "GET",
+						Timeout:        metav1.Duration{Duration: 10 * time.Second},
+					},
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenWithOutputSpec{
+							Expression: `Response == nil ? { phase: Phase } : (Response.StatusCode >= 500 ? { phase: "failure" } : { phase: Response.StatusCode == 200 ? "success" : "pending" })`,
+						},
+					},
+					Mode: promoterv1alpha1.ModeSpec{
+						Polling: &promoterv1alpha1.PollingModeSpec{
+							Interval: metav1.Duration{Duration: 30 * time.Second},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			By("Cleaning up WebRequestCommitStatus")
+			if testServer != nil {
+				testServer.Close()
+			}
+			_ = k8sClient.Delete(ctx, webRequestCommitStatus)
+		})
+
+		It("should report failure phase when the success expression returns { phase: failure }", func() {
+			By("Waiting for WebRequestCommitStatus to process environments")
+			Eventually(func(g Gomega) {
+				var wrcs promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name + "-polling-phase-failure",
+					Namespace: "default",
+				}, &wrcs)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+
+				var devEnvStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
+				for i := range wrcs.Status.Environments {
+					if wrcs.Status.Environments[i].Branch == testBranchDevelopment {
+						devEnvStatus = &wrcs.Status.Environments[i]
+						break
+					}
+				}
+				g.Expect(devEnvStatus).ToNot(BeNil(), "Dev environment status should exist")
+				g.Expect(devEnvStatus.Phase).To(Equal(promoterv1alpha1.CommitPhaseFailure))
+				g.Expect(devEnvStatus.LastSuccessfulSha).To(BeEmpty(), "a failed environment must not record a successful SHA")
+				g.Expect(devEnvStatus.LastResponseStatusCode).ToNot(BeNil())
+				g.Expect(*devEnvStatus.LastResponseStatusCode).To(Equal(503))
+
+				By("Verifying the CommitStatus carries the failure phase")
+				commitStatusName := utils.CommitStatusResourceName(ctx, &wrcs, testBranchDevelopment)
+				var cs promoterv1alpha1.CommitStatus
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      commitStatusName,
+					Namespace: "default",
+				}, &cs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseFailure))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
 
 	Describe("Polling Mode - Interval Short-Circuit", func() {
 		var (
