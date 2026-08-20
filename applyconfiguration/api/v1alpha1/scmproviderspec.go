@@ -29,6 +29,10 @@ import (
 type ScmProviderSpecApplyConfiguration struct {
 	// SecretRef contains the credentials required to auth to a specific provider
 	SecretRef *v1.LocalObjectReference `json:"secretRef,omitempty"`
+	// InboundWebhookVerification controls signature verification for inbound SCM webhooks
+	// delivered to the promoter webhook receiver for GitRepositories using this provider.
+	// VerificationRequired needs webhookSecret on the Secret referenced by secretRef.
+	InboundWebhookVerification *apiv1alpha1.InboundWebhookVerificationMode `json:"inboundWebhookVerification,omitempty"`
 	// GitHub required configuration for GitHub as the SCM provider
 	GitHub *GitHubApplyConfiguration `json:"github,omitempty"`
 	// GitLab required configuration for GitLab as the SCM provider
@@ -56,6 +60,14 @@ func ScmProviderSpec() *ScmProviderSpecApplyConfiguration {
 // If called multiple times, the SecretRef field is set to the value of the last call.
 func (b *ScmProviderSpecApplyConfiguration) WithSecretRef(value v1.LocalObjectReference) *ScmProviderSpecApplyConfiguration {
 	b.SecretRef = &value
+	return b
+}
+
+// WithInboundWebhookVerification sets the InboundWebhookVerification field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the InboundWebhookVerification field is set to the value of the last call.
+func (b *ScmProviderSpecApplyConfiguration) WithInboundWebhookVerification(value apiv1alpha1.InboundWebhookVerificationMode) *ScmProviderSpecApplyConfiguration {
+	b.InboundWebhookVerification = &value
 	return b
 }
 

@@ -89,12 +89,12 @@ When `mode.webhook` is omitted, or the filter is omitted, any webhook for the re
 
 **Webhook secrets** are not fields on the WRCS. Put them on the **ScmProvider Secret** already referenced by `ScmProvider.spec.secretRef` / `ClusterScmProvider.spec.secretRef`:
 
-| Secret key | Required | Meaning |
-|------------|----------|---------|
-| `webhookSecret` | to enable verification | Shared secret / HMAC key |
+| Secret key | Required when `VerificationRequired` | Meaning |
+|------------|----------------------------------------|---------|
+| `webhookSecret` | yes | Shared secret / HMAC key |
 | `webhookSignatureHeader` | no | Header that carries the signature or token. Defaults to `X-Hub-Signature-256` (GitHub-style) or `X-Gitlab-Token` (GitLab) |
 
-When at least one ScmProvider Secret for the webhook’s repository has `webhookSecret` set, the receiver requires a valid signature (or shared token) before enqueueing WRCS or ChangeTransferPolicy work. Values with a `sha256=` prefix are verified as HMAC-SHA256 of the raw body; other values are compared as a shared token (constant-time). If no matching Secret configures `webhookSecret`, verification is skipped for backward compatibility. Deliveries without a parseable repository identity cannot be verified or fan out to WRCS; when any `webhookSecret` is configured they are rejected with **401** so CTP is not enqueued either. See [Webhook receiver hardening](../../../security.md#webhook-receiver-hardening).
+Set **`ScmProvider.spec.inboundWebhookVerification: VerificationRequired`** (or the same field on `ClusterScmProvider`) to require signature verification for GitRepositories using that provider. With `NoVerification` (default), inbound webhooks are accepted without signature checks even if `webhookSecret` is present. Values with a `sha256=` prefix are verified as HMAC-SHA256 of the raw body; other values are compared as a shared token (constant-time). Push webhooks for ChangeTransferPolicy can be verified via the CTP's `gitRepositoryRef` when the hydrated SHA matches, even without repository identity in the payload. See [Webhook receiver hardening](../../../security.md#webhook-receiver-hardening).
 
 ### Shared trigger and success expr (`when.variables`)
 

@@ -163,7 +163,6 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.WebRequestCommitStatusStatus{}.OpenAPIModelName():                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusStatus(ref),
 		apiv1alpha1.WebhookFilterSpec{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebhookFilterSpec(ref),
 		apiv1alpha1.WebhookModeSpec{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebhookModeSpec(ref),
-		apiv1alpha1.WebhookReceiverConfiguration{}.OpenAPIModelName():                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebhookReceiverConfiguration(ref),
 		apiv1alpha1.WhenWithOutputSpec{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_WhenWithOutputSpec(ref),
 		apiv1alpha1.WindowStatus{}.OpenAPIModelName():                                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_WindowStatus(ref),
 		apiv1alpha1.WorkQueue{}.OpenAPIModelName():                                            schema_argoproj_labs_gitops_promoter_api_v1alpha1_WorkQueue(ref),
@@ -2094,19 +2093,12 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSp
 							Ref:         ref(apiv1alpha1.ScheduledCommitStatusConfiguration{}.OpenAPIModelName()),
 						},
 					},
-					"webhookReceiver": {
-						SchemaProps: spec.SchemaProps{
-							Description: "WebhookReceiver contains configuration for the inbound SCM webhook receiver (signature verification and related fail-closed behavior).",
-							Default:     map[string]interface{}{},
-							Ref:         ref(apiv1alpha1.WebhookReceiverConfiguration{}.OpenAPIModelName()),
-						},
-					},
 				},
-				Required: []string{"promotionStrategy", "changeTransferPolicy", "pullRequest", "commitStatus", "argocdCommitStatus", "timedCommitStatus", "gitCommitStatus", "webRequestCommitStatus", "scheduledCommitStatus", "webhookReceiver"},
+				Required: []string{"promotionStrategy", "changeTransferPolicy", "pullRequest", "commitStatus", "argocdCommitStatus", "timedCommitStatus", "gitCommitStatus", "webRequestCommitStatus", "scheduledCommitStatus"},
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.ArgoCDCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyConfiguration{}.OpenAPIModelName(), apiv1alpha1.CommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategyConfiguration{}.OpenAPIModelName(), apiv1alpha1.PullRequestConfiguration{}.OpenAPIModelName(), apiv1alpha1.ScheduledCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.WebhookReceiverConfiguration{}.OpenAPIModelName()},
+			apiv1alpha1.ArgoCDCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyConfiguration{}.OpenAPIModelName(), apiv1alpha1.CommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategyConfiguration{}.OpenAPIModelName(), apiv1alpha1.PullRequestConfiguration{}.OpenAPIModelName(), apiv1alpha1.ScheduledCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName()},
 	}
 }
 
@@ -3477,7 +3469,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ModeSpec(ref common.Refer
 					},
 					"webhook": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Webhook optionally configures inbound SCM webhook filtering for this WRCS. When set with a filter expression, only matching webhook payloads enqueue a reconcile. When omitted (or filter omitted), any webhook for the referenced repository still enqueues as today. Webhook secret verification uses keys on the ScmProvider Secret (webhookSecret, webhookSignatureHeader), not fields on this CR.",
+							Description: "Webhook optionally configures inbound SCM webhook filtering for this WRCS. When set with a filter expression, only matching webhook payloads enqueue a reconcile. When omitted (or filter omitted), any webhook for the referenced repository still enqueues as today. Webhook verification policy is spec.inboundWebhookVerification on the ScmProvider; signing material is webhookSecret on the ScmProvider Secret.",
 							Ref:         ref(apiv1alpha1.WebhookModeSpec{}.OpenAPIModelName()),
 						},
 					},
@@ -5132,6 +5124,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderSpec(ref commo
 							Ref:         ref(v1.LocalObjectReference{}.OpenAPIModelName()),
 						},
 					},
+					"inboundWebhookVerification": {
+						SchemaProps: spec.SchemaProps{
+							Description: "InboundWebhookVerification controls signature verification for inbound SCM webhooks delivered to the promoter webhook receiver for GitRepositories using this provider. VerificationRequired needs webhookSecret on the Secret referenced by secretRef.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 					"github": {
 						SchemaProps: spec.SchemaProps{
 							Description: "GitHub required configuration for GitHub as the SCM provider",
@@ -6207,28 +6206,6 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebhookModeSpec(ref commo
 		},
 		Dependencies: []string{
 			apiv1alpha1.WebhookFilterSpec{}.OpenAPIModelName()},
-	}
-}
-
-func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebhookReceiverConfiguration(ref common.ReferenceCallback) common.OpenAPIDefinition {
-	return common.OpenAPIDefinition{
-		Schema: spec.Schema{
-			SchemaProps: spec.SchemaProps{
-				Description: "WebhookReceiverConfiguration defines configuration for the inbound SCM webhook receiver.\n\nThese settings control fail-closed behavior around signature verification when a matching GitRepository or ScmProvider Secret cannot be resolved.",
-				Type:        []string{"object"},
-				Properties: map[string]spec.Schema{
-					"strict": {
-						SchemaProps: spec.SchemaProps{
-							Description: "Strict controls fail-closed behavior for webhook signature verification. When false (default), verification is per matching ScmProvider: providers whose Secret configures webhookSecret must pass signature checks; providers without webhookSecret, unresolvable Secrets, and missing matching GitRepositories are skipped so the delivery may still be processed. When true, missing repository identity, missing matching GitRepository, unresolvable ScmProvider Secret, or absence of webhookSecret on matching Secrets rejects the delivery instead of processing it unverified.",
-							Default:     false,
-							Type:        []string{"boolean"},
-							Format:      "",
-						},
-					},
-				},
-				Required: []string{"strict"},
-			},
-		},
 	}
 }
 

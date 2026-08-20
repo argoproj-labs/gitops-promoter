@@ -184,6 +184,12 @@ func newCTP(name string) *promoterv1alpha1.ChangeTransferPolicy {
 	}
 }
 
+func newCTPWithRepo(name, gitRepoName string) *promoterv1alpha1.ChangeTransferPolicy {
+	ctp := newCTP(name)
+	ctp.Spec.RepositoryReference = promoterv1alpha1.ObjectReference{Name: gitRepoName}
+	return ctp
+}
+
 func newGitRepo(name, owner, repoName string) *promoterv1alpha1.GitRepository {
 	return &promoterv1alpha1.GitRepository{
 		ObjectMeta: metav1.ObjectMeta{
@@ -431,6 +437,10 @@ func newScmProviderWithSecret(scmName, secretName string, secretData map[string]
 	return scm, secret
 }
 
+func scmVerificationRequired(scm *promoterv1alpha1.ScmProvider) {
+	scm.Spec.InboundWebhookVerification = promoterv1alpha1.InboundWebhookVerificationVerificationRequired
+}
+
 func newGitRepoWithScm(name, scmName string) *promoterv1alpha1.GitRepository {
 	gr := newGitRepo(name, testRepoOwner, testRepoName)
 	gr.Spec.ScmProviderRef = promoterv1alpha1.ScmProviderObjectReference{
@@ -456,9 +466,10 @@ func postGitHubWithHeaders(wr *WebhookReceiver, body []byte, extraHeaders map[st
 var _ = Describe("WebhookReceiver signature verification", func() {
 	const webhookSecretValue = "whsec_test_secret"
 
-	It("accepts when no webhookSecret is configured (backward compatible)", func() {
+	It("accepts when ScmProvider uses NoVerification even if webhookSecret is present", func() {
 		scm, secret := newScmProviderWithSecret("scm-nosig", "sec-nosig", map[string][]byte{
 			"token": []byte("scm-token"),
+			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: []byte(webhookSecretValue),
 		})
 		gitRepo := newGitRepoWithScm("gr-nosig", scm.Name)
 		ps := newPS("ps-nosig", gitRepo.Name)
@@ -477,11 +488,12 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 		Eventually(func() int { return wrcsEnqueues.count() }, time.Second, 10*time.Millisecond).Should(Equal(1))
 	})
 
-	It("rejects with 401 when webhookSecret is set but signature is missing", func() {
+	It("rejects with 401 when VerificationRequired and signature is missing", func() {
 		scm, secret := newScmProviderWithSecret("scm-miss", "sec-miss", map[string][]byte{
 			"token": []byte("scm-token"),
 			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: []byte(webhookSecretValue),
 		})
+		scmVerificationRequired(scm)
 		gitRepo := newGitRepoWithScm("gr-miss", scm.Name)
 		ps := newPS("ps-miss", gitRepo.Name)
 		wrcs := newWRCS("wrcs-miss", ps.Name)
@@ -502,10 +514,11 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 		Expect(wrcsEnqueues.count()).To(Equal(0))
 	})
 
-	It("rejects with 401 when signature is invalid", func() {
+	It("rejects with 401 when VerificationRequired and signature is invalid", func() {
 		scm, secret := newScmProviderWithSecret("scm-bad", "sec-bad", map[string][]byte{
 			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: []byte(webhookSecretValue),
 		})
+		scmVerificationRequired(scm)
 		gitRepo := newGitRepoWithScm("gr-bad", scm.Name)
 		ps := newPS("ps-bad", gitRepo.Name)
 		wrcs := newWRCS("wrcs-bad", ps.Name)
@@ -525,10 +538,11 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 		Expect(wrcsEnqueues.count()).To(Equal(0))
 	})
 
-	It("accepts and enqueues when signature is valid", func() {
+	It("accepts and enqueues when VerificationRequired and signature is valid", func() {
 		scm, secret := newScmProviderWithSecret("scm-ok", "sec-ok", map[string][]byte{
 			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: []byte(webhookSecretValue),
 		})
+		scmVerificationRequired(scm)
 		gitRepo := newGitRepoWithScm("gr-ok", scm.Name)
 		ps := newPS("ps-ok", gitRepo.Name)
 		wrcs := newWRCS("wrcs-ok", ps.Name)
@@ -548,14 +562,15 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 		Eventually(func() int { return wrcsEnqueues.count() }, time.Second, 10*time.Millisecond).Should(Equal(1))
 	})
 
-	It("accepts when ScmProvider Secret cannot be resolved in non-strict mode", func() {
+	It("returns 500 when VerificationRequired but ScmProvider Secret cannot be resolved", func() {
 		scm, _ := newScmProviderWithSecret("scm-missing-sec", "sec-missing", map[string][]byte{
 			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: []byte(webhookSecretValue),
 		})
+		scmVerificationRequired(scm)
 		gitRepo := newGitRepoWithScm("gr-missing-sec", scm.Name)
 		ps := newPS("ps-missing-sec", gitRepo.Name)
 		wrcs := newWRCS("wrcs-missing-sec", ps.Name)
-		ctp := newCTP("ctp-missing-sec")
+		ctp := newCTPWithRepo("ctp-missing-sec", gitRepo.Name)
 
 		ctpEnqueues := &enqueueRecorder{}
 		wrcsEnqueues := &enqueueRecorder{}
@@ -567,23 +582,23 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 			controllerNamespace: testNamespace,
 		}
 
-		// Push with repo identity so verification runs; unresolved Secret is skipped in non-strict.
 		rec := postGitHubPush(wr, testShaA, testRepoOwner, testRepoName)
-		Expect(rec.Code).To(Equal(http.StatusNoContent))
-		Expect(ctpEnqueues.count()).To(Equal(1))
-		Eventually(func() int { return wrcsEnqueues.count() }, time.Second, 10*time.Millisecond).Should(Equal(1))
+		Expect(rec.Code).To(Equal(http.StatusInternalServerError))
+		Expect(ctpEnqueues.count()).To(Equal(0))
+		Expect(wrcsEnqueues.count()).To(Equal(0))
 	})
 
-	It("accepts when one matching GitRepository has no webhookSecret and another fails to resolve", func() {
+	It("accepts when VerificationRequired GitRepository coexists with NoVerification GitRepository for same repo key", func() {
 		scmOK, secretOK := newScmProviderWithSecret("scm-partial-ok", "sec-partial-ok", map[string][]byte{
 			"token": []byte("scm-token"),
 		})
 		scmMissing, _ := newScmProviderWithSecret("scm-partial-missing", "sec-partial-missing", map[string][]byte{
 			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: []byte(webhookSecretValue),
 		})
+		scmVerificationRequired(scmMissing)
 		gitRepoOK := newGitRepoWithScm("gr-partial-ok", scmOK.Name)
 		gitRepoMissing := newGitRepoWithScm("gr-partial-missing", scmMissing.Name)
-		ctp := newCTP("ctp-partial")
+		ctp := newCTPWithRepo("ctp-partial", gitRepoOK.Name)
 
 		ctpEnqueues := &enqueueRecorder{}
 		wrcsEnqueues := &enqueueRecorder{}
@@ -595,16 +610,16 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 		}
 
 		rec := postGitHubPush(wr, testShaA, testRepoOwner, testRepoName)
-		Expect(rec.Code).To(Equal(http.StatusNoContent))
-		Expect(ctpEnqueues.count()).To(Equal(1))
+		Expect(rec.Code).To(Equal(http.StatusInternalServerError))
+		Expect(ctpEnqueues.count()).To(Equal(0))
 	})
 
-	It("allows CTP enqueue without repository identity in non-strict mode even when unrelated ScmProviders have webhookSecret", func() {
+	It("allows CTP enqueue without repository identity when ScmProvider is NoVerification", func() {
 		scm, secret := newScmProviderWithSecret("scm-noid", "sec-noid", map[string][]byte{
 			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: []byte(webhookSecretValue),
 		})
-		ctp := newCTP("ctp-noid")
 		gitRepo := newGitRepoWithScm("gr-noid", scm.Name)
+		ctp := newCTPWithRepo("ctp-noid", gitRepo.Name)
 
 		ctpEnqueues := &enqueueRecorder{}
 		wrcsEnqueues := &enqueueRecorder{}
@@ -615,14 +630,13 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 			controllerNamespace: testNamespace,
 		}
 
-		// No repository identity: non-strict skips verification and still processes CTP by SHA.
 		rec := postGitHubPush(wr, testShaA, "", "")
 		Expect(rec.Code).To(Equal(http.StatusNoContent))
 		Expect(ctpEnqueues.count()).To(Equal(1))
 		Expect(wrcsEnqueues.count()).To(Equal(0))
 	})
 
-	It("allows CTP enqueue without repository identity when no webhookSecret is configured", func() {
+	It("allows CTP enqueue without repository identity when no ScmProvider is configured", func() {
 		ctp := newCTP("ctp-noid-compat")
 		ctpEnqueues := &enqueueRecorder{}
 		wrcsEnqueues := &enqueueRecorder{}
@@ -639,82 +653,22 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 	})
 })
 
-var _ = Describe("WebhookReceiver strict mode", func() {
-	strictTrue := true
+var _ = Describe("WebhookReceiver VerificationRequired via CTP gitRepositoryRef", func() {
+	const webhookSecretValue = "whsec_ctp_ref"
 
-	It("rejects when no matching GitRepository is found", func() {
-		ctpEnqueues := &enqueueRecorder{}
-		wrcsEnqueues := &enqueueRecorder{}
-		wr := &WebhookReceiver{
-			k8sClient:           newFakeClient(),
-			enqueueCTP:          ctpEnqueues.enqueue,
-			enqueueWRCS:         wrcsEnqueues.enqueue,
-			controllerNamespace: testNamespace,
-			strictOverride:      &strictTrue,
-		}
-
-		body := githubStatusPayload()
-		rec := postGitHubWithHeaders(wr, body, nil)
-		Expect(rec.Code).To(Equal(http.StatusUnauthorized))
-		Expect(ctpEnqueues.count()).To(Equal(0))
-		Expect(wrcsEnqueues.count()).To(Equal(0))
-	})
-
-	It("rejects when ScmProvider Secret cannot be resolved", func() {
-		scm, _ := newScmProviderWithSecret("scm-strict-miss", "sec-strict-miss", map[string][]byte{
-			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: []byte("whsec"),
+	It("rejects push without repository identity when CTP ScmProvider is VerificationRequired and signature is missing", func() {
+		scm, secret := newScmProviderWithSecret("scm-ctp-noid", "sec-ctp-noid", map[string][]byte{
+			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: []byte(webhookSecretValue),
 		})
-		gitRepo := newGitRepoWithScm("gr-strict-miss", scm.Name)
+		scmVerificationRequired(scm)
+		gitRepo := newGitRepoWithScm("gr-ctp-noid", scm.Name)
+		ctp := newCTPWithRepo("ctp-ctp-noid", gitRepo.Name)
 
 		ctpEnqueues := &enqueueRecorder{}
-		wrcsEnqueues := &enqueueRecorder{}
 		wr := &WebhookReceiver{
-			k8sClient:           newFakeClient(scm, gitRepo),
+			k8sClient:           newFakeClient(scm, secret, gitRepo, ctp),
 			enqueueCTP:          ctpEnqueues.enqueue,
-			enqueueWRCS:         wrcsEnqueues.enqueue,
 			controllerNamespace: testNamespace,
-			strictOverride:      &strictTrue,
-		}
-
-		body := githubStatusPayload()
-		rec := postGitHubWithHeaders(wr, body, nil)
-		Expect(rec.Code).To(Equal(http.StatusInternalServerError))
-		Expect(ctpEnqueues.count()).To(Equal(0))
-		Expect(wrcsEnqueues.count()).To(Equal(0))
-	})
-
-	It("rejects when matching GitRepository resolves but no webhookSecret is configured", func() {
-		scm, secret := newScmProviderWithSecret("scm-strict-nosec", "sec-strict-nosec", map[string][]byte{
-			"token": []byte("scm-token"),
-		})
-		gitRepo := newGitRepoWithScm("gr-strict-nosec", scm.Name)
-		ps := newPS("ps-strict-nosec", gitRepo.Name)
-		wrcs := newWRCS("wrcs-strict-nosec", ps.Name)
-
-		ctpEnqueues := &enqueueRecorder{}
-		wrcsEnqueues := &enqueueRecorder{}
-		wr := &WebhookReceiver{
-			k8sClient:           newFakeClient(scm, secret, gitRepo, ps, wrcs),
-			enqueueCTP:          ctpEnqueues.enqueue,
-			enqueueWRCS:         wrcsEnqueues.enqueue,
-			controllerNamespace: testNamespace,
-			strictOverride:      &strictTrue,
-		}
-
-		body := githubStatusPayload()
-		rec := postGitHubWithHeaders(wr, body, nil)
-		Expect(rec.Code).To(Equal(http.StatusUnauthorized))
-		Expect(ctpEnqueues.count()).To(Equal(0))
-		Expect(wrcsEnqueues.count()).To(Equal(0))
-	})
-
-	It("rejects deliveries without repository identity even when no webhookSecret exists", func() {
-		ctp := newCTP("ctp-strict-noid")
-		ctpEnqueues := &enqueueRecorder{}
-		wr := &WebhookReceiver{
-			k8sClient:      newFakeClient(ctp),
-			enqueueCTP:     ctpEnqueues.enqueue,
-			strictOverride: &strictTrue,
 		}
 
 		rec := postGitHubPush(wr, testShaA, "", "")
@@ -722,29 +676,54 @@ var _ = Describe("WebhookReceiver strict mode", func() {
 		Expect(ctpEnqueues.count()).To(Equal(0))
 	})
 
-	It("accepts and enqueues when signature is valid", func() {
-		const webhookSecretValue = "whsec_strict_ok"
-		scm, secret := newScmProviderWithSecret("scm-strict-ok", "sec-strict-ok", map[string][]byte{
+	It("accepts push without repository identity when CTP ScmProvider is VerificationRequired and signature is valid", func() {
+		scm, secret := newScmProviderWithSecret("scm-ctp-ok", "sec-ctp-ok", map[string][]byte{
 			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: []byte(webhookSecretValue),
 		})
-		gitRepo := newGitRepoWithScm("gr-strict-ok", scm.Name)
-		ps := newPS("ps-strict-ok", gitRepo.Name)
-		wrcs := newWRCS("wrcs-strict-ok", ps.Name)
+		scmVerificationRequired(scm)
+		gitRepo := newGitRepoWithScm("gr-ctp-ok", scm.Name)
+		ctp := newCTPWithRepo("ctp-ctp-ok", gitRepo.Name)
 
-		wrcsEnqueues := &enqueueRecorder{}
+		ctpEnqueues := &enqueueRecorder{}
 		wr := &WebhookReceiver{
-			k8sClient:           newFakeClient(scm, secret, gitRepo, ps, wrcs),
-			enqueueWRCS:         wrcsEnqueues.enqueue,
+			k8sClient:           newFakeClient(scm, secret, gitRepo, ctp),
+			enqueueCTP:          ctpEnqueues.enqueue,
 			controllerNamespace: testNamespace,
-			strictOverride:      &strictTrue,
 		}
 
-		body := githubStatusPayload()
+		body := githubPushPayload(testShaA, "", "")
 		rec := postGitHubWithHeaders(wr, body, map[string]string{
+			"X-Github-Event":      "push",
+			"X-Github-Delivery":   "test-delivery-push",
 			"X-Hub-Signature-256": githubHMACSignature([]byte(webhookSecretValue), body),
 		})
 		Expect(rec.Code).To(Equal(http.StatusNoContent))
-		Eventually(func() int { return wrcsEnqueues.count() }, time.Second, 10*time.Millisecond).Should(Equal(1))
+		Expect(ctpEnqueues.count()).To(Equal(1))
+	})
+
+	It("rejects when VerificationRequired but webhookSecret is missing from Secret", func() {
+		scm, secret := newScmProviderWithSecret("scm-nosec", "sec-nosec", map[string][]byte{
+			"token": []byte("scm-token"),
+		})
+		scmVerificationRequired(scm)
+		gitRepo := newGitRepoWithScm("gr-nosec", scm.Name)
+		ps := newPS("ps-nosec", gitRepo.Name)
+		wrcs := newWRCS("wrcs-nosec", ps.Name)
+
+		ctpEnqueues := &enqueueRecorder{}
+		wrcsEnqueues := &enqueueRecorder{}
+		wr := &WebhookReceiver{
+			k8sClient:           newFakeClient(scm, secret, gitRepo, ps, wrcs),
+			enqueueCTP:          ctpEnqueues.enqueue,
+			enqueueWRCS:         wrcsEnqueues.enqueue,
+			controllerNamespace: testNamespace,
+		}
+
+		body := githubStatusPayload()
+		rec := postGitHubWithHeaders(wr, body, nil)
+		Expect(rec.Code).To(Equal(http.StatusUnauthorized))
+		Expect(ctpEnqueues.count()).To(Equal(0))
+		Expect(wrcsEnqueues.count()).To(Equal(0))
 	})
 })
 

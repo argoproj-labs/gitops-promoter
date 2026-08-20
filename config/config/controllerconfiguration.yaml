@@ -128,8 +128,3 @@ spec:
               fastDelay: "1s"
               slowDelay: "5m"
               maxFastAttempts: 3
-  webhookReceiver:
-    # When false (default), verification is per matching ScmProvider: webhookSecret
-    # requires a valid signature; providers without webhookSecret (or unresolvable
-    # Secrets / missing GitRepositories) are skipped. When true, those cases reject.
-    strict: false

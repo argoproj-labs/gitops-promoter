@@ -1832,6 +1832,16 @@ spec:
                         the field blank
                       rule: self != "gitlab.com"
                 type: object
+              inboundWebhookVerification:
+                default: NoVerification
+                description: |-
+                  InboundWebhookVerification controls signature verification for inbound SCM webhooks
+                  delivered to the promoter webhook receiver for GitRepositories using this provider.
+                  VerificationRequired needs webhookSecret on the Secret referenced by secretRef.
+                enum:
+                - NoVerification
+                - VerificationRequired
+                type: string
               secretRef:
                 description: SecretRef contains the credentials required to auth to
                   a specific provider
@@ -4139,25 +4149,6 @@ spec:
                 required:
                 - workQueue
                 type: object
-              webhookReceiver:
-                description: |-
-                  WebhookReceiver contains configuration for the inbound SCM webhook receiver
-                  (signature verification and related fail-closed behavior).
-                properties:
-                  strict:
-                    default: false
-                    description: |-
-                      Strict controls fail-closed behavior for webhook signature verification.
-                      When false (default), verification is per matching ScmProvider: providers whose Secret
-                      configures webhookSecret must pass signature checks; providers without webhookSecret,
-                      unresolvable Secrets, and missing matching GitRepositories are skipped so the delivery
-                      may still be processed. When true, missing repository identity, missing matching
-                      GitRepository, unresolvable ScmProvider Secret, or absence of webhookSecret on matching
-                      Secrets rejects the delivery instead of processing it unverified.
-                    type: boolean
-                required:
-                - strict
-                type: object
             required:
             - argocdCommitStatus
             - changeTransferPolicy
@@ -4168,7 +4159,6 @@ spec:
             - scheduledCommitStatus
             - timedCommitStatus
             - webRequestCommitStatus
-            - webhookReceiver
             type: object
           status:
             description: ControllerConfigurationStatus defines the observed state
@@ -7346,6 +7336,16 @@ spec:
                         the field blank
                       rule: self != "gitlab.com"
                 type: object
+              inboundWebhookVerification:
+                default: NoVerification
+                description: |-
+                  InboundWebhookVerification controls signature verification for inbound SCM webhooks
+                  delivered to the promoter webhook receiver for GitRepositories using this provider.
+                  VerificationRequired needs webhookSecret on the Secret referenced by secretRef.
+                enum:
+                - NoVerification
+                - VerificationRequired
+                type: string
               secretRef:
                 description: SecretRef contains the credentials required to auth to
                   a specific provider
@@ -8156,8 +8156,8 @@ spec:
                       Webhook optionally configures inbound SCM webhook filtering for this WRCS.
                       When set with a filter expression, only matching webhook payloads enqueue a reconcile.
                       When omitted (or filter omitted), any webhook for the referenced repository still enqueues
-                      as today. Webhook secret verification uses keys on the ScmProvider Secret (webhookSecret,
-                      webhookSignatureHeader), not fields on this CR.
+                      as today. Webhook verification policy is spec.inboundWebhookVerification on the
+                      ScmProvider; signing material is webhookSecret on the ScmProvider Secret.
                     properties:
                       filter:
                         description: Filter optionally discards inbound payloads before
@@ -9627,5 +9627,3 @@ spec:
             maxFastAttempts: 3
             slowDelay: 5m
       requeueDuration: 5m
-  webhookReceiver:
-    strict: false

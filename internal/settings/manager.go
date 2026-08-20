@@ -158,21 +158,6 @@ func (m *Manager) GetArgoCDCommitStatusControllersWatchLocalApplicationsDirect(c
 	return config.Spec.ArgoCDCommitStatus.WatchLocalApplications, nil
 }
 
-// GetWebhookReceiverStrict retrieves whether the webhook receiver runs in strict mode.
-//
-// When strict is true, the receiver rejects deliveries that would otherwise bypass signature
-// verification because no matching GitRepository was found, an ScmProvider Secret could not be
-// resolved, or no matching Secret configures webhookSecret.
-//
-// This method requires the manager's cache to be started (safe for request handling after Start).
-func (m *Manager) GetWebhookReceiverStrict(ctx context.Context) (bool, error) {
-	config, err := m.getControllerConfiguration(ctx)
-	if err != nil {
-		return false, fmt.Errorf("failed to get controller configuration: %w", err)
-	}
-	return config.Spec.WebhookReceiver.Strict, nil
-}
-
 // GetPullRequestControllersTemplate retrieves the PullRequest template configuration.
 //
 // This function fetches the ControllerConfiguration resource from the cluster and extracts

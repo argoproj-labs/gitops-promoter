@@ -48,8 +48,8 @@ type ModeSpecApplyConfiguration struct {
 	// Webhook optionally configures inbound SCM webhook filtering for this WRCS.
 	// When set with a filter expression, only matching webhook payloads enqueue a reconcile.
 	// When omitted (or filter omitted), any webhook for the referenced repository still enqueues
-	// as today. Webhook secret verification uses keys on the ScmProvider Secret (webhookSecret,
-	// webhookSignatureHeader), not fields on this CR.
+	// as today. Webhook verification policy is spec.inboundWebhookVerification on the
+	// ScmProvider; signing material is webhookSecret on the ScmProvider Secret.
 	Webhook *WebhookModeSpecApplyConfiguration `json:"webhook,omitempty"`
 	// Context is "environments" (default) or "promotionstrategy". See the ModeSpec type documentation for behavior, template limits, and success expression rules.
 	Context *apiv1alpha1.ContextMode `json:"context,omitempty"`

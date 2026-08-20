@@ -381,7 +381,6 @@ func runController(
 		webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()),
 		webhookreceiver.EnqueueFunc(wrcsReconciler.GetEnqueueFunc()),
 		controllerNamespace,
-		settingsMgr,
 	)
 
 	g, ctx := errgroup.WithContext(runCtx)
