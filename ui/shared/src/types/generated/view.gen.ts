@@ -643,6 +643,8 @@ export type components = {
              *       target: "proposed" - "Don't promote unless new commit follows naming convention"
              */
             target?: string;
+            /** @description Verification allows enabling GPG signature verification for every commit the promotion would add, independent of Target. When set, the expression additionally sees a top-level Verification variable with the fields Verified and Commits; each entry in Commits has SHA, Verified, Type, KeyID and Signer, and every field other than SHA and Verified is empty unless that commit verified. Verification is nil when this field is unset. */
+            verification?: components["schemas"]["GitCommitVerification"];
         };
         /** @description GitCommitStatusStatus defines the observed state of GitCommitStatus. */
         GitCommitStatusStatus: {
@@ -661,6 +663,24 @@ export type components = {
              * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
              */
             observedGeneration?: number;
+        };
+        /** @description GitCommitVerification configures how a commit's signature is verified. */
+        GitCommitVerification: {
+            /** @description GPG verifies the commit against a set of trusted GPG public keys. */
+            gpg?: components["schemas"]["GitCommitVerificationGPG"];
+        };
+        /** @description GitCommitVerificationGPG holds the GPG public keys a commit signature is trusted against. */
+        GitCommitVerificationGPG: {
+            /** @description PublicKeys are the keys a signature must verify against. A commit signed by a key outside this set is reported as unverified, so the list is the complete trust anchor for this validation. */
+            publicKeys: components["schemas"]["GitCommitVerificationGPGPublicKey"][];
+        };
+        /** @description GitCommitVerificationGPGPublicKey is a single trusted GPG public key. */
+        GitCommitVerificationGPGPublicKey: {
+            /**
+             * @description Armored is the ASCII-armored public key, as produced by `gpg --armor --export <fingerprint>`.
+             * @default
+             */
+            armored: string;
         };
         /** @description GitHub is a GitHub SCM provider configuration. It is used to configure the GitHub settings. */
         GitHub: {

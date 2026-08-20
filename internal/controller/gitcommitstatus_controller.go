@@ -25,6 +25,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
+	"github.com/argoproj-labs/gitops-promoter/internal/gitauth"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -64,6 +65,10 @@ type GitCommitStatusReconciler struct {
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=gitcommitstatuses/finalizers,verbs=update
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch;patch;create;delete
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=gitrepositories,verbs=get;list;watch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=scmproviders,verbs=get;list;watch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=clusterscmproviders,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -166,13 +171,39 @@ func (r *GitCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ct
 	return nil
 }
 
-// CommitData represents the data structure available to expressions during validation.
+// CommitData is the single commit an expression reads, selected by spec.target. It comes from the
+// PromotionStrategy status, which records one commit per branch, so it can never describe more than
+// the branch tip. Promotion-wide data belongs in VerificationData instead.
 type CommitData struct {
 	Trailers map[string][]string `expr:"Trailers"`
 	SHA      string              `expr:"SHA"`
 	Subject  string              `expr:"Subject"`
 	Body     string              `expr:"Body"`
 	Author   string              `expr:"Author"`
+}
+
+// VerificationData is the signature state of a promotion: every commit the promotion would add,
+// which is the range activeHydratedSha..proposedSha. A promotion merges that whole range under one
+// CommitStatus, so verifying only the tip would leave the rest of what gets merged unchecked.
+//
+// It is a sibling of CommitData rather than a field on it because spec.target selects one commit
+// while this covers many, and because it is the only expression data that requires a clone.
+type VerificationData struct {
+	Commits []VerificationCommit `expr:"Commits"`
+	// Verified reports whether every commit in Commits verified. An empty range verifies vacuously:
+	// a promotion that adds no commits adds nothing unsigned.
+	Verified bool `expr:"Verified"`
+}
+
+// VerificationCommit is one commit's signature verdict. Every field other than SHA and Verified is
+// empty unless Verified, because git reports the issuer a signature claims even with no key to
+// check that claim against.
+type VerificationCommit struct {
+	SHA      string `expr:"SHA"`
+	Type     string `expr:"Type"`
+	KeyID    string `expr:"KeyID"`
+	Signer   string `expr:"Signer"`
+	Verified bool   `expr:"Verified"`
 }
 
 // processEnvironments processes each environment defined in the GitCommitStatus spec,
@@ -196,6 +227,28 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 
 	// Get environments this GitCommitStatus applies to
 	applicableEnvs := utils.GetApplicableEnvironments(ps, gcs.Spec.Key, constants.CommitRefProposed)
+
+	// Signature verification is the only feature needing git access, so the repo is cloned only when
+	// it is configured. Expressions see a nil Verification otherwise.
+	var gitOperations *git.EnvironmentOperations
+	var keyring *git.GPGKeyring
+	if gcs.Spec.Verification != nil {
+		var err error
+		gitOperations, err = r.setupGitOperations(ctx, gcs, ps)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to set up git operations: %w", err)
+		}
+
+		keyring, err = git.NewGPGKeyring(ctx, gpgPublicKeys(gcs.Spec.Verification))
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to build GPG keyring: %w", err)
+		}
+		defer func() {
+			if err := keyring.Close(); err != nil {
+				logger.Error(err, "failed to remove temporary GPG keyring")
+			}
+		}()
+	}
 
 	// Initialize tracking variables
 	transitionedEnvironments := make([]string, 0)
@@ -234,8 +287,20 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 			return nil, nil, fmt.Errorf("failed to get commit data for branch %q at SHA %q: %w", branch, shaToValidate, err)
 		}
 
+		var verification *VerificationData
+		if gitOperations != nil && keyring != nil {
+			// Verification always covers the promotion range, independent of Target: Target selects
+			// whose commit message the expression reads, but a promotion merges the whole range.
+			verification, err = verifyPromotionRange(ctx, gitOperations, keyring,
+				commitRef{sha: activeHydratedSha, branch: env.Branch},
+				commitRef{sha: proposedSha, branch: utils.ProposedBranchName(ps, env)})
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to verify signatures for branch %q over range %q..%q: %w", branch, activeHydratedSha, proposedSha, err)
+			}
+		}
+
 		// Evaluate the same expression for all environments
-		phase, expressionResult, err := r.evaluateExpression(gcs.Spec.Expression, commitData)
+		phase, expressionResult, err := r.evaluateExpression(gcs.Spec.Expression, commitData, verification)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to evaluate expression for branch %q: %w", branch, err)
 		}
@@ -297,6 +362,127 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 	}
 
 	return transitionedEnvironments, commitStatuses, nil
+}
+
+// setupGitOperations clones the PromotionStrategy's repository under an identity owned by this
+// GitCommitStatus. The clone is deliberately not shared with the ChangeTransferPolicy controller:
+// EnvironmentOperations is not safe for concurrent use within a single identity, and the two
+// controllers reconcile on independent workqueues.
+func (r *GitCommitStatusReconciler) setupGitOperations(ctx context.Context, gcs *promoterv1alpha1.GitCommitStatus, ps *promoterv1alpha1.PromotionStrategy) (*git.EnvironmentOperations, error) {
+	repoRef := ps.Spec.RepositoryReference
+
+	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), repoRef, gcs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ScmProvider and secret for repo %q: %w", repoRef.Name, err)
+	}
+
+	gitAuthProvider, err := gitauth.CreateGitOperationsProvider(ctx, r.Client, scmProvider, secret, client.ObjectKey{Namespace: gcs.Namespace, Name: repoRef.Name})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create git auth provider for ScmProvider %q: %w", scmProvider.GetName(), err)
+	}
+
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, r.Client, client.ObjectKey{Namespace: gcs.Namespace, Name: repoRef.Name})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GitRepository %q: %w", repoRef.Name, err)
+	}
+
+	gitOperations := git.NewEnvironmentOperations(gitRepo, gitAuthProvider, "gitcommitstatus/"+gcs.Namespace+"/"+gcs.Name)
+	if err := gitOperations.CloneRepo(ctx); err != nil {
+		return nil, fmt.Errorf("failed to clone repo %q: %w", repoRef.Name, err)
+	}
+	return gitOperations, nil
+}
+
+// commitRef is a SHA together with the branch it is reachable from, which is what a fetch needs when
+// the SHA is not yet in the clone.
+type commitRef struct {
+	sha    string
+	branch string
+}
+
+// verifyPromotionRange checks every commit the promotion would add — from's SHA exclusive to to's SHA
+// inclusive — against keyring.
+//
+// An empty from.sha means the environment has never been promoted, so there is no verified boundary
+// to walk back to and only to.sha is checked. Walking to the repository root instead would verify
+// the entire hydrated history the first time an environment is gated.
+func verifyPromotionRange(ctx context.Context, ops *git.EnvironmentOperations, keyring *git.GPGKeyring, from, to commitRef) (*VerificationData, error) {
+	if to.sha == "" {
+		return nil, fmt.Errorf("proposed commit SHA not yet available for branch %q: PromotionStrategy may not be fully reconciled", to.branch)
+	}
+
+	for _, ref := range []commitRef{from, to} {
+		if ref.sha == "" {
+			continue
+		}
+		present, err := ensureCommit(ctx, ops, ref)
+		if err != nil {
+			return nil, err
+		}
+		if !present {
+			// The commit is unreachable from its branch, so refetching cannot recover it. Returning an
+			// error here would requeue and refetch indefinitely, so report unverified and let the
+			// expression fail closed until a new SHA arrives.
+			log.FromContext(ctx).Info("commit not found after fetching branch, reporting the range as unverified",
+				"sha", ref.sha, "branch", ref.branch)
+			return &VerificationData{}, nil
+		}
+	}
+
+	signatures, err := ops.VerifyCommitRange(ctx, from.sha, to.sha, keyring)
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify range %q..%q: %w", from.sha, to.sha, err)
+	}
+
+	result := &VerificationData{
+		Verified: true,
+		Commits:  make([]VerificationCommit, 0, len(signatures)),
+	}
+	for _, sig := range signatures {
+		result.Verified = result.Verified && sig.Verified
+		result.Commits = append(result.Commits, VerificationCommit{
+			SHA:      sig.SHA,
+			Verified: sig.Verified,
+			Type:     sig.Type,
+			KeyID:    sig.KeyID,
+			Signer:   sig.Signer,
+		})
+	}
+	return result, nil
+}
+
+// ensureCommit reports whether ref's SHA is in ops' clone, fetching its branch once if it is not.
+//
+// The clone is created once and never refreshed, so a SHA newer than the clone is absent locally.
+// Because a SHA is immutable, presence is sufficient: only a miss requires fetching its branch.
+func ensureCommit(ctx context.Context, ops *git.EnvironmentOperations, ref commitRef) (bool, error) {
+	hasCommit, err := ops.HasCommit(ctx, ref.sha)
+	if err != nil {
+		return false, fmt.Errorf("failed to check for commit %q: %w", ref.sha, err)
+	}
+	if hasCommit {
+		return true, nil
+	}
+
+	if err := ops.FetchBranch(ctx, ref.branch); err != nil {
+		return false, fmt.Errorf("failed to fetch branch %q for commit %q: %w", ref.branch, ref.sha, err)
+	}
+	hasCommit, err = ops.HasCommit(ctx, ref.sha)
+	if err != nil {
+		return false, fmt.Errorf("failed to check for commit %q after fetching branch %q: %w", ref.sha, ref.branch, err)
+	}
+	return hasCommit, nil
+}
+
+func gpgPublicKeys(verification *promoterv1alpha1.GitCommitVerification) []string {
+	if verification == nil || verification.GPG == nil {
+		return nil
+	}
+	keys := make([]string, 0, len(verification.GPG.PublicKeys))
+	for _, key := range verification.GPG.PublicKeys {
+		keys = append(keys, key.Armored)
+	}
+	return keys
 }
 
 // getCommitData retrieves commit details from the PromotionStrategy status.
@@ -368,7 +554,8 @@ func (r *GitCommitStatusReconciler) getCompiledExpression(expression string) (*v
 
 	// Compile with type information (using nil pointer provides type info without actual data)
 	exprData := map[string]any{
-		"Commit": (*CommitData)(nil),
+		"Commit":       (*CommitData)(nil),
+		"Verification": (*VerificationData)(nil),
 	}
 	program, err := expr.Compile(expression, expr.Env(exprData), expr.AsBool())
 	if err != nil {
@@ -382,7 +569,10 @@ func (r *GitCommitStatusReconciler) getCompiledExpression(expression string) (*v
 
 // evaluateExpression evaluates the configured expression against commit data.
 // Returns the phase (success/failure) and the boolean result.
-func (r *GitCommitStatusReconciler) evaluateExpression(expression string, commitData *CommitData) (promoterv1alpha1.CommitStatusPhase, *bool, error) {
+//
+// A nil verification is passed through as a typed nil so that `Verification == nil` holds for
+// resources that do not configure spec.verification.
+func (r *GitCommitStatusReconciler) evaluateExpression(expression string, commitData *CommitData, verification *VerificationData) (promoterv1alpha1.CommitStatusPhase, *bool, error) {
 	// Get compiled expression from cache or compile it
 	program, err := r.getCompiledExpression(expression)
 	if err != nil {
@@ -391,7 +581,8 @@ func (r *GitCommitStatusReconciler) evaluateExpression(expression string, commit
 
 	// Run the expression with actual commit data
 	exprData := map[string]any{
-		"Commit": commitData,
+		"Commit":       commitData,
+		"Verification": verification,
 	}
 	output, err := expr.Run(program, exprData)
 	if err != nil {

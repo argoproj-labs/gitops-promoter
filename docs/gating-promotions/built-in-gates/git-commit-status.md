@@ -11,9 +11,10 @@ For each environment configured in a GitCommitStatus resource:
    - `active` (default): Validates the currently deployed commit
    - `proposed`: Validates the commit that will be promoted
 3. The controller fetches commit data (message, author, committer, trailers) from git
-4. The controller evaluates your custom expression against the commit data
-5. The controller creates/updates a CommitStatus with the result, always attached to the **proposed** SHA for promotion gating
-6. The PromotionStrategy checks the CommitStatus before allowing promotion
+4. If `verification` is configured, the controller verifies the signature of every commit the promotion would add against the configured trusted keys
+5. The controller evaluates your custom expression against the commit data
+6. The controller creates/updates a CommitStatus with the result, always attached to the **proposed** SHA for promotion gating
+7. The PromotionStrategy checks the CommitStatus before allowing promotion
 
 ### Validation Modes
 
@@ -131,20 +132,99 @@ spec:
   expression: '"Approved-for-production" in Commit.Trailers'
 ```
 
+## Verifying Commit Signatures
+
+Set `spec.verification` to check commit signatures against a fixed set of trusted GPG public keys. The result is exposed to the expression as `Verification`, a top-level variable alongside `Commit`, so signature state can be combined with the rest of the commit data in a single rule.
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: GitCommitStatus
+metadata:
+  name: signed-by-trusted-key
+spec:
+  promotionStrategyRef:
+    name: webservice-tier-1
+  key: signature-check
+  description: "Require a signature from a trusted key"
+  target: proposed
+  expression: 'Verification.Verified'
+  verification:
+    gpg:
+      publicKeys:
+        - armored: |
+            -----BEGIN PGP PUBLIC KEY BLOCK-----
+            mDMEZ1exampleKeyMaterial...
+            -----END PGP PUBLIC KEY BLOCK-----
+```
+
+Export a key in the expected format with:
+
+```bash
+gpg --armor --export <fingerprint>
+```
+
+Only public key material goes in the resource, so a GitCommitStatus with `verification` is safe to keep in git alongside your other manifests.
+
+### Trust Model
+
+`publicKeys` is the complete trust anchor for this check. The controller builds an ephemeral, offline keyring per reconcile containing exactly those keys, and removes it afterwards — it never contacts a keyserver or reads the node's keyring. A commit signed by any key outside the list is reported as **unverified**, as are commits with an expired, revoked, or malformed signature, and unsigned commits.
+
+`Verified` is the only field you should gate on. On any commit that did not verify, every other field is empty, because git reports the issuer a signature *claims* even when there is no key to check that claim against — the key ID on an unverified signature is chosen by whoever produced it.
+
+### Which Commits Are Verified
+
+Verification covers **every commit the promotion would add**, which is the range between the active branch's commit and the proposed branch's commit. A promotion moves the whole range, so verifying only its newest commit would let an unsigned commit ride in underneath a signed one.
+
+This is independent of `spec.target`. `target` selects whose commit message the rest of the expression reads; it does not narrow which commits are verified. So whether `Commit` is one of `Verification.Commits` depends on `target`: with `target: proposed` it is the newest entry, and with `target: active` it is the commit the range starts *after*, so it is not in the list at all.
+
+Two boundary cases are worth knowing:
+
+- A promotion that adds no commits has nothing unsigned in it, so `Verified` is `true` and `Commits` is empty. Assert on `len(Verification.Commits)` if you want a rule that only passes on a non-empty promotion.
+- An environment that has never been promoted has no previously verified boundary to walk back to, so only the proposed branch's commit is verified. Walking to the repository root instead would verify the entire history on first use.
+
+If a commit cannot be found in the repository even after fetching its branch, the whole range is reported as unverified rather than retried indefinitely, so the gate fails closed until a new SHA appears.
+
+### Available Signature Fields
+
+- `Verification.Verified` (bool): Every commit in the range was signed by one of the configured keys
+- `Verification.Commits` (list): One entry per commit in the range, newest first, each with:
+    - `SHA` (string): The commit SHA
+    - `Verified` (bool): This commit was signed by one of the configured keys
+    - `Type` (string): Signature type, currently always `gpg`
+    - `KeyID` (string): The signing key ID
+    - `Signer` (string): The signer identity as recorded on the key (name and email)
+
+Combine them with the other commit fields to require that every commit carries a trusted signature from a specific signer:
+
+```yaml
+expression: 'Verification.Verified && all(Verification.Commits, .Signer endsWith "<release-bot@example.com>")'
+```
+
+> **Important:** `Verification` is `nil` when `spec.verification` is not set, and referencing fields on it will fail the expression evaluation. Only reference `Verification` in resources that configure `verification`.
+
+### Requirements
+
+Signature verification is the only part of GitCommitStatus that touches git directly. When it is configured, the controller clones the PromotionStrategy's repository, so the referenced `GitRepository`, `ScmProvider`/`ClusterScmProvider`, and its credentials Secret must be resolvable from the GitCommitStatus's namespace — the same access the promotion controllers already need for that repository. Verification also requires the `gpg` binary, which is present in the shipped controller image.
+
+Without `verification`, no clone happens and the controller keeps reading commit data from the PromotionStrategy status only.
+
 ## Expression Language
 
 GitCommitStatus uses the [expr](https://github.com/expr-lang/expr) library for expression evaluation. Expressions must return a boolean value where `true` indicates validation passed.
 
 ### Available Variables
 
-Each expression has access to a `Commit` object with the following fields:
+Each expression has access to two top-level variables.
+
+`Commit` is the single commit selected by `spec.target`:
 
 - `Commit.SHA` (string): The commit SHA being validated
 - `Commit.Subject` (string): The first line of the commit message
 - `Commit.Body` (string): The commit message body (everything after the subject line)
 - `Commit.Author` (string): Commit author email address
-- `Commit.Trailers` (map[string][]string): Git trailers parsed from commit message
+- `Commit.Trailers` (`map[string][]string`): Git trailers parsed from commit message
 
+`Verification` covers **all** the commits the promotion would add, not just the one `spec.target` selects. It is `nil` unless [`spec.verification`](#verifying-commit-signatures) is configured. See [Available Signature Fields](#available-signature-fields).
 
 ## Field Reference
 
@@ -159,6 +239,8 @@ Controls which commit SHA is validated by the expression.
 **Default:** `active`
 
 The validation result is always reported on the proposed commit for promotion gating, regardless of which commit was validated.
+
+`target` does not affect [signature verification](#which-commits-are-verified), which always covers every commit the promotion would add.
 
 ### spec.key
 
@@ -180,6 +262,16 @@ Human-readable description shown in the SCM provider (GitHub, GitLab, etc.) as t
 Expression evaluated against commit data. Must return boolean.
 
 **Required**
+
+### spec.verification
+
+Enables signature verification for every commit the promotion would add and exposes `Verification` to the expression. See [Verifying Commit Signatures](#verifying-commit-signatures).
+
+**Optional**
+
+- `verification.gpg` — required when `verification` is set
+- `verification.gpg.publicKeys` — at least one entry; the complete set of keys a signature is trusted against
+- `verification.gpg.publicKeys[].armored` — a non-empty ASCII-armored public key, as produced by `gpg --armor --export <fingerprint>`
 
 ### Status Fields
 
