@@ -153,10 +153,10 @@ spec:
                 description: |-
                   InboundWebhookVerification controls signature verification for inbound SCM webhooks
                   delivered to the promoter webhook receiver for GitRepositories using this provider.
-                  VerificationRequired needs webhookSecret on the Secret referenced by secretRef.
+                  RequireVerification needs webhookSecret on the Secret referenced by secretRef.
                 enum:
                 - NoVerification
-                - VerificationRequired
+                - RequireVerification
                 type: string
               secretRef:
                 description: SecretRef contains the credentials required to auth to

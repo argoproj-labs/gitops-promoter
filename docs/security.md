@@ -39,7 +39,7 @@ make fuzz-explore   # exploratory run per target; duration is FUZZ_TIME in the M
 
 The in-process webhook receiver (`POST /` on the webhook service, default port `3333`) accepts SCM webhook deliveries and enqueues ChangeTransferPolicy / WebRequestCommitStatus reconciles.
 
-By default, ScmProviders use `inboundWebhookVerification: NoVerification` and deliveries are accepted without signature checks. **Production deployments that expose the webhook receiver on the internet should set `inboundWebhookVerification: VerificationRequired` on the relevant ScmProvider or ClusterScmProvider resources** and configure `webhookSecret` on the referenced Secret.
+By default, ScmProviders use `inboundWebhookVerification: NoVerification` and deliveries are accepted without signature checks. **Production deployments that expose the webhook receiver on the internet should set `inboundWebhookVerification: RequireVerification` on the relevant ScmProvider or ClusterScmProvider resources** and configure `webhookSecret` on the referenced Secret.
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
@@ -47,7 +47,7 @@ kind: ScmProvider
 metadata:
   name: github-prod
 spec:
-  inboundWebhookVerification: VerificationRequired
+  inboundWebhookVerification: RequireVerification
   secretRef:
     name: scm-credentials
   github:
@@ -69,7 +69,7 @@ stringData:
   webhookSignatureHeader: "X-Hub-Signature-256"
 ```
 
-When an ScmProvider has `inboundWebhookVerification: VerificationRequired`, the receiver requires a valid signature (HMAC-SHA256 when the header value has a `sha256=` prefix, otherwise a shared-token compare) for GitRepositories using that provider. Missing `webhookSecret`, unresolvable Secrets, or invalid signatures return **401** or **500**. Providers with `NoVerification` ignore `webhookSecret` for inbound webhook policy (the secret key is still used as signing material when verification is required).
+When an ScmProvider has `inboundWebhookVerification: RequireVerification`, the receiver requires a valid signature (HMAC-SHA256 when the header value has a `sha256=` prefix, otherwise a shared-token compare) for GitRepositories using that provider. Missing `webhookSecret`, unresolvable Secrets, or invalid signatures return **401** or **500**. Providers with `NoVerification` ignore `webhookSecret` for inbound webhook policy (the secret key is still used as signing material when verification is required).
 
 **Repository identity.** WebRequestCommitStatus fan-out uses a parseable repository identity in the payload (provider-specific fields such as GitHub `repository.full_name`, GitLab `project.path_with_namespace`, and so on). ChangeTransferPolicy push webhooks can also be verified via `ChangeTransferPolicy.spec.gitRepositoryRef` when the hydrated SHA matches, even if the payload lacks repository identity.
 

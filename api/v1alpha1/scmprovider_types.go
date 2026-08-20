@@ -38,9 +38,9 @@ type InboundWebhookVerificationMode string
 const (
 	// InboundWebhookVerificationNoVerification accepts webhooks without signature checks (default).
 	InboundWebhookVerificationNoVerification InboundWebhookVerificationMode = "NoVerification"
-	// InboundWebhookVerificationVerificationRequired requires a valid signature using webhookSecret
+	// InboundWebhookVerificationRequireVerification requires a valid signature using webhookSecret
 	// on the referenced Secret before processing webhook deliveries for this provider's repositories.
-	InboundWebhookVerificationVerificationRequired InboundWebhookVerificationMode = "VerificationRequired"
+	InboundWebhookVerificationRequireVerification InboundWebhookVerificationMode = "RequireVerification"
 )
 
 // InboundWebhookVerificationOrDefault returns the configured inbound webhook verification mode,
@@ -63,10 +63,10 @@ type ScmProviderSpec struct {
 
 	// InboundWebhookVerification controls signature verification for inbound SCM webhooks
 	// delivered to the promoter webhook receiver for GitRepositories using this provider.
-	// VerificationRequired needs webhookSecret on the Secret referenced by secretRef.
+	// RequireVerification needs webhookSecret on the Secret referenced by secretRef.
 	// +optional
 	// +kubebuilder:default=NoVerification
-	// +kubebuilder:validation:Enum=NoVerification;VerificationRequired
+	// +kubebuilder:validation:Enum=NoVerification;RequireVerification
 	InboundWebhookVerification InboundWebhookVerificationMode `json:"inboundWebhookVerification,omitempty"`
 
 	// GitHub required configuration for GitHub as the SCM provider

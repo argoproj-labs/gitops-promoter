@@ -143,7 +143,8 @@ type ModeSpec struct {
 	// When set with a filter expression, only matching webhook payloads enqueue a reconcile.
 	// When omitted (or filter omitted), any webhook for the referenced repository still enqueues
 	// as today. Webhook verification policy is spec.inboundWebhookVerification on the
-	// ScmProvider; signing material is webhookSecret on the ScmProvider Secret.
+	// ScmProvider; signing material is webhookSecret on the ScmProvider Secret when
+	// spec.inboundWebhookVerification is RequireVerification.
 	// +optional
 	Webhook *WebhookModeSpec `json:"webhook,omitempty"`
 

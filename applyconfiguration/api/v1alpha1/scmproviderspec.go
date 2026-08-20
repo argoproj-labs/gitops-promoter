@@ -31,7 +31,7 @@ type ScmProviderSpecApplyConfiguration struct {
 	SecretRef *v1.LocalObjectReference `json:"secretRef,omitempty"`
 	// InboundWebhookVerification controls signature verification for inbound SCM webhooks
 	// delivered to the promoter webhook receiver for GitRepositories using this provider.
-	// VerificationRequired needs webhookSecret on the Secret referenced by secretRef.
+	// RequireVerification needs webhookSecret on the Secret referenced by secretRef.
 	InboundWebhookVerification *apiv1alpha1.InboundWebhookVerificationMode `json:"inboundWebhookVerification,omitempty"`
 	// GitHub required configuration for GitHub as the SCM provider
 	GitHub *GitHubApplyConfiguration `json:"github,omitempty"`

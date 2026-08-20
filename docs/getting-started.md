@@ -87,7 +87,7 @@ During the creation the GitHub App, you will need to configure the following set
 
 Webhook URL: `https://<your-promoter-webhook-receiver-ingress>/`
 
-For production, set `inboundWebhookVerification: VerificationRequired` on the ScmProvider (or ClusterScmProvider) and configure `webhookSecret` (and optionally `webhookSignatureHeader`) on the referenced Secret. See [Webhook receiver hardening](security.md#webhook-receiver-hardening).
+For production, set `inboundWebhookVerification: RequireVerification` on the ScmProvider (or ClusterScmProvider) and configure `webhookSecret` (and optionally `webhookSignatureHeader`) on the referenced Secret. See [Webhook receiver hardening](security.md#webhook-receiver-hardening).
 
 Here is an example Ingress configuration for the webhook receiver:
 

@@ -3469,7 +3469,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ModeSpec(ref common.Refer
 					},
 					"webhook": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Webhook optionally configures inbound SCM webhook filtering for this WRCS. When set with a filter expression, only matching webhook payloads enqueue a reconcile. When omitted (or filter omitted), any webhook for the referenced repository still enqueues as today. Webhook verification policy is spec.inboundWebhookVerification on the ScmProvider; signing material is webhookSecret on the ScmProvider Secret.",
+							Description: "Webhook optionally configures inbound SCM webhook filtering for this WRCS. When set with a filter expression, only matching webhook payloads enqueue a reconcile. When omitted (or filter omitted), any webhook for the referenced repository still enqueues as today. Webhook verification policy is spec.inboundWebhookVerification on the ScmProvider; signing material is webhookSecret on the ScmProvider Secret when spec.inboundWebhookVerification is RequireVerification.",
 							Ref:         ref(apiv1alpha1.WebhookModeSpec{}.OpenAPIModelName()),
 						},
 					},
@@ -5126,7 +5126,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderSpec(ref commo
 					},
 					"inboundWebhookVerification": {
 						SchemaProps: spec.SchemaProps{
-							Description: "InboundWebhookVerification controls signature verification for inbound SCM webhooks delivered to the promoter webhook receiver for GitRepositories using this provider. VerificationRequired needs webhookSecret on the Secret referenced by secretRef.",
+							Description: "InboundWebhookVerification controls signature verification for inbound SCM webhooks delivered to the promoter webhook receiver for GitRepositories using this provider. RequireVerification needs webhookSecret on the Secret referenced by secretRef.",
 							Type:        []string{"string"},
 							Format:      "",
 						},

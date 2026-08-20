@@ -437,8 +437,8 @@ func newScmProviderWithSecret(scmName, secretName string, secretData map[string]
 	return scm, secret
 }
 
-func scmVerificationRequired(scm *promoterv1alpha1.ScmProvider) {
-	scm.Spec.InboundWebhookVerification = promoterv1alpha1.InboundWebhookVerificationVerificationRequired
+func scmRequireVerification(scm *promoterv1alpha1.ScmProvider) {
+	scm.Spec.InboundWebhookVerification = promoterv1alpha1.InboundWebhookVerificationRequireVerification
 }
 
 func newGitRepoWithScm(name, scmName string) *promoterv1alpha1.GitRepository {
@@ -488,12 +488,12 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 		Eventually(func() int { return wrcsEnqueues.count() }, time.Second, 10*time.Millisecond).Should(Equal(1))
 	})
 
-	It("rejects with 401 when VerificationRequired and signature is missing", func() {
+	It("rejects with 401 when RequireVerification and signature is missing", func() {
 		scm, secret := newScmProviderWithSecret("scm-miss", "sec-miss", map[string][]byte{
 			"token": []byte("scm-token"),
 			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: []byte(webhookSecretValue),
 		})
-		scmVerificationRequired(scm)
+		scmRequireVerification(scm)
 		gitRepo := newGitRepoWithScm("gr-miss", scm.Name)
 		ps := newPS("ps-miss", gitRepo.Name)
 		wrcs := newWRCS("wrcs-miss", ps.Name)
@@ -514,11 +514,11 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 		Expect(wrcsEnqueues.count()).To(Equal(0))
 	})
 
-	It("rejects with 401 when VerificationRequired and signature is invalid", func() {
+	It("rejects with 401 when RequireVerification and signature is invalid", func() {
 		scm, secret := newScmProviderWithSecret("scm-bad", "sec-bad", map[string][]byte{
 			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: []byte(webhookSecretValue),
 		})
-		scmVerificationRequired(scm)
+		scmRequireVerification(scm)
 		gitRepo := newGitRepoWithScm("gr-bad", scm.Name)
 		ps := newPS("ps-bad", gitRepo.Name)
 		wrcs := newWRCS("wrcs-bad", ps.Name)
@@ -538,11 +538,11 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 		Expect(wrcsEnqueues.count()).To(Equal(0))
 	})
 
-	It("accepts and enqueues when VerificationRequired and signature is valid", func() {
+	It("accepts and enqueues when RequireVerification and signature is valid", func() {
 		scm, secret := newScmProviderWithSecret("scm-ok", "sec-ok", map[string][]byte{
 			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: []byte(webhookSecretValue),
 		})
-		scmVerificationRequired(scm)
+		scmRequireVerification(scm)
 		gitRepo := newGitRepoWithScm("gr-ok", scm.Name)
 		ps := newPS("ps-ok", gitRepo.Name)
 		wrcs := newWRCS("wrcs-ok", ps.Name)
@@ -562,11 +562,11 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 		Eventually(func() int { return wrcsEnqueues.count() }, time.Second, 10*time.Millisecond).Should(Equal(1))
 	})
 
-	It("returns 500 when VerificationRequired but ScmProvider Secret cannot be resolved", func() {
+	It("returns 500 when RequireVerification but ScmProvider Secret cannot be resolved", func() {
 		scm, _ := newScmProviderWithSecret("scm-missing-sec", "sec-missing", map[string][]byte{
 			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: []byte(webhookSecretValue),
 		})
-		scmVerificationRequired(scm)
+		scmRequireVerification(scm)
 		gitRepo := newGitRepoWithScm("gr-missing-sec", scm.Name)
 		ps := newPS("ps-missing-sec", gitRepo.Name)
 		wrcs := newWRCS("wrcs-missing-sec", ps.Name)
@@ -588,14 +588,14 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 		Expect(wrcsEnqueues.count()).To(Equal(0))
 	})
 
-	It("accepts when VerificationRequired GitRepository coexists with NoVerification GitRepository for same repo key", func() {
+	It("accepts when RequireVerification GitRepository coexists with NoVerification GitRepository for same repo key", func() {
 		scmOK, secretOK := newScmProviderWithSecret("scm-partial-ok", "sec-partial-ok", map[string][]byte{
 			"token": []byte("scm-token"),
 		})
 		scmMissing, _ := newScmProviderWithSecret("scm-partial-missing", "sec-partial-missing", map[string][]byte{
 			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: []byte(webhookSecretValue),
 		})
-		scmVerificationRequired(scmMissing)
+		scmRequireVerification(scmMissing)
 		gitRepoOK := newGitRepoWithScm("gr-partial-ok", scmOK.Name)
 		gitRepoMissing := newGitRepoWithScm("gr-partial-missing", scmMissing.Name)
 		ctp := newCTPWithRepo("ctp-partial", gitRepoOK.Name)
@@ -653,14 +653,14 @@ var _ = Describe("WebhookReceiver signature verification", func() {
 	})
 })
 
-var _ = Describe("WebhookReceiver VerificationRequired via CTP gitRepositoryRef", func() {
+var _ = Describe("WebhookReceiver RequireVerification via CTP gitRepositoryRef", func() {
 	const webhookSecretValue = "whsec_ctp_ref"
 
-	It("rejects push without repository identity when CTP ScmProvider is VerificationRequired and signature is missing", func() {
+	It("rejects push without repository identity when CTP ScmProvider is RequireVerification and signature is missing", func() {
 		scm, secret := newScmProviderWithSecret("scm-ctp-noid", "sec-ctp-noid", map[string][]byte{
 			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: []byte(webhookSecretValue),
 		})
-		scmVerificationRequired(scm)
+		scmRequireVerification(scm)
 		gitRepo := newGitRepoWithScm("gr-ctp-noid", scm.Name)
 		ctp := newCTPWithRepo("ctp-ctp-noid", gitRepo.Name)
 
@@ -676,11 +676,11 @@ var _ = Describe("WebhookReceiver VerificationRequired via CTP gitRepositoryRef"
 		Expect(ctpEnqueues.count()).To(Equal(0))
 	})
 
-	It("accepts push without repository identity when CTP ScmProvider is VerificationRequired and signature is valid", func() {
+	It("accepts push without repository identity when CTP ScmProvider is RequireVerification and signature is valid", func() {
 		scm, secret := newScmProviderWithSecret("scm-ctp-ok", "sec-ctp-ok", map[string][]byte{
 			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: []byte(webhookSecretValue),
 		})
-		scmVerificationRequired(scm)
+		scmRequireVerification(scm)
 		gitRepo := newGitRepoWithScm("gr-ctp-ok", scm.Name)
 		ctp := newCTPWithRepo("ctp-ctp-ok", gitRepo.Name)
 
@@ -701,11 +701,11 @@ var _ = Describe("WebhookReceiver VerificationRequired via CTP gitRepositoryRef"
 		Expect(ctpEnqueues.count()).To(Equal(1))
 	})
 
-	It("rejects when VerificationRequired but webhookSecret is missing from Secret", func() {
+	It("rejects when RequireVerification but webhookSecret is missing from Secret", func() {
 		scm, secret := newScmProviderWithSecret("scm-nosec", "sec-nosec", map[string][]byte{
 			"token": []byte("scm-token"),
 		})
-		scmVerificationRequired(scm)
+		scmRequireVerification(scm)
 		gitRepo := newGitRepoWithScm("gr-nosec", scm.Name)
 		ps := newPS("ps-nosec", gitRepo.Name)
 		wrcs := newWRCS("wrcs-nosec", ps.Name)

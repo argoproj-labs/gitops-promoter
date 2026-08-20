@@ -1837,10 +1837,10 @@ spec:
                 description: |-
                   InboundWebhookVerification controls signature verification for inbound SCM webhooks
                   delivered to the promoter webhook receiver for GitRepositories using this provider.
-                  VerificationRequired needs webhookSecret on the Secret referenced by secretRef.
+                  RequireVerification needs webhookSecret on the Secret referenced by secretRef.
                 enum:
                 - NoVerification
-                - VerificationRequired
+                - RequireVerification
                 type: string
               secretRef:
                 description: SecretRef contains the credentials required to auth to
@@ -7341,10 +7341,10 @@ spec:
                 description: |-
                   InboundWebhookVerification controls signature verification for inbound SCM webhooks
                   delivered to the promoter webhook receiver for GitRepositories using this provider.
-                  VerificationRequired needs webhookSecret on the Secret referenced by secretRef.
+                  RequireVerification needs webhookSecret on the Secret referenced by secretRef.
                 enum:
                 - NoVerification
-                - VerificationRequired
+                - RequireVerification
                 type: string
               secretRef:
                 description: SecretRef contains the credentials required to auth to
@@ -8157,7 +8157,8 @@ spec:
                       When set with a filter expression, only matching webhook payloads enqueue a reconcile.
                       When omitted (or filter omitted), any webhook for the referenced repository still enqueues
                       as today. Webhook verification policy is spec.inboundWebhookVerification on the
-                      ScmProvider; signing material is webhookSecret on the ScmProvider Secret.
+                      ScmProvider; signing material is webhookSecret on the ScmProvider Secret when
+                      spec.inboundWebhookVerification is RequireVerification.
                     properties:
                       filter:
                         description: Filter optionally discards inbound payloads before

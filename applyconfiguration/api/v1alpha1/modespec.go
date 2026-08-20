@@ -49,7 +49,8 @@ type ModeSpecApplyConfiguration struct {
 	// When set with a filter expression, only matching webhook payloads enqueue a reconcile.
 	// When omitted (or filter omitted), any webhook for the referenced repository still enqueues
 	// as today. Webhook verification policy is spec.inboundWebhookVerification on the
-	// ScmProvider; signing material is webhookSecret on the ScmProvider Secret.
+	// ScmProvider; signing material is webhookSecret on the ScmProvider Secret when
+	// spec.inboundWebhookVerification is RequireVerification.
 	Webhook *WebhookModeSpecApplyConfiguration `json:"webhook,omitempty"`
 	// Context is "environments" (default) or "promotionstrategy". See the ModeSpec type documentation for behavior, template limits, and success expression rules.
 	Context *apiv1alpha1.ContextMode `json:"context,omitempty"`

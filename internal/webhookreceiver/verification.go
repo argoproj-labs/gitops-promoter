@@ -16,7 +16,7 @@ type verificationCandidate struct {
 	secret []byte
 }
 
-// verifyInboundWebhook checks whether the delivery satisfies VerificationRequired ScmProviders
+// verifyInboundWebhook checks whether the delivery satisfies RequireVerification ScmProviders
 // resolved from payload repository identity and/or a matched ChangeTransferPolicy.
 // Returns (0, "") when authorized, or an HTTP status and message to reject.
 func (wr *WebhookReceiver) verifyInboundWebhook(ctx context.Context, provider, owner, name string, headers http.Header, body []byte, ctp *promoterv1alpha1.ChangeTransferPolicy) (status int, msg string) {
@@ -50,21 +50,21 @@ func (wr *WebhookReceiver) verifyInboundWebhook(ctx context.Context, provider, o
 				"namespace", gr.Namespace, "name", gr.Name, "error", err.Error())
 			continue
 		}
-		if scmProvider.GetSpec().InboundWebhookVerificationOrDefault() != promoterv1alpha1.InboundWebhookVerificationVerificationRequired {
+		if scmProvider.GetSpec().InboundWebhookVerificationOrDefault() != promoterv1alpha1.InboundWebhookVerificationRequireVerification {
 			continue
 		}
 		verificationRequired = true
 
 		_, secret, getErr := utils.GetScmProviderAndSecretFromGitRepository(ctx, wr.k8sClient, wr.controllerNamespace, gr)
 		if getErr != nil {
-			logger.Error(getErr, "could not resolve ScmProvider Secret for VerificationRequired provider",
+			logger.Error(getErr, "could not resolve ScmProvider Secret for RequireVerification provider",
 				"namespace", gr.Namespace, "name", gr.Name)
 			return http.StatusInternalServerError, "error verifying webhook"
 		}
 
 		secretBytes, headerName, ok := webhookSecretFromSecret(secret, provider)
 		if !ok {
-			logger.V(4).Info("VerificationRequired ScmProvider missing webhookSecret",
+			logger.V(4).Info("RequireVerification ScmProvider missing webhookSecret",
 				"namespace", gr.Namespace, "gitRepository", gr.Name)
 			return http.StatusUnauthorized, unauthorizedMessage
 		}

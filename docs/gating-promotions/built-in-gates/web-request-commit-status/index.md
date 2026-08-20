@@ -89,12 +89,12 @@ When `mode.webhook` is omitted, or the filter is omitted, any webhook for the re
 
 **Webhook secrets** are not fields on the WRCS. Put them on the **ScmProvider Secret** already referenced by `ScmProvider.spec.secretRef` / `ClusterScmProvider.spec.secretRef`:
 
-| Secret key | Required when `VerificationRequired` | Meaning |
+| Secret key | Required when `RequireVerification` | Meaning |
 |------------|----------------------------------------|---------|
 | `webhookSecret` | yes | Shared secret / HMAC key |
 | `webhookSignatureHeader` | no | Header that carries the signature or token. Defaults to `X-Hub-Signature-256` (GitHub-style) or `X-Gitlab-Token` (GitLab) |
 
-Set **`ScmProvider.spec.inboundWebhookVerification: VerificationRequired`** (or the same field on `ClusterScmProvider`) to require signature verification for GitRepositories using that provider. With `NoVerification` (default), inbound webhooks are accepted without signature checks even if `webhookSecret` is present. Values with a `sha256=` prefix are verified as HMAC-SHA256 of the raw body; other values are compared as a shared token (constant-time). Push webhooks for ChangeTransferPolicy can be verified via the CTP's `gitRepositoryRef` when the hydrated SHA matches, even without repository identity in the payload. See [Webhook receiver hardening](../../../security.md#webhook-receiver-hardening).
+Set **`ScmProvider.spec.inboundWebhookVerification: RequireVerification`** (or the same field on `ClusterScmProvider`) to require signature verification for GitRepositories using that provider. With `NoVerification` (default), inbound webhooks are accepted without signature checks even if `webhookSecret` is present. Values with a `sha256=` prefix are verified as HMAC-SHA256 of the raw body; other values are compared as a shared token (constant-time). Push webhooks for ChangeTransferPolicy can be verified via the CTP's `gitRepositoryRef` when the hydrated SHA matches, even without repository identity in the payload. See [Webhook receiver hardening](../../../security.md#webhook-receiver-hardening).
 
 ### Shared trigger and success expr (`when.variables`)
 
