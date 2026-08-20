@@ -1094,10 +1094,6 @@ func (r *ChangeTransferPolicyReconciler) writePromotionHistoryNote(ctx context.C
 		logger.V(4).Info("PR was closed, not merged, skipping promotion history note")
 		return nil
 	}
-	if livePR.Spec.MergeSha == "" {
-		logger.V(4).Info("PR has no merge sha, skipping promotion history note")
-		return nil
-	}
 	externallyMergedOrClosed := livePR.Status.ExternallyMergedOrClosed != nil && *livePR.Status.ExternallyMergedOrClosed
 	if livePR.Status.State != promoterv1alpha1.PullRequestMerged && !externallyMergedOrClosed {
 		logger.V(4).Info("PR is not merged or externally merged/closed, skipping promotion history note",
@@ -1170,6 +1166,9 @@ func (r *ChangeTransferPolicyReconciler) writePromotionHistoryNote(ctx context.C
 // ExternallyMergedOrClosed into "merged" vs "closed".
 func findMergeCommitOnActiveBranch(ctx context.Context, gitOperations *git.EnvironmentOperations, activeBranch, proposedBranch, activePath, mergeSha, dryProposedSha string) (string, error) {
 	logger := log.FromContext(ctx)
+	if mergeSha == "" {
+		logger.V(4).Info("locating merge commit without a recorded merge sha; parent-link matching is skipped, dry-sha matching may still apply")
+	}
 
 	if err := gitOperations.FetchBranch(ctx, activeBranch); err != nil {
 		return "", fmt.Errorf("failed to fetch active branch %q: %w", activeBranch, err)
