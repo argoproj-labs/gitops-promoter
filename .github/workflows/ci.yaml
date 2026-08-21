@@ -16,6 +16,9 @@ jobs:
     name: Continuous Integration
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: write
     steps:
       - name: Checkout Repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -41,7 +44,13 @@ jobs:
           # If this is a build for a push to main, set the codecov token.
           CODECOV_TOKEN: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.CODECOV_TOKEN || '' }}
       - name: UI Checks
+        id: ui-checks
         run: make lint-ui
+      - name: Dispatch npm audit fix on failure
+        if: failure() && steps.ui-checks.outcome == 'failure' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run npm-audit-fix.yaml --repo "$GITHUB_REPOSITORY"
       - name: Set up Python and venv for docs
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
