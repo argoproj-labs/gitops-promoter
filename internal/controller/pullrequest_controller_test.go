@@ -86,13 +86,14 @@ var _ = Describe("PullRequest Controller", func() {
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 					g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+					g.Expect(pullRequest.Status.ID).ToNot(BeEmpty())
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 
 			It("should successfully reconcile the resource when updating title then merging", func() {
 				By("Reconciling updating of the PullRequest")
 				Eventually(func(g Gomega) {
-					_ = k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 					pullRequest.Spec.Title = "Updated Title"
 					g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
 				}, constants.EventuallyTimeout).Should(Succeed())
@@ -100,19 +101,24 @@ var _ = Describe("PullRequest Controller", func() {
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 					g.Expect(pullRequest.Spec.Title).To(Equal("Updated Title"))
+					readyCond := meta.FindStatusCondition(pullRequest.Status.Conditions, string(conditions.Ready))
+					g.Expect(readyCond).NotTo(BeNil())
+					g.Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
+					g.Expect(readyCond.ObservedGeneration).To(Equal(pullRequest.Generation))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Reconciling merging of the PullRequest")
+				mergeSha := getGitBranchSHA(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, pullRequest.Spec.SourceBranch)
 				Eventually(func(g Gomega) {
-					_ = k8sClient.Get(ctx, typeNamespacedName, pullRequest)
-					pullRequest.Spec.State = "merged"
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+					pullRequest.Spec.MergeSha = mergeSha
+					pullRequest.Spec.State = promoterv1alpha1.PullRequestMerged
 					g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
-					g.Expect(err).To(HaveOccurred())
-					g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
+					g.Expect(k8serrors.IsNotFound(err)).To(BeTrue())
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
