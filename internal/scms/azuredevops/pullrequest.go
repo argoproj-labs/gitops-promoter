@@ -328,6 +328,58 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	return scms.FindOpenResult{}, nil
 }
 
+// Get fetches a pull request by status.id.
+func (pr *PullRequest) Get(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.GetPullRequestResult, error) {
+	logger := log.FromContext(ctx)
+	logger.V(4).Info("Getting pull request by ID in Azure DevOps")
+
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	prID, err := strconv.Atoi(pullRequest.Status.ID)
+	if err != nil {
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to convert PR ID to int: %w", err)
+	}
+
+	gitClient, err := git.NewClient(ctx, pr.client)
+	if err != nil {
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to create Git client: %w", err)
+	}
+
+	start := time.Now()
+	adoPR, err := gitClient.GetPullRequestById(ctx, git.GetPullRequestByIdArgs{
+		PullRequestId: &prID,
+		Project:       &gitRepo.Spec.AzureDevOps.Project,
+	})
+	statusCode := http.StatusOK
+	if err != nil {
+		if isAzureDevOpsNotFound(err) {
+			metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationGet, http.StatusNotFound, time.Since(start), nil)
+			return scms.GetPullRequestResult{}, nil
+		}
+		statusCode = http.StatusInternalServerError
+		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationGet, statusCode, time.Since(start), nil)
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to get pull request: %w", err)
+	}
+	metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationGet, statusCode, time.Since(start), nil)
+
+	if adoPR == nil {
+		return scms.GetPullRequestResult{}, nil
+	}
+
+	result := scms.GetPullRequestResult{Found: true, State: mapAzureDevOpsPRStatusToState(*adoPR.Status)}
+	if result.State == v1alpha1.PullRequestMerged && adoPR.LastMergeCommit != nil && adoPR.LastMergeCommit.CommitId != nil {
+		result.MergeCommitSHA = *adoPR.LastMergeCommit.CommitId
+	}
+	if adoPR.ClosedDate != nil {
+		result.MergedAt = adoPR.ClosedDate.Time
+	}
+	logger.V(4).Info("Azure DevOps pull request fetched", "prId", prID, "state", result.State)
+	return result, nil
+}
+
 // GetUrl returns the URL of the pull request.
 func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequest) (string, error) {
 	prId, err := strconv.Atoi(pullRequest.Status.ID)

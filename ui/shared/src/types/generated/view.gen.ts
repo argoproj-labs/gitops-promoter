@@ -905,6 +905,8 @@ export type components = {
              * @default {}
              */
             active?: components["schemas"]["CommitBranchState"];
+            /** @description MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with the promoter's last snapshot (typically an external merge after the proposed branch advanced). Proposed dry and hydrated SHAs in the history note were reconstructed from the merge commit; other snapshot-derived trailers (especially commit statuses) may still reflect the earlier proposed revision. */
+            mergeCommitSnapshotMismatch?: boolean;
             /**
              * @description Proposed is the state of the proposed branch at the time the PR was merged.
              * @default {}
@@ -1349,6 +1351,8 @@ export type components = {
             id?: string;
             /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
             instanceID?: string;
+            /** @description MergeCommitSha is the commit SHA on the target branch reported by the SCM after merge. Set once by the PullRequest controller via a Get-by-ID lookup when FindOpen no longer finds the PR. */
+            mergeCommitSha?: string;
             /**
              * Format: int64
              * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.

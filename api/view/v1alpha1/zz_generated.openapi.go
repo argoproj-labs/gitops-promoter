@@ -3369,6 +3369,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_History(ref common.Refere
 							Ref:         ref(apiv1alpha1.PullRequestCommonStatus{}.OpenAPIModelName()),
 						},
 					},
+					"mergeCommitSnapshotMismatch": {
+						SchemaProps: spec.SchemaProps{
+							Description: "MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with the promoter's last snapshot (typically an external merge after the proposed branch advanced). Proposed dry and hydrated SHAs in the history note were reconstructed from the merge commit; other snapshot-derived trailers (especially commit statuses) may still reflect the earlier proposed revision.",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
 				},
 			},
 		},
@@ -4211,6 +4218,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestStatus(ref com
 					"url": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Url is the URL of the pull request.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"mergeCommitSha": {
+						SchemaProps: spec.SchemaProps{
+							Description: "MergeCommitSha is the commit SHA on the target branch reported by the SCM after merge. Set once by the PullRequest controller via a Get-by-ID lookup when FindOpen no longer finds the PR.",
 							Type:        []string{"string"},
 							Format:      "",
 						},

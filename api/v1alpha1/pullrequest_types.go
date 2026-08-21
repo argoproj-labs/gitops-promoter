@@ -121,6 +121,13 @@ type PullRequestStatus struct {
 	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"
 	// +kubebuilder:validation:Pattern="^(https?://.*)?$"
 	Url string `json:"url,omitempty"`
+	// MergeCommitSha is the commit SHA on the target branch reported by the SCM after merge.
+	// Set once by the PullRequest controller via a Get-by-ID lookup when FindOpen no longer finds the PR.
+	// +optional
+	// +kubebuilder:validation:MinLength=40
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
+	MergeCommitSha string `json:"mergeCommitSha,omitempty"`
 	// ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the
 	// resource still desired it open (spec.state is "open"): either it was merged or closed outside the
 	// controller, or it was closed on the SCM because the PullRequest resource was deleted (finalizer)

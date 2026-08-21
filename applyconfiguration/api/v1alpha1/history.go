@@ -28,6 +28,11 @@ type HistoryApplyConfiguration struct {
 	Active *CommitBranchStateApplyConfiguration `json:"active,omitempty"`
 	// PullRequest is the state of the pull request that was created for this ChangeTransferPolicy.
 	PullRequest *PullRequestCommonStatusApplyConfiguration `json:"pullRequest,omitempty"`
+	// MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with
+	// the promoter's last snapshot (typically an external merge after the proposed branch advanced). Proposed
+	// dry and hydrated SHAs in the history note were reconstructed from the merge commit; other snapshot-derived
+	// trailers (especially commit statuses) may still reflect the earlier proposed revision.
+	MergeCommitSnapshotMismatch *bool `json:"mergeCommitSnapshotMismatch,omitempty"`
 }
 
 // HistoryApplyConfiguration constructs a declarative configuration of the History type for use with
@@ -57,5 +62,13 @@ func (b *HistoryApplyConfiguration) WithActive(value *CommitBranchStateApplyConf
 // If called multiple times, the PullRequest field is set to the value of the last call.
 func (b *HistoryApplyConfiguration) WithPullRequest(value *PullRequestCommonStatusApplyConfiguration) *HistoryApplyConfiguration {
 	b.PullRequest = value
+	return b
+}
+
+// WithMergeCommitSnapshotMismatch sets the MergeCommitSnapshotMismatch field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the MergeCommitSnapshotMismatch field is set to the value of the last call.
+func (b *HistoryApplyConfiguration) WithMergeCommitSnapshotMismatch(value bool) *HistoryApplyConfiguration {
+	b.MergeCommitSnapshotMismatch = &value
 	return b
 }

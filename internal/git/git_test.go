@@ -713,6 +713,66 @@ var _ = Describe("ActivePath support", func() {
 		Expect(shas.Hydrated).NotTo(BeEmpty(), "the hydrated SHA still resolves from the ref")
 	})
 
+	DescribeTable("IsGitShowPathMissingInCommit",
+		func(stderr string, expected bool) {
+			Expect(git.IsGitShowPathMissingInCommit(stderr)).To(Equal(expected))
+		},
+		Entry("path absent from commit tree",
+			"fatal: path 'apps/app-one/hydrator.metadata' does not exist in 'abc123'", true),
+		Entry("path exists on disk but not in commit",
+			"fatal: path 'hydrator.metadata' exists on disk, but not in 'abc123'", true),
+		Entry("invalid object name",
+			"fatal: invalid object name 'notashatall'.", false),
+		Entry("promisor lazy-fetch failure",
+			"fatal: unable to read sha256:deadbeef", false),
+		Entry("network error",
+			"fatal: unable to access 'https://github.com/org/repo.git/': Connection reset by peer", false),
+	)
+
+	It("GetShaMetadataFromFile returns empty without error when the path is absent from the commit", func() {
+		Expect(os.MkdirAll(filepath.Join(workDir, "apps", "app-one"), 0o755)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(workDir, "apps", "app-one", "config.yaml"), []byte("version: active\n"), 0o644)).To(Succeed())
+		_, err := runGitCmd(workDir, "add", "-A")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", "active without app-one metadata")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "branch", "-M", "active")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "-u", "origin", "active")
+		Expect(err).NotTo(HaveOccurred())
+
+		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
+		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
+		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
+
+		commitSha, err := runGitCmd(workDir, "rev-parse", "active")
+		Expect(err).NotTo(HaveOccurred())
+		commitSha = strings.TrimSpace(commitSha)
+
+		metadata, err := g.GetShaMetadataFromFile(GinkgoT().Context(), commitSha, "apps/app-one")
+		Expect(err).NotTo(HaveOccurred(), "a missing path in the commit tree must degrade to empty metadata")
+		Expect(metadata.Sha).To(BeEmpty())
+	})
+
+	It("GetShaMetadataFromFile returns an error for an unknown commit sha", func() {
+		Expect(os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"abc123"}`), 0o644)).To(Succeed())
+		_, err := runGitCmd(workDir, "add", "hydrator.metadata")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", "init")
+		Expect(err).NotTo(HaveOccurred())
+		defaultBranch, err := runGitCmd(workDir, "rev-parse", "--abbrev-ref", "HEAD")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "-u", "origin", strings.TrimSpace(defaultBranch))
+		Expect(err).NotTo(HaveOccurred())
+
+		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
+		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
+		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
+
+		_, err = g.GetShaMetadataFromFile(GinkgoT().Context(), "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef", "")
+		Expect(err).To(HaveOccurred(), "unknown revisions must not be treated as a missing path")
+	})
+
 	It("path-scoped merge: proposed wins inside activePath, active wins outside on conflict", func() {
 		base := map[string]string{
 			"apps/app-one/config.yaml": "version: base\n",

@@ -225,6 +225,11 @@ type History struct {
 	Active CommitBranchState `json:"active,omitempty"`
 	// PullRequest is the state of the pull request that was created for this ChangeTransferPolicy.
 	PullRequest *PullRequestCommonStatus `json:"pullRequest,omitempty"`
+	// MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with
+	// the promoter's last snapshot (typically an external merge after the proposed branch advanced). Proposed
+	// dry and hydrated SHAs in the history note were reconstructed from the merge commit; other snapshot-derived
+	// trailers (especially commit statuses) may still reflect the earlier proposed revision.
+	MergeCommitSnapshotMismatch bool `json:"mergeCommitSnapshotMismatch,omitempty"`
 }
 
 // CommitBranchStateHistoryProposed is identical to CommitBranchState minus the Dry state. In the context of History, the Dry state is not relevant as
