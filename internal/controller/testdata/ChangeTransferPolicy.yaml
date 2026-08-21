@@ -84,3 +84,21 @@ status:
         prCreationTime: 2023-09-01T00:00:00Z
         prMergeTime: 2023-09-01T01:00:00Z
         url: https://github.com/org/repo/pull/847
+    # A promotion whose PR was merged externally after the proposed branch advanced: the proposed
+    # dry/hydrated SHAs were reconstructed from the merge commit, but the recorded commit statuses may be stale.
+    - active:
+        dry:
+          sha: "1111111111111111111111111111111111111111"
+      proposed:
+        hydrated:
+          sha: "2222222222222222222222222222222222222222"
+        commitStatuses:
+          - key: example-key
+            phase: success
+      pullRequest:
+        id: "848"
+        state: merged
+        prCreationTime: 2023-09-02T00:00:00Z
+        prMergeTime: 2023-09-02T01:00:00Z
+        url: https://github.com/org/repo/pull/848
+      drifted: true

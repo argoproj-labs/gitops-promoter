@@ -39,6 +39,13 @@ const (
 	// PromotionHistoryNoteFailedMessage is the message for a failed promotion-history git note write.
 	PromotionHistoryNoteFailedMessage = "Failed to write promotion history note for Pull Request %s: %v"
 
+	// PromotionHistoryNoteDriftReason indicates the promotion-history note's snapshot trailers disagreed with
+	// the commit that actually merged (e.g. a pull request merged externally after the proposed branch
+	// advanced); the merge commit was used as the source of truth.
+	PromotionHistoryNoteDriftReason = "PromotionHistoryNoteDrift"
+	// PromotionHistoryNoteDriftMessage is the message for a detected promotion-history drift.
+	PromotionHistoryNoteDriftMessage = "Promotion history drift for Pull Request %s: recorded dry SHA %q but merge commit carries %q; using the merge commit as the source of truth"
+
 	// PullRequestClosedReason indicates that a pull request has been closed without being merged.
 	PullRequestClosedReason = "PullRequestClosed"
 	// PullRequestClosedMessage is the message for a closed pull request.

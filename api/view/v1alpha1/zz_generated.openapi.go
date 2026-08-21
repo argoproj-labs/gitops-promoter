@@ -3369,6 +3369,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_History(ref common.Refere
 							Ref:         ref(apiv1alpha1.PullRequestCommonStatus{}.OpenAPIModelName()),
 						},
 					},
+					"drifted": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Drifted indicates the pull request merged a proposed revision newer than the one the promoter last recorded (typically an external merge after the proposed branch advanced). The proposed dry and hydrated SHAs shown here were reconstructed from the merge commit and are accurate, but the recorded commit statuses were evaluated against the earlier proposed revision and may be stale: they may not reflect the gate state of the revision that actually merged.",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
 				},
 			},
 		},

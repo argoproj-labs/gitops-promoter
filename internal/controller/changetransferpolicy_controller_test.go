@@ -2385,6 +2385,168 @@ var _ = Describe("buildHistoryEntry trailer sources", func() {
 	})
 })
 
+var _ = Describe("writePromotionHistoryNote drift repair", func() {
+	var workDir string
+	var bareDir string
+	var gitOps *git.EnvironmentOperations
+	var ctp *promoterv1alpha1.ChangeTransferPolicy
+	var p1Sha, p2Sha, mergeSha string
+
+	const (
+		activeBranch   = "env-active"
+		proposedBranch = "env-proposed"
+		dryOne         = "dry-1-sha"
+		dryTwo         = "dry-2-sha"
+	)
+
+	mustRunGit := func(dir string, args ...string) string {
+		GinkgoHelper()
+		out, err := runGitCmd(ctx, dir, args...)
+		Expect(err).NotTo(HaveOccurred())
+		return strings.TrimSpace(out)
+	}
+
+	writeMeta := func(drySha string) {
+		GinkgoHelper()
+		Expect(os.WriteFile(path.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"`+drySha+`"}`), 0o644)).To(Succeed())
+		mustRunGit(workDir, "add", "-A")
+	}
+
+	// buildLivePR returns a finalizing, externally-merged PullRequest whose spec.commit.message records the
+	// snapshotDry proposed dry sha and p1Sha as the proposed hydrated sha — i.e. the state the promoter last
+	// wrote before the proposed branch advanced.
+	buildLivePR := func(snapshotDry string) *promoterv1alpha1.PullRequest {
+		msg := "Promote change\n\n" +
+			constants.TrailerPullRequestID + ": 99\n" +
+			constants.TrailerShaHydratedProposed + ": " + p1Sha + "\n" +
+			constants.TrailerShaDryProposed + ": " + snapshotDry + "\n" +
+			constants.TrailerCommitStatusProposedPrefix + "example-key-phase: success"
+		return &promoterv1alpha1.PullRequest{
+			Status: promoterv1alpha1.PullRequestStatus{
+				ID:                       "99",
+				ExternallyMergedOrClosed: new(true),
+			},
+			Spec: promoterv1alpha1.PullRequestSpec{
+				MergeSha: p1Sha, // stale: the proposed tip the promoter recorded, before it advanced to p2
+				Commit:   promoterv1alpha1.CommitConfiguration{Message: msg},
+			},
+		}
+	}
+
+	BeforeEach(func() {
+		var err error
+		bareDir, err = os.MkdirTemp("", "drift-bare-*")
+		Expect(err).NotTo(HaveOccurred())
+		mustRunGit(bareDir, "init", "--bare")
+
+		workDir, err = os.MkdirTemp("", "drift-work-*")
+		Expect(err).NotTo(HaveOccurred())
+		mustRunGit(workDir, "clone", bareDir, ".")
+		mustRunGit(workDir, "config", "user.name", "Test User")
+		mustRunGit(workDir, "config", "user.email", "test@example.com")
+		mustRunGit(workDir, "config", "commit.gpgsign", "false")
+
+		// Base commit shared by both branches.
+		writeMeta("dry-0-sha")
+		mustRunGit(workDir, "commit", "-m", "base")
+		defaultBranch := mustRunGit(workDir, "rev-parse", "--abbrev-ref", "HEAD")
+		mustRunGit(workDir, "push", "-u", "origin", defaultBranch)
+
+		// Active branch starts at the base.
+		mustRunGit(workDir, "checkout", "-B", activeBranch, defaultBranch)
+		mustRunGit(workDir, "push", "-u", "origin", activeBranch)
+
+		// Proposed branch advances: p1 (dry-1) then p2 (dry-2). The promoter recorded p1/dry-1; p2/dry-2 is
+		// what actually merged.
+		mustRunGit(workDir, "checkout", "-B", proposedBranch, defaultBranch)
+		writeMeta(dryOne)
+		mustRunGit(workDir, "commit", "-m", "p1")
+		p1Sha = mustRunGit(workDir, "rev-parse", "HEAD")
+		writeMeta(dryTwo)
+		mustRunGit(workDir, "commit", "-m", "p2")
+		p2Sha = mustRunGit(workDir, "rev-parse", "HEAD")
+		mustRunGit(workDir, "push", "-u", "origin", proposedBranch)
+
+		// A real (non-fast-forward) merge of the advanced proposed tip into the active branch, as an external
+		// merge would produce: second parent is p2, tree carries dry-2.
+		mustRunGit(workDir, "checkout", activeBranch)
+		mustRunGit(workDir, "merge", "--no-ff", proposedBranch, "-m", "Merge pull request #99")
+		mergeSha = mustRunGit(workDir, "rev-parse", "HEAD")
+		mustRunGit(workDir, "push", "origin", activeBranch)
+
+		gitRepo := &promoterv1alpha1.GitRepository{
+			ObjectMeta: metav1.ObjectMeta{Name: "drift-repo", Namespace: "default"},
+			Spec: promoterv1alpha1.GitRepositorySpec{
+				Fake: &promoterv1alpha1.FakeRepo{Owner: "test-owner", Name: "drift-repo"},
+			},
+		}
+		gitOps = git.NewEnvironmentOperations(gitRepo, &localGitProvider{repoPath: bareDir}, "default/drift-"+mergeSha)
+		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
+		Expect(gitOps.FetchBranch(ctx, activeBranch)).To(Succeed())
+		Expect(gitOps.FetchBranch(ctx, proposedBranch)).To(Succeed())
+		Expect(gitOps.FetchNotes(ctx)).To(Succeed())
+
+		ctp = &promoterv1alpha1.ChangeTransferPolicy{
+			Spec: promoterv1alpha1.ChangeTransferPolicySpec{
+				ActiveBranch:   activeBranch,
+				ProposedBranch: proposedBranch,
+				ActivePath:     "",
+			},
+		}
+	})
+
+	AfterEach(func() {
+		_ = os.RemoveAll(bareDir)
+		_ = os.RemoveAll(workDir)
+	})
+
+	It("rewrites the proposed trailers from the merge commit and flags drift", func() {
+		recorder := events.NewFakeRecorder(100)
+		r := &ChangeTransferPolicyReconciler{Recorder: recorder}
+
+		Expect(r.writePromotionHistoryNote(ctx, ctp, gitOps, buildLivePR(dryOne))).To(Succeed())
+
+		By("Verifying the note on the merge commit uses the merged dry sha, not the stale snapshot")
+		note, err := fetchPromotionHistoryNote(workDir, mergeSha)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(note[constants.TrailerShaDryProposed]).To(Equal([]string{dryTwo}), "the dry sha must be corrected to what actually merged")
+		Expect(note[constants.TrailerShaHydratedProposed]).To(Equal([]string{p2Sha}), "the hydrated sha must be the merge commit's second parent")
+		Expect(note[constants.TrailerPromotionHistoryDrift]).To(Equal([]string{"true"}))
+		Expect(note[constants.TrailerPullRequestID]).To(Equal([]string{"99"}), "unrelated trailers are preserved")
+
+		By("Verifying a drift warning event was emitted")
+		Eventually(recorder.Events).Should(Receive(ContainSubstring(constants.PromotionHistoryNoteDriftReason)))
+
+		By("Verifying the rebuilt history entry is flagged as drifted")
+		entry, include, err := r.buildHistoryEntry(ctx, mergeSha, "", gitOps)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(include).To(BeTrue())
+		Expect(entry.Drifted).To(BeTrue())
+		Expect(entry.PullRequest.ID).To(Equal("99"))
+	})
+
+	It("does not flag drift when the merged dry sha matches the snapshot", func() {
+		recorder := events.NewFakeRecorder(100)
+		r := &ChangeTransferPolicyReconciler{Recorder: recorder}
+
+		// Snapshot already records dry-2, i.e. exactly what merged: no drift.
+		Expect(r.writePromotionHistoryNote(ctx, ctp, gitOps, buildLivePR(dryTwo))).To(Succeed())
+
+		note, err := fetchPromotionHistoryNote(workDir, mergeSha)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(note[constants.TrailerShaDryProposed]).To(Equal([]string{dryTwo}))
+		Expect(note).ToNot(HaveKey(constants.TrailerPromotionHistoryDrift))
+		Expect(note[constants.TrailerShaHydratedProposed]).To(Equal([]string{p1Sha}), "the snapshot hydrated sha is left untouched when there is no drift")
+
+		Consistently(recorder.Events).ShouldNot(Receive())
+
+		entry, include, err := r.buildHistoryEntry(ctx, mergeSha, "", gitOps)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(include).To(BeTrue())
+		Expect(entry.Drifted).To(BeFalse())
+	})
+})
+
 var _ = Describe("createOrUpdatePullRequest with a merged or terminating PullRequest", func() {
 	var name string
 	var scmSecret *v1.Secret

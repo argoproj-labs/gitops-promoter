@@ -225,6 +225,12 @@ type History struct {
 	Active CommitBranchState `json:"active,omitempty"`
 	// PullRequest is the state of the pull request that was created for this ChangeTransferPolicy.
 	PullRequest *PullRequestCommonStatus `json:"pullRequest,omitempty"`
+	// Drifted indicates the pull request merged a proposed revision newer than the one the promoter last
+	// recorded (typically an external merge after the proposed branch advanced). The proposed dry and hydrated
+	// SHAs shown here were reconstructed from the merge commit and are accurate, but the recorded commit
+	// statuses were evaluated against the earlier proposed revision and may be stale: they may not reflect the
+	// gate state of the revision that actually merged.
+	Drifted bool `json:"drifted,omitempty"`
 }
 
 // CommitBranchStateHistoryProposed is identical to CommitBranchState minus the Dry state. In the context of History, the Dry state is not relevant as

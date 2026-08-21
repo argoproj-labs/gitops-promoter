@@ -905,6 +905,8 @@ export type components = {
              * @default {}
              */
             active?: components["schemas"]["CommitBranchState"];
+            /** @description Drifted indicates the pull request merged a proposed revision newer than the one the promoter last recorded (typically an external merge after the proposed branch advanced). The proposed dry and hydrated SHAs shown here were reconstructed from the merge commit and are accurate, but the recorded commit statuses were evaluated against the earlier proposed revision and may be stale: they may not reflect the gate state of the revision that actually merged. */
+            drifted?: boolean;
             /**
              * @description Proposed is the state of the proposed branch at the time the PR was merged.
              * @default {}
