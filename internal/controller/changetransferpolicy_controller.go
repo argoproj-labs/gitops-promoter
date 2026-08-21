@@ -295,7 +295,7 @@ func (r *ChangeTransferPolicyReconciler) buildHistoryEntry(ctx context.Context, 
 	r.populateProposedMetadata(ctx, &historyEntry, activeTrailers, gitOperations)
 	r.populatePullRequestMetadata(ctx, &historyEntry, activeTrailers)
 	r.populateCommitStatuses(ctx, &historyEntry, activeTrailers)
-	historyEntry.Drifted = getFirstTrailerValue(activeTrailers, constants.TrailerPromotionHistoryDrift) == "true"
+	historyEntry.MergeCommitSnapshotMismatch = getFirstTrailerValue(activeTrailers, constants.TrailerMergeCommitSnapshotMismatch) == "true"
 
 	return historyEntry, true, nil
 }
@@ -506,7 +506,7 @@ func removeKnownTrailers(input string) string {
 		constants.TrailerShaHydratedProposed,
 		constants.TrailerShaDryActive,
 		constants.TrailerShaDryProposed,
-		constants.TrailerPromotionHistoryDrift,
+		constants.TrailerMergeCommitSnapshotMismatch,
 	}
 
 	lines := strings.Split(input, "\n")
@@ -1076,19 +1076,13 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 	return nil
 }
 
-// mergeCommitSearchWindow is how many first-parent commits on the active branch we walk when locating the
-// merge commit for a finalized pull request. The merge is normally at or very near the tip; the window only
-// matters when many commits land between the merge and finalization (e.g. activePath repos sharing a branch).
-const mergeCommitSearchWindow = 50
-
 // writePromotionHistoryNote records the pull request's commit message trailers as a git note on the merge
 // commit of the active branch. The note is the durable copy of the trailer data: when the SCM rewrites the
 // merge commit message (squash merges, or merges performed directly on the SCM), the trailers are lost from
 // the commit itself, and history building falls back to this note.
 //
 // Returns nil without writing a note when there is nothing to record: the PR was closed rather than merged,
-// it never accumulated trailers, or no matching merge commit exists on the active branch (an externally
-// closed PR is indistinguishable from an externally merged one until we look for its merge commit).
+// or it never accumulated trailers.
 func (r *ChangeTransferPolicyReconciler) writePromotionHistoryNote(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations, livePR *promoterv1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
 
@@ -1113,16 +1107,17 @@ func (r *ChangeTransferPolicyReconciler) writePromotionHistoryNote(ctx context.C
 		return nil
 	}
 
-	mergeCommitSha, err := findMergeCommitOnActiveBranch(ctx, gitOperations, ctp.Spec.ActiveBranch, ctp.Spec.ProposedBranch, ctp.Spec.ActivePath,
-		livePR.Spec.MergeSha, getFirstTrailerValue(trailers, constants.TrailerShaDryProposed))
-	if err != nil {
-		return fmt.Errorf("failed to find merge commit on active branch %q: %w", ctp.Spec.ActiveBranch, err)
-	}
+	mergeCommitSha := livePR.Status.MergeCommitSha
 	if mergeCommitSha == "" {
-		// No merge commit means the PR was most likely closed without merging (ExternallyMergedOrClosed cannot
-		// tell the two apart); there is nothing to annotate.
-		logger.V(4).Info("No merge commit found on active branch, skipping promotion history note",
-			"mergeSha", livePR.Spec.MergeSha, "activeBranch", ctp.Spec.ActiveBranch)
+		if livePR.Status.State == promoterv1alpha1.PullRequestMerged {
+			return fmt.Errorf("merged pull request %q has no status.mergeCommitSha", livePR.Name)
+		}
+		if externallyMergedOrClosed {
+			logger.V(4).Info("PR externally merged or closed without mergeCommitSha, skipping promotion history note",
+				"prID", livePR.Status.ID)
+			return nil
+		}
+		logger.V(4).Info("No merge commit SHA and PR not merged, skipping promotion history note")
 		return nil
 	}
 
@@ -1180,19 +1175,18 @@ func reconcileProposedTrailersWithMergeCommit(ctx context.Context, recorder even
 		return nil
 	}
 
-	logger.Info("promotion history note dry sha drift; using the merge commit as the source of truth",
+	logger.Info("promotion history merge commit snapshot mismatch; using the merge commit as the source of truth",
 		"mergeCommit", mergeCommitSha, "snapshotDrySha", snapshotDrySha, "mergedDrySha", mergedDrySha)
-	recorder.Eventf(ctp, nil, "Warning", constants.PromotionHistoryNoteDriftReason, "WritingPromotionHistoryNote",
-		constants.PromotionHistoryNoteDriftMessage, livePR.Name, snapshotDrySha, mergedDrySha)
+	recorder.Eventf(ctp, nil, "Warning", constants.PromotionHistoryNoteMergeCommitSnapshotMismatchReason, "WritingPromotionHistoryNote",
+		constants.PromotionHistoryNoteMergeCommitSnapshotMismatchMessage, livePR.Name, snapshotDrySha, mergedDrySha)
 
 	trailers[constants.TrailerShaDryProposed] = []string{mergedDrySha}
 	if mergedHydratedSha := mergeCommitSecondParent(ctx, gitOperations, mergeCommitSha); mergedHydratedSha != "" {
 		trailers[constants.TrailerShaHydratedProposed] = []string{mergedHydratedSha}
 	}
-	// Persist the drift marker into the note itself so history readers know the proposed-side shas were
-	// reconstructed from the merge commit and, crucially, that the recorded commit statuses were evaluated
-	// against the earlier proposed revision and may not reflect what actually merged.
-	trailers[constants.TrailerPromotionHistoryDrift] = []string{"true"}
+	// Persist the mismatch marker into the note so history readers know proposed SHAs were reconstructed from
+	// the merge commit and other snapshot-derived trailers (especially commit statuses) may not reflect what merged.
+	trailers[constants.TrailerMergeCommitSnapshotMismatch] = []string{"true"}
 	return nil
 }
 
@@ -1226,179 +1220,6 @@ func mergeCommitSecondParent(ctx context.Context, gitOperations *git.Environment
 		return ""
 	}
 	return parents[1]
-}
-
-// findMergeCommitOnActiveBranch locates the commit on the active branch that merged mergeSha (the proposed
-// branch tip recorded on the PullRequest). It walks first-parent history newest to oldest looking for, in
-// order of preference:
-//
-//  1. the commit itself (fast-forward merge) or a merge commit whose second parent is mergeSha (regular
-//     merge),
-//  2. a merge commit whose second parent is a descendant of mergeSha (external merge of a possibly newer
-//     proposed tip) — only after the whole window has been scanned for an exact match, because on a shared
-//     active branch a sibling's newer merge commit can descend from our mergeSha and must not shadow our own
-//     exact match deeper in the window,
-//  3. the commit where <activePath>/hydrator.metadata transitioned to the PR's proposed dry sha (squash and
-//     rebase merges leave no parent link, but a promotion by definition changes the recorded dry sha; run as
-//     a final pass so it can never shadow a parent-link match).
-//
-// Returns "" when no matching commit is found, which usually means the PR was closed without merging.
-//
-// TODO: replace this inference with the authoritative answer from the SCM. Providers expose the merge commit
-// sha on the pull request even after it is merged (e.g. GitHub's merge_commit_sha, GitLab's
-// merge_commit_sha/squash_commit_sha); a provider method that looks up a no-longer-open PR could let the
-// PullRequest controller persist status.mergeCommitSha and the true merge time before the resource is
-// deleted, so finalization annotates exactly that commit — and it would also disambiguate
-// ExternallyMergedOrClosed into "merged" vs "closed".
-func findMergeCommitOnActiveBranch(ctx context.Context, gitOperations *git.EnvironmentOperations, activeBranch, proposedBranch, activePath, mergeSha, dryProposedSha string) (string, error) {
-	logger := log.FromContext(ctx)
-	if mergeSha == "" {
-		logger.V(4).Info("locating merge commit without a recorded merge sha; parent-link matching is skipped, dry-sha matching may still apply")
-	}
-
-	if err := gitOperations.FetchBranch(ctx, activeBranch); err != nil {
-		return "", fmt.Errorf("failed to fetch active branch %q: %w", activeBranch, err)
-	}
-	// Make sure the mergeSha object is local for the ancestry check below. The proposed branch usually
-	// still points at or above it; failing that, try fetching the SHA directly (not all servers allow
-	// that, so both fetches are best-effort).
-	if !gitOperations.CommitExists(ctx, mergeSha) {
-		if err := gitOperations.FetchBranch(ctx, proposedBranch); err != nil {
-			logger.V(4).Info("failed to fetch proposed branch while locating merge commit", "branch", proposedBranch, "err", err)
-		}
-	}
-	if !gitOperations.CommitExists(ctx, mergeSha) {
-		if err := gitOperations.FetchSha(ctx, mergeSha); err != nil {
-			logger.V(4).Info("failed to fetch merge sha while locating merge commit", "sha", mergeSha, "err", err)
-		}
-	}
-	mergeShaIsLocal := gitOperations.CommitExists(ctx, mergeSha)
-
-	// Fetch one extra commit so findDrySha can tell "saw the whole branch" from "transition before the window".
-	shas, err := gitOperations.GetRevListFirstParent(ctx, "origin/"+activeBranch, mergeCommitSearchWindow+1)
-	if err != nil {
-		return "", fmt.Errorf("failed to get rev-list for branch %q: %w", activeBranch, err)
-	}
-
-	// Pass 1: exact fast-forward or merge-commit matches. The whole window must be scanned for an exact
-	// match before any ancestry match is accepted: on a shared active branch (activePath mode), a sibling
-	// ChangeTransferPolicy that merged the active branch into its proposed branch produces a NEWER merge
-	// commit whose second parent descends from our mergeSha, and accepting it inline would shadow our own
-	// exact match deeper in the window — writing the note onto (and clobbering the note of) the sibling's
-	// merge commit. Cache the second parents so the ancestry fallback does not re-run git for each commit.
-	secondParents := make(map[string]string, len(shas))
-	for _, sha := range shas {
-		if sha == mergeSha {
-			return sha, nil
-		}
-		parents, err := gitOperations.GetCommitParents(ctx, sha)
-		if err != nil {
-			return "", fmt.Errorf("failed to get parents of commit %q: %w", sha, err)
-		}
-		if len(parents) < 2 {
-			continue
-		}
-		if parents[1] == mergeSha {
-			return sha, nil
-		}
-		secondParents[sha] = parents[1]
-	}
-
-	// Ancestry fallback: an external merge may have merged a proposed tip newer than the recorded mergeSha.
-	// Only reached when no exact match exists anywhere in the window.
-	if mergeShaIsLocal {
-		for _, sha := range shas {
-			secondParent, ok := secondParents[sha]
-			if !ok {
-				continue
-			}
-			isAncestor, err := gitOperations.IsAncestor(ctx, mergeSha, secondParent)
-			if err != nil {
-				return "", fmt.Errorf("failed to check ancestry of merge sha %q: %w", mergeSha, err)
-			}
-			if isAncestor {
-				return sha, nil
-			}
-		}
-	}
-
-	// Pass 2: squash and rebase merges leave no parent link to the proposed branch, but every promotion
-	// rewrites <activePath>/hydrator.metadata on the active branch to the PR's proposed dry sha. The merge
-	// commit is therefore the oldest commit of the newest contiguous run carrying that dry sha: walk newest
-	// to oldest while the dry sha matches and return the commit just above the first non-match (the
-	// transition). Taking the newest run (instead of the oldest match in the window) keeps a re-promotion
-	// of a previously promoted dry sha from matching an ancient commit. Commits merged by sibling
-	// ChangeTransferPolicies after ours (activePath repos sharing the active branch) do not touch our
-	// path's metadata, so they extend the run and never break it; our own next promotion cannot exist yet
-	// because the PullRequest finalizer serializes promotions per ChangeTransferPolicy.
-	mergeCommitSha, err := findDrySha(ctx, gitOperations, shas, activePath, dryProposedSha)
-	if err != nil {
-		return "", fmt.Errorf("failed to locate merge commit via hydrator metadata: %w", err)
-	}
-	return mergeCommitSha, nil
-}
-
-// findDrySha returns the oldest commit of the newest contiguous first-parent run whose
-// <activePath>/hydrator.metadata dry sha equals dryProposedSha, or "" when the tip does not carry it (no
-// promotion visible) or the transition is not visible inside the window (ambiguous). A missing path or
-// malformed metadata file degrades to a non-match; genuine read failures (network, promisor/lazy-fetch,
-// unknown revisions) are returned as errors so PR finalization can retry.
-func findDrySha(ctx context.Context, gitOperations *git.EnvironmentOperations, shas []string, activePath, dryProposedSha string) (string, error) {
-	logger := log.FromContext(ctx)
-
-	if dryProposedSha == "" || len(shas) == 0 {
-		return "", nil
-	}
-
-	dryShaAt := func(sha string) (string, error) {
-		meta, err := gitOperations.GetShaMetadataFromFile(ctx, sha, activePath)
-		if err != nil {
-			if git.IsHydratorMetadataMalformed(err) {
-				logger.V(4).Info("malformed hydrator metadata while locating merge commit", "sha", sha, "err", err)
-				return "", nil
-			}
-			return "", fmt.Errorf("read hydrator metadata at %q: %w", sha, err)
-		}
-		return meta.Sha, nil
-	}
-
-	tipDry, err := dryShaAt(shas[0])
-	if err != nil {
-		return "", fmt.Errorf("failed to read hydrator metadata at active branch tip %q: %w", shas[0], err)
-	}
-	if tipDry != dryProposedSha {
-		// The active branch tip does not carry the proposed dry sha: the promotion never landed
-		// (closed-not-merged), or something newer already replaced it and the merge commit is no longer
-		// attributable from content alone.
-		return "", nil
-	}
-	for i := 1; i < len(shas); i++ {
-		dry, err := dryShaAt(shas[i])
-		if err != nil {
-			return "", fmt.Errorf("failed to read hydrator metadata at commit %q while locating merge commit: %w", shas[i], err)
-		}
-		if dry != dryProposedSha {
-			return shas[i-1], nil
-		}
-	}
-	if len(shas) < mergeCommitSearchWindow+1 {
-		// Fewer commits than the probe limit: the walk covered the whole branch and every commit carried
-		// the dry sha; the oldest one introduced it.
-		return shas[len(shas)-1], nil
-	}
-	// Fetched a full probe window with every commit still matching: the transition is only identifiable
-	// when the oldest commit we saw is the branch root; otherwise it lies before the window.
-	parents, err := gitOperations.GetCommitParents(ctx, shas[len(shas)-1])
-	if err != nil {
-		return "", fmt.Errorf("failed to get parents of commit %q while locating merge commit: %w", shas[len(shas)-1], err)
-	}
-	if len(parents) == 0 {
-		return shas[len(shas)-1], nil
-	}
-	// Every commit in a full probe window carries the dry sha and the oldest has a parent, so the
-	// transition happened before the window and the merge commit cannot be identified.
-	logger.V(4).Info("dry sha transition not visible within the merge commit search window", "drySha", dryProposedSha)
-	return "", nil
 }
 
 // ctpPullRequestListOptions returns list options for PullRequests owned by this ChangeTransferPolicy.

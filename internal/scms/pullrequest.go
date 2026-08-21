@@ -22,6 +22,9 @@ type PullRequestProvider interface {
 	// FindOpen checks if a pull request is open and returns its status.
 	// When LabelsReported is true, SCMLabels holds PR label names from the list response.
 	FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (FindOpenResult, error)
+	// Get fetches a pull request by status.id. Called only when FindOpen returned !Found,
+	// status.id is set, and status.mergeCommitSha is empty.
+	Get(ctx context.Context, pullRequest v1alpha1.PullRequest) (GetPullRequestResult, error)
 	// GetUrl retrieves the URL of the pull request.
 	GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequest) (string, error)
 	// AddLabels adds SCM labels to an open pull request, creating missing repository or project labels when needed.

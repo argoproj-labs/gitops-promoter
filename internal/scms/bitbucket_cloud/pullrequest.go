@@ -300,6 +300,65 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	}, nil
 }
 
+// Get fetches a pull request by status.id.
+func (pr *PullRequest) Get(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.GetPullRequestResult, error) {
+	logger := log.FromContext(ctx)
+	logger.V(4).Info("Getting pull request by ID")
+
+	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
+		Namespace: pullRequest.Namespace,
+		Name:      pullRequest.Spec.RepositoryReference.Name,
+	})
+	if err != nil {
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to get repo: %w", err)
+	}
+
+	options := &bitbucket.PullRequestsOptions{
+		Owner:    repo.Spec.BitbucketCloud.Owner,
+		RepoSlug: repo.Spec.BitbucketCloud.Name,
+		ID:       pullRequest.Status.ID,
+	}
+
+	start := time.Now()
+	result, err := pr.client.Repositories.PullRequests.Get(options)
+	statusCode := parseErrorStatusCode(err, http.StatusOK)
+	metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationGet, statusCode, time.Since(start), nil)
+
+	if err != nil {
+		if statusCode == http.StatusNotFound {
+			return scms.GetPullRequestResult{}, nil
+		}
+		if unexpectedErr, ok := errors.AsType[*bitbucket.UnexpectedResponseStatusError](err); ok {
+			return scms.GetPullRequestResult{}, fmt.Errorf("failed to get pull request: %w", unexpectedErr.ErrorWithBody())
+		}
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to get pull request: %w", err)
+	}
+
+	logger.V(4).Info("bitbucket response status", "status", statusCode)
+
+	prMap, ok := result.(map[string]any)
+	if !ok {
+		return scms.GetPullRequestResult{}, fmt.Errorf("unexpected response type from Bitbucket API: %T", result)
+	}
+
+	getResult := scms.GetPullRequestResult{Found: true}
+	state, _ := prMap["state"].(string)
+	switch state {
+	case "MERGED":
+		getResult.State = v1alpha1.PullRequestMerged
+		if mergeCommit, ok := prMap["merge_commit"].(map[string]any); ok {
+			if hash, ok := mergeCommit["hash"].(string); ok {
+				getResult.MergeCommitSHA = hash
+			}
+		}
+	case "DECLINED", "SUPERSEDED":
+		getResult.State = v1alpha1.PullRequestClosed
+	default:
+		getResult.State = v1alpha1.PullRequestOpen
+	}
+	return getResult, nil
+}
+
 // GetUrl retrieves the URL of the pull request.
 func (pr *PullRequest) GetUrl(ctx context.Context, prObj v1alpha1.PullRequest) (string, error) {
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{

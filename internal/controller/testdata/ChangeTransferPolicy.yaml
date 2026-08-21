@@ -101,4 +101,4 @@ status:
         prCreationTime: 2023-09-02T00:00:00Z
         prMergeTime: 2023-09-02T01:00:00Z
         url: https://github.com/org/repo/pull/848
-      drifted: true
+      mergeCommitSnapshotMismatch: true

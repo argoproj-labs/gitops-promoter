@@ -26,7 +26,7 @@ ChangeTransferPolicies. PromotionStrategy and ChangeTransferPolicy controllers s
 {!internal/controller/testdata/ChangeTransferPolicy.yaml!}
 ```
 
-`status.history` lists recent promotions (newest first). Each entry includes active/proposed SHAs, pull request metadata, and commit statuses frozen at merge time. When `drifted` is `true` on an entry, the pull request was likely merged externally after the proposed branch advanced past the snapshot the promoter last recorded: proposed dry/hydrated SHAs were reconstructed from the merge commit where possible, but **recorded commit statuses may not reflect the revision that actually merged**. See [Promotion history git notes](debugging/finalizers.md#promotion-history-git-notes) for causes, squash-merge limitations, and operator guidance.
+`status.history` lists recent promotions (newest first). Each entry includes active/proposed SHAs, pull request metadata, and commit statuses frozen at merge time. When `mergeCommitSnapshotMismatch` is `true` on an entry, hydrator metadata on the SCM-reported merge commit disagreed with the promoter's last snapshot (typically an external merge after the proposed branch advanced): proposed dry/hydrated SHAs were reconstructed from the merge commit, but **recorded commit statuses may not reflect the revision that actually merged**. See [Promotion history git notes](debugging/finalizers.md#promotion-history-git-notes) for causes, squash-merge limitations, and operator guidance.
 
 ### PullRequest
 

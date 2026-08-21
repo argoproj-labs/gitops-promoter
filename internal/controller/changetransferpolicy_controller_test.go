@@ -854,8 +854,8 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
 					g.Expect(changeTransferPolicy.Status.PullRequest).ToNot(BeNil())
-					g.Expect(changeTransferPolicy.Status.PullRequest.ExternallyMergedOrClosed).ToNot(BeNil())
-					g.Expect(*changeTransferPolicy.Status.PullRequest.ExternallyMergedOrClosed).To(BeTrue())
+					g.Expect(changeTransferPolicy.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged))
+					g.Expect(changeTransferPolicy.Status.PullRequest.ExternallyMergedOrClosed).To(BeNil())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Expect(fake.FindOpenCallCount()).To(BeNumerically(">=", 1))
@@ -1006,9 +1006,9 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				squashSha = strings.TrimSpace(squashSha)
 				sendWebhookForPush(ctx, beforeSha, changeTransferPolicy.Spec.ActiveBranch)
 
-				By("Removing the PR from the provider to simulate the external merge")
+				By("Marking the PR as merged on the fake SCM with the squash commit SHA")
 				fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
-				Expect(fakeProvider.DeletePullRequest(ctx, pr)).To(Succeed())
+				Expect(fakeProvider.MarkMergedExternally(ctx, pr, squashSha)).To(Succeed())
 
 				By("Triggering PR reconciliation by updating the PR spec")
 				// The PullRequest controller uses GenerationChangedPredicate, so bump the spec for it to
@@ -1016,7 +1016,11 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
 					orig := pr.DeepCopy()
-					pr.Spec.Description += " "
+					if pr.Spec.Labels == nil {
+						pr.Spec.Labels = []string{"trigger-reconcile"}
+					} else {
+						pr.Spec.Labels = append(slices.Clone(pr.Spec.Labels), "trigger-reconcile")
+					}
 					g.Expect(k8sClient.Patch(ctx, &pr, ctrlclient.MergeFrom(orig))).To(Succeed())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -1056,9 +1060,9 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				pr := waitForPRWithTrailers()
 				oldUID := pr.UID
 
-				By("Removing the PR from the provider without merging anything")
+				By("Closing the PR on the fake SCM without merging")
 				fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
-				Expect(fakeProvider.DeletePullRequest(ctx, pr)).To(Succeed())
+				Expect(fakeProvider.Close(ctx, pr)).To(Succeed())
 
 				By("Triggering PR reconciliation by updating the PR spec")
 				// The PullRequest controller uses GenerationChangedPredicate, so bump the spec for it to
@@ -1069,7 +1073,11 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 						return
 					}
 					orig := pr.DeepCopy()
-					pr.Spec.Description += " "
+					if pr.Spec.Labels == nil {
+						pr.Spec.Labels = []string{"trigger-reconcile"}
+					} else {
+						pr.Spec.Labels = append(slices.Clone(pr.Spec.Labels), "trigger-reconcile")
+					}
 					g.Expect(k8sClient.Patch(ctx, &pr, ctrlclient.MergeFrom(orig))).To(Succeed())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -2385,7 +2393,7 @@ var _ = Describe("buildHistoryEntry trailer sources", func() {
 	})
 })
 
-var _ = Describe("writePromotionHistoryNote drift repair", func() {
+var _ = Describe("writePromotionHistoryNote merge commit snapshot mismatch", func() {
 	var workDir string
 	var bareDir string
 	var gitOps *git.EnvironmentOperations
@@ -2423,8 +2431,9 @@ var _ = Describe("writePromotionHistoryNote drift repair", func() {
 			constants.TrailerCommitStatusProposedPrefix + "example-key-phase: success"
 		return &promoterv1alpha1.PullRequest{
 			Status: promoterv1alpha1.PullRequestStatus{
-				ID:                       "99",
-				ExternallyMergedOrClosed: new(true),
+				ID:             "99",
+				State:          promoterv1alpha1.PullRequestMerged,
+				MergeCommitSha: mergeSha,
 			},
 			Spec: promoterv1alpha1.PullRequestSpec{
 				MergeSha: p1Sha, // stale: the proposed tip the promoter recorded, before it advanced to p2
@@ -2500,7 +2509,7 @@ var _ = Describe("writePromotionHistoryNote drift repair", func() {
 		_ = os.RemoveAll(workDir)
 	})
 
-	It("rewrites the proposed trailers from the merge commit and flags drift", func() {
+	It("rewrites the proposed trailers from the merge commit and flags mergeCommitSnapshotMismatch", func() {
 		recorder := events.NewFakeRecorder(100)
 		r := &ChangeTransferPolicyReconciler{Recorder: recorder}
 
@@ -2511,39 +2520,39 @@ var _ = Describe("writePromotionHistoryNote drift repair", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(note[constants.TrailerShaDryProposed]).To(Equal([]string{dryTwo}), "the dry sha must be corrected to what actually merged")
 		Expect(note[constants.TrailerShaHydratedProposed]).To(Equal([]string{p2Sha}), "the hydrated sha must be the merge commit's second parent")
-		Expect(note[constants.TrailerPromotionHistoryDrift]).To(Equal([]string{"true"}))
+		Expect(note[constants.TrailerMergeCommitSnapshotMismatch]).To(Equal([]string{"true"}))
 		Expect(note[constants.TrailerPullRequestID]).To(Equal([]string{"99"}), "unrelated trailers are preserved")
 
-		By("Verifying a drift warning event was emitted")
-		Eventually(recorder.Events).Should(Receive(ContainSubstring(constants.PromotionHistoryNoteDriftReason)))
+		By("Verifying a merge commit snapshot mismatch warning event was emitted")
+		Eventually(recorder.Events).Should(Receive(ContainSubstring(constants.PromotionHistoryNoteMergeCommitSnapshotMismatchReason)))
 
-		By("Verifying the rebuilt history entry is flagged as drifted")
+		By("Verifying the rebuilt history entry is flagged with mergeCommitSnapshotMismatch")
 		entry, include, err := r.buildHistoryEntry(ctx, mergeSha, "", gitOps)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(include).To(BeTrue())
-		Expect(entry.Drifted).To(BeTrue())
+		Expect(entry.MergeCommitSnapshotMismatch).To(BeTrue())
 		Expect(entry.PullRequest.ID).To(Equal("99"))
 	})
 
-	It("does not flag drift when the merged dry sha matches the snapshot", func() {
+	It("does not flag mergeCommitSnapshotMismatch when the merged dry sha matches the snapshot", func() {
 		recorder := events.NewFakeRecorder(100)
 		r := &ChangeTransferPolicyReconciler{Recorder: recorder}
 
-		// Snapshot already records dry-2, i.e. exactly what merged: no drift.
+		// Snapshot already records dry-2, i.e. exactly what merged: no mismatch.
 		Expect(r.writePromotionHistoryNote(ctx, ctp, gitOps, buildLivePR(dryTwo))).To(Succeed())
 
 		note, err := fetchPromotionHistoryNote(workDir, mergeSha)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(note[constants.TrailerShaDryProposed]).To(Equal([]string{dryTwo}))
-		Expect(note).ToNot(HaveKey(constants.TrailerPromotionHistoryDrift))
-		Expect(note[constants.TrailerShaHydratedProposed]).To(Equal([]string{p1Sha}), "the snapshot hydrated sha is left untouched when there is no drift")
+		Expect(note).ToNot(HaveKey(constants.TrailerMergeCommitSnapshotMismatch))
+		Expect(note[constants.TrailerShaHydratedProposed]).To(Equal([]string{p1Sha}), "the snapshot hydrated sha is left untouched when there is no mismatch")
 
 		Consistently(recorder.Events).ShouldNot(Receive())
 
 		entry, include, err := r.buildHistoryEntry(ctx, mergeSha, "", gitOps)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(include).To(BeTrue())
-		Expect(entry.Drifted).To(BeFalse())
+		Expect(entry.MergeCommitSnapshotMismatch).To(BeFalse())
 	})
 })
 
@@ -2693,254 +2702,6 @@ var _ = Describe("createOrUpdatePullRequest with a merged or terminating PullReq
 		Expect(returnedPR).NotTo(BeNil())
 		Expect(returnedPR.Name).To(Equal(prKey.Name))
 		expectSpecUntouched()
-	})
-})
-
-var _ = Describe("findDrySha merge-commit location", func() {
-	var workDir string
-	var bareDir string
-	var branch string
-	var gitOps *git.EnvironmentOperations
-
-	mustRunGit := func(dir string, args ...string) string {
-		GinkgoHelper()
-		out, err := runGitCmd(ctx, dir, args...)
-		Expect(err).NotTo(HaveOccurred())
-		return strings.TrimSpace(out)
-	}
-
-	// commitWithDrySha commits a hydrator.metadata carrying the given dry sha (plus a unique file so every
-	// commit has a distinct tree) and returns the commit sha.
-	commitWithDrySha := func(drySha, fileName string) string {
-		GinkgoHelper()
-		Expect(os.WriteFile(path.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"`+drySha+`"}`), 0o644)).To(Succeed())
-		Expect(os.WriteFile(path.Join(workDir, fileName), []byte(fileName), 0o644)).To(Succeed())
-		mustRunGit(workDir, "add", "-A")
-		mustRunGit(workDir, "commit", "-m", "promote "+drySha)
-		return mustRunGit(workDir, "rev-parse", "HEAD")
-	}
-
-	revList := func() []string {
-		GinkgoHelper()
-		Expect(gitOps.FetchBranch(ctx, branch)).To(Succeed())
-		shas, err := gitOps.GetRevListFirstParent(ctx, "origin/"+branch, mergeCommitSearchWindow+1)
-		Expect(err).NotTo(HaveOccurred())
-		return shas
-	}
-
-	BeforeEach(func() {
-		var err error
-		bareDir, err = os.MkdirTemp("", "find-dry-sha-bare-*")
-		Expect(err).NotTo(HaveOccurred())
-		mustRunGit(bareDir, "init", "--bare")
-
-		workDir, err = os.MkdirTemp("", "find-dry-sha-work-*")
-		Expect(err).NotTo(HaveOccurred())
-		mustRunGit(workDir, "clone", bareDir, ".")
-		mustRunGit(workDir, "config", "user.name", "Test User")
-		mustRunGit(workDir, "config", "user.email", "test@example.com")
-		mustRunGit(workDir, "config", "commit.gpgsign", "false")
-
-		gitRepo := &promoterv1alpha1.GitRepository{
-			ObjectMeta: metav1.ObjectMeta{Name: "find-dry-sha-repo", Namespace: "default"},
-			Spec: promoterv1alpha1.GitRepositorySpec{
-				Fake: &promoterv1alpha1.FakeRepo{Owner: "test-owner", Name: "find-dry-sha-repo"},
-			},
-		}
-		gitOps = git.NewEnvironmentOperations(gitRepo, &localGitProvider{repoPath: bareDir}, "default/find-dry-sha-"+bareDir)
-	})
-
-	AfterEach(func() {
-		_ = os.RemoveAll(bareDir)
-		_ = os.RemoveAll(workDir)
-	})
-
-	It("returns the transition commit, not an older commit that carried the same dry sha", func() {
-		// History (oldest -> newest): promote A, promote B, re-promote A (the merge under finalization),
-		// then a sibling commit that does not change the dry sha.
-		commitWithDrySha("dry-a", "one.txt")
-		commitWithDrySha("dry-b", "two.txt")
-		rePromoteSha := commitWithDrySha("dry-a", "three.txt")
-		commitWithDrySha("dry-a", "four.txt")
-		branch = mustRunGit(workDir, "rev-parse", "--abbrev-ref", "HEAD")
-		mustRunGit(workDir, "push", "-u", "origin", branch)
-		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
-
-		shas := revList()
-		got, err := findDrySha(ctx, gitOps, shas, "", "dry-a")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(got).To(Equal(rePromoteSha),
-			"the newest contiguous run wins; the ancient dry-a commit must not match")
-	})
-
-	It("returns empty when the tip does not carry the dry sha (closed-not-merged)", func() {
-		commitWithDrySha("dry-a", "one.txt")
-		commitWithDrySha("dry-b", "two.txt")
-		branch = mustRunGit(workDir, "rev-parse", "--abbrev-ref", "HEAD")
-		mustRunGit(workDir, "push", "-u", "origin", branch)
-		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
-
-		shas := revList()
-		got, err := findDrySha(ctx, gitOps, shas, "", "dry-never-merged")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(got).To(BeEmpty())
-		got, err = findDrySha(ctx, gitOps, shas, "", "")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(got).To(BeEmpty(), "no dry sha trailer means no match")
-	})
-
-	It("returns the root commit when the whole (short) history carries the dry sha", func() {
-		first := commitWithDrySha("dry-a", "one.txt")
-		commitWithDrySha("dry-a", "two.txt")
-		branch = mustRunGit(workDir, "rev-parse", "--abbrev-ref", "HEAD")
-		mustRunGit(workDir, "push", "-u", "origin", branch)
-		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
-
-		shas := revList()
-		got, err := findDrySha(ctx, gitOps, shas, "", "dry-a")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(got).To(Equal(first),
-			"reaching the branch root means the oldest commit introduced the dry sha")
-	})
-
-	It("returns the root commit when exactly mergeCommitSearchWindow commits all carry the dry sha", func() {
-		first := commitWithDrySha("dry-a", "zero.txt")
-		for i := 1; i < mergeCommitSearchWindow; i++ {
-			commitWithDrySha("dry-a", fmt.Sprintf("file-%d.txt", i))
-		}
-		branch = mustRunGit(workDir, "rev-parse", "--abbrev-ref", "HEAD")
-		mustRunGit(workDir, "push", "-u", "origin", branch)
-		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
-
-		shas := revList()
-		Expect(shas).To(HaveLen(mergeCommitSearchWindow))
-		got, err := findDrySha(ctx, gitOps, shas, "", "dry-a")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(got).To(Equal(first),
-			"exactly mergeCommitSearchWindow matching commits means the branch root introduced the dry sha")
-	})
-
-	It("returns empty when the transition is not visible inside a full search window", func() {
-		commitWithDrySha("dry-old", "zero.txt")
-		for i := 0; i < mergeCommitSearchWindow+1; i++ {
-			commitWithDrySha("dry-a", fmt.Sprintf("file-%d.txt", i))
-		}
-		branch = mustRunGit(workDir, "rev-parse", "--abbrev-ref", "HEAD")
-		mustRunGit(workDir, "push", "-u", "origin", branch)
-		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
-
-		shas := revList()
-		Expect(shas).To(HaveLen(mergeCommitSearchWindow + 1))
-		got, err := findDrySha(ctx, gitOps, shas, "", "dry-a")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(got).To(BeEmpty(),
-			"a full probe window of matches with a parent on the oldest commit is ambiguous")
-	})
-
-	It("propagates hydrator metadata read failures instead of treating them as closed-not-merged", func() {
-		commitWithDrySha("dry-a", "one.txt")
-		branch = mustRunGit(workDir, "rev-parse", "--abbrev-ref", "HEAD")
-		mustRunGit(workDir, "push", "-u", "origin", branch)
-		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
-
-		tip := revList()[0]
-		_, err := findDrySha(ctx, gitOps, []string{tip, "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"}, "", "dry-a")
-		Expect(err).To(HaveOccurred(), "an unreadable commit in the walk must retry, not skip the note")
-	})
-})
-
-var _ = Describe("findMergeCommitOnActiveBranch match preference", func() {
-	var workDir string
-	var bareDir string
-	var activeBranch string
-	var gitOps *git.EnvironmentOperations
-
-	mustRunGit := func(dir string, args ...string) string {
-		GinkgoHelper()
-		out, err := runGitCmd(ctx, dir, args...)
-		Expect(err).NotTo(HaveOccurred())
-		return strings.TrimSpace(out)
-	}
-
-	commitFile := func(fileName, message string) string {
-		GinkgoHelper()
-		Expect(os.WriteFile(path.Join(workDir, fileName), []byte(fileName), 0o644)).To(Succeed())
-		mustRunGit(workDir, "add", "-A")
-		mustRunGit(workDir, "commit", "-m", message)
-		return mustRunGit(workDir, "rev-parse", "HEAD")
-	}
-
-	BeforeEach(func() {
-		var err error
-		bareDir, err = os.MkdirTemp("", "find-merge-commit-bare-*")
-		Expect(err).NotTo(HaveOccurred())
-		mustRunGit(bareDir, "init", "--bare")
-
-		workDir, err = os.MkdirTemp("", "find-merge-commit-work-*")
-		Expect(err).NotTo(HaveOccurred())
-		mustRunGit(workDir, "clone", bareDir, ".")
-		mustRunGit(workDir, "config", "user.name", "Test User")
-		mustRunGit(workDir, "config", "user.email", "test@example.com")
-		mustRunGit(workDir, "config", "commit.gpgsign", "false")
-
-		commitFile("base.txt", "base commit")
-		activeBranch = mustRunGit(workDir, "rev-parse", "--abbrev-ref", "HEAD")
-
-		gitRepo := &promoterv1alpha1.GitRepository{
-			ObjectMeta: metav1.ObjectMeta{Name: "find-merge-commit-repo", Namespace: "default"},
-			Spec: promoterv1alpha1.GitRepositorySpec{
-				Fake: &promoterv1alpha1.FakeRepo{Owner: "test-owner", Name: "find-merge-commit-repo"},
-			},
-		}
-		gitOps = git.NewEnvironmentOperations(gitRepo, &localGitProvider{repoPath: bareDir}, "default/find-merge-commit-"+bareDir)
-	})
-
-	AfterEach(func() {
-		_ = os.RemoveAll(bareDir)
-		_ = os.RemoveAll(workDir)
-	})
-
-	It("prefers the exact second-parent match over a newer merge whose second parent merely descends from the merge sha", func() {
-		// Shared-active-branch scenario: our PR merges as M1 (parents[1] == S1). Before our note is written,
-		// a sibling ChangeTransferPolicy merges the active branch into its proposed branch (making its tip a
-		// descendant of S1) and its PR merges as M2. The newest-first walk must still return M1, not M2.
-		mustRunGit(workDir, "checkout", "-b", "our-proposed")
-		s1 := commitFile("ours.txt", "our change")
-		mustRunGit(workDir, "checkout", activeBranch)
-		mustRunGit(workDir, "merge", "--no-ff", "our-proposed", "-m", "merge our change")
-		m1 := mustRunGit(workDir, "rev-parse", "HEAD")
-
-		mustRunGit(workDir, "checkout", "-b", "sibling-proposed")
-		commitFile("sibling.txt", "sibling change")
-		mustRunGit(workDir, "checkout", activeBranch)
-		mustRunGit(workDir, "merge", "--no-ff", "sibling-proposed", "-m", "merge sibling change")
-		m2 := mustRunGit(workDir, "rev-parse", "HEAD")
-
-		mustRunGit(workDir, "push", "-u", "origin", activeBranch, "our-proposed", "sibling-proposed")
-		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
-
-		got, err := findMergeCommitOnActiveBranch(ctx, gitOps, activeBranch, "our-proposed", "", s1, "")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(got).NotTo(Equal(m2), "the sibling's merge commit must not shadow the exact match")
-		Expect(got).To(Equal(m1), "the exact parents[1] == mergeSha match must win over a newer ancestry match")
-	})
-
-	It("falls back to the ancestry match when the merged tip is newer than the recorded merge sha", func() {
-		// External merge of a proposed tip newer than the PR's recorded mergeSha: no exact match exists in
-		// the window, so the descendant check must still locate the merge commit.
-		mustRunGit(workDir, "checkout", "-b", "our-proposed")
-		s1 := commitFile("ours.txt", "our change")
-		commitFile("ours-newer.txt", "our newer change")
-		mustRunGit(workDir, "checkout", activeBranch)
-		mustRunGit(workDir, "merge", "--no-ff", "our-proposed", "-m", "merge our newer tip")
-		m := mustRunGit(workDir, "rev-parse", "HEAD")
-
-		mustRunGit(workDir, "push", "-u", "origin", activeBranch, "our-proposed")
-		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
-
-		got, err := findMergeCommitOnActiveBranch(ctx, gitOps, activeBranch, "our-proposed", "", s1, "")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(got).To(Equal(m), "a merge of a descendant of the merge sha must still be found when no exact match exists")
 	})
 })
 

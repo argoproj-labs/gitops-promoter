@@ -44,10 +44,11 @@ var (
 )
 
 type pullRequestProviderState struct {
-	createdAt time.Time
-	id        string
-	state     v1alpha1.PullRequestState
-	labels    []string
+	createdAt      time.Time
+	id             string
+	state          v1alpha1.PullRequestState
+	labels         []string
+	mergeCommitSha string
 }
 
 // PullRequest implements the scms.PullRequestProvider interface for testing purposes.
@@ -207,6 +208,12 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 		return err
 	}
 
+	mergeCommitSha, err := pr.runGitCmd(ctx, gitPath, "rev-parse", "HEAD")
+	if err != nil {
+		return fmt.Errorf("failed to get merge commit SHA: %w", err)
+	}
+	mergeCommitSha = strings.TrimSpace(mergeCommitSha)
+
 	_, err = pr.runGitCmd(ctx, gitPath, "push")
 	if err != nil {
 		return err
@@ -226,10 +233,11 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 	}
 	prev := pullRequests[prKey]
 	pullRequests[prKey] = pullRequestProviderState{
-		id:        prev.id,
-		state:     v1alpha1.PullRequestMerged,
-		createdAt: prev.createdAt,
-		labels:    prev.labels,
+		id:             prev.id,
+		state:          v1alpha1.PullRequestMerged,
+		createdAt:      prev.createdAt,
+		labels:         prev.labels,
+		mergeCommitSha: mergeCommitSha,
 	}
 	return nil
 }
@@ -331,6 +339,34 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	}, nil
 }
 
+// Get fetches a pull request by status.id.
+func (pr *PullRequest) Get(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.GetPullRequestResult, error) {
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	mutexPR.RLock()
+	defer mutexPR.RUnlock()
+	if pullRequests == nil {
+		return scms.GetPullRequestResult{}, nil
+	}
+
+	st, ok := pullRequests[pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)]
+	if !ok || st.id != pullRequest.Status.ID {
+		return scms.GetPullRequestResult{}, nil
+	}
+
+	result := scms.GetPullRequestResult{
+		Found: true,
+		State: st.state,
+	}
+	if st.state == v1alpha1.PullRequestMerged {
+		result.MergeCommitSHA = st.mergeCommitSha
+	}
+	return result, nil
+}
+
 func (pr *PullRequest) findOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string, time.Time, []string) {
 	log.FromContext(ctx).Info("Finding open pull request", "pullRequest", pullRequest)
 	if pullRequests == nil {
@@ -352,6 +388,33 @@ func (pr *PullRequest) findOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 
 func (pr *PullRequest) getMapKey(pullRequest v1alpha1.PullRequest, owner, name string) string {
 	return fmt.Sprintf("%s/%s/%s/%s", owner, name, pullRequest.Spec.SourceBranch, pullRequest.Spec.TargetBranch)
+}
+
+// MarkMergedExternally marks a pull request as merged on the fake SCM without going through Merge.
+func (pr *PullRequest) MarkMergedExternally(ctx context.Context, pullRequest v1alpha1.PullRequest, mergeCommitSha string) error {
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	mutexPR.Lock()
+	defer mutexPR.Unlock()
+	if pullRequests == nil {
+		return errors.New("pull request not found")
+	}
+	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+	prev, ok := pullRequests[prKey]
+	if !ok {
+		return errors.New("pull request not found")
+	}
+	pullRequests[prKey] = pullRequestProviderState{
+		id:             prev.id,
+		state:          v1alpha1.PullRequestMerged,
+		createdAt:      prev.createdAt,
+		labels:         prev.labels,
+		mergeCommitSha: mergeCommitSha,
+	}
+	return nil
 }
 
 // DeletePullRequest deletes a pull request from the fake provider's internal map.

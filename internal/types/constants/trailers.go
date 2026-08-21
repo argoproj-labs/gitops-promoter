@@ -6,11 +6,11 @@ const (
 	TrailerCommitStatusActivePrefix = "Commit-status-active-"
 	// TrailerCommitStatusProposedPrefix is the prefix for trailers indicating proposed commit statuses.
 	TrailerCommitStatusProposedPrefix = "Commit-status-proposed-"
-	// TrailerPromotionHistoryDrift marks a promotion-history note whose snapshot trailers disagreed with the
-	// commit that actually merged (e.g. a pull request merged externally after the proposed branch advanced).
-	// The dry/hydrated proposed shas in the note are corrected from the merge commit, but the commit statuses
-	// pertain to the earlier proposed revision and may not reflect the merged revision's gate state.
-	TrailerPromotionHistoryDrift = "Promoter-history-drift"
+	// TrailerMergeCommitSnapshotMismatch marks a promotion-history note whose snapshot trailers disagreed with
+	// hydrator metadata on the SCM-reported merge commit (e.g. external merge after the proposed branch advanced).
+	// Proposed dry/hydrated SHAs in the note are corrected from the merge commit; other snapshot-derived trailers
+	// (especially commit statuses) may still reflect the earlier proposed revision.
+	TrailerMergeCommitSnapshotMismatch = "Promoter-merge-commit-snapshot-mismatch"
 	// TrailerPullRequestCreationTime is the trailer key used to store the creation time of the pull request.
 	TrailerPullRequestCreationTime = "Pull-request-creation-time"
 	// TrailerPullRequestMergeTime is the trailer key used to store the merge time of the pull request.

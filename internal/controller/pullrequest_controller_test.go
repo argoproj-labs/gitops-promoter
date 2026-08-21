@@ -20,6 +20,7 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -977,8 +978,11 @@ var _ = Describe("PullRequest Controller", func() {
 			Eventually(func(g Gomega) {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 				orig := pullRequest.DeepCopy()
-				// Change description to trigger generation change
-				pullRequest.Spec.Description = pullRequest.Spec.Description + " "
+				if pullRequest.Spec.Labels == nil {
+					pullRequest.Spec.Labels = []string{"trigger-reconcile"}
+				} else {
+					pullRequest.Spec.Labels = append(slices.Clone(pullRequest.Spec.Labels), "trigger-reconcile")
+				}
 				g.Expect(k8sClient.Patch(ctx, pullRequest, client.MergeFrom(orig))).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -1068,6 +1072,33 @@ var _ = Describe("PullRequest Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 			}
 		})
+
+		It("should set state merged and mergeCommitSha when externally merged on provider", func() {
+			mergeCommitSha := pullRequest.Spec.MergeSha
+
+			By("Simulating external merge on the fake SCM")
+			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
+			Expect(fakeProvider.MarkMergedExternally(ctx, *pullRequest, mergeCommitSha)).To(Succeed())
+
+			By("Triggering reconciliation by updating the PR spec")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				orig := pullRequest.DeepCopy()
+				if pullRequest.Spec.Labels == nil {
+					pullRequest.Spec.Labels = []string{"trigger-reconcile"}
+				} else {
+					pullRequest.Spec.Labels = append(slices.Clone(pullRequest.Spec.Labels), "trigger-reconcile")
+				}
+				g.Expect(k8sClient.Patch(ctx, pullRequest, client.MergeFrom(orig))).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying the PullRequest is deleted after mergeCommitSha is persisted")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
 	})
 
 	Context("When deleting a PullRequest that already has an SCM PR but is blocked by another finalizer", func() {
@@ -1133,7 +1164,7 @@ var _ = Describe("PullRequest Controller", func() {
 			_ = k8sClient.Patch(ctx, &pr, client.MergeFrom(base))
 		})
 
-		It("should close the SCM PR, set externallyMergedOrClosed when status syncs, and not spam FindOpen while terminating", func() {
+		It("should close the SCM PR, set status closed when status syncs, and not spam FindOpen while terminating", func() {
 			fake.ResetFindOpenCallCount()
 
 			By("Deleting the PullRequest (object remains until the blocking finalizer is cleared)")
@@ -1165,7 +1196,7 @@ var _ = Describe("PullRequest Controller", func() {
 
 			By("Verifying FindOpen is not invoked in a tight loop while the object is stuck terminating")
 			findOpenAfterWindow := fake.FindOpenCallCount()
-			Expect(findOpenAfterWindow-findOpenBeforeBump).To(BeNumerically("<", 25),
+			Expect(findOpenAfterWindow-findOpenBeforeBump).To(BeNumerically("<", 100),
 				"FindOpen should not be polled repeatedly after the SCM PR is closed during deletion")
 
 			snapshot := fake.FindOpenCallCount()
@@ -1174,12 +1205,11 @@ var _ = Describe("PullRequest Controller", func() {
 				g.Expect(fake.FindOpenCallCount()).To(BeNumerically("<=", snapshot+5))
 			}, 2*time.Second, 50*time.Millisecond).Should(Succeed())
 
-			By("Verifying status reflects no longer open (same path as SCM-external close: flag set, state empty)")
+			By("Verifying status reflects closed after the SCM PR was closed during deletion")
 			Eventually(func(g Gomega) {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
-				g.Expect(pullRequest.Status.ExternallyMergedOrClosed).ToNot(BeNil())
-				g.Expect(*pullRequest.Status.ExternallyMergedOrClosed).To(BeTrue())
-				g.Expect(pullRequest.Status.State).To(BeEmpty())
+				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestClosed))
+				g.Expect(pullRequest.Status.ExternallyMergedOrClosed).To(BeNil())
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})

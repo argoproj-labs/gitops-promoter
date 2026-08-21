@@ -170,25 +170,18 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	// Clean up already closed/merged PRs
-	if cleaned, err := r.cleanupTerminalStates(ctx, &pr); cleaned || err != nil {
-		return ctrl.Result{}, err
-	}
-
-	// Sync state from provider
+	// Sync state from provider before terminal cleanup so Get-by-ID can populate mergeCommitSha.
 	needsImmediateRequeue, err := r.syncStateFromProvider(ctx, &pr, provider, openResult.Found, openResult.ID, openResult.CreationTime)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	// Requeue immediately so that the deferred HandleReconciliationResult persists the in-memory
-	// status change, then the following reconciliation's cleanupTerminalStates handles deletion.
-	// This covers two cases:
-	// 1. ExternallyMergedOrClosed was set (PR vanished on provider while spec.state was still "open")
-	// 2. The PR is gone from the provider and spec.state is a terminal state, but a prior status
-	//    update was lost (e.g. conflict error) — syncStateFromProvider sets status.state = spec.state
-	//    so cleanup can proceed once the status is persisted.
 	if needsImmediateRequeue {
 		return ctrl.Result{RequeueAfter: 1 * time.Microsecond}, nil
+	}
+
+	// Clean up already closed/merged PRs
+	if cleaned, err := r.cleanupTerminalStates(ctx, &pr); cleaned || err != nil {
+		return ctrl.Result{}, err
 	}
 
 	r.syncAppliedLabelsFromFindOpen(&pr, openResult)
@@ -256,6 +249,11 @@ func (r *PullRequestReconciler) cleanupTerminalStates(ctx context.Context, pr *p
 		return false, nil
 	}
 
+	if pr.Status.State == promoterv1alpha1.PullRequestMerged && pr.Status.MergeCommitSha == "" && pr.Spec.State == promoterv1alpha1.PullRequestOpen {
+		logger.V(4).Info("merged pull request missing mergeCommitSha, waiting for SCM lookup", "pullRequestID", pr.Status.ID)
+		return false, nil
+	}
+
 	if externallyMergedOrClosed {
 		logger.Info("Cleaning up externally merged or closed pull request", "pullRequestID", pr.Status.ID)
 	} else {
@@ -306,7 +304,41 @@ func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *p
 	// If spec.state is "merged" or "closed", the controller initiated the action and we should NOT mark as external.
 	// Only mark as external if spec.state is "open" (controller didn't initiate the closure/merge).
 	if pr.Status.ID != "" {
+		if pr.Status.MergeCommitSha == "" {
+			details, err := provider.Get(ctx, *pr)
+			if err != nil {
+				return false, fmt.Errorf("failed to get pull request by id: %w", err)
+			}
+			if details.Found {
+				switch details.State {
+				case promoterv1alpha1.PullRequestMerged:
+					changed := pr.Status.State != promoterv1alpha1.PullRequestMerged
+					if details.MergeCommitSHA != "" && pr.Status.MergeCommitSha != details.MergeCommitSHA {
+						pr.Status.MergeCommitSha = details.MergeCommitSHA
+						changed = true
+					}
+					if changed {
+						pr.Status.State = promoterv1alpha1.PullRequestMerged
+						return true, nil
+					}
+				case promoterv1alpha1.PullRequestClosed:
+					if pr.Status.State != promoterv1alpha1.PullRequestClosed {
+						pr.Status.State = promoterv1alpha1.PullRequestClosed
+						return true, nil
+					}
+				case promoterv1alpha1.PullRequestOpen:
+					logger.V(4).Info("FindOpen missed an open pull request on the SCM", "pullRequestID", pr.Status.ID)
+				}
+			}
+		}
+
 		if pr.Spec.State == promoterv1alpha1.PullRequestOpen {
+			if pr.Status.State == promoterv1alpha1.PullRequestClosed || pr.Status.State == promoterv1alpha1.PullRequestMerged {
+				return false, nil
+			}
+			if pr.Status.ExternallyMergedOrClosed != nil && *pr.Status.ExternallyMergedOrClosed {
+				return false, nil
+			}
 			// Controller still thinks PR should be open, but it's not found on provider. That includes a
 			// human or another system closing/merging the PR, and also our own deletion finalizer having
 			// closed it on the SCM: the next sync cannot tell those apart, so we set ExternallyMergedOrClosed.

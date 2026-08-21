@@ -237,6 +237,59 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest promoterv1alpha
 	return scms.FindOpenResult{}, nil
 }
 
+// Get fetches a pull request by status.id.
+func (pr *PullRequest) Get(ctx context.Context, pullRequest promoterv1alpha1.PullRequest) (scms.GetPullRequestResult, error) {
+	logger := log.FromContext(ctx)
+	logger.V(4).Info("Getting pull request by ID")
+
+	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, k8sClient.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	prIndex, err := strconv.ParseInt(pullRequest.Status.ID, 10, 64)
+	if err != nil {
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to convert PR ID to int: %w", err)
+	}
+
+	start := time.Now()
+	existingPR, resp, err := pr.giteaClient.GetPullRequest(repo.Spec.Gitea.Owner, repo.Spec.Gitea.Name, prIndex)
+	if resp != nil {
+		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationGet, resp.StatusCode, time.Since(start), nil)
+	}
+	if err != nil {
+		if resp != nil && resp.StatusCode == http.StatusNotFound {
+			return scms.GetPullRequestResult{}, nil
+		}
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to get pull request: %w", err)
+	}
+	if existingPR == nil {
+		return scms.GetPullRequestResult{}, nil
+	}
+
+	return mapGiteaPullRequestToGetResult(existingPR), nil
+}
+
+func mapGiteaPullRequestToGetResult(existingPR *gitea.PullRequest) scms.GetPullRequestResult {
+	result := scms.GetPullRequestResult{Found: true}
+	if existingPR.HasMerged {
+		result.State = promoterv1alpha1.PullRequestMerged
+		if existingPR.MergedCommitID != nil {
+			result.MergeCommitSHA = *existingPR.MergedCommitID
+		}
+		if existingPR.Merged != nil {
+			result.MergedAt = *existingPR.Merged
+		}
+		return result
+	}
+	if existingPR.State == gitea.StateClosed {
+		result.State = promoterv1alpha1.PullRequestClosed
+		return result
+	}
+	result.State = promoterv1alpha1.PullRequestOpen
+	return result
+}
+
 func checkOpenPR(ctx context.Context, pr PullRequest, repo *promoterv1alpha1.GitRepository, prID int64) (bool, error) {
 	logger := log.FromContext(ctx)
 

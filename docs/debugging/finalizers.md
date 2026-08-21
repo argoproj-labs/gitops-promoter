@@ -32,41 +32,37 @@ Notes are stored at `refs/notes/promoter.history` on the Git repository. During 
 
 When the promoter merges the pull request (`autoMerge: true`, the default), the SCM merge call includes `spec.mergeSha` as a required head match. If the proposed branch has moved since the last reconcile, the SCM rejects the merge and the controller refreshes `PullRequest.spec` before retrying. The snapshot in `spec.commit.message` (trailers) and `spec.mergeSha` therefore matches what actually merged.
 
-In this path, history is accurate and `status.history[].drifted` stays false.
+In this path, history is accurate and `status.history[].mergeCommitSnapshotMismatch` stays false.
 
 ### External merge (SCM UI, Tide, or another bot)
 
-When a pull request is merged or closed outside the controller, the PullRequest controller sets `status.externallyMergedOrClosed` and emits [PullRequestExternallyMergedOrClosed](../monitoring/events.md#pullrequest). Finalization still runs under the CTP finalizer, but the promoter may be reading a **snapshot** of `PullRequest.spec` that lagged behind the real proposed branch tip:
+When a pull request is merged or closed outside the controller, the PullRequest controller disambiguates merged vs closed via SCM `Get` by ID, sets `status.mergeCommitSha` when merged, and finalization writes the promotion-history note on that commit. The promoter may still be reading a **snapshot** of `PullRequest.spec` that lagged behind the real proposed branch tip:
 
 1. The hydrator advances the proposed branch (new dry/hydrated SHAs).
 2. The ChangeTransferPolicy has not yet reconciled and updated `spec.commit.message` / `spec.mergeSha`.
 3. A user or bot merges on the SCM (merging the **current** proposed head, not the stale snapshot).
 
-This is **history drift**: the recorded proposed-side metadata describes an earlier revision than the one that landed. The controller can often correct proposed dry/hydrated SHAs from the merge commit itself (see below), but **commit statuses in the note still reflect the earlier revision** and may not match the gates that applied to what actually merged.
+This is a **merge commit snapshot mismatch**: hydrator metadata on the SCM-reported merge commit disagrees with the promoter's last snapshot. The controller corrects proposed dry/hydrated SHAs from the merge commit, but **commit statuses in the note still reflect the earlier revision** and may not match the gates that applied to what actually merged.
 
-Check `status.history[].drifted` on the ChangeTransferPolicy. When `true`, treat proposed-side commit statuses in that entry as potentially stale. The controller also emits [PromotionHistoryNoteDrift](../monitoring/events.md#changetransferpolicy) when it detects and corrects this during note writing.
+Check `status.history[].mergeCommitSnapshotMismatch` on the ChangeTransferPolicy. When `true`, treat snapshot-derived commit statuses in that entry as potentially stale. The controller also emits [PromotionHistoryNoteMergeCommitSnapshotMismatch](../monitoring/events.md#changetransferpolicy) when it detects and corrects this during note writing.
 
 > [!TIP]
-> Prefer letting the promoter merge pull requests it manages. If you use `autoMerge: false` with Prow/Tide or similar, see [Dynamic Pull Request Labels](../advanced-usage/pull-request-labels.md#prow--tide-example) and the drift caveats below.
+> Prefer letting the promoter merge pull requests it manages. If you use `autoMerge: false` with Prow/Tide or similar, see [Dynamic Pull Request Labels](../advanced-usage/pull-request-labels.md#prow--tide-example) and the mismatch caveats below.
 
-### How the merge commit is located
+### How the merge commit is identified
 
-Before writing the note, the controller must find the commit on the **active** branch that represents the merge. It does not trust the note or snapshot for this step; it inspects git:
+The merge commit comes from **`PullRequest.status.mergeCommitSha`**, populated by the PullRequest controller from the SCM when the PR is no longer open (`Get` by `status.id`). CTP finalization attaches the promotion-history note to that commit — it does not walk git history to locate it.
 
-1. **Parent-link matching** — walk first-parent history on the active branch and look for a merge commit whose second parent matches `spec.mergeSha` (or descends from it when the SCM merged a newer proposed tip).
-2. **Dry-sha matching** — for squash or rebase merges that leave no link to the proposed branch, find the commit where `<activePath>/hydrator.metadata` on the active branch first carries the proposed dry SHA from the snapshot.
-
-`spec.mergeSha` is the proposed **hydrated** branch tip the promoter last recorded (a head-match guard for SCM merges), not the merge commit on active. It helps with regular merges but is not authoritative under external merge.
+At note write time, the controller compares the proposed dry SHA in the snapshot (`spec.commit.message` trailers) with hydrator metadata **on that merge commit**. When they differ, proposed SHAs in the note are corrected and `mergeCommitSnapshotMismatch` is set.
 
 ### Regular merge vs squash
 
 | | Regular merge (`--no-ff`) | Squash merge |
 | --- | --- | --- |
-| Link to proposed branch in git | Yes — merge commit has a **second parent** | **No** — single-parent commit on active |
-| Locate via `spec.mergeSha` / parents | Usually yes (including ancestry when snapshot is stale) | **No** — only dry-sha matching on active |
-| Correct proposed hydrated SHA from git | Yes — second parent of merge commit | **No** — not stored in parent graph |
-| Correct proposed dry SHA from git | Yes — `hydrator.metadata` on merge commit | Yes — if the commit was found |
-| External merge + snapshot drift | Usually find commit and correct SHAs; `drifted: true` | **Highest risk** — dry-sha search uses the stale snapshot; may fail to find the commit, **no note written**, history lost |
+| SCM `mergeCommitSha` | Merge commit on active (often has second parent) | Squash commit on active (single parent) |
+| Correct proposed hydrated SHA from git | Yes — second parent of merge commit when present | **No** — not stored in parent graph |
+| Correct proposed dry SHA from git | Yes — `hydrator.metadata` on merge commit | Yes — `hydrator.metadata` on squash commit |
+| External merge + snapshot mismatch | Note written on SCM SHA; proposed SHAs corrected; `mergeCommitSnapshotMismatch: true` | Same if SCM reports merge SHA and metadata is readable; commit statuses may still be stale |
 
 Squash merges performed in the SCM UI also typically carry **no promoter trailers** in the commit message. The git note is the only way to reconstruct history for those merges; if finalization cannot locate the squash commit, that promotion leaves no history entry.
 

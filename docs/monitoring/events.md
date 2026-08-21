@@ -39,7 +39,7 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 | Warning    | MissingProposedHydratorMetadata | The proposed branch has hydration output but no dry SHA was found at `<activePath>/hydrator.metadata`. Check that the hydrator writes metadata under `activePath`. |
 | Warning    | PullRequestNotReady | One or more of the [PullRequest](../crd-specs.md#pullrequest) managed by this ChangeTransferPolicy is not Ready. |
 | Warning    | PromotionHistoryNoteFailed | Writing the promotion-history git note for a merged pull request failed. The PullRequest finalizer is kept so the write is retried. |
-| Warning    | PromotionHistoryNoteDrift | The promotion-history note snapshot disagreed with the merge commit (typically an external merge after the proposed branch advanced). Proposed SHAs were corrected from git; see [Promotion history git notes](../debugging/finalizers.md#promotion-history-git-notes). |
+| Warning    | PromotionHistoryNoteMergeCommitSnapshotMismatch | Hydrator metadata on the SCM-reported merge commit disagreed with the promotion-history snapshot (typically an external merge after the proposed branch advanced). Proposed SHAs were corrected from git; see [Promotion history git notes](../debugging/finalizers.md#promotion-history-git-notes). |
 
 ## PullRequest
 

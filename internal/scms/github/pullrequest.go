@@ -243,6 +243,53 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	return scms.FindOpenResult{}, nil
 }
 
+// Get fetches a pull request by status.id.
+func (pr *PullRequest) Get(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.GetPullRequestResult, error) {
+	logger := log.FromContext(ctx)
+	logger.V(4).Info("Getting pull request by ID")
+
+	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
+	if err != nil {
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to convert PR number to int: %w", err)
+	}
+
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil || gitRepo == nil {
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	start := time.Now()
+	githubPR, response, err := pr.client.PullRequests.Get(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, prNumber)
+	if response != nil {
+		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationGet, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
+	}
+	if err != nil {
+		if response != nil && response.StatusCode == http.StatusNotFound {
+			return scms.GetPullRequestResult{}, nil
+		}
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to get pull request: %w", err)
+	}
+	if githubPR == nil {
+		return scms.GetPullRequestResult{}, nil
+	}
+
+	result := scms.GetPullRequestResult{Found: true}
+	if githubPR.GetMerged() {
+		result.State = v1alpha1.PullRequestMerged
+		result.MergeCommitSHA = githubPR.GetMergeCommitSHA()
+		if githubPR.MergedAt != nil {
+			result.MergedAt = githubPR.MergedAt.Time
+		}
+		return result, nil
+	}
+	if githubPR.GetState() == "closed" {
+		result.State = v1alpha1.PullRequestClosed
+		return result, nil
+	}
+	result.State = v1alpha1.PullRequestOpen
+	return result, nil
+}
+
 // GetUrl returns the URL of the pull request.
 func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequest) (string, error) {
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})

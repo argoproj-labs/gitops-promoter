@@ -919,13 +919,12 @@ spec:
                                     type: string
                                 type: object
                             type: object
-                          drifted:
+                          mergeCommitSnapshotMismatch:
                             description: |-
-                              Drifted indicates the pull request merged a proposed revision newer than the one the promoter last
-                              recorded (typically an external merge after the proposed branch advanced). The proposed dry and hydrated
-                              SHAs shown here were reconstructed from the merge commit and are accurate, but the recorded commit
-                              statuses were evaluated against the earlier proposed revision and may be stale: they may not reflect the
-                              gate state of the revision that actually merged.
+                              MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with
+                              the promoter's last snapshot (typically an external merge after the proposed branch advanced). Proposed
+                              dry and hydrated SHAs in the history note were reconstructed from the merge commit; other snapshot-derived
+                              trailers (especially commit statuses) may still reflect the earlier proposed revision.
                             type: boolean
                           proposed:
                             description: Proposed is the state of the proposed branch

@@ -3369,9 +3369,9 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_History(ref common.Refere
 							Ref:         ref(apiv1alpha1.PullRequestCommonStatus{}.OpenAPIModelName()),
 						},
 					},
-					"drifted": {
+					"mergeCommitSnapshotMismatch": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Drifted indicates the pull request merged a proposed revision newer than the one the promoter last recorded (typically an external merge after the proposed branch advanced). The proposed dry and hydrated SHAs shown here were reconstructed from the merge commit and are accurate, but the recorded commit statuses were evaluated against the earlier proposed revision and may be stale: they may not reflect the gate state of the revision that actually merged.",
+							Description: "MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with the promoter's last snapshot (typically an external merge after the proposed branch advanced). Proposed dry and hydrated SHAs in the history note were reconstructed from the merge commit; other snapshot-derived trailers (especially commit statuses) may still reflect the earlier proposed revision.",
 							Type:        []string{"boolean"},
 							Format:      "",
 						},
@@ -4218,6 +4218,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestStatus(ref com
 					"url": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Url is the URL of the pull request.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"mergeCommitSha": {
+						SchemaProps: spec.SchemaProps{
+							Description: "MergeCommitSha is the commit SHA on the target branch reported by the SCM after merge. Set once by the PullRequest controller via a Get-by-ID lookup when FindOpen no longer finds the PR.",
 							Type:        []string{"string"},
 							Format:      "",
 						},

@@ -282,6 +282,59 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	return scms.FindOpenResult{}, nil
 }
 
+// Get fetches a pull request by status.id.
+func (pr *PullRequest) Get(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.GetPullRequestResult, error) {
+	logger := log.FromContext(ctx)
+	logger.V(4).Info("Getting merge request by ID")
+
+	mrIID, err := strconv.ParseInt(pullRequest.Status.ID, 10, 64)
+	if err != nil {
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to convert MR number to int64: %w", err)
+	}
+
+	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
+		Namespace: pullRequest.Namespace,
+		Name:      pullRequest.Spec.RepositoryReference.Name,
+	})
+	if err != nil {
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to get repo: %w", err)
+	}
+
+	start := time.Now()
+	mr, resp, err := pr.client.MergeRequests.GetMergeRequest(repo.Spec.GitLab.ProjectID, mrIID, nil, gitlab.WithContext(ctx))
+	if resp != nil {
+		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationGet, resp.StatusCode, time.Since(start), nil)
+	}
+	if err != nil {
+		if resp != nil && resp.StatusCode == http.StatusNotFound {
+			return scms.GetPullRequestResult{}, nil
+		}
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to get merge request: %w", err)
+	}
+	if mr == nil {
+		return scms.GetPullRequestResult{}, nil
+	}
+
+	result := scms.GetPullRequestResult{Found: true}
+	switch mr.State {
+	case "merged":
+		result.State = v1alpha1.PullRequestMerged
+		if mr.SquashCommitSHA != "" {
+			result.MergeCommitSHA = mr.SquashCommitSHA
+		} else {
+			result.MergeCommitSHA = mr.MergeCommitSHA
+		}
+		if mr.MergedAt != nil {
+			result.MergedAt = *mr.MergedAt
+		}
+	case "closed":
+		result.State = v1alpha1.PullRequestClosed
+	default:
+		result.State = v1alpha1.PullRequestOpen
+	}
+	return result, nil
+}
+
 // GetUrl retrieves the URL of the pull request.
 func (pr *PullRequest) GetUrl(ctx context.Context, prObj v1alpha1.PullRequest) (string, error) {
 	// Get the URL for the pull request using string formatting
