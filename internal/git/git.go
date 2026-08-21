@@ -1028,7 +1028,7 @@ func (g *EnvironmentOperations) SetHistoryNote(ctx context.Context, sha string, 
 			delay := wait.Jitter(time.Duration(attempt)*setHistoryNoteRetryBaseDelay, 1.0)
 			select {
 			case <-ctx.Done():
-				return ctx.Err()
+				return fmt.Errorf("failed to push history note for sha %q: %w", sha, ctx.Err())
 			case <-time.After(delay):
 			}
 		}
