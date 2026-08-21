@@ -82,6 +82,7 @@ import (
 
 	"github.com/relvacode/iso8601"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -972,6 +973,11 @@ func (g *EnvironmentOperations) GetHistoryNote(ctx context.Context, sha string) 
 // ref and re-applies the note on top of the latest remote state.
 const setHistoryNoteMaxAttempts = 3
 
+// setHistoryNoteRetryBaseDelay is the base delay before each in-loop retry after a rejected notes push.
+// Actual sleep is Jitter(base*attempt, 1.0): ~50–100ms before attempt 2, ~100–200ms before attempt 3
+// (~150–300ms total sleep when all three push attempts are rejected).
+const setHistoryNoteRetryBaseDelay = 50 * time.Millisecond
+
 // SetHistoryNote attaches (or overwrites) the promotion-history note on the given commit SHA and pushes
 // PromoterHistoryNotesRef to origin. The payload is JSON-encoded; GetHistoryNote is the reader.
 // Retries on non-fast-forward pushes since concurrent clones of the same repository share the remote ref.
@@ -1013,14 +1019,30 @@ func (g *EnvironmentOperations) SetHistoryNote(ctx context.Context, sha string, 
 		}
 
 		lastErr = fmt.Errorf("failed to push history note for sha %q: %w", sha, err)
-		if !strings.Contains(stderr, "non-fast-forward") && !strings.Contains(stderr, "fetch first") && !strings.Contains(stderr, "[rejected]") {
+		if !isRetryableHistoryNotePushStderr(stderr) {
 			logger.Error(err, "Failed to push history note", "sha", sha, "stderr", stderr)
 			return lastErr
 		}
 		logger.V(4).Info("History note push rejected, retrying", "sha", sha, "attempt", attempt, "stderr", stderr)
+		if attempt < setHistoryNoteMaxAttempts {
+			delay := wait.Jitter(time.Duration(attempt)*setHistoryNoteRetryBaseDelay, 1.0)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(delay):
+			}
+		}
 	}
 
 	return fmt.Errorf("failed to push history note after %d attempts: %w", setHistoryNoteMaxAttempts, lastErr)
+}
+
+func isRetryableHistoryNotePushStderr(stderr string) bool {
+	return strings.Contains(stderr, "non-fast-forward") ||
+		strings.Contains(stderr, "fetch first") ||
+		strings.Contains(stderr, "[rejected]") ||
+		strings.Contains(stderr, "cannot lock ref") ||
+		strings.Contains(stderr, "remote rejected")
 }
 
 // GetCommitParents returns the parent SHAs of the given commit in order (first parent first).
