@@ -21,6 +21,7 @@ import (
 // Pass 1 — parent-link exact match (newest to oldest):
 //   - commit == spec.mergeSha (fast-forward), or
 //   - merge commit with parents[1] == spec.mergeSha.
+//
 // The full window was scanned before any ancestry match so a sibling CTP's newer merge on a
 // shared active branch could not shadow an exact match deeper in history.
 //
@@ -42,8 +43,8 @@ import (
 // revival through status.mergeCommitSha on the PullRequest CRD rather than re-adding silent
 // git walks inside CTP finalization.
 type GetPullRequestResult struct {
-	Found          bool
+	MergedAt       time.Time
 	State          v1alpha1.PullRequestState
 	MergeCommitSHA string
-	MergedAt       time.Time
+	Found          bool
 }

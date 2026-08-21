@@ -47,8 +47,8 @@ type pullRequestProviderState struct {
 	createdAt      time.Time
 	id             string
 	state          v1alpha1.PullRequestState
-	labels         []string
 	mergeCommitSha string
+	labels         []string
 }
 
 // PullRequest implements the scms.PullRequestProvider interface for testing purposes.
