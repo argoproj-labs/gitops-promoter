@@ -22,6 +22,65 @@ All promoter-defined finalizer strings live in the API package as constants (see
 
 No separate finalizer constant is defined for `PromotionStrategy`; RBAC may still mention `promotionstrategies/finalizers` for generic metadata updates. Behavior you care about for promotions is mostly on `ChangeTransferPolicy` and `PullRequest` as in the table above.
 
+## Promotion history git notes
+
+The `changetransferpolicy.promoter.argoproj.io/pullrequest-finalizer` exists so the ChangeTransferPolicy controller can write a **promotion-history git note** on the merge commit before the `PullRequest` CR is deleted. That note is the durable record of what was promoted (pull request metadata, gate phases, dry/hydrated SHAs) when the SCM rewrites or strips the merge commit message — for example after a squash merge or a merge performed in the SCM UI.
+
+Notes are stored at `refs/notes/promoter.history` on the Git repository. During reconciliation the controller reads them (falling back to commit-message trailers on older merges) and rebuilds `ChangeTransferPolicy.status.history`.
+
+### Supported path: controller-initiated merge
+
+When the promoter merges the pull request (`autoMerge: true`, the default), the SCM merge call includes `spec.mergeSha` as a required head match. If the proposed branch has moved since the last reconcile, the SCM rejects the merge and the controller refreshes `PullRequest.spec` before retrying. The snapshot in `spec.commit.message` (trailers) and `spec.mergeSha` therefore matches what actually merged.
+
+In this path, history is accurate and `status.history[].drifted` stays false.
+
+### External merge (SCM UI, Tide, or another bot)
+
+When a pull request is merged or closed outside the controller, the PullRequest controller sets `status.externallyMergedOrClosed` and emits [PullRequestExternallyMergedOrClosed](../monitoring/events.md#pullrequest). Finalization still runs under the CTP finalizer, but the promoter may be reading a **snapshot** of `PullRequest.spec` that lagged behind the real proposed branch tip:
+
+1. The hydrator advances the proposed branch (new dry/hydrated SHAs).
+2. The ChangeTransferPolicy has not yet reconciled and updated `spec.commit.message` / `spec.mergeSha`.
+3. A user or bot merges on the SCM (merging the **current** proposed head, not the stale snapshot).
+
+This is **history drift**: the recorded proposed-side metadata describes an earlier revision than the one that landed. The controller can often correct proposed dry/hydrated SHAs from the merge commit itself (see below), but **commit statuses in the note still reflect the earlier revision** and may not match the gates that applied to what actually merged.
+
+Check `status.history[].drifted` on the ChangeTransferPolicy. When `true`, treat proposed-side commit statuses in that entry as potentially stale. The controller also emits [PromotionHistoryNoteDrift](../monitoring/events.md#changetransferpolicy) when it detects and corrects this during note writing.
+
+> [!TIP]
+> Prefer letting the promoter merge pull requests it manages. If you use `autoMerge: false` with Prow/Tide or similar, see [Dynamic Pull Request Labels](../advanced-usage/pull-request-labels.md#prow--tide-example) and the drift caveats below.
+
+### How the merge commit is located
+
+Before writing the note, the controller must find the commit on the **active** branch that represents the merge. It does not trust the note or snapshot for this step; it inspects git:
+
+1. **Parent-link matching** — walk first-parent history on the active branch and look for a merge commit whose second parent matches `spec.mergeSha` (or descends from it when the SCM merged a newer proposed tip).
+2. **Dry-sha matching** — for squash or rebase merges that leave no link to the proposed branch, find the commit where `<activePath>/hydrator.metadata` on the active branch first carries the proposed dry SHA from the snapshot.
+
+`spec.mergeSha` is the proposed **hydrated** branch tip the promoter last recorded (a head-match guard for SCM merges), not the merge commit on active. It helps with regular merges but is not authoritative under external merge.
+
+### Regular merge vs squash
+
+| | Regular merge (`--no-ff`) | Squash merge |
+| --- | --- | --- |
+| Link to proposed branch in git | Yes — merge commit has a **second parent** | **No** — single-parent commit on active |
+| Locate via `spec.mergeSha` / parents | Usually yes (including ancestry when snapshot is stale) | **No** — only dry-sha matching on active |
+| Correct proposed hydrated SHA from git | Yes — second parent of merge commit | **No** — not stored in parent graph |
+| Correct proposed dry SHA from git | Yes — `hydrator.metadata` on merge commit | Yes — if the commit was found |
+| External merge + snapshot drift | Usually find commit and correct SHAs; `drifted: true` | **Highest risk** — dry-sha search uses the stale snapshot; may fail to find the commit, **no note written**, history lost |
+
+Squash merges performed in the SCM UI also typically carry **no promoter trailers** in the commit message. The git note is the only way to reconstruct history for those merges; if finalization cannot locate the squash commit, that promotion leaves no history entry.
+
+### Note write failures and the finalizer
+
+If writing or pushing the note fails, the controller emits [PromotionHistoryNoteFailed](../monitoring/events.md#changetransferpolicy) and **keeps** the CTP finalizer so finalization retries. Do not strip the finalizer to “unstick” deletion unless you accept losing that history entry.
+
+Inspect the note on a merge commit (after fetching the ref):
+
+```bash
+git fetch origin '+refs/notes/promoter.history:refs/notes/promoter.history'
+git notes --ref=promoter.history show <merge-commit-sha>
+```
+
 ## Risks of manually removing finalizers
 
 Removing a finalizer **does not run** the controller logic that would have run on a normal delete. Effects depend on which finalizer you strip:
@@ -30,7 +89,7 @@ Removing a finalizer **does not run** the controller logic that would have run o
   **Risk:** The Kubernetes object is gone while the real pull request may still be **open** in GitHub/GitLab/etc. You lose a single place to drive closure and can strand automation or humans on a live PR.
 
 - **`PullRequest` (`changetransferpolicy.promoter.argoproj.io/pullrequest-finalizer`)**  
-  **Risk:** The `ChangeTransferPolicy` may never record the final PR identity/state from that object, and the promotion-history git note for the merge commit may never be written. Downstream status, history, or “externally closed” handling can be wrong or racy, and history for merges performed on the SCM (e.g. squash merges) can be permanently lost.
+  **Risk:** The `ChangeTransferPolicy` may never record the final PR identity/state from that object, and the [promotion-history git note](#promotion-history-git-notes) for the merge commit may never be written. Downstream status, history, or “externally closed” handling can be wrong or racy, and history for merges performed on the SCM (e.g. squash merges) can be permanently lost.
 
 - **`ChangeTransferPolicy` (`changetransferpolicy.promoter.argoproj.io/finalizer`)**  
   **Risk:** The policy CR can be removed from etcd while related `PullRequest`s still carry the CTP finalizer or are not cleaned up the way the controller expects. You can leave policies “gone” but PR objects stuck terminating or inconsistent with Git.

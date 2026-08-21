@@ -142,3 +142,5 @@ Using pull request labels increases SCM API traffic: each label change can trigg
 ## Prow / Tide example
 
 Set `autoMerge: false` and add labels when checks pass. Configure Tide (or another bot) to merge when `lgtm` and `approved` are present. Promotion completion is still tracked via `ExternallyMergedOrClosed` when the PR is merged outside the promoter.
+
+External merges can leave promotion history **drifted** or incomplete (especially squash merges) if the proposed branch moved before the promoter refreshed `PullRequest.spec`. Prefer merging soon after gates pass, and read [Promotion history git notes](../debugging/finalizers.md#promotion-history-git-notes) before relying on `status.history` commit statuses for externally merged PRs.
