@@ -74,21 +74,72 @@ var _ = Describe("ExpressionEvaluator", func() {
 		})
 	})
 
-	Describe("evaluateValidationExpression", func() {
-		It("returns true for a boolean expression that evaluates to true", func() {
-			passed, err := e.evaluateValidationExpression(ctx, "Response.StatusCode == 200", map[string]any{
+	Describe("evaluateValidationExpressionForEnvironments", func() {
+		It("returns CommitPhaseSuccess for a boolean expression that evaluates to true", func() {
+			phase, err := e.evaluateValidationExpressionForEnvironments(ctx, "Response.StatusCode == 200", map[string]any{
 				"Response": map[string]any{"StatusCode": 200},
 			})
 			Expect(err).ToNot(HaveOccurred())
-			Expect(passed).To(BeTrue())
+			Expect(phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 		})
 
-		It("returns false when the boolean expression is false", func() {
-			passed, err := e.evaluateValidationExpression(ctx, "Response.StatusCode == 200", map[string]any{
+		It("returns CommitPhasePending when the boolean expression is false", func() {
+			phase, err := e.evaluateValidationExpressionForEnvironments(ctx, "Response.StatusCode == 200", map[string]any{
 				"Response": map[string]any{"StatusCode": 500},
 			})
 			Expect(err).ToNot(HaveOccurred())
-			Expect(passed).To(BeFalse())
+			Expect(phase).To(Equal(promoterv1alpha1.CommitPhasePending))
+		})
+
+		It("returns the phase from a { phase } object", func() {
+			expression := `Response.StatusCode >= 500 ? {"phase": "failure"} : {"phase": "success"}`
+
+			phase, err := e.evaluateValidationExpressionForEnvironments(ctx, expression, map[string]any{
+				"Response": map[string]any{"StatusCode": 503},
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(phase).To(Equal(promoterv1alpha1.CommitPhaseFailure))
+
+			phase, err = e.evaluateValidationExpressionForEnvironments(ctx, expression, map[string]any{
+				"Response": map[string]any{"StatusCode": 200},
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+		})
+
+		It("returns CommitPhasePending for an explicit pending phase", func() {
+			phase, err := e.evaluateValidationExpressionForEnvironments(ctx, `{"phase": "pending"}`, map[string]any{})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(phase).To(Equal(promoterv1alpha1.CommitPhasePending))
+		})
+
+		It("defaults phase to pending when the object omits it", func() {
+			phase, err := e.evaluateValidationExpressionForEnvironments(ctx, `{"other": "value"}`, map[string]any{})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(phase).To(Equal(promoterv1alpha1.CommitPhasePending))
+		})
+
+		It("errors on an unrecognized phase", func() {
+			_, err := e.evaluateValidationExpressionForEnvironments(ctx, `{"phase": "bogus"}`, map[string]any{})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("unrecognized phase"))
+		})
+
+		It("errors when the object uses promotionstrategy-only keys", func() {
+			for _, expression := range []string{
+				`{"defaultPhase": "success"}`,
+				`{"environments": [{"branch": "env/dev", "phase": "success"}]}`,
+			} {
+				_, err := e.evaluateValidationExpressionForEnvironments(ctx, expression, map[string]any{})
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("promotionstrategy"))
+			}
+		})
+
+		It("errors when the expression returns a non-bool, non-object value", func() {
+			_, err := e.evaluateValidationExpressionForEnvironments(ctx, `"success"`, map[string]any{})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("must return bool or object { phase }"))
 		})
 	})
 
