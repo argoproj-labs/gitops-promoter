@@ -603,7 +603,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
 
-				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 
 				var devEnvStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
 				for i := range wrcs.Status.Environments {

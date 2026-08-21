@@ -72,6 +72,10 @@ var _ = Describe("PullRequest Controller", func() {
 				By("Creating test resources")
 				name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "update-title-merge")
 
+				// Override branches to use ones that exist in the test git server setup
+				pullRequest.Spec.TargetBranch = testBranchDevelopment
+				pullRequest.Spec.SourceBranch = testBranchDevelopmentNext
+
 				typeNamespacedName = types.NamespacedName{
 					Name:      name,
 					Namespace: "default",
