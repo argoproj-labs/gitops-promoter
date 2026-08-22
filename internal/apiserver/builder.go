@@ -66,20 +66,18 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 	ps.Status = promoterv1alpha1.PromotionStrategyStatus{}
 
 	bundle := &viewv1alpha1.PromotionStrategyDetails{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:              name,
-			Namespace:         namespace,
-			UID:               detailsUID(ps.UID),
-			ResourceVersion:   resourceVersion,
-			CreationTimestamp: ps.CreationTimestamp,
-			Labels:            ps.Labels,
-			OwnerReferences: []metav1.OwnerReference{{
-				APIVersion: promoterv1alpha1.SchemeGroupVersion.String(),
-				Kind:       "PromotionStrategy",
-				Name:       ps.Name,
-				UID:        ps.UID,
-			}},
-		},
+		Name:              name,
+		Namespace:         namespace,
+		UID:               detailsUID(ps.UID),
+		ResourceVersion:   resourceVersion,
+		CreationTimestamp: ps.CreationTimestamp,
+		Labels:            ps.Labels,
+		OwnerReferences: []metav1.OwnerReference{{
+			APIVersion: promoterv1alpha1.SchemeGroupVersion.String(),
+			Kind:       "PromotionStrategy",
+			Name:       ps.Name,
+			UID:        ps.UID,
+		}},
 		PromotionStrategy: *ps,
 	}
 

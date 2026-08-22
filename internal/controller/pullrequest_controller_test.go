@@ -1287,13 +1287,11 @@ var _ = Describe("pullRequestDeletionFinalizerLengthChangedPredicate", func() {
 	It("enqueues when terminating and finalizer count changes", func() {
 		now := metav1.Now()
 		oldPR := &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{
-				Generation:        1,
-				DeletionTimestamp: &now,
-				Finalizers:        []string{promoterv1alpha1.PullRequestFinalizer},
-				ResourceVersion:   "1",
-			},
-			Spec: promoterv1alpha1.PullRequestSpec{State: promoterv1alpha1.PullRequestOpen},
+			Generation:        1,
+			DeletionTimestamp: &now,
+			Finalizers:        []string{promoterv1alpha1.PullRequestFinalizer},
+			ResourceVersion:   "1",
+			Spec:              promoterv1alpha1.PullRequestSpec{State: promoterv1alpha1.PullRequestOpen},
 		}
 		newPR := oldPR.DeepCopy()
 		newPR.Finalizers = nil
@@ -1302,11 +1300,9 @@ var _ = Describe("pullRequestDeletionFinalizerLengthChangedPredicate", func() {
 
 	It("ignores updates when not terminating", func() {
 		oldPR := &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{
-				Generation: 1,
-				Finalizers: []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
-			},
-			Spec: promoterv1alpha1.PullRequestSpec{State: promoterv1alpha1.PullRequestOpen},
+			Generation: 1,
+			Finalizers: []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
+			Spec:       promoterv1alpha1.PullRequestSpec{State: promoterv1alpha1.PullRequestOpen},
 		}
 		newPR := oldPR.DeepCopy()
 		newPR.Finalizers = []string{
@@ -1319,12 +1315,10 @@ var _ = Describe("pullRequestDeletionFinalizerLengthChangedPredicate", func() {
 	It("ignores terminating updates when finalizer count is unchanged", func() {
 		now := metav1.Now()
 		oldPR := &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{
-				Generation:        1,
-				DeletionTimestamp: &now,
-				Finalizers:        []string{promoterv1alpha1.PullRequestFinalizer},
-			},
-			Spec: promoterv1alpha1.PullRequestSpec{State: promoterv1alpha1.PullRequestOpen},
+			Generation:        1,
+			DeletionTimestamp: &now,
+			Finalizers:        []string{promoterv1alpha1.PullRequestFinalizer},
+			Spec:              promoterv1alpha1.PullRequestSpec{State: promoterv1alpha1.PullRequestOpen},
 		}
 		newPR := oldPR.DeepCopy()
 		newPR.ResourceVersion = "2"
@@ -1335,7 +1329,7 @@ var _ = Describe("pullRequestDeletionFinalizerLengthChangedPredicate", func() {
 var _ = Describe("shouldSkipSCMSync", func() {
 	openPRWithStatus := func() *promoterv1alpha1.PullRequest {
 		pr := &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{Generation: 2},
+			Generation: 2,
 			Spec: promoterv1alpha1.PullRequestSpec{
 				Title:       "title",
 				Description: "description",
@@ -1396,10 +1390,8 @@ var _ = Describe("shouldSkipSCMSync", func() {
 func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.PullRequest) {
 	name = name + "-" + utils.KubeSafeUniqueName(randomString(15))
 	gitRepo := &promoterv1alpha1.GitRepository{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: "default",
-		},
+		Name:      name,
+		Namespace: "default",
 		Spec: promoterv1alpha1.GitRepositorySpec{
 			Fake: &promoterv1alpha1.FakeRepo{
 				Owner: name,
@@ -1414,20 +1406,16 @@ func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret,
 	setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 	scmSecret := &v1.Secret{
-		TypeMeta: metav1.TypeMeta{},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: "default",
-		},
-		Data: nil,
+		TypeMeta:  metav1.TypeMeta{},
+		Name:      name,
+		Namespace: "default",
+		Data:      nil,
 	}
 
 	scmProvider := &promoterv1alpha1.ScmProvider{
-		TypeMeta: metav1.TypeMeta{},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: "default",
-		},
+		TypeMeta:  metav1.TypeMeta{},
+		Name:      name,
+		Namespace: "default",
 		Spec: promoterv1alpha1.ScmProviderSpec{
 			SecretRef: &v1.LocalObjectReference{Name: name},
 			Fake:      &promoterv1alpha1.Fake{},
@@ -1436,11 +1424,9 @@ func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret,
 	}
 
 	pullRequest := &promoterv1alpha1.PullRequest{
-		TypeMeta: metav1.TypeMeta{},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: "default",
-		},
+		TypeMeta:  metav1.TypeMeta{},
+		Name:      name,
+		Namespace: "default",
 		Spec: promoterv1alpha1.PullRequestSpec{
 			RepositoryReference: promoterv1alpha1.ObjectReference{
 				Name: name,

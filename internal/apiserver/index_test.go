@@ -25,7 +25,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -59,8 +58,8 @@ func (f *flakyReader) Get(ctx context.Context, key client.ObjectKey, obj client.
 func mappingSeed() []client.Object {
 	return []client.Object{
 		&promoterv1alpha1.PromotionStrategy{
-			ObjectMeta: metav1.ObjectMeta{Name: testPSName, Namespace: testNamespace},
-			Spec:       promoterv1alpha1.PromotionStrategySpec{RepositoryReference: promoterv1alpha1.ObjectReference{Name: "my-repo"}},
+			Name: testPSName, Namespace: testNamespace,
+			Spec: promoterv1alpha1.PromotionStrategySpec{RepositoryReference: promoterv1alpha1.ObjectReference{Name: "my-repo"}},
 		},
 		&promoterv1alpha1.GitRepository{
 			ObjectMeta: objectMeta("my-repo"),
@@ -90,7 +89,7 @@ var _ = Describe("mapObjectToPromotionStrategies", func() {
 			}
 		},
 		Entry("PromotionStrategy identity",
-			&promoterv1alpha1.PromotionStrategy{ObjectMeta: metav1.ObjectMeta{Name: testPSName, Namespace: testNamespace}},
+			&promoterv1alpha1.PromotionStrategy{Name: testPSName, Namespace: testNamespace},
 			[]types.NamespacedName{psKey}),
 		Entry("ChangeTransferPolicy by label",
 			&promoterv1alpha1.ChangeTransferPolicy{ObjectMeta: psLabeledMeta("ctp")},
@@ -138,7 +137,7 @@ var _ = Describe("mapObjectToPromotionStrategies", func() {
 			&promoterv1alpha1.ScmProvider{ObjectMeta: objectMeta("my-scm")},
 			[]types.NamespacedName{psKey}),
 		Entry("ClusterScmProvider with no referencing PS",
-			&promoterv1alpha1.ClusterScmProvider{ObjectMeta: metav1.ObjectMeta{Name: "cluster-scm"}},
+			&promoterv1alpha1.ClusterScmProvider{Name: "cluster-scm"},
 			nil),
 	)
 })

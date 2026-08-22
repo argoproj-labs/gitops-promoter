@@ -13,8 +13,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 )
@@ -112,10 +110,8 @@ var _ = Describe("GetBranchShas", func() {
 						Name: "testprovider",
 					},
 				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "testrepo",
-					Namespace: "default",
-				},
+				Name:      "testrepo",
+				Namespace: "default",
 			}
 			gap := &fakeGitProvider{tempDirPath: tempRepoDir}
 			g := git.NewEnvironmentOperations(repo, gap, "default/testrepo")
@@ -185,10 +181,8 @@ var _ = Describe("GetBranchShas skip-fetch behavior", func() {
 					Name: "testprovider",
 				},
 			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "testrepo",
-				Namespace: "default",
-			},
+			Name:      "testrepo",
+			Namespace: "default",
 		}
 		gap = &fakeGitProvider{tempDirPath: tempRepoDir}
 		g = git.NewEnvironmentOperations(repo, gap, "default/skip-fetch-test")
@@ -320,10 +314,8 @@ var _ = Describe("LsRemote", func() {
 						Name: "testprovider",
 					},
 				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "testrepo",
-					Namespace: "default",
-				},
+				Name:      "testrepo",
+				Namespace: "default",
 			}
 			gap := &fakeGitProvider{tempDirPath: tempRepoDir}
 
@@ -370,10 +362,8 @@ var _ = Describe("LsRemote", func() {
 						Name: "testprovider",
 					},
 				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "testrepo",
-					Namespace: "default",
-				},
+				Name:      "testrepo",
+				Namespace: "default",
 			}
 			gap := &fakeGitProvider{tempDirPath: tempRepoDir}
 
@@ -451,10 +441,8 @@ var _ = Describe("HasConflict", func() {
 					Name: "testprovider",
 				},
 			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "testrepo",
-				Namespace: "default",
-			},
+			Name:      "testrepo",
+			Namespace: "default",
 		}
 	})
 
@@ -628,7 +616,7 @@ var _ = Describe("ActivePath support", func() {
 					Name: "testprovider",
 				},
 			},
-			ObjectMeta: metav1.ObjectMeta{Name: "testrepo", Namespace: "default"},
+			Name: "testrepo", Namespace: "default",
 		}
 	})
 
@@ -1082,7 +1070,7 @@ exit 1
 					Name: "testprovider",
 				},
 			},
-			ObjectMeta: metav1.ObjectMeta{Name: "testrepo", Namespace: "default"},
+			Name: "testrepo", Namespace: "default",
 		}
 		gap := &fakeGitProvider{tempDirPath: filepath.Join(workDir, "ignored-repo")}
 

@@ -25,7 +25,6 @@ import (
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -60,10 +59,8 @@ var _ = Describe("ScmProvider Controller", func() {
 			err := k8sClient.Get(ctx, typeNamespacedName, scmprovider)
 			if err != nil && errors.IsNotFound(err) {
 				resource := &promoterv1alpha1.ScmProvider{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
+					Name:      resourceName,
+					Namespace: "default",
 					Spec: promoterv1alpha1.ScmProviderSpec{
 						Fake: &promoterv1alpha1.Fake{},
 					},

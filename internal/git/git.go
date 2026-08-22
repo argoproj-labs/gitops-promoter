@@ -260,8 +260,9 @@ func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch, activ
 		return BranchShas{}, fmt.Errorf("failed to get SHA for branch %q: %w", branch, err)
 	}
 
-	shas := BranchShas{}
-	shas.Hydrated = strings.TrimSpace(stdout)
+	shas := BranchShas{
+		Hydrated: strings.TrimSpace(stdout),
+	}
 	logger.V(4).Info("Got hydrated branch sha", "branch", branch, "sha", shas.Hydrated)
 
 	// Determine whether <activePath>/hydrator.metadata exists on the ref using ls-tree, which reads

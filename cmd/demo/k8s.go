@@ -65,11 +65,9 @@ func CreateOrUpdateSecret(
 	labels map[string]string,
 ) error {
 	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-			Labels:    labels,
-		},
+		Name:       name,
+		Namespace:  namespace,
+		Labels:     labels,
 		Type:       corev1.SecretTypeOpaque,
 		StringData: data,
 	}
@@ -121,9 +119,7 @@ func getKubeConfig() (*rest.Config, error) {
 // CreateNamespace creates a Kubernetes namespace if it doesn't already exist
 func CreateNamespace(ctx context.Context, clientset kubernetes.Interface, namespace string) error {
 	_, err := clientset.CoreV1().Namespaces().Create(ctx, &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: namespace,
-		},
+		Name: namespace,
 	}, metav1.CreateOptions{})
 	if err != nil {
 		if errors.IsAlreadyExists(err) {

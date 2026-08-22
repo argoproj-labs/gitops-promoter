@@ -1319,19 +1319,17 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 	})
 
 	draftPR := &promoterv1alpha1.PullRequest{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      prName,
-			Namespace: ctp.Namespace,
-			Labels:    prLabels,
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion:         gvk.GroupVersion().String(),
-					Kind:               kind,
-					Name:               ctp.Name,
-					UID:                ctp.UID,
-					Controller:         new(true),
-					BlockOwnerDeletion: new(true),
-				},
+		Name:      prName,
+		Namespace: ctp.Namespace,
+		Labels:    prLabels,
+		OwnerReferences: []metav1.OwnerReference{
+			{
+				APIVersion:         gvk.GroupVersion().String(),
+				Kind:               kind,
+				Name:               ctp.Name,
+				UID:                ctp.UID,
+				Controller:         new(true),
+				BlockOwnerDeletion: new(true),
 			},
 		},
 		Spec: promoterv1alpha1.PullRequestSpec{

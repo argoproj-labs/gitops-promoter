@@ -256,14 +256,14 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 			}
 
 			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: "other-config", Namespace: "default"},
+				Name: "other-config", Namespace: "default",
 			})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(shutdowns.Load()).To(Equal(int32(0)))
 
 			reconciler.StartupInstanceID = &wave0
 			_, err = reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: resourceName, Namespace: "other-namespace"},
+				Name: resourceName, Namespace: "other-namespace",
 			})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(shutdowns.Load()).To(Equal(int32(0)))
