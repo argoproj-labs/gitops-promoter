@@ -255,7 +255,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 
 				// Should have status for all environments (dev, staging, production)
 				// since ProposedCommitStatuses is set globally on the PromotionStrategy
-				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 
 				// Find the dev environment status
 				var devEnvStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
@@ -417,7 +417,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 
 				// Should have status for environments
-				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 
 				// Find the dev environment status
 				var devEnvStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
@@ -501,7 +501,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					Namespace: "default",
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 
 				var devEnvStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
 				for i := range wrcs.Status.Environments {
@@ -603,7 +603,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
 
-				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 
 				var devEnvStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
 				for i := range wrcs.Status.Environments {
@@ -702,7 +702,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					Namespace: "default",
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(wrcs.Status.Environments)).To(Equal(3), "all three environments must be processed before snapshotting the request count")
+				g.Expect(wrcs.Status.Environments).To(HaveLen(3), "all three environments must be processed before snapshotting the request count")
 				for i := range wrcs.Status.Environments {
 					g.Expect(wrcs.Status.Environments[i].LastRequestTime).ToNot(BeNil(), "LastRequestTime should be set after first request")
 					g.Expect(wrcs.Status.Environments[i].Phase).To(Equal(promoterv1alpha1.CommitPhasePending), "validation fails (approved: false) so phase stays Pending")
@@ -820,7 +820,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 
 				// Should have status for environments
-				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 
 				// Find an environment with trigger data stored
 				var foundEnvWithData bool
@@ -1375,7 +1375,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 
 				// Should have status for at least dev environment
-				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 
 				devCommitStatusName = utils.CommitStatusResourceName(ctx, &wrcs, testBranchDevelopment)
 				var cs promoterv1alpha1.CommitStatus
@@ -1474,7 +1474,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 
 				// Should have status for environments
-				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 
 				// Find the dev environment status
 				var devEnvStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
@@ -1618,7 +1618,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					Namespace: "default",
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 
 				devEnv := wrcs.Status.Environments[0]
 
@@ -1703,7 +1703,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					Namespace: "default",
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 				g.Expect(wrcs.Status.Environments[0].ResponseOutput).NotTo(BeNil())
 				firstResponseData = wrcs.Status.Environments[0].ResponseOutput.Raw
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -1716,7 +1716,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					Namespace: "default",
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 
 				currentResponseData := wrcs.Status.Environments[0].ResponseOutput.Raw
 				g.Expect(currentResponseData).To(Equal(firstResponseData), "response output should be preserved")
@@ -1802,7 +1802,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					Namespace: "default",
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 
 				devEnv := wrcs.Status.Environments[0]
 				g.Expect(devEnv.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
@@ -1896,7 +1896,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					Namespace: "default",
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 
 				devEnv := wrcs.Status.Environments[0]
 				g.Expect(devEnv.ResponseOutput).NotTo(BeNil())
@@ -1915,7 +1915,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 
 				// Verify the values
 				g.Expect(responseData["statusCode"]).To(Equal(float64(200)))
-				g.Expect(responseData["approved"]).To(Equal(true))
+				g.Expect(responseData["approved"]).To(BeTrue())
 				g.Expect(responseData["nestedField"]).To(Equal("value1"))
 				g.Expect(responseData["rateLimit"]).To(Equal(float64(42)))
 				g.Expect(responseData["timestamp"]).To(Equal("2024-01-15T10:30:00Z"))
@@ -1980,7 +1980,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					Namespace: "default",
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 
 				// Verify validation succeeded
 				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
@@ -2115,7 +2115,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					Namespace: "default",
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(wrcs.Status.Environments).ToNot(BeEmpty())
 				var devEnv *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
 				for i := range wrcs.Status.Environments {
 					if wrcs.Status.Environments[i].Branch == testBranchDevelopment {
@@ -3411,7 +3411,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context Switching", Ordere
 			var fetched promoterv1alpha1.WebRequestCommitStatus
 			err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
 			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(len(fetched.Status.Environments)).To(Equal(3), "all PromotionStrategy environments should have status entries")
+			g.Expect(fetched.Status.Environments).To(HaveLen(3), "all PromotionStrategy environments should have status entries")
 			g.Expect(fetched.Status.PromotionStrategyContext).To(BeNil(), "PromotionStrategyContext should be nil in environments context")
 
 			for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
@@ -3470,7 +3470,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Context Switching", Ordere
 			err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(fetched.Status.PromotionStrategyContext).To(BeNil(), "PromotionStrategyContext should be nil after switching back to environments context")
-			g.Expect(len(fetched.Status.Environments)).To(Equal(3), "all environments should be repopulated after switching back")
+			g.Expect(fetched.Status.Environments).To(HaveLen(3), "all environments should be repopulated after switching back")
 
 			for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
 				var envSt *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
@@ -3598,7 +3598,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
 				g.Expect(err).NotTo(HaveOccurred())
 
-				g.Expect(len(fetched.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(fetched.Status.Environments).ToNot(BeEmpty())
 
 				for _, env := range fetched.Status.Environments {
 					if env.Branch == testBranchDevelopment {
@@ -3773,8 +3773,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 				var fetched promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(fetched.Status.Environments)).To(Equal(3),
-					"all three environments must be processed before snapshotting the HTTP request count")
+				g.Expect(fetched.Status.Environments).To(HaveLen(3), "all three environments must be processed before snapshotting the HTTP request count")
 				for _, env := range fetched.Status.Environments {
 					g.Expect(env.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess),
 						"environment %s should be success before snapshotting", env.Branch)
@@ -3879,8 +3878,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 				var fetched promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(fetched.Status.Environments)).To(Equal(3),
-					"all three environments must be processed before snapshotting the HTTP hit count")
+				g.Expect(fetched.Status.Environments).To(HaveLen(3), "all three environments must be processed before snapshotting the HTTP hit count")
 				for _, env := range fetched.Status.Environments {
 					g.Expect(env.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess),
 						"environment %s should be success before snapshotting", env.Branch)
@@ -4042,7 +4040,7 @@ var _ = Describe("WebRequestCommitStatus Controller - SuccessOutput", Ordered, f
 				var fetched promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(fetched.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(fetched.Status.Environments).ToNot(BeEmpty())
 
 				var foundEnvWithSuccessOutput bool
 				for _, envStatus := range fetched.Status.Environments {
@@ -4116,7 +4114,7 @@ var _ = Describe("WebRequestCommitStatus Controller - SuccessOutput", Ordered, f
 				var fetched promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(fetched.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(fetched.Status.Environments).ToNot(BeEmpty())
 
 				for _, envStatus := range fetched.Status.Environments {
 					if envStatus.Phase == promoterv1alpha1.CommitPhaseSuccess {
@@ -4269,7 +4267,7 @@ var _ = Describe("WebRequestCommitStatus Controller - SuccessOutput", Ordered, f
 				var fetched promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(fetched.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(fetched.Status.Environments).ToNot(BeEmpty())
 
 				var foundWithOutput bool
 				for _, envStatus := range fetched.Status.Environments {
@@ -4411,7 +4409,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard", Ordered, f
 				var fetched promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: wrcs.Name, Namespace: "default"}, &fetched)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(len(fetched.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(fetched.Status.Environments).ToNot(BeEmpty())
 
 				for _, env := range fetched.Status.Environments {
 					if env.Branch == testBranchDevelopment {

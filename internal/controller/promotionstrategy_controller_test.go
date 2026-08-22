@@ -2526,7 +2526,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					GinkgoLogr.Info("Updated commit status for development to sha: " + sha)
 					g.Expect(err).To(Succeed())
 
-					g.Expect(len(ctpDev.Status.Proposed.CommitStatuses)).To(Not(BeZero()))
+					g.Expect(ctpDev.Status.Proposed.CommitStatuses).ToNot(BeEmpty())
 					g.Expect(ctpDev.Status.Proposed.CommitStatuses[0].Url).To(Equal(proposedCommitStatusDevelopment.Spec.Url))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -2595,8 +2595,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[2].PullRequest.ID).To(Not(BeZero()))
 					g.Expect(promotionStrategy.Status.Environments[2].PullRequest.Url).To(ContainSubstring("localhost"))
 
-					g.Expect(len(promotionStrategy.Status.Environments) > 0).To(BeTrue())
-					g.Expect(len(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses) > 0).To(BeTrue())
+					g.Expect(promotionStrategy.Status.Environments).ToNot(BeEmpty())
+					g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses).ToNot(BeEmpty())
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses[0].Url).To(Equal(proposedCommitStatusDevelopment.Spec.Url))
 
 					for _, environment := range promotionStrategy.Status.Environments {
@@ -2870,17 +2870,17 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 				By("Checking that the ArgoCDCommitStatus applicationsSelected field is correct")
 
-				Eventually(func() {
-					Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, types.NamespacedName{
 						Namespace: argocdCommitStatus.Namespace,
 						Name:      argocdCommitStatus.Name,
 					}, &argocdCommitStatus)).To(Succeed())
-					Expect(argocdCommitStatus.Status.ApplicationsSelected).To(HaveLen(3))
+					g.Expect(argocdCommitStatus.Status.ApplicationsSelected).To(HaveLen(3))
 					// Check that it's sorted by dev, stage, prod.
-					Expect(argocdCommitStatus.Status.ApplicationsSelected[0].Name).To(Equal(argoCDAppDev.Name))
-					Expect(argocdCommitStatus.Status.ApplicationsSelected[1].Name).To(Equal(argoCDAppStaging.Name))
-					Expect(argocdCommitStatus.Status.ApplicationsSelected[2].Name).To(Equal(argoCDAppProduction.Name))
-				})
+					g.Expect(argocdCommitStatus.Status.ApplicationsSelected[0].Name).To(Equal(argoCDAppDev.Name))
+					g.Expect(argocdCommitStatus.Status.ApplicationsSelected[1].Name).To(Equal(argoCDAppStaging.Name))
+					g.Expect(argocdCommitStatus.Status.ApplicationsSelected[2].Name).To(Equal(argoCDAppProduction.Name))
+				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Checking that the CommitStatus for each environment is created from ArgoCDCommitStatus")
 
@@ -3052,7 +3052,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 				}, constants.EventuallyTimeout).Should(Succeed())
-				Expect(time.Since(lastTransitionTime.Time) >= lastTransitionTimeThreshold).To(BeTrue())
+				Expect(time.Since(lastTransitionTime.Time)).To(BeNumerically(">=", lastTransitionTimeThreshold))
 			})
 		})
 
@@ -3308,7 +3308,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(HaveOccurred())
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 				}, constants.EventuallyTimeout).Should(Succeed())
-				Expect(time.Since(lastTransitionTime.Time) >= lastTransitionTimeThreshold).To(BeTrue(), fmt.Sprintf("Last transition time should be at least %s ago, but was %s ago", lastTransitionTimeThreshold, time.Since(lastTransitionTime.Time)))
+				Expect(time.Since(lastTransitionTime.Time)).To(BeNumerically(">=", lastTransitionTimeThreshold), fmt.Sprintf("Last transition time should be at least %s ago, but was %s ago", lastTransitionTimeThreshold, time.Since(lastTransitionTime.Time)))
 			})
 		})
 	})
@@ -3469,7 +3469,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					GinkgoLogr.Info("Updated commit status for development to sha: " + sha)
 					g.Expect(err).To(Succeed())
 
-					g.Expect(len(ctpDev.Status.Proposed.CommitStatuses)).To(Not(BeZero()))
+					g.Expect(ctpDev.Status.Proposed.CommitStatuses).ToNot(BeEmpty())
 					g.Expect(ctpDev.Status.Proposed.CommitStatuses[0].Url).To(Equal(proposedCommitStatusDevelopment.Spec.Url))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -3545,7 +3545,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					GinkgoLogr.Info("Updated commit status for staging to sha: " + sha)
 					g.Expect(err).To(Succeed())
 
-					g.Expect(len(ctpStaging.Status.Proposed.CommitStatuses)).To(Not(BeZero()))
+					g.Expect(ctpStaging.Status.Proposed.CommitStatuses).ToNot(BeEmpty())
 					g.Expect(ctpStaging.Status.Proposed.CommitStatuses[0].Url).To(Equal(proposedCommitStatusStaging.Spec.Url))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -3614,8 +3614,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[2].PullRequest.ID).To(Not(BeZero()))
 					g.Expect(promotionStrategy.Status.Environments[2].PullRequest.Url).To(ContainSubstring("localhost"))
 
-					g.Expect(len(promotionStrategy.Status.Environments) > 0).To(BeTrue())
-					g.Expect(len(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses) > 0).To(BeTrue())
+					g.Expect(promotionStrategy.Status.Environments).ToNot(BeEmpty())
+					g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses).ToNot(BeEmpty())
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses[0].Url).To(Equal(proposedCommitStatusDevelopment.Spec.Url))
 
 					for _, environment := range promotionStrategy.Status.Environments {
