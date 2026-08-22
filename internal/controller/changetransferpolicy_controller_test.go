@@ -1339,7 +1339,7 @@ var _ = Describe("TemplatePullRequest", func() {
 			}
 			psName := "my-promotion-strategy"
 			ps := &promoterv1alpha1.PromotionStrategy{
-				ObjectMeta: metav1.ObjectMeta{Name: psName, Namespace: "default"},
+				Name: psName, Namespace: "default",
 				Spec: promoterv1alpha1.PromotionStrategySpec{
 					RepositoryReference: promoterv1alpha1.ObjectReference{Name: "test-repo"},
 					Environments:        []promoterv1alpha1.Environment{{Branch: testBranchDevelopment}},
@@ -1367,7 +1367,7 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 
 	It("ignores status-only URL updates", func() {
 		oldPR := &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{Generation: 1},
+			Generation: 1,
 			Status:     promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"},
 		}
 		newPR := oldPR.DeepCopy()
@@ -1376,7 +1376,7 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 	})
 
 	It("enqueues on spec generation change", func() {
-		oldPR := &promoterv1alpha1.PullRequest{ObjectMeta: metav1.ObjectMeta{Generation: 1}}
+		oldPR := &promoterv1alpha1.PullRequest{Generation: 1}
 		newPR := oldPR.DeepCopy()
 		newPR.Generation = 2
 		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
@@ -1384,7 +1384,7 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 
 	It("enqueues when the PR ID is first set", func() {
 		oldPR := &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{Generation: 1},
+			Generation: 1,
 			Status:     promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen},
 		}
 		newPR := oldPR.DeepCopy()
@@ -1394,7 +1394,7 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 
 	It("enqueues on terminal state change", func() {
 		oldPR := &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{Generation: 1},
+			Generation: 1,
 			Status:     promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"},
 		}
 		newPR := oldPR.DeepCopy()
@@ -1404,7 +1404,7 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 
 	It("enqueues when externally merged flag changes", func() {
 		oldPR := &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{Generation: 1},
+			Generation: 1,
 			Status:     promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"},
 		}
 		newPR := oldPR.DeepCopy()
@@ -1414,10 +1414,8 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 
 	It("enqueues when the CTP finalizer is removed even if another finalizer is added", func() {
 		oldPR := &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{
-				Generation: 1,
-				Finalizers: []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
-			},
+			Generation: 1,
+			Finalizers: []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
 		}
 		newPR := oldPR.DeepCopy()
 		newPR.Finalizers = []string{promoterv1alpha1.PullRequestFinalizer}
@@ -1426,11 +1424,9 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 
 	It("ignores unrelated finalizer changes when the CTP finalizer is unchanged", func() {
 		oldPR := &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{
-				Generation: 1,
-				Finalizers: []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
-			},
-			Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"},
+			Generation: 1,
+			Finalizers: []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
+			Status:     promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"},
 		}
 		newPR := oldPR.DeepCopy()
 		newPR.Finalizers = append(slices.Clone(newPR.Finalizers), promoterv1alpha1.PullRequestFinalizer)
@@ -1443,9 +1439,9 @@ var _ = Describe("tooManyPRsError", func() {
 		It("returns an error listing all PR names if 3 or fewer", func() {
 			prList := &promoterv1alpha1.PullRequestList{
 				Items: []promoterv1alpha1.PullRequest{
-					{ObjectMeta: metav1.ObjectMeta{Name: "pr-101"}, Status: promoterv1alpha1.PullRequestStatus{ID: "101"}},
-					{ObjectMeta: metav1.ObjectMeta{Name: "pr-102"}, Status: promoterv1alpha1.PullRequestStatus{ID: "102"}},
-					{ObjectMeta: metav1.ObjectMeta{Name: "pr-103"}, Status: promoterv1alpha1.PullRequestStatus{ID: "103"}},
+					{Name: "pr-101", Status: promoterv1alpha1.PullRequestStatus{ID: "101"}},
+					{Name: "pr-102", Status: promoterv1alpha1.PullRequestStatus{ID: "102"}},
+					{Name: "pr-103", Status: promoterv1alpha1.PullRequestStatus{ID: "103"}},
 				},
 			}
 			err := tooManyPRsError(prList)
@@ -1457,11 +1453,11 @@ var _ = Describe("tooManyPRsError", func() {
 		It("returns an error listing first 3 PR names and count of remaining if more than 3", func() {
 			prList := &promoterv1alpha1.PullRequestList{
 				Items: []promoterv1alpha1.PullRequest{
-					{ObjectMeta: metav1.ObjectMeta{Name: "pr-201"}, Status: promoterv1alpha1.PullRequestStatus{ID: "201"}},
-					{ObjectMeta: metav1.ObjectMeta{Name: "pr-202"}, Status: promoterv1alpha1.PullRequestStatus{ID: "202"}},
-					{ObjectMeta: metav1.ObjectMeta{Name: "pr-203"}, Status: promoterv1alpha1.PullRequestStatus{ID: "203"}},
-					{ObjectMeta: metav1.ObjectMeta{Name: "pr-204"}, Status: promoterv1alpha1.PullRequestStatus{ID: "204"}},
-					{ObjectMeta: metav1.ObjectMeta{Name: "pr-205"}, Status: promoterv1alpha1.PullRequestStatus{ID: "205"}},
+					{Name: "pr-201", Status: promoterv1alpha1.PullRequestStatus{ID: "201"}},
+					{Name: "pr-202", Status: promoterv1alpha1.PullRequestStatus{ID: "202"}},
+					{Name: "pr-203", Status: promoterv1alpha1.PullRequestStatus{ID: "203"}},
+					{Name: "pr-204", Status: promoterv1alpha1.PullRequestStatus{ID: "204"}},
+					{Name: "pr-205", Status: promoterv1alpha1.PullRequestStatus{ID: "205"}},
 				},
 			}
 			err := tooManyPRsError(prList)
@@ -1481,8 +1477,8 @@ var _ = Describe("emitPromotionLifecycleEvents", func() {
 		recorder = events.NewFakeRecorder(100)
 		reconciler = &ChangeTransferPolicyReconciler{Recorder: recorder}
 		ctp = &promoterv1alpha1.ChangeTransferPolicy{
-			ObjectMeta: metav1.ObjectMeta{Name: "test-ctp", Namespace: "default"},
-			Spec:       promoterv1alpha1.ChangeTransferPolicySpec{ActiveBranch: "environment/development"},
+			Name: "test-ctp", Namespace: "default",
+			Spec: promoterv1alpha1.ChangeTransferPolicySpec{ActiveBranch: "environment/development"},
 		}
 	})
 
@@ -1972,10 +1968,8 @@ func hasEventWithReasonAndMessage(eventList v1.EventList, involvedName, reason, 
 func changeTransferPolicyResources(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.ChangeTransferPolicy) {
 	name = name + "-" + utils.KubeSafeUniqueName(randomString(15))
 	gitRepo := &promoterv1alpha1.GitRepository{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
+		Name:      name,
+		Namespace: namespace,
 		Spec: promoterv1alpha1.GitRepositorySpec{
 			Fake: &promoterv1alpha1.FakeRepo{
 				Owner: name,
@@ -1990,20 +1984,16 @@ func changeTransferPolicyResources(ctx context.Context, name, namespace string) 
 	setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 	scmSecret := &v1.Secret{
-		TypeMeta: metav1.TypeMeta{},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
-		Data: nil,
+		TypeMeta:  metav1.TypeMeta{},
+		Name:      name,
+		Namespace: namespace,
+		Data:      nil,
 	}
 
 	scmProvider := &promoterv1alpha1.ScmProvider{
-		TypeMeta: metav1.TypeMeta{},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
+		TypeMeta:  metav1.TypeMeta{},
+		Name:      name,
+		Namespace: namespace,
 		Spec: promoterv1alpha1.ScmProviderSpec{
 			SecretRef: &v1.LocalObjectReference{Name: name},
 			Fake:      &promoterv1alpha1.Fake{},
@@ -2012,11 +2002,9 @@ func changeTransferPolicyResources(ctx context.Context, name, namespace string) 
 	}
 
 	commitStatus := &promoterv1alpha1.CommitStatus{
-		TypeMeta: metav1.TypeMeta{},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
+		TypeMeta:  metav1.TypeMeta{},
+		Name:      name,
+		Namespace: namespace,
 		Spec: promoterv1alpha1.CommitStatusSpec{
 			RepositoryReference: promoterv1alpha1.ObjectReference{
 				Name: name,
@@ -2030,10 +2018,8 @@ func changeTransferPolicyResources(ctx context.Context, name, namespace string) 
 	}
 
 	changeTransferPolicy := &promoterv1alpha1.ChangeTransferPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
+		Name:      name,
+		Namespace: namespace,
 		Spec: promoterv1alpha1.ChangeTransferPolicySpec{
 			RepositoryReference: promoterv1alpha1.ObjectReference{
 				Name: name,

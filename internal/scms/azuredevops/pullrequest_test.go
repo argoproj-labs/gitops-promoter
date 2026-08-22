@@ -6,7 +6,6 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
@@ -58,10 +57,8 @@ func TestGeneratePullRequestUrl(t *testing.T) {
 
 			// Create test objects
 			scmProvider := &v1alpha1.ScmProvider{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: namespace,
-				},
+				Name:      resourceName,
+				Namespace: namespace,
 				Spec: v1alpha1.ScmProviderSpec{
 					SecretRef: &corev1.LocalObjectReference{Name: resourceName},
 					AzureDevOps: &v1alpha1.AzureDevOps{
@@ -72,18 +69,14 @@ func TestGeneratePullRequestUrl(t *testing.T) {
 			}
 
 			secret := &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: namespace,
-				},
-				Data: map[string][]byte{"token": []byte("fake-token")},
+				Name:      resourceName,
+				Namespace: namespace,
+				Data:      map[string][]byte{"token": []byte("fake-token")},
 			}
 
 			gitRepo := &v1alpha1.GitRepository{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: namespace,
-				},
+				Name:      resourceName,
+				Namespace: namespace,
 				Spec: v1alpha1.GitRepositorySpec{
 					AzureDevOps: &v1alpha1.AzureDevOpsRepo{
 						Project: tc.project,
@@ -107,10 +100,8 @@ func TestGeneratePullRequestUrl(t *testing.T) {
 			}
 
 			prObj := v1alpha1.PullRequest{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-pr",
-					Namespace: namespace,
-				},
+				Name:      "test-pr",
+				Namespace: namespace,
 				Spec: v1alpha1.PullRequestSpec{
 					RepositoryReference: v1alpha1.ObjectReference{
 						Name: resourceName,

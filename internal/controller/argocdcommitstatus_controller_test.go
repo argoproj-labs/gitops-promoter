@@ -61,10 +61,8 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 
 			// Create a PromotionStrategy resource FIRST (dependency)
 			promotionStrategy := &promoterv1alpha1.PromotionStrategy{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "default",
-					Name:      "example-promotion-strategy",
-				},
+				Namespace: "default",
+				Name:      "example-promotion-strategy",
 				Spec: promoterv1alpha1.PromotionStrategySpec{
 					RepositoryReference: promoterv1alpha1.ObjectReference{
 						Name: "example-repo",
@@ -81,10 +79,8 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			// Create ArgoCDCommitStatus SECOND (before Application!)
 			// This ensures the controller's secondary watch on Applications will find this resource
 			commitStatus := &promoterv1alpha1.ArgoCDCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "default",
-					Name:      "test-status",
-				},
+				Namespace: "default",
+				Name:      "test-status",
 				Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "example-promotion-strategy"},
 					ApplicationSelector: &metav1.LabelSelector{
@@ -96,12 +92,10 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 
 			// Create Application LAST (with empty TargetBranch to trigger validation error)
 			app := &argocd.Application{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "default",
-					Name:      "test-app",
-					Labels: map[string]string{
-						"app": "demo",
-					},
+				Namespace: "default",
+				Name:      "test-app",
+				Labels: map[string]string{
+					"app": "demo",
 				},
 				Spec: argocd.ApplicationSpec{
 					SourceHydrator: &argocd.SourceHydrator{
@@ -180,16 +174,12 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 
 			// Create Application WITHOUT SourceHydrator, using spec.source instead
 			app := &argocd.Application{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "Application",
-					APIVersion: "argoproj.io/v1alpha1",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "default",
-					Name:      "test-app-non-hydrator",
-					Labels: map[string]string{
-						"test": "non-hydrator",
-					},
+				Kind:       "Application",
+				APIVersion: "argoproj.io/v1alpha1",
+				Namespace:  "default",
+				Name:       "test-app-non-hydrator",
+				Labels: map[string]string{
+					"test": "non-hydrator",
 				},
 				Spec: argocd.ApplicationSpec{
 					Source: &argocd.Source{
@@ -212,10 +202,8 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 
 			// Create ArgoCDCommitStatus
 			commitStatus := &promoterv1alpha1.ArgoCDCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "default",
-					Name:      name,
-				},
+				Namespace: "default",
+				Name:      name,
 				Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					ApplicationSelector: &metav1.LabelSelector{
@@ -307,16 +295,12 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			appLabelKey := "acdcs-ps-after-test"
 			appLabelVal := psName
 			app := &argocd.Application{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "Application",
-					APIVersion: "argoproj.io/v1alpha1",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "default",
-					Name:      "test-app-acdcs-ps-after",
-					Labels: map[string]string{
-						appLabelKey: appLabelVal,
-					},
+				Kind:       "Application",
+				APIVersion: "argoproj.io/v1alpha1",
+				Namespace:  "default",
+				Name:       "test-app-acdcs-ps-after",
+				Labels: map[string]string{
+					appLabelKey: appLabelVal,
 				},
 				Spec: argocd.ApplicationSpec{
 					Source: &argocd.Source{
@@ -338,10 +322,8 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			Expect(k8sClient.Create(ctx, app)).To(Succeed())
 
 			commitStatus := &promoterv1alpha1.ArgoCDCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "default",
-					Name:      psName,
-				},
+				Namespace: "default",
+				Name:      psName,
 				Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName},
 					ApplicationSelector: &metav1.LabelSelector{
@@ -417,16 +399,12 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				appLabelKey := "acdcs-key-default-test"
 				appLabelVal := psName
 				app := &argocd.Application{
-					TypeMeta: metav1.TypeMeta{
-						Kind:       "Application",
-						APIVersion: "argoproj.io/v1alpha1",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Namespace: "default",
-						Name:      "test-app-acdcs-key-default",
-						Labels: map[string]string{
-							appLabelKey: appLabelVal,
-						},
+					Kind:       "Application",
+					APIVersion: "argoproj.io/v1alpha1",
+					Namespace:  "default",
+					Name:       "test-app-acdcs-key-default",
+					Labels: map[string]string{
+						appLabelKey: appLabelVal,
 					},
 					Spec: argocd.ApplicationSpec{
 						Source: &argocd.Source{
@@ -448,10 +426,8 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				Expect(k8sClient.Create(ctx, app)).To(Succeed())
 
 				acs := &promoterv1alpha1.ArgoCDCommitStatus{
-					ObjectMeta: metav1.ObjectMeta{
-						Namespace: "default",
-						Name:      psName,
-					},
+					Namespace: "default",
+					Name:      psName,
 					Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
 						PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName},
 						ApplicationSelector: &metav1.LabelSelector{
@@ -516,16 +492,12 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				appLabelKey := "acdcs-key-custom-test"
 				appLabelVal := psName
 				app := &argocd.Application{
-					TypeMeta: metav1.TypeMeta{
-						Kind:       "Application",
-						APIVersion: "argoproj.io/v1alpha1",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Namespace: "default",
-						Name:      "test-app-acdcs-key-custom",
-						Labels: map[string]string{
-							appLabelKey: appLabelVal,
-						},
+					Kind:       "Application",
+					APIVersion: "argoproj.io/v1alpha1",
+					Namespace:  "default",
+					Name:       "test-app-acdcs-key-custom",
+					Labels: map[string]string{
+						appLabelKey: appLabelVal,
 					},
 					Spec: argocd.ApplicationSpec{
 						Source: &argocd.Source{
@@ -547,10 +519,8 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				Expect(k8sClient.Create(ctx, app)).To(Succeed())
 
 				acs := &promoterv1alpha1.ArgoCDCommitStatus{
-					ObjectMeta: metav1.ObjectMeta{
-						Namespace: "default",
-						Name:      psName,
-					},
+					Namespace: "default",
+					Name:      psName,
 					Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
 						Key:                  customKey,
 						PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName},
@@ -619,12 +589,10 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				Expect(err).ToNot(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 				return &argocd.Application{
-					TypeMeta: metav1.TypeMeta{Kind: "Application", APIVersion: "argoproj.io/v1alpha1"},
-					ObjectMeta: metav1.ObjectMeta{
-						Namespace: "default",
-						Name:      appName,
-						Labels:    map[string]string{appLabelKey: appLabelVal},
-					},
+					Kind: "Application", APIVersion: "argoproj.io/v1alpha1",
+					Namespace: "default",
+					Name:      appName,
+					Labels:    map[string]string{appLabelKey: appLabelVal},
 					Spec: argocd.ApplicationSpec{
 						Source: &argocd.Source{
 							RepoURL:        testGitRepoCloneURL(gitRepo),
@@ -644,7 +612,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			Expect(k8sClient.Create(ctx, appStaging)).To(Succeed())
 
 			acs := &promoterv1alpha1.ArgoCDCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: psName},
+				Namespace: "default", Name: psName,
 				Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName},
 					ApplicationSelector: &metav1.LabelSelector{
@@ -710,12 +678,10 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			appLabelKey := "acdcs-legacy-cleanup-test"
 			appLabelVal := psName
 			app := &argocd.Application{
-				TypeMeta: metav1.TypeMeta{Kind: "Application", APIVersion: "argoproj.io/v1alpha1"},
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "default",
-					Name:      "test-app-acdcs-legacy-cleanup",
-					Labels:    map[string]string{appLabelKey: appLabelVal},
-				},
+				Kind: "Application", APIVersion: "argoproj.io/v1alpha1",
+				Namespace: "default",
+				Name:      "test-app-acdcs-legacy-cleanup",
+				Labels:    map[string]string{appLabelKey: appLabelVal},
 				Spec: argocd.ApplicationSpec{
 					Source: &argocd.Source{
 						RepoURL:        testGitRepoCloneURL(gitRepo),
@@ -730,7 +696,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			Expect(k8sClient.Create(ctx, app)).To(Succeed())
 
 			acs := &promoterv1alpha1.ArgoCDCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: psName},
+				Namespace: "default", Name: psName,
 				Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName},
 					ApplicationSelector: &metav1.LabelSelector{
@@ -758,12 +724,10 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			Expect(legacyResourceName).NotTo(Equal(currentResourceName))
 
 			legacyCS := &promoterv1alpha1.CommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      legacyResourceName,
-					Namespace: "default",
-					Labels: map[string]string{
-						promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.ArgoCDCommitStatusDefaultKey,
-					},
+				Name:      legacyResourceName,
+				Namespace: "default",
+				Labels: map[string]string{
+					promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.ArgoCDCommitStatusDefaultKey,
 				},
 				Spec: promoterv1alpha1.CommitStatusSpec{
 					RepositoryReference: currentCS.Spec.RepositoryReference,
@@ -848,16 +812,12 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			// - Revision: current HEAD sha
 			// - LastTransitionTime: nil (no health transitions)
 			app := &argocd.Application{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "Application",
-					APIVersion: "argoproj.io/v1alpha1",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "default",
-					Name:      "test-app-sync-bug",
-					Labels: map[string]string{
-						"test": "sync-status-bug",
-					},
+				Kind:       "Application",
+				APIVersion: "argoproj.io/v1alpha1",
+				Namespace:  "default",
+				Name:       "test-app-sync-bug",
+				Labels: map[string]string{
+					"test": "sync-status-bug",
 				},
 				Spec: argocd.ApplicationSpec{
 					SourceHydrator: &argocd.SourceHydrator{
@@ -892,10 +852,8 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 
 			// Create ArgoCDCommitStatus
 			commitStatus := &promoterv1alpha1.ArgoCDCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "default",
-					Name:      name,
-				},
+				Namespace: "default",
+				Name:      name,
 				Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					ApplicationSelector: &metav1.LabelSelector{
@@ -1022,10 +980,8 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 
 			// Create a secret for the SCM provider
 			scmSecret := &v1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "fake-scm-secret",
-					Namespace: "default",
-				},
+				Name:      "fake-scm-secret",
+				Namespace: "default",
 				Data: map[string][]byte{
 					"token": []byte("fake-token"),
 				},
@@ -1034,10 +990,8 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 
 			// Create a fake SCM provider
 			scmProvider := &promoterv1alpha1.ScmProvider{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "fake-scm-provider",
-					Namespace: "default",
-				},
+				Name:      "fake-scm-provider",
+				Namespace: "default",
 				Spec: promoterv1alpha1.ScmProviderSpec{
 					Fake: &promoterv1alpha1.Fake{},
 					SecretRef: &v1.LocalObjectReference{
@@ -1049,10 +1003,8 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 
 			// Create a GitRepository with an INVALID URL to trigger ls-remote error
 			gitRepo := &promoterv1alpha1.GitRepository{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "invalid-repo",
-					Namespace: "default",
-				},
+				Name:      "invalid-repo",
+				Namespace: "default",
 				Spec: promoterv1alpha1.GitRepositorySpec{
 					Fake: &promoterv1alpha1.FakeRepo{
 						Owner: "nonexistent",
@@ -1068,10 +1020,8 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 
 			// Create a PromotionStrategy
 			promotionStrategy := &promoterv1alpha1.PromotionStrategy{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "default",
-					Name:      "sorting-test-strategy",
-				},
+				Namespace: "default",
+				Name:      "sorting-test-strategy",
 				Spec: promoterv1alpha1.PromotionStrategySpec{
 					RepositoryReference: promoterv1alpha1.ObjectReference{
 						Name: "invalid-repo",
@@ -1101,12 +1051,10 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 
 			for _, branch := range branches {
 				app := &argocd.Application{
-					ObjectMeta: metav1.ObjectMeta{
-						Namespace: "default",
-						Name:      "app-" + strings.ReplaceAll(branch, "/", "-"),
-						Labels: map[string]string{
-							"argocd.com/argocd-commitstatus-selector": "sorting-test",
-						},
+					Namespace: "default",
+					Name:      "app-" + strings.ReplaceAll(branch, "/", "-"),
+					Labels: map[string]string{
+						"argocd.com/argocd-commitstatus-selector": "sorting-test",
 					},
 					Spec: argocd.ApplicationSpec{
 						SourceHydrator: &argocd.SourceHydrator{
@@ -1135,10 +1083,8 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			// Create the ArgoCDCommitStatus AFTER all applications are created
 			// This ensures all applications are available when the first reconciliation happens
 			cr := &promoterv1alpha1.ArgoCDCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "sorting-test",
-					Namespace: "default",
-				},
+				Name:      "sorting-test",
+				Namespace: "default",
 				Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: "sorting-test-strategy",
@@ -1216,10 +1162,8 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
 			for _, branch := range branches {
 				app := &argocd.Application{
-					ObjectMeta: metav1.ObjectMeta{
-						Namespace: "default",
-						Name:      "app-" + strings.ReplaceAll(branch, "/", "-"),
-					},
+					Namespace: "default",
+					Name:      "app-" + strings.ReplaceAll(branch, "/", "-"),
 				}
 				Expect(k8sClient.Delete(ctx, app)).To(Succeed())
 			}

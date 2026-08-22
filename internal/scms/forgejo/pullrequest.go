@@ -402,7 +402,7 @@ func (pr *PullRequest) listAllRepoLabels(owner, repo string) ([]*forgejo.Label, 
 	page := 1
 	for {
 		repoLabels, resp, err := pr.foregejoClient.ListRepoLabels(owner, repo, forgejo.ListLabelsOptions{
-			ListOptions: forgejo.ListOptions{Page: page, PageSize: 50},
+			Page: page, PageSize: 50,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to list repository labels: %w", err)
