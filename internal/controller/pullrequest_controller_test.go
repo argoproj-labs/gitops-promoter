@@ -1073,6 +1073,33 @@ var _ = Describe("PullRequest Controller", func() {
 			}
 		})
 
+		It("should keep the PullRequest when FindOpen misses but Get confirms it is still open", func() {
+			By("Simulating SCM list lag: Get-by-ID finds the PR open but FindOpen does not")
+			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
+			Expect(fakeProvider.SetHideFromFindOpen(ctx, *pullRequest, true)).To(Succeed())
+
+			By("Triggering reconciliation by updating the PR spec")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				orig := pullRequest.DeepCopy()
+				if pullRequest.Spec.Labels == nil {
+					pullRequest.Spec.Labels = []string{"trigger-reconcile"}
+				} else {
+					pullRequest.Spec.Labels = append(slices.Clone(pullRequest.Spec.Labels), "trigger-reconcile")
+				}
+				g.Expect(k8sClient.Patch(ctx, pullRequest, client.MergeFrom(orig))).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying the PullRequest is not deleted or marked externally merged/closed")
+			Consistently(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				if pullRequest.Status.ExternallyMergedOrClosed != nil {
+					g.Expect(*pullRequest.Status.ExternallyMergedOrClosed).To(BeFalse())
+				}
+			}, "5s", "500ms").Should(Succeed())
+		})
+
 		It("should set state merged and mergeCommitSha when externally merged on provider", func() {
 			mergeCommitSha := pullRequest.Spec.MergeSha
 

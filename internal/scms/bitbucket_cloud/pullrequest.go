@@ -347,8 +347,12 @@ func (pr *PullRequest) Get(ctx context.Context, pullRequest v1alpha1.PullRequest
 	case "MERGED":
 		getResult.State = v1alpha1.PullRequestMerged
 		if mergeCommit, ok := prMap["merge_commit"].(map[string]any); ok {
-			if hash, ok := mergeCommit["hash"].(string); ok {
-				getResult.MergeCommitSHA = hash
+			if hash, ok := mergeCommit["hash"].(string); ok && hash != "" {
+				fullHash, err := pr.resolveCommitHash(ctx, repo, hash)
+				if err != nil {
+					return scms.GetPullRequestResult{}, fmt.Errorf("failed to resolve merge commit hash %q: %w", hash, err)
+				}
+				getResult.MergeCommitSHA = fullHash
 			}
 		}
 	case "DECLINED", "SUPERSEDED":
@@ -357,6 +361,44 @@ func (pr *PullRequest) Get(ctx context.Context, pullRequest v1alpha1.PullRequest
 		getResult.State = v1alpha1.PullRequestOpen
 	}
 	return getResult, nil
+}
+
+func (pr *PullRequest) resolveCommitHash(ctx context.Context, repo *v1alpha1.GitRepository, hash string) (string, error) {
+	if isFullGitCommitHash(hash) {
+		return hash, nil
+	}
+
+	options := &bitbucket.CommitsOptions{
+		Owner:    repo.Spec.BitbucketCloud.Owner,
+		RepoSlug: repo.Spec.BitbucketCloud.Name,
+		Revision: hash,
+	}
+
+	start := time.Now()
+	result, err := pr.client.Repositories.Commits.GetCommit(options)
+	statusCode := parseErrorStatusCode(err, http.StatusOK)
+	metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationGet, statusCode, time.Since(start), nil)
+
+	if err != nil {
+		if statusCode == http.StatusNotFound {
+			return "", fmt.Errorf("commit %q not found", hash)
+		}
+		if unexpectedErr, ok := errors.AsType[*bitbucket.UnexpectedResponseStatusError](err); ok {
+			return "", fmt.Errorf("failed to get commit: %w", unexpectedErr.ErrorWithBody())
+		}
+		return "", fmt.Errorf("failed to get commit: %w", err)
+	}
+
+	commitMap, ok := result.(map[string]any)
+	if !ok {
+		return "", fmt.Errorf("unexpected response type from Bitbucket commit API: %T", result)
+	}
+
+	fullHash, _ := commitMap["hash"].(string)
+	if !isFullGitCommitHash(fullHash) {
+		return "", fmt.Errorf("commit lookup returned non-full hash %q", fullHash)
+	}
+	return fullHash, nil
 }
 
 // GetUrl retrieves the URL of the pull request.

@@ -312,8 +312,12 @@ func (r *PullRequestReconciler) syncWhenNotFoundOpen(ctx context.Context, pr *pr
 		return false, nil
 	}
 
-	if requeue, err := r.trySyncFromGetByID(ctx, pr, provider); err != nil || requeue {
-		return requeue, err
+	if requeue, handled, err := r.trySyncFromGetByID(ctx, pr, provider); err != nil {
+		return false, err
+	} else if requeue {
+		return true, nil
+	} else if handled {
+		return false, nil
 	}
 
 	if pr.Spec.State == promoterv1alpha1.PullRequestOpen {
@@ -323,23 +327,27 @@ func (r *PullRequestReconciler) syncWhenNotFoundOpen(ctx context.Context, pr *pr
 	return r.recoverLostTerminalStatus(ctx, pr)
 }
 
-func (r *PullRequestReconciler) trySyncFromGetByID(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) (bool, error) {
+// trySyncFromGetByID reconciles status from a Get-by-ID lookup. handled reports whether the lookup
+// was authoritative about the PR's state; when it is false the caller must fall back to inferring
+// state from spec (external merge/close or lost terminal status).
+func (r *PullRequestReconciler) trySyncFromGetByID(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) (requeue bool, handled bool, err error) {
 	if pr.Status.MergeCommitSha != "" {
-		return false, nil
+		return false, false, nil
 	}
 
 	details, err := provider.Get(ctx, *pr)
 	if err != nil {
-		return false, fmt.Errorf("failed to get pull request by id: %w", err)
+		return false, false, fmt.Errorf("failed to get pull request by id: %w", err)
 	}
 	if !details.Found {
-		return false, nil
+		return false, false, nil
 	}
 
-	return r.applyGetPullRequestDetails(ctx, pr, details)
+	requeue = r.applyGetPullRequestDetails(ctx, pr, details)
+	return requeue, true, nil
 }
 
-func (r *PullRequestReconciler) applyGetPullRequestDetails(ctx context.Context, pr *promoterv1alpha1.PullRequest, details scms.GetPullRequestResult) (bool, error) {
+func (r *PullRequestReconciler) applyGetPullRequestDetails(ctx context.Context, pr *promoterv1alpha1.PullRequest, details scms.GetPullRequestResult) (requeue bool) {
 	logger := log.FromContext(ctx)
 
 	switch details.State {
@@ -350,22 +358,36 @@ func (r *PullRequestReconciler) applyGetPullRequestDetails(ctx context.Context, 
 			changed = true
 		}
 		if !changed {
-			return false, nil
+			return false
 		}
 		pr.Status.State = promoterv1alpha1.PullRequestMerged
-		return true, nil
+		return true
 	case promoterv1alpha1.PullRequestClosed:
 		if pr.Status.State == promoterv1alpha1.PullRequestClosed {
-			return false, nil
+			return false
 		}
 		pr.Status.State = promoterv1alpha1.PullRequestClosed
-		return true, nil
+		return true
 	case promoterv1alpha1.PullRequestOpen:
 		logger.V(4).Info("FindOpen missed an open pull request on the SCM", "pullRequestID", pr.Status.ID)
-		return false, nil
+		r.reconcileOpenAfterFindOpenMiss(pr)
+		return false
 	default:
-		return false, nil
+		logger.V(4).Info("Get returned unrecognized pull request state, treating as still open", "state", details.State, "pullRequestID", pr.Status.ID)
+		r.reconcileOpenAfterFindOpenMiss(pr)
+		return false
 	}
+}
+
+// reconcileOpenAfterFindOpenMiss corrects status for a PR that FindOpen missed but Get reports as
+// still open. No immediate requeue is needed: the PR is open, so the rest of the reconcile
+// (terminal cleanup, state transitions, label sync) is safe to run against the corrected status in
+// this same pass, and the deferred status apply persists it at the end.
+func (r *PullRequestReconciler) reconcileOpenAfterFindOpenMiss(pr *promoterv1alpha1.PullRequest) {
+	if pr.Status.ExternallyMergedOrClosed != nil && *pr.Status.ExternallyMergedOrClosed {
+		pr.Status.ExternallyMergedOrClosed = new(false)
+	}
+	pr.Status.State = promoterv1alpha1.PullRequestOpen
 }
 
 func (r *PullRequestReconciler) syncExternallyMergedOrClosedWhenDesiredOpen(pr *promoterv1alpha1.PullRequest) (bool, error) {

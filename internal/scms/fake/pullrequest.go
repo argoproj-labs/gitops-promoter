@@ -44,11 +44,12 @@ var (
 )
 
 type pullRequestProviderState struct {
-	createdAt      time.Time
-	id             string
-	state          v1alpha1.PullRequestState
-	mergeCommitSha string
-	labels         []string
+	createdAt        time.Time
+	id               string
+	state            v1alpha1.PullRequestState
+	mergeCommitSha   string
+	labels           []string
+	hideFromFindOpen bool
 }
 
 // PullRequest implements the scms.PullRequestProvider interface for testing purposes.
@@ -383,11 +384,36 @@ func (pr *PullRequest) findOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	if !ok || pullRequestState.state != v1alpha1.PullRequestOpen {
 		return false, "", time.Time{}, nil
 	}
+	if pullRequestState.hideFromFindOpen {
+		return false, "", time.Time{}, nil
+	}
 	return true, pullRequestState.id, pullRequestState.createdAt, slices.Clone(pullRequestState.labels)
 }
 
 func (pr *PullRequest) getMapKey(pullRequest v1alpha1.PullRequest, owner, name string) string {
 	return fmt.Sprintf("%s/%s/%s/%s", owner, name, pullRequest.Spec.SourceBranch, pullRequest.Spec.TargetBranch)
+}
+
+// SetHideFromFindOpen makes FindOpen miss an open PR while Get still returns it (simulates SCM list lag).
+func (pr *PullRequest) SetHideFromFindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest, hide bool) error {
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	mutexPR.Lock()
+	defer mutexPR.Unlock()
+	if pullRequests == nil {
+		return errors.New("pull request not found")
+	}
+	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+	prev, ok := pullRequests[prKey]
+	if !ok {
+		return errors.New("pull request not found")
+	}
+	prev.hideFromFindOpen = hide
+	pullRequests[prKey] = prev
+	return nil
 }
 
 // MarkMergedExternally marks a pull request as merged on the fake SCM without going through Merge.
