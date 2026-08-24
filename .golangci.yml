@@ -19,6 +19,7 @@ linters:
     - goconst
     - gocritic
     - gocyclo
+    - ginkgolinter
     - govet
     - lll
     - loggercheck
