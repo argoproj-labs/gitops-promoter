@@ -276,7 +276,7 @@ func mapGiteaPullRequestToGetResult(existingPR *gitea.PullRequest) scms.GetPullR
 	if existingPR.HasMerged {
 		result.State = promoterv1alpha1.PullRequestMerged
 		if existingPR.MergedCommitID != nil {
-			result.MergeCommitSHA = *existingPR.MergedCommitID
+			result.MergedTargetSHA = *existingPR.MergedCommitID
 		}
 		if existingPR.Merged != nil {
 			result.MergedAt = *existingPR.Merged

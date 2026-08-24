@@ -8,7 +8,7 @@ import (
 
 // GetPullRequestResult holds the outcome of fetching a pull request by status.id on the SCM.
 //
-// Removed git inference fallback (CTP writePromotionHistoryNote, pre status.mergeCommitSha):
+// Removed git inference fallback (CTP writePromotionHistoryNote, pre status.mergedTargetSha):
 // When the SCM could not disambiguate merged vs closed, the ChangeTransferPolicy finalizer
 // located the merge commit by walking first-parent history on the active branch via
 // findMergeCommitOnActiveBranch in the CTP controller. Inputs were ctp.spec.activeBranch,
@@ -39,12 +39,14 @@ import (
 //   - malformed metadata was treated as non-match; genuine git read errors retried finalization.
 //
 // That inference is intentionally removed in favor of authoritative SCM data from Get.
-// Reintroduce only if a provider cannot return merge commit SHA reliably after merge; wire any
-// revival through status.mergeCommitSha on the PullRequest CRD rather than re-adding silent
+// Reintroduce only if a provider cannot return the merged target SHA reliably after merge; wire any
+// revival through status.mergedTargetSha on the PullRequest CRD rather than re-adding silent
 // git walks inside CTP finalization.
 type GetPullRequestResult struct {
-	MergedAt       time.Time
-	State          v1alpha1.PullRequestState
-	MergeCommitSHA string
-	Found          bool
+	MergedAt time.Time
+	State    v1alpha1.PullRequestState
+	// MergedTargetSHA is the SHA the target branch points at after the merge. It is a merge commit
+	// only when the SCM created one; squash and fast-forward merges report the resulting commit.
+	MergedTargetSHA string
+	Found           bool
 }

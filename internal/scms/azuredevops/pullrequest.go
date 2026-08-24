@@ -374,7 +374,7 @@ func (pr *PullRequest) Get(ctx context.Context, pullRequest v1alpha1.PullRequest
 
 	result := scms.GetPullRequestResult{Found: true, State: mapAzureDevOpsPRStatusToState(*adoPR.Status)}
 	if result.State == v1alpha1.PullRequestMerged && adoPR.LastMergeCommit != nil && adoPR.LastMergeCommit.CommitId != nil {
-		result.MergeCommitSHA = *adoPR.LastMergeCommit.CommitId
+		result.MergedTargetSHA = *adoPR.LastMergeCommit.CommitId
 	}
 	if adoPR.ClosedDate != nil {
 		result.MergedAt = adoPR.ClosedDate.Time

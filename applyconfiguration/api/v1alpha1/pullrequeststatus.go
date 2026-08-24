@@ -41,11 +41,13 @@ type PullRequestStatusApplyConfiguration struct {
 	PRCreationTime *v1.Time `json:"prCreationTime,omitempty"`
 	// Url is the URL of the pull request.
 	Url *string `json:"url,omitempty"`
-	// MergeCommitSha is the commit SHA on the target branch reported by the SCM after merge.
+	// MergedTargetSha is the SHA that spec.targetBranch points at after the merge, as reported by
+	// the SCM. It is a merge commit only when the SCM created one; squash and fast-forward merges
+	// report the resulting commit on the target branch instead.
 	// Set once by the PullRequest controller, either from the merge response for providers that
 	// report the SHA there, or from a Get-by-ID lookup when FindOpen no longer finds the PR
 	// (external merges, and providers whose merge response omits the SHA).
-	MergeCommitSha *string `json:"mergeCommitSha,omitempty"`
+	MergedTargetSha *string `json:"mergedTargetSha,omitempty"`
 	// ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the
 	// resource still desired it open (spec.state is "open"): either it was merged or closed outside the
 	// controller, or it was closed on the SCM because the PullRequest resource was deleted (finalizer)
@@ -113,11 +115,11 @@ func (b *PullRequestStatusApplyConfiguration) WithUrl(value string) *PullRequest
 	return b
 }
 
-// WithMergeCommitSha sets the MergeCommitSha field in the declarative configuration to the given value
+// WithMergedTargetSha sets the MergedTargetSha field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the MergeCommitSha field is set to the value of the last call.
-func (b *PullRequestStatusApplyConfiguration) WithMergeCommitSha(value string) *PullRequestStatusApplyConfiguration {
-	b.MergeCommitSha = &value
+// If called multiple times, the MergedTargetSha field is set to the value of the last call.
+func (b *PullRequestStatusApplyConfiguration) WithMergedTargetSha(value string) *PullRequestStatusApplyConfiguration {
+	b.MergedTargetSha = &value
 	return b
 }
 

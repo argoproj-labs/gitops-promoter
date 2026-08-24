@@ -226,7 +226,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) (s
 	logger.V(4).Info("gitlab response status",
 		"status", resp.Status)
 
-	return scms.MergeResult{CommitSHA: mergeCommitSHA(mr)}, nil
+	return scms.MergeResult{CommitSHA: mergedTargetSHA(mr)}, nil
 }
 
 // FindOpen checks if a pull request is open and returns its status.
@@ -282,9 +282,9 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	return scms.FindOpenResult{}, nil
 }
 
-// mergeCommitSHA returns the commit the merge produced on the target branch. A squashed merge
+// mergedTargetSHA returns the commit the merge produced on the target branch. A squashed merge
 // reports its commit under squash_commit_sha and leaves merge_commit_sha empty.
-func mergeCommitSHA(mr *gitlab.MergeRequest) string {
+func mergedTargetSHA(mr *gitlab.MergeRequest) string {
 	if mr == nil {
 		return ""
 	}
@@ -331,7 +331,7 @@ func (pr *PullRequest) Get(ctx context.Context, pullRequest v1alpha1.PullRequest
 	switch mr.State {
 	case "merged":
 		result.State = v1alpha1.PullRequestMerged
-		result.MergeCommitSHA = mergeCommitSHA(mr)
+		result.MergedTargetSHA = mergedTargetSHA(mr)
 		if mr.MergedAt != nil {
 			result.MergedAt = *mr.MergedAt
 		}

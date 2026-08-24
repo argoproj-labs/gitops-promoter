@@ -2432,9 +2432,9 @@ var _ = Describe("writePromotionHistoryNote merge commit snapshot mismatch", fun
 			constants.TrailerCommitStatusProposedPrefix + "example-key-phase: success"
 		return &promoterv1alpha1.PullRequest{
 			Status: promoterv1alpha1.PullRequestStatus{
-				ID:             "99",
-				State:          promoterv1alpha1.PullRequestMerged,
-				MergeCommitSha: mergeSha,
+				ID:              "99",
+				State:           promoterv1alpha1.PullRequestMerged,
+				MergedTargetSha: mergeSha,
 			},
 			Spec: promoterv1alpha1.PullRequestSpec{
 				MergeSha: p1Sha, // stale: the proposed tip the promoter recorded, before it advanced to p2

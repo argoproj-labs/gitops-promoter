@@ -170,7 +170,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	// Sync state from provider before terminal cleanup so Get-by-ID can populate mergeCommitSha.
+	// Sync state from provider before terminal cleanup so Get-by-ID can populate mergedTargetSha.
 	needsImmediateRequeue, err := r.syncStateFromProvider(ctx, &pr, provider, openResult.Found, openResult.ID, openResult.CreationTime)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -249,8 +249,8 @@ func (r *PullRequestReconciler) cleanupTerminalStates(ctx context.Context, pr *p
 		return false, nil
 	}
 
-	if pr.Status.State == promoterv1alpha1.PullRequestMerged && pr.Status.MergeCommitSha == "" && pr.Spec.State == promoterv1alpha1.PullRequestOpen {
-		logger.V(4).Info("merged pull request missing mergeCommitSha, waiting for SCM lookup", "pullRequestID", pr.Status.ID)
+	if pr.Status.State == promoterv1alpha1.PullRequestMerged && pr.Status.MergedTargetSha == "" && pr.Spec.State == promoterv1alpha1.PullRequestOpen {
+		logger.V(4).Info("merged pull request missing mergedTargetSha, waiting for SCM lookup", "pullRequestID", pr.Status.ID)
 		return false, nil
 	}
 
@@ -331,7 +331,7 @@ func (r *PullRequestReconciler) syncWhenNotFoundOpen(ctx context.Context, pr *pr
 // was authoritative about the PR's state; when it is false the caller must fall back to inferring
 // state from spec (external merge/close or lost terminal status).
 func (r *PullRequestReconciler) trySyncFromGetByID(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) (requeue bool, handled bool, err error) {
-	if pr.Status.MergeCommitSha != "" {
+	if pr.Status.MergedTargetSha != "" {
 		return false, false, nil
 	}
 
@@ -353,8 +353,8 @@ func (r *PullRequestReconciler) applyGetPullRequestDetails(ctx context.Context, 
 	switch details.State {
 	case promoterv1alpha1.PullRequestMerged:
 		changed := pr.Status.State != promoterv1alpha1.PullRequestMerged
-		if details.MergeCommitSHA != "" && pr.Status.MergeCommitSha != details.MergeCommitSHA {
-			pr.Status.MergeCommitSha = details.MergeCommitSHA
+		if details.MergedTargetSHA != "" && pr.Status.MergedTargetSha != details.MergedTargetSHA {
+			pr.Status.MergedTargetSha = details.MergedTargetSHA
 			changed = true
 		}
 		if !changed {
@@ -728,10 +728,10 @@ func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promot
 		return err //nolint:wrapcheck // Error wrapping handled at top level
 	}
 	pr.Status.State = promoterv1alpha1.PullRequestMerged
-	// Providers that report the merge commit in the merge response let us record it now; the rest
-	// leave it empty and syncWhenNotFoundOpen recovers it with a Get-by-ID lookup.
+	// Providers that report the resulting target-branch commit in the merge response let us record it
+	// now; the rest leave it empty and syncWhenNotFoundOpen recovers it with a Get-by-ID lookup.
 	if result.CommitSHA != "" {
-		pr.Status.MergeCommitSha = result.CommitSHA
+		pr.Status.MergedTargetSha = result.CommitSHA
 	}
 	return nil
 }

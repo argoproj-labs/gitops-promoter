@@ -1107,26 +1107,26 @@ func (r *ChangeTransferPolicyReconciler) writePromotionHistoryNote(ctx context.C
 		return nil
 	}
 
-	mergeCommitSha := livePR.Status.MergeCommitSha
-	if mergeCommitSha == "" {
+	mergedTargetSha := livePR.Status.MergedTargetSha
+	if mergedTargetSha == "" {
 		if livePR.Status.State == promoterv1alpha1.PullRequestMerged {
-			return fmt.Errorf("merged pull request %q has no status.mergeCommitSha", livePR.Name)
+			return fmt.Errorf("merged pull request %q has no status.mergedTargetSha", livePR.Name)
 		}
 		if externallyMergedOrClosed {
-			logger.V(4).Info("PR externally merged or closed without mergeCommitSha, skipping promotion history note",
+			logger.V(4).Info("PR externally merged or closed without mergedTargetSha, skipping promotion history note",
 				"prID", livePR.Status.ID)
 			return nil
 		}
-		logger.V(4).Info("No merge commit SHA and PR not merged, skipping promotion history note")
+		logger.V(4).Info("No merged target SHA and PR not merged, skipping promotion history note")
 		return nil
 	}
 
 	// The merge-time trailer is added in-flight by the PullRequest controller during a controller-initiated
 	// merge and is never persisted to spec.commit.message, so derive it from the merge commit itself.
 	if _, ok := trailers[constants.TrailerPullRequestMergeTime]; !ok {
-		mergeTime, err := gitOperations.GetShaTime(ctx, mergeCommitSha)
+		mergeTime, err := gitOperations.GetShaTime(ctx, mergedTargetSha)
 		if err != nil {
-			return fmt.Errorf("failed to get commit time for merge commit %q: %w", mergeCommitSha, err)
+			return fmt.Errorf("failed to get commit time for merge commit %q: %w", mergedTargetSha, err)
 		}
 		trailers[constants.TrailerPullRequestMergeTime] = []string{mergeTime.Format(time.RFC3339)}
 	}
@@ -1138,15 +1138,15 @@ func (r *ChangeTransferPolicyReconciler) writePromotionHistoryNote(ctx context.C
 	// active branch is the ground truth for what actually merged, so prefer the merge commit's own hydrator
 	// metadata for the proposed dry sha and, for a real merge commit, its second parent for the proposed
 	// hydrated sha. Commit statuses cannot be reconstructed from git and stay as the snapshot.
-	if err := reconcileProposedTrailersWithMergeCommit(ctx, r.Recorder, gitOperations, ctp, livePR, mergeCommitSha, trailers); err != nil {
+	if err := reconcileProposedTrailersWithMergeCommit(ctx, r.Recorder, gitOperations, ctp, livePR, mergedTargetSha, trailers); err != nil {
 		return err
 	}
 
-	if err := gitOperations.SetHistoryNote(ctx, mergeCommitSha, trailers); err != nil {
-		return fmt.Errorf("failed to set history note on merge commit %q: %w", mergeCommitSha, err)
+	if err := gitOperations.SetHistoryNote(ctx, mergedTargetSha, trailers); err != nil {
+		return fmt.Errorf("failed to set history note on merge commit %q: %w", mergedTargetSha, err)
 	}
 
-	logger.Info("Wrote promotion history note", "mergeCommit", mergeCommitSha, "prID", livePR.Status.ID)
+	logger.Info("Wrote promotion history note", "mergeCommit", mergedTargetSha, "prID", livePR.Status.ID)
 	return nil
 }
 
@@ -1157,12 +1157,12 @@ func (r *ChangeTransferPolicyReconciler) writePromotionHistoryNote(ctx context.C
 // the proposed dry sha (and, for a real merge commit, the proposed hydrated sha from the second parent) and
 // emits a Warning event. On the normal path the two agree and this is a no-op. Commit-status trailers are not
 // recoverable from git and are left as the snapshot.
-func reconcileProposedTrailersWithMergeCommit(ctx context.Context, recorder events.EventRecorder, gitOperations *git.EnvironmentOperations, ctp *promoterv1alpha1.ChangeTransferPolicy, livePR *promoterv1alpha1.PullRequest, mergeCommitSha string, trailers map[string][]string) error {
+func reconcileProposedTrailersWithMergeCommit(ctx context.Context, recorder events.EventRecorder, gitOperations *git.EnvironmentOperations, ctp *promoterv1alpha1.ChangeTransferPolicy, livePR *promoterv1alpha1.PullRequest, mergedTargetSha string, trailers map[string][]string) error {
 	logger := log.FromContext(ctx)
 
-	mergedDrySha, err := mergedProposedDrySha(ctx, gitOperations, mergeCommitSha, ctp.Spec.ActivePath)
+	mergedDrySha, err := mergedProposedDrySha(ctx, gitOperations, mergedTargetSha, ctp.Spec.ActivePath)
 	if err != nil {
-		return fmt.Errorf("failed to read dry sha from merge commit %q: %w", mergeCommitSha, err)
+		return fmt.Errorf("failed to read dry sha from merge commit %q: %w", mergedTargetSha, err)
 	}
 	// Empty means the merge commit has no readable metadata for this activePath (missing or malformed); keep
 	// the snapshot rather than clobbering it with nothing.
@@ -1176,12 +1176,12 @@ func reconcileProposedTrailersWithMergeCommit(ctx context.Context, recorder even
 	}
 
 	logger.Info("promotion history merge commit snapshot mismatch; using the merge commit as the source of truth",
-		"mergeCommit", mergeCommitSha, "snapshotDrySha", snapshotDrySha, "mergedDrySha", mergedDrySha)
+		"mergeCommit", mergedTargetSha, "snapshotDrySha", snapshotDrySha, "mergedDrySha", mergedDrySha)
 	recorder.Eventf(ctp, nil, "Warning", constants.PromotionHistoryNoteMergeCommitSnapshotMismatchReason, "WritingPromotionHistoryNote",
 		constants.PromotionHistoryNoteMergeCommitSnapshotMismatchMessage, livePR.Name, snapshotDrySha, mergedDrySha)
 
 	trailers[constants.TrailerShaDryProposed] = []string{mergedDrySha}
-	if mergedHydratedSha := mergeCommitSecondParent(ctx, gitOperations, mergeCommitSha); mergedHydratedSha != "" {
+	if mergedHydratedSha := mergeCommitSecondParent(ctx, gitOperations, mergedTargetSha); mergedHydratedSha != "" {
 		trailers[constants.TrailerShaHydratedProposed] = []string{mergedHydratedSha}
 	}
 	// Persist the mismatch marker into the note so history readers know proposed SHAs were reconstructed from
@@ -1194,26 +1194,26 @@ func reconcileProposedTrailersWithMergeCommit(ctx context.Context, recorder even
 // <activePath>/hydrator.metadata on the merge commit itself — the authoritative "what actually merged" value.
 // A missing or malformed metadata file returns "" so the caller keeps the trailer snapshot; genuine read
 // failures are returned as errors so finalization retries.
-func mergedProposedDrySha(ctx context.Context, gitOperations *git.EnvironmentOperations, mergeCommitSha, activePath string) (string, error) {
-	meta, err := gitOperations.GetShaMetadataFromFile(ctx, mergeCommitSha, activePath)
+func mergedProposedDrySha(ctx context.Context, gitOperations *git.EnvironmentOperations, mergedTargetSha, activePath string) (string, error) {
+	meta, err := gitOperations.GetShaMetadataFromFile(ctx, mergedTargetSha, activePath)
 	if err != nil {
 		if git.IsHydratorMetadataMalformed(err) {
 			log.FromContext(ctx).V(4).Info("malformed hydrator metadata on merge commit; keeping trailer snapshot",
-				"sha", mergeCommitSha, "err", err)
+				"sha", mergedTargetSha, "err", err)
 			return "", nil
 		}
-		return "", fmt.Errorf("read hydrator metadata at %q: %w", mergeCommitSha, err)
+		return "", fmt.Errorf("read hydrator metadata at %q: %w", mergedTargetSha, err)
 	}
 	return meta.Sha, nil
 }
 
 // mergeCommitSecondParent returns the second parent of a two-parent merge commit (the merged proposed
 // hydrated tip), or "" for fast-forward or squash commits that have no second parent.
-func mergeCommitSecondParent(ctx context.Context, gitOperations *git.EnvironmentOperations, mergeCommitSha string) string {
-	parents, err := gitOperations.GetCommitParents(ctx, mergeCommitSha)
+func mergeCommitSecondParent(ctx context.Context, gitOperations *git.EnvironmentOperations, mergedTargetSha string) string {
+	parents, err := gitOperations.GetCommitParents(ctx, mergedTargetSha)
 	if err != nil {
 		log.FromContext(ctx).V(4).Info("failed to read parents of merge commit; leaving proposed hydrated trailer as snapshot",
-			"sha", mergeCommitSha, "err", err)
+			"sha", mergedTargetSha, "err", err)
 		return ""
 	}
 	if len(parents) < 2 {

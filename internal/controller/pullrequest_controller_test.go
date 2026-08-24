@@ -788,7 +788,7 @@ var _ = Describe("PullRequest Controller", func() {
 				mergeSha = getGitBranchSHA(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, pullRequest.Spec.SourceBranch)
 			})
 
-			It("should persist merged status and the SCM-reported merge commit sha before deletion via defer", func() {
+			It("should persist merged status and the SCM-reported merged target sha before deletion via defer", func() {
 				// Start polling for merged status in a goroutine BEFORE we request the merge.
 				// We poll very frequently (1ms) to catch the narrow window where:
 				//   1. Status has been persisted as "merged"
@@ -844,10 +844,10 @@ var _ = Describe("PullRequest Controller", func() {
 
 				close(stopPolling)
 
-				By("Verifying the merge commit sha from the merge response was persisted alongside the merged state")
-				// The fake provider reports the merge commit in its merge response, so the sha must land
-				// in the same status write as state=merged rather than waiting for a Get-by-ID recovery.
-				Expect(observedStatus.MergeCommitSha).To(Equal(
+				By("Verifying the merged target sha from the merge response was persisted alongside the merged state")
+				// The fake provider reports the resulting target-branch commit in its merge response, so the
+				// sha must land in the same status write as state=merged rather than waiting for a Get-by-ID recovery.
+				Expect(observedStatus.MergedTargetSha).To(Equal(
 					getGitBranchSHA(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, pullRequest.Spec.TargetBranch)))
 
 				By("Verifying the PullRequest is then deleted on next reconciliation")
@@ -1107,12 +1107,12 @@ var _ = Describe("PullRequest Controller", func() {
 			}, "5s", "500ms").Should(Succeed())
 		})
 
-		It("should set state merged and mergeCommitSha when externally merged on provider", func() {
-			mergeCommitSha := pullRequest.Spec.MergeSha
+		It("should set state merged and mergedTargetSha when externally merged on provider", func() {
+			mergedTargetSha := pullRequest.Spec.MergeSha
 
 			By("Simulating external merge on the fake SCM")
 			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
-			Expect(fakeProvider.MarkMergedExternally(ctx, *pullRequest, mergeCommitSha)).To(Succeed())
+			Expect(fakeProvider.MarkMergedExternally(ctx, *pullRequest, mergedTargetSha)).To(Succeed())
 
 			By("Triggering reconciliation by updating the PR spec")
 			Eventually(func(g Gomega) {
@@ -1126,7 +1126,7 @@ var _ = Describe("PullRequest Controller", func() {
 				g.Expect(k8sClient.Patch(ctx, pullRequest, client.MergeFrom(orig))).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Verifying the PullRequest is deleted after mergeCommitSha is persisted")
+			By("Verifying the PullRequest is deleted after mergedTargetSha is persisted")
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
 				g.Expect(err).To(HaveOccurred())

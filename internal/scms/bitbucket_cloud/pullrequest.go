@@ -377,7 +377,7 @@ func (pr *PullRequest) Get(ctx context.Context, pullRequest v1alpha1.PullRequest
 			if err != nil {
 				return scms.GetPullRequestResult{}, fmt.Errorf("failed to resolve merge commit hash %q: %w", hash, err)
 			}
-			getResult.MergeCommitSHA = fullHash
+			getResult.MergedTargetSHA = fullHash
 		}
 	case "DECLINED", "SUPERSEDED":
 		getResult.State = v1alpha1.PullRequestClosed

@@ -276,7 +276,7 @@ func (pr *PullRequest) Get(ctx context.Context, pullRequest v1alpha1.PullRequest
 	result := scms.GetPullRequestResult{Found: true}
 	if githubPR.GetMerged() {
 		result.State = v1alpha1.PullRequestMerged
-		result.MergeCommitSHA = githubPR.GetMergeCommitSHA()
+		result.MergedTargetSHA = githubPR.GetMergeCommitSHA()
 		if githubPR.MergedAt != nil {
 			result.MergedAt = githubPR.MergedAt.Time
 		}
