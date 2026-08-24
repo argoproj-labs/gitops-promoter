@@ -723,10 +723,16 @@ func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promot
 	// Update the commit message with the new trailers
 	pr.Spec.Commit.Message = updatedMessage
 
-	if err := provider.Merge(ctx, *pr); err != nil {
+	result, err := provider.Merge(ctx, *pr)
+	if err != nil {
 		return err //nolint:wrapcheck // Error wrapping handled at top level
 	}
 	pr.Status.State = promoterv1alpha1.PullRequestMerged
+	// Providers that report the merge commit in the merge response let us record it now; the rest
+	// leave it empty and syncWhenNotFoundOpen recovers it with a Get-by-ID lookup.
+	if result.CommitSHA != "" {
+		pr.Status.MergeCommitSha = result.CommitSHA
+	}
 	return nil
 }
 

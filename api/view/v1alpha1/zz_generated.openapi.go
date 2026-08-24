@@ -4224,7 +4224,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestStatus(ref com
 					},
 					"mergeCommitSha": {
 						SchemaProps: spec.SchemaProps{
-							Description: "MergeCommitSha is the commit SHA on the target branch reported by the SCM after merge. Set once by the PullRequest controller via a Get-by-ID lookup when FindOpen no longer finds the PR.",
+							Description: "MergeCommitSha is the commit SHA on the target branch reported by the SCM after merge. Set once by the PullRequest controller, either from the merge response for providers that report the SHA there, or from a Get-by-ID lookup when FindOpen no longer finds the PR (external merges, and providers whose merge response omits the SHA).",
 							Type:        []string{"string"},
 							Format:      "",
 						},

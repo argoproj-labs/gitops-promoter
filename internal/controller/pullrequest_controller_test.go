@@ -788,13 +788,13 @@ var _ = Describe("PullRequest Controller", func() {
 				mergeSha = getGitBranchSHA(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, pullRequest.Spec.SourceBranch)
 			})
 
-			It("should persist merged status before deletion via defer", func() {
+			It("should persist merged status and the SCM-reported merge commit sha before deletion via defer", func() {
 				// Start polling for merged status in a goroutine BEFORE we request the merge.
 				// We poll very frequently (1ms) to catch the narrow window where:
 				//   1. Status has been persisted as "merged"
 				//   2. But PR hasn't been deleted yet
 				// This proves the two-step process works correctly.
-				mergedStatusObserved := make(chan bool, 1)
+				mergedStatusObserved := make(chan promoterv1alpha1.PullRequestStatus, 1)
 				stopPolling := make(chan bool)
 
 				go func() {
@@ -810,7 +810,7 @@ var _ = Describe("PullRequest Controller", func() {
 							if err == nil && currentPR.Status.State == promoterv1alpha1.PullRequestMerged {
 								// Success! We observed merged state while PR still exists
 								GinkgoT().Logf("Observed merged status at resourceVersion %s", currentPR.ResourceVersion)
-								mergedStatusObserved <- true
+								mergedStatusObserved <- currentPR.Status
 								return
 							}
 						case <-stopPolling:
@@ -838,10 +838,17 @@ var _ = Describe("PullRequest Controller", func() {
 				// 4. Our polling goroutine caught the state between persist and delete
 				// If the old code (inline delete) were active, we'd never observe this state
 				// because the PR would be deleted before the status could be persisted.
-				Eventually(mergedStatusObserved, constants.EventuallyTimeout).Should(Receive(Equal(true)),
+				var observedStatus promoterv1alpha1.PullRequestStatus
+				Eventually(mergedStatusObserved, constants.EventuallyTimeout).Should(Receive(&observedStatus),
 					"Should have observed merged status before deletion")
 
 				close(stopPolling)
+
+				By("Verifying the merge commit sha from the merge response was persisted alongside the merged state")
+				// The fake provider reports the merge commit in its merge response, so the sha must land
+				// in the same status write as state=merged rather than waiting for a Get-by-ID recovery.
+				Expect(observedStatus.MergeCommitSha).To(Equal(
+					getGitBranchSHA(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, pullRequest.Spec.TargetBranch)))
 
 				By("Verifying the PullRequest is then deleted on next reconciliation")
 				// Now that we've proven the status was persisted, the NEXT reconciliation

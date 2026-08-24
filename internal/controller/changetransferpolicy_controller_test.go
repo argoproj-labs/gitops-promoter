@@ -840,7 +840,8 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				By("Simulating external merge on SCM (merges proposed into active and sends webhook)")
 				fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
 				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: createdPR.Name, Namespace: createdPR.Namespace}, &createdPR)).To(Succeed())
-				Expect(fakeProvider.Merge(ctx, createdPR)).To(Succeed())
+				_, err := fakeProvider.Merge(ctx, createdPR)
+				Expect(err).To(Succeed())
 
 				By("Verifying PR is deleted promptly without relying on periodic requeue")
 				Eventually(func(g Gomega) {

@@ -741,20 +741,29 @@ func (_c *MockPullRequestProvider_GetUrl_Call) RunAndReturn(run func(ctx context
 }
 
 // Merge provides a mock function for the type MockPullRequestProvider
-func (_mock *MockPullRequestProvider) Merge(ctx context.Context, pullRequest v1alpha1.PullRequest) error {
+func (_mock *MockPullRequestProvider) Merge(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.MergeResult, error) {
 	ret := _mock.Called(ctx, pullRequest)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Merge")
 	}
 
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, v1alpha1.PullRequest) error); ok {
+	var r0 scms.MergeResult
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, v1alpha1.PullRequest) (scms.MergeResult, error)); ok {
+		return returnFunc(ctx, pullRequest)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, v1alpha1.PullRequest) scms.MergeResult); ok {
 		r0 = returnFunc(ctx, pullRequest)
 	} else {
-		r0 = ret.Error(0)
+		r0 = ret.Get(0).(scms.MergeResult)
 	}
-	return r0
+	if returnFunc, ok := ret.Get(1).(func(context.Context, v1alpha1.PullRequest) error); ok {
+		r1 = returnFunc(ctx, pullRequest)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
 }
 
 // MockPullRequestProvider_Merge_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Merge'
@@ -787,12 +796,12 @@ func (_c *MockPullRequestProvider_Merge_Call) Run(run func(ctx context.Context, 
 	return _c
 }
 
-func (_c *MockPullRequestProvider_Merge_Call) Return(err error) *MockPullRequestProvider_Merge_Call {
-	_c.Call.Return(err)
+func (_c *MockPullRequestProvider_Merge_Call) Return(mergeResult scms.MergeResult, err error) *MockPullRequestProvider_Merge_Call {
+	_c.Call.Return(mergeResult, err)
 	return _c
 }
 
-func (_c *MockPullRequestProvider_Merge_Call) RunAndReturn(run func(ctx context.Context, pullRequest v1alpha1.PullRequest) error) *MockPullRequestProvider_Merge_Call {
+func (_c *MockPullRequestProvider_Merge_Call) RunAndReturn(run func(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.MergeResult, error)) *MockPullRequestProvider_Merge_Call {
 	_c.Call.Return(run)
 	return _c
 }

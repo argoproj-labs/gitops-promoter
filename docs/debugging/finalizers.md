@@ -51,19 +51,19 @@ Check `status.history[].mergeCommitSnapshotMismatch` on the ChangeTransferPolicy
 
 ### How the merge commit is identified
 
-The merge commit comes from **`PullRequest.status.mergeCommitSha`**, populated by the PullRequest controller from the SCM when the PR is no longer open (`Get` by `status.id`). CTP finalization attaches the promotion-history note to that commit — it does not walk git history to locate it.
+The merge commit comes from **`PullRequest.status.mergeCommitSha`**, populated by the PullRequest controller from the SCM. When the promoter performs the merge itself and the provider returns the SHA in the merge response (GitHub, GitLab, Bitbucket Cloud), it is recorded immediately. Otherwise — external merges, and providers whose merge response omits the SHA (Gitea, Forgejo, Azure DevOps) — it is recovered by a `Get` by `status.id` once the PR is no longer open. CTP finalization attaches the promotion-history note to that commit — it does not walk git history to locate it.
 
 At note write time, the controller compares the proposed dry SHA in the snapshot (`spec.commit.message` trailers) with hydrator metadata **on that merge commit**. When they differ, proposed SHAs in the note are corrected and `mergeCommitSnapshotMismatch` is set.
 
 ### Regular merge vs squash
 
-Both merge styles use the same **`PullRequest.status.mergeCommitSha`** from SCM `Get` (GitHub `merge_commit_sha`, GitLab `squash_commit_sha` or `merge_commit_sha`, and so on). CTP finalization writes the promotion-history git note on that commit for either style — there is no git history walk to locate it.
+Both merge styles use the same **`PullRequest.status.mergeCommitSha`** reported by the SCM (GitHub `merge_commit_sha`, GitLab `squash_commit_sha` or `merge_commit_sha`, and so on), whether it came from the merge response or a later `Get`. CTP finalization writes the promotion-history git note on that commit for either style — there is no git history walk to locate it.
 
 What still differs is **what can be reconstructed from git at that commit**:
 
 | | Regular merge (`--no-ff`) | Squash merge |
 | --- | --- | --- |
-| SCM `Get` → `mergeCommitSha` | Merge commit on active | Squash commit on active |
+| SCM-reported `mergeCommitSha` | Merge commit on active | Squash commit on active |
 | Promotion-history note written | Yes, when SCM reports merged + SHA | Yes, when SCM reports merged + SHA |
 | Correct proposed hydrated SHA from git | Yes — second parent of merge commit | **No** — single-parent squash commit; snapshot hydrated SHA kept |
 | Correct proposed dry SHA from git | Yes — `hydrator.metadata` on merge commit | Yes — `hydrator.metadata` on squash commit (when present) |

@@ -149,12 +149,12 @@ func (pr *PullRequest) Close(ctx context.Context, prObj promoterv1alpha1.PullReq
 }
 
 // Merge merges a pull request with the specified commit message.
-func (pr *PullRequest) Merge(ctx context.Context, prObj promoterv1alpha1.PullRequest) error {
+func (pr *PullRequest) Merge(ctx context.Context, prObj promoterv1alpha1.PullRequest) (scms.MergeResult, error) {
 	logger := log.FromContext(ctx)
 
 	prID, err := strconv.ParseInt(prObj.Status.ID, 10, 64)
 	if err != nil {
-		return fmt.Errorf("failed to convert PR ID %q to int: %w", prObj.Status.ID, err)
+		return scms.MergeResult{}, fmt.Errorf("failed to convert PR ID %q to int: %w", prObj.Status.ID, err)
 	}
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, k8sClient.ObjectKey{
@@ -162,12 +162,12 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj promoterv1alpha1.PullReq
 		Name:      prObj.Spec.RepositoryReference.Name,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to get git repository from object: %w", err)
+		return scms.MergeResult{}, fmt.Errorf("failed to get git repository from object: %w", err)
 	}
 
 	shouldReturn, err := checkOpenPR(ctx, *pr, repo, prID)
 	if shouldReturn {
-		return err
+		return scms.MergeResult{}, err
 	}
 
 	options := forgejo.MergePullRequestOption{
@@ -182,10 +182,11 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj promoterv1alpha1.PullReq
 		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
-		return err //nolint:wrapcheck // Error wrapping handled at top level
+		return scms.MergeResult{}, err //nolint:wrapcheck // Error wrapping handled at top level
 	}
 	logger.V(4).Info("forgejo response status", "status", resp.Status)
-	return nil
+	// Forgejo's merge endpoint returns no body, so the merge commit SHA is left to a Get-by-ID lookup.
+	return scms.MergeResult{}, nil
 }
 
 // FindOpen checks if a pull request with the specified source and target branches exists and is open.

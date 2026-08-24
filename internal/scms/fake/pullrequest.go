@@ -134,11 +134,11 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullReque
 }
 
 // Merge merges an existing pull request with the specified commit message.
-func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullRequest) error {
+func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.MergeResult, error) {
 	logger := log.FromContext(ctx)
 
 	if pullRequest.Status.ID == "" {
-		return errors.New("pull request ID is empty, cannot merge")
+		return scms.MergeResult{}, errors.New("pull request ID is empty, cannot merge")
 	}
 
 	gitPath, err := os.MkdirTemp("", "*")
@@ -154,70 +154,70 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
-		return fmt.Errorf("failed to get GitRepository: %w", err)
+		return scms.MergeResult{}, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
 	gitServerPort := 5000 + ginkgov2.GinkgoParallelProcess()
 	gitServerPortStr := strconv.Itoa(gitServerPort)
 	_, err = pr.runGitCmd(ctx, gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", "-b", pullRequest.Spec.TargetBranch, fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPortStr, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name), ".")
 	if err != nil {
-		return err
+		return scms.MergeResult{}, err
 	}
 
 	_, err = pr.runGitCmd(ctx, gitPath, "config", "user.name", "GitOps Promoter")
 	if err != nil {
 		logger.Error(err, "could not set git config")
-		return err
+		return scms.MergeResult{}, err
 	}
 
 	_, err = pr.runGitCmd(ctx, gitPath, "config", "user.email", "GitOpsPromoter@argoproj.io")
 	if err != nil {
 		logger.Error(err, "could not set git config")
-		return err
+		return scms.MergeResult{}, err
 	}
 
 	_, err = pr.runGitCmd(ctx, gitPath, "config", "pull.rebase", "false")
 	if err != nil {
-		return err
+		return scms.MergeResult{}, err
 	}
 
 	_, err = pr.runGitCmd(ctx, gitPath, "fetch", "--all")
 	if err != nil {
-		return fmt.Errorf("failed to fetch all: %w", err)
+		return scms.MergeResult{}, fmt.Errorf("failed to fetch all: %w", err)
 	}
 
 	// Verify that the source branch HEAD matches the expected merge SHA
 	actualSha, err := pr.runGitCmd(ctx, gitPath, "rev-parse", "origin/"+pullRequest.Spec.SourceBranch)
 	if err != nil {
-		return fmt.Errorf("failed to get SHA of source branch: %w", err)
+		return scms.MergeResult{}, fmt.Errorf("failed to get SHA of source branch: %w", err)
 	}
 	actualSha = strings.TrimSpace(actualSha)
 	if actualSha != pullRequest.Spec.MergeSha {
 		mergeShaMismatchCount.Add(1)
-		return fmt.Errorf("source branch HEAD SHA %q does not match expected merge SHA %q", actualSha, pullRequest.Spec.MergeSha)
+		return scms.MergeResult{}, fmt.Errorf("source branch HEAD SHA %q does not match expected merge SHA %q", actualSha, pullRequest.Spec.MergeSha)
 	}
 
 	// Get the SHA of the target branch before merging - this is the "before" SHA for the webhook
 	beforeSha, err := pr.runGitCmd(ctx, gitPath, "rev-parse", "origin/"+pullRequest.Spec.TargetBranch)
 	if err != nil {
-		return fmt.Errorf("failed to get SHA of target branch before merge: %w", err)
+		return scms.MergeResult{}, fmt.Errorf("failed to get SHA of target branch before merge: %w", err)
 	}
 	beforeSha = strings.TrimSpace(beforeSha)
 
 	_, err = pr.runGitCmd(ctx, gitPath, "merge", "--no-ff", "origin/"+pullRequest.Spec.SourceBranch, "-m", pullRequest.Spec.Commit.Message)
 	if err != nil {
-		return err
+		return scms.MergeResult{}, err
 	}
 
 	mergeCommitSha, err := pr.runGitCmd(ctx, gitPath, "rev-parse", "HEAD")
 	if err != nil {
-		return fmt.Errorf("failed to get merge commit SHA: %w", err)
+		return scms.MergeResult{}, fmt.Errorf("failed to get merge commit SHA: %w", err)
 	}
 	mergeCommitSha = strings.TrimSpace(mergeCommitSha)
 
 	_, err = pr.runGitCmd(ctx, gitPath, "push")
 	if err != nil {
-		return err
+		return scms.MergeResult{}, err
 	}
 
 	// Send webhook after merge to simulate SCM provider webhook behavior
@@ -230,7 +230,7 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
 
 	if _, ok := pullRequests[prKey]; !ok {
-		return errors.New("pull request not found")
+		return scms.MergeResult{}, errors.New("pull request not found")
 	}
 	prev := pullRequests[prKey]
 	pullRequests[prKey] = pullRequestProviderState{
@@ -240,7 +240,7 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 		labels:         prev.labels,
 		mergeCommitSha: mergeCommitSha,
 	}
-	return nil
+	return scms.MergeResult{CommitSHA: mergeCommitSha}, nil
 }
 
 // ResetFindOpenCallCount resets the test-only counter of FindOpen invocations.

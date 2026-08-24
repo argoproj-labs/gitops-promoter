@@ -154,20 +154,20 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullReque
 }
 
 // Merge merges an existing pull request with the specified commit message.
-func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullRequest) error {
+func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.MergeResult, error) {
 	logger := log.FromContext(ctx)
 
 	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
 	if err != nil {
-		return fmt.Errorf("failed to convert PR number to int: %w", err)
+		return scms.MergeResult{}, fmt.Errorf("failed to convert PR number to int: %w", err)
 	}
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil || gitRepo == nil {
-		return fmt.Errorf("failed to get GitRepository: %w", err)
+		return scms.MergeResult{}, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
 	start := time.Now()
-	_, response, err := pr.client.PullRequests.Merge(
+	mergeResult, response, err := pr.client.PullRequests.Merge(
 		ctx,
 		gitRepo.Spec.GitHub.Owner,
 		gitRepo.Spec.GitHub.Name,
@@ -182,7 +182,7 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
 	}
 	if err != nil {
-		return err //nolint:wrapcheck // Error wrapping handled at top level
+		return scms.MergeResult{}, err //nolint:wrapcheck // Error wrapping handled at top level
 	}
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
@@ -192,7 +192,7 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 	logger.V(4).Info("github response status",
 		"status", response.Status)
 
-	return nil
+	return scms.MergeResult{CommitSHA: mergeResult.GetSHA()}, nil
 }
 
 // FindOpen checks if a pull request is open and returns its status.
