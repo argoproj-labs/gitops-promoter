@@ -1473,14 +1473,14 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitBranchStateHistoryP
 				Properties: map[string]spec.Schema{
 					"hydrated": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on.",
+							Description: "Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on. Read from the snapshot trailers, so it may be stale when the entry's mergeCommitSnapshotMismatch is true and the merge was a squash.",
 							Default:     map[string]interface{}{},
 							Ref:         ref(apiv1alpha1.CommitShaState{}.OpenAPIModelName()),
 						},
 					},
 					"commitStatuses": {
 						SchemaProps: spec.SchemaProps{
-							Description: "CommitStatuses is a list of commit statuses that were being monitored for this branch. This contains the state frozen at the moment the PR was merged.",
+							Description: "CommitStatuses is a list of commit statuses that were being monitored for this branch. This contains the state frozen at the moment the PR was merged. When the entry's mergeCommitSnapshotMismatch is true, these phases come from snapshot trailers describing the proposed revision the promoter last saw, which is not necessarily the revision that merged.",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
@@ -3358,7 +3358,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_History(ref common.Refere
 					},
 					"active": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Active is the state of the active branch at the time the PR was merged.",
+							Description: "Active is the state of the active branch at the time the PR was merged. Its dry and hydrated state is read back from the merge commit itself, but its commitStatuses come from the snapshot trailers and may be stale when mergeCommitSnapshotMismatch is true.",
 							Default:     map[string]interface{}{},
 							Ref:         ref(apiv1alpha1.CommitBranchState{}.OpenAPIModelName()),
 						},
@@ -3371,7 +3371,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_History(ref common.Refere
 					},
 					"mergeCommitSnapshotMismatch": {
 						SchemaProps: spec.SchemaProps{
-							Description: "MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with the promoter's last snapshot (typically an external merge after the proposed branch advanced). Proposed dry and hydrated SHAs in the history note were reconstructed from the merge commit; other snapshot-derived trailers (especially commit statuses) may still reflect the earlier proposed revision.",
+							Description: "MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with the promoter's last snapshot (typically an external merge after the proposed branch advanced). When true, the fields this entry rebuilds from the snapshot trailers — proposed.commitStatuses and active.commitStatuses, plus proposed.hydrated when the merge was a squash (a single-parent squash commit gives the controller nothing to reconstruct the hydrated sha from) — may describe the earlier proposed revision rather than what actually merged.",
 							Type:        []string{"boolean"},
 							Format:      "",
 						},

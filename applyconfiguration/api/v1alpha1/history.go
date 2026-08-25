@@ -24,14 +24,18 @@ package v1alpha1
 type HistoryApplyConfiguration struct {
 	// Proposed is the state of the proposed branch at the time the PR was merged.
 	Proposed *CommitBranchStateHistoryProposedApplyConfiguration `json:"proposed,omitempty"`
-	// Active is the state of the active branch at the time the PR was merged.
+	// Active is the state of the active branch at the time the PR was merged. Its dry and hydrated state is read
+	// back from the merge commit itself, but its commitStatuses come from the snapshot trailers and may be
+	// stale when mergeCommitSnapshotMismatch is true.
 	Active *CommitBranchStateApplyConfiguration `json:"active,omitempty"`
 	// PullRequest is the state of the pull request that was created for this ChangeTransferPolicy.
 	PullRequest *PullRequestCommonStatusApplyConfiguration `json:"pullRequest,omitempty"`
 	// MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with
-	// the promoter's last snapshot (typically an external merge after the proposed branch advanced). Proposed
-	// dry and hydrated SHAs in the history note were reconstructed from the merge commit; other snapshot-derived
-	// trailers (especially commit statuses) may still reflect the earlier proposed revision.
+	// the promoter's last snapshot (typically an external merge after the proposed branch advanced). When true,
+	// the fields this entry rebuilds from the snapshot trailers — proposed.commitStatuses and
+	// active.commitStatuses, plus proposed.hydrated when the merge was a squash (a single-parent squash commit
+	// gives the controller nothing to reconstruct the hydrated sha from) — may describe the earlier proposed
+	// revision rather than what actually merged.
 	MergeCommitSnapshotMismatch *bool `json:"mergeCommitSnapshotMismatch,omitempty"`
 }
 

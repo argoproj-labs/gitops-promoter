@@ -44,9 +44,17 @@ When a pull request is merged or closed outside the controller, the PullRequest 
 2. The ChangeTransferPolicy has not yet reconciled and updated `spec.commit.message` / `spec.mergeSha`.
 3. A user or bot merges on the SCM (merging the **current** proposed head, not the stale snapshot).
 
-This is a **merge commit snapshot mismatch**: hydrator metadata on the SCM-reported merge commit disagrees with the promoter's last snapshot. The controller corrects the proposed **dry** SHA from the merge commit's hydrator metadata and, for a regular merge commit with a second parent, the proposed **hydrated** SHA as well. **Commit statuses in the note still reflect the earlier revision** and may not match the gates that applied to what actually merged.
+This is a **merge commit snapshot mismatch**: hydrator metadata on the SCM-reported merge commit disagrees with the promoter's last snapshot. The controller corrects the proposed **dry** SHA from the merge commit's hydrator metadata and, for a regular merge commit with a second parent, the proposed **hydrated** SHA as well. The gate phases in the note are **not** corrected — they still reflect the earlier revision and may not match the gates that applied to what actually merged.
 
-Check `status.history[].mergeCommitSnapshotMismatch` on the ChangeTransferPolicy. When `true`, treat snapshot-derived commit statuses in that entry as potentially stale. The controller also emits [PromotionHistoryNoteMergeCommitSnapshotMismatch](../monitoring/events.md#changetransferpolicy) when it detects and corrects this during note writing.
+Check `status.history[].mergeCommitSnapshotMismatch` on the ChangeTransferPolicy. When `true`, these fields in that entry are potentially stale:
+
+| Field | Why |
+| --- | --- |
+| `status.history[].proposed.commitStatuses` | Gate phases read from the snapshot trailers; never reconstructed from the merge commit. |
+| `status.history[].active.commitStatuses` | Same snapshot trailers, same caveat. |
+| `status.history[].proposed.hydrated` | Reconstructed from the merge commit's second parent on a regular merge, but a squash commit has no second parent, so the snapshot trailer value is kept. |
+
+`status.history[].active.dry` and `status.history[].active.hydrated` are read back from the merge commit itself, so they describe what actually merged either way. The controller also emits [PromotionHistoryNoteMergeCommitSnapshotMismatch](../monitoring/events.md#changetransferpolicy) when it detects and corrects this during note writing.
 
 > [!TIP]
 > Prefer letting the promoter merge pull requests it manages. If you use `autoMerge: false` with Prow/Tide or similar, see [Dynamic Pull Request Labels](../advanced-usage/pull-request-labels.md#prow--tide-example) and the mismatch caveats below.

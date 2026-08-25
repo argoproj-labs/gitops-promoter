@@ -273,10 +273,10 @@ export type components = {
         };
         /** @description CommitBranchStateHistoryProposed is identical to CommitBranchState minus the Dry state. In the context of History, the Dry state is not relevant as the proposed dry side at merge becomes the Active. */
         CommitBranchStateHistoryProposed: {
-            /** @description CommitStatuses is a list of commit statuses that were being monitored for this branch. This contains the state frozen at the moment the PR was merged. */
+            /** @description CommitStatuses is a list of commit statuses that were being monitored for this branch. This contains the state frozen at the moment the PR was merged. When the entry's mergeCommitSnapshotMismatch is true, these phases come from snapshot trailers describing the proposed revision the promoter last saw, which is not necessarily the revision that merged. */
             commitStatuses?: components["schemas"]["ChangeRequestPolicyCommitStatusPhase"][];
             /**
-             * @description Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on.
+             * @description Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on. Read from the snapshot trailers, so it may be stale when the entry's mergeCommitSnapshotMismatch is true and the merge was a squash.
              * @default {}
              */
             hydrated?: components["schemas"]["CommitShaState"];
@@ -901,11 +901,11 @@ export type components = {
         /** @description History describes a particular change that was promoted by the ChangeTransferPolicy. */
         History: {
             /**
-             * @description Active is the state of the active branch at the time the PR was merged.
+             * @description Active is the state of the active branch at the time the PR was merged. Its dry and hydrated state is read back from the merge commit itself, but its commitStatuses come from the snapshot trailers and may be stale when mergeCommitSnapshotMismatch is true.
              * @default {}
              */
             active?: components["schemas"]["CommitBranchState"];
-            /** @description MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with the promoter's last snapshot (typically an external merge after the proposed branch advanced). Proposed dry and hydrated SHAs in the history note were reconstructed from the merge commit; other snapshot-derived trailers (especially commit statuses) may still reflect the earlier proposed revision. */
+            /** @description MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with the promoter's last snapshot (typically an external merge after the proposed branch advanced). When true, the fields this entry rebuilds from the snapshot trailers — proposed.commitStatuses and active.commitStatuses, plus proposed.hydrated when the merge was a squash (a single-parent squash commit gives the controller nothing to reconstruct the hydrated sha from) — may describe the earlier proposed revision rather than what actually merged. */
             mergeCommitSnapshotMismatch?: boolean;
             /**
              * @description Proposed is the state of the proposed branch at the time the PR was merged.
