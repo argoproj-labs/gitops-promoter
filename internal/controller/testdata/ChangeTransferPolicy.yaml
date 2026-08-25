@@ -87,8 +87,10 @@ status:
         url: https://github.com/org/repo/pull/847
         # In a history entry this is the active-branch commit the entry describes (same as active.hydrated.sha).
         mergedTargetSha: "3333333333333333333333333333333333333333"
-    # A promotion whose PR was merged externally after the proposed branch advanced: the proposed
-    # dry/hydrated SHAs were reconstructed from the merge commit, but the recorded commit statuses may be stale.
+    # A promotion whose PR was merged externally after the proposed branch advanced. The proposed dry sha is
+    # re-read from the merge commit, and the proposed hydrated sha from its second parent when the merge
+    # produced a real merge commit. A squash or fast-forward merge has no second parent, so the hydrated sha
+    # stays at the promoter's last snapshot and may be stale, as may the recorded commit statuses.
     - active:
         dry:
           sha: "1111111111111111111111111111111111111111"
