@@ -1085,6 +1085,11 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 // merge commit message (squash merges, or merges performed directly on the SCM), the trailers are lost from
 // the commit itself, and history building falls back to this note.
 //
+// The merge commit SHA comes from status.mergedTargetSha (populated by the PullRequest controller from SCM
+// Get after merge). The old findMergeCommitOnActiveBranch git walk was removed in favor of that authoritative
+// source; reintroduce inference only if a provider cannot return the merged target SHA reliably, and wire any
+// revival through status.mergedTargetSha rather than silent first-parent walks here.
+//
 // Returns nil without writing a note when there is nothing to record: the PR was closed rather than merged,
 // or it never accumulated trailers.
 func (r *ChangeTransferPolicyReconciler) writePromotionHistoryNote(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations, livePR *promoterv1alpha1.PullRequest) error {
@@ -1116,12 +1121,8 @@ func (r *ChangeTransferPolicyReconciler) writePromotionHistoryNote(ctx context.C
 		if livePR.Status.State == promoterv1alpha1.PullRequestMerged {
 			return fmt.Errorf("merged pull request %q has no status.mergedTargetSha", livePR.Name)
 		}
-		if externallyMergedOrClosed {
-			logger.V(4).Info("PR externally merged or closed without mergedTargetSha, skipping promotion history note",
-				"prID", livePR.Status.ID)
-			return nil
-		}
-		logger.V(4).Info("No merged target SHA and PR not merged, skipping promotion history note")
+		logger.V(4).Info("PR externally merged or closed without mergedTargetSha, skipping promotion history note",
+			"prID", livePR.Status.ID)
 		return nil
 	}
 

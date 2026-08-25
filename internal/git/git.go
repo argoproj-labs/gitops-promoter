@@ -71,7 +71,6 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -1063,28 +1062,6 @@ func (g *EnvironmentOperations) GetCommitParents(ctx context.Context, sha string
 	return strings.Fields(stdout), nil
 }
 
-// IsAncestor reports whether ancestor is an ancestor of descendant using git merge-base --is-ancestor.
-//
-// Read-only: never mutates the clone's index/worktree/HEAD. Requires both commits to have been fetched.
-func (g *EnvironmentOperations) IsAncestor(ctx context.Context, ancestor, descendant string) (bool, error) {
-	gitPath := g.ClonePath()
-	if gitPath == "" {
-		return false, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
-	}
-
-	_, stderr, err := g.runCmd(ctx, gitPath, "merge-base", "--is-ancestor", ancestor, descendant)
-	if err != nil {
-		// Exit code 1 means "not an ancestor"; anything else is a real error.
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
-			return false, nil
-		}
-		return false, fmt.Errorf("failed to check ancestry of %q in %q: %w (stderr: %s)", ancestor, descendant, err, stderr)
-	}
-
-	return true, nil
-}
-
 // CommitExists reports whether the given SHA resolves to a commit object in the local object database.
 //
 // Read-only: never mutates the clone's index/worktree/HEAD.
@@ -1096,28 +1073,6 @@ func (g *EnvironmentOperations) CommitExists(ctx context.Context, sha string) bo
 
 	_, _, err := g.runCmd(ctx, gitPath, "cat-file", "-e", sha+"^{commit}")
 	return err == nil
-}
-
-// FetchSha fetches a single commit object by SHA from origin. Best-effort callers should tolerate errors:
-// not all servers allow fetching arbitrary SHAs (uploadpack.allowAnySHA1InWant).
-//
-// Read-only: writes only fetched objects; never mutates the clone's index/worktree/HEAD.
-func (g *EnvironmentOperations) FetchSha(ctx context.Context, sha string) error {
-	logger := log.FromContext(ctx)
-	gitPath := g.ClonePath()
-	if gitPath == "" {
-		return fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
-	}
-
-	start := time.Now()
-	_, stderr, err := g.runCmd(ctx, gitPath, "fetch", "origin", sha)
-	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetch, metrics.GitOperationResultFromError(err), time.Since(start))
-	if err != nil {
-		logger.V(4).Info("could not fetch sha from origin", "sha", sha, "stderr", stderr, "err", err)
-		return fmt.Errorf("failed to fetch sha %q: %w", sha, err)
-	}
-
-	return nil
 }
 
 // ParseTrailersFromMessage parses git trailers from a commit message using git interpret-trailers.

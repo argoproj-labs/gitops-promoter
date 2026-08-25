@@ -195,7 +195,7 @@ var _ = Describe("Promotion history notes", func() {
 		Expect(statusAfter).To(Equal(statusBefore), "SetHistoryNote must not dirty the worktree/index")
 	})
 
-	It("supports the parent/ancestor helpers used for merge-commit location", func() {
+	It("supports GetCommitParents and CommitExists for merge commits", func() {
 		// Build: base -> feature branch -> merge commit.
 		_, err := runGitCmd(workDir, "checkout", "-b", "feature")
 		Expect(err).NotTo(HaveOccurred())
@@ -217,14 +217,6 @@ var _ = Describe("Promotion history notes", func() {
 		Expect(parents).To(HaveLen(2))
 		Expect(parents[0]).To(Equal(shaTwo))
 		Expect(parents[1]).To(Equal(featureSha))
-
-		isAncestor, err := g.IsAncestor(GinkgoT().Context(), featureSha, mergeSha)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(isAncestor).To(BeTrue())
-
-		isAncestor, err = g.IsAncestor(GinkgoT().Context(), mergeSha, featureSha)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(isAncestor).To(BeFalse())
 
 		Expect(g.CommitExists(GinkgoT().Context(), mergeSha)).To(BeTrue())
 		Expect(g.CommitExists(GinkgoT().Context(), strings.Repeat("0", 40))).To(BeFalse())
