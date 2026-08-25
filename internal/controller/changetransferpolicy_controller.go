@@ -171,9 +171,10 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, fmt.Errorf("failed to fetch git notes: %w", err)
 	}
 
-	// Handle PR finalizer removal if PR is being deleted and CTP status is already synced. This runs after the
-	// clone/notes fetch because it writes the promotion-history git note before releasing the PR: removal now
-	// requires a working clone, which is acceptable since promotion as a whole is blocked anyway when git is
+	// Handle PR finalizer removal if PR is being deleted and CTP status is already synced. This must run after
+	// CloneRepo because it writes the promotion-history git note before releasing the PR, and building that note
+	// reads the merge commit out of the local clone (hydrator metadata blob, commit time, parents). Requiring a
+	// working clone for finalizer removal is acceptable since promotion as a whole is blocked when git is
 	// unreachable, and handleCTPCleanupOnDelete remains the note-free escape hatch when the CTP itself is deleted.
 	err = r.handlePRFinalizerRemoval(ctx, &ctp, gitOperations)
 	if err != nil {
