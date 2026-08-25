@@ -232,6 +232,8 @@
           'make lint-fix || true',
           // Regenerate mocks with the bumped mockery (must match the Go toolchain).
           'make mockery-gen',
+          // Regenerate CRDs, applyconfiguration, deepcopy, dist/ bundles, etc. (CI Check Codegen).
+          'make build-installer',
         ],
         installTools: {
           golang: {},
@@ -241,6 +243,12 @@
           '**/mock/**',
           'go.mod',
           'go.sum',
+          'config/**',
+          'test/**',
+          'applyconfiguration/**',
+          'dist/**',
+          'hack/celcost/report.md',
+          'ui/extension/iconStyles.generated.ts',
         ],
         executionMode: 'branch',
       },
