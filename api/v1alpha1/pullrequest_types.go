@@ -200,7 +200,7 @@ func (ps *PullRequest) SetStatusInstanceID(v *string) {
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="URL",type=string,JSONPath=`.status.url`,priority=1
 // +kubebuilder:validation:XValidation:rule=`self.spec.state == 'open' || has(self.status.id) && self.status.id != ""`,message="Cannot transition to 'closed' or 'merged' state when status.id is empty"
-// +kubebuilder:validation:XValidation:rule=`self.status.mergedTargetSha == ” || self.status.state == 'merged'`,message="mergedTargetSha may only be set when status.state is merged"
+// +kubebuilder:validation:XValidation:rule=`self.status.mergedTargetSha == '' || self.status.state == 'merged'`,message="mergedTargetSha may only be set when status.state is merged"
 type PullRequest struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

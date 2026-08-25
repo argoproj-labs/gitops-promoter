@@ -208,16 +208,16 @@ Source: `promoter.argoproj.io_pullrequests.yaml`
 | `.spec.sourceBranch` | 3 | 0.00% | `!self.startsWith('-')` |
 | `.spec.targetBranch` | 3 | 0.00% | `!self.startsWith('-')` |
 | `.status.url` | 3 | 0.00% | `self == '' \|\| isURL(self)` |
-| `(root)` | 0 | 0.00% | `self.status.mergedTargetSha == ” \|\| self.status.state == 'merged'` |
+| `(root)` | 0 | 0.00% | `self.status.mergedTargetSha == '' \|\| self.status.state == 'merged'` |
 | **Total** | **270** | **0.00%** | |
 
 Warnings:
 
 - [1]: compilation failed: ERROR: <input>:1:32: Syntax error: token recognition error at: '”'
- | self.status.mergedTargetSha == ” || self.status.state == 'merged'
+ | self.status.mergedTargetSha == '' || self.status.state == 'merged'
  | ...............................＾
 ERROR: <input>:1:34: Syntax error: extraneous input '||' expecting {'[', '{', '(', '.', '-', '!', 'true', 'false', 'null', NUM_FLOAT, NUM_INT, NUM_UINT, STRING, BYTES, IDENTIFIER}
- | self.status.mergedTargetSha == ” || self.status.state == 'merged'
+ | self.status.mergedTargetSha == '' || self.status.state == 'merged'
  | ...............................．.^
 
 #### RevertCommit
