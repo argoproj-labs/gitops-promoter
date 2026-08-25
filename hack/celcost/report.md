@@ -205,7 +205,7 @@ Source: `promoter.argoproj.io_pullrequests.yaml`
 | `.spec.targetBranch` | 42 | 0.00% | `!self.contains(':')` |
 | `.spec.targetBranch` | 42 | 0.00% | `!self.contains('..')` |
 | `(root)` | 9 | 0.00% | `self.spec.state == 'open' \|\| has(self.status.id) && self.status.id != ""` |
-| `(root)` | 7 | 0.00% | `self.status.mergedTargetSha == '' \|\| self.status.state == 'merged'` |
+| `(root)` | 7 | 0.00% | `self.status.mergedTargetSha == "" \|\| self.status.state == 'merged'` |
 | `.spec.sourceBranch` | 3 | 0.00% | `!self.startsWith('-')` |
 | `.spec.targetBranch` | 3 | 0.00% | `!self.startsWith('-')` |
 | `.status.url` | 3 | 0.00% | `self == '' \|\| isURL(self)` |
