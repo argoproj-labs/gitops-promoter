@@ -312,12 +312,12 @@ func (r *PullRequestReconciler) syncWhenNotFoundOpen(ctx context.Context, pr *pr
 		return false, nil
 	}
 
-	if requeue, handled, err := r.trySyncFromGetByID(ctx, pr, provider); err != nil {
+	details, err := r.getPullRequestByID(ctx, pr, provider)
+	if err != nil {
 		return false, err
-	} else if requeue {
-		return true, nil
-	} else if handled {
-		return false, nil
+	}
+	if details != nil {
+		return r.applyGetPullRequestDetails(ctx, pr, *details), nil
 	}
 
 	if pr.Spec.State == promoterv1alpha1.PullRequestOpen {
@@ -327,24 +327,23 @@ func (r *PullRequestReconciler) syncWhenNotFoundOpen(ctx context.Context, pr *pr
 	return r.recoverLostTerminalStatus(ctx, pr)
 }
 
-// trySyncFromGetByID reconciles status from a Get-by-ID lookup. handled reports whether the lookup
-// was authoritative about the PR's state; when it is false the caller must fall back to inferring
-// state from spec (external merge/close or lost terminal status).
-func (r *PullRequestReconciler) trySyncFromGetByID(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) (requeue bool, handled bool, err error) {
+// getPullRequestByID fetches authoritative PR state from the SCM when status.id is set.
+// A nil result with nil error means the lookup was skipped or the PR was not found on the SCM;
+// the caller should infer state from spec (external merge/close or lost terminal status).
+func (r *PullRequestReconciler) getPullRequestByID(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) (*scms.GetPullRequestResult, error) {
 	if pr.Status.MergedTargetSha != "" {
-		return false, false, nil
+		return nil, nil
 	}
 
 	details, err := provider.Get(ctx, *pr)
 	if err != nil {
-		return false, false, fmt.Errorf("failed to get pull request by id: %w", err)
+		return nil, fmt.Errorf("failed to get pull request by id: %w", err)
 	}
 	if !details.Found {
-		return false, false, nil
+		return nil, nil
 	}
 
-	requeue = r.applyGetPullRequestDetails(ctx, pr, details)
-	return requeue, true, nil
+	return &details, nil
 }
 
 func (r *PullRequestReconciler) applyGetPullRequestDetails(ctx context.Context, pr *promoterv1alpha1.PullRequest, details scms.GetPullRequestResult) (requeue bool) {
