@@ -3457,7 +3457,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ModeSpec(ref common.Refer
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "ModeSpec defines how the WebRequestCommitStatus controller issues HTTP requests.\n\nExactly one of Polling or Trigger must be set.\n\nContext (the context field below) controls request fan-out and what data is available in templates and trigger expressions:\n\n  - \"environments\" (default): one HTTP request per environment; each environment has its own phase and status; success.when.expression is evaluated per response and must return a boolean (true → success, false → pending; failure is not expressible).\n\n  - \"promotionstrategy\": at most one HTTP request per WebRequestCommitStatus resource; CommitStatuses remain one per environment on each environment's reportOn SHA. success.when.expression runs once on that shared response — see WhenWithOutputSpec.Expression for boolean vs per-branch object return shapes.\n\nWhen context is \"promotionstrategy\", Branch is empty for the shared HTTP request and trigger expressions. Use PromotionStrategy (e.g. status environments) for branch-specific values. For description and url templates, {{ .Branch }} and {{ .Phase }} are set per environment when rendering that environment's CommitStatus.",
+				Description: "ModeSpec defines how the WebRequestCommitStatus controller issues HTTP requests.\n\nExactly one of Polling or Trigger must be set.\n\nContext (the context field below) controls request fan-out and what data is available in templates and trigger expressions:\n\n  - \"environments\" (default): one HTTP request per environment; each environment has its own phase and status; success.when.expression is evaluated per response and returns the phase for that one environment — see SuccessSpec for the boolean and object return shapes.\n\n  - \"promotionstrategy\": at most one HTTP request per WebRequestCommitStatus resource; CommitStatuses remain one per environment on each environment's reportOn SHA. success.when.expression runs once on that shared response — see SuccessSpec for boolean vs per-branch object return shapes.\n\nWhen context is \"promotionstrategy\", Branch is empty for the shared HTTP request and trigger expressions. Use PromotionStrategy (e.g. status environments) for branch-specific values. For description and url templates, {{ .Branch }} and {{ .Phase }} are set per environment when rendering that environment's CommitStatus.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"polling": {
@@ -5243,12 +5243,12 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_SuccessSpec(ref common.Re
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "SuccessSpec defines when the commit status phase is success.",
+				Description: "SuccessSpec defines the phase reported on the CommitStatus.\n\nWhen.Expression is evaluated every reconcile (whether or not an HTTP request was made). Its variables are documented on WhenWithOutputSpec.Expression, plus Response (nil when no request was made this reconcile). The accepted return values depend on spec.mode.context:\n\n  - \"environments\" (default): a boolean (true → success, false → pending), or an object { phase } where phase\n    is \"success\", \"pending\", or \"failure\". An omitted or empty phase means \"pending\". Each evaluation is\n    already scoped to one environment, so the per-branch keys below are rejected in this context.\n\n  - \"promotionstrategy\": a boolean (all applicable environments get success or pending), or an object\n    { defaultPhase?, environments? } where environments is a list of { branch, phase }. Branches not listed\n    (or all of them, when environments is omitted or empty) get defaultPhase, which is \"pending\" when omitted.\n\nAny other return type, or an unrecognized phase string, fails the reconcile.\n\nExamples:\n\n\t# environments context: fail fast on a 5xx instead of waiting for a timeout\n\t- \"Response == nil ? Phase == 'success' : (Response.StatusCode >= 500 ? {phase: 'failure'} : Response.StatusCode == 200)\"\n\n\t# promotionstrategy context: map a batch payload to per-branch phases\n\t- \"{ defaultPhase: 'pending', environments: map(Response.Body.results, {{branch: .env, phase: .state}}) }\"",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"when": {
 						SchemaProps: spec.SchemaProps{
-							Description: "When is evaluated every reconcile. See WhenWithOutputSpec.Expression.",
+							Description: "When is evaluated every reconcile. See SuccessSpec for return values and WhenWithOutputSpec.Expression for variables.",
 							Default:     map[string]interface{}{},
 							Ref:         ref(apiv1alpha1.WhenWithOutputSpec{}.OpenAPIModelName()),
 						},
@@ -5781,7 +5781,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatusEnv
 					},
 					"phase": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Phase represents the current phase of the validation. This controller sets only \"pending\" or \"success\"; it never sets \"failure\" (failure is allowed by the enum for API consistency).",
+							Description: "Phase represents the current phase of the validation. A boolean success expression yields only \"pending\" or \"success\"; \"failure\" requires the { phase } object return form documented on SuccessSpec.",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",

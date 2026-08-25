@@ -113,6 +113,27 @@ func parsePerBranchPhases(obj map[string]any) (promoterv1alpha1.CommitStatusPhas
 	return defaultPhase, m, nil
 }
 
+// parseSinglePhase extracts the phase from an expression result object of the form { phase } used by
+// context=environments, where each evaluation is already scoped to one branch. A missing or empty phase
+// yields pending. The per-branch keys accepted in promotionstrategy context (defaultPhase, environments)
+// are rejected here so a promotionstrategy-shaped expression is not silently reduced to pending.
+func parseSinglePhase(obj map[string]any) (promoterv1alpha1.CommitStatusPhase, error) {
+	for _, key := range []string{"defaultPhase", "environments"} {
+		if _, ok := obj[key]; ok {
+			return promoterv1alpha1.CommitPhasePending, fmt.Errorf("validation expression object must be { phase } in environments context, got key %q, which is only supported with mode.context: promotionstrategy", key)
+		}
+	}
+	phaseStr, err := getString(obj, "phase")
+	if err != nil {
+		return promoterv1alpha1.CommitPhasePending, fmt.Errorf("validation expression phase: %w", err)
+	}
+	phase, err := parsePhaseString(phaseStr, promoterv1alpha1.CommitPhasePending)
+	if err != nil {
+		return promoterv1alpha1.CommitPhasePending, fmt.Errorf("validation expression phase: %w", err)
+	}
+	return phase, nil
+}
+
 // getString reads an optional string field from an expression object. Missing or nil key yields ("", nil).
 // A present value with non-string type returns an error.
 func getString(m map[string]any, key string) (string, error) {
