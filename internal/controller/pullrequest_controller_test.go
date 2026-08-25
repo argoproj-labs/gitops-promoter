@@ -981,17 +981,7 @@ var _ = Describe("PullRequest Controller", func() {
 			Expect(fakeProvider.DeletePullRequest(ctx, *pullRequest)).To(Succeed())
 
 			By("Triggering reconciliation by updating the PR spec")
-			// Update the spec to trigger reconciliation (controller uses GenerationChangedPredicate)
-			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
-				orig := pullRequest.DeepCopy()
-				if pullRequest.Spec.Labels == nil {
-					pullRequest.Spec.Labels = []string{"trigger-reconcile"}
-				} else {
-					pullRequest.Spec.Labels = append(slices.Clone(pullRequest.Spec.Labels), "trigger-reconcile")
-				}
-				g.Expect(k8sClient.Patch(ctx, pullRequest, client.MergeFrom(orig))).To(Succeed())
-			}, constants.EventuallyTimeout).Should(Succeed())
+			triggerPRReconcile(ctx, typeNamespacedName, pullRequest)
 
 			By("Checking if PR has owner references to verify propagation to CTP and PS")
 			// If the PR is owned by a CTP, verify that ExternallyMergedOrClosed propagates
@@ -1086,16 +1076,7 @@ var _ = Describe("PullRequest Controller", func() {
 			Expect(fakeProvider.SetHideFromFindOpen(ctx, *pullRequest, true)).To(Succeed())
 
 			By("Triggering reconciliation by updating the PR spec")
-			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
-				orig := pullRequest.DeepCopy()
-				if pullRequest.Spec.Labels == nil {
-					pullRequest.Spec.Labels = []string{"trigger-reconcile"}
-				} else {
-					pullRequest.Spec.Labels = append(slices.Clone(pullRequest.Spec.Labels), "trigger-reconcile")
-				}
-				g.Expect(k8sClient.Patch(ctx, pullRequest, client.MergeFrom(orig))).To(Succeed())
-			}, constants.EventuallyTimeout).Should(Succeed())
+			triggerPRReconcile(ctx, typeNamespacedName, pullRequest)
 
 			By("Verifying the PullRequest is not deleted or marked externally merged/closed")
 			Consistently(func(g Gomega) {
@@ -1115,16 +1096,7 @@ var _ = Describe("PullRequest Controller", func() {
 			Expect(fakeProvider.MarkMergedExternally(ctx, *pullRequest, mergedTargetSha)).To(Succeed())
 
 			By("Triggering reconciliation by updating the PR spec")
-			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
-				orig := pullRequest.DeepCopy()
-				if pullRequest.Spec.Labels == nil {
-					pullRequest.Spec.Labels = []string{"trigger-reconcile"}
-				} else {
-					pullRequest.Spec.Labels = append(slices.Clone(pullRequest.Spec.Labels), "trigger-reconcile")
-				}
-				g.Expect(k8sClient.Patch(ctx, pullRequest, client.MergeFrom(orig))).To(Succeed())
-			}, constants.EventuallyTimeout).Should(Succeed())
+			triggerPRReconcile(ctx, typeNamespacedName, pullRequest)
 
 			By("Verifying the PullRequest is deleted after mergedTargetSha is persisted")
 			Eventually(func(g Gomega) {
@@ -1520,6 +1492,25 @@ func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret,
 	}
 
 	return name, scmSecret, scmProvider, gitRepo, pullRequest
+}
+
+// triggerPRReconcile bumps spec.Labels so the PullRequest controller's
+// GenerationChangedPredicate enqueues a reconcile. When expectedUID is set, the patch is
+// skipped once the live object has a different UID (e.g. the CTP recreated the PR).
+func triggerPRReconcile(ctx context.Context, key types.NamespacedName, pr *promoterv1alpha1.PullRequest, expectedUID ...types.UID) {
+	Eventually(func(g Gomega) {
+		g.Expect(k8sClient.Get(ctx, key, pr)).To(Succeed())
+		if len(expectedUID) > 0 && pr.UID != expectedUID[0] {
+			return
+		}
+		orig := pr.DeepCopy()
+		if pr.Spec.Labels == nil {
+			pr.Spec.Labels = []string{"trigger-reconcile"}
+		} else {
+			pr.Spec.Labels = append(slices.Clone(pr.Spec.Labels), "trigger-reconcile")
+		}
+		g.Expect(k8sClient.Patch(ctx, pr, client.MergeFrom(orig))).To(Succeed())
+	}, constants.EventuallyTimeout).Should(Succeed())
 }
 
 // setPullRequestRequeueDuration patches the singleton ControllerConfiguration's

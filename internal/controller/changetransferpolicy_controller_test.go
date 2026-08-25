@@ -1014,18 +1014,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(fakeProvider.MarkMergedExternally(ctx, pr, squashSha)).To(Succeed())
 
 				By("Triggering PR reconciliation by updating the PR spec")
-				// The PullRequest controller uses GenerationChangedPredicate, so bump the spec for it to
-				// notice the PR is gone from the provider.
-				Eventually(func(g Gomega) {
-					g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
-					orig := pr.DeepCopy()
-					if pr.Spec.Labels == nil {
-						pr.Spec.Labels = []string{"trigger-reconcile"}
-					} else {
-						pr.Spec.Labels = append(slices.Clone(pr.Spec.Labels), "trigger-reconcile")
-					}
-					g.Expect(k8sClient.Patch(ctx, &pr, ctrlclient.MergeFrom(orig))).To(Succeed())
-				}, constants.EventuallyTimeout).Should(Succeed())
+				triggerPRReconcile(ctx, prKey, &pr)
 
 				By("Waiting for the PR resource to be cleaned up")
 				Eventually(func(g Gomega) {
@@ -1069,21 +1058,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(fakeProvider.Close(ctx, pr)).To(Succeed())
 
 				By("Triggering PR reconciliation by updating the PR spec")
-				// The PullRequest controller uses GenerationChangedPredicate, so bump the spec for it to
-				// notice the PR is gone from the provider.
-				Eventually(func(g Gomega) {
-					g.Expect(k8sClient.Get(ctx, prKey, &pr)).To(Succeed())
-					if pr.UID != oldUID {
-						return
-					}
-					orig := pr.DeepCopy()
-					if pr.Spec.Labels == nil {
-						pr.Spec.Labels = []string{"trigger-reconcile"}
-					} else {
-						pr.Spec.Labels = append(slices.Clone(pr.Spec.Labels), "trigger-reconcile")
-					}
-					g.Expect(k8sClient.Patch(ctx, &pr, ctrlclient.MergeFrom(orig))).To(Succeed())
-				}, constants.EventuallyTimeout).Should(Succeed())
+				triggerPRReconcile(ctx, prKey, &pr, oldUID)
 
 				By("Waiting for the original PR resource to be cleaned up")
 				// The CTP recreates the PR afterwards (the promotion is still pending), so accept either
