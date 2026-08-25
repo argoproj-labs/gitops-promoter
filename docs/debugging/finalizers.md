@@ -26,7 +26,9 @@ No separate finalizer constant is defined for `PromotionStrategy`; RBAC may stil
 
 The `changetransferpolicy.promoter.argoproj.io/pullrequest-finalizer` exists so the ChangeTransferPolicy controller can write a **promotion-history git note** on the merge commit before the `PullRequest` CR is deleted. That note is the durable record of what was promoted (pull request metadata, gate phases, dry/hydrated SHAs) when the SCM rewrites or strips the merge commit message — for example after a squash merge or a merge performed in the SCM UI.
 
-Notes are stored at `refs/notes/promoter.history` on the Git repository. During reconciliation the controller reads them (falling back to commit-message trailers on older merges) and rebuilds `ChangeTransferPolicy.status.history`.
+Notes are stored at `refs/notes/promoter.history` on the Git repository. During reconciliation the controller reads them and rebuilds `ChangeTransferPolicy.status.history`.
+
+The promoter still writes the same trailers into every managed pull request's commit message, so when a commit has no readable note the controller falls back to the commit-message trailers. That covers merges predating the notes feature.
 
 ### Supported path: controller-initiated merge
 

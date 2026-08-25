@@ -270,7 +270,9 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 
 // buildHistoryEntry creates a single history entry for the given SHA. The trailer data comes from the
 // promotion-history git note when one exists (written at PR finalization, surviving SCM-side message
-// rewrites), falling back to the commit message trailers for commits that predate the notes.
+// rewrites). When no note is readable — commits predating the notes, or a note that was never written
+// because finalization failed — it falls back to the commit message trailers, which the promoter still
+// writes on every managed pull request and which survive any merge style that preserves the message.
 func (r *ChangeTransferPolicyReconciler) buildHistoryEntry(ctx context.Context, sha, activePath string, gitOperations *git.EnvironmentOperations) (promoterv1alpha1.History, bool, error) {
 	logger := log.FromContext(ctx)
 
