@@ -24,9 +24,10 @@ package v1alpha1
 type HistoryApplyConfiguration struct {
 	// Proposed is the state of the proposed branch at the time the PR was merged.
 	Proposed *CommitBranchStateHistoryProposedApplyConfiguration `json:"proposed,omitempty"`
-	// Active is the state of the active branch at the time the PR was merged. Its dry and hydrated state is read
-	// back from the merge commit itself, but its commitStatuses come from the snapshot trailers and may be
-	// stale when mergeCommitSnapshotMismatch is true.
+	// Active is the state of the active branch at the time the PR was merged. Its dry state is read back from
+	// <activePath>/hydrator.metadata on the merge commit and its hydrated state from that commit itself, so both
+	// describe what actually merged regardless of merge style. Its commitStatuses, by contrast, come from the
+	// snapshot trailers and may be stale when mergeCommitSnapshotMismatch is true.
 	Active *CommitBranchStateApplyConfiguration `json:"active,omitempty"`
 	// PullRequest is the state of the pull request that was created for this ChangeTransferPolicy.
 	PullRequest *PullRequestCommonStatusApplyConfiguration `json:"pullRequest,omitempty"`

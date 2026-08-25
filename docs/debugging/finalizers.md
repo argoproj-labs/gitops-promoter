@@ -75,9 +75,9 @@ What still differs is **what can be reconstructed from git at that commit**:
 | --- | --- | --- |
 | SCM-reported `mergedTargetSha` | Merge commit on active | Squash commit on active |
 | Promotion-history note written | Yes, when SCM reports merged + SHA | Yes, when SCM reports merged + SHA |
-| Correct proposed hydrated SHA from git | Yes — second parent of merge commit | **No** — single-parent squash commit; snapshot hydrated SHA kept |
-| Correct proposed dry SHA from git | Yes — `hydrator.metadata` on merge commit | Yes — `hydrator.metadata` on squash commit (when present) |
-| External merge + snapshot mismatch | Note on SCM SHA; dry SHA corrected; hydrated corrected when second parent exists; `mergeCommitSnapshotMismatch: true` when dry SHA differed | Note on SCM SHA; dry SHA corrected when metadata readable; hydrated **not** corrected; commit statuses may still be stale |
+| `status.history[].proposed.hydrated` recoverable from git | Yes — second parent of the merge commit | **No** — a squash commit has one parent, so the snapshot trailer value is kept |
+| `status.history[].active.dry` recoverable from git | Yes — `hydrator.metadata` on the merge commit | Yes — `hydrator.metadata` on the squash commit (when present) |
+| External merge + snapshot mismatch | Note on SCM SHA; the note's dry SHA corrected; `proposed.hydrated` corrected when a second parent exists; `mergeCommitSnapshotMismatch: true` when the dry SHA differed | Note on SCM SHA; the note's dry SHA corrected when metadata is readable; `proposed.hydrated` **not** corrected; `proposed.commitStatuses` and `active.commitStatuses` may still be stale |
 
 Squash commits on the SCM also typically carry **no promoter trailers** in the commit message itself — the git note (written at finalization using `mergedTargetSha`) is what preserves PR metadata and gate snapshots for history. A history entry is **missing** only when finalization never gets a merge SHA (for example `externallyMergedOrClosed` after the PR record is gone on the SCM, or the PR was closed without merging).
 

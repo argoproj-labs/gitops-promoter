@@ -1473,7 +1473,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitBranchStateHistoryP
 				Properties: map[string]spec.Schema{
 					"hydrated": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on. Read from the snapshot trailers, so it may be stale when the entry's mergeCommitSnapshotMismatch is true and the merge was a squash.",
+							Description: "Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on. Read from the snapshot trailers. On a regular merge it is corrected to the merge commit's second parent, but a squash commit has only one parent, so when the entry's mergeCommitSnapshotMismatch is true and the merge was a squash the stale snapshot value is kept.",
 							Default:     map[string]interface{}{},
 							Ref:         ref(apiv1alpha1.CommitShaState{}.OpenAPIModelName()),
 						},
@@ -3358,7 +3358,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_History(ref common.Refere
 					},
 					"active": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Active is the state of the active branch at the time the PR was merged. Its dry and hydrated state is read back from the merge commit itself, but its commitStatuses come from the snapshot trailers and may be stale when mergeCommitSnapshotMismatch is true.",
+							Description: "Active is the state of the active branch at the time the PR was merged. Its dry state is read back from <activePath>/hydrator.metadata on the merge commit and its hydrated state from that commit itself, so both describe what actually merged regardless of merge style. Its commitStatuses, by contrast, come from the snapshot trailers and may be stale when mergeCommitSnapshotMismatch is true.",
 							Default:     map[string]interface{}{},
 							Ref:         ref(apiv1alpha1.CommitBranchState{}.OpenAPIModelName()),
 						},
