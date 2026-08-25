@@ -1279,7 +1279,11 @@ export type components = {
         };
         /** @description PullRequestCommonStatus defines the common status fields for a pull request. */
         PullRequestCommonStatus: {
-            /** @description ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the PullRequest still desired it open: merged or closed outside the controller, or closed on the SCM because the PullRequest resource was deleted (finalizer) before this status was reconciled. When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider. This status is preserved even after the PullRequest resource is deleted, maintaining a historical record until a new pull request is created for this environment. */
+            /**
+             * @description ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the PullRequest still desired it open: merged or closed outside the controller, or closed on the SCM because the PullRequest resource was deleted (finalizer) before this status was reconciled. When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider. This status is preserved even after the PullRequest resource is deleted, maintaining a historical record until a new pull request is created for this environment.
+             *
+             *     The name is a misnomer and may be renamed or removed in a future API revision. It predates the Get-by-ID lookup, which now resolves merge vs. close authoritatively whenever the provider can still answer, so this field is only set when the provider cannot: "externally" is wrong (our own deletion finalizer reaches here too) and "merged or closed" claims a distinction we did not establish (the pull request may also have been deleted on the SCM). The likely replacement is an "unknown" State value, which would make the empty-State invariant above structural rather than documented.
+             */
             externallyMergedOrClosed?: boolean;
             /** @description ID is the unique identifier of the pull request, set by the SCM. */
             id?: string;
@@ -1347,7 +1351,11 @@ export type components = {
             appliedLabels?: string[];
             /** @description Conditions Represents the observations of the current state. */
             conditions?: components["schemas"]["Condition"][];
-            /** @description ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the resource still desired it open (spec.state is "open"): either it was merged or closed outside the controller, or it was closed on the SCM because the PullRequest resource was deleted (finalizer) and a subsequent sync observed it missing. The controller does not distinguish those cases here. When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider. The PullRequest resource will be deleted after this flag is set when possible, but the status is preserved in the owning ChangeTransferPolicy to maintain a record. */
+            /**
+             * @description ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the resource still desired it open (spec.state is "open"): either it was merged or closed outside the controller, or it was closed on the SCM because the PullRequest resource was deleted (finalizer) and a subsequent sync observed it missing. The controller does not distinguish those cases here. When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider. The PullRequest resource will be deleted after this flag is set when possible, but the status is preserved in the owning ChangeTransferPolicy to maintain a record.
+             *
+             *     The name is a misnomer and may be renamed or removed in a future API revision. It predates the Get-by-ID lookup, which now resolves merge vs. close authoritatively whenever the provider can still answer, so this field is only set when the provider cannot: "externally" is wrong (our own deletion finalizer reaches here too) and "merged or closed" claims a distinction we did not establish (the pull request may also have been deleted on the SCM). The likely replacement is an "unknown" State value, which would make the empty-State invariant above structural rather than documented.
+             */
             externallyMergedOrClosed?: boolean;
             /** @description ID the id of the pull request */
             id?: string;

@@ -52,6 +52,14 @@ type PullRequestCommonStatusApplyConfiguration struct {
 	// When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider.
 	// This status is preserved even after the PullRequest resource is deleted, maintaining a historical
 	// record until a new pull request is created for this environment.
+	//
+	// The name is a misnomer and may be renamed or removed in a future API revision. It predates the
+	// Get-by-ID lookup, which now resolves merge vs. close authoritatively whenever the provider can
+	// still answer, so this field is only set when the provider cannot: "externally" is wrong (our own
+	// deletion finalizer reaches here too) and "merged or closed" claims a distinction we did not
+	// establish (the pull request may also have been deleted on the SCM). The likely replacement is an
+	// "unknown" State value, which would make the empty-State invariant above structural rather than
+	// documented.
 	ExternallyMergedOrClosed *bool `json:"externallyMergedOrClosed,omitempty"`
 }
 
