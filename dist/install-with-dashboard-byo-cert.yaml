@@ -6736,6 +6736,8 @@ spec:
             is empty
           rule: self.spec.state == 'open' || has(self.status.id) && self.status.id
             != ""
+        - message: mergedTargetSha may only be set when status.state is merged
+          rule: self.status.mergedTargetSha == '' || self.status.state == 'merged'
     served: true
     storage: true
     subresources:
