@@ -53,7 +53,7 @@ Check `status.history[].mergeCommitSnapshotMismatch` on the ChangeTransferPolicy
 
 ### How the merge commit is identified
 
-The merge commit comes from **`PullRequest.status.mergedTargetSha`**, populated by the PullRequest controller from the SCM. When the promoter performs the merge itself and the provider returns the SHA in the merge response (GitHub, GitLab, Bitbucket Cloud), it is recorded immediately. Otherwise — external merges, and providers whose merge response omits the SHA (Gitea, Forgejo, Azure DevOps) — it is recovered by a `Get` by `status.id` once the PR is no longer open. CTP finalization attaches the promotion-history note to that commit — it does not walk git history to locate it.
+The merge commit comes from **`PullRequest.status.mergedTargetSha`**, populated by the PullRequest controller from the SCM. When the promoter performs the merge itself and the provider returns the SHA in the merge response (GitHub, GitLab, Bitbucket Cloud), it is recorded immediately. Otherwise — external merges, and providers whose merge response omits the SHA (Gitea, Forgejo, Azure DevOps) — it is recovered by a `Get` by `status.id` once the PR is no longer open. CTP finalization attaches the promotion-history note to that commit.
 
 At note write time, the controller compares the proposed dry SHA in the snapshot (`spec.commit.message` trailers) with hydrator metadata **on that merge commit**. When they differ, proposed SHAs in the note are corrected and `mergeCommitSnapshotMismatch` is set.
 
