@@ -199,10 +199,12 @@
       automerge: false,
     },
     // ----------------------------------------------------------------------
-    // Group B: Go toolchain + golangci-lint (+ golang base image)
+    // Group B: Go toolchain + golangci-lint + mockery + deadcode (+ golang base image)
+    // mockery/deadcode must track Go: both use golang.org/x/tools and break on new
+    // pkgbits export formats (e.g. Go 1.27 needs x/tools v0.49.0 / mockery v3.7.4+).
     // ----------------------------------------------------------------------
     {
-      description: 'Group Go, the golang base image, and golangci-lint together',
+      description: 'Group Go, golangci-lint, mockery, deadcode, and the golang base image together',
       matchManagers: [
         'gomod',
         'custom.regex',
@@ -213,6 +215,8 @@
         'golang',
         'golangci-lint',
         'golangci/golangci-lint',
+        'vektra/mockery',
+        'golang.org/x/tools',
       ],
       groupName: 'Go and linter tooling',
       commitMessageTopic: 'Go and linter tooling',
@@ -226,12 +230,15 @@
           // Run before lint-fix so golangci-lint can clean up anything fix leaves behind.
           'make go-fix || true',
           'make lint-fix || true',
+          // Regenerate mocks with the bumped mockery (must match the Go toolchain).
+          'make mockery-gen',
         ],
         installTools: {
           golang: {},
         },
         fileFilters: [
           '**/*.go',
+          '**/mock/**',
           'go.mod',
           'go.sum',
         ],
@@ -313,29 +320,6 @@
     // ----------------------------------------------------------------------
     // Other Makefile tools with their required post-ops
     // ----------------------------------------------------------------------
-    {
-      description: 'mockery: regenerate mocks after version bumps',
-      matchDepNames: [
-        'vektra/mockery',
-      ],
-      semanticCommits: 'enabled',
-      semanticCommitType: 'chore',
-      semanticCommitScope: 'deps',
-      automerge: false,
-      postUpgradeTasks: {
-        commands: [
-          'make mockery-gen',
-        ],
-        installTools: {
-          golang: {},
-        },
-        fileFilters: [
-          '**/mock/**',
-          '**/*.go',
-        ],
-        executionMode: 'branch',
-      },
-    },
     {
       description: 'kustomize: regenerate the consolidated installer after a bump',
       matchDepNames: [
