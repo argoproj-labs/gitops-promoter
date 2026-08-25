@@ -17,7 +17,7 @@ Estimated static CEL costs versus kube-apiserver limits, computed from `k8s.io/a
 | GitCommitStatus | v1alpha1 | 0 | 0.00% |
 | GitRepository | v1alpha1 | 128 | 0.00% |
 | PromotionStrategy | v1alpha1 | 72,438,744 | 72.44% |
-| PullRequest | v1alpha1 | 270 | 0.00% |
+| PullRequest | v1alpha1 | 277 | 0.00% |
 | RevertCommit | v1alpha1 | 0 | 0.00% |
 | ScheduledCommitStatus | v1alpha1 | 106,003 | 0.11% |
 | ScmProvider | v1alpha1 | 135 | 0.00% |
@@ -205,20 +205,11 @@ Source: `promoter.argoproj.io_pullrequests.yaml`
 | `.spec.targetBranch` | 42 | 0.00% | `!self.contains(':')` |
 | `.spec.targetBranch` | 42 | 0.00% | `!self.contains('..')` |
 | `(root)` | 9 | 0.00% | `self.spec.state == 'open' \|\| has(self.status.id) && self.status.id != ""` |
+| `(root)` | 7 | 0.00% | `self.status.mergedTargetSha == '' \|\| self.status.state == 'merged'` |
 | `.spec.sourceBranch` | 3 | 0.00% | `!self.startsWith('-')` |
 | `.spec.targetBranch` | 3 | 0.00% | `!self.startsWith('-')` |
 | `.status.url` | 3 | 0.00% | `self == '' \|\| isURL(self)` |
-| `(root)` | 0 | 0.00% | `self.status.mergedTargetSha == '' \|\| self.status.state == 'merged'` |
-| **Total** | **270** | **0.00%** | |
-
-Warnings:
-
-- [1]: compilation failed: ERROR: <input>:1:32: Syntax error: token recognition error at: '”'
- | self.status.mergedTargetSha == '' || self.status.state == 'merged'
- | ...............................＾
-ERROR: <input>:1:34: Syntax error: extraneous input '||' expecting {'[', '{', '(', '.', '-', '!', 'true', 'false', 'null', NUM_FLOAT, NUM_INT, NUM_UINT, STRING, BYTES, IDENTIFIER}
- | self.status.mergedTargetSha == '' || self.status.state == 'merged'
- | ...............................．.^
+| **Total** | **277** | **0.00%** | |
 
 #### RevertCommit
 
