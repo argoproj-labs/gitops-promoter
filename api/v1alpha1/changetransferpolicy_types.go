@@ -260,6 +260,16 @@ type PullRequestCommonStatus struct {
 	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"
 	// +kubebuilder:validation:Pattern="^(https?://.*)?$"
 	Url string `json:"url,omitempty"`
+	// MergedTargetSha is the SHA that the target branch points at after the merge. It is a merge commit
+	// only when the SCM created one; squash and fast-forward merges report the resulting commit on the
+	// target branch instead. In the live pull request status it is mirrored from the PullRequest resource
+	// and is empty until the merge is observed; in a History entry it is the active-branch commit the
+	// entry describes.
+	// +optional
+	// +kubebuilder:validation:MinLength=40
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
+	MergedTargetSha string `json:"mergedTargetSha,omitempty"`
 	// ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the
 	// PullRequest still desired it open: merged or closed outside the controller, or closed on the SCM
 	// because the PullRequest resource was deleted (finalizer) before this status was reconciled.

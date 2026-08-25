@@ -857,6 +857,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(changeTransferPolicy.Status.PullRequest).ToNot(BeNil())
 					g.Expect(changeTransferPolicy.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged))
 					g.Expect(changeTransferPolicy.Status.PullRequest.ExternallyMergedOrClosed).To(BeNil())
+					g.Expect(changeTransferPolicy.Status.PullRequest.MergedTargetSha).ToNot(BeEmpty())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Expect(fake.FindOpenCallCount()).To(BeNumerically(">=", 1))
@@ -975,6 +976,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(entry.PullRequest.PRMergeTime.IsZero()).To(BeFalse())
 					g.Expect(entry.Proposed.Hydrated.Sha).To(Equal(mergeSha))
 					g.Expect(entry.Active.Hydrated.Sha).To(Equal(mergeCommitSha))
+					g.Expect(entry.PullRequest.MergedTargetSha).To(Equal(mergeCommitSha))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 
@@ -1050,6 +1052,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(entry.PullRequest.PRMergeTime.IsZero()).To(BeFalse())
 					g.Expect(entry.Proposed.Hydrated.Sha).To(Equal(mergeSha))
 					g.Expect(entry.Active.Hydrated.Sha).To(Equal(squashSha))
+					g.Expect(entry.PullRequest.MergedTargetSha).To(Equal(squashSha))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 

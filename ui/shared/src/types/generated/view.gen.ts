@@ -1283,6 +1283,8 @@ export type components = {
             externallyMergedOrClosed?: boolean;
             /** @description ID is the unique identifier of the pull request, set by the SCM. */
             id?: string;
+            /** @description MergedTargetSha is the SHA that the target branch points at after the merge. It is a merge commit only when the SCM created one; squash and fast-forward merges report the resulting commit on the target branch instead. In the live pull request status it is mirrored from the PullRequest resource and is empty until the merge is observed; in a History entry it is the active-branch commit the entry describes. */
+            mergedTargetSha?: string;
             /** @description PRCreationTime is the time when the pull request was created. */
             prCreationTime?: components["schemas"]["Time"];
             /** @description PRMergeTime is the time when the pull request was merged. This time can vary slightly from the actual merge time because it is the time when the ChangeTransferPolicy controller sets the pull requests spec to merge. In the future we plan on making this time more accurate by fetching the actual merge time from the SCM via the webhook this would then be updated in the git note for that commit. */

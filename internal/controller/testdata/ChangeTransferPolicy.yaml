@@ -66,6 +66,7 @@ status:
     url: https://github.com/org/repo/pull/848
     prCreationTime: 2023-10-01T00:00:00Z
     # prMergeTime: set when merged
+    # mergedTargetSha: set once the merge is observed on the SCM; the commit the active branch points at afterwards
     # externallyMergedOrClosed: true  # PR closed/merged outside the controller
   history:
     # Recent promotions merged by the controller (newest first, at most 5 entries).
@@ -84,6 +85,8 @@ status:
         prCreationTime: 2023-09-01T00:00:00Z
         prMergeTime: 2023-09-01T01:00:00Z
         url: https://github.com/org/repo/pull/847
+        # In a history entry this is the active-branch commit the entry describes (same as active.hydrated.sha).
+        mergedTargetSha: "3333333333333333333333333333333333333333"
     # A promotion whose PR was merged externally after the proposed branch advanced: the proposed
     # dry/hydrated SHAs were reconstructed from the merge commit, but the recorded commit statuses may be stale.
     - active:
@@ -101,4 +104,5 @@ status:
         prCreationTime: 2023-09-02T00:00:00Z
         prMergeTime: 2023-09-02T01:00:00Z
         url: https://github.com/org/repo/pull/848
+        mergedTargetSha: "4444444444444444444444444444444444444444"
       mergeCommitSnapshotMismatch: true

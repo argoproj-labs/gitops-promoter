@@ -3971,6 +3971,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestCommonStatus(r
 							Format:      "",
 						},
 					},
+					"mergedTargetSha": {
+						SchemaProps: spec.SchemaProps{
+							Description: "MergedTargetSha is the SHA that the target branch points at after the merge. It is a merge commit only when the SCM created one; squash and fast-forward merges report the resulting commit on the target branch instead. In the live pull request status it is mirrored from the PullRequest resource and is empty until the merge is observed; in a History entry it is the active-branch commit the entry describes.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 					"externallyMergedOrClosed": {
 						SchemaProps: spec.SchemaProps{
 							Description: "ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the PullRequest still desired it open: merged or closed outside the controller, or closed on the SCM because the PullRequest resource was deleted (finalizer) before this status was reconciled. When true, the State field will be empty (\"\") since we cannot tell merge vs. close from the provider. This status is preserved even after the PullRequest resource is deleted, maintaining a historical record until a new pull request is created for this environment.",

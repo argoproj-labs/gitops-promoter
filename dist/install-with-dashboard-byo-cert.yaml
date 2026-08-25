@@ -1308,6 +1308,17 @@ spec:
                           description: ID is the unique identifier of the pull request,
                             set by the SCM.
                           type: string
+                        mergedTargetSha:
+                          description: |-
+                            MergedTargetSha is the SHA that the target branch points at after the merge. It is a merge commit
+                            only when the SCM created one; squash and fast-forward merges report the resulting commit on the
+                            target branch instead. In the live pull request status it is mirrored from the PullRequest resource
+                            and is empty until the merge is observed; in a History entry it is the active-branch commit the
+                            entry describes.
+                          maxLength: 64
+                          minLength: 40
+                          pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                          type: string
                         prCreationTime:
                           description: PRCreationTime is the time when the pull request
                             was created.
@@ -1653,6 +1664,17 @@ spec:
                   id:
                     description: ID is the unique identifier of the pull request,
                       set by the SCM.
+                    type: string
+                  mergedTargetSha:
+                    description: |-
+                      MergedTargetSha is the SHA that the target branch points at after the merge. It is a merge commit
+                      only when the SCM created one; squash and fast-forward merges report the resulting commit on the
+                      target branch instead. In the live pull request status it is mirrored from the PullRequest resource
+                      and is empty until the merge is observed; in a History entry it is the active-branch commit the
+                      entry describes.
+                    maxLength: 64
+                    minLength: 40
+                    pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
                     type: string
                   prCreationTime:
                     description: PRCreationTime is the time when the pull request
@@ -5949,6 +5971,17 @@ spec:
                                 description: ID is the unique identifier of the pull
                                   request, set by the SCM.
                                 type: string
+                              mergedTargetSha:
+                                description: |-
+                                  MergedTargetSha is the SHA that the target branch points at after the merge. It is a merge commit
+                                  only when the SCM created one; squash and fast-forward merges report the resulting commit on the
+                                  target branch instead. In the live pull request status it is mirrored from the PullRequest resource
+                                  and is empty until the merge is observed; in a History entry it is the active-branch commit the
+                                  entry describes.
+                                maxLength: 64
+                                minLength: 40
+                                pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                                type: string
                               prCreationTime:
                                 description: PRCreationTime is the time when the pull
                                   request was created.
@@ -6310,6 +6343,17 @@ spec:
                         id:
                           description: ID is the unique identifier of the pull request,
                             set by the SCM.
+                          type: string
+                        mergedTargetSha:
+                          description: |-
+                            MergedTargetSha is the SHA that the target branch points at after the merge. It is a merge commit
+                            only when the SCM created one; squash and fast-forward merges report the resulting commit on the
+                            target branch instead. In the live pull request status it is mirrored from the PullRequest resource
+                            and is empty until the merge is observed; in a History entry it is the active-branch commit the
+                            entry describes.
+                          maxLength: 64
+                          minLength: 40
+                          pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
                           type: string
                         prCreationTime:
                           description: PRCreationTime is the time when the pull request

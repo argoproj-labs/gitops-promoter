@@ -296,6 +296,9 @@ func (r *ChangeTransferPolicyReconciler) buildHistoryEntry(ctx context.Context, 
 	r.populatePullRequestMetadata(ctx, &historyEntry, activeTrailers)
 	r.populateCommitStatuses(ctx, &historyEntry, activeTrailers)
 	historyEntry.MergeCommitSnapshotMismatch = getFirstTrailerValue(activeTrailers, constants.TrailerMergeCommitSnapshotMismatch) == "true"
+	// The note is written on the merged target sha and history walks first-parent commits of the active
+	// branch, so the entry's own sha is that commit; no trailer records it.
+	historyEntry.PullRequest.MergedTargetSha = sha
 
 	return historyEntry, true, nil
 }
@@ -978,6 +981,7 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 	ctp.Status.PullRequest.State = pr.Items[0].Status.State
 	ctp.Status.PullRequest.PRCreationTime = pr.Items[0].Status.PRCreationTime
 	ctp.Status.PullRequest.Url = pr.Items[0].Status.Url
+	ctp.Status.PullRequest.MergedTargetSha = pr.Items[0].Status.MergedTargetSha
 	ctp.Status.PullRequest.ExternallyMergedOrClosed = pr.Items[0].Status.ExternallyMergedOrClosed
 
 	// If PR is being deleted and has our finalizer, we need to ensure the CTP status is persisted.
