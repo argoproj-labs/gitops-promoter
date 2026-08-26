@@ -745,7 +745,7 @@ func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promot
 	}
 	pr.Status.State = promoterv1alpha1.PullRequestMerged
 	// Providers that report the resulting target-branch commit in the merge response let us record it
-	// now; the rest leave it empty and syncStateFromProvider recovers it with a Get-by-ID lookup.
+	// now; the rest leave it empty and the next reconcile recovers it with a Get-by-ID lookup.
 	r.setMergedTargetSha(ctx, pr, result.CommitSHA)
 	return nil
 }

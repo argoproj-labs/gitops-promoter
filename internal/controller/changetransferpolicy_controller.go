@@ -1089,9 +1089,8 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 // the commit itself, and history building falls back to this note.
 //
 // The merge commit SHA comes from status.mergedTargetSha (populated by the PullRequest controller from SCM
-// Get after merge). The old findMergeCommitOnActiveBranch git walk was removed in favor of that authoritative
-// source; reintroduce inference only if a provider cannot return the merged target SHA reliably, and wire any
-// revival through status.mergedTargetSha rather than silent first-parent walks here.
+// Get after merge). If we discover that a provider cannot return the merged target SHA reliably,
+// we can introduce inference via a git walk and wire it through status.mergedTargetSha.
 //
 // Returns nil without writing a note when there is nothing to record: the PR was closed rather than merged,
 // or it never accumulated trailers.
@@ -1122,6 +1121,7 @@ func (r *ChangeTransferPolicyReconciler) writePromotionHistoryNote(ctx context.C
 	mergedTargetSha := livePR.Status.MergedTargetSha
 	if mergedTargetSha == "" {
 		if livePR.Status.State == promoterv1alpha1.PullRequestMerged {
+			// This will eventually be resolved by the PullRequest's own finalizer logic. Error to retry.
 			return fmt.Errorf("merged pull request %q has no status.mergedTargetSha", livePR.Name)
 		}
 		logger.V(4).Info("PR externally merged or closed without mergedTargetSha, skipping promotion history note",
@@ -1180,6 +1180,7 @@ func reconcileProposedTrailersWithMergeCommit(ctx context.Context, recorder even
 
 	snapshotDrySha := getFirstTrailerValue(trailers, constants.TrailerShaDryProposed)
 	if snapshotDrySha == mergedDrySha {
+		// The actually-merged dry sha didn't change since the trailer snapshot. Keep the snapshot.
 		return nil
 	}
 
@@ -1206,8 +1207,8 @@ func mergedProposedDrySha(ctx context.Context, gitOperations *git.EnvironmentOpe
 	meta, err := gitOperations.GetShaMetadataFromFile(ctx, mergedTargetSha, activePath)
 	if err != nil {
 		if git.IsHydratorMetadataMalformed(err) {
-			log.FromContext(ctx).V(4).Info("malformed hydrator metadata on merge commit; keeping trailer snapshot",
-				"sha", mergedTargetSha, "err", err)
+			log.FromContext(ctx).Error(err, "malformed hydrator metadata on merge commit; keeping trailer snapshot",
+				"sha", mergedTargetSha)
 			return "", nil
 		}
 		return "", fmt.Errorf("read hydrator metadata at %q: %w", mergedTargetSha, err)
