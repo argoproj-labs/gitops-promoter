@@ -17,10 +17,10 @@ var _ = Describe("secretDataTransform", func() {
 		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: "scm-creds"},
 			Data: map[string][]byte{
-				httpauth.TokenKey:              []byte("pat"),
-				"unrelated-config":             []byte("large-payload"),
-				constants.KubeconfigSecretKey:  []byte("kubeconfig-bytes"),
-				"githubAppPrivateKey":          []byte("private-key"),
+				httpauth.TokenKey:             []byte("pat"),
+				"unrelated-config":            []byte("large-payload"),
+				constants.KubeconfigSecretKey: []byte("kubeconfig-bytes"),
+				"githubAppPrivateKey":         []byte("private-key"),
 			},
 			StringData: map[string]string{"ignored": "value"},
 		}
@@ -28,7 +28,8 @@ var _ = Describe("secretDataTransform", func() {
 		out, err := transform(secret)
 		Expect(err).NotTo(HaveOccurred())
 
-		got := out.(*corev1.Secret)
+		got, ok := out.(*corev1.Secret)
+		Expect(ok).To(BeTrue())
 		Expect(got.Data).To(Equal(map[string][]byte{
 			httpauth.TokenKey:             []byte("pat"),
 			constants.KubeconfigSecretKey: []byte("kubeconfig-bytes"),
@@ -50,7 +51,8 @@ var _ = Describe("secretDataTransform", func() {
 		out, err := transform(secret)
 		Expect(err).NotTo(HaveOccurred())
 
-		got := out.(*corev1.Secret)
+		got, ok := out.(*corev1.Secret)
+		Expect(ok).To(BeTrue())
 		Expect(got.Data).To(BeNil())
 		Expect(got.Namespace).To(Equal("default"))
 	})
