@@ -1,4 +1,4 @@
-package git
+package git_test
 
 import (
 	"context"
@@ -16,6 +16,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/git"
 )
 
 func TestGit(t *testing.T) {
@@ -117,7 +118,7 @@ var _ = Describe("GetBranchShas", func() {
 				},
 			}
 			gap := &fakeGitProvider{tempDirPath: tempRepoDir}
-			g := NewEnvironmentOperations(repo, gap, "default/testrepo")
+			g := git.NewEnvironmentOperations(repo, gap, "default/testrepo")
 			Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
 
 			// Call GetBranchShas with a non-existent branch
@@ -137,7 +138,7 @@ var _ = Describe("GetBranchShas skip-fetch behavior", func() {
 	var branch string
 	var repo *v1alpha1.GitRepository
 	var gap *fakeGitProvider
-	var g *EnvironmentOperations
+	var g *git.EnvironmentOperations
 
 	BeforeEach(func() {
 		var err error
@@ -190,7 +191,7 @@ var _ = Describe("GetBranchShas skip-fetch behavior", func() {
 			},
 		}
 		gap = &fakeGitProvider{tempDirPath: tempRepoDir}
-		g = NewEnvironmentOperations(repo, gap, "default/skip-fetch-test")
+		g = git.NewEnvironmentOperations(repo, gap, "default/skip-fetch-test")
 		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
 	})
 
@@ -326,7 +327,7 @@ var _ = Describe("LsRemote", func() {
 			}
 			gap := &fakeGitProvider{tempDirPath: tempRepoDir}
 
-			_, err = LsRemote(
+			_, err = git.LsRemote(
 				context.Background(),
 				gap,
 				repo,
@@ -376,7 +377,7 @@ var _ = Describe("LsRemote", func() {
 			}
 			gap := &fakeGitProvider{tempDirPath: tempRepoDir}
 
-			_, err = LsRemote(
+			_, err = git.LsRemote(
 				context.Background(),
 				gap,
 				repo,
@@ -399,7 +400,7 @@ var _ = Describe("HasConflict", func() {
 	var workDir string
 	var defaultBranch string
 	var repo *v1alpha1.GitRepository
-	var g *EnvironmentOperations
+	var g *git.EnvironmentOperations
 
 	BeforeEach(func() {
 		var err error
@@ -486,7 +487,7 @@ var _ = Describe("HasConflict", func() {
 
 	prepareEnvOps := func() {
 		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
-		g = NewEnvironmentOperations(repo, gap, "default/testrepo")
+		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
 		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
 		_, err := g.GetBranchShas(GinkgoT().Context(), "active", "", "")
 		Expect(err).NotTo(HaveOccurred())
@@ -580,7 +581,7 @@ var _ = Describe("HasConflict", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
-		g = NewEnvironmentOperations(repo, gap, "default/testrepo")
+		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
 		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
 		_, err = g.GetBranchShas(GinkgoT().Context(), "active", "", "")
 		Expect(err).NotTo(HaveOccurred())
@@ -597,7 +598,7 @@ var _ = Describe("ActivePath support", func() {
 	var tempRepoDir string
 	var workDir string
 	var repo *v1alpha1.GitRepository
-	var g *EnvironmentOperations
+	var g *git.EnvironmentOperations
 
 	BeforeEach(func() {
 		var err error
@@ -658,7 +659,7 @@ var _ = Describe("ActivePath support", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
-		g = NewEnvironmentOperations(repo, gap, "default/testrepo")
+		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
 		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
 
 		shas, err := g.GetBranchShas(GinkgoT().Context(), "environment/development", "apps/app-one", "")
@@ -697,7 +698,7 @@ var _ = Describe("ActivePath support", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
-		g = NewEnvironmentOperations(repo, gap, "default/testrepo")
+		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
 		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
 
 		// Place the path in the clone's working tree to prove the read is worktree-independent:
@@ -763,7 +764,7 @@ var _ = Describe("ActivePath support", func() {
 		activeTip := strings.TrimSpace(mustGit(workDir, "rev-parse", "active"))
 
 		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
-		g = NewEnvironmentOperations(repo, gap, "default/testrepo")
+		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
 		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
 		_, err = g.GetBranchShas(GinkgoT().Context(), "proposed-app-one-next", "apps/app-one", "")
 		Expect(err).NotTo(HaveOccurred())
@@ -856,7 +857,7 @@ var _ = Describe("ActivePath support", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
-		g = NewEnvironmentOperations(repo, gap, "default/testrepo")
+		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
 		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
 		_, err = g.GetBranchShas(GinkgoT().Context(), "proposed-app-one-next", "apps/app-one", "")
 		Expect(err).NotTo(HaveOccurred())
@@ -934,7 +935,7 @@ var _ = Describe("ActivePath support", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
-		g = NewEnvironmentOperations(repo, gap, "default/testrepo")
+		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
 		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
 		_, err = g.GetBranchShas(GinkgoT().Context(), "proposed-app-one-next", "apps/app-one", "")
 		Expect(err).NotTo(HaveOccurred())
@@ -1007,7 +1008,7 @@ var _ = Describe("ActivePath support", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
-		g = NewEnvironmentOperations(repo, gap, "default/testrepo")
+		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
 		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
 		_, err = g.GetBranchShas(GinkgoT().Context(), "proposed", "", "")
 		Expect(err).NotTo(HaveOccurred())
@@ -1068,7 +1069,7 @@ var _ = Describe("gitChildEnv", func() {
 		GinkgoT().Setenv("PATH", "/custom/bin")
 		clearProxyEnv()
 
-		got := envMap(gitChildEnv("alice", "s3cret", nil))
+		got := envMap(git.GitChildEnv("alice", "s3cret", nil))
 		Expect(got["GIT_ASKPASS"]).To(Equal("promoter_askpass.sh"))
 		Expect(got["GIT_USERNAME"]).To(Equal("alice"))
 		Expect(got["GIT_PASSWORD"]).To(Equal("s3cret"))
@@ -1092,7 +1093,7 @@ var _ = Describe("gitChildEnv", func() {
 			GinkgoT().Setenv(key, val)
 		}
 
-		got := envMap(gitChildEnv("user", "token", nil))
+		got := envMap(git.GitChildEnv("user", "token", nil))
 		for key, val := range want {
 			Expect(got[key]).To(Equal(val), "proxy env var %s", key)
 		}
@@ -1104,7 +1105,7 @@ var _ = Describe("gitChildEnv", func() {
 		GinkgoT().Setenv("http_proxy", "http://lower-http:8080")
 		GinkgoT().Setenv("no_proxy", "example.internal")
 
-		got := envMap(gitChildEnv("user", "token", nil))
+		got := envMap(git.GitChildEnv("user", "token", nil))
 		Expect(got["https_proxy"]).To(Equal("http://lower-https:8443"))
 		Expect(got["http_proxy"]).To(Equal("http://lower-http:8080"))
 		Expect(got["no_proxy"]).To(Equal("example.internal"))
@@ -1112,7 +1113,7 @@ var _ = Describe("gitChildEnv", func() {
 
 	It("appends extraEnv after auth vars", func() {
 		clearProxyEnv()
-		env := gitChildEnv("user", "token", []string{"GIT_INDEX_FILE=/tmp/index"})
+		env := git.GitChildEnv("user", "token", []string{"GIT_INDEX_FILE=/tmp/index"})
 		Expect(env).To(ContainElement("GIT_INDEX_FILE=/tmp/index"))
 		Expect(slices.Index(env, "GIT_INDEX_FILE=/tmp/index")).To(BeNumerically(">", slices.Index(env, "GIT_ASKPASS=promoter_askpass.sh")))
 	})
@@ -1120,11 +1121,11 @@ var _ = Describe("gitChildEnv", func() {
 
 var _ = Describe("gitBin", func() {
 	It("is resolved to an existing executable at init", func() {
-		if gitBinErr != nil {
-			Skip("git not on PATH at init: " + gitBinErr.Error())
+		if git.ErrGitBin != nil {
+			Skip("git not on PATH at init: " + git.ErrGitBin.Error())
 		}
-		Expect(gitBin).NotTo(BeEmpty())
-		_, err := os.Stat(gitBin)
+		Expect(git.GitBin).NotTo(BeEmpty())
+		_, err := os.Stat(git.GitBin)
 		Expect(err).NotTo(HaveOccurred())
 	})
 })

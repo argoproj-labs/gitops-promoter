@@ -1,4 +1,4 @@
-package git
+package git_test
 
 import (
 	"context"
@@ -14,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/git"
 )
 
 // These specs guard against the most common races described in gitops-promoter#1495. Each goroutine
@@ -53,7 +54,7 @@ var _ = Describe("Concurrency (gitops-promoter#1495)", func() {
 			s.addProposedBranch(branch)
 			proposedBranches[i] = branch
 		}
-		envs := make([]*EnvironmentOperations, goroutines)
+		envs := make([]*git.EnvironmentOperations, goroutines)
 		for i := range envs {
 			envs[i] = s.newEnv(fmt.Sprintf("tenant-%d/ctp", i))
 			Expect(envs[i].CloneRepo(ctx)).To(Succeed())
@@ -104,7 +105,7 @@ var _ = Describe("Concurrency (gitops-promoter#1495)", func() {
 
 		// Each reader is a distinct CTP identity. Pre-clone sequentially so the concurrent phase
 		// exercises only fetch races, not clone races.
-		envs := make([]*EnvironmentOperations, readers)
+		envs := make([]*git.EnvironmentOperations, readers)
 		for i := range envs {
 			envs[i] = s.newEnv(fmt.Sprintf("tenant-%d/ctp", i))
 			Expect(envs[i].CloneRepo(ctx)).To(Succeed())
@@ -236,8 +237,8 @@ func buildConflictRepo() *sharedRepo {
 	// Seed a hydrator notes ref so FetchNotes performs a real force-updating fetch (otherwise it
 	// returns early on "couldn't find remote ref" and exercises no concurrency).
 	baseSha := strings.TrimSpace(mustGit(workDir, "rev-parse", base))
-	mustGit(workDir, "notes", "--ref="+HydratorNotesRef, "add", "-m", `{"drySha":"base"}`, baseSha)
-	mustGit(workDir, "push", "origin", HydratorNotesRef+":"+HydratorNotesRef)
+	mustGit(workDir, "notes", "--ref="+git.HydratorNotesRef, "add", "-m", `{"drySha":"base"}`, baseSha)
+	mustGit(workDir, "push", "origin", git.HydratorNotesRef+":"+git.HydratorNotesRef)
 
 	return &sharedRepo{
 		gap:      &fakeGitProvider{tempDirPath: bareRepo},
@@ -262,8 +263,8 @@ func buildConflictRepo() *sharedRepo {
 // newEnv returns an EnvironmentOperations for a distinct CTP identity (namespace/name) against the
 // same repo + activeBranch. Because the clone key includes identity, each env gets its own on-disk
 // clone.
-func (s *sharedRepo) newEnv(identity string) *EnvironmentOperations {
-	return NewEnvironmentOperations(s.repo, s.gap, identity)
+func (s *sharedRepo) newEnv(identity string) *git.EnvironmentOperations {
+	return git.NewEnvironmentOperations(s.repo, s.gap, identity)
 }
 
 // addProposedBranch creates a distinct proposed branch off base. Distinct CTPs have their own
