@@ -145,19 +145,19 @@ const DetailDrawer: React.FC<{
                 <span className="hp-drawer__sha">{row.dryShaShort}</span>
               </Tooltip>
             )}
-            {row.prId && (
+            {(cell.pullRequest?.id ?? row.prId) && (
               <>
                 <span className="hp-drawer__sep" aria-hidden="true">
                   ·
                 </span>
                 <a
-                  href={row.prUrl}
+                  href={cell.pullRequest?.url ?? row.prUrl}
                   target="_blank"
                   rel="noreferrer"
                   className="hp-drawer__pr"
-                  aria-label={`Pull request #${row.prId}, opens in new tab`}
+                  aria-label={`Pull request #${cell.pullRequest?.id ?? row.prId}, opens in new tab`}
                 >
-                  <GoGitPullRequest aria-hidden="true" /> #{row.prId}
+                  <GoGitPullRequest aria-hidden="true" /> #{cell.pullRequest?.id ?? row.prId}
                 </a>
               </>
             )}
