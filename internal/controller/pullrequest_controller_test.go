@@ -1116,12 +1116,52 @@ var _ = Describe("PullRequest Controller", func() {
 		It("should set state merged and mergedTargetSha when externally merged on provider", func() {
 			mergedTargetSha := pullRequest.Spec.MergeSha
 
+			// The reconcile that learns about the external merge persists status and the NEXT one deletes the
+			// object, so the merged status is only observable in a narrow window. Poll for it from a goroutine
+			// started before the merge, the same way the controller-initiated merge spec above does.
+			mergedStatusObserved := make(chan promoterv1alpha1.PullRequestStatus, 1)
+			stopPolling := make(chan bool)
+
+			go func() {
+				defer GinkgoRecover()
+				ticker := time.NewTicker(1 * time.Millisecond)
+				defer ticker.Stop()
+				timeout := time.After(constants.EventuallyTimeout)
+				for {
+					select {
+					case <-ticker.C:
+						var currentPR promoterv1alpha1.PullRequest
+						err := k8sClient.Get(ctx, typeNamespacedName, &currentPR)
+						if err == nil && currentPR.Status.State == promoterv1alpha1.PullRequestMerged {
+							mergedStatusObserved <- currentPR.Status
+							return
+						}
+					case <-stopPolling:
+						return
+					case <-timeout:
+						return
+					}
+				}
+			}()
+
 			By("Simulating external merge on the fake SCM")
 			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
 			Expect(fakeProvider.MarkMergedExternally(ctx, *pullRequest, mergedTargetSha)).To(Succeed())
 
 			By("Triggering reconciliation by updating the PR spec")
 			triggerPRReconcile(ctx, typeNamespacedName, pullRequest)
+
+			By("Verifying state merged and the SCM-reported mergedTargetSha were persisted before deletion")
+			var observedStatus promoterv1alpha1.PullRequestStatus
+			Eventually(mergedStatusObserved, constants.EventuallyTimeout).Should(Receive(&observedStatus),
+				"Should have observed merged status before deletion")
+
+			close(stopPolling)
+
+			// A Get-by-ID that reports the PR merged is authoritative, so the sha is recorded and the
+			// ambiguous externallyMergedOrClosed flag is left unset.
+			Expect(observedStatus.MergedTargetSha).To(Equal(mergedTargetSha))
+			Expect(observedStatus.ExternallyMergedOrClosed).To(BeNil())
 
 			By("Verifying the PullRequest is deleted after mergedTargetSha is persisted")
 			Eventually(func(g Gomega) {

@@ -1075,12 +1075,28 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				By("Verifying no history note was written to the active branch head")
 				// The note write happens before the finalizer is released, so by the time the original PR is
 				// gone any note would already be on the remote.
-				_, err = runGitCmd(ctx, gitPath, "fetch", "origin", changeTransferPolicy.Spec.ActiveBranch)
+				_, err := runGitCmd(ctx, gitPath, "fetch", "origin", changeTransferPolicy.Spec.ActiveBranch)
 				Expect(err).NotTo(HaveOccurred())
 				activeHead, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+changeTransferPolicy.Spec.ActiveBranch)
 				Expect(err).NotTo(HaveOccurred())
-				_, err = fetchPromotionHistoryNote(gitPath, strings.TrimSpace(activeHead))
-				Expect(err).To(HaveOccurred(), "no note ref or note should exist for a closed-not-merged PR")
+				activeHead = strings.TrimSpace(activeHead)
+
+				// Seed a note on the proposed branch head so the notes ref provably exists on the remote.
+				// Without it the assertion below would also pass when the ref is missing entirely, i.e. it
+				// would stay green even if note writing were removed from the controller.
+				_, err = runGitCmd(ctx, gitPath, "fetch", "origin", changeTransferPolicy.Spec.ProposedBranch)
+				Expect(err).NotTo(HaveOccurred())
+				proposedHead, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+changeTransferPolicy.Spec.ProposedBranch)
+				Expect(err).NotTo(HaveOccurred())
+				proposedHead = strings.TrimSpace(proposedHead)
+				Expect(proposedHead).ToNot(Equal(activeHead))
+				seedPromotionHistoryNote(gitPath, proposedHead)
+				_, err = fetchPromotionHistoryNote(gitPath, proposedHead)
+				Expect(err).NotTo(HaveOccurred(), "the seeded note must be readable, otherwise the check below is vacuous")
+
+				_, err = fetchPromotionHistoryNote(gitPath, activeHead)
+				Expect(err).To(MatchError(ContainSubstring("no note found")),
+					"a closed-not-merged PR must leave the merge target without a history note")
 			})
 		})
 
@@ -2285,6 +2301,17 @@ func fetchPromotionHistoryNote(gitPath, sha string) (map[string][]string, error)
 		return nil, fmt.Errorf("failed to unmarshal history note: %w", err)
 	}
 	return note, nil
+}
+
+// seedPromotionHistoryNote writes a note on sha from the given clone and pushes the promotion-history notes
+// ref, so that a later "there is no note for X" assertion fails on a missing note rather than on a missing
+// notes ref.
+func seedPromotionHistoryNote(gitPath, sha string) {
+	GinkgoHelper()
+	_, err := runGitCmd(ctx, gitPath, "notes", "--ref="+git.PromoterHistoryNotesRef, "add", "-f", "-m", `{"Seeded":["true"]}`, sha)
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(ctx, gitPath, "push", "origin", git.PromoterHistoryNotesRef)
+	Expect(err).NotTo(HaveOccurred())
 }
 
 // localGitProvider points EnvironmentOperations at a local bare repository, bypassing the test git server.
