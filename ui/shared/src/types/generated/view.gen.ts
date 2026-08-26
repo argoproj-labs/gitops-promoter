@@ -1264,7 +1264,7 @@ export type components = {
              */
             observedGeneration?: number;
         };
-        /** @description PullRequest is the Schema for the pullrequests API */
+        /** @description PullRequest is the Schema for the pullrequests API Once recorded, the SHA can be neither replaced nor cleared: a resource merges at most once, so any later disagreement is provider inconsistency or a status write built from a stale informer read, and honoring it would strand the promotion history note already written against the original SHA. Such a write is rejected rather than merged, which surfaces as a failed status apply and a retry. */
         PullRequest: {
             /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
             apiVersion?: string;
