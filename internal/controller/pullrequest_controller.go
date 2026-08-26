@@ -366,13 +366,19 @@ func (r *PullRequestReconciler) applyGetPullRequestDetails(ctx context.Context, 
 		return true
 	case promoterv1alpha1.PullRequestOpen:
 		logger.V(4).Info("FindOpen missed an open pull request on the SCM", "pullRequestID", pr.Status.ID)
-		r.reconcileOpenAfterFindOpenMiss(pr)
-		return false
 	default:
 		logger.V(4).Info("Get returned unrecognized pull request state, treating as still open", "state", details.State, "pullRequestID", pr.Status.ID)
-		r.reconcileOpenAfterFindOpenMiss(pr)
-		return false
 	}
+
+	// Get reports the pull request as still open, so correct the status FindOpen led us to. No immediate
+	// requeue is needed: the PR is open, so the rest of the reconcile (terminal cleanup, state
+	// transitions, label sync) is safe to run against the corrected status in this same pass, and the
+	// deferred status apply persists it at the end.
+	if pr.Status.ExternallyMergedOrClosed != nil && *pr.Status.ExternallyMergedOrClosed {
+		pr.Status.ExternallyMergedOrClosed = new(false)
+	}
+	pr.Status.State = promoterv1alpha1.PullRequestOpen
+	return false
 }
 
 // setMergedTargetSha records the SCM-reported merged target SHA, and reports whether it wrote anything.
@@ -394,18 +400,6 @@ func (r *PullRequestReconciler) setMergedTargetSha(ctx context.Context, pr *prom
 	pr.Status.MergedTargetSha = sha
 	return true
 }
-
-// reconcileOpenAfterFindOpenMiss corrects status for a PR that FindOpen missed but Get reports as
-// still open. No immediate requeue is needed: the PR is open, so the rest of the reconcile
-// (terminal cleanup, state transitions, label sync) is safe to run against the corrected status in
-// this same pass, and the deferred status apply persists it at the end.
-func (r *PullRequestReconciler) reconcileOpenAfterFindOpenMiss(pr *promoterv1alpha1.PullRequest) {
-	if pr.Status.ExternallyMergedOrClosed != nil && *pr.Status.ExternallyMergedOrClosed {
-		pr.Status.ExternallyMergedOrClosed = new(false)
-	}
-	pr.Status.State = promoterv1alpha1.PullRequestOpen
-}
-
 func (r *PullRequestReconciler) syncExternallyMergedOrClosedWhenDesiredOpen(pr *promoterv1alpha1.PullRequest) (bool, error) {
 	if pr.Status.State == promoterv1alpha1.PullRequestClosed || pr.Status.State == promoterv1alpha1.PullRequestMerged {
 		return false, nil
