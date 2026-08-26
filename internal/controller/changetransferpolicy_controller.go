@@ -1206,7 +1206,7 @@ func reconcileProposedTrailersWithMergeCommit(ctx context.Context, recorder even
 func mergedProposedDrySha(ctx context.Context, gitOperations *git.EnvironmentOperations, mergedTargetSha, activePath string) (string, error) {
 	meta, err := gitOperations.GetShaMetadataFromFile(ctx, mergedTargetSha, activePath)
 	if err != nil {
-		if git.IsHydratorMetadataMalformed(err) {
+		if _, ok := errors.AsType[*git.MalformedHydratorMetadataError](err); ok {
 			log.FromContext(ctx).Error(err, "malformed hydrator metadata on merge commit; keeping trailer snapshot",
 				"sha", mergedTargetSha)
 			return "", nil

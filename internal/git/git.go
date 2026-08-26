@@ -218,13 +218,25 @@ func IsGitShowPathMissingInCommit(stderr string) bool {
 		strings.Contains(stderr, "exists on disk, but not in")
 }
 
-// IsHydratorMetadataMalformed reports whether GetShaMetadataFromFile failed because the blob was
-// present but not valid hydrator.metadata JSON. Callers that intentionally degrade on missing or
-// malformed metadata (for example findDrySha during PR finalization) should treat this as a
-// non-match rather than a retryable infrastructure error.
-func IsHydratorMetadataMalformed(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "could not unmarshal metadata file")
+// MalformedHydratorMetadataError reports that a hydrator.metadata blob was present at the requested
+// revision but did not parse as hydrator metadata. It is distinct both from a missing file and from
+// git or infrastructure failures, so callers that intentionally degrade on unusable metadata (for
+// example promotion-history note writing, which keeps its trailer snapshot instead) can match it with
+// errors.AsType rather than treating it as retryable.
+type MalformedHydratorMetadataError struct {
+	// Revision is the revision the blob was read from: a commit SHA or a ref such as origin/<branch>.
+	Revision string
+	Path     string
+	Err      error
 }
+
+// Error implements the error interface for MalformedHydratorMetadataError.
+func (e *MalformedHydratorMetadataError) Error() string {
+	return fmt.Sprintf("could not unmarshal metadata file %q at revision %q: %v", e.Path, e.Revision, e.Err)
+}
+
+// Unwrap exposes the underlying decode failure.
+func (e *MalformedHydratorMetadataError) Unwrap() error { return e.Err }
 
 // GetBranchShas fetches the given branch and returns its hydrated and dry SHAs.
 //
@@ -308,7 +320,7 @@ func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch, activ
 	var hydratorFile HydratorMetadata
 	err = json.Unmarshal([]byte(metadataFileStdout), &hydratorFile)
 	if err != nil {
-		return BranchShas{}, fmt.Errorf("could not unmarshal metadata file: %w", err)
+		return BranchShas{}, &MalformedHydratorMetadataError{Revision: "origin/" + branch, Path: metaPath, Err: err}
 	}
 	shas.Dry = hydratorFile.DrySha
 	logger.V(4).Info("Got dry branch sha", "branch", branch, "sha", shas.Dry)
@@ -370,7 +382,7 @@ func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha,
 	var hydratorFile HydratorMetadata
 	err = json.Unmarshal([]byte(metadataFileStdout), &hydratorFile)
 	if err != nil {
-		return v1alpha1.CommitShaState{}, fmt.Errorf("could not unmarshal metadata file: %w", err)
+		return v1alpha1.CommitShaState{}, &MalformedHydratorMetadataError{Revision: sha, Path: metaPath, Err: err}
 	}
 
 	// Use the HTTPS URL from the SCM provider instead of the repoURL from hydrator.metadata
