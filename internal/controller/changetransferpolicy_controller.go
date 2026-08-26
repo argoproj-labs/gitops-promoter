@@ -1124,8 +1124,11 @@ func (r *ChangeTransferPolicyReconciler) writePromotionHistoryNote(ctx context.C
 			// This will eventually be resolved by the PullRequest's own finalizer logic. Error to retry.
 			return fmt.Errorf("merged pull request %q has no status.mergedTargetSha", livePR.Name)
 		}
-		logger.V(4).Info("PR externally merged or closed without mergedTargetSha, skipping promotion history note",
-			"prID", livePR.Status.ID)
+		// An empty state with externallyMergedOrClosed set means the SCM never told us whether the PR
+		// merged or closed, so log both so a missing history note can be told from a benign close.
+		logger.V(4).Info("PR has no mergedTargetSha and is not recorded as merged, skipping promotion history note",
+			"prID", livePR.Status.ID, "prState", livePR.Status.State,
+			"externallyMergedOrClosed", livePR.Status.ExternallyMergedOrClosed)
 		return nil
 	}
 
