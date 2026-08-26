@@ -211,11 +211,11 @@ func (ps *PullRequest) SetStatusInstanceID(v *string) {
 // +kubebuilder:printcolumn:name="URL",type=string,JSONPath=`.status.url`,priority=1
 // +kubebuilder:validation:XValidation:rule=`self.spec.state == 'open' || has(self.status.id) && self.status.id != ""`,message="Cannot transition to 'closed' or 'merged' state when status.id is empty"
 // +kubebuilder:validation:XValidation:rule=`!has(self.status) || !has(self.status.mergedTargetSha) || (has(self.status.state) && self.status.state == 'merged')`,message="mergedTargetSha may only be set when status.state is merged"
-// The transition rule rejects replacing a recorded SHA with a different one, but deliberately tolerates
-// clearing it: status is written with Server-Side Apply, so a reconcile that read the object from a stale
-// informer cache would omit the field and delete it, and rejecting that would wedge the resource instead of
-// letting the next reconcile re-record the same SHA.
-// +kubebuilder:validation:XValidation:rule=`!has(oldSelf.status) || !has(oldSelf.status.mergedTargetSha) || !has(self.status) || !has(self.status.mergedTargetSha) || self.status.mergedTargetSha == oldSelf.status.mergedTargetSha`,message="mergedTargetSha is immutable once set"
+// Once recorded, the SHA can be neither replaced nor cleared: a resource merges at most once, so any
+// later disagreement is provider inconsistency or a status write built from a stale informer read, and
+// honoring it would strand the promotion history note already written against the original SHA. Such a
+// write is rejected rather than merged, which surfaces as a failed status apply and a retry.
+// +kubebuilder:validation:XValidation:rule=`!has(oldSelf.status) || !has(oldSelf.status.mergedTargetSha) || (has(self.status) && has(self.status.mergedTargetSha) && self.status.mergedTargetSha == oldSelf.status.mergedTargetSha)`,message="mergedTargetSha is immutable once set"
 type PullRequest struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

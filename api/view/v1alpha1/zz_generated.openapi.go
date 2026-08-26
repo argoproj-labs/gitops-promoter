@@ -3888,7 +3888,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequest(ref common.Re
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "PullRequest is the Schema for the pullrequests API The transition rule rejects replacing a recorded SHA with a different one, but deliberately tolerates clearing it: status is written with Server-Side Apply, so a reconcile that read the object from a stale informer cache would omit the field and delete it, and rejecting that would wedge the resource instead of letting the next reconcile re-record the same SHA.",
+				Description: "PullRequest is the Schema for the pullrequests API Once recorded, the SHA can be neither replaced nor cleared: a resource merges at most once, so any later disagreement is provider inconsistency or a status write built from a stale informer read, and honoring it would strand the promotion history note already written against the original SHA. Such a write is rejected rather than merged, which surfaces as a failed status apply and a retry.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {

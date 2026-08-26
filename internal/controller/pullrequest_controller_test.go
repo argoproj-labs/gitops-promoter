@@ -516,9 +516,11 @@ var _ = Describe("PullRequest Controller", func() {
 			Expect(k8sClientDev.Status().Update(ctx, mergedPR)).To(Succeed())
 		})
 
-		It("should allow clearing it, so a stale-cache status apply cannot wedge the resource", func() {
+		It("should reject clearing it", func() {
 			mergedPR.Status.MergedTargetSha = ""
-			Expect(k8sClientDev.Status().Update(ctx, mergedPR)).To(Succeed())
+			err := k8sClientDev.Status().Update(ctx, mergedPR)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("mergedTargetSha is immutable once set"))
 		})
 	})
 
