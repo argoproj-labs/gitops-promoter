@@ -24,7 +24,7 @@ All trailer keys are Go constants in [`internal/types/constants/trailers.go`](ht
 | `Commit-status-active-<key>-url` | Gate detail link. Ignored unless `http://` or `https://`. | `status.history[].active.commitStatuses[]` |
 | `Commit-status-active-<key>-description` | Gate description, **JSON-encoded** so it survives multi-line and quoted text. | `status.history[].active.commitStatuses[]` |
 | `Commit-status-proposed-<key>-*` | Same three suffixes for gates on the proposed branch. | `status.history[].proposed.commitStatuses[]` |
-| `Promoter-merge-commit-snapshot-mismatch` | `true` when the note's proposed SHAs had to be corrected from the merge commit. Written **only** to the note. | `status.history[].mergeCommitSnapshotMismatch` |
+| `Promoter-merge-commit-snapshot-mismatch` | `true` when snapshot proposed dry SHA disagreed with hydrator metadata on the merge commit and the note was corrected. Written **only** to the note. | `status.history[].mergeCommitSnapshotMismatch` |
 
 > [!NOTE]
 > Gate keys are recovered by trimming the final `-phase`, `-url`, or `-description` segment from the trailer key, so a gate key of its own may contain dashes (`Commit-status-active-argocd-health-phase` yields key `argocd-health`). A gate key whose own last segment looks like a suffix would be parsed incorrectly.
@@ -64,7 +64,7 @@ An **external** merge has no such guard. The proposed branch can advance after t
 | `Promoter-merge-commit-snapshot-mismatch` | **Note only.** | Never written to a commit message. Its presence is the signal that the corrections above happened. |
 | `Pull-request-id`, `-url`, `-creation-time`, `-source-branch`, `-target-branch`, `Sha-dry-active`, `Sha-hydrated-active` | **No.** | Copied into the note verbatim from the snapshot. |
 
-So when `status.history[].mergeCommitSnapshotMismatch` is `true`, treat the proposed SHAs in that entry as trustworthy — they were re-read from the merge commit — and the commit statuses as possibly describing a superseded revision. The controller also emits [PromotionHistoryNoteMergeCommitSnapshotMismatch](../monitoring/events.md#changetransferpolicy) when it applies the correction.
+So when `status.history[].mergeCommitSnapshotMismatch` is `true`, the proposed **dry** SHA in that entry was re-read from the merge commit's hydrator metadata and is trustworthy. The proposed **hydrated** SHA was re-read too on a regular merge commit (second parent), but on a squash or fast-forward merge it is still the stale snapshot value. Treat **commit statuses** as possibly describing a superseded revision. The controller also emits [PromotionHistoryNoteMergeCommitSnapshotMismatch](../monitoring/events.md#changetransferpolicy) when it applies the correction.
 
 ## Inspecting trailers
 
