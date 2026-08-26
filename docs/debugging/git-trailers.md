@@ -35,11 +35,6 @@ All trailer keys are Go constants in [`internal/types/constants/trailers.go`](ht
 
 Each time the ChangeTransferPolicy controller reconciles an **already-open** pull request, it rewrites `spec.commit.message` as title, description, and a freshly built trailer block reflecting current CTP status.
 
-Two consequences worth knowing:
-
-- A brand-new `PullRequest` gets only a title and description. Trailers first appear on the **next** reconcile, so a pull request merged immediately after creation can have no trailers at all — and then no history note is written, because there is nothing to record.
-- Because this block is rebuilt from CTP status each pass, it is a *snapshot* of the moment the promoter last looked, not necessarily of what eventually merges.
-
 These edits stay in Kubernetes while the pull request is open; the promoter does not push a trailer refresh to the SCM (only title and description are synced).
 
 ### 2. The merge commit message
