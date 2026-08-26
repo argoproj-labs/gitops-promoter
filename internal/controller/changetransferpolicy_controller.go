@@ -576,7 +576,8 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 		For(&promoterv1alpha1.ChangeTransferPolicy{},
 			builder.WithPredicates(predicate.Or(
 				predicate.GenerationChangedPredicate{},
-				// Webhooks trigger reconciliations by bumping an annotation.
+				// CommitStatus reconciles trigger CTP reconciliation by bumping an annotation (see
+				// the .Owns note below). Webhooks do not use this path; they go through enqueueFunc.
 				// TODO: use a custom predicate to only trigger on the specific annotation change.
 				predicate.AnnotationChangedPredicate{},
 			))).

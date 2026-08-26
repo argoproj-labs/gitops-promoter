@@ -82,8 +82,9 @@ During the creation the GitHub App, you will need to configure the following set
 > We do support configuration of a GitHub App webhook that triggers PR creation upon Push. However, we do not configure
 > the ingress to allow GitHub to reach the GitOps Promoter. You will need to configure the ingress to allow GitHub to reach
 > the GitOps Promoter via the service promoter-webhook-receiver which listens on port `3333`. If you do not use webhooks
-> you might want to adjust the auto reconciliation interval to a lower value using these `promotionStrategyRequeueDuration` and
-> `changeTransferPolicyRequeueDuration` fields of the `ControllerConfiguration` resource.
+> you might want to adjust the auto reconciliation interval to a lower value using the
+> `spec.promotionStrategy.workQueue.requeueDuration` and `spec.changeTransferPolicy.workQueue.requeueDuration` fields of the
+> `ControllerConfiguration` resource (both default to `5m`).
 
 Webhook URL: `https://<your-promoter-webhook-receiver-ingress>/`
 
@@ -352,8 +353,9 @@ To configure the GitOps Promoter with Bitbucket Cloud, you will need to create a
 > We do support configuration of a Bitbucket Cloud webhook that triggers PR creation upon Push. However, we do not configure
 > the ingress to allow Bitbucket Cloud to reach the GitOps Promoter. You will need to configure the ingress to allow Bitbucket Cloud to reach
 > the GitOps Promoter via the service promoter-webhook-receiver which listens on port `3333`. If you do not use webhooks
-> you might want to adjust the auto reconciliation interval to a lower value using these `promotionStrategyRequeueDuration` and
-> `changeTransferPolicyRequeueDuration` fields of the `ControllerConfiguration` resource.
+> you might want to adjust the auto reconciliation interval to a lower value using the
+> `spec.promotionStrategy.workQueue.requeueDuration` and `spec.changeTransferPolicy.workQueue.requeueDuration` fields of the
+> `ControllerConfiguration` resource (both default to `5m`).
 
 To enable webhook support for automatic PR creation on push:
 
