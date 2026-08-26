@@ -5,5 +5,4 @@ package git
 var (
 	GitChildEnv = gitChildEnv
 	GitBin      = gitBin
-	ErrGitBin   = gitBinErr
 )

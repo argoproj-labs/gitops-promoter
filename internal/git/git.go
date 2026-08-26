@@ -111,14 +111,20 @@ type HydratorMetadata = v1alpha1.HydratorMetadata
 const HydratorNotesRef = "refs/notes/hydrator.metadata"
 
 // gitBin is resolved once at package init. CommandContext("git", ...) calls LookPath on every
-// invocation; passing the absolute path skips that walk.
-var gitBin, gitBinErr = exec.LookPath("git")
+// invocation; passing the absolute path skips that walk. Missing git is a process configuration
+// error, so we panic instead of failing every later command.
+var gitBin = mustLookPathGit()
 
-func gitCommandContext(ctx context.Context, args ...string) (*exec.Cmd, error) {
-	if gitBinErr != nil {
-		return nil, fmt.Errorf("git executable not found: %w", gitBinErr)
+func mustLookPathGit() string {
+	path, err := exec.LookPath("git")
+	if err != nil {
+		panic("git executable not found: " + err.Error())
 	}
-	return exec.CommandContext(ctx, gitBin, args...), nil
+	return path
+}
+
+func gitCommandContext(ctx context.Context, args ...string) *exec.Cmd {
+	return exec.CommandContext(ctx, gitBin, args...)
 }
 
 // NewEnvironmentOperations creates a new EnvironmentOperations instance. The identity parameter is an opaque,
@@ -591,10 +597,7 @@ func runCmdWithEnv(ctx context.Context, gap scms.GitOperationsProvider, director
 		return "", "", fmt.Errorf("failed to get token: %w", err)
 	}
 
-	cmd, err := gitCommandContext(ctx, args...)
-	if err != nil {
-		return "", "", err
-	}
+	cmd := gitCommandContext(ctx, args...)
 	cmd.Env = gitChildEnv(user, token, extraEnv)
 	var stdoutBuf bytes.Buffer
 	var stderrBuf bytes.Buffer
@@ -816,10 +819,7 @@ func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, branc
 func AddTrailerToCommitMessage(ctx context.Context, commitMessage, trailerKey, trailerValue string) (string, error) {
 	trailerLine := fmt.Sprintf("%s: %s", trailerKey, trailerValue)
 
-	cmd, err := gitCommandContext(ctx, "interpret-trailers", "--trailer", trailerLine)
-	if err != nil {
-		return "", err
-	}
+	cmd := gitCommandContext(ctx, "interpret-trailers", "--trailer", trailerLine)
 	cmd.Stdin = strings.NewReader(commitMessage)
 
 	var stdoutBuf bytes.Buffer
@@ -904,10 +904,7 @@ func ParseTrailersFromMessage(ctx context.Context, commitMessage string) (map[st
 	logger := log.FromContext(ctx)
 
 	// Pipe the message to git interpret-trailers using stdin
-	cmd, err := gitCommandContext(ctx, "interpret-trailers", "--only-trailers")
-	if err != nil {
-		return nil, err
-	}
+	cmd := gitCommandContext(ctx, "interpret-trailers", "--only-trailers")
 	cmd.Stdin = strings.NewReader(commitMessage)
 
 	var stdoutBuf bytes.Buffer
@@ -915,7 +912,7 @@ func ParseTrailersFromMessage(ctx context.Context, commitMessage string) (map[st
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
 
-	err = cmd.Run()
+	err := cmd.Run()
 	stderr := stderrBuf.String()
 	if err != nil {
 		logger.Error(err, "failed to run git interpret-trailers", "stderr", stderr)

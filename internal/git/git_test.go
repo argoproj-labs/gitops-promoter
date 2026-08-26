@@ -1121,9 +1121,6 @@ var _ = Describe("gitChildEnv", func() {
 
 var _ = Describe("gitBin", func() {
 	It("is resolved to an existing executable at init", func() {
-		if git.ErrGitBin != nil {
-			Skip("git not on PATH at init: " + git.ErrGitBin.Error())
-		}
 		Expect(git.GitBin).NotTo(BeEmpty())
 		_, err := os.Stat(git.GitBin)
 		Expect(err).NotTo(HaveOccurred())
