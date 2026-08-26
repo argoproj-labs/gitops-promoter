@@ -224,10 +224,10 @@ func IsGitShowPathMissingInCommit(stderr string) bool {
 // example promotion-history note writing, which keeps its trailer snapshot instead) can match it with
 // errors.AsType rather than treating it as retryable.
 type MalformedHydratorMetadataError struct {
+	Err error
 	// Revision is the revision the blob was read from: a commit SHA or a ref such as origin/<branch>.
 	Revision string
 	Path     string
-	Err      error
 }
 
 // Error implements the error interface for MalformedHydratorMetadataError.

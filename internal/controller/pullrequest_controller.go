@@ -400,6 +400,7 @@ func (r *PullRequestReconciler) setMergedTargetSha(ctx context.Context, pr *prom
 	pr.Status.MergedTargetSha = sha
 	return true
 }
+
 func (r *PullRequestReconciler) syncExternallyMergedOrClosedWhenDesiredOpen(pr *promoterv1alpha1.PullRequest) (bool, error) {
 	if pr.Status.State == promoterv1alpha1.PullRequestClosed || pr.Status.State == promoterv1alpha1.PullRequestMerged {
 		return false, nil
