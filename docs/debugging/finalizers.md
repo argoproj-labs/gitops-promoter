@@ -28,7 +28,7 @@ The `changetransferpolicy.promoter.argoproj.io/pullrequest-finalizer` exists so 
 
 Notes are stored at `refs/notes/promoter.history` on the Git repository. During reconciliation the controller reads them and rebuilds `ChangeTransferPolicy.status.history`.
 
-The promoter still writes the same trailers into every managed pull request's commit message, so when a commit has no readable note the controller falls back to the commit-message trailers. That covers merges predating the notes feature.
+The promoter still writes the same trailers into every managed pull request's commit message, so when a commit has no readable note the controller falls back to the commit-message trailers. That covers merges predating the notes feature. See [Git Trailers](git-trailers.md) for what each trailer records and [which values can differ between the note and the commit message](git-trailers.md#note-versus-commit-message).
 
 ### Supported path: controller-initiated merge
 
