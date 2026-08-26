@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -1132,8 +1132,47 @@ var _ = Describe("ActivePath support", func() {
 	})
 })
 
-var _ = Describe("Git subprocess proxy env", func() {
-	It("forwards proxy and TLS env vars via runCmd", func() {
+var _ = Describe("gitChildEnv", func() {
+	proxyEnvKeys := []string{
+		"HTTPS_PROXY", "https_proxy",
+		"HTTP_PROXY", "http_proxy",
+		"NO_PROXY", "no_proxy",
+		"GIT_SSL_CAINFO", "SSL_CERT_FILE",
+	}
+
+	clearProxyEnv := func() {
+		for _, key := range proxyEnvKeys {
+			GinkgoT().Setenv(key, "")
+		}
+	}
+
+	envMap := func(env []string) map[string]string {
+		got := make(map[string]string, len(env))
+		for _, entry := range env {
+			key, val, ok := strings.Cut(entry, "=")
+			Expect(ok).To(BeTrue(), "invalid env entry %q", entry)
+			got[key] = val
+		}
+		return got
+	}
+
+	It("includes auth vars and PATH and omits unset proxy keys", func() {
+		GinkgoT().Setenv("PATH", "/custom/bin")
+		clearProxyEnv()
+
+		got := envMap(git.GitChildEnv("alice", "s3cret", nil))
+		Expect(got["GIT_ASKPASS"]).To(Equal("promoter_askpass.sh"))
+		Expect(got["GIT_USERNAME"]).To(Equal("alice"))
+		Expect(got["GIT_PASSWORD"]).To(Equal("s3cret"))
+		Expect(got["PATH"]).To(Equal("/custom/bin"))
+		Expect(got["GIT_TERMINAL_PROMPT"]).To(Equal("0"))
+		for _, key := range proxyEnvKeys {
+			Expect(got).NotTo(HaveKey(key))
+		}
+	})
+
+	It("forwards proxy and TLS env vars", func() {
+		clearProxyEnv()
 		want := map[string]string{
 			"HTTPS_PROXY":    "http://proxy.test:8443",
 			"HTTP_PROXY":     "http://proxy.test:8080",
@@ -1145,53 +1184,37 @@ var _ = Describe("Git subprocess proxy env", func() {
 			GinkgoT().Setenv(key, val)
 		}
 
-		workDir := GinkgoT().TempDir()
-		envDump := filepath.Join(workDir, "proxy-env-dump")
-		gitBin := filepath.Join(workDir, "git")
-		script := fmt.Sprintf(`#!/bin/sh
-ENV_DUMP=%q
-if [ "$1" = "ls-remote" ] && [ "$2" = "--heads" ]; then
-  : > "$ENV_DUMP"
-  for key in HTTPS_PROXY HTTP_PROXY NO_PROXY GIT_SSL_CAINFO SSL_CERT_FILE; do
-    eval "val=\$$key"
-    echo "$key=$val" >> "$ENV_DUMP"
-  done
-  echo "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef	refs/heads/main"
-  exit 0
-fi
-echo "unexpected git args: $*" >&2
-exit 1
-`, envDump)
-		Expect(os.WriteFile(gitBin, []byte(script), 0o755)).To(Succeed())
-		GinkgoT().Setenv("PATH", workDir)
-
-		repo := &v1alpha1.GitRepository{
-			Spec: v1alpha1.GitRepositorySpec{
-				GitHub: &v1alpha1.GitHubRepo{Owner: "test-owner", Name: "testrepo"},
-				ScmProviderRef: v1alpha1.ScmProviderObjectReference{
-					Kind: "ScmProvider",
-					Name: "testprovider",
-				},
-			},
-			ObjectMeta: metav1.ObjectMeta{Name: "testrepo", Namespace: "default"},
-		}
-		gap := &fakeGitProvider{tempDirPath: filepath.Join(workDir, "ignored-repo")}
-
-		shas, err := git.LsRemote(context.Background(), gap, repo, "main")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(shas).To(HaveKeyWithValue("main", "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"))
-
-		dump, err := os.ReadFile(envDump)
-		Expect(err).NotTo(HaveOccurred())
-		got := map[string]string{}
-		for line := range strings.SplitSeq(strings.TrimSpace(string(dump)), "\n") {
-			key, val, ok := strings.Cut(line, "=")
-			Expect(ok).To(BeTrue(), "unexpected dump line %q", line)
-			got[key] = val
-		}
+		got := envMap(git.GitChildEnv("user", "token", nil))
 		for key, val := range want {
 			Expect(got[key]).To(Equal(val), "proxy env var %s", key)
 		}
+	})
+
+	It("forwards lowercase proxy env vars", func() {
+		clearProxyEnv()
+		GinkgoT().Setenv("https_proxy", "http://lower-https:8443")
+		GinkgoT().Setenv("http_proxy", "http://lower-http:8080")
+		GinkgoT().Setenv("no_proxy", "example.internal")
+
+		got := envMap(git.GitChildEnv("user", "token", nil))
+		Expect(got["https_proxy"]).To(Equal("http://lower-https:8443"))
+		Expect(got["http_proxy"]).To(Equal("http://lower-http:8080"))
+		Expect(got["no_proxy"]).To(Equal("example.internal"))
+	})
+
+	It("appends extraEnv after auth vars", func() {
+		clearProxyEnv()
+		env := git.GitChildEnv("user", "token", []string{"GIT_INDEX_FILE=/tmp/index"})
+		Expect(env).To(ContainElement("GIT_INDEX_FILE=/tmp/index"))
+		Expect(slices.Index(env, "GIT_INDEX_FILE=/tmp/index")).To(BeNumerically(">", slices.Index(env, "GIT_ASKPASS=promoter_askpass.sh")))
+	})
+})
+
+var _ = Describe("gitBin", func() {
+	It("is resolved to an existing executable at init", func() {
+		Expect(git.GitBin).NotTo(BeEmpty())
+		_, err := os.Stat(git.GitBin)
+		Expect(err).NotTo(HaveOccurred())
 	})
 })
 

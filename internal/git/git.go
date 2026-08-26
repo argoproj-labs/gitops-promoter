@@ -117,6 +117,23 @@ const HydratorNotesRef = "refs/notes/hydrator.metadata"
 // or merges performed directly on the SCM).
 const PromoterHistoryNotesRef = "refs/notes/promoter.history"
 
+// gitBin is resolved once at package init. CommandContext("git", ...) calls LookPath on every
+// invocation; passing the absolute path skips that walk. Missing git is a process configuration
+// error, so we panic instead of failing every later command.
+var gitBin = mustLookPathGit()
+
+func mustLookPathGit() string {
+	path, err := exec.LookPath("git")
+	if err != nil {
+		panic("git executable not found: " + err.Error())
+	}
+	return path
+}
+
+func gitCommandContext(ctx context.Context, args ...string) *exec.Cmd {
+	return exec.CommandContext(ctx, gitBin, args...)
+}
+
 // NewEnvironmentOperations creates a new EnvironmentOperations instance. The identity parameter is an opaque,
 // caller-supplied identifier (for example the owning object's namespace/name); together with the repo URL it forms
 // the clone key, so each identity gets its own on-disk clone. Each identity corresponds to a single environment, so
@@ -613,6 +630,20 @@ func proxyRelatedEnvVars() []string {
 	return out
 }
 
+// gitChildEnv is the environment for git subprocesses. cmd.Env replaces the child environment
+// entirely, so auth, PATH, and proxy/TLS vars from this process must be copied explicitly.
+func gitChildEnv(user, token string, extraEnv []string) []string {
+	env := []string{
+		"GIT_ASKPASS=promoter_askpass.sh", // Needs to be on path
+		"GIT_USERNAME=" + user,
+		"GIT_PASSWORD=" + token,
+		"PATH=" + os.Getenv("PATH"),
+		"GIT_TERMINAL_PROMPT=0",
+	}
+	env = append(env, proxyRelatedEnvVars()...)
+	return append(env, extraEnv...)
+}
+
 // runCmdWithEnv runs a git command, appending extraEnv to the standard auth environment, and
 // returns stdout, stderr, and error.
 func runCmdWithEnv(ctx context.Context, gap scms.GitOperationsProvider, directory string, extraEnv []string, args ...string) (string, string, error) {
@@ -626,15 +657,8 @@ func runCmdWithEnv(ctx context.Context, gap scms.GitOperationsProvider, director
 		return "", "", fmt.Errorf("failed to get token: %w", err)
 	}
 
-	cmd := exec.CommandContext(ctx, "git", args...)
-	cmd.Env = append([]string{
-		"GIT_ASKPASS=promoter_askpass.sh", // Needs to be on path
-		"GIT_USERNAME=" + user,
-		"GIT_PASSWORD=" + token,
-		"PATH=" + os.Getenv("PATH"),
-		"GIT_TERMINAL_PROMPT=0",
-	}, proxyRelatedEnvVars()...)
-	cmd.Env = append(cmd.Env, extraEnv...)
+	cmd := gitCommandContext(ctx, args...)
+	cmd.Env = gitChildEnv(user, token, extraEnv)
 	var stdoutBuf bytes.Buffer
 	var stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf
@@ -855,7 +879,7 @@ func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, branc
 func AddTrailerToCommitMessage(ctx context.Context, commitMessage, trailerKey, trailerValue string) (string, error) {
 	trailerLine := fmt.Sprintf("%s: %s", trailerKey, trailerValue)
 
-	cmd := exec.CommandContext(ctx, "git", "interpret-trailers", "--trailer", trailerLine)
+	cmd := gitCommandContext(ctx, "interpret-trailers", "--trailer", trailerLine)
 	cmd.Stdin = strings.NewReader(commitMessage)
 
 	var stdoutBuf bytes.Buffer
@@ -1095,7 +1119,7 @@ func ParseTrailersFromMessage(ctx context.Context, commitMessage string) (map[st
 	logger := log.FromContext(ctx)
 
 	// Pipe the message to git interpret-trailers using stdin
-	cmd := exec.CommandContext(ctx, "git", "interpret-trailers", "--only-trailers")
+	cmd := gitCommandContext(ctx, "interpret-trailers", "--only-trailers")
 	cmd.Stdin = strings.NewReader(commitMessage)
 
 	var stdoutBuf bytes.Buffer
