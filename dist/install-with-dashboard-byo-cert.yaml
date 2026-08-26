@@ -6511,7 +6511,12 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: PullRequest is the Schema for the pullrequests API
+        description: |-
+          PullRequest is the Schema for the pullrequests API
+          The transition rule rejects replacing a recorded SHA with a different one, but deliberately tolerates
+          clearing it: status is written with Server-Side Apply, so a reconcile that read the object from a stale
+          informer cache would omit the field and delete it, and rejecting that would wedge the resource instead of
+          letting the next reconcile re-record the same SHA.
         externalDocs:
           description: CRD reference (examples and behavior)
           url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#pullrequest
@@ -6751,7 +6756,9 @@ spec:
                   report the resulting commit on the target branch instead.
                   Set once by the PullRequest controller, either from the merge response for providers that
                   report the SHA there, or from a Get-by-ID lookup when FindOpen no longer finds the PR
-                  (external merges, and providers whose merge response omits the SHA).
+                  (external merges, and providers whose merge response omits the SHA). The value is write-once:
+                  a resource merges at most once, so the controller never replaces a non-empty value, even if a
+                  provider later reports a different SHA.
                 maxLength: 64
                 minLength: 40
                 pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
@@ -6798,6 +6805,10 @@ spec:
         - message: mergedTargetSha may only be set when status.state is merged
           rule: '!has(self.status) || !has(self.status.mergedTargetSha) || (has(self.status.state)
             && self.status.state == ''merged'')'
+        - message: mergedTargetSha is immutable once set
+          rule: '!has(oldSelf.status) || !has(oldSelf.status.mergedTargetSha) || !has(self.status)
+            || !has(self.status.mergedTargetSha) || self.status.mergedTargetSha ==
+            oldSelf.status.mergedTargetSha'
     served: true
     storage: true
     subresources:

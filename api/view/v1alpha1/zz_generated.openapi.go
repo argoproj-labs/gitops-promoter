@@ -3888,7 +3888,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequest(ref common.Re
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "PullRequest is the Schema for the pullrequests API",
+				Description: "PullRequest is the Schema for the pullrequests API The transition rule rejects replacing a recorded SHA with a different one, but deliberately tolerates clearing it: status is written with Server-Side Apply, so a reconcile that read the object from a stale informer cache would omit the field and delete it, and rejecting that would wedge the resource instead of letting the next reconcile re-record the same SHA.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
@@ -4231,7 +4231,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestStatus(ref com
 					},
 					"mergedTargetSha": {
 						SchemaProps: spec.SchemaProps{
-							Description: "MergedTargetSha is the SHA that spec.targetBranch points at after the merge, as reported by the SCM. It is a merge commit only when the SCM created one; squash and fast-forward merges report the resulting commit on the target branch instead. Set once by the PullRequest controller, either from the merge response for providers that report the SHA there, or from a Get-by-ID lookup when FindOpen no longer finds the PR (external merges, and providers whose merge response omits the SHA).",
+							Description: "MergedTargetSha is the SHA that spec.targetBranch points at after the merge, as reported by the SCM. It is a merge commit only when the SCM created one; squash and fast-forward merges report the resulting commit on the target branch instead. Set once by the PullRequest controller, either from the merge response for providers that report the SHA there, or from a Get-by-ID lookup when FindOpen no longer finds the PR (external merges, and providers whose merge response omits the SHA). The value is write-once: a resource merges at most once, so the controller never replaces a non-empty value, even if a provider later reports a different SHA.",
 							Type:        []string{"string"},
 							Format:      "",
 						},

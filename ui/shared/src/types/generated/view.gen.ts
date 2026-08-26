@@ -1361,7 +1361,7 @@ export type components = {
             id?: string;
             /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
             instanceID?: string;
-            /** @description MergedTargetSha is the SHA that spec.targetBranch points at after the merge, as reported by the SCM. It is a merge commit only when the SCM created one; squash and fast-forward merges report the resulting commit on the target branch instead. Set once by the PullRequest controller, either from the merge response for providers that report the SHA there, or from a Get-by-ID lookup when FindOpen no longer finds the PR (external merges, and providers whose merge response omits the SHA). */
+            /** @description MergedTargetSha is the SHA that spec.targetBranch points at after the merge, as reported by the SCM. It is a merge commit only when the SCM created one; squash and fast-forward merges report the resulting commit on the target branch instead. Set once by the PullRequest controller, either from the merge response for providers that report the SHA there, or from a Get-by-ID lookup when FindOpen no longer finds the PR (external merges, and providers whose merge response omits the SHA). The value is write-once: a resource merges at most once, so the controller never replaces a non-empty value, even if a provider later reports a different SHA. */
             mergedTargetSha?: string;
             /**
              * Format: int64

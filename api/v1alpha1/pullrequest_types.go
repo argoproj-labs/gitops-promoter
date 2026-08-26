@@ -126,7 +126,9 @@ type PullRequestStatus struct {
 	// report the resulting commit on the target branch instead.
 	// Set once by the PullRequest controller, either from the merge response for providers that
 	// report the SHA there, or from a Get-by-ID lookup when FindOpen no longer finds the PR
-	// (external merges, and providers whose merge response omits the SHA).
+	// (external merges, and providers whose merge response omits the SHA). The value is write-once:
+	// a resource merges at most once, so the controller never replaces a non-empty value, even if a
+	// provider later reports a different SHA.
 	// +optional
 	// +kubebuilder:validation:MinLength=40
 	// +kubebuilder:validation:MaxLength=64
@@ -209,6 +211,11 @@ func (ps *PullRequest) SetStatusInstanceID(v *string) {
 // +kubebuilder:printcolumn:name="URL",type=string,JSONPath=`.status.url`,priority=1
 // +kubebuilder:validation:XValidation:rule=`self.spec.state == 'open' || has(self.status.id) && self.status.id != ""`,message="Cannot transition to 'closed' or 'merged' state when status.id is empty"
 // +kubebuilder:validation:XValidation:rule=`!has(self.status) || !has(self.status.mergedTargetSha) || (has(self.status.state) && self.status.state == 'merged')`,message="mergedTargetSha may only be set when status.state is merged"
+// The transition rule rejects replacing a recorded SHA with a different one, but deliberately tolerates
+// clearing it: status is written with Server-Side Apply, so a reconcile that read the object from a stale
+// informer cache would omit the field and delete it, and rejecting that would wedge the resource instead of
+// letting the next reconcile re-record the same SHA.
+// +kubebuilder:validation:XValidation:rule=`!has(oldSelf.status) || !has(oldSelf.status.mergedTargetSha) || !has(self.status) || !has(self.status.mergedTargetSha) || self.status.mergedTargetSha == oldSelf.status.mergedTargetSha`,message="mergedTargetSha is immutable once set"
 type PullRequest struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

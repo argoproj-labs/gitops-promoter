@@ -474,6 +474,54 @@ var _ = Describe("PullRequest Controller", func() {
 		})
 	})
 
+	Context("When status.mergedTargetSha is already recorded", func() {
+		// These specs exercise CRD CEL validation only, so they run against the controller-free dev
+		// envtest cluster. On the main cluster the PullRequest controller would reconcile a merged
+		// PullRequest and delete it out from under the assertions.
+		const firstSha = "1111111111111111111111111111111111111111"
+		const secondSha = "2222222222222222222222222222222222222222"
+		var mergedPR *promoterv1alpha1.PullRequest
+
+		BeforeEach(func() {
+			prName := utils.KubeSafeUniqueName("merged-target-sha-" + randomString(15))
+			mergedPR = &promoterv1alpha1.PullRequest{
+				ObjectMeta: metav1.ObjectMeta{Name: prName, Namespace: "default"},
+				Spec: promoterv1alpha1.PullRequestSpec{
+					RepositoryReference: promoterv1alpha1.ObjectReference{Name: prName},
+					Title:               "Initial Title",
+					TargetBranch:        "development",
+					SourceBranch:        "development-next",
+					MergeSha:            "abc123def456789012345678901234567890abcd",
+					State:               promoterv1alpha1.PullRequestOpen,
+				},
+			}
+			Expect(k8sClientDev.Create(ctx, mergedPR)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClientDev.Delete(ctx, mergedPR) })
+
+			mergedPR.Status.ID = "1"
+			mergedPR.Status.State = promoterv1alpha1.PullRequestMerged
+			mergedPR.Status.MergedTargetSha = firstSha
+			Expect(k8sClientDev.Status().Update(ctx, mergedPR)).To(Succeed())
+		})
+
+		It("should reject replacing it with a different SHA", func() {
+			mergedPR.Status.MergedTargetSha = secondSha
+			err := k8sClientDev.Status().Update(ctx, mergedPR)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("mergedTargetSha is immutable once set"))
+		})
+
+		It("should allow a status write that carries the same SHA", func() {
+			mergedPR.Status.Url = "https://example.com/pr/1"
+			Expect(k8sClientDev.Status().Update(ctx, mergedPR)).To(Succeed())
+		})
+
+		It("should allow clearing it, so a stale-cache status apply cannot wedge the resource", func() {
+			mergedPR.Status.MergedTargetSha = ""
+			Expect(k8sClientDev.Status().Update(ctx, mergedPR)).To(Succeed())
+		})
+	})
+
 	Context("When deleting a PullRequest that never created a PR on SCM", func() {
 		var name string
 		var scmSecret *v1.Secret

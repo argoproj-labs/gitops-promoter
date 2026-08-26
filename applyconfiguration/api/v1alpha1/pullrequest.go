@@ -30,6 +30,10 @@ import (
 // with apply.
 //
 // PullRequest is the Schema for the pullrequests API
+// The transition rule rejects replacing a recorded SHA with a different one, but deliberately tolerates
+// clearing it: status is written with Server-Side Apply, so a reconcile that read the object from a stale
+// informer cache would omit the field and delete it, and rejecting that would wedge the resource instead of
+// letting the next reconcile re-record the same SHA.
 type PullRequestApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`

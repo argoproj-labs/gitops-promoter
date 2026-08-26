@@ -46,7 +46,9 @@ type PullRequestStatusApplyConfiguration struct {
 	// report the resulting commit on the target branch instead.
 	// Set once by the PullRequest controller, either from the merge response for providers that
 	// report the SHA there, or from a Get-by-ID lookup when FindOpen no longer finds the PR
-	// (external merges, and providers whose merge response omits the SHA).
+	// (external merges, and providers whose merge response omits the SHA). The value is write-once:
+	// a resource merges at most once, so the controller never replaces a non-empty value, even if a
+	// provider later reports a different SHA.
 	MergedTargetSha *string `json:"mergedTargetSha,omitempty"`
 	// ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the
 	// resource still desired it open (spec.state is "open"): either it was merged or closed outside the

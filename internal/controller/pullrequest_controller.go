@@ -300,18 +300,13 @@ func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *p
 		return false, nil
 	}
 
-	// If we don't find the PR, but we have an ID, check if it was merged/closed externally or by the controller.
-	// If spec.state is "merged" or "closed", the controller initiated the action and we should NOT mark as external.
-	// Only mark as external if spec.state is "open" (controller didn't initiate the closure/merge).
-	return r.syncWhenNotFoundOpen(ctx, pr, provider)
-}
-
-// syncWhenNotFoundOpen reconciles status when FindOpen did not return an open PR but status.id is set.
-func (r *PullRequestReconciler) syncWhenNotFoundOpen(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) (bool, error) {
 	if pr.Status.ID == "" {
+		// The PR wasn't found in the SCM, and we don't have an ID to explicitly Get it.
+		// We've done all we can do.
 		return false, nil
 	}
 
+	// FindOpen didn't return the PR but status.id is set, so ask the SCM directly for authoritative state.
 	details, err := r.getPullRequestByID(ctx, pr, provider)
 	if err != nil {
 		return false, err
@@ -320,6 +315,9 @@ func (r *PullRequestReconciler) syncWhenNotFoundOpen(ctx context.Context, pr *pr
 		return r.applyGetPullRequestDetails(ctx, pr, *details), nil
 	}
 
+	// The SCM can no longer answer for this PR, so infer the state from spec. If spec.state is "merged" or
+	// "closed", the controller initiated the action and we should NOT mark as external. Only mark as external
+	// if spec.state is "open" (controller didn't initiate the closure/merge).
 	if pr.Spec.State == promoterv1alpha1.PullRequestOpen {
 		return r.syncExternallyMergedOrClosedWhenDesiredOpen(pr)
 	}
@@ -352,8 +350,7 @@ func (r *PullRequestReconciler) applyGetPullRequestDetails(ctx context.Context, 
 	switch details.State {
 	case promoterv1alpha1.PullRequestMerged:
 		changed := pr.Status.State != promoterv1alpha1.PullRequestMerged
-		if details.MergedTargetSHA != "" && pr.Status.MergedTargetSha != details.MergedTargetSHA {
-			pr.Status.MergedTargetSha = details.MergedTargetSHA
+		if r.setMergedTargetSha(ctx, pr, details.MergedTargetSHA) {
 			changed = true
 		}
 		if !changed {
@@ -376,6 +373,26 @@ func (r *PullRequestReconciler) applyGetPullRequestDetails(ctx context.Context, 
 		r.reconcileOpenAfterFindOpenMiss(pr)
 		return false
 	}
+}
+
+// setMergedTargetSha records the SCM-reported merged target SHA, and reports whether it wrote anything.
+// The field is write-once: a PullRequest resource merges at most once, so the first non-empty value
+// observed is authoritative for its whole lifecycle. A later, different value can only be provider
+// inconsistency, and honoring it would strand the promotion history note the CTP already wrote against
+// the original SHA, so log it and keep what we have.
+func (r *PullRequestReconciler) setMergedTargetSha(ctx context.Context, pr *promoterv1alpha1.PullRequest, sha string) bool {
+	if sha == "" || sha == pr.Status.MergedTargetSha {
+		return false
+	}
+
+	if pr.Status.MergedTargetSha != "" {
+		log.FromContext(ctx).Error(nil, "SCM reported a different mergedTargetSha than the one already recorded, keeping the recorded value",
+			"pullRequestID", pr.Status.ID, "recorded", pr.Status.MergedTargetSha, "reported", sha)
+		return false
+	}
+
+	pr.Status.MergedTargetSha = sha
+	return true
 }
 
 // reconcileOpenAfterFindOpenMiss corrects status for a PR that FindOpen missed but Get reports as
@@ -728,10 +745,8 @@ func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promot
 	}
 	pr.Status.State = promoterv1alpha1.PullRequestMerged
 	// Providers that report the resulting target-branch commit in the merge response let us record it
-	// now; the rest leave it empty and syncWhenNotFoundOpen recovers it with a Get-by-ID lookup.
-	if result.CommitSHA != "" {
-		pr.Status.MergedTargetSha = result.CommitSHA
-	}
+	// now; the rest leave it empty and syncStateFromProvider recovers it with a Get-by-ID lookup.
+	r.setMergedTargetSha(ctx, pr, result.CommitSHA)
 	return nil
 }
 
