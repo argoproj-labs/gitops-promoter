@@ -3,6 +3,7 @@ package git_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -771,6 +772,36 @@ var _ = Describe("ActivePath support", func() {
 
 		_, err = g.GetShaMetadataFromFile(GinkgoT().Context(), "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef", "")
 		Expect(err).To(HaveOccurred(), "unknown revisions must not be treated as a missing path")
+		_, isMalformed := errors.AsType[*git.MalformedHydratorMetadataError](err)
+		Expect(isMalformed).To(BeFalse(), "an unreadable revision is not a malformed-metadata failure")
+	})
+
+	It("GetShaMetadataFromFile returns a typed error when the metadata blob does not parse", func() {
+		Expect(os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), []byte("this is not json"), 0o644)).To(Succeed())
+		_, err := runGitCmd(workDir, "add", "hydrator.metadata")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", "malformed metadata")
+		Expect(err).NotTo(HaveOccurred())
+		defaultBranch, err := runGitCmd(workDir, "rev-parse", "--abbrev-ref", "HEAD")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "-u", "origin", strings.TrimSpace(defaultBranch))
+		Expect(err).NotTo(HaveOccurred())
+
+		gap := &fakeGitProvider{tempDirPath: tempRepoDir}
+		g = git.NewEnvironmentOperations(repo, gap, "default/testrepo")
+		Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
+
+		commitSha, err := runGitCmd(workDir, "rev-parse", "HEAD")
+		Expect(err).NotTo(HaveOccurred())
+		commitSha = strings.TrimSpace(commitSha)
+
+		_, err = g.GetShaMetadataFromFile(GinkgoT().Context(), commitSha, "")
+		Expect(err).To(HaveOccurred())
+		malformed, isMalformed := errors.AsType[*git.MalformedHydratorMetadataError](err)
+		Expect(isMalformed).To(BeTrue(), "callers discriminate on the type, not the message")
+		Expect(malformed.Revision).To(Equal(commitSha))
+		Expect(malformed.Path).To(Equal("hydrator.metadata"))
+		Expect(malformed.Unwrap()).To(HaveOccurred(), "the decode failure stays in the chain")
 	})
 
 	It("path-scoped merge: proposed wins inside activePath, active wins outside on conflict", func() {
