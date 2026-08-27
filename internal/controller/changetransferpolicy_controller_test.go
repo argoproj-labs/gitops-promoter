@@ -854,7 +854,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(k8sClient.Get(ctx, prKey, &createdPR)).To(Succeed())
 				Expect(k8sClient.Delete(ctx, &createdPR)).To(Succeed())
 
-				By("Waiting for deletion reconqcile to fail without recording a terminal SCM outcome")
+				By("Waiting for deletion reconcile to fail without recording a terminal SCM outcome")
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, prKey, &createdPR)).To(Succeed())
 					g.Expect(createdPR.DeletionTimestamp).ToNot(BeZero())
