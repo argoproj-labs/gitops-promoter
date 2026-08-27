@@ -782,20 +782,12 @@ func (g *EnvironmentOperations) MergeWithOursStrategyForPath(ctx context.Context
 	return nil
 }
 
-// GetRevListFirstParent retrieves the first parent commit SHAs for the given branch using git rev-list.
+// GetRevListFirstParent retrieves the first-parent commit SHAs starting at revision using git rev-list.
+// revision may be a branch ref (e.g. origin/main) or a commit SHA.
 //
-// Read-only: never mutates the clone's index/worktree/HEAD. Requires the branch's commits to have
+// Read-only: never mutates the clone's index/worktree/HEAD. Requires the revision's commits to have
 // been fetched.
-func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, branch string, maxCount int) ([]string, error) {
-	return g.getRevListFirstParent(ctx, branch, maxCount)
-}
-
-// GetRevListFirstParentFromCommit lists first-parent commits starting at startSha (inclusive).
-func (g *EnvironmentOperations) GetRevListFirstParentFromCommit(ctx context.Context, startSha string, maxCount int) ([]string, error) {
-	return g.getRevListFirstParent(ctx, startSha, maxCount)
-}
-
-func (g *EnvironmentOperations) getRevListFirstParent(ctx context.Context, start string, maxCount int) ([]string, error) {
+func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, revision string, maxCount int) ([]string, error) {
 	logger := log.FromContext(ctx)
 
 	gitPath := g.ClonePath()
@@ -806,12 +798,12 @@ func (g *EnvironmentOperations) getRevListFirstParent(ctx context.Context, start
 	args := make([]string, 0, 4)
 	args = append(args, "rev-list", "--first-parent")
 	args = append(args, "--max-count="+strconv.Itoa(maxCount))
-	args = append(args, start)
+	args = append(args, revision)
 
 	stdout, stderr, err := g.runCmd(ctx, gitPath, args...)
 	if err != nil {
-		logger.Error(err, "could not get rev-list first parent", "gitError", stderr, "start", start)
-		return nil, fmt.Errorf("failed to get rev-list first parent for %q: %w", start, err)
+		logger.Error(err, "could not get rev-list first parent", "gitError", stderr, "revision", revision)
+		return nil, fmt.Errorf("failed to get rev-list first parent for %q: %w", revision, err)
 	}
 
 	if strings.TrimSpace(stdout) == "" {
@@ -924,7 +916,7 @@ func (g *EnvironmentOperations) FindMatchingHydratorNote(ctx context.Context, st
 		return g.GetHydratorNote(ctx, startSha)
 	}
 
-	shas, err := g.GetRevListFirstParentFromCommit(ctx, startSha, maxAncestors)
+	shas, err := g.GetRevListFirstParent(ctx, startSha, maxAncestors)
 	if err != nil {
 		return nil, err
 	}

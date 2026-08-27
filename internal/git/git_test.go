@@ -1119,6 +1119,14 @@ var _ = Describe("gitChildEnv", func() {
 	})
 })
 
+// FindMatchingHydratorNote exercises adoption of hydrator git notes when the proposed branch tip
+// is an ours-merge commit with no note of its own. The fixture mirrors production-usw-next after
+// conflict resolution: first-parent history is
+//
+//	merge (no note) → hydrated@currentDry (note) → hydrated@staleDry (note) → …
+//
+// FindMatchingHydratorNote must return the note for currentDry (matching hydrator.metadata on the
+// tip), not the stale ancestor note.
 var _ = Describe("FindMatchingHydratorNote", func() {
 	var (
 		tempRepoDir string
@@ -1174,6 +1182,7 @@ var _ = Describe("FindMatchingHydratorNote", func() {
 		const currentDry = "0c9ff02a8f23a7bb85e92e0ab395af91c530f18c"
 		const staleDry = "f1b84ed4df293385f9904b6934d14e784762fecd"
 
+		By("bootstrapping active with a base hydrator.metadata commit")
 		Expect(os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"base"}`), 0o644)).To(Succeed())
 		_, err := runGitCmd(workDir, "add", "hydrator.metadata")
 		Expect(err).NotTo(HaveOccurred())
@@ -1184,6 +1193,7 @@ var _ = Describe("FindMatchingHydratorNote", func() {
 		_, err = runGitCmd(workDir, "push", "-u", "origin", "active")
 		Expect(err).NotTo(HaveOccurred())
 
+		By("building proposed-next with two hydrated commits and distinct git notes")
 		_, err = runGitCmd(workDir, "checkout", "-b", "proposed-next")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"`+staleDry+`"}`), 0o644)).To(Succeed())
@@ -1213,6 +1223,7 @@ var _ = Describe("FindMatchingHydratorNote", func() {
 		_, err = runGitCmd(workDir, "push", "origin", git.HydratorNotesRef+":"+git.HydratorNotesRef)
 		Expect(err).NotTo(HaveOccurred())
 
+		By("advancing active so Promoter's ours-merge has something to merge")
 		_, err = runGitCmd(workDir, "checkout", "active")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"active-advanced"}`), 0o644)).To(Succeed())
@@ -1223,6 +1234,7 @@ var _ = Describe("FindMatchingHydratorNote", func() {
 		_, err = runGitCmd(workDir, "push", "origin", "active")
 		Expect(err).NotTo(HaveOccurred())
 
+		By("running ours-merge on proposed-next; the merge commit has no hydrator note")
 		clonePath := g.ClonePath()
 		_, err = runGitCmd(clonePath, "fetch", "origin", "proposed-next", "active")
 		Expect(err).NotTo(HaveOccurred())
@@ -1239,11 +1251,13 @@ var _ = Describe("FindMatchingHydratorNote", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(directNote).To(BeNil())
 
+		By("walking first-parent ancestors for a note whose drySha matches hydrator.metadata on the tip")
 		note, err := g.FindMatchingHydratorNote(GinkgoT().Context(), mergeSha, currentDry, git.MaxHydratorNoteFirstParentWalk)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(note).NotTo(BeNil())
 		Expect(note.DrySha).To(Equal(currentDry))
 
+		By("returning nil when no ancestor note matches the expected dry SHA")
 		mismatch, err := g.FindMatchingHydratorNote(GinkgoT().Context(), mergeSha, "does-not-exist", git.MaxHydratorNoteFirstParentWalk)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(mismatch).To(BeNil())
