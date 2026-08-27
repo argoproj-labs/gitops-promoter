@@ -1262,6 +1262,41 @@ var _ = Describe("FindMatchingHydratorNote", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(mismatch).To(BeNil())
 	})
+
+	It("returns a tip git note even when its drySha differs from expectedDrySha", func() {
+		const metadataDry = "0c9ff02a8f23a7bb85e92e0ab395af91c530f18c"
+		const noteDry = "f1b84ed4df293385f9904b6934d14e784762fecd"
+
+		_, err := runGitCmd(workDir, "checkout", "-b", "proposed-next")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"`+metadataDry+`"}`), 0o644)).To(Succeed())
+		_, err = runGitCmd(workDir, "add", "hydrator.metadata")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", "hydrated")
+		Expect(err).NotTo(HaveOccurred())
+		hydratedSha, err := runGitCmd(workDir, "rev-parse", "HEAD")
+		Expect(err).NotTo(HaveOccurred())
+		hydratedSha = strings.TrimSpace(hydratedSha)
+		_, err = runGitCmd(workDir, "notes", "--ref="+git.HydratorNotesRef, "add", "-f", "-m", `{"drySha":"`+noteDry+`"}`, hydratedSha)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "-u", "origin", "proposed-next")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "push", "origin", git.HydratorNotesRef+":"+git.HydratorNotesRef)
+		Expect(err).NotTo(HaveOccurred())
+
+		clonePath := g.ClonePath()
+		_, err = runGitCmd(clonePath, "fetch", "origin", "proposed-next")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(g.FetchNotes(GinkgoT().Context())).To(Succeed())
+		tipSha, err := runGitCmd(clonePath, "rev-parse", "origin/proposed-next")
+		Expect(err).NotTo(HaveOccurred())
+		tipSha = strings.TrimSpace(tipSha)
+
+		note, err := g.FindMatchingHydratorNote(GinkgoT().Context(), tipSha, metadataDry, git.MaxHydratorNoteFirstParentWalk)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(note).NotTo(BeNil())
+		Expect(note.DrySha).To(Equal(noteDry))
+	})
 })
 
 var _ = Describe("gitBin", func() {

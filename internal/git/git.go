@@ -905,15 +905,24 @@ func (g *EnvironmentOperations) GetHydratorNote(ctx context.Context, sha string)
 	return &note, nil
 }
 
-// FindMatchingHydratorNote returns the first hydrator note on startSha or a first-parent ancestor
-// whose DrySha equals expectedDrySha. When expectedDrySha is empty, only a note on startSha itself
-// is considered — walking ancestors without an expected dry SHA could latch a stale note from an
-// earlier promotion.
+// FindMatchingHydratorNote returns the hydrator note for startSha, or — when the tip has
+// no note — the first note on a first-parent ancestor whose DrySha equals expectedDrySha.
+// A note on the branch tip is always preferred, including note-only hydrator updates where
+// hydrator.metadata still references an older dry SHA. The ancestor walk (filtered by
+// expectedDrySha) covers ours-merge tips that advance past the hydrated commit without a note.
 func (g *EnvironmentOperations) FindMatchingHydratorNote(ctx context.Context, startSha, expectedDrySha string, maxAncestors int) (*HydratorMetadata, error) {
+	tipNote, err := g.GetHydratorNote(ctx, startSha)
+	if err != nil {
+		return nil, err
+	}
+	if tipNote != nil {
+		return tipNote, nil
+	}
+
 	// Without a dry SHA from hydrator.metadata we cannot tell which ancestor note belongs to the
 	// current promotion; walking would risk adopting a stale note from an earlier hydrated commit.
 	if expectedDrySha == "" {
-		return g.GetHydratorNote(ctx, startSha)
+		return nil, nil
 	}
 
 	shas, err := g.GetRevListFirstParent(ctx, startSha, maxAncestors)
@@ -923,6 +932,9 @@ func (g *EnvironmentOperations) FindMatchingHydratorNote(ctx context.Context, st
 
 	logger := log.FromContext(ctx)
 	for _, sha := range shas {
+		if sha == startSha {
+			continue
+		}
 		note, err := g.GetHydratorNote(ctx, sha)
 		if err != nil {
 			return nil, err
@@ -930,12 +942,10 @@ func (g *EnvironmentOperations) FindMatchingHydratorNote(ctx context.Context, st
 		if note == nil || note.DrySha != expectedDrySha {
 			continue
 		}
-		if sha != startSha {
-			logger.V(4).Info("Adopted hydrator note from first-parent ancestor",
-				"startSha", startSha,
-				"noteSha", sha,
-				"noteDrySha", note.DrySha)
-		}
+		logger.V(4).Info("Adopted hydrator note from first-parent ancestor",
+			"startSha", startSha,
+			"noteSha", sha,
+			"noteDrySha", note.DrySha)
 		return note, nil
 	}
 
