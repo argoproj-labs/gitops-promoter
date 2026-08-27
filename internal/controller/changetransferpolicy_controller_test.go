@@ -1671,34 +1671,6 @@ var _ = Describe("TemplatePullRequest", func() {
 	})
 })
 
-var _ = Describe("pullRequestTerminalForCTPFinalizerRemoval", func() {
-	DescribeTable("terminal outcomes",
-		func(pr promoterv1alpha1.PullRequest, terminal bool) {
-			Expect(pullRequestTerminalForCTPFinalizerRemoval(&pr)).To(Equal(terminal))
-		},
-		Entry("open",
-			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen}},
-			false,
-		),
-		Entry("empty state",
-			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{}},
-			false,
-		),
-		Entry("merged",
-			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestMerged}},
-			true,
-		),
-		Entry("closed",
-			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestClosed}},
-			true,
-		),
-		Entry("externally merged or closed",
-			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{ExternallyMergedOrClosed: new(true)}},
-			true,
-		),
-	)
-})
-
 var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func() {
 	pred := pullRequestUpdateEnqueuesChangeTransferPolicyPredicate()
 

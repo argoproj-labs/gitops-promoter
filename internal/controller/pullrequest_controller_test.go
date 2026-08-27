@@ -1220,6 +1220,63 @@ var _ = Describe("PullRequest Controller", func() {
 				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
+
+		It("should record the merge sha when the resource is deleted before the external merge is observed", func() {
+			// The deletion reconcile is the first one to run after the external merge, so the merge sha is
+			// only recoverable if deletion finalization asks the SCM before releasing the finalizer.
+			mergedTargetSha := pullRequest.Spec.MergeSha
+
+			// The resource disappears as soon as finalization completes, so sample from a goroutine started
+			// before the delete rather than polling after it.
+			mergedStatusObserved := make(chan promoterv1alpha1.PullRequestStatus, 1)
+			stopPolling := make(chan bool)
+
+			go func() {
+				defer GinkgoRecover()
+				ticker := time.NewTicker(1 * time.Millisecond)
+				defer ticker.Stop()
+				timeout := time.After(constants.EventuallyTimeout)
+				for {
+					select {
+					case <-ticker.C:
+						var currentPR promoterv1alpha1.PullRequest
+						err := k8sClient.Get(ctx, typeNamespacedName, &currentPR)
+						if err == nil && currentPR.Status.State == promoterv1alpha1.PullRequestMerged {
+							mergedStatusObserved <- currentPR.Status
+							return
+						}
+					case <-stopPolling:
+						return
+					case <-timeout:
+						return
+					}
+				}
+			}()
+
+			By("Simulating external merge on the fake SCM without letting the controller observe it")
+			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
+			Expect(fakeProvider.MarkMergedExternally(ctx, *pullRequest, mergedTargetSha)).To(Succeed())
+
+			By("Deleting the PullRequest resource, with no other finalizer holding it")
+			Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, pullRequest)).To(Succeed())
+
+			By("Verifying deletion finalization recorded the merged state and sha before releasing the object")
+			var observedStatus promoterv1alpha1.PullRequestStatus
+			Eventually(mergedStatusObserved, constants.EventuallyTimeout).Should(Receive(&observedStatus),
+				"deletion finalization must learn the terminal SCM outcome before the resource goes away")
+
+			close(stopPolling)
+
+			Expect(observedStatus.MergedTargetSha).To(Equal(mergedTargetSha))
+			Expect(observedStatus.ExternallyMergedOrClosed).To(BeNil())
+
+			By("Verifying the PullRequest is then deleted")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				g.Expect(k8serrors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
 	})
 
 	Context("When deleting a PullRequest that already has an SCM PR but is blocked by another finalizer", func() {
@@ -1481,6 +1538,34 @@ var _ = Describe("pullRequestDeletionFinalizerLengthChangedPredicate", func() {
 		newPR.ResourceVersion = "2"
 		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeFalse())
 	})
+})
+
+var _ = Describe("pullRequestHasTerminalSCMOutcome", func() {
+	DescribeTable("terminal outcomes",
+		func(pr promoterv1alpha1.PullRequest, terminal bool) {
+			Expect(pullRequestHasTerminalSCMOutcome(&pr)).To(Equal(terminal))
+		},
+		Entry("open",
+			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen}},
+			false,
+		),
+		Entry("empty state",
+			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{}},
+			false,
+		),
+		Entry("merged",
+			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestMerged}},
+			true,
+		),
+		Entry("closed",
+			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestClosed}},
+			true,
+		),
+		Entry("externally merged or closed",
+			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{ExternallyMergedOrClosed: new(true)}},
+			true,
+		),
+	)
 })
 
 var _ = Describe("shouldSkipSCMSync", func() {

@@ -166,7 +166,11 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, fmt.Errorf("failed to check for open PR: %w", err)
 	}
 
-	if deleted, err := r.handleFinalizer(ctx, &pr, provider, openResult.Found); err != nil || deleted {
+	if !pr.DeletionTimestamp.IsZero() {
+		return r.reconcileDeletion(ctx, &pr, provider, openResult)
+	}
+
+	if err := r.ensureFinalizer(ctx, &pr); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -648,46 +652,111 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 	}
 }
 
-func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider, found bool) (bool, error) {
+// ensureFinalizer adds the PullRequest finalizer to a PullRequest that is not being deleted, so that
+// every deletion is funneled through reconcileDeletion.
+func (r *PullRequestReconciler) ensureFinalizer(ctx context.Context, pr *promoterv1alpha1.PullRequest) error {
 	finalizer := promoterv1alpha1.PullRequestFinalizer
 
-	if pr.DeletionTimestamp.IsZero() {
-		if controllerutil.ContainsFinalizer(pr, finalizer) {
-			// Not being deleted and already has finalizer, nothing to do.
-			return false, nil
+	if controllerutil.ContainsFinalizer(pr, finalizer) {
+		return nil
+	}
+
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck // RetryOnConflict returns wrapped error
+		if err := r.Get(ctx, client.ObjectKeyFromObject(pr), pr); err != nil {
+			return err //nolint:wrapcheck // error will be wrapped by caller
 		}
+		if controllerutil.AddFinalizer(pr, finalizer) {
+			return r.Update(ctx, pr) //nolint:wrapcheck // RetryOnConflict returns wrapped error
+		}
+		return nil
+	})
+}
 
-		// Finalizer is missing, add it.
-		return false, retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck // RetryOnConflict returns wrapped error
-			if err := r.Get(ctx, client.ObjectKeyFromObject(pr), pr); err != nil {
-				return err //nolint:wrapcheck // error will be wrapped by caller
-			}
-			if controllerutil.AddFinalizer(pr, finalizer) {
-				return r.Update(ctx, pr) //nolint:wrapcheck // RetryOnConflict returns wrapped error
-			}
-			return nil
-		})
-	}
+// reconcileDeletion drives a terminating PullRequest to a terminal SCM outcome before letting the
+// resource go.
+//
+// The finalizer's obligation is that the SCM pull request is not left open, but releasing it as soon as
+// the pull request is absent from the open list loses information: a pull request that vanished from
+// that list may have merged (externally, or through a merge of ours whose status write was lost), and
+// only Get-by-ID reports that plus status.mergedTargetSha. A delete that races an external merge would
+// then take the resource away before the merge commit was ever recorded, and with it the promotion
+// history note the ChangeTransferPolicy finalizer exists to write. So the finalizer is held until
+// status records a terminal outcome, which is either observed from the SCM or produced by closing the
+// pull request ourselves.
+//
+// State transitions, terminal cleanup, and label sync are deliberately unreachable from here: a
+// terminating PullRequest must never be created, merged, or relabeled on the SCM.
+func (r *PullRequestReconciler) reconcileDeletion(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider, openResult scms.FindOpenResult) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	holdsFinalizer := controllerutil.ContainsFinalizer(pr, promoterv1alpha1.PullRequestFinalizer)
 
-	// If we're here, the object is being deleted
-	if !controllerutil.ContainsFinalizer(pr, finalizer) {
-		// Finalizer already removed, nothing to do.
-		return false, nil
-	}
-
-	// If status.ID is empty, it means the PullRequest never took control of any PR on the SCM.
-	// In this case, we can just remove the finalizer without attempting to close the PR.
-	if pr.Status.ID != "" && found {
+	// Still listed as open, so it cannot have merged and there is no terminal outcome left to learn.
+	// Closing it discharges the finalizer's obligation.
+	if openResult.Found && holdsFinalizer {
 		if err := r.closePullRequest(ctx, pr, provider); err != nil {
-			return false, fmt.Errorf("failed to close pull request: %w", err) // Top-level wrap for close errors
+			return ctrl.Result{}, fmt.Errorf("failed to close pull request: %w", err) // Top-level wrap for close errors
 		}
+		return ctrl.Result{}, r.releaseFinalizer(ctx, pr)
 	}
 
-	controllerutil.RemoveFinalizer(pr, finalizer)
-	if err := r.Update(ctx, pr); err != nil {
-		return true, fmt.Errorf("failed to remove finalizer: %w", err)
+	// Ask the SCM what became of it. This is the only source of merged-vs-closed and of
+	// status.mergedTargetSha once the pull request has left the open list.
+	statusChanged, err := r.syncStateFromProvider(ctx, pr, provider, openResult.Found, openResult.ID, openResult.CreationTime)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
-	return true, nil
+	if statusChanged {
+		// Let the deferred status apply land before the finalizer is reconsidered. The owning
+		// ChangeTransferPolicy reads the terminal outcome off this object, so it has to be durable
+		// before the object is allowed to disappear.
+		return ctrl.Result{RequeueAfter: 1 * time.Microsecond}, nil
+	}
+
+	if !holdsFinalizer {
+		// Another finalizer, normally the ChangeTransferPolicy's, is retaining the object. Keeping
+		// status in sync above is all that is left for this controller to do.
+		return ctrl.Result{}, nil
+	}
+
+	if pullRequestHasTerminalSCMOutcome(pr) {
+		return ctrl.Result{}, r.releaseFinalizer(ctx, pr)
+	}
+
+	// The only non-terminal outcome left is Get reporting the pull request still open even though
+	// FindOpen missed it (SCM list lag). Leaving it open is precisely what this finalizer prevents.
+	logger.Info("PullRequest is terminating and still open on the SCM despite not being listed, closing it",
+		"pullRequestID", pr.Status.ID)
+	if err := r.closePullRequest(ctx, pr, provider); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to close pull request: %w", err) // Top-level wrap for close errors
+	}
+	return ctrl.Result{}, r.releaseFinalizer(ctx, pr)
+}
+
+// releaseFinalizer removes the PullRequest finalizer, allowing the resource to be removed once no
+// other finalizer retains it.
+func (r *PullRequestReconciler) releaseFinalizer(ctx context.Context, pr *promoterv1alpha1.PullRequest) error {
+	if !controllerutil.RemoveFinalizer(pr, promoterv1alpha1.PullRequestFinalizer) {
+		return nil
+	}
+	if err := r.Update(ctx, pr); err != nil {
+		return fmt.Errorf("failed to remove finalizer: %w", err)
+	}
+	return nil
+}
+
+// pullRequestHasTerminalSCMOutcome reports whether status records a terminal SCM outcome for the pull
+// request: merged or closed, or gone from the SCM in a way that cannot be told apart (which the
+// PullRequest controller records as externallyMergedOrClosed with an empty state).
+func pullRequestHasTerminalSCMOutcome(pr *promoterv1alpha1.PullRequest) bool {
+	if pr.Status.ExternallyMergedOrClosed != nil && *pr.Status.ExternallyMergedOrClosed {
+		return true
+	}
+	switch pr.Status.State {
+	case promoterv1alpha1.PullRequestMerged, promoterv1alpha1.PullRequestClosed:
+		return true
+	default:
+		return false
+	}
 }
 
 func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {

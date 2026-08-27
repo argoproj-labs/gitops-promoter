@@ -11,7 +11,7 @@ All promoter-defined finalizer strings live in the API package as constants (see
 
 | Finalizer string | Kind(s) | Purpose |
 | ---------------- | ------- | ------- |
-| `pullrequest.promoter.argoproj.io/finalizer` | `PullRequest` | Blocks removal of the `PullRequest` CR until the controller has closed (or otherwise reconciled) the corresponding pull request in the SCM, when a real SCM ID exists. |
+| `pullrequest.promoter.argoproj.io/finalizer` | `PullRequest` | Blocks removal of the `PullRequest` CR until the SCM pull request has reached a terminal outcome, when a real SCM ID exists: either the controller closed it, or the SCM reported it merged/closed (recording `status.mergedTargetSha` for a merge). |
 | `changetransferpolicy.promoter.argoproj.io/pullrequest-finalizer` | `PullRequest` | Ensures the owning `ChangeTransferPolicy` can observe pull request status (for example ID and state) on the CR and record the promotion-history git note for the merge commit before the `PullRequest` is deleted, so promotion state and history stay consistent. |
 | `changetransferpolicy.promoter.argoproj.io/finalizer` | `ChangeTransferPolicy` | On policy deletion, forces a reconcile pass that strips the CTP-owned finalizer from related `PullRequest`s (and related cleanup) before the policy object can finish deleting. |
 | `gitrepository.promoter.argoproj.io/finalizer` | `GitRepository` | Prevents deleting a `GitRepository` while non-deleting `PullRequest`s still reference that repository. |
@@ -63,6 +63,8 @@ Check `status.history[].mergeCommitSnapshotMismatch` on the ChangeTransferPolicy
 
 The merge commit comes from **`PullRequest.status.mergedTargetSha`**, populated by the PullRequest controller from the SCM. When the promoter performs the merge itself and the provider returns the SHA in the merge response (GitHub, GitLab, Bitbucket Cloud), it is recorded immediately. Otherwise — external merges, and providers whose merge response omits the SHA (Gitea, Forgejo, Azure DevOps) — it is recovered by a `Get` by `status.id` once the PR is no longer open. CTP finalization attaches the promotion-history note to that commit.
 
+That `Get` also runs during deletion. Deleting a `PullRequest` with `kubectl` can race an external merge the controller has not observed yet, so deletion finalization asks the SCM by `status.id` and keeps `pullrequest.promoter.argoproj.io/finalizer` until status records a terminal outcome. Without that hold the resource would disappear on the first deletion reconcile with `status.state: open`, and the merge SHA — and therefore the history note — would be lost.
+
 At note write time, the controller compares the proposed dry SHA in the snapshot (`spec.commit.message` trailers) with hydrator metadata **on that merge commit**. When they differ, proposed SHAs in the note are corrected and `mergeCommitSnapshotMismatch` is set.
 
 ### Regular merge vs squash
@@ -97,7 +99,7 @@ git notes --ref=promoter.history show <merge-commit-sha>
 Removing a finalizer **does not run** the controller logic that would have run on a normal delete. Effects depend on which finalizer you strip:
 
 - **`PullRequest` (`pullrequest.promoter.argoproj.io/finalizer`)**  
-  **Risk:** The Kubernetes object is gone while the real pull request may still be **open** in GitHub/GitLab/etc. You lose a single place to drive closure and can strand automation or humans on a live PR.
+  **Risk:** The Kubernetes object is gone while the real pull request may still be **open** in GitHub/GitLab/etc. You lose a single place to drive closure and can strand automation or humans on a live PR. It also skips the SCM lookup that records `status.mergedTargetSha`, so if the pull request had merged, the [promotion-history note](#promotion-history-git-notes) for that merge is lost.
 
 - **`PullRequest` (`changetransferpolicy.promoter.argoproj.io/pullrequest-finalizer`)**  
   **Risk:** The `ChangeTransferPolicy` may never record the final PR identity/state from that object, and the [promotion-history git note](#promotion-history-git-notes) for the merge commit may never be written. Downstream status, history, or “externally closed” handling can be wrong or racy. History is lost when finalization never obtained `mergedTargetSha` (for example the SCM PR record was deleted before `Get` could run).
