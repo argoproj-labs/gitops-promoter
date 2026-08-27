@@ -918,6 +918,8 @@ func (g *EnvironmentOperations) GetHydratorNote(ctx context.Context, sha string)
 // is considered — walking ancestors without an expected dry SHA could latch a stale note from an
 // earlier promotion.
 func (g *EnvironmentOperations) FindMatchingHydratorNote(ctx context.Context, startSha, expectedDrySha string, maxAncestors int) (*HydratorMetadata, error) {
+	// Without a dry SHA from hydrator.metadata we cannot tell which ancestor note belongs to the
+	// current promotion; walking would risk adopting a stale note from an earlier hydrated commit.
 	if expectedDrySha == "" {
 		return g.GetHydratorNote(ctx, startSha)
 	}
