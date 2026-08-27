@@ -651,6 +651,16 @@ func (in WebRequestCommitStatusStatus) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in WebhookFilterSpec) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.WebhookFilterSpec"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in WebhookModeSpec) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.WebhookModeSpec"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in WhenWithOutputSpec) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.WhenWithOutputSpec"
 }

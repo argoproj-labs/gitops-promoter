@@ -90,6 +90,17 @@ func (r *GitRepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *GitRepositoryReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.GitRepository{}, GitRepositoryRepoKeyField, func(rawObj client.Object) []string {
+		//nolint:forcetypeassert // type is guaranteed by the IndexField API
+		gr := rawObj.(*promoterv1alpha1.GitRepository)
+		if key := utils.GitRepositoryRepoKey(gr); key != "" {
+			return []string{key}
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("failed to set field index for %s: %w", GitRepositoryRepoKeyField, err)
+	}
+
 	err := ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.GitRepository{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(
