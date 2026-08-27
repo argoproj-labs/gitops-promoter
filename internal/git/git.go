@@ -110,6 +110,11 @@ type HydratorMetadata = v1alpha1.HydratorMetadata
 // HydratorNotesRef is the git notes reference used by hydrators to store metadata about hydrated commits.
 const HydratorNotesRef = "refs/notes/hydrator.metadata"
 
+// MaxHydratorNoteFirstParentWalk bounds how many first-parent commits are inspected when the
+// proposed branch tip has no hydrator note. Ours-merge conflict resolution adds one commit on
+// top of the hydrated tip; a modest limit covers that without scanning deep history.
+const MaxHydratorNoteFirstParentWalk = 32
+
 // gitBin is resolved once at package init. CommandContext("git", ...) calls LookPath on every
 // invocation; passing the absolute path skips that walk. Missing git is a process configuration
 // error, so we panic instead of failing every later command.
@@ -782,6 +787,15 @@ func (g *EnvironmentOperations) MergeWithOursStrategyForPath(ctx context.Context
 // Read-only: never mutates the clone's index/worktree/HEAD. Requires the branch's commits to have
 // been fetched.
 func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, branch string, maxCount int) ([]string, error) {
+	return g.getRevListFirstParent(ctx, branch, maxCount)
+}
+
+// GetRevListFirstParentFromCommit lists first-parent commits starting at startSha (inclusive).
+func (g *EnvironmentOperations) GetRevListFirstParentFromCommit(ctx context.Context, startSha string, maxCount int) ([]string, error) {
+	return g.getRevListFirstParent(ctx, startSha, maxCount)
+}
+
+func (g *EnvironmentOperations) getRevListFirstParent(ctx context.Context, start string, maxCount int) ([]string, error) {
 	logger := log.FromContext(ctx)
 
 	gitPath := g.ClonePath()
@@ -792,16 +806,19 @@ func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, branc
 	args := make([]string, 0, 4)
 	args = append(args, "rev-list", "--first-parent")
 	args = append(args, "--max-count="+strconv.Itoa(maxCount))
-	args = append(args, branch)
+	args = append(args, start)
 
 	stdout, stderr, err := g.runCmd(ctx, gitPath, args...)
 	if err != nil {
-		logger.Error(err, "could not get rev-list first parent", "gitError", stderr)
-		return nil, fmt.Errorf("failed to get rev-list first parent for branch %q: %w", branch, err)
+		logger.Error(err, "could not get rev-list first parent", "gitError", stderr, "start", start)
+		return nil, fmt.Errorf("failed to get rev-list first parent for %q: %w", start, err)
 	}
 
-	lines := strings.Split(strings.TrimSpace(stdout), "\n")
-	return lines, nil
+	if strings.TrimSpace(stdout) == "" {
+		return nil, nil
+	}
+
+	return strings.Split(strings.TrimSpace(stdout), "\n"), nil
 }
 
 // AddTrailerToCommitMessage adds a trailer to a commit message using git interpret-trailers.
@@ -894,6 +911,41 @@ func (g *EnvironmentOperations) GetHydratorNote(ctx context.Context, sha string)
 
 	logger.V(4).Info("Got hydrator note", "sha", sha, "note", note)
 	return &note, nil
+}
+
+// FindMatchingHydratorNote returns the first hydrator note on startSha or a first-parent ancestor
+// whose DrySha equals expectedDrySha. When expectedDrySha is empty, only a note on startSha itself
+// is considered — walking ancestors without an expected dry SHA could latch a stale note from an
+// earlier promotion.
+func (g *EnvironmentOperations) FindMatchingHydratorNote(ctx context.Context, startSha, expectedDrySha string, maxAncestors int) (*HydratorMetadata, error) {
+	if expectedDrySha == "" {
+		return g.GetHydratorNote(ctx, startSha)
+	}
+
+	shas, err := g.GetRevListFirstParentFromCommit(ctx, startSha, maxAncestors)
+	if err != nil {
+		return nil, err
+	}
+
+	logger := log.FromContext(ctx)
+	for _, sha := range shas {
+		note, err := g.GetHydratorNote(ctx, sha)
+		if err != nil {
+			return nil, err
+		}
+		if note == nil || note.DrySha != expectedDrySha {
+			continue
+		}
+		if sha != startSha {
+			logger.V(4).Info("Adopted hydrator note from first-parent ancestor",
+				"startSha", startSha,
+				"noteSha", sha,
+				"noteDrySha", note.DrySha)
+		}
+		return note, nil
+	}
+
+	return nil, nil
 }
 
 // ParseTrailersFromMessage parses git trailers from a commit message using git interpret-trailers.
