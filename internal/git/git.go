@@ -110,6 +110,11 @@ type HydratorMetadata = v1alpha1.HydratorMetadata
 // HydratorNotesRef is the git notes reference used by hydrators to store metadata about hydrated commits.
 const HydratorNotesRef = "refs/notes/hydrator.metadata"
 
+// MaxHydratorNoteFirstParentWalk bounds how many first-parent commits are inspected when the
+// proposed branch tip has no hydrator note. Ours-merge conflict resolution adds one commit on
+// top of the hydrated tip; a modest limit covers that without scanning deep history.
+const MaxHydratorNoteFirstParentWalk = 32
+
 // gitBin is resolved once at package init. CommandContext("git", ...) calls LookPath on every
 // invocation; passing the absolute path skips that walk. Missing git is a process configuration
 // error, so we panic instead of failing every later command.
@@ -777,11 +782,12 @@ func (g *EnvironmentOperations) MergeWithOursStrategyForPath(ctx context.Context
 	return nil
 }
 
-// GetRevListFirstParent retrieves the first parent commit SHAs for the given branch using git rev-list.
+// GetRevListFirstParent retrieves the first-parent commit SHAs starting at revision using git rev-list.
+// revision may be a branch ref (e.g. origin/main) or a commit SHA.
 //
-// Read-only: never mutates the clone's index/worktree/HEAD. Requires the branch's commits to have
+// Read-only: never mutates the clone's index/worktree/HEAD. Requires the revision's commits to have
 // been fetched.
-func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, branch string, maxCount int) ([]string, error) {
+func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, revision string, maxCount int) ([]string, error) {
 	logger := log.FromContext(ctx)
 
 	gitPath := g.ClonePath()
@@ -792,16 +798,19 @@ func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, branc
 	args := make([]string, 0, 4)
 	args = append(args, "rev-list", "--first-parent")
 	args = append(args, "--max-count="+strconv.Itoa(maxCount))
-	args = append(args, branch)
+	args = append(args, revision)
 
 	stdout, stderr, err := g.runCmd(ctx, gitPath, args...)
 	if err != nil {
-		logger.Error(err, "could not get rev-list first parent", "gitError", stderr)
-		return nil, fmt.Errorf("failed to get rev-list first parent for branch %q: %w", branch, err)
+		logger.Error(err, "could not get rev-list first parent", "gitError", stderr, "revision", revision)
+		return nil, fmt.Errorf("failed to get rev-list first parent for %q: %w", revision, err)
 	}
 
-	lines := strings.Split(strings.TrimSpace(stdout), "\n")
-	return lines, nil
+	if strings.TrimSpace(stdout) == "" {
+		return nil, nil
+	}
+
+	return strings.Split(strings.TrimSpace(stdout), "\n"), nil
 }
 
 // AddTrailerToCommitMessage adds a trailer to a commit message using git interpret-trailers.
@@ -894,6 +903,53 @@ func (g *EnvironmentOperations) GetHydratorNote(ctx context.Context, sha string)
 
 	logger.V(4).Info("Got hydrator note", "sha", sha, "note", note)
 	return &note, nil
+}
+
+// FindMatchingHydratorNote returns the hydrator note for startSha, or — when the tip has
+// no note — the first note on a first-parent ancestor whose DrySha equals expectedDrySha.
+// A note on the branch tip is always preferred, including note-only hydrator updates where
+// hydrator.metadata still references an older dry SHA. The ancestor walk (filtered by
+// expectedDrySha) covers ours-merge tips that advance past the hydrated commit without a note.
+func (g *EnvironmentOperations) FindMatchingHydratorNote(ctx context.Context, startSha, expectedDrySha string, maxAncestors int) (*HydratorMetadata, error) {
+	tipNote, err := g.GetHydratorNote(ctx, startSha)
+	if err != nil {
+		return nil, err
+	}
+	if tipNote != nil {
+		return tipNote, nil
+	}
+
+	// Without a dry SHA from hydrator.metadata we cannot tell which ancestor note belongs to the
+	// current promotion; walking would risk adopting a stale note from an earlier hydrated commit.
+	if expectedDrySha == "" {
+		return nil, nil
+	}
+
+	shas, err := g.GetRevListFirstParent(ctx, startSha, maxAncestors)
+	if err != nil {
+		return nil, err
+	}
+
+	logger := log.FromContext(ctx)
+	for _, sha := range shas {
+		if sha == startSha {
+			continue
+		}
+		note, err := g.GetHydratorNote(ctx, sha)
+		if err != nil {
+			return nil, err
+		}
+		if note == nil || note.DrySha != expectedDrySha {
+			continue
+		}
+		logger.V(4).Info("Adopted hydrator note from first-parent ancestor",
+			"startSha", startSha,
+			"noteSha", sha,
+			"noteDrySha", note.DrySha)
+		return note, nil
+	}
+
+	return nil, nil
 }
 
 // ParseTrailersFromMessage parses git trailers from a commit message using git interpret-trailers.
