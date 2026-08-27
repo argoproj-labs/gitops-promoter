@@ -1056,6 +1056,17 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 		return nil
 	}
 
+	// A terminating PR can still show status.state == open when the PullRequest controller has not reconciled
+	// since an SCM merge or since deletion was requested. Do not release our finalizer until the PR controller
+	// records a terminal outcome; otherwise writePromotionHistoryNote skips and the PR is deleted before we
+	// observe mergedTargetSha or ExternallyMergedOrClosed.
+	if !pullRequestTerminalForCTPFinalizerRemoval(&livePR) {
+		logger.V(4).Info("PR being deleted but PullRequest status is not terminal yet, cannot remove finalizer yet",
+			"prState", livePR.Status.State,
+			"externallyMergedOrClosed", livePR.Status.ExternallyMergedOrClosed)
+		return nil
+	}
+
 	// Write the promotion-history note before releasing the finalizer: the PR's commit message is the last
 	// place the trailers survive when the SCM rewrote the merge commit (squash or external merge), and the
 	// finalizer is what guarantees that data is still around. A failure here keeps the finalizer so the next
@@ -1081,6 +1092,20 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 
 	logger.V(4).Info("PR finalizer removed")
 	return nil
+}
+
+// pullRequestTerminalForCTPFinalizerRemoval reports whether the PullRequest controller has recorded a
+// terminal SCM outcome on the live PullRequest.
+func pullRequestTerminalForCTPFinalizerRemoval(pr *promoterv1alpha1.PullRequest) bool {
+	if pr.Status.ExternallyMergedOrClosed != nil && *pr.Status.ExternallyMergedOrClosed {
+		return true
+	}
+	switch pr.Status.State {
+	case promoterv1alpha1.PullRequestMerged, promoterv1alpha1.PullRequestClosed:
+		return true
+	default:
+		return false
+	}
 }
 
 // writePromotionHistoryNote records the pull request's commit message trailers as a git note on the merge

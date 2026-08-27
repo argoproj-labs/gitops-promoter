@@ -1604,6 +1604,130 @@ var _ = Describe("TemplatePullRequest", func() {
 	})
 })
 
+var _ = Describe("handlePRFinalizerRemoval with non-terminal deleting PullRequest", func() {
+	var name string
+	var scmSecret *v1.Secret
+	var scmProvider *promoterv1alpha1.ScmProvider
+	var gitRepo *promoterv1alpha1.GitRepository
+	var ctp *promoterv1alpha1.ChangeTransferPolicy
+	var prKey types.NamespacedName
+	var reconciler *ChangeTransferPolicyReconciler
+
+	BeforeEach(func() {
+		name, scmSecret, scmProvider, gitRepo, _, ctp = changeTransferPolicyResources(ctx, "ctp-pr-finalizer-race", "default")
+
+		ctp.Spec.ProposedBranch = testBranchDevelopmentNext
+		ctp.Spec.ActiveBranch = testBranchDevelopment
+
+		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+
+		prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch))
+		prKey = types.NamespacedName{Name: prName, Namespace: "default"}
+
+		reconciler = &ChangeTransferPolicyReconciler{
+			Client:      k8sClient,
+			Scheme:      k8sClient.Scheme(),
+			SettingsMgr: settings.NewManager(k8sClient, k8sClient, settings.ManagerConfig{ControllerNamespace: "default"}),
+		}
+	})
+
+	AfterEach(func() {
+		Eventually(func(g Gomega) {
+			var livePR promoterv1alpha1.PullRequest
+			err := k8sClient.Get(ctx, prKey, &livePR)
+			if errors.IsNotFound(err) {
+				return
+			}
+			g.Expect(err).NotTo(HaveOccurred())
+			livePR.Finalizers = nil
+			g.Expect(k8sClient.Update(ctx, &livePR)).To(Succeed())
+			g.Expect(ctrlclient.IgnoreNotFound(k8sClient.Delete(ctx, &livePR))).To(Succeed())
+		}, constants.EventuallyTimeout).Should(Succeed())
+		Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+		Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+		Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+	})
+
+	It("keeps the CTP finalizer while the deleting PullRequest status is still open", func() {
+		setPullRequestRequeueDuration(ctx, time.Hour)
+
+		By("Creating a terminating PullRequest whose status still matches the synced CTP copy")
+		pr := &promoterv1alpha1.PullRequest{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       prKey.Name,
+				Namespace:  prKey.Namespace,
+				Finalizers: []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
+				Labels: map[string]string{
+					promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
+					promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
+					promoterv1alpha1.EnvironmentLabel:            utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
+				},
+			},
+			Spec: promoterv1alpha1.PullRequestSpec{
+				RepositoryReference: promoterv1alpha1.ObjectReference{Name: name},
+				Title:               "race test",
+				TargetBranch:        ctp.Spec.ActiveBranch,
+				SourceBranch:        ctp.Spec.ProposedBranch,
+				MergeSha:            strings.Repeat("a", 40),
+				State:               promoterv1alpha1.PullRequestOpen,
+			},
+		}
+		Expect(k8sClient.Create(ctx, pr)).To(Succeed())
+
+		var livePR promoterv1alpha1.PullRequest
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, prKey, &livePR)).To(Succeed())
+			livePR.Status.ID = "42"
+			livePR.Status.State = promoterv1alpha1.PullRequestOpen
+			g.Expect(k8sClient.Status().Update(ctx, &livePR)).To(Succeed())
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		Expect(k8sClient.Get(ctx, prKey, &livePR)).To(Succeed())
+		Expect(k8sClient.Delete(ctx, &livePR)).To(Succeed())
+		Expect(k8sClient.Get(ctx, prKey, &livePR)).To(Succeed())
+
+		ctp.Status.PullRequest = &promoterv1alpha1.PullRequestCommonStatus{
+			ID:    livePR.Status.ID,
+			State: livePR.Status.State,
+		}
+
+		By("Calling handlePRFinalizerRemoval while spec and status are still open")
+		Expect(reconciler.handlePRFinalizerRemoval(ctx, ctp, nil)).To(Succeed())
+		Expect(k8sClient.Get(ctx, prKey, &livePR)).To(Succeed())
+		Expect(livePR.Finalizers).To(ContainElement(promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer))
+	})
+})
+
+var _ = Describe("pullRequestTerminalForCTPFinalizerRemoval", func() {
+	DescribeTable("terminal outcomes",
+		func(pr promoterv1alpha1.PullRequest, terminal bool) {
+			Expect(pullRequestTerminalForCTPFinalizerRemoval(&pr)).To(Equal(terminal))
+		},
+		Entry("open",
+			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen}},
+			false,
+		),
+		Entry("empty state",
+			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{}},
+			false,
+		),
+		Entry("merged",
+			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestMerged}},
+			true,
+		),
+		Entry("closed",
+			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestClosed}},
+			true,
+		),
+		Entry("externally merged or closed",
+			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{ExternallyMergedOrClosed: new(true)}},
+			true,
+		),
+	)
+})
+
 var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func() {
 	pred := pullRequestUpdateEnqueuesChangeTransferPolicyPredicate()
 
