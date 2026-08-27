@@ -1662,7 +1662,7 @@ var _ = Describe("handlePRFinalizerRemoval with non-terminal deleting PullReques
 				Labels: map[string]string{
 					promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
 					promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
-					promoterv1alpha1.EnvironmentLabel:            utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
+					promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
 				},
 			},
 			Spec: promoterv1alpha1.PullRequestSpec{
