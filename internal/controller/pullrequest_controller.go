@@ -696,7 +696,8 @@ func (r *PullRequestReconciler) reconcileDeletion(ctx context.Context, pr *promo
 		if err := r.closePullRequest(ctx, pr, provider); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to close pull request: %w", err) // Top-level wrap for close errors
 		}
-		return ctrl.Result{}, r.releaseFinalizer(ctx, pr)
+		// Let the deferred status apply land before the finalizer is reconsidered.
+		return ctrl.Result{RequeueAfter: 1 * time.Microsecond}, nil
 	}
 
 	// Ask the SCM what became of it. This is the only source of merged-vs-closed and of
@@ -729,7 +730,8 @@ func (r *PullRequestReconciler) reconcileDeletion(ctx context.Context, pr *promo
 	if err := r.closePullRequest(ctx, pr, provider); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to close pull request: %w", err) // Top-level wrap for close errors
 	}
-	return ctrl.Result{}, r.releaseFinalizer(ctx, pr)
+	// Let the deferred status apply land before the finalizer is reconsidered.
+	return ctrl.Result{RequeueAfter: 1 * time.Microsecond}, nil
 }
 
 // releaseFinalizer removes the PullRequest finalizer, allowing the resource to be removed once no

@@ -1345,11 +1345,46 @@ var _ = Describe("PullRequest Controller", func() {
 		It("should close the SCM PR, set status closed when status syncs, and not spam FindOpen while terminating", func() {
 			fake.ResetFindOpenCallCount()
 
+			// Status must be persisted as closed before the promoter finalizer is released so the
+			// owning ChangeTransferPolicy can read the terminal outcome while the object still exists.
+			closedStatusObserved := make(chan promoterv1alpha1.PullRequestStatus, 1)
+			stopPolling := make(chan bool)
+			go func() {
+				defer GinkgoRecover()
+				ticker := time.NewTicker(1 * time.Millisecond)
+				defer ticker.Stop()
+				timeout := time.After(constants.EventuallyTimeout)
+				for {
+					select {
+					case <-ticker.C:
+						var currentPR promoterv1alpha1.PullRequest
+						err := k8sClient.Get(ctx, typeNamespacedName, &currentPR)
+						if err == nil &&
+							currentPR.Status.State == promoterv1alpha1.PullRequestClosed &&
+							controllerutil.ContainsFinalizer(&currentPR, promoterv1alpha1.PullRequestFinalizer) {
+							closedStatusObserved <- currentPR.Status
+							return
+						}
+					case <-stopPolling:
+						return
+					case <-timeout:
+						return
+					}
+				}
+			}()
+
 			By("Deleting the PullRequest (object remains until the blocking finalizer is cleared)")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, pullRequest)).To(Succeed())
 
 			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
+
+			By("Waiting for closed status to be persisted while the promoter finalizer is still held")
+			var observedStatus promoterv1alpha1.PullRequestStatus
+			Eventually(closedStatusObserved, constants.EventuallyTimeout).Should(Receive(&observedStatus),
+				"closed status should be persisted before the promoter finalizer is released")
+			close(stopPolling)
+			Expect(observedStatus.ExternallyMergedOrClosed).To(BeNil())
 
 			By("Waiting for the promoter's finalizer to run (SCM close + remove promoter finalizer)")
 			Eventually(func(g Gomega) {
