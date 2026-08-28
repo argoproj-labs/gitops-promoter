@@ -967,33 +967,32 @@ var _ = Describe("PullRequest Controller", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
-		It("should recover and delete the PR when spec.state=merged but the PR is already gone from the provider", func() {
-			By("Removing the PR from the fake provider to simulate it was already merged on the SCM (e.g. merge happened but status update was lost)")
-			// This mimics the scenario in production where:
-			// 1. The controller successfully called provider.Merge()
-			// 2. status.state was set to "merged" in memory
-			// 3. The deferred status update failed with a conflict error
-			// 4. On the next reconcile, status.state is still "open" in etcd but the PR is gone from provider
-			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
-			Expect(fakeProvider.DeletePullRequest(ctx, *pullRequest)).To(Succeed())
+		It("should recover mergedTargetSha via Get-by-ID before deleting when the merge response omitted it", func() {
+			mergedTargetSha := pullRequest.Spec.MergeSha
 
-			By("Setting spec.state to merged (as the CTP controller would have done)")
+			By("Marking the PR merged on the fake SCM without going through the merge API (async providers omit CommitSHA from Merge)")
+			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
+			Expect(fakeProvider.MarkMergedExternally(ctx, *pullRequest, mergedTargetSha)).To(Succeed())
+
+			By("Setting spec.state to merged while status still reflects the pre-sync open state")
 			Eventually(func(g Gomega) {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 				pullRequest.Spec.State = promoterv1alpha1.PullRequestMerged
 				g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Verifying the PullRequest is cleaned up (not stuck in an error loop trying to re-merge)")
-			// With the fix: syncStateFromProvider detects that the PR is gone and spec.state==merged
-			// but status.state!=merged — it sets status.state=merged and requeues. The deferred status
-			// update persists this, and the following reconcile's cleanupTerminalStates deletes the PR.
-			// Without the fix: handleStateTransitions would call provider.Merge() and get
-			// "pull request not found", leaving the PR stuck and never cleaned up.
+			triggerPRReconcile(ctx, typeNamespacedName, pullRequest)
+
+			By("Verifying Get-by-ID records mergedTargetSha before the PullRequest is deleted")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestMerged))
+				g.Expect(pullRequest.Status.MergedTargetSha).To(Equal(mergedTargetSha))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
-				g.Expect(err).To(HaveOccurred())
-				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
+				g.Expect(k8serrors.IsNotFound(err)).To(BeTrue())
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
@@ -1618,6 +1617,33 @@ var _ = Describe("pullRequestDeletionFinalizerLengthChangedPredicate", func() {
 	})
 })
 
+var _ = Describe("pullRequestAwaitingMergedTargetSha", func() {
+	DescribeTable("awaiting merged target sha",
+		func(pr promoterv1alpha1.PullRequest, awaiting bool) {
+			Expect(pullRequestAwaitingMergedTargetSha(&pr)).To(Equal(awaiting))
+		},
+		Entry("merged with sha",
+			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestMerged, ID: "1", MergedTargetSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
+			false,
+		),
+		Entry("merged without sha but with id",
+			promoterv1alpha1.PullRequest{
+				Spec:   promoterv1alpha1.PullRequestSpec{State: promoterv1alpha1.PullRequestMerged},
+				Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestMerged, ID: "42"},
+			},
+			true,
+		),
+		Entry("merged without sha or id",
+			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestMerged}},
+			false,
+		),
+		Entry("open",
+			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"}},
+			false,
+		),
+	)
+})
+
 var _ = Describe("pullRequestHasTerminalSCMOutcome", func() {
 	DescribeTable("terminal outcomes",
 		func(pr promoterv1alpha1.PullRequest, terminal bool) {
@@ -1632,6 +1658,14 @@ var _ = Describe("pullRequestHasTerminalSCMOutcome", func() {
 			false,
 		),
 		Entry("merged",
+			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestMerged, ID: "1", MergedTargetSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
+			true,
+		),
+		Entry("merged without mergedTargetSha",
+			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestMerged, ID: "1"}},
+			false,
+		),
+		Entry("merged without mergedTargetSha or id",
 			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestMerged}},
 			true,
 		),

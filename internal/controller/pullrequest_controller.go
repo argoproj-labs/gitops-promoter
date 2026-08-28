@@ -264,7 +264,7 @@ func (r *PullRequestReconciler) cleanupTerminalStates(ctx context.Context, pr *p
 		return false, nil
 	}
 
-	if pr.Status.State == promoterv1alpha1.PullRequestMerged && pr.Status.MergedTargetSha == "" && pr.Spec.State == promoterv1alpha1.PullRequestOpen {
+	if pullRequestAwaitingMergedTargetSha(pr) {
 		logger.V(4).Info("merged pull request missing mergedTargetSha, waiting for SCM lookup", "pullRequestID", pr.Status.ID)
 		return false, nil
 	}
@@ -809,12 +809,25 @@ func (r *PullRequestReconciler) releaseFinalizer(ctx context.Context, pr *promot
 	return nil
 }
 
+// pullRequestAwaitingMergedTargetSha reports whether status.state is merged but mergedTargetSha is
+// still empty while status.id is set. Async SCM providers omit the merge commit SHA from the merge
+// response; Get-by-ID must populate it before the PullRequest can finish. The ChangeTransferPolicy
+// finalizer needs that SHA to write the promotion history note.
+func pullRequestAwaitingMergedTargetSha(pr *promoterv1alpha1.PullRequest) bool {
+	return pr.Status.State == promoterv1alpha1.PullRequestMerged &&
+		pr.Status.MergedTargetSha == "" &&
+		pr.Status.ID != ""
+}
+
 // pullRequestHasTerminalSCMOutcome reports whether status records a terminal SCM outcome for the pull
 // request: merged or closed, or gone from the SCM in a way that cannot be told apart (which the
 // PullRequest controller records as externallyMergedOrClosed with an empty state).
 func pullRequestHasTerminalSCMOutcome(pr *promoterv1alpha1.PullRequest) bool {
 	if pr.Status.ExternallyMergedOrClosed != nil && *pr.Status.ExternallyMergedOrClosed {
 		return true
+	}
+	if pullRequestAwaitingMergedTargetSha(pr) {
+		return false
 	}
 	switch pr.Status.State {
 	case promoterv1alpha1.PullRequestMerged, promoterv1alpha1.PullRequestClosed:
