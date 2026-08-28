@@ -970,6 +970,35 @@ var _ = Describe("PullRequest Controller", func() {
 		It("should recover mergedTargetSha via Get-by-ID before deleting when the merge response omitted it", func() {
 			mergedTargetSha := pullRequest.Spec.MergeSha
 
+			// Get-by-ID persists mergedTargetSha and the NEXT reconcile deletes the object, so the
+			// sha is only observable in a narrow window. Poll from a goroutine started before the
+			// SCM mutation, the same way the other merged-status-before-delete specs do. A post-hoc
+			// Eventually Get races the delete and times out (the object is already gone).
+			mergedStatusObserved := make(chan promoterv1alpha1.PullRequestStatus, 1)
+			stopPolling := make(chan bool)
+
+			go func() {
+				defer GinkgoRecover()
+				ticker := time.NewTicker(1 * time.Millisecond)
+				defer ticker.Stop()
+				timeout := time.After(constants.EventuallyTimeout)
+				for {
+					select {
+					case <-ticker.C:
+						var currentPR promoterv1alpha1.PullRequest
+						err := k8sClient.Get(ctx, typeNamespacedName, &currentPR)
+						if err == nil && currentPR.Status.State == promoterv1alpha1.PullRequestMerged {
+							mergedStatusObserved <- currentPR.Status
+							return
+						}
+					case <-stopPolling:
+						return
+					case <-timeout:
+						return
+					}
+				}
+			}()
+
 			By("Marking the PR merged on the fake SCM without going through the merge API (async providers omit CommitSHA from Merge)")
 			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
 			Expect(fakeProvider.MarkMergedExternally(ctx, *pullRequest, mergedTargetSha)).To(Succeed())
@@ -981,14 +1010,14 @@ var _ = Describe("PullRequest Controller", func() {
 				g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			triggerPRReconcile(ctx, typeNamespacedName, pullRequest)
-
 			By("Verifying Get-by-ID records mergedTargetSha before the PullRequest is deleted")
-			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
-				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestMerged))
-				g.Expect(pullRequest.Status.MergedTargetSha).To(Equal(mergedTargetSha))
-			}, constants.EventuallyTimeout).Should(Succeed())
+			var observedStatus promoterv1alpha1.PullRequestStatus
+			Eventually(mergedStatusObserved, constants.EventuallyTimeout).Should(Receive(&observedStatus),
+				"Should have observed merged status with recovered mergedTargetSha before deletion")
+
+			close(stopPolling)
+
+			Expect(observedStatus.MergedTargetSha).To(Equal(mergedTargetSha))
 
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
