@@ -91,6 +91,36 @@
       semanticCommitType: 'chore',
       semanticCommitScope: 'deps',
       automerge: false,
+      // k8s.io OpenAPI/types flow into committed view codegen and CRDs. Without this,
+      // a platform bump leaves zz_generated.openapi.go referencing removed types
+      // (e.g. core/v1.PodStatusResult in 0.37) and Check Codegen fails.
+      postUpgradeTasks: {
+        commands: [
+          'make build-installer',
+          'make generate-apiserver',
+          'make generate-ui-types',
+        ],
+        installTools: {
+          golang: {},
+          node: {},
+        },
+        fileFilters: [
+          '**/*.go',
+          'go.mod',
+          'go.sum',
+          'config/**',
+          'test/**',
+          'applyconfiguration/**',
+          'dist/**',
+          'hack/celcost/report.md',
+          'hack/celcost/go.mod',
+          'hack/celcost/go.sum',
+          'ui/extension/iconStyles.generated.ts',
+          'api/view/**',
+          'ui/shared/src/types/generated/**',
+        ],
+        executionMode: 'branch',
+      },
     },
     {
       description: 'Group the envtest Makefile/e2e versions into the Kubernetes platform bump',
@@ -106,6 +136,33 @@
       semanticCommitType: 'chore',
       semanticCommitScope: 'deps',
       automerge: false,
+      postUpgradeTasks: {
+        commands: [
+          'make build-installer',
+          'make generate-apiserver',
+          'make generate-ui-types',
+        ],
+        installTools: {
+          golang: {},
+          node: {},
+        },
+        fileFilters: [
+          '**/*.go',
+          'go.mod',
+          'go.sum',
+          'config/**',
+          'test/**',
+          'applyconfiguration/**',
+          'dist/**',
+          'hack/celcost/report.md',
+          'hack/celcost/go.mod',
+          'hack/celcost/go.sum',
+          'ui/extension/iconStyles.generated.ts',
+          'api/view/**',
+          'ui/shared/src/types/generated/**',
+        ],
+        executionMode: 'branch',
+      },
     },
     // ----------------------------------------------------------------------
     // Group A2: GitHub API client (go-github major paths + ghinstallation)
