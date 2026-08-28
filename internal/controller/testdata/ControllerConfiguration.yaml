@@ -57,12 +57,12 @@ spec:
         {{- $head := "" -}}
         {{- $activeSubject := "" -}}
         {{- $proposedSubject := "" -}}
-        {{- with index .ChangeTransferPolicy.Status.Active.Dry.References 0 }}{{- with .Commit -}}
+        {{- with .ChangeTransferPolicy.Status.Active.Dry.References }}{{- with index . 0 }}{{- with .Commit -}}
         {{- $base = .Sha -}}{{- $activeSubject = .Subject -}}{{- if .RepoURL -}}{{- $repo = .RepoURL -}}{{- end -}}
-        {{- end -}}{{- end -}}
-        {{- with index .ChangeTransferPolicy.Status.Proposed.Dry.References 0 }}{{- with .Commit -}}
+        {{- end -}}{{- end -}}{{- end -}}
+        {{- with .ChangeTransferPolicy.Status.Proposed.Dry.References }}{{- with index . 0 }}{{- with .Commit -}}
         {{- $head = .Sha -}}{{- $proposedSubject = .Subject -}}{{- if and (not $repo) .RepoURL -}}{{- $repo = .RepoURL -}}{{- end -}}
-        {{- end -}}{{- end -}}
+        {{- end -}}{{- end -}}{{- end -}}
         {{- if or $base $head }}
 
         ### Code reference
@@ -77,10 +77,12 @@ spec:
         {{- end }}
         {{- end }}
 
-        {{- if .PromotionStrategy.Status.Environments }}
+        {{- with .PromotionStrategy }}
+        {{- if .Status.Environments }}
         ### Promotion pipeline
-        {{- range .PromotionStrategy.Status.Environments }}
-        - `{{ .Branch }}`{{ if eq .Branch $.ChangeTransferPolicy.Spec.ActiveBranch }} **(this PR)**{{ end }}{{ if .PullRequest.Url }} — [PR #{{ .PullRequest.ID }}]({{ .PullRequest.Url }}){{ end }}
+        {{- range .Status.Environments }}
+        - `{{ .Branch }}`{{ if eq .Branch $.ChangeTransferPolicy.Spec.ActiveBranch }} **(this PR)**{{ end }}{{ with .PullRequest }}{{ if .Url }} — [PR #{{ .ID }}]({{ .Url }}){{ end }}{{ end }}
+        {{- end }}
         {{- end }}
         {{- end }}
     workQueue:

@@ -63,12 +63,12 @@ spec:
         {{- $head := "" -}}
         {{- $activeSubject := "" -}}
         {{- $proposedSubject := "" -}}
-        {{- with index .ChangeTransferPolicy.Status.Active.Dry.References 0 }}{{- with .Commit -}}
+        {{- with .ChangeTransferPolicy.Status.Active.Dry.References }}{{- with index . 0 }}{{- with .Commit -}}
         {{- $base = .Sha -}}{{- $activeSubject = .Subject -}}{{- if .RepoURL -}}{{- $repo = .RepoURL -}}{{- end -}}
-        {{- end -}}{{- end -}}
-        {{- with index .ChangeTransferPolicy.Status.Proposed.Dry.References 0 }}{{- with .Commit -}}
+        {{- end -}}{{- end -}}{{- end -}}
+        {{- with .ChangeTransferPolicy.Status.Proposed.Dry.References }}{{- with index . 0 }}{{- with .Commit -}}
         {{- $head = .Sha -}}{{- $proposedSubject = .Subject -}}{{- if and (not $repo) .RepoURL -}}{{- $repo = .RepoURL -}}{{- end -}}
-        {{- end -}}{{- end -}}
+        {{- end -}}{{- end -}}{{- end -}}
         {{- if or $base $head }}
 
         ### Code reference
@@ -83,14 +83,16 @@ spec:
         {{- end }}
         {{- end }}
 
-        {{- if .PromotionStrategy.Status.Environments }}
+        {{- with .PromotionStrategy }}
+        {{- if .Status.Environments }}
 
         ### Promotion pipeline
 
         | Environment | Active dry | Proposed dry | PR |
         |---|---|---|---|
-        {{- range .PromotionStrategy.Status.Environments }}
-        | `{{ .Branch }}`{{ if eq .Branch $.ChangeTransferPolicy.Spec.ActiveBranch }} **(this PR)**{{ end }} | {{ trunc 7 .Active.Dry.Sha }} | {{ trunc 7 .Proposed.Dry.Sha }} | {{ if .PullRequest.Url }}[#{{ .PullRequest.ID }}]({{ .PullRequest.Url }}){{ else }}—{{ end }} |
+        {{- range .Status.Environments }}
+        | `{{ .Branch }}`{{ if eq .Branch $.ChangeTransferPolicy.Spec.ActiveBranch }} **(this PR)**{{ end }} | {{ trunc 7 .Active.Dry.Sha }} | {{ trunc 7 .Proposed.Dry.Sha }} | {{ with .PullRequest }}{{ if .Url }}[#{{ .ID }}]({{ .Url }}){{ else }}—{{ end }}{{ else }}—{{ end }} |
+        {{- end }}
         {{- end }}
         {{- end }}
   commitStatus:
