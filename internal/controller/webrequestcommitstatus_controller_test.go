@@ -4826,6 +4826,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Stale Cache Guard", Ordere
 })
 
 var _ = Describe("WebRequestCommitStatus Controller - Webhook repo fan-out", func() {
+	const testWebhookSecretValue = "envtest-webhook-secret"
+
 	var (
 		ctx               context.Context
 		name              string
@@ -4845,6 +4847,10 @@ var _ = Describe("WebRequestCommitStatus Controller - Webhook repo fan-out", fun
 
 		By("Setting up PromotionStrategy resources")
 		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "wrcs-webhook-fanout", "default")
+		scmSecret.Data = map[string][]byte{
+			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret: []byte(testWebhookSecretValue),
+		}
+		scmProvider.Spec.InboundWebhookVerification = promoterv1alpha1.InboundWebhookVerificationRequireVerification
 		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 			{Key: "webhook-fanout"},
 		}
@@ -4954,9 +4960,9 @@ var _ = Describe("WebRequestCommitStatus Controller - Webhook repo fan-out", fun
 			return false
 		}, constants.EventuallyTimeout, time.Second).Should(BeTrue(), "HTTP request count should stabilize after initial reconciles")
 
-		By("Sending a non-push webhook matching the GitRepository Fake owner/name")
+		By("Sending a signed non-push webhook matching the GitRepository Fake owner/name")
 		Expect(gitRepo.Spec.Fake).NotTo(BeNil())
-		sendWebhookForRepoEvent(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+		sendWebhookForRepoEvent(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, []byte(testWebhookSecretValue))
 
 		By("Asserting the webhook drove a new HTTP request")
 		Eventually(func(g Gomega) {

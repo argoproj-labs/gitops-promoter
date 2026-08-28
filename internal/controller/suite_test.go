@@ -19,6 +19,9 @@ package controller
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -891,7 +894,9 @@ func sendWebhookForPush(ctx context.Context, sha, branch string) {
 
 // sendWebhookForRepoEvent sends a non-push GitHub webhook (e.g. PR label) carrying
 // repository identity so the WRCS repo fan-out path can be exercised without a before SHA.
-func sendWebhookForRepoEvent(ctx context.Context, owner, name string) {
+// When webhookSecret is non-empty, attaches a GitHub-style X-Hub-Signature-256 HMAC of the
+// raw body so RequireVerification ScmProviders accept the delivery.
+func sendWebhookForRepoEvent(ctx context.Context, owner, name string, webhookSecret []byte) {
 	payload := map[string]any{
 		"action": "labeled",
 		"repository": map[string]any{
@@ -911,6 +916,9 @@ func sendWebhookForRepoEvent(ctx context.Context, owner, name string) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Github-Event", "pull_request")
 	req.Header.Set("X-Github-Delivery", fmt.Sprintf("test-repo-event-%d", time.Now().UnixNano()))
+	if len(webhookSecret) > 0 {
+		req.Header.Set("X-Hub-Signature-256", githubWebhookHMAC(webhookSecret, payloadBytes))
+	}
 
 	httpClient := &http.Client{Timeout: 5 * time.Second}
 	resp, err := httpClient.Do(req)
@@ -919,6 +927,12 @@ func sendWebhookForRepoEvent(ctx context.Context, owner, name string) {
 		Expect(resp.Body.Close()).To(Succeed())
 	}()
 	Expect(resp.StatusCode).To(Equal(http.StatusNoContent))
+}
+
+func githubWebhookHMAC(secret, body []byte) string {
+	mac := hmac.New(sha256.New, secret)
+	_, _ = mac.Write(body)
+	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
 }
 
 // cloneTestRepo clones the test repo for gitRepo.Spec.Fake and configures git user. Returns the temp directory path.
