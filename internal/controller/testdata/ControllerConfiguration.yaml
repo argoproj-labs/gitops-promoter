@@ -50,7 +50,7 @@ spec:
         | | Active (deployed) | Proposed |
         |---|---|---|
         | SHA | {{ with .ChangeTransferPolicy.Status.Active.Dry }}{{ if and .RepoURL .Sha }}[{{ trunc 7 .Sha }}]({{ trimSuffix "/" .RepoURL }}/commit/{{ .Sha }}){{ else }}{{ trunc 7 .Sha }}{{ end }}{{ end }} | {{ with .ChangeTransferPolicy.Status.Proposed.Dry }}{{ if and .RepoURL .Sha }}[{{ trunc 7 .Sha }}]({{ trimSuffix "/" .RepoURL }}/commit/{{ .Sha }}){{ else }}{{ trunc 7 .Sha }}{{ end }}{{ end }} |
-        | Subject | {{ .ChangeTransferPolicy.Status.Active.Dry.Subject }} | {{ .ChangeTransferPolicy.Status.Proposed.Dry.Subject }} |
+        | Subject | {{ replace "|" "\\|" .ChangeTransferPolicy.Status.Active.Dry.Subject }} | {{ replace "|" "\\|" .ChangeTransferPolicy.Status.Proposed.Dry.Subject }} |
 
         {{- $repo := "" -}}
         {{- $base := "" -}}
