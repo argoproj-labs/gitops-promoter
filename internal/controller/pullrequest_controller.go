@@ -668,6 +668,33 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 	}
 }
 
+// Finalization strategy for PullRequest, which the functions below implement.
+//
+// The finalizer guarantees that the SCM pull request is not left open and that whatever terminal
+// outcome it reached is recorded in status before the resource is allowed to disappear. Every
+// reconcile of a terminating PullRequest resolves to one of two answers:
+//
+//   - Status records a terminal SCM outcome (merged, closed, or gone from the SCM in a way that
+//     cannot be told apart; see pullRequestHasTerminalSCMOutcome). Release the finalizer and return.
+//   - It does not. Take the one step that can produce a terminal outcome, which is either closing the
+//     pull request on the SCM or asking the SCM what became of it, keep the finalizer, and requeue.
+//
+// Non-terminal branches requeue rather than falling through because status has to be durable, not
+// merely computed, before release: the owning ChangeTransferPolicy copies the terminal outcome
+// (status.mergedTargetSha in particular) off this object to write its promotion history, and holds
+// its own finalizer until it has. Status is applied by the deferred handler at the end of the
+// reconcile, so the requeue is what gives that write a chance to land before the finalizer is
+// reconsidered.
+//
+// Two terminating cases never reach reconcileDeletion, both short circuited in Reconcile before the
+// provider is built because neither needs SCM calls: a PullRequest that never created a pull request
+// (empty status.id, handleEmptyIDDeletion), and one this controller no longer holds a finalizer on,
+// which means it already released it or never adopted the object.
+//
+// Deletion this controller initiates itself does not pass through reconcileDeletion at all.
+// cleanupTerminalStates releases the finalizer and deletes the object in one step, which is safe
+// precisely because it only runs once status is already terminal.
+
 // ensureFinalizer adds the PullRequest finalizer to a PullRequest that is not being deleted, so that
 // every deletion is funneled through reconcileDeletion.
 func (r *PullRequestReconciler) ensureFinalizer(ctx context.Context, pr *promoterv1alpha1.PullRequest) error {
