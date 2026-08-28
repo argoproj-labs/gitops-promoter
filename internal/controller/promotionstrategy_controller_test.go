@@ -270,7 +270,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(ctpDev.Status.Proposed.Hydrated.Body).To(ContainSubstring(""))
 
 					g.Expect(ctpDev.Status.Active.Hydrated.Subject).To(ContainSubstring("Promote"))
-					g.Expect(ctpDev.Status.Active.Hydrated.Body).To(ContainSubstring("This PR is promoting the environment"))
+					g.Expect(ctpDev.Status.Active.Hydrated.Body).To(ContainSubstring("This PR promotes changes to"))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Checking that the pull request for the development, staging, and production environments are closed")
@@ -2621,7 +2621,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Author).To(Equal("GitOps Promoter"))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Subject).To(ContainSubstring("Promote"))
-					g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Body).To(ContainSubstring("This PR is promoting the environment branch"))
+					g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Body).To(ContainSubstring("This PR promotes changes to"))
 
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.References).To(HaveLen(1))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.References[0].Commit.Subject).To(Equal("This is a fix for an upstream issue"))
@@ -3640,7 +3640,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Author).To(Equal("GitOps Promoter"))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Subject).To(ContainSubstring("Promote"))
-					g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Body).To(ContainSubstring("This PR is promoting the environment branch"))
+					g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Body).To(ContainSubstring("This PR promotes changes to"))
 
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.References).To(HaveLen(1))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.References[0].Commit.Subject).To(Equal("This is a fix for an upstream issue"))
@@ -3653,7 +3653,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Body).To(Equal(""))
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Author).To(Equal("GitOps Promoter"))
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Subject).To(ContainSubstring("Promote"))
-					g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Body).To(ContainSubstring("This PR is promoting the environment branch"))
+					g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Body).To(ContainSubstring("This PR promotes changes to"))
 
 					g.Expect(promotionStrategy.Status.Environments[0].PullRequest).ToNot(BeNil(), "PromotionStrategy should preserve PR status")
 					g.Expect(promotionStrategy.Status.Environments[0].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be merged")
