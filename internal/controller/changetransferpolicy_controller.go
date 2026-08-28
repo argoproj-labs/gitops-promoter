@@ -830,8 +830,11 @@ func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, 
 
 	// Read the git note for the proposed hydrated commit to get the Note.DrySha.
 	// This is used by downstream environments to verify that hydration is complete
-	// for a given dry commit before allowing promotion.
-	proposedNote, err := gitOperations.GetHydratorNote(ctx, proposedHydratedSha)
+	// for a given dry commit before allowing promotion. When conflict-resolution
+	// ours-merge advances the branch tip past the hydrated commit (no note on the
+	// merge commit), walk first-parent ancestors for a note whose drySha matches
+	// hydrator.metadata on the tip.
+	proposedNote, err := gitOperations.FindMatchingHydratorNote(ctx, proposedHydratedSha, ctp.Status.Proposed.Dry.Sha, git.MaxHydratorNoteFirstParentWalk)
 	if err != nil {
 		return fmt.Errorf("failed to get hydrator note for proposed hydrated SHA %q: %w", proposedHydratedSha, err)
 	}
