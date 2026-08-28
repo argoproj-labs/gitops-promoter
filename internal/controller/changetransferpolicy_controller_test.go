@@ -1272,8 +1272,12 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 				_, err = runGitCmd(ctx, gitPath, "commit", "-m", "proposed hydrated commit")
 				Expect(err).NotTo(HaveOccurred())
+				hydratedSha, err := runGitCmd(ctx, gitPath, "rev-parse", "HEAD")
+				Expect(err).NotTo(HaveOccurred())
 				_, err = runGitCmd(ctx, gitPath, "push", "origin", testBranchDevelopmentNext)
 				Expect(err).NotTo(HaveOccurred())
+				By("Attaching a hydrator git note to the proposed hydrated commit (ours-merge will leave the tip without a note)")
+				Expect(pushGitNote(ctx, gitPath, strings.TrimSpace(hydratedSha), proposedDrySha)).To(Succeed())
 
 				By("Resetting the fake SCM's merge-sha-mismatch counter")
 				fake.ResetMergeShaMismatchCount()
@@ -1287,6 +1291,10 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(err).To(Succeed())
 					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).To(Equal(proposedDrySha),
 						"active branch should be promoted to the proposed dry SHA after auto-resolved conflict")
+					g.Expect(changeTransferPolicy.Status.Proposed.Note).NotTo(BeNil(),
+						"Proposed.Note must be populated after ours-merge adopts the hydrator note from the first-parent hydrated commit")
+					g.Expect(changeTransferPolicy.Status.Proposed.Note.DrySha).To(Equal(proposedDrySha),
+						"Proposed.Note.DrySha must match hydrator.metadata even when the proposed branch tip is an ours-merge commit with no note of its own")
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Asserting the SCM was never asked to merge with a stale mergeSha")
