@@ -185,11 +185,12 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Sync state from provider before terminal cleanup so Get-by-ID can populate mergedTargetSha.
-	needsImmediateRequeue, err := r.syncStateFromProvider(ctx, &pr, provider, openResult.Found, openResult.ID, openResult.CreationTime)
+	statusMutated, err := r.syncStateFromProvider(ctx, &pr, provider, openResult.Found, openResult.ID, openResult.CreationTime)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	if needsImmediateRequeue {
+	if statusMutated {
+		// Let the deferred status apply land before anything acts on the new terminal outcome.
 		return ctrl.Result{RequeueAfter: 1 * time.Microsecond}, nil
 	}
 
@@ -292,10 +293,17 @@ func (r *PullRequestReconciler) cleanupTerminalStates(ctx context.Context, pr *p
 	return true, nil
 }
 
-// syncStateFromProvider syncs the PullRequest state from the SCM provider.
-// Returns (needsImmediateRequeue=true, nil) when an in-memory status change was made that must be
-// persisted before the next reconcile can proceed (e.g. ExternallyMergedOrClosed set, or terminal
-// state recovered after a lost status update). Returns (false, nil) if no requeue is needed.
+// syncStateFromProvider syncs the PullRequest status from the SCM provider.
+//
+// Returns statusMutated=true when it wrote a status field that feeds
+// pullRequestHasTerminalSCMOutcome: state, mergedTargetSha, or externallyMergedOrClosed. Callers
+// must requeue on true instead of acting on what they just computed, because status is persisted
+// only by the deferred apply at the end of the reconcile, and reconcileDeletion releases the
+// finalizer on a terminal outcome, which must never rest on a write that has not landed.
+//
+// id, url and prCreationTime are refreshed without being reported. They cannot change terminality,
+// and reporting them would requeue on every pass, since the persisted prCreationTime is
+// second-precision and the provider's is not.
 func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider, found bool, prID string, prCreationTime time.Time) (bool, error) {
 	logger := log.FromContext(ctx)
 
@@ -303,13 +311,18 @@ func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *p
 
 	// Calculate the state of the PR based on the provider, if found we have to be open
 	if found {
+		statusMutated := false
 		// A previously recorded ExternallyMergedOrClosed is now contradicted: the pull request is
 		// listed as open. Leaving it set would let terminal-outcome checks treat an open pull request
 		// as finished, so clear it here just as the Get-by-ID path does when it reports open.
 		if pr.Status.ExternallyMergedOrClosed != nil && *pr.Status.ExternallyMergedOrClosed {
 			pr.Status.ExternallyMergedOrClosed = new(false)
+			statusMutated = true
 		}
-		pr.Status.State = promoterv1alpha1.PullRequestOpen
+		if pr.Status.State != promoterv1alpha1.PullRequestOpen {
+			pr.Status.State = promoterv1alpha1.PullRequestOpen
+			statusMutated = true
+		}
 		pr.Status.ID = prID
 		pr.Status.PRCreationTime = metav1.NewTime(prCreationTime)
 		url, err := provider.GetUrl(ctx, *pr)
@@ -317,7 +330,7 @@ func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *p
 			return false, fmt.Errorf("failed to get pull request URL: %w", err)
 		}
 		pr.Status.Url = url
-		return false, nil
+		return statusMutated, nil
 	}
 
 	if pr.Status.ID == "" {
@@ -364,7 +377,9 @@ func (r *PullRequestReconciler) getPullRequestByID(ctx context.Context, pr *prom
 	return &details, nil
 }
 
-func (r *PullRequestReconciler) applyGetPullRequestDetails(ctx context.Context, pr *promoterv1alpha1.PullRequest, details scms.GetPullRequestResult) (requeue bool) {
+// applyGetPullRequestDetails records the state Get-by-ID reported, and reports whether it wrote a
+// terminality-relevant status field. See syncStateFromProvider for that contract.
+func (r *PullRequestReconciler) applyGetPullRequestDetails(ctx context.Context, pr *promoterv1alpha1.PullRequest, details scms.GetPullRequestResult) (statusMutated bool) {
 	logger := log.FromContext(ctx)
 
 	switch details.State {
@@ -390,15 +405,20 @@ func (r *PullRequestReconciler) applyGetPullRequestDetails(ctx context.Context, 
 		logger.V(4).Info("Get returned unrecognized pull request state, treating as still open", "state", details.State, "pullRequestID", pr.Status.ID)
 	}
 
-	// Get reports the pull request as still open, so correct the status FindOpen led us to. No immediate
-	// requeue is needed: the PR is open, so the rest of the reconcile (terminal cleanup, state
-	// transitions, label sync) is safe to run against the corrected status in this same pass, and the
-	// deferred status apply persists it at the end.
+	// Get reports the pull request as still open, so correct the status FindOpen led us to. Both writes
+	// move status away from terminal rather than towards it, so they cannot cause a premature finalizer
+	// release on their own, but they are still reported: the caller's contract is about what was
+	// written, not about which way it happens to point today.
+	statusMutated = false
 	if pr.Status.ExternallyMergedOrClosed != nil && *pr.Status.ExternallyMergedOrClosed {
 		pr.Status.ExternallyMergedOrClosed = new(false)
+		statusMutated = true
 	}
-	pr.Status.State = promoterv1alpha1.PullRequestOpen
-	return false
+	if pr.Status.State != promoterv1alpha1.PullRequestOpen {
+		pr.Status.State = promoterv1alpha1.PullRequestOpen
+		statusMutated = true
+	}
+	return statusMutated
 }
 
 // setMergedTargetSha records the SCM-reported merged target SHA, and reports whether it wrote anything.
@@ -421,6 +441,8 @@ func (r *PullRequestReconciler) setMergedTargetSha(ctx context.Context, pr *prom
 	return true
 }
 
+// syncExternallyMergedOrClosedWhenDesiredOpen reports whether it wrote a terminality-relevant status
+// field. See syncStateFromProvider for that contract.
 func (r *PullRequestReconciler) syncExternallyMergedOrClosedWhenDesiredOpen(pr *promoterv1alpha1.PullRequest) (bool, error) {
 	if pr.Status.State == promoterv1alpha1.PullRequestClosed || pr.Status.State == promoterv1alpha1.PullRequestMerged {
 		return false, nil
@@ -674,10 +696,12 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 // outcome it reached is recorded in status before the resource is allowed to disappear. Every
 // reconcile of a terminating PullRequest resolves to one of two answers:
 //
-//   - Status records a terminal SCM outcome (merged, closed, or gone from the SCM in a way that
-//     cannot be told apart; see pullRequestHasTerminalSCMOutcome). Release the finalizer and return.
-//   - It does not. Take the one step that can produce a terminal outcome, which is either closing the
-//     pull request on the SCM or asking the SCM what became of it, keep the finalizer, and requeue.
+//   - Status already records a terminal SCM outcome (merged, closed, or gone from the SCM in a way
+//     that cannot be told apart; see pullRequestHasTerminalSCMOutcome). Release the finalizer and
+//     return.
+//   - Status does not yet record one. Take the single step that can produce it: close the pull
+//     request on the SCM if it is still open, otherwise ask the SCM what became of it. Then keep the
+//     finalizer and requeue, so the next reconcile can re-evaluate against the recorded status.
 //
 // Non-terminal branches requeue rather than falling through because status has to be durable, not
 // merely computed, before release: the owning ChangeTransferPolicy copies the terminal outcome
@@ -747,11 +771,11 @@ func (r *PullRequestReconciler) reconcileDeletion(ctx context.Context, pr *promo
 
 	// Ask the SCM what became of it. This is the only source of merged-vs-closed and of
 	// status.mergedTargetSha once the pull request has left the open list.
-	statusChanged, err := r.syncStateFromProvider(ctx, pr, provider, openResult.Found, openResult.ID, openResult.CreationTime)
+	statusMutated, err := r.syncStateFromProvider(ctx, pr, provider, openResult.Found, openResult.ID, openResult.CreationTime)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	if statusChanged {
+	if statusMutated {
 		// Let the deferred status apply land before the finalizer is reconsidered. The owning
 		// ChangeTransferPolicy reads the terminal outcome off this object, so it has to be durable
 		// before the object is allowed to disappear.
