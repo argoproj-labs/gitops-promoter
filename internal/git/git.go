@@ -72,6 +72,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path"
@@ -79,8 +80,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/relvacode/iso8601"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -96,11 +95,10 @@ import (
 // identities use distinct clones and are independent (see the package documentation for details,
 // including the remote-operation caveat).
 type EnvironmentOperations struct {
-	gap     scms.GitOperationsProvider
-	gitRepo *v1alpha1.GitRepository
-	// identity is an opaque, caller-supplied identifier that, together with the repo URL, forms the clone key (see
-	// cloneKey). Distinct identities get distinct on-disk clones, which isolates concurrent callers that share a
-	// repository.
+	gap      scms.GitOperationsProvider
+	gitRepo  *v1alpha1.GitRepository
+	blobs    map[string]blobObject
+	commits  map[string]commitObject
 	identity string
 }
 
@@ -329,20 +327,23 @@ func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch, activ
 func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha, activePath string) (v1alpha1.CommitShaState, error) {
 	logger := log.FromContext(ctx)
 
-	gitPath := g.ClonePath()
-	if gitPath == "" {
+	if g.ClonePath() == "" {
 		return v1alpha1.CommitShaState{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
-	metadataFileStdout, stderr, err := g.runCmd(ctx, gitPath, "show", sha+":"+buildHydratorMetadataPath(activePath))
+	ref := sha + ":" + buildHydratorMetadataPath(activePath)
+	obj, err := g.getBlob(ctx, ref)
 	if err != nil {
-		logger.V(4).Info("could not git show file", "sha", sha, "gitError", stderr, "err", err)
+		return v1alpha1.CommitShaState{}, err
+	}
+	if obj.Missing {
+		logger.V(4).Info("could not git cat-file blob", "sha", sha, "ref", ref)
 		return v1alpha1.CommitShaState{}, nil
 	}
-	logger.V(4).Info("Got metadata file", "sha", sha, "file", metadataFileStdout)
+	logger.V(4).Info("Got metadata file", "sha", sha, "file", string(obj.Data))
 
 	var hydratorFile HydratorMetadata
-	err = json.Unmarshal([]byte(metadataFileStdout), &hydratorFile)
+	err = json.Unmarshal(obj.Data, &hydratorFile)
 	if err != nil {
 		return v1alpha1.CommitShaState{}, fmt.Errorf("could not unmarshal metadata file: %w", err)
 	}
@@ -371,119 +372,15 @@ func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha,
 // Read-only: never mutates the clone's index/worktree/HEAD. Requires the SHA's commit object to have
 // been fetched.
 func (g *EnvironmentOperations) GetShaMetadataFromGit(ctx context.Context, sha string) (v1alpha1.CommitShaState, error) {
-	gitPath := g.ClonePath()
-	if gitPath == "" {
+	if g.ClonePath() == "" {
 		return v1alpha1.CommitShaState{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
-	commitTime, err := g.GetShaTime(ctx, sha)
+	commit, err := g.getCommit(ctx, sha)
 	if err != nil {
-		return v1alpha1.CommitShaState{}, fmt.Errorf("failed to get commit time for hydrated SHA %q: %w", sha, err)
+		return v1alpha1.CommitShaState{}, fmt.Errorf("failed to get commit metadata for hydrated SHA %q: %w", sha, err)
 	}
-
-	commitAuthor, err := g.GetShaAuthor(ctx, sha)
-	if err != nil {
-		return v1alpha1.CommitShaState{}, fmt.Errorf("failed to get commit author for hydrated SHA %q: %w", sha, err)
-	}
-
-	commitSubject, err := g.GetShaSubject(ctx, sha)
-	if err != nil {
-		return v1alpha1.CommitShaState{}, fmt.Errorf("failed to get commit subject for hydrated SHA %q: %w", sha, err)
-	}
-
-	commitBody, err := g.GetShaBody(ctx, sha)
-	if err != nil {
-		return v1alpha1.CommitShaState{}, fmt.Errorf("failed to get commit body for hydrated SHA %q: %w", sha, err)
-	}
-
-	commitState := v1alpha1.CommitShaState{
-		Sha:        sha,
-		CommitTime: commitTime,
-		Author:     commitAuthor,
-		Subject:    commitSubject,
-		Body:       commitBody,
-	}
-
-	return commitState, nil
-}
-
-// GetShaBody retrieves the body of a commit given its SHA.
-func (g *EnvironmentOperations) GetShaBody(ctx context.Context, sha string) (string, error) {
-	logger := log.FromContext(ctx)
-
-	gitPath := g.ClonePath()
-	if gitPath == "" {
-		return "", fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
-	}
-
-	stdout, stderr, err := g.runCmd(ctx, gitPath, "show", "-s", "--format=%b", sha)
-	if err != nil {
-		logger.Error(err, "could not git show", "gitError", stderr)
-		return "", fmt.Errorf("failed to get commit body for sha %q: %w", sha, err)
-	}
-	logger.V(4).Info("Got sha body", "sha", sha, "body", stdout)
-
-	return strings.TrimSpace(stdout), nil
-}
-
-// GetShaAuthor retrieves the author of a commit given its SHA.
-func (g *EnvironmentOperations) GetShaAuthor(ctx context.Context, sha string) (string, error) {
-	logger := log.FromContext(ctx)
-	gitPath := g.ClonePath()
-	if gitPath == "" {
-		return "", fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
-	}
-
-	stdout, stderr, err := g.runCmd(ctx, gitPath, "show", "-s", "--format=%an", sha)
-	if err != nil {
-		logger.Error(err, "could not git show", "gitError", stderr)
-		return "", fmt.Errorf("failed to get author for sha %q: %w", sha, err)
-	}
-	logger.V(4).Info("Got sha author", "sha", sha, "author", stdout)
-
-	return strings.TrimSpace(stdout), nil
-}
-
-// GetShaSubject retrieves the subject of a commit given its SHA.
-func (g *EnvironmentOperations) GetShaSubject(ctx context.Context, sha string) (string, error) {
-	logger := log.FromContext(ctx)
-	gitPath := g.ClonePath()
-	if gitPath == "" {
-		return "", fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
-	}
-
-	stdout, stderr, err := g.runCmd(ctx, gitPath, "show", "-s", "--format=%s", sha)
-	if err != nil {
-		logger.Error(err, "could not git show", "gitError", stderr)
-		return "", fmt.Errorf("failed to get commit subject for sha %q: %w", sha, err)
-	}
-	logger.V(4).Info("Got sha subject", "sha", sha, "subject", stdout)
-
-	return strings.TrimSpace(stdout), nil
-}
-
-// GetShaTime retrieves the commit time of a commit given its SHA.
-func (g *EnvironmentOperations) GetShaTime(ctx context.Context, sha string) (v1.Time, error) {
-	logger := log.FromContext(ctx)
-	gitPath := g.ClonePath()
-	if gitPath == "" {
-		return v1.Time{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
-	}
-
-	stdout, stderr, err := g.runCmd(ctx, gitPath, "show", "-s", "--format=%cI", sha)
-	if err != nil {
-		logger.Error(err, "could not git show", "gitError", stderr)
-		return v1.Time{}, err
-	}
-	logger.V(4).Info("Got sha time", "sha", sha, "time", stdout)
-
-	trimmedStdout := strings.TrimSpace(stdout)
-	cTime, err := iso8601.ParseString(trimmedStdout)
-	if err != nil {
-		return v1.Time{}, fmt.Errorf("failed to parse time %q: %w", trimmedStdout, err)
-	}
-
-	return v1.Time{Time: cTime}, nil
+	return commit.State, nil
 }
 
 // LsRemote returns a map of branch names to SHAs for the given branches using git ls-remote.
@@ -592,6 +489,13 @@ func gitChildEnv(user, token string, extraEnv []string) []string {
 // runCmdWithEnv runs a git command, appending extraEnv to the standard auth environment, and
 // returns stdout, stderr, and error.
 func runCmdWithEnv(ctx context.Context, gap scms.GitOperationsProvider, directory string, extraEnv []string, args ...string) (string, string, error) {
+	return runCmdWithEnvAndStdin(ctx, gap, directory, extraEnv, nil, args...)
+}
+
+// runCmdWithEnvAndStdin is the single place git subprocesses are run. It is like runCmdWithEnv but
+// feeds the command stdin, which the batched readers (cat-file --batch, log --stdin) use to pass
+// their request list. A nil stdin means the command reads from /dev/null.
+func runCmdWithEnvAndStdin(ctx context.Context, gap scms.GitOperationsProvider, directory string, extraEnv []string, stdin io.Reader, args ...string) (string, string, error) {
 	user, err := gap.GetUser(ctx)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to get user: %w", err)
@@ -608,6 +512,7 @@ func runCmdWithEnv(ctx context.Context, gap scms.GitOperationsProvider, director
 	var stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
+	cmd.Stdin = stdin
 	cmd.Dir = directory
 
 	if err = cmd.Start(); err != nil {
@@ -1003,22 +908,14 @@ func ParseTrailersFromMessage(ctx context.Context, commitMessage string) (map[st
 // Read-only: never mutates the clone's index/worktree/HEAD. Requires the SHA's commit object to have
 // been fetched.
 func (g *EnvironmentOperations) GetTrailers(ctx context.Context, sha string) (map[string][]string, error) {
-	logger := log.FromContext(ctx)
-	// run git interpret-trailers to get the trailers from the last commit
-	gitPath := g.ClonePath()
-	if gitPath == "" {
+	if g.ClonePath() == "" {
 		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
-	// First get the commit message
-	msgStdout, stderr, err := g.runCmd(ctx, gitPath, "log", "-1", "--format=%B", sha)
+	trailers, err := g.getTrailers(ctx, sha)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get commit message for sha %q: %w", sha, err)
 	}
-	if stderr != "" {
-		logger.V(4).Info("git log returned an error", "stderr", stderr)
-	}
 
-	// Use the standalone parser
-	return ParseTrailersFromMessage(ctx, msgStdout)
+	return trailers, nil
 }

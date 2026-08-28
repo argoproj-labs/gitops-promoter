@@ -2076,6 +2076,50 @@ var _ = Describe("commit status description trailers", func() {
 		Expect(decodeTrailerDescription(ctx, "not-json")).To(Equal(""))
 	})
 
+	DescribeTable("shouldSkipHistoryRecalculation",
+		func(prev, cur promoterv1alpha1.ChangeTransferPolicyStatus, expected bool) {
+			Expect(shouldSkipHistoryRecalculation(&prev, &cur)).To(Equal(expected))
+		},
+		Entry("skips when active tip unchanged and history exists",
+			promoterv1alpha1.ChangeTransferPolicyStatus{
+				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
+				History: []promoterv1alpha1.History{
+					{Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}}},
+				},
+			},
+			promoterv1alpha1.ChangeTransferPolicyStatus{
+				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
+			},
+			true,
+		),
+		Entry("recalculates when active tip changes",
+			promoterv1alpha1.ChangeTransferPolicyStatus{
+				Active:  promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
+				History: []promoterv1alpha1.History{{}},
+			},
+			promoterv1alpha1.ChangeTransferPolicyStatus{
+				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "def"}},
+			},
+			false,
+		),
+		Entry("recalculates when history has never been populated",
+			promoterv1alpha1.ChangeTransferPolicyStatus{
+				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
+			},
+			promoterv1alpha1.ChangeTransferPolicyStatus{
+				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
+			},
+			false,
+		),
+		Entry("recalculates when active tip is not yet known",
+			promoterv1alpha1.ChangeTransferPolicyStatus{
+				History: []promoterv1alpha1.History{{}},
+			},
+			promoterv1alpha1.ChangeTransferPolicyStatus{},
+			false,
+		),
+	)
+
 	It("extracts commit status keys from phase, url, and description trailers", func() {
 		trailers := map[string][]string{
 			constants.TrailerCommitStatusActivePrefix + "argocd-health-phase":            {"success"},

@@ -223,8 +223,12 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 		utils.InheritNotReadyConditionFromObjects(&ctp, promoterConditions.PullRequestNotReady, pr)
 	}
 
-	// calculateHistory is done at a best effort so we do not return any errors here, we just log them instead.
-	r.calculateHistory(ctx, &ctp, gitOperations)
+	if shouldSkipHistoryRecalculation(prevStatus, &ctp.Status) {
+		logger.V(4).Info("skipping history recalculation, active branch tip unchanged")
+	} else {
+		// calculateHistory is done at a best effort so we do not return any errors here, we just log them instead.
+		r.calculateHistory(ctx, &ctp, gitOperations)
+	}
 
 	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.ChangeTransferPolicyConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
@@ -234,6 +238,23 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	return ctrl.Result{
 		RequeueAfter: requeueDuration,
 	}, nil
+}
+
+// shouldSkipHistoryRecalculation reports whether persisted history remains valid for the current
+// reconcile. History is derived from the top of the active branch; when the active hydrated tip is
+// unchanged, the rev-list window and trailer content on those commits are immutable in git.
+//
+// An empty persisted history is never skipped so a prior best-effort failure can be retried. A
+// Spec.ActivePath change without a new active tip is not detected here; history is refreshed on the
+// next promotion that moves the active branch.
+func shouldSkipHistoryRecalculation(prev, cur *promoterv1alpha1.ChangeTransferPolicyStatus) bool {
+	if cur.Active.Hydrated.Sha == "" {
+		return false
+	}
+	if cur.Active.Hydrated.Sha != prev.Active.Hydrated.Sha {
+		return false
+	}
+	return len(prev.History) > 0
 }
 
 // calculateHistory calculates the history by getting the first parents on the active branch and using the trailers to reconstruct the history.
@@ -248,6 +269,29 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 		return
 	}
 	logger.V(4).Info("Rev-list history for active branch", "shaList", shaListActive)
+
+	if err := gitOperations.LoadCommitAndMetadataBlobs(ctx, ctp.Spec.ActivePath, shaListActive...); err != nil {
+		logger.V(4).Info("failed to prefetch history commit objects", "err", err)
+		return
+	}
+
+	var proposedHistoryShas []string
+	for _, sha := range shaListActive {
+		trailers, err := gitOperations.GetTrailers(ctx, sha)
+		if err != nil {
+			logger.V(4).Info("failed to get trailers while prefetching proposed history commits", "sha", sha, "err", err)
+			continue
+		}
+		if proposedSha := getFirstTrailerValue(trailers, constants.TrailerShaHydratedProposed); proposedSha != "" {
+			proposedHistoryShas = append(proposedHistoryShas, proposedSha)
+		}
+	}
+	if len(proposedHistoryShas) > 0 {
+		if err := gitOperations.LoadCommits(ctx, proposedHistoryShas...); err != nil {
+			logger.V(4).Info("failed to prefetch proposed history commit objects", "err", err)
+			return
+		}
+	}
 
 	history := make([]promoterv1alpha1.History, 0, len(shaListActive))
 	for _, sha := range shaListActive {
@@ -625,6 +669,10 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 		ctp.Spec.ActiveBranch:   activeShas,
 		ctp.Spec.ProposedBranch: proposedShas,
 	})
+
+	if err := gitOperations.LoadCommitAndMetadataBlobs(ctx, ctp.Spec.ActivePath, activeShas.Hydrated, proposedShas.Hydrated); err != nil {
+		return fmt.Errorf("failed to prefetch commit metadata objects: %w", err)
+	}
 
 	err = r.setCommitMetadata(ctx, ctp, gitOperations, activeShas.Hydrated, proposedShas.Hydrated)
 	if err != nil {
