@@ -1163,6 +1163,33 @@ var _ = Describe("PullRequest Controller", func() {
 			}, "5s", "500ms").Should(Succeed())
 		})
 
+		It("should clear a stale ExternallyMergedOrClosed and keep the PullRequest when FindOpen still lists it open", func() {
+			By("Recording ExternallyMergedOrClosed while the PR is in fact still open on the SCM")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				pullRequest.Status.ExternallyMergedOrClosed = new(true)
+				pullRequest.Status.State = ""
+				g.Expect(k8sClient.Status().Update(ctx, pullRequest)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Triggering reconciliation by updating the PR spec")
+			triggerPRReconcile(ctx, typeNamespacedName, pullRequest)
+
+			By("Verifying the flag is retracted and the PullRequest is not cleaned up as terminal")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				if pullRequest.Status.ExternallyMergedOrClosed != nil {
+					g.Expect(*pullRequest.Status.ExternallyMergedOrClosed).To(BeFalse())
+				}
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Consistently(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.DeletionTimestamp.IsZero()).To(BeTrue())
+			}, "3s", "250ms").Should(Succeed())
+		})
+
 		It("should set state merged and mergedTargetSha when externally merged on provider", func() {
 			mergedTargetSha := pullRequest.Spec.MergeSha
 
@@ -1424,6 +1451,22 @@ var _ = Describe("PullRequest Controller", func() {
 				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestClosed))
 				g.Expect(pullRequest.Status.ExternallyMergedOrClosed).To(BeNil())
 			}, constants.EventuallyTimeout).Should(Succeed())
+
+			// Once the promoter finalizer is released this controller is done with the object, even
+			// though the blocking finalizer keeps it around and reconciles keep arriving.
+			By("Verifying a spec change on the terminating object no longer reaches the SCM")
+			afterRelease := fake.FindOpenCallCount()
+			Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+			base := pullRequest.DeepCopy()
+			pullRequest.Spec.Title = pullRequest.Spec.Title + "-bumped"
+			Expect(k8sClient.Patch(ctx, pullRequest, client.MergeFrom(base))).To(Succeed())
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.Spec.Title).To(HaveSuffix("-bumped"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+			Consistently(func(g Gomega) {
+				g.Expect(fake.FindOpenCallCount()).To(Equal(afterRelease))
+			}, 2*time.Second, 50*time.Millisecond).Should(Succeed())
 		})
 	})
 

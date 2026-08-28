@@ -122,6 +122,16 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	// A terminating PullRequest this controller holds no finalizer on is one it is already done with:
+	// it either never adopted the object or released the finalizer after recording a terminal SCM
+	// outcome. Whatever still retains the object, normally the ChangeTransferPolicy's finalizer,
+	// belongs to another controller, so there is no SCM work left and no reason to spend calls
+	// discovering that.
+	if !pr.DeletionTimestamp.IsZero() && !controllerutil.ContainsFinalizer(&pr, promoterv1alpha1.PullRequestFinalizer) {
+		logger.V(4).Info("PullRequest is terminating and no longer holds the promoter finalizer, nothing left to do")
+		return ctrl.Result{}, nil
+	}
+
 	// This short-circuit avoids FindOpen (and other) SCM calls for a very narrow kind of reconcile:
 	// where the PR is marked open, the resource isn't being deleted, the spec has changed, and the
 	// _only_ changes to the spec do not require an Update to the SCM PR (title/description) or
@@ -293,6 +303,12 @@ func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *p
 
 	// Calculate the state of the PR based on the provider, if found we have to be open
 	if found {
+		// A previously recorded ExternallyMergedOrClosed is now contradicted: the pull request is
+		// listed as open. Leaving it set would let terminal-outcome checks treat an open pull request
+		// as finished, so clear it here just as the Get-by-ID path does when it reports open.
+		if pr.Status.ExternallyMergedOrClosed != nil && *pr.Status.ExternallyMergedOrClosed {
+			pr.Status.ExternallyMergedOrClosed = new(false)
+		}
 		pr.Status.State = promoterv1alpha1.PullRequestOpen
 		pr.Status.ID = prID
 		pr.Status.PRCreationTime = metav1.NewTime(prCreationTime)
@@ -686,13 +702,15 @@ func (r *PullRequestReconciler) ensureFinalizer(ctx context.Context, pr *promote
 //
 // State transitions, terminal cleanup, and label sync are deliberately unreachable from here: a
 // terminating PullRequest must never be created, merged, or relabeled on the SCM.
+//
+// The caller guarantees the finalizer is still held; a terminating PullRequest without it is short
+// circuited in Reconcile.
 func (r *PullRequestReconciler) reconcileDeletion(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider, openResult scms.FindOpenResult) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	holdsFinalizer := controllerutil.ContainsFinalizer(pr, promoterv1alpha1.PullRequestFinalizer)
 
 	// Still listed as open, so it cannot have merged and there is no terminal outcome left to learn.
 	// Closing it discharges the finalizer's obligation.
-	if openResult.Found && holdsFinalizer {
+	if openResult.Found {
 		if err := r.closePullRequest(ctx, pr, provider); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to close pull request: %w", err) // Top-level wrap for close errors
 		}
@@ -711,12 +729,6 @@ func (r *PullRequestReconciler) reconcileDeletion(ctx context.Context, pr *promo
 		// ChangeTransferPolicy reads the terminal outcome off this object, so it has to be durable
 		// before the object is allowed to disappear.
 		return ctrl.Result{RequeueAfter: 1 * time.Microsecond}, nil
-	}
-
-	if !holdsFinalizer {
-		// Another finalizer, normally the ChangeTransferPolicy's, is retaining the object. Keeping
-		// status in sync above is all that is left for this controller to do.
-		return ctrl.Result{}, nil
 	}
 
 	if pullRequestHasTerminalSCMOutcome(pr) {
