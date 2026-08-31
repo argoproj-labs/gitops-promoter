@@ -988,7 +988,6 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 	ctp.Status.PullRequest.PRCreationTime = pr.Items[0].Status.PRCreationTime
 	ctp.Status.PullRequest.Url = pr.Items[0].Status.Url
 	ctp.Status.PullRequest.MergedTargetSha = pr.Items[0].Status.MergedTargetSha
-	ctp.Status.PullRequest.ExternallyMergedOrClosed = pr.Items[0].Status.ExternallyMergedOrClosed
 
 	// If PR is being deleted and has our finalizer, we need to ensure the CTP status is persisted.
 	// The status will be persisted by the defer in Reconcile, and then on the next reconcile
@@ -1860,25 +1859,10 @@ func pullRequestUpdateEnqueuesChangeTransferPolicyPredicate() predicate.Predicat
 			if oldPR.Status.State != newPR.Status.State {
 				return true
 			}
-			if !boolPtrEqual(oldPR.Status.ExternallyMergedOrClosed, newPR.Status.ExternallyMergedOrClosed) {
-				return true
-			}
 			if oldPR.Status.ID == "" && newPR.Status.ID != "" {
 				return true
 			}
 			return false
 		},
 	}
-}
-
-// boolPtrEqual compares two *bool pointers for equality.
-// Returns true if both are nil, or if both are non-nil and point to equal values.
-func boolPtrEqual(a, b *bool) bool {
-	if a == nil && b == nil {
-		return true
-	}
-	if a == nil || b == nil {
-		return false
-	}
-	return *a == *b
 }

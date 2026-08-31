@@ -167,65 +167,65 @@ func (r *PullRequestReconciler) GetEnqueueFunc() PREnqueueFunc {
 //
 // Pseudocode:
 //
-//	Note that in all error cases that don't directly map to some explicitly handled state, it's implied that we'll just
-//	return the error and follow standard retry behavior.
+//		Note that in all error cases that don't directly map to some explicitly handled state, it's implied that we'll just
+//		return the error and follow standard retry behavior.
 //
-//	if the CR is Terminating:
-//	  if Released (promoter finalizer absent):
-//	    Return.
+//		if the CR is Terminating:
+//		  if Released (promoter finalizer absent):
+//		    Return.
 //
-//	  if CR is Finalized:
-//	    Release finalizer and return.
+//		  if CR is Finalized:
+//		    Release finalizer and return.
 //
-//	  Call Get.
+//		  Call Get.
 //
-//	  if the PR is not found:
-//	    Set status.state to 'unknown' and return.
-//	  if the PR is closed:
-//	    Set status.state to 'closed' and return.
-//	  if the PR is open:
-//	    Call Close, set status.state to 'closed', and return.
-//	  if the PR is merged:
-//	    Set status.state to 'merged'.
-//	    if mergedTargetSha is not available:
-//	      Return an error.
-//	    Return.
+//		  if the PR is not found:
+//		    Set status.state to 'unknown' and return.
+//		  if the PR is closed:
+//		    Set status.state to 'closed' and return.
+//		  if the PR is open:
+//		    Call Close, set status.state to 'closed', and return.
+//		  if the PR is merged:
+//		    Set status.state to 'merged'.
+//		    if mergedTargetSha is not available:
+//		      Return an error.
+//		    Return.
 //
-//	if the CR status is Terminal:
-//	  Delete the CR and return.
+//		if the CR status is Terminal:
+//		  Delete the CR and return.
 //
-//	Ensure the promoter finalizer is present (metadata-only Update).
+//		Ensure the promoter finalizer is present (metadata-only Update).
 //
-//	if SCM sync should be skipped (work avoidance short-circuit):
-//	  Return.
+//		if SCM sync should be skipped (work avoidance short-circuit):
+//		  Return.
 //
-//  Note: if status.id is not empty, and spec.state is 'merged', we could do an optimistic Merge attempt here. 
-//  Any failure would just be ignored. This would save one FindOpen on the happy path (Promoter merges the PR). 
-//  That's left for a future enhancement.
+//	 Note: if status.id is not empty, and spec.state is 'merged', we could do an optimistic Merge attempt here.
+//	 Any failure would just be ignored. This would save one FindOpen on the happy path (Promoter merges the PR).
+//	 That's left for a future enhancement.
 //
-//	Call FindOpen.
+//		Call FindOpen.
 //
-//	if the open PR is not found in the SCM:
-//	  if status.id is empty:
-//	    Call the SCM to Create the PR, then set status.id to the new ID, status.state to 'open', and return.
+//		if the open PR is not found in the SCM:
+//		  if status.id is empty:
+//		    Call the SCM to Create the PR, then set status.id to the new ID, status.state to 'open', and return.
 //
-//	  Emit PullRequestExternallyMergedOrClosed, set status.state to 'merged-or-closed', and return.
+//		  Emit PullRequestExternallyMergedOrClosed, set status.state to 'merged-or-closed', and return.
 //
-//	Set status.id to the found ID, status.state to 'open', and refresh applied labels from FindOpen when the provider
-//	reports them.
+//		Set status.id to the found ID, status.state to 'open', and refresh applied labels from FindOpen when the provider
+//		reports them.
 //
-//	if spec.state is 'merged':
-//	  Call the SCM to merge the PR.
-//	  Set status.state to 'merged' and, if available, set status.mergedTargetSha.
-//	  Return.
+//		if spec.state is 'merged':
+//		  Call the SCM to merge the PR.
+//		  Set status.state to 'merged' and, if available, set status.mergedTargetSha.
+//		  Return.
 //
-//	if title or description has drifted:
-//	  Call the SCM to Update.
+//		if title or description has drifted:
+//		  Call the SCM to Update.
 //
-//	if labels state has drifted:
-//	  Make API calls to update the labels and update the status.
+//		if labels state has drifted:
+//		  Make API calls to update the labels and update the status.
 //
-//	Return.
+//		Return.
 //
 //nolint:gocyclo // Intentional linear state machine; splitting helpers would obscure docstring order.
 func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
