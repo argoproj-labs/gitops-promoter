@@ -74,7 +74,7 @@ status:
     # The active field contains the same fields as proposed.
     pullRequest:
       id: "848"
-      state: open # open, closed, or merged; empty when externallyMergedOrClosed is true
+      state: open # open, closed, merged, merged-or-closed, or unknown
       url: https://github.com/org/repo/pull/848
       prCreationTime: 2023-10-01T00:00:00Z
     history:

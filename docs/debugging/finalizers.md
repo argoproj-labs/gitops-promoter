@@ -81,7 +81,7 @@ What still differs is **what can be reconstructed from git at that commit**:
 | `status.history[].active.dry` recoverable from git | Yes — `hydrator.metadata` on the merge commit | Yes — `hydrator.metadata` on the squash commit (when present) |
 | External merge + snapshot mismatch | Note on SCM SHA; the note's dry SHA corrected; `proposed.hydrated` corrected when a second parent exists; `mergeCommitSnapshotMismatch: true` when the dry SHA differed | Note on SCM SHA; the note's dry SHA corrected when metadata is readable; `proposed.hydrated` **not** corrected; `proposed.commitStatuses` and `active.commitStatuses` may still be stale |
 
-Squash commits on the SCM also typically carry **no promoter trailers** in the commit message itself — the git note (written at finalization using `mergedTargetSha`) is what preserves PR metadata and gate snapshots for history. A history entry is **missing** only when finalization never gets a merge SHA (for example `externallyMergedOrClosed` after the PR record is gone on the SCM, or the PR was closed without merging).
+Squash commits on the SCM also typically carry **no promoter trailers** in the commit message itself — the git note (written at finalization using `mergedTargetSha`) is what preserves PR metadata and gate snapshots for history. A history entry is **missing** only when finalization never gets a merge SHA (for example `status.state=unknown` after the PR record is gone on the SCM, or the PR was closed without merging).
 
 ### Note write failures and the finalizer
 

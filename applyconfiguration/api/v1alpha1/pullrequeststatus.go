@@ -50,21 +50,11 @@ type PullRequestStatusApplyConfiguration struct {
 	// a resource merges at most once, so the controller never replaces a non-empty value, even if a
 	// provider later reports a different SHA.
 	MergedTargetSha *string `json:"mergedTargetSha,omitempty"`
-	// ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the
-	// resource still desired it open (spec.state is "open"): either it was merged or closed outside the
-	// controller, or it was closed on the SCM because the PullRequest resource was deleted (finalizer)
-	// and a subsequent sync observed it missing. The controller does not distinguish those cases here.
-	// When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider.
-	// The PullRequest resource will be deleted after this flag is set when possible, but the status is
-	// preserved in the owning ChangeTransferPolicy to maintain a record.
+	// ExternallyMergedOrClosed indicated that the pull request was no longer open on the SCM while the
+	// resource still desired it open. The PullRequest controller no longer sets this field.
 	//
-	// The name is a misnomer and may be renamed or removed in a future API revision. It predates the
-	// Get-by-ID lookup, which now resolves merge vs. close authoritatively whenever the provider can
-	// still answer, so this field is only set when the provider cannot: "externally" is wrong (our own
-	// deletion finalizer reaches here too) and "merged or closed" claims a distinction we did not
-	// establish (the pull request may also have been deleted on the SCM). The likely replacement is an
-	// "unknown" State value, which would make the empty-State invariant above structural rather than
-	// documented.
+	// Deprecated: Use status.state merged-or-closed or unknown instead. Existing values are preserved
+	// when copied to ChangeTransferPolicy status. This field may be removed in a future API revision.
 	ExternallyMergedOrClosed *bool `json:"externallyMergedOrClosed,omitempty"`
 	// SCMSyncedSpecDigest fingerprints title and description last successfully synced
 	// to the SCM via provider.Update on an open pull request.

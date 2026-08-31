@@ -959,7 +959,7 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 		return fmt.Errorf("failed to list PullRequests for ChangeTransferPolicy %q status update: %w", ctp.Name, err)
 	}
 	if len(pr.Items) == 0 {
-		// No PR resource found - keep existing status to preserve ExternallyMergedOrClosed and other metadata.
+		// No PR resource found - keep existing status to preserve last-known PR metadata.
 		// This allows the CTP to maintain a record of the last known PR state even after the PR resource
 		// is deleted (e.g., after external merge/close). The status is only replaced when a new PR is created.
 		logger.V(4).Info("No PR resource found, preserving existing PR status in CTP")
@@ -1047,26 +1047,23 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 
 	statusMatches := ctp.Status.PullRequest.ID == livePR.Status.ID &&
 		ctp.Status.PullRequest.State == livePR.Status.State &&
-		boolPtrEqual(ctp.Status.PullRequest.ExternallyMergedOrClosed, livePR.Status.ExternallyMergedOrClosed)
+		ctp.Status.PullRequest.MergedTargetSha == livePR.Status.MergedTargetSha
 	if !statusMatches {
 		logger.V(4).Info("PR being deleted but CTP status doesn't match PR status, cannot remove finalizer yet",
 			"ctpPRID", ctp.Status.PullRequest.ID,
 			"prID", livePR.Status.ID,
 			"ctpPRState", ctp.Status.PullRequest.State,
 			"prState", livePR.Status.State,
-			"ctpExternallyMergedOrClosed", ctp.Status.PullRequest.ExternallyMergedOrClosed,
-			"prExternallyMergedOrClosed", livePR.Status.ExternallyMergedOrClosed)
+			"ctpMergedTargetSha", ctp.Status.PullRequest.MergedTargetSha,
+			"prMergedTargetSha", livePR.Status.MergedTargetSha)
 		return nil
 	}
 
-	// A terminating PR can still show status.state == open when the PullRequest controller has not reconciled
-	// since an SCM merge or since deletion was requested. Do not release our finalizer until the PR controller
-	// records a terminal outcome; otherwise writePromotionHistoryNote skips and the PR is deleted before we
-	// observe mergedTargetSha or ExternallyMergedOrClosed.
-	if !pullRequestHasTerminalSCMOutcome(&livePR) {
-		logger.V(4).Info("PR being deleted but PullRequest status is not terminal yet, cannot remove finalizer yet",
+	// Do not release our finalizer until the PullRequest controller records a finalized deletion outcome.
+	if !pullRequestStatusIsFinalized(&livePR) {
+		logger.V(4).Info("PR being deleted but PullRequest status is not finalized yet, cannot remove finalizer yet",
 			"prState", livePR.Status.State,
-			"externallyMergedOrClosed", livePR.Status.ExternallyMergedOrClosed)
+			"mergedTargetSha", livePR.Status.MergedTargetSha)
 		return nil
 	}
 
@@ -1111,14 +1108,12 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 func (r *ChangeTransferPolicyReconciler) writePromotionHistoryNote(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations, livePR *promoterv1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
 
-	if livePR.Status.State == promoterv1alpha1.PullRequestClosed {
-		logger.V(4).Info("PR was closed, not merged, skipping promotion history note")
+	if livePR.Status.State == promoterv1alpha1.PullRequestClosed || livePR.Status.State == promoterv1alpha1.PullRequestUnknown {
+		logger.V(4).Info("PR was closed or unknown on SCM, skipping promotion history note", "prState", livePR.Status.State)
 		return nil
 	}
-	externallyMergedOrClosed := livePR.Status.ExternallyMergedOrClosed != nil && *livePR.Status.ExternallyMergedOrClosed
-	if livePR.Status.State != promoterv1alpha1.PullRequestMerged && !externallyMergedOrClosed {
-		logger.V(4).Info("PR is not merged or externally merged/closed, skipping promotion history note",
-			"prState", livePR.Status.State)
+	if livePR.Status.State != promoterv1alpha1.PullRequestMerged {
+		logger.V(4).Info("PR is not merged, skipping promotion history note", "prState", livePR.Status.State)
 		return nil
 	}
 
@@ -1134,15 +1129,8 @@ func (r *ChangeTransferPolicyReconciler) writePromotionHistoryNote(ctx context.C
 
 	mergedTargetSha := livePR.Status.MergedTargetSha
 	if mergedTargetSha == "" {
-		if livePR.Status.State == promoterv1alpha1.PullRequestMerged {
-			// This will eventually be resolved by the PullRequest's own finalizer logic. Error to retry.
-			return fmt.Errorf("merged pull request %q has no status.mergedTargetSha", livePR.Name)
-		}
-		// An empty state with externallyMergedOrClosed set means the SCM never told us whether the PR
-		// merged or closed, so log both so a missing history note can be told from a benign close.
-		logger.V(4).Info("PR has no mergedTargetSha and is not recorded as merged, skipping promotion history note",
-			"prID", livePR.Status.ID, "prState", livePR.Status.State,
-			"externallyMergedOrClosed", livePR.Status.ExternallyMergedOrClosed)
+		logger.V(4).Info("merged pull request has no status.mergedTargetSha, skipping promotion history note (best-effort)",
+			"prID", livePR.Status.ID, "prState", livePR.Status.State)
 		return nil
 	}
 
@@ -1585,9 +1573,6 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 func ctpStatusShowsPullRequestExists(ctp *promoterv1alpha1.ChangeTransferPolicy) bool {
 	pr := ctp.Status.PullRequest
 	if pr == nil || pr.ID == "" {
-		return false
-	}
-	if pr.ExternallyMergedOrClosed != nil && *pr.ExternallyMergedOrClosed {
 		return false
 	}
 	return pr.State == promoterv1alpha1.PullRequestOpen
