@@ -1794,6 +1794,14 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 // reconcile when true is returned, so that the next reconcile re-derives Status.Proposed from the new tip.
 func (r *ChangeTransferPolicyReconciler) gitMergeStrategyOurs(ctx context.Context, gitOperations *git.EnvironmentOperations, ctp *promoterv1alpha1.ChangeTransferPolicy) (bool, error) {
 	logger := log.FromContext(ctx)
+
+	proposedSha := ctp.Status.Proposed.Hydrated.Sha
+	activeSha := ctp.Status.Active.Hydrated.Sha
+	if proposedSha != "" && proposedSha == activeSha {
+		logger.V(4).Info("Skipping conflict check, proposed and active hydrated tips are the same commit", "sha", proposedSha)
+		return false, nil
+	}
+
 	logger.Info("Testing for conflicts between branches", "proposed", ctp.Spec.ProposedBranch, "active", ctp.Spec.ActiveBranch)
 
 	// Check if there's a conflict between branches
