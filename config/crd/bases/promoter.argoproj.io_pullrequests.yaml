@@ -336,6 +336,9 @@ spec:
         - message: spec is immutable once status.state is merged, closed, or merged-or-closed
           rule: '!has(oldSelf.status) || !has(oldSelf.status.state) || !(oldSelf.status.state
             in [''merged'', ''closed'', ''merged-or-closed'']) || self.spec == oldSelf.spec'
+        - message: status.state is immutable once merged, closed, or unknown
+          rule: '!has(oldSelf.status) || !has(oldSelf.status.state) || !(oldSelf.status.state
+            in [''merged'', ''closed'', ''unknown'']) || self.status.state == oldSelf.status.state'
     served: true
     storage: true
     subresources:

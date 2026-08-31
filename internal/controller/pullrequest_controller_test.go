@@ -592,6 +592,74 @@ var _ = Describe("PullRequest Controller", func() {
 		})
 	})
 
+	Context("When status.state reaches a finalized SCM outcome", func() {
+		// CRD CEL validation only — controller-free dev envtest cluster.
+		var pr *promoterv1alpha1.PullRequest
+
+		BeforeEach(func() {
+			prName := utils.KubeSafeUniqueName("terminal-status-freeze-" + randomString(15))
+			pr = &promoterv1alpha1.PullRequest{
+				ObjectMeta: metav1.ObjectMeta{Name: prName, Namespace: "default"},
+				Spec: promoterv1alpha1.PullRequestSpec{
+					RepositoryReference: promoterv1alpha1.ObjectReference{Name: prName},
+					Title:               "Initial Title",
+					TargetBranch:        "development",
+					SourceBranch:        "development-next",
+					MergeSha:            "abc123def456789012345678901234567890abcd",
+					State:               promoterv1alpha1.PullRequestOpen,
+				},
+			}
+			Expect(k8sClientDev.Create(ctx, pr)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClientDev.Delete(ctx, pr) })
+
+			pr.Status.ID = "1"
+			pr.Status.State = promoterv1alpha1.PullRequestOpen
+			Expect(k8sClientDev.Status().Update(ctx, pr)).To(Succeed())
+		})
+
+		expectStatusStateUpdateRejected := func(from, to promoterv1alpha1.PullRequestState) {
+			GinkgoHelper()
+			Expect(k8sClientDev.Get(ctx, client.ObjectKeyFromObject(pr), pr)).To(Succeed())
+			pr.Status.State = from
+			Expect(k8sClientDev.Status().Update(ctx, pr)).To(Succeed())
+			Expect(k8sClientDev.Get(ctx, client.ObjectKeyFromObject(pr), pr)).To(Succeed())
+			pr.Status.State = to
+			err := k8sClientDev.Status().Update(ctx, pr)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("status.state is immutable"))
+		}
+
+		expectStatusStateUpdateAllowed := func(from, to promoterv1alpha1.PullRequestState) {
+			GinkgoHelper()
+			Expect(k8sClientDev.Get(ctx, client.ObjectKeyFromObject(pr), pr)).To(Succeed())
+			pr.Status.State = from
+			Expect(k8sClientDev.Status().Update(ctx, pr)).To(Succeed())
+			Expect(k8sClientDev.Get(ctx, client.ObjectKeyFromObject(pr), pr)).To(Succeed())
+			pr.Status.State = to
+			Expect(k8sClientDev.Status().Update(ctx, pr)).To(Succeed())
+			Expect(k8sClientDev.Get(ctx, client.ObjectKeyFromObject(pr), pr)).To(Succeed())
+			Expect(pr.Status.State).To(Equal(to))
+		}
+
+		DescribeTable("rejects status.state changes",
+			func(from, to promoterv1alpha1.PullRequestState) {
+				expectStatusStateUpdateRejected(from, to)
+			},
+			Entry("from merged to open", promoterv1alpha1.PullRequestMerged, promoterv1alpha1.PullRequestOpen),
+			Entry("from closed to open", promoterv1alpha1.PullRequestClosed, promoterv1alpha1.PullRequestOpen),
+			Entry("from unknown to closed", promoterv1alpha1.PullRequestUnknown, promoterv1alpha1.PullRequestClosed),
+		)
+
+		DescribeTable("allows status.state changes",
+			func(from, to promoterv1alpha1.PullRequestState) {
+				expectStatusStateUpdateAllowed(from, to)
+			},
+			Entry("from open to merged-or-closed", promoterv1alpha1.PullRequestOpen, promoterv1alpha1.PullRequestMergedOrClosed),
+			Entry("from merged-or-closed to unknown", promoterv1alpha1.PullRequestMergedOrClosed, promoterv1alpha1.PullRequestUnknown),
+			Entry("from merged-or-closed to merged", promoterv1alpha1.PullRequestMergedOrClosed, promoterv1alpha1.PullRequestMerged),
+		)
+	})
+
 	Context("When deleting a PullRequest that never created a PR on SCM", func() {
 		var name string
 		var scmSecret *v1.Secret
