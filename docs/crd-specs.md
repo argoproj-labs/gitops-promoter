@@ -26,6 +26,8 @@ ChangeTransferPolicies. PromotionStrategy and ChangeTransferPolicy controllers s
 {!internal/controller/testdata/ChangeTransferPolicy.yaml!}
 ```
 
+`status.history` lists recent promotions (newest first). Each entry includes active/proposed SHAs, pull request metadata, and commit statuses frozen at merge time. When `mergeCommitSnapshotMismatch` is `true` on an entry, hydrator metadata on the SCM-reported merge commit disagreed with the promoter's last snapshot (typically an external merge after the proposed branch advanced): proposed dry SHA was reconstructed from the merge commit (and proposed hydrated SHA too for regular merges); **recorded commit statuses may not reflect the revision that actually merged**. Squash merges get the squash commit SHA from SCM `Get` like other merges, but proposed hydrated SHA is usually not recoverable from git. See [Promotion history git notes](debugging/finalizers.md#promotion-history-git-notes) for causes and operator guidance.
+
 ### PullRequest
 
 A PullRequest is a thin wrapper around the SCM's pull request API. ChangeTransferPolicies use PullRequests to manage

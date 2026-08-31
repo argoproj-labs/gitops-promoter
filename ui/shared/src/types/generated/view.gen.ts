@@ -273,10 +273,10 @@ export type components = {
         };
         /** @description CommitBranchStateHistoryProposed is identical to CommitBranchState minus the Dry state. In the context of History, the Dry state is not relevant as the proposed dry side at merge becomes the Active. */
         CommitBranchStateHistoryProposed: {
-            /** @description CommitStatuses is a list of commit statuses that were being monitored for this branch. This contains the state frozen at the moment the PR was merged. */
+            /** @description CommitStatuses is a list of commit statuses that were being monitored for this branch. This contains the state frozen at the moment the PR was merged. When the entry's mergeCommitSnapshotMismatch is true, these phases come from snapshot trailers describing the proposed revision the promoter last saw, which is not necessarily the revision that merged. */
             commitStatuses?: components["schemas"]["ChangeRequestPolicyCommitStatusPhase"][];
             /**
-             * @description Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on.
+             * @description Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on. Read from the snapshot trailers. On a regular merge it is corrected to the merge commit's second parent, but a squash commit has only one parent, so when the entry's mergeCommitSnapshotMismatch is true and the merge was a squash the stale snapshot value is kept.
              * @default {}
              */
             hydrated?: components["schemas"]["CommitShaState"];
@@ -901,10 +901,12 @@ export type components = {
         /** @description History describes a particular change that was promoted by the ChangeTransferPolicy. */
         History: {
             /**
-             * @description Active is the state of the active branch at the time the PR was merged.
+             * @description Active is the state of the active branch at the time the PR was merged. Its dry state is read back from <activePath>/hydrator.metadata on the merge commit and its hydrated state from that commit itself, so both describe what actually merged regardless of merge style. Its commitStatuses, by contrast, come from the snapshot trailers and may be stale when mergeCommitSnapshotMismatch is true.
              * @default {}
              */
             active?: components["schemas"]["CommitBranchState"];
+            /** @description MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with the promoter's last snapshot (typically an external merge after the proposed branch advanced). When true, the fields this entry rebuilds from the snapshot trailers — proposed.commitStatuses and active.commitStatuses, plus proposed.hydrated when the merge was a squash (a single-parent squash commit gives the controller nothing to reconstruct the hydrated sha from) — may describe the earlier proposed revision rather than what actually merged. */
+            mergeCommitSnapshotMismatch?: boolean;
             /**
              * @description Proposed is the state of the proposed branch at the time the PR was merged.
              * @default {}
@@ -1262,7 +1264,7 @@ export type components = {
              */
             observedGeneration?: number;
         };
-        /** @description PullRequest is the Schema for the pullrequests API */
+        /** @description PullRequest is the Schema for the pullrequests API Once recorded, the SHA can be neither replaced nor cleared: a resource merges at most once, so any later disagreement is provider inconsistency or a status write built from a stale informer read, and honoring it would strand the promotion history note already written against the original SHA. Such a write is rejected rather than merged, which surfaces as a failed status apply and a retry. */
         PullRequest: {
             /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
             apiVersion?: string;
@@ -1277,10 +1279,16 @@ export type components = {
         };
         /** @description PullRequestCommonStatus defines the common status fields for a pull request. */
         PullRequestCommonStatus: {
-            /** @description ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the PullRequest still desired it open: merged or closed outside the controller, or closed on the SCM because the PullRequest resource was deleted (finalizer) before this status was reconciled. When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider. This status is preserved even after the PullRequest resource is deleted, maintaining a historical record until a new pull request is created for this environment. */
+            /**
+             * @description ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the PullRequest still desired it open: merged or closed outside the controller, or closed on the SCM because the PullRequest resource was deleted (finalizer) before this status was reconciled. When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider. This status is preserved even after the PullRequest resource is deleted, maintaining a historical record until a new pull request is created for this environment.
+             *
+             *     The name is a misnomer and may be renamed or removed in a future API revision. It predates the Get-by-ID lookup, which now resolves merge vs. close authoritatively whenever the provider can still answer, so this field is only set when the provider cannot: "externally" is wrong (our own deletion finalizer reaches here too) and "merged or closed" claims a distinction we did not establish (the pull request may also have been deleted on the SCM). The likely replacement is an "unknown" State value, which would make the empty-State invariant above structural rather than documented.
+             */
             externallyMergedOrClosed?: boolean;
             /** @description ID is the unique identifier of the pull request, set by the SCM. */
             id?: string;
+            /** @description MergedTargetSha is the SHA that the target branch points at after the merge. It is a merge commit only when the SCM created one; squash and fast-forward merges report the resulting commit on the target branch instead. In the live pull request status it is mirrored from the PullRequest resource and is empty until the merge is observed; in a History entry it is the active-branch commit the entry describes. */
+            mergedTargetSha?: string;
             /** @description PRCreationTime is the time when the pull request was created. */
             prCreationTime?: components["schemas"]["Time"];
             /** @description PRMergeTime is the time when the pull request was merged. This time can vary slightly from the actual merge time because it is the time when the ChangeTransferPolicy controller sets the pull requests spec to merge. In the future we plan on making this time more accurate by fetching the actual merge time from the SCM via the webhook this would then be updated in the git note for that commit. */
@@ -1343,12 +1351,18 @@ export type components = {
             appliedLabels?: string[];
             /** @description Conditions Represents the observations of the current state. */
             conditions?: components["schemas"]["Condition"][];
-            /** @description ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the resource still desired it open (spec.state is "open"): either it was merged or closed outside the controller, or it was closed on the SCM because the PullRequest resource was deleted (finalizer) and a subsequent sync observed it missing. The controller does not distinguish those cases here. When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider. The PullRequest resource will be deleted after this flag is set when possible, but the status is preserved in the owning ChangeTransferPolicy to maintain a record. */
+            /**
+             * @description ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the resource still desired it open (spec.state is "open"): either it was merged or closed outside the controller, or it was closed on the SCM because the PullRequest resource was deleted (finalizer) and a subsequent sync observed it missing. The controller does not distinguish those cases here. When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider. The PullRequest resource will be deleted after this flag is set when possible, but the status is preserved in the owning ChangeTransferPolicy to maintain a record.
+             *
+             *     The name is a misnomer and may be renamed or removed in a future API revision. It predates the Get-by-ID lookup, which now resolves merge vs. close authoritatively whenever the provider can still answer, so this field is only set when the provider cannot: "externally" is wrong (our own deletion finalizer reaches here too) and "merged or closed" claims a distinction we did not establish (the pull request may also have been deleted on the SCM). The likely replacement is an "unknown" State value, which would make the empty-State invariant above structural rather than documented.
+             */
             externallyMergedOrClosed?: boolean;
             /** @description ID the id of the pull request */
             id?: string;
             /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
             instanceID?: string;
+            /** @description MergedTargetSha is the SHA that spec.targetBranch points at after the merge, as reported by the SCM. It is a merge commit only when the SCM created one; squash and fast-forward merges report the resulting commit on the target branch instead. Set once by the PullRequest controller, either from the merge response for providers that report the SHA there, or from a Get-by-ID lookup when FindOpen no longer finds the PR (external merges, and providers whose merge response omits the SHA). The value is write-once: a resource merges at most once, so the controller never replaces a non-empty value, even if a provider later reports a different SHA. */
+            mergedTargetSha?: string;
             /**
              * Format: int64
              * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.

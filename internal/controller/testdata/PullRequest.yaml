@@ -41,6 +41,7 @@ status:
   state: open # open, closed, or merged; empty when externallyMergedOrClosed is true
   url: https://github.com/org/repo/pull/848
   prCreationTime: 2023-10-01T00:00:00Z
+  # mergedTargetSha: abc123def456789012345678901234567890abcd # SCM-reported target branch SHA after merge
   # SCM labels successfully applied by gitops-promoter (bookkeeping for sync/retraction).
   # appliedLabels:
   #   - lgtm

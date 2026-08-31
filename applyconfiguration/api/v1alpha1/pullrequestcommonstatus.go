@@ -40,12 +40,26 @@ type PullRequestCommonStatusApplyConfiguration struct {
 	PRMergeTime *v1.Time `json:"prMergeTime,omitempty"`
 	// Url is the URL of the pull request.
 	Url *string `json:"url,omitempty"`
+	// MergedTargetSha is the SHA that the target branch points at after the merge. It is a merge commit
+	// only when the SCM created one; squash and fast-forward merges report the resulting commit on the
+	// target branch instead. In the live pull request status it is mirrored from the PullRequest resource
+	// and is empty until the merge is observed; in a History entry it is the active-branch commit the
+	// entry describes.
+	MergedTargetSha *string `json:"mergedTargetSha,omitempty"`
 	// ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the
 	// PullRequest still desired it open: merged or closed outside the controller, or closed on the SCM
 	// because the PullRequest resource was deleted (finalizer) before this status was reconciled.
 	// When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider.
 	// This status is preserved even after the PullRequest resource is deleted, maintaining a historical
 	// record until a new pull request is created for this environment.
+	//
+	// The name is a misnomer and may be renamed or removed in a future API revision. It predates the
+	// Get-by-ID lookup, which now resolves merge vs. close authoritatively whenever the provider can
+	// still answer, so this field is only set when the provider cannot: "externally" is wrong (our own
+	// deletion finalizer reaches here too) and "merged or closed" claims a distinction we did not
+	// establish (the pull request may also have been deleted on the SCM). The likely replacement is an
+	// "unknown" State value, which would make the empty-State invariant above structural rather than
+	// documented.
 	ExternallyMergedOrClosed *bool `json:"externallyMergedOrClosed,omitempty"`
 }
 
@@ -92,6 +106,14 @@ func (b *PullRequestCommonStatusApplyConfiguration) WithPRMergeTime(value v1.Tim
 // If called multiple times, the Url field is set to the value of the last call.
 func (b *PullRequestCommonStatusApplyConfiguration) WithUrl(value string) *PullRequestCommonStatusApplyConfiguration {
 	b.Url = &value
+	return b
+}
+
+// WithMergedTargetSha sets the MergedTargetSha field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the MergedTargetSha field is set to the value of the last call.
+func (b *PullRequestCommonStatusApplyConfiguration) WithMergedTargetSha(value string) *PullRequestCommonStatusApplyConfiguration {
+	b.MergedTargetSha = &value
 	return b
 }
 

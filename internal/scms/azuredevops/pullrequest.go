@@ -199,24 +199,24 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullReque
 }
 
 // Merge merges an existing pull request with the specified commit message.
-func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullRequest) error {
+func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.MergeResult, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Merging Pull Request in Azure DevOps")
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
-		return fmt.Errorf("failed to get GitRepository: %w", err)
+		return scms.MergeResult{}, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
 	prId, err := strconv.Atoi(pullRequest.Status.ID)
 	if err != nil {
-		return fmt.Errorf("failed to convert PR ID to int: %w", err)
+		return scms.MergeResult{}, fmt.Errorf("failed to convert PR ID to int: %w", err)
 	}
 
 	// Get Git client
 	gitClient, err := git.NewClient(ctx, pr.client)
 	if err != nil {
-		return fmt.Errorf("failed to create Git client: %w", err)
+		return scms.MergeResult{}, fmt.Errorf("failed to create Git client: %w", err)
 	}
 
 	// Complete the pull request (merge it) using Azure DevOps completion API
@@ -246,14 +246,17 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 	if err != nil {
 		statusCode = 500
 		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, statusCode, time.Since(start), nil)
-		return fmt.Errorf("failed to merge pull request: %w", err)
+		return scms.MergeResult{}, fmt.Errorf("failed to merge pull request: %w", err)
 	}
 
 	metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, statusCode, time.Since(start), nil)
 
 	logger.V(4).Info("Azure DevOps pull request merged successfully", "prId", prId)
 
-	return nil
+	// Azure DevOps completes a pull request asynchronously: the response to the completion request
+	// carries the pre-completion merge preview commit, which is not necessarily the commit that
+	// lands on the target branch. The controller reads the SHA later via Get-by-ID instead.
+	return scms.MergeResult{}, nil
 }
 
 // FindOpen checks if a pull request is open and returns its status.
@@ -326,6 +329,58 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	}
 
 	return scms.FindOpenResult{}, nil
+}
+
+// Get fetches a pull request by status.id.
+func (pr *PullRequest) Get(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.GetPullRequestResult, error) {
+	logger := log.FromContext(ctx)
+	logger.V(4).Info("Getting pull request by ID in Azure DevOps")
+
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	prID, err := strconv.Atoi(pullRequest.Status.ID)
+	if err != nil {
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to convert PR ID to int: %w", err)
+	}
+
+	gitClient, err := git.NewClient(ctx, pr.client)
+	if err != nil {
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to create Git client: %w", err)
+	}
+
+	start := time.Now()
+	adoPR, err := gitClient.GetPullRequestById(ctx, git.GetPullRequestByIdArgs{
+		PullRequestId: &prID,
+		Project:       &gitRepo.Spec.AzureDevOps.Project,
+	})
+	statusCode := http.StatusOK
+	if err != nil {
+		if isAzureDevOpsNotFound(err) {
+			metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationGet, http.StatusNotFound, time.Since(start), nil)
+			return scms.GetPullRequestResult{}, nil
+		}
+		statusCode = http.StatusInternalServerError
+		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationGet, statusCode, time.Since(start), nil)
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to get pull request: %w", err)
+	}
+	metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationGet, statusCode, time.Since(start), nil)
+
+	if adoPR == nil {
+		return scms.GetPullRequestResult{}, nil
+	}
+
+	result := scms.GetPullRequestResult{Found: true, State: mapAzureDevOpsPRStatusToState(*adoPR.Status)}
+	if result.State == v1alpha1.PullRequestMerged && adoPR.LastMergeCommit != nil && adoPR.LastMergeCommit.CommitId != nil {
+		result.MergedTargetSHA = *adoPR.LastMergeCommit.CommitId
+	}
+	if adoPR.ClosedDate != nil {
+		result.MergedAt = adoPR.ClosedDate.Time
+	}
+	logger.V(4).Info("Azure DevOps pull request fetched", "prId", prID, "state", result.State)
+	return result, nil
 }
 
 // GetUrl returns the URL of the pull request.

@@ -63,6 +63,7 @@ nav:
   - Debugging:
       - Overview: debugging/index.md
       - Finalizers: debugging/finalizers.md
+      - Git Trailers: debugging/git-trailers.md
       - Labels: debugging/labels.md
   - Advanced Usage:
       - Overview: advanced-usage/index.md
