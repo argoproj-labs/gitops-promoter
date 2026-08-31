@@ -30,26 +30,27 @@ type commitObject struct {
 	trailersCached bool
 }
 
-// git log is asked to format the commit fields directly rather than handing back the raw commit
-// object for us to decode: %s applies git's own subject folding, %cI is RFC 3339 carrying the
-// commit's UTC offset, and %b is git's own subject/body split.
+// git log batch format: six NUL-separated fields per commit.
 //
-// Fields and records are both separated by NUL, which git refuses to store in a commit message and
-// so cannot appear inside %s, %b or %B; any printable delimiter can. The output is therefore a flat
-// run of fields rather than delimited records, read commitLogFieldCount at a time. With
-// --pretty=format: (as opposed to tformat:) git writes the -z NUL between records and not after the
-// last one, so the field count is an exact multiple of the record width.
+// We ask git to format fields (%H, %an, %cI, %s, %b, %B) rather than decode raw commit
+// objects. NUL cannot appear inside those fields, so the output is a flat field stream.
 const (
 	commitFieldSep      = "\x00"
 	commitLogFormat     = "%H%x00%an%x00%cI%x00%s%x00%b%x00%B"
 	commitLogFieldCount = 6
 )
 
-// fullObjectID matches a complete SHA-1 or SHA-256 object ID. SHAs reach the batch readers from
-// commit trailers, which anyone able to push to the repo controls, and git log --stdin reads
-// option-like input such as --all as a revision selector rather than a revision. Requiring a full
-// object ID keeps a crafted trailer from widening the batch, and rules out embedded newlines, which
-// would otherwise add requests to the batch.
+const (
+	commitFieldSHA = iota
+	commitFieldAuthor
+	commitFieldCommitTime
+	commitFieldSubject
+	commitFieldBody
+	commitFieldMessage
+)
+
+// fullObjectID matches a complete SHA-1 or SHA-256 object ID. Batch inputs must be full SHAs
+// so crafted trailer values cannot inject extra revisions or newlines into git log --stdin.
 var fullObjectID = regexp.MustCompile(`^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$`)
 
 // LoadCommits prefetches commit metadata for the given SHAs into this instance's per-reconcile
@@ -68,98 +69,21 @@ func (g *EnvironmentOperations) LoadCommitAndMetadataBlobs(ctx context.Context, 
 		return fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
-	metaPath := buildHydratorMetadataPath(activePath)
-	blobRequests := make([]string, 0, len(shas))
-	for _, sha := range shas {
-		if sha == "" {
-			continue
-		}
-		blobRequests = append(blobRequests, sha+":"+metaPath)
+	// cat-file reports missing objects per request and still exits zero; errors here are real failures.
+	if err := g.prefetchBlobs(ctx, metadataBlobRequests(activePath, shas...)...); err != nil {
+		return err
 	}
-
-	// Unlike the commit batch, cat-file reports a missing object per request and still exits zero,
-	// so an error here is a genuine failure rather than an absent object, and is worth surfacing.
-	toFetch := requestsNotInCache(g.blobs, blobRequests)
-	if len(toFetch) > 0 {
-		results, err := g.catFileBatch(ctx, toFetch...)
-		if err != nil {
-			return err
-		}
-		if g.blobs == nil {
-			g.blobs = make(map[string]blobObject, len(results))
-		}
-		for k, v := range results {
-			g.blobs[k] = v
-		}
-	}
-
 	g.prefetchCommits(ctx, shas...)
 	return nil
 }
 
-// prefetchCommits fills the commit cache in a single git log.
-//
-// Prefetching is only an optimization, so a failure is logged and swallowed: git log is fatal for
-// the whole batch when any one SHA is absent from the clone, and callers must still be able to
-// resolve the SHAs that are present. Those are then resolved individually by getCommit, which
-// reports the per-SHA error. SHAs read out of commit trailers routinely point at commits that were
-// garbage collected or never fetched into this clone, which is why this cannot be fatal.
-func (g *EnvironmentOperations) prefetchCommits(ctx context.Context, shas ...string) {
-	// Lowercase first so the cache check and the dedup agree with the keys git returns, which are
-	// always lowercase. Blob requests need no equivalent: parseCatFileBatch keys them by the request
-	// string rather than by anything git echoes back, and their path is case-sensitive.
-	keys := make([]string, 0, len(shas))
-	for _, sha := range shas {
-		keys = append(keys, strings.ToLower(sha))
-	}
-
-	toFetch := requestsNotInCache(g.commits, keys)
-	if len(toFetch) == 0 {
-		return
-	}
-
-	results, err := g.commitLogBatch(ctx, toFetch...)
-	if err != nil {
-		log.FromContext(ctx).V(4).Info("failed to prefetch commits, falling back to individual lookups", "error", err)
-		return
-	}
-	if g.commits == nil {
-		g.commits = make(map[string]commitObject, len(results))
-	}
-	for k, v := range results {
-		g.commits[k] = v
-	}
-}
-
-// requestsNotInCache returns requests that are neither already cached nor duplicated, preserving order.
-func requestsNotInCache[T any](cache map[string]T, requests []string) []string {
-	var toFetch []string
-	seen := make(map[string]struct{}, len(requests))
-	for _, req := range requests {
-		if req == "" {
-			continue
-		}
-		if _, ok := cache[req]; ok {
-			continue
-		}
-		if _, ok := seen[req]; ok {
-			continue
-		}
-		seen[req] = struct{}{}
-		toFetch = append(toFetch, req)
-	}
-	return toFetch
-}
-
 func (g *EnvironmentOperations) getCommit(ctx context.Context, sha string) (commitObject, error) {
-	// git resolves an uppercase revision but always emits %H in lowercase, so the batch results,
-	// and with them the cache, are keyed lowercase however the caller wrote the SHA.
+	// git resolves uppercase revisions but emits %H lowercase, so cache keys are always lowercase.
 	key := strings.ToLower(sha)
 
 	if commit, ok := g.commits[key]; ok {
 		return commit, nil
 	}
-
 	if !fullObjectID.MatchString(key) {
 		return commitObject{}, fmt.Errorf("refusing to look up commit %q: not a full git object ID", sha)
 	}
@@ -172,10 +96,7 @@ func (g *EnvironmentOperations) getCommit(ctx context.Context, sha string) (comm
 	if !ok {
 		return commitObject{}, fmt.Errorf("git log did not return a record for commit %q", sha)
 	}
-	if g.commits == nil {
-		g.commits = make(map[string]commitObject, 1)
-	}
-	g.commits[key] = commit
+	mergeIntoCache(&g.commits, map[string]commitObject{key: commit})
 	return commit, nil
 }
 
@@ -198,11 +119,7 @@ func (g *EnvironmentOperations) getTrailers(ctx context.Context, sha string) (ma
 
 	commit.trailers = trailers
 	commit.trailersCached = true
-	if g.commits == nil {
-		g.commits = make(map[string]commitObject, 1)
-	}
-	g.commits[key] = commit
-
+	mergeIntoCache(&g.commits, map[string]commitObject{key: commit})
 	return trailers, nil
 }
 
@@ -219,11 +136,70 @@ func (g *EnvironmentOperations) getBlob(ctx context.Context, request string) (bl
 	if !ok {
 		return blobObject{}, fmt.Errorf("cat-file did not return result for %q", request)
 	}
-	if g.blobs == nil {
-		g.blobs = make(map[string]blobObject, 1)
-	}
-	g.blobs[request] = blob
+	mergeIntoCache(&g.blobs, map[string]blobObject{request: blob})
 	return blob, nil
+}
+
+// prefetchCommits fills the commit cache in a single git log.
+//
+// Prefetch is best-effort: git log fails the whole batch when any SHA is missing, and callers
+// still resolve present SHAs individually via getCommit. Trailer SHAs often point at commits
+// that were never fetched into this clone.
+func (g *EnvironmentOperations) prefetchCommits(ctx context.Context, shas ...string) {
+	uncached := make([]string, 0, len(shas))
+	seen := make(map[string]struct{}, len(shas))
+	for _, sha := range shas {
+		key := strings.ToLower(sha)
+		if key == "" {
+			continue
+		}
+		if _, cached := g.commits[key]; cached {
+			continue
+		}
+		if _, duplicate := seen[key]; duplicate {
+			continue
+		}
+		seen[key] = struct{}{}
+		uncached = append(uncached, key)
+	}
+	if len(uncached) == 0 {
+		return
+	}
+
+	results, err := g.commitLogBatch(ctx, uncached...)
+	if err != nil {
+		log.FromContext(ctx).V(4).Info("failed to prefetch commits, falling back to individual lookups", "error", err)
+		return
+	}
+	mergeIntoCache(&g.commits, results)
+}
+
+func (g *EnvironmentOperations) prefetchBlobs(ctx context.Context, requests ...string) error {
+	uncached := make([]string, 0, len(requests))
+	seen := make(map[string]struct{}, len(requests))
+	for _, req := range requests {
+		if req == "" {
+			continue
+		}
+		if _, cached := g.blobs[req]; cached {
+			continue
+		}
+		if _, duplicate := seen[req]; duplicate {
+			continue
+		}
+		seen[req] = struct{}{}
+		uncached = append(uncached, req)
+	}
+	if len(uncached) == 0 {
+		return nil
+	}
+
+	results, err := g.catFileBatch(ctx, uncached...)
+	if err != nil {
+		return err
+	}
+	mergeIntoCache(&g.blobs, results)
+	return nil
 }
 
 func (g *EnvironmentOperations) commitLogBatch(ctx context.Context, shas ...string) (map[string]commitObject, error) {
@@ -236,14 +212,8 @@ func (g *EnvironmentOperations) commitLogBatch(ctx context.Context, shas ...stri
 		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
-	// Dropping rather than rejecting keeps one bad SHA from costing the whole batch its prefetch;
-	// the dropped SHA has no record in the results, and getCommit reports it per-SHA.
-	revisions := make([]string, 0, len(shas))
-	for _, sha := range shas {
-		if fullObjectID.MatchString(sha) {
-			revisions = append(revisions, sha)
-		}
-	}
+	// Drop invalid SHAs instead of failing the batch; getCommit reports them individually.
+	revisions := filterFullObjectIDs(shas)
 	if len(revisions) == 0 {
 		return map[string]commitObject{}, nil
 	}
@@ -255,43 +225,6 @@ func (g *EnvironmentOperations) commitLogBatch(ctx context.Context, shas ...stri
 		return nil, fmt.Errorf("git log failed: %w", err)
 	}
 	return parseCommitLogOutput(stdout)
-}
-
-func parseCommitLogOutput(stdout string) (map[string]commitObject, error) {
-	if stdout == "" {
-		return map[string]commitObject{}, nil
-	}
-
-	// Empty fields are meaningful — %b is empty for a subject-only commit, and all three message
-	// fields are empty for a commit with no message — so they are kept rather than skipped.
-	fields := strings.Split(stdout, commitFieldSep)
-	if len(fields)%commitLogFieldCount != 0 {
-		return nil, fmt.Errorf("expected a multiple of %d fields in git log output, got %d", commitLogFieldCount, len(fields))
-	}
-
-	results := make(map[string]commitObject, len(fields)/commitLogFieldCount)
-	for i := 0; i < len(fields); i += commitLogFieldCount {
-		sha, author, commitTime := fields[i], fields[i+1], fields[i+2]
-		subject, body, message := fields[i+3], fields[i+4], fields[i+5]
-
-		parsedTime, err := time.Parse(time.RFC3339, commitTime)
-		if err != nil {
-			return nil, fmt.Errorf("parse committer time %q for commit %q: %w", commitTime, sha, err)
-		}
-
-		results[sha] = commitObject{
-			State: v1alpha1.CommitShaState{
-				Sha:        sha,
-				CommitTime: v1.Time{Time: parsedTime},
-				Author:     author,
-				Subject:    subject,
-				Body:       strings.TrimSpace(body),
-			},
-			Message: message,
-		}
-	}
-
-	return results, nil
 }
 
 func (g *EnvironmentOperations) catFileBatch(ctx context.Context, requests ...string) (map[string]blobObject, error) {
@@ -312,6 +245,42 @@ func (g *EnvironmentOperations) catFileBatch(ctx context.Context, requests ...st
 	return parseCatFileBatch(strings.NewReader(stdout), requests)
 }
 
+func parseCommitLogOutput(stdout string) (map[string]commitObject, error) {
+	if stdout == "" {
+		return map[string]commitObject{}, nil
+	}
+
+	// Empty fields are meaningful (%b empty for subject-only commits, etc.), so keep them all.
+	fields := strings.Split(stdout, commitFieldSep)
+	if len(fields)%commitLogFieldCount != 0 {
+		return nil, fmt.Errorf("expected a multiple of %d fields in git log output, got %d", commitLogFieldCount, len(fields))
+	}
+
+	recordCount := len(fields) / commitLogFieldCount
+	results := make(map[string]commitObject, recordCount)
+	for i := 0; i < len(fields); i += commitLogFieldCount {
+		record := fields[i : i+commitLogFieldCount]
+
+		parsedTime, err := time.Parse(time.RFC3339, record[commitFieldCommitTime])
+		if err != nil {
+			return nil, fmt.Errorf("parse committer time %q for commit %q: %w", record[commitFieldCommitTime], record[commitFieldSHA], err)
+		}
+
+		results[record[commitFieldSHA]] = commitObject{
+			State: v1alpha1.CommitShaState{
+				Sha:        record[commitFieldSHA],
+				CommitTime: v1.Time{Time: parsedTime},
+				Author:     record[commitFieldAuthor],
+				Subject:    record[commitFieldSubject],
+				Body:       strings.TrimSpace(record[commitFieldBody]),
+			},
+			Message: record[commitFieldMessage],
+		}
+	}
+
+	return results, nil
+}
+
 // parseCatFileBatch reads the length-prefixed --batch stream: one header line per request, in
 // request order, each followed by exactly the advertised number of content bytes and a newline.
 func parseCatFileBatch(r io.Reader, requests []string) (map[string]blobObject, error) {
@@ -323,30 +292,36 @@ func parseCatFileBatch(r io.Reader, requests []string) (map[string]blobObject, e
 		if err != nil {
 			return nil, fmt.Errorf("unexpected end of cat-file output after %d of %d objects: %w", i, len(requests), err)
 		}
-		header = strings.TrimSuffix(header, "\n")
 
-		if strings.HasSuffix(header, " missing") {
-			results[req] = blobObject{Missing: true}
-			continue
-		}
-
-		size, err := parseCatFileObjectSize(header)
+		blob, err := parseCatFileBlobFromHeader(reader, req, strings.TrimSuffix(header, "\n"))
 		if err != nil {
 			return nil, err
 		}
-
-		data := make([]byte, size)
-		if _, err := io.ReadFull(reader, data); err != nil {
-			return nil, fmt.Errorf("truncated cat-file object %q: expected %d bytes: %w", req, size, err)
-		}
-		if _, err := reader.Discard(1); err != nil {
-			return nil, fmt.Errorf("missing terminator after cat-file object %q: %w", req, err)
-		}
-
-		results[req] = blobObject{Data: data}
+		results[req] = blob
 	}
 
 	return results, nil
+}
+
+func parseCatFileBlobFromHeader(reader *bufio.Reader, req, header string) (blobObject, error) {
+	if strings.HasSuffix(header, " missing") {
+		return blobObject{Missing: true}, nil
+	}
+
+	size, err := parseCatFileObjectSize(header)
+	if err != nil {
+		return blobObject{}, err
+	}
+
+	data := make([]byte, size)
+	if _, err := io.ReadFull(reader, data); err != nil {
+		return blobObject{}, fmt.Errorf("truncated cat-file object %q: expected %d bytes: %w", req, size, err)
+	}
+	if _, err := reader.Discard(1); err != nil {
+		return blobObject{}, fmt.Errorf("missing terminator after cat-file object %q: %w", req, err)
+	}
+
+	return blobObject{Data: data}, nil
 }
 
 // parseCatFileObjectSize extracts the content length from a "<oid> <type> <size>" batch header.
@@ -360,4 +335,34 @@ func parseCatFileObjectSize(header string) (int, error) {
 		return 0, fmt.Errorf("invalid cat-file size %q in header %q: %w", fields[2], header, err)
 	}
 	return size, nil
+}
+
+func metadataBlobRequests(activePath string, shas ...string) []string {
+	metaPath := buildHydratorMetadataPath(activePath)
+	requests := make([]string, 0, len(shas))
+	for _, sha := range shas {
+		if sha != "" {
+			requests = append(requests, sha+":"+metaPath)
+		}
+	}
+	return requests
+}
+
+func filterFullObjectIDs(shas []string) []string {
+	revisions := make([]string, 0, len(shas))
+	for _, sha := range shas {
+		if fullObjectID.MatchString(sha) {
+			revisions = append(revisions, sha)
+		}
+	}
+	return revisions
+}
+
+func mergeIntoCache[T any](cache *map[string]T, results map[string]T) {
+	if *cache == nil {
+		*cache = make(map[string]T, len(results))
+	}
+	for k, v := range results {
+		(*cache)[k] = v
+	}
 }
