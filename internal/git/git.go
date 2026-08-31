@@ -229,15 +229,6 @@ func buildHydratorMetadataPath(activePath string) string {
 	return path.Join(activePath, "hydrator.metadata")
 }
 
-// IsGitShowPathMissingInCommit reports whether git show failed because the path is absent from the
-// given revision's tree (including the worktree-only case). Other git show failures — invalid
-// revisions, promisor/lazy-fetch errors, network outages — return false and should be propagated.
-func IsGitShowPathMissingInCommit(stderr string) bool {
-	stderr = strings.ToLower(stderr)
-	return strings.Contains(stderr, "does not exist in") ||
-		strings.Contains(stderr, "exists on disk, but not in")
-}
-
 // MalformedHydratorMetadataError reports that a hydrator.metadata blob was present at the requested
 // revision but did not parse as hydrator metadata. It is distinct both from a missing file and from
 // git or infrastructure failures, so callers that intentionally degrade on unusable metadata (for
