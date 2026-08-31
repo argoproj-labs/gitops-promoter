@@ -6,6 +6,15 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
+// MergeResult holds the outcome of merging a pull request on the SCM.
+type MergeResult struct {
+	// CommitSHA is the full merge commit SHA on the target branch, when the provider's merge
+	// response carries it. It is empty for providers whose merge API does not report the SHA
+	// (Gitea, Forgejo) or completes asynchronously (Azure DevOps); the PullRequest controller then
+	// recovers the SHA with a Get-by-ID lookup on a later reconcile.
+	CommitSHA string
+}
+
 // PullRequestProvider defines the interface for managing pull requests in a source control management system.
 type PullRequestProvider interface {
 	// Create creates a new pull request with the specified title, head, base, and description.
@@ -18,10 +27,13 @@ type PullRequestProvider interface {
 	Update(ctx context.Context, title, description string, pullRequest v1alpha1.PullRequest) error
 	// Merge merges an existing pull request with the specified commit message.
 	// pullRequest.Status.ID is guaranteed to be set when this is called.
-	Merge(ctx context.Context, pullRequest v1alpha1.PullRequest) error
+	Merge(ctx context.Context, pullRequest v1alpha1.PullRequest) (MergeResult, error)
 	// FindOpen checks if a pull request is open and returns its status.
 	// When LabelsReported is true, SCMLabels holds PR label names from the list response.
 	FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (FindOpenResult, error)
+	// Get fetches a pull request by status.id. Called only when FindOpen returned !Found,
+	// status.id is set, and status.mergedTargetSha is empty.
+	Get(ctx context.Context, pullRequest v1alpha1.PullRequest) (GetPullRequestResult, error)
 	// GetUrl retrieves the URL of the pull request.
 	GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequest) (string, error)
 	// AddLabels adds SCM labels to an open pull request, creating missing repository or project labels when needed.

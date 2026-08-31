@@ -39,7 +39,12 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: PullRequest is the Schema for the pullrequests API
+        description: |-
+          PullRequest is the Schema for the pullrequests API
+          Once recorded, the SHA can be neither replaced nor cleared: a resource merges at most once, so any
+          later disagreement is provider inconsistency or a status write built from a stale informer read, and
+          honoring it would strand the promotion history note already written against the original SHA. Such a
+          write is rejected rather than merged, which surfaces as a failed status apply and a retry.
         externalDocs:
           description: CRD reference (examples and behavior)
           url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#pullrequest
@@ -251,6 +256,14 @@ spec:
                   When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider.
                   The PullRequest resource will be deleted after this flag is set when possible, but the status is
                   preserved in the owning ChangeTransferPolicy to maintain a record.
+
+                  The name is a misnomer and may be renamed or removed in a future API revision. It predates the
+                  Get-by-ID lookup, which now resolves merge vs. close authoritatively whenever the provider can
+                  still answer, so this field is only set when the provider cannot: "externally" is wrong (our own
+                  deletion finalizer reaches here too) and "merged or closed" claims a distinction we did not
+                  establish (the pull request may also have been deleted on the SCM). The likely replacement is an
+                  "unknown" State value, which would make the empty-State invariant above structural rather than
+                  documented.
                 type: boolean
               id:
                 description: ID the id of the pull request
@@ -263,6 +276,20 @@ spec:
                 maxLength: 63
                 minLength: 1
                 pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
+                type: string
+              mergedTargetSha:
+                description: |-
+                  MergedTargetSha is the SHA that spec.targetBranch points at after the merge, as reported by
+                  the SCM. It is a merge commit only when the SCM created one; squash and fast-forward merges
+                  report the resulting commit on the target branch instead.
+                  Set once by the PullRequest controller, either from the merge response for providers that
+                  report the SHA there, or from a Get-by-ID lookup when FindOpen no longer finds the PR
+                  (external merges, and providers whose merge response omits the SHA). The value is write-once:
+                  a resource merges at most once, so the controller never replaces a non-empty value, even if a
+                  provider later reports a different SHA.
+                maxLength: 64
+                minLength: 40
+                pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
                 type: string
               observedGeneration:
                 description: |-
@@ -303,6 +330,13 @@ spec:
             is empty
           rule: self.spec.state == 'open' || has(self.status.id) && self.status.id
             != ""
+        - message: mergedTargetSha may only be set when status.state is merged
+          rule: '!has(self.status) || !has(self.status.mergedTargetSha) || (has(self.status.state)
+            && self.status.state == ''merged'')'
+        - message: mergedTargetSha is immutable once set
+          rule: '!has(oldSelf.status) || !has(oldSelf.status.mergedTargetSha) || (has(self.status)
+            && has(self.status.mergedTargetSha) && self.status.mergedTargetSha ==
+            oldSelf.status.mergedTargetSha)'
     served: true
     storage: true
     subresources:

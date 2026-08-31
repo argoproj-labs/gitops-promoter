@@ -41,6 +41,15 @@ type PullRequestStatusApplyConfiguration struct {
 	PRCreationTime *v1.Time `json:"prCreationTime,omitempty"`
 	// Url is the URL of the pull request.
 	Url *string `json:"url,omitempty"`
+	// MergedTargetSha is the SHA that spec.targetBranch points at after the merge, as reported by
+	// the SCM. It is a merge commit only when the SCM created one; squash and fast-forward merges
+	// report the resulting commit on the target branch instead.
+	// Set once by the PullRequest controller, either from the merge response for providers that
+	// report the SHA there, or from a Get-by-ID lookup when FindOpen no longer finds the PR
+	// (external merges, and providers whose merge response omits the SHA). The value is write-once:
+	// a resource merges at most once, so the controller never replaces a non-empty value, even if a
+	// provider later reports a different SHA.
+	MergedTargetSha *string `json:"mergedTargetSha,omitempty"`
 	// ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the
 	// resource still desired it open (spec.state is "open"): either it was merged or closed outside the
 	// controller, or it was closed on the SCM because the PullRequest resource was deleted (finalizer)
@@ -48,6 +57,14 @@ type PullRequestStatusApplyConfiguration struct {
 	// When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider.
 	// The PullRequest resource will be deleted after this flag is set when possible, but the status is
 	// preserved in the owning ChangeTransferPolicy to maintain a record.
+	//
+	// The name is a misnomer and may be renamed or removed in a future API revision. It predates the
+	// Get-by-ID lookup, which now resolves merge vs. close authoritatively whenever the provider can
+	// still answer, so this field is only set when the provider cannot: "externally" is wrong (our own
+	// deletion finalizer reaches here too) and "merged or closed" claims a distinction we did not
+	// establish (the pull request may also have been deleted on the SCM). The likely replacement is an
+	// "unknown" State value, which would make the empty-State invariant above structural rather than
+	// documented.
 	ExternallyMergedOrClosed *bool `json:"externallyMergedOrClosed,omitempty"`
 	// SCMSyncedSpecDigest fingerprints title and description last successfully synced
 	// to the SCM via provider.Update on an open pull request.
@@ -105,6 +122,14 @@ func (b *PullRequestStatusApplyConfiguration) WithPRCreationTime(value v1.Time) 
 // If called multiple times, the Url field is set to the value of the last call.
 func (b *PullRequestStatusApplyConfiguration) WithUrl(value string) *PullRequestStatusApplyConfiguration {
 	b.Url = &value
+	return b
+}
+
+// WithMergedTargetSha sets the MergedTargetSha field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the MergedTargetSha field is set to the value of the last call.
+func (b *PullRequestStatusApplyConfiguration) WithMergedTargetSha(value string) *PullRequestStatusApplyConfiguration {
+	b.MergedTargetSha = &value
 	return b
 }
 
