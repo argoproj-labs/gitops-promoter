@@ -2594,7 +2594,9 @@ var _ = Describe("writePromotionHistoryNote merge commit snapshot mismatch", fun
 		recorder := events.NewFakeRecorder(100)
 		r := &ChangeTransferPolicyReconciler{Recorder: recorder}
 
-		Expect(r.writePromotionHistoryNote(ctx, ctp, gitOps, buildLivePR(dryOne))).To(Succeed())
+		written, err := r.writePromotionHistoryNote(ctx, ctp, gitOps, buildLivePR(dryOne))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(written).To(BeTrue())
 
 		By("Verifying the note on the merge commit uses the merged dry sha, not the stale snapshot")
 		note, err := fetchPromotionHistoryNote(workDir, mergeSha)
@@ -2620,7 +2622,9 @@ var _ = Describe("writePromotionHistoryNote merge commit snapshot mismatch", fun
 		r := &ChangeTransferPolicyReconciler{Recorder: recorder}
 
 		// Snapshot already records dry-2, i.e. exactly what merged: no mismatch.
-		Expect(r.writePromotionHistoryNote(ctx, ctp, gitOps, buildLivePR(dryTwo))).To(Succeed())
+		written, err := r.writePromotionHistoryNote(ctx, ctp, gitOps, buildLivePR(dryTwo))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(written).To(BeTrue())
 
 		note, err := fetchPromotionHistoryNote(workDir, mergeSha)
 		Expect(err).NotTo(HaveOccurred())
