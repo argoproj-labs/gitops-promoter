@@ -30,23 +30,14 @@ type commitObject struct {
 	trailersCached bool
 }
 
-// git log batch format: six NUL-separated fields per commit.
+// git log batch format: six NUL-separated fields per commit, in this order:
+// %H (sha), %an (author), %cI (commit time), %s (subject), %b (body), %B (full message).
 //
-// We ask git to format fields (%H, %an, %cI, %s, %b, %B) rather than decode raw commit
-// objects. NUL cannot appear inside those fields, so the output is a flat field stream.
+// NUL cannot appear inside those fields, so the output is a flat field stream.
 const (
 	commitFieldSep      = "\x00"
 	commitLogFormat     = "%H%x00%an%x00%cI%x00%s%x00%b%x00%B"
 	commitLogFieldCount = 6
-)
-
-const (
-	commitFieldSHA = iota
-	commitFieldAuthor
-	commitFieldCommitTime
-	commitFieldSubject
-	commitFieldBody
-	commitFieldMessage
 )
 
 // fullObjectID matches a complete SHA-1 or SHA-256 object ID. Batch inputs must be full SHAs
@@ -259,22 +250,23 @@ func parseCommitLogOutput(stdout string) (map[string]commitObject, error) {
 	recordCount := len(fields) / commitLogFieldCount
 	results := make(map[string]commitObject, recordCount)
 	for i := 0; i < len(fields); i += commitLogFieldCount {
-		record := fields[i : i+commitLogFieldCount]
+		sha, author, commitTime := fields[i], fields[i+1], fields[i+2]
+		subject, body, message := fields[i+3], fields[i+4], fields[i+5]
 
-		parsedTime, err := time.Parse(time.RFC3339, record[commitFieldCommitTime])
+		parsedTime, err := time.Parse(time.RFC3339, commitTime)
 		if err != nil {
-			return nil, fmt.Errorf("parse committer time %q for commit %q: %w", record[commitFieldCommitTime], record[commitFieldSHA], err)
+			return nil, fmt.Errorf("parse committer time %q for commit %q: %w", commitTime, sha, err)
 		}
 
-		results[record[commitFieldSHA]] = commitObject{
+		results[sha] = commitObject{
 			State: v1alpha1.CommitShaState{
-				Sha:        record[commitFieldSHA],
+				Sha:        sha,
 				CommitTime: v1.Time{Time: parsedTime},
-				Author:     record[commitFieldAuthor],
-				Subject:    record[commitFieldSubject],
-				Body:       strings.TrimSpace(record[commitFieldBody]),
+				Author:     author,
+				Subject:    subject,
+				Body:       strings.TrimSpace(body),
 			},
-			Message: record[commitFieldMessage],
+			Message: message,
 		}
 	}
 
