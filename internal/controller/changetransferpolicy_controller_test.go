@@ -2815,20 +2815,72 @@ var _ = Describe("commit status description trailers", func() {
 	})
 
 	DescribeTable("shouldSkipHistoryRecalculation",
-		func(prev, cur promoterv1alpha1.ChangeTransferPolicyStatus, expected bool) {
-			Expect(shouldSkipHistoryRecalculation(&prev, &cur)).To(Equal(expected))
+		func(prev, cur promoterv1alpha1.ChangeTransferPolicyStatus, historyNoteWritten bool, expected bool) {
+			Expect(shouldSkipHistoryRecalculation(&prev, &cur, historyNoteWritten)).To(Equal(expected))
 		},
-		Entry("skips when active tip unchanged and history exists",
+		Entry("skips when active tip unchanged and newest history entry describes it",
 			promoterv1alpha1.ChangeTransferPolicyStatus{
 				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-				History: []promoterv1alpha1.History{
-					{Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}}},
-				},
+				History: []promoterv1alpha1.History{{
+					Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
+					PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
+						ID:              "5",
+						MergedTargetSha: "abc",
+					},
+				}},
+			},
+			promoterv1alpha1.ChangeTransferPolicyStatus{
+				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
+			},
+			false,
+			true,
+		),
+		Entry("recalculates when a promotion history note was written this reconcile",
+			promoterv1alpha1.ChangeTransferPolicyStatus{
+				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
+				History: []promoterv1alpha1.History{{
+					Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
+					PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
+						MergedTargetSha: "abc",
+					},
+				}},
 			},
 			promoterv1alpha1.ChangeTransferPolicyStatus{
 				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
 			},
 			true,
+			false,
+		),
+		Entry("recalculates when newest history entry targets a different commit than the active tip",
+			promoterv1alpha1.ChangeTransferPolicyStatus{
+				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
+				History: []promoterv1alpha1.History{{
+					Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "def"}},
+					PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
+						MergedTargetSha: "def",
+					},
+				}},
+			},
+			promoterv1alpha1.ChangeTransferPolicyStatus{
+				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
+			},
+			false,
+			false,
+		),
+		Entry("recalculates when newest history entry is only partially populated",
+			promoterv1alpha1.ChangeTransferPolicyStatus{
+				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
+				History: []promoterv1alpha1.History{{
+					PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
+						MergedTargetSha: "abc",
+					},
+				}},
+			},
+			promoterv1alpha1.ChangeTransferPolicyStatus{
+				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
+			},
+			false,
+			false,
 		),
 		Entry("recalculates when active tip changes",
 			promoterv1alpha1.ChangeTransferPolicyStatus{
@@ -2839,6 +2891,7 @@ var _ = Describe("commit status description trailers", func() {
 				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "def"}},
 			},
 			false,
+			false,
 		),
 		Entry("recalculates when history has never been populated",
 			promoterv1alpha1.ChangeTransferPolicyStatus{
@@ -2848,12 +2901,14 @@ var _ = Describe("commit status description trailers", func() {
 				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
 			},
 			false,
+			false,
 		),
 		Entry("recalculates when active tip is not yet known",
 			promoterv1alpha1.ChangeTransferPolicyStatus{
 				History: []promoterv1alpha1.History{{}},
 			},
 			promoterv1alpha1.ChangeTransferPolicyStatus{},
+			false,
 			false,
 		),
 	)

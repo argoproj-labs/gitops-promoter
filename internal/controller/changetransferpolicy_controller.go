@@ -227,7 +227,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 		utils.InheritNotReadyConditionFromObjects(&ctp, promoterConditions.PullRequestNotReady, pr)
 	}
 
-	if shouldSkipHistoryRecalculation(prevStatus, &ctp.Status) && !historyNoteWritten {
+	if shouldSkipHistoryRecalculation(prevStatus, &ctp.Status, historyNoteWritten) {
 		logger.V(4).Info("skipping history recalculation, active branch tip unchanged")
 	} else {
 		// calculateHistory is done at a best effort so we do not return any errors here, we just log them instead.
@@ -248,17 +248,37 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 // reconcile. History is derived from the top of the active branch; when the active hydrated tip is
 // unchanged, the rev-list window and trailer content on those commits are immutable in git.
 //
-// An empty persisted history is never skipped so a prior best-effort failure can be retried. A
-// Spec.ActivePath change without a new active tip is not detected here; history is refreshed on the
-// next promotion that moves the active branch.
-func shouldSkipHistoryRecalculation(prev, cur *promoterv1alpha1.ChangeTransferPolicyStatus) bool {
+// An unchanged tip is not sufficient on its own: calculateHistory is best effort, so a reconcile
+// that moved the tip may have left Status.History describing the previous tip (rev-list or the
+// object prefetch failed) or holding a half-populated newest entry (a per-sha metadata read
+// failed). Skipping on tip equality alone would then pin that stale or partial history forever,
+// since every later reconcile sees the same tip and non-empty history. Requiring the newest entry
+// to describe the current tip makes those failures self-healing on the next reconcile.
+//
+// historyNoteWritten forces a rebuild when a promotion-history note was just written at PR
+// finalization: a prior pass may have populated history from a trailer-less merge commit before
+// the note existed, while the newest entry's SHAs already match the active tip.
+//
+// A Spec.ActivePath change without a new active tip is not detected here; history is refreshed on
+// the next promotion that moves the active branch.
+func shouldSkipHistoryRecalculation(prev, cur *promoterv1alpha1.ChangeTransferPolicyStatus, historyNoteWritten bool) bool {
+	if historyNoteWritten {
+		return false
+	}
 	if cur.Active.Hydrated.Sha == "" {
 		return false
 	}
 	if cur.Active.Hydrated.Sha != prev.Active.Hydrated.Sha {
 		return false
 	}
-	return len(prev.History) > 0
+	if len(prev.History) == 0 {
+		return false
+	}
+	newest := prev.History[0]
+	if newest.PullRequest == nil || newest.PullRequest.MergedTargetSha != cur.Active.Hydrated.Sha {
+		return false
+	}
+	return newest.Active.Hydrated.Sha == cur.Active.Hydrated.Sha
 }
 
 // calculateHistory calculates the history by getting the first parents on the active branch and using the trailers to reconstruct the history.
