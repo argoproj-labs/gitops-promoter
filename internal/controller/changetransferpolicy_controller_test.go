@@ -1677,6 +1677,163 @@ var _ = Describe("TemplatePullRequest", func() {
 			Expect(description).To(ContainSubstring("Promote to " + testBranchDevelopment))
 		})
 	})
+
+	Context("shipped default PR description template", func() {
+		const (
+			activeDrySha   = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+			proposedDrySha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+			baseRefSha     = "cccccccccccccccccccccccccccccccccccccccc"
+			headRefSha     = "dddddddddddddddddddddddddddddddddddddddd"
+			gitopsRepoURL  = "https://github.com/example/gitops/"
+			codeRepoURL    = "https://github.com/example/app/"
+		)
+
+		makeRevisionReference := func(sha, subject, repoURL string) promoterv1alpha1.RevisionReference {
+			return promoterv1alpha1.RevisionReference{
+				Commit: &promoterv1alpha1.CommitMetadata{
+					Sha:     sha,
+					Subject: subject,
+					RepoURL: repoURL,
+				},
+			}
+		}
+
+		It("renders the full shipped default template with all sections", func() {
+			cc, err := loadShippedControllerConfigurationForTests("shipped-pr-template-test")
+			Expect(err).NotTo(HaveOccurred())
+
+			psName := "argocon-demo"
+			activeSubject := "fix: a | b"
+			proposedSubject := "feat: c | d"
+			ctp := &promoterv1alpha1.ChangeTransferPolicy{
+				Spec: promoterv1alpha1.ChangeTransferPolicySpec{
+					ActivePath:     "apps/demo",
+					ActiveBranch:   testBranchDevelopment,
+					ProposedBranch: testBranchDevelopmentNext,
+				},
+				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+					Active: promoterv1alpha1.CommitBranchState{
+						Dry: promoterv1alpha1.CommitShaState{
+							Sha:     activeDrySha,
+							RepoURL: gitopsRepoURL,
+							Subject: activeSubject,
+							References: []promoterv1alpha1.RevisionReference{
+								makeRevisionReference(baseRefSha, "chore(deps): bump foo", codeRepoURL),
+							},
+						},
+					},
+					Proposed: promoterv1alpha1.CommitBranchState{
+						Dry: promoterv1alpha1.CommitShaState{
+							Sha:     proposedDrySha,
+							RepoURL: gitopsRepoURL,
+							Subject: proposedSubject,
+							References: []promoterv1alpha1.RevisionReference{
+								makeRevisionReference(headRefSha, "chore(deps): bump bar", codeRepoURL),
+							},
+						},
+					},
+				},
+			}
+			ps := &promoterv1alpha1.PromotionStrategy{
+				ObjectMeta: metav1.ObjectMeta{Name: psName, Namespace: "default"},
+				Status: promoterv1alpha1.PromotionStrategyStatus{
+					Environments: []promoterv1alpha1.EnvironmentStatus{
+						{
+							Branch: testBranchDevelopment,
+							Active: promoterv1alpha1.CommitBranchState{
+								Dry: promoterv1alpha1.CommitShaState{Sha: activeDrySha},
+							},
+							Proposed: promoterv1alpha1.CommitBranchState{
+								Dry: promoterv1alpha1.CommitShaState{Sha: proposedDrySha},
+							},
+							PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
+								ID:  "42",
+								Url: "https://github.com/example/gitops/pull/42",
+							},
+						},
+						{
+							Branch: testBranchStaging,
+							Active: promoterv1alpha1.CommitBranchState{
+								Dry: promoterv1alpha1.CommitShaState{Sha: activeDrySha},
+							},
+							Proposed: promoterv1alpha1.CommitBranchState{
+								Dry: promoterv1alpha1.CommitShaState{Sha: proposedDrySha},
+							},
+						},
+					},
+				},
+			}
+
+			title, description, err := TemplatePullRequest(cc.Spec.PullRequest.Template, map[string]any{
+				"ChangeTransferPolicy": ctp,
+				"PromotionStrategy":    ps,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(title).To(Equal(fmt.Sprintf("Promote `apps/demo` (bbbbb) to `%s`", testBranchDevelopment)))
+
+			Expect(description).To(ContainSubstring(fmt.Sprintf("This PR promotes changes to **`%s`** (PromotionStrategy `%s`)", testBranchDevelopment, psName)))
+			Expect(description).To(ContainSubstring("### Deployment commit"))
+			Expect(description).To(ContainSubstring(fmt.Sprintf("[%s](%s/commit/%s)", activeDrySha[:7], strings.TrimSuffix(gitopsRepoURL, "/"), activeDrySha)))
+			Expect(description).To(ContainSubstring(fmt.Sprintf("[%s](%s/commit/%s)", proposedDrySha[:7], strings.TrimSuffix(gitopsRepoURL, "/"), proposedDrySha)))
+			Expect(description).To(ContainSubstring(`fix: a \| b`))
+			Expect(description).To(ContainSubstring(`feat: c \| d`))
+			Expect(description).NotTo(ContainSubstring("fix: a | b"))
+			Expect(description).NotTo(ContainSubstring("feat: c | d"))
+
+			Expect(description).To(ContainSubstring("### Code reference"))
+			Expect(description).To(ContainSubstring(fmt.Sprintf("[%s](%s/commit/%s)", baseRefSha[:7], strings.TrimSuffix(codeRepoURL, "/"), baseRefSha)))
+			Expect(description).To(ContainSubstring(fmt.Sprintf("[%s](%s/commit/%s)", headRefSha[:7], strings.TrimSuffix(codeRepoURL, "/"), headRefSha)))
+			Expect(description).To(ContainSubstring("chore(deps): bump foo"))
+			Expect(description).To(ContainSubstring("chore(deps): bump bar"))
+			Expect(description).To(ContainSubstring(fmt.Sprintf("[%s...%s](%s/compare/%s...%s)",
+				baseRefSha[:7], headRefSha[:7], strings.TrimSuffix(codeRepoURL, "/"), baseRefSha, headRefSha)))
+
+			Expect(description).To(ContainSubstring("### Promotion pipeline"))
+			Expect(description).To(ContainSubstring(fmt.Sprintf("`%s` **(this PR)**", testBranchDevelopment)))
+			Expect(description).To(ContainSubstring("[#42](https://github.com/example/gitops/pull/42)"))
+			Expect(description).To(ContainSubstring(fmt.Sprintf("| `%s` | %s | %s | — |", testBranchStaging, activeDrySha[:7], proposedDrySha[:7])))
+		})
+
+		It("omits optional sections when PromotionStrategy and code references are absent", func() {
+			cc, err := loadShippedControllerConfigurationForTests("shipped-pr-template-minimal-test")
+			Expect(err).NotTo(HaveOccurred())
+
+			ctp := &promoterv1alpha1.ChangeTransferPolicy{
+				Spec: promoterv1alpha1.ChangeTransferPolicySpec{
+					ActiveBranch:   testBranchDevelopment,
+					ProposedBranch: testBranchDevelopmentNext,
+				},
+				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+					Active: promoterv1alpha1.CommitBranchState{
+						Dry: promoterv1alpha1.CommitShaState{
+							Sha:     activeDrySha,
+							Subject: "currently deployed",
+						},
+					},
+					Proposed: promoterv1alpha1.CommitBranchState{
+						Dry: promoterv1alpha1.CommitShaState{
+							Sha:     proposedDrySha,
+							Subject: "proposed update",
+						},
+					},
+				},
+			}
+
+			title, description, err := TemplatePullRequest(cc.Spec.PullRequest.Template, map[string]any{
+				"ChangeTransferPolicy": ctp,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(title).To(Equal(fmt.Sprintf("Promote (bbbbb) to `%s`", testBranchDevelopment)))
+			Expect(description).To(ContainSubstring(fmt.Sprintf("This PR promotes changes to **`%s`**.", testBranchDevelopment)))
+			Expect(description).NotTo(ContainSubstring("PromotionStrategy"))
+			Expect(description).To(ContainSubstring("### Deployment commit"))
+			Expect(description).To(ContainSubstring("| currently deployed | proposed update |"))
+			Expect(description).NotTo(ContainSubstring("### Code reference"))
+			Expect(description).NotTo(ContainSubstring("### Promotion pipeline"))
+		})
+	})
 })
 
 var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func() {
