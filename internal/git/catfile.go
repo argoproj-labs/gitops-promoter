@@ -24,10 +24,9 @@ type blobObject struct {
 
 // commitObject holds the fields of one commit, as formatted by git itself.
 type commitObject struct {
-	trailers       map[string][]string
-	Message        string
-	State          v1alpha1.CommitShaState
-	trailersCached bool
+	trailers map[string][]string // nil until parsed by getTrailers
+	Message  string
+	State    v1alpha1.CommitShaState
 }
 
 // git log batch format: six NUL-separated fields per commit, in this order:
@@ -60,8 +59,16 @@ func (g *EnvironmentOperations) LoadCommitAndMetadataBlobs(ctx context.Context, 
 		return fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
+	metaPath := buildHydratorMetadataPath(activePath)
+	blobRequests := make([]string, 0, len(shas))
+	for _, sha := range shas {
+		if sha != "" {
+			blobRequests = append(blobRequests, sha+":"+metaPath)
+		}
+	}
+
 	// cat-file reports missing objects per request and still exits zero; errors here are real failures.
-	if err := g.prefetchBlobs(ctx, metadataBlobRequests(activePath, shas...)...); err != nil {
+	if err := g.prefetchBlobs(ctx, blobRequests...); err != nil {
 		return err
 	}
 	g.prefetchCommits(ctx, shas...)
@@ -87,7 +94,7 @@ func (g *EnvironmentOperations) getCommit(ctx context.Context, sha string) (comm
 	if !ok {
 		return commitObject{}, fmt.Errorf("git log did not return a record for commit %q", sha)
 	}
-	mergeIntoCache(&g.commits, map[string]commitObject{key: commit})
+	g.commits[key] = commit
 	return commit, nil
 }
 
@@ -99,7 +106,7 @@ func (g *EnvironmentOperations) getTrailers(ctx context.Context, sha string) (ma
 	if err != nil {
 		return nil, err
 	}
-	if commit.trailersCached {
+	if commit.trailers != nil {
 		return commit.trailers, nil
 	}
 
@@ -109,8 +116,7 @@ func (g *EnvironmentOperations) getTrailers(ctx context.Context, sha string) (ma
 	}
 
 	commit.trailers = trailers
-	commit.trailersCached = true
-	mergeIntoCache(&g.commits, map[string]commitObject{key: commit})
+	g.commits[key] = commit
 	return trailers, nil
 }
 
@@ -127,7 +133,7 @@ func (g *EnvironmentOperations) getBlob(ctx context.Context, request string) (bl
 	if !ok {
 		return blobObject{}, fmt.Errorf("cat-file did not return result for %q", request)
 	}
-	mergeIntoCache(&g.blobs, map[string]blobObject{request: blob})
+	g.blobs[request] = blob
 	return blob, nil
 }
 
@@ -137,24 +143,24 @@ func (g *EnvironmentOperations) getBlob(ctx context.Context, request string) (bl
 // still resolve present SHAs individually via getCommit. Trailer SHAs often point at commits
 // that were never fetched into this clone.
 func (g *EnvironmentOperations) prefetchCommits(ctx context.Context, shas ...string) {
-	uncached := make([]string, 0, len(shas))
-	seen := make(map[string]struct{}, len(shas))
+	pending := make(map[string]struct{}, len(shas))
 	for _, sha := range shas {
 		key := strings.ToLower(sha)
 		if key == "" {
 			continue
 		}
-		if _, cached := g.commits[key]; cached {
+		if _, ok := g.commits[key]; ok {
 			continue
 		}
-		if _, duplicate := seen[key]; duplicate {
-			continue
-		}
-		seen[key] = struct{}{}
-		uncached = append(uncached, key)
+		pending[key] = struct{}{}
 	}
-	if len(uncached) == 0 {
+	if len(pending) == 0 {
 		return
+	}
+
+	uncached := make([]string, 0, len(pending))
+	for key := range pending {
+		uncached = append(uncached, key)
 	}
 
 	results, err := g.commitLogBatch(ctx, uncached...)
@@ -162,34 +168,38 @@ func (g *EnvironmentOperations) prefetchCommits(ctx context.Context, shas ...str
 		log.FromContext(ctx).V(4).Info("failed to prefetch commits, falling back to individual lookups", "error", err)
 		return
 	}
-	mergeIntoCache(&g.commits, results)
+	for key, commit := range results {
+		g.commits[key] = commit
+	}
 }
 
 func (g *EnvironmentOperations) prefetchBlobs(ctx context.Context, requests ...string) error {
-	uncached := make([]string, 0, len(requests))
-	seen := make(map[string]struct{}, len(requests))
+	pending := make(map[string]struct{}, len(requests))
 	for _, req := range requests {
 		if req == "" {
 			continue
 		}
-		if _, cached := g.blobs[req]; cached {
+		if _, ok := g.blobs[req]; ok {
 			continue
 		}
-		if _, duplicate := seen[req]; duplicate {
-			continue
-		}
-		seen[req] = struct{}{}
-		uncached = append(uncached, req)
+		pending[req] = struct{}{}
 	}
-	if len(uncached) == 0 {
+	if len(pending) == 0 {
 		return nil
+	}
+
+	uncached := make([]string, 0, len(pending))
+	for req := range pending {
+		uncached = append(uncached, req)
 	}
 
 	results, err := g.catFileBatch(ctx, uncached...)
 	if err != nil {
 		return err
 	}
-	mergeIntoCache(&g.blobs, results)
+	for key, blob := range results {
+		g.blobs[key] = blob
+	}
 	return nil
 }
 
@@ -204,7 +214,12 @@ func (g *EnvironmentOperations) commitLogBatch(ctx context.Context, shas ...stri
 	}
 
 	// Drop invalid SHAs instead of failing the batch; getCommit reports them individually.
-	revisions := filterFullObjectIDs(shas)
+	revisions := make([]string, 0, len(shas))
+	for _, sha := range shas {
+		if fullObjectID.MatchString(sha) {
+			revisions = append(revisions, sha)
+		}
+	}
 	if len(revisions) == 0 {
 		return map[string]commitObject{}, nil
 	}
@@ -327,34 +342,4 @@ func parseCatFileObjectSize(header string) (int, error) {
 		return 0, fmt.Errorf("invalid cat-file size %q in header %q: %w", fields[2], header, err)
 	}
 	return size, nil
-}
-
-func metadataBlobRequests(activePath string, shas ...string) []string {
-	metaPath := buildHydratorMetadataPath(activePath)
-	requests := make([]string, 0, len(shas))
-	for _, sha := range shas {
-		if sha != "" {
-			requests = append(requests, sha+":"+metaPath)
-		}
-	}
-	return requests
-}
-
-func filterFullObjectIDs(shas []string) []string {
-	revisions := make([]string, 0, len(shas))
-	for _, sha := range shas {
-		if fullObjectID.MatchString(sha) {
-			revisions = append(revisions, sha)
-		}
-	}
-	return revisions
-}
-
-func mergeIntoCache[T any](cache *map[string]T, results map[string]T) {
-	if *cache == nil {
-		*cache = make(map[string]T, len(results))
-	}
-	for k, v := range results {
-		(*cache)[k] = v
-	}
 }
