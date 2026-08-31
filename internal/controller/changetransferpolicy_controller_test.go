@@ -2988,6 +2988,21 @@ var _ = Describe("createOrUpdatePullRequest with a merged or terminating PullReq
 		Expect(returnedPR.Name).To(Equal(prKey.Name))
 		expectSpecUntouched()
 	})
+
+	It("does not overwrite the spec of a merged-or-closed PullRequest when a newer dry commit is pending", func() {
+		Eventually(func(g Gomega) {
+			var livePR promoterv1alpha1.PullRequest
+			g.Expect(k8sClient.Get(ctx, prKey, &livePR)).To(Succeed())
+			livePR.Status.State = promoterv1alpha1.PullRequestMergedOrClosed
+			g.Expect(k8sClient.Status().Update(ctx, &livePR)).To(Succeed())
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		returnedPR, err := reconciler.createOrUpdatePullRequest(ctx, ctp)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(returnedPR).NotTo(BeNil())
+		Expect(returnedPR.Name).To(Equal(prKey.Name))
+		expectSpecUntouched()
+	})
 })
 
 var _ = Describe("commit status description trailers", func() {

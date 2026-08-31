@@ -208,6 +208,7 @@ func (ps *PullRequest) SetStatusInstanceID(v *string) {
 // honoring it would strand the promotion history note already written against the original SHA. Such a
 // write is rejected rather than merged, which surfaces as a failed status apply and a retry.
 // +kubebuilder:validation:XValidation:rule=`!has(oldSelf.status) || !has(oldSelf.status.mergedTargetSha) || (has(self.status) && has(self.status.mergedTargetSha) && self.status.mergedTargetSha == oldSelf.status.mergedTargetSha)`,message="mergedTargetSha is immutable once set"
+// +kubebuilder:validation:XValidation:rule=`!has(oldSelf.status) || !has(oldSelf.status.state) || !(oldSelf.status.state in ['merged', 'closed', 'merged-or-closed']) || self.spec == oldSelf.spec`,message="spec is immutable once status.state is merged, closed, or merged-or-closed"
 type PullRequest struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

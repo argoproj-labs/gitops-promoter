@@ -1383,6 +1383,18 @@ func tooManyPRsError(pr *promoterv1alpha1.PullRequestList) error {
 	return fmt.Errorf("found more than one open PullRequest: %s", summary)
 }
 
+// pullRequestStatusFreezesSpec reports whether status has reached an SCM outcome that makes
+// spec (mergeSha, commit message trailers, etc.) a history snapshot. spec.state == closed alone
+// does not freeze spec: close intent can lead the CR while status is still catching up.
+func pullRequestStatusFreezesSpec(pr *promoterv1alpha1.PullRequest) bool {
+	switch pr.Status.State {
+	case promoterv1alpha1.PullRequestMerged, promoterv1alpha1.PullRequestClosed, promoterv1alpha1.PullRequestMergedOrClosed:
+		return true
+	default:
+		return false
+	}
+}
+
 func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) (*promoterv1alpha1.PullRequest, error) {
 	logger := log.FromContext(ctx)
 	if ctp.Status.Proposed.Dry.Sha == ctp.Status.Active.Dry.Sha {
@@ -1460,8 +1472,8 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 	// released. Overwriting its spec here (MergeSha, dry-sha trailers) would point the note-writing logic at a
 	// merge that never happened for this PR, silently losing the history entry. Leave it alone; a new
 	// PullRequest is created once this one is gone.
-	if prExists && (existingPR.Status.State == promoterv1alpha1.PullRequestMerged || !existingPR.DeletionTimestamp.IsZero()) {
-		logger.V(4).Info("Skipping PullRequest apply because the existing PullRequest is merged or terminating",
+	if prExists && (pullRequestStatusFreezesSpec(existingPR) || !existingPR.DeletionTimestamp.IsZero()) {
+		logger.V(4).Info("Skipping PullRequest apply because the existing PullRequest has terminal status or is terminating",
 			"pullRequest", existingPR.Name, "statusState", existingPR.Status.State,
 			"deletionTimestamp", existingPR.DeletionTimestamp)
 		return existingPR, nil

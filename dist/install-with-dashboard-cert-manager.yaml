@@ -6781,6 +6781,9 @@ spec:
           rule: '!has(oldSelf.status) || !has(oldSelf.status.mergedTargetSha) || (has(self.status)
             && has(self.status.mergedTargetSha) && self.status.mergedTargetSha ==
             oldSelf.status.mergedTargetSha)'
+        - message: spec is immutable once status.state is merged, closed, or merged-or-closed
+          rule: '!has(oldSelf.status) || !has(oldSelf.status.state) || !(oldSelf.status.state
+            in [''merged'', ''closed'', ''merged-or-closed'']) || self.spec == oldSelf.spec'
     served: true
     storage: true
     subresources:

@@ -524,6 +524,74 @@ var _ = Describe("PullRequest Controller", func() {
 		})
 	})
 
+	Context("When status is terminal for spec immutability", func() {
+		// CRD CEL validation only — controller-free dev envtest cluster.
+		const originalMergeSha = "abc123def456789012345678901234567890abcd"
+		const updatedMergeSha = "bbb123def456789012345678901234567890abcd"
+		var pr *promoterv1alpha1.PullRequest
+
+		BeforeEach(func() {
+			prName := utils.KubeSafeUniqueName("terminal-spec-freeze-" + randomString(15))
+			pr = &promoterv1alpha1.PullRequest{
+				ObjectMeta: metav1.ObjectMeta{Name: prName, Namespace: "default"},
+				Spec: promoterv1alpha1.PullRequestSpec{
+					RepositoryReference: promoterv1alpha1.ObjectReference{Name: prName},
+					Title:               "Initial Title",
+					Description:         "Initial Description",
+					TargetBranch:        "development",
+					SourceBranch:        "development-next",
+					Commit:              promoterv1alpha1.CommitConfiguration{Message: "original trailers"},
+					MergeSha:            originalMergeSha,
+					State:               promoterv1alpha1.PullRequestOpen,
+				},
+			}
+			Expect(k8sClientDev.Create(ctx, pr)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClientDev.Delete(ctx, pr) })
+
+			pr.Status.ID = "1"
+			pr.Status.State = promoterv1alpha1.PullRequestOpen
+			Expect(k8sClientDev.Status().Update(ctx, pr)).To(Succeed())
+		})
+
+		expectSpecUpdateRejected := func() {
+			GinkgoHelper()
+			Expect(k8sClientDev.Get(ctx, client.ObjectKeyFromObject(pr), pr)).To(Succeed())
+			pr.Spec.MergeSha = updatedMergeSha
+			err := k8sClientDev.Update(ctx, pr)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("spec is immutable"))
+		}
+
+		expectSpecUpdateAllowed := func() {
+			GinkgoHelper()
+			Expect(k8sClientDev.Get(ctx, client.ObjectKeyFromObject(pr), pr)).To(Succeed())
+			pr.Spec.MergeSha = updatedMergeSha
+			Expect(k8sClientDev.Update(ctx, pr)).To(Succeed())
+			Expect(k8sClientDev.Get(ctx, client.ObjectKeyFromObject(pr), pr)).To(Succeed())
+			Expect(pr.Spec.MergeSha).To(Equal(updatedMergeSha))
+		}
+
+		DescribeTable("rejects spec changes",
+			func(terminalState promoterv1alpha1.PullRequestState) {
+				Expect(k8sClientDev.Get(ctx, client.ObjectKeyFromObject(pr), pr)).To(Succeed())
+				pr.Status.State = terminalState
+				Expect(k8sClientDev.Status().Update(ctx, pr)).To(Succeed())
+				expectSpecUpdateRejected()
+			},
+			Entry("when status is merged-or-closed", promoterv1alpha1.PullRequestMergedOrClosed),
+			Entry("when status is merged", promoterv1alpha1.PullRequestMerged),
+			Entry("when status is closed", promoterv1alpha1.PullRequestClosed),
+		)
+
+		It("allows spec changes when only spec.state is closed and status is still open", func() {
+			Expect(k8sClientDev.Get(ctx, client.ObjectKeyFromObject(pr), pr)).To(Succeed())
+			pr.Spec.State = promoterv1alpha1.PullRequestClosed
+			Expect(k8sClientDev.Update(ctx, pr)).To(Succeed())
+			Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+			expectSpecUpdateAllowed()
+		})
+	})
+
 	Context("When deleting a PullRequest that never created a PR on SCM", func() {
 		var name string
 		var scmSecret *v1.Secret
