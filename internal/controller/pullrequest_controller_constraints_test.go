@@ -109,20 +109,51 @@ func funcBodyAssignsPullRequestStatus(fn *ast.FuncDecl) bool {
 	return found
 }
 
+func exprReferencesMicrosecond(expr ast.Expr) bool {
+	switch e := expr.(type) {
+	case *ast.BasicLit:
+		return strings.Contains(e.Value, "Microsecond")
+	case *ast.SelectorExpr:
+		return e.Sel.Name == "Microsecond"
+	case *ast.BinaryExpr:
+		return exprReferencesMicrosecond(e.X) || exprReferencesMicrosecond(e.Y)
+	case *ast.CallExpr:
+		if sel, ok := e.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "Microsecond" {
+			return true
+		}
+		for _, arg := range e.Args {
+			if exprReferencesMicrosecond(arg) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func reconcileContainsMicroRequeue(fn *ast.FuncDecl) bool {
 	found := false
 	ast.Inspect(fn.Body, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
-		if !ok {
-			return true
-		}
-		sel, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok || sel.Sel.Name != "RequeueAfter" {
-			return true
-		}
-		if lit, ok := call.Args[0].(*ast.BasicLit); ok && strings.Contains(lit.Value, "Microsecond") {
-			found = true
-			return false
+		switch node := n.(type) {
+		case *ast.CallExpr:
+			sel, ok := node.Fun.(*ast.SelectorExpr)
+			if !ok || sel.Sel.Name != "RequeueAfter" {
+				return true
+			}
+			for _, arg := range node.Args {
+				if exprReferencesMicrosecond(arg) {
+					found = true
+					return false
+				}
+			}
+		case *ast.KeyValueExpr:
+			ident, ok := node.Key.(*ast.Ident)
+			if !ok || ident.Name != "RequeueAfter" {
+				return true
+			}
+			if exprReferencesMicrosecond(node.Value) {
+				found = true
+				return false
+			}
 		}
 		return true
 	})

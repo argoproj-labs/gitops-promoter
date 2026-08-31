@@ -835,10 +835,11 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				DeferCleanup(func() {
 					var livePR promoterv1alpha1.PullRequest
 					if err := k8sClient.Get(ctx, prKey, &livePR); err != nil {
+						Expect(ctrlclient.IgnoreNotFound(err)).To(Succeed())
 						return
 					}
 					livePR.Finalizers = nil
-					_ = k8sClient.Update(ctx, &livePR)
+					Expect(ctrlclient.IgnoreNotFound(k8sClient.Update(ctx, &livePR))).To(Succeed())
 				})
 
 				By("Simulating external removal by deleting the PR from the fake SCM")
@@ -886,10 +887,11 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				DeferCleanup(func() {
 					var livePR promoterv1alpha1.PullRequest
 					if err := k8sClient.Get(ctx, prKey, &livePR); err != nil {
+						Expect(ctrlclient.IgnoreNotFound(err)).To(Succeed())
 						return
 					}
 					livePR.Finalizers = nil
-					_ = k8sClient.Update(ctx, &livePR)
+					Expect(ctrlclient.IgnoreNotFound(k8sClient.Update(ctx, &livePR))).To(Succeed())
 				})
 
 				By("Breaking PullRequest provider lookup before deletion")
