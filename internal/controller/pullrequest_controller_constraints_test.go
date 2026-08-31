@@ -126,8 +126,10 @@ func exprReferencesMicrosecond(expr ast.Expr) bool {
 				return true
 			}
 		}
+		return false
+	default:
+		return false
 	}
-	return false
 }
 
 func reconcileContainsMicroRequeue(fn *ast.FuncDecl) bool {
@@ -154,6 +156,8 @@ func reconcileContainsMicroRequeue(fn *ast.FuncDecl) bool {
 				found = true
 				return false
 			}
+		default:
+			return true
 		}
 		return true
 	})

@@ -194,8 +194,6 @@ func (r *PullRequestReconciler) GetEnqueueFunc() PREnqueueFunc {
 //		if the CR status is Terminal:
 //		  Delete the CR and return.
 //
-//		Ensure the promoter finalizer is present (metadata-only Update).
-//
 //		if SCM sync should be skipped (work avoidance short-circuit):
 //		  Return.
 //
@@ -205,25 +203,26 @@ func (r *PullRequestReconciler) GetEnqueueFunc() PREnqueueFunc {
 //
 //		Call FindOpen.
 //
-//		if the open PR is not found in the SCM:
+//		if not found:
 //		  if status.id is empty:
 //		    Call the SCM to Create the PR, then set status.id to the new ID, status.state to 'open', and return.
 //
 //		  Emit PullRequestExternallyMergedOrClosed, set status.state to 'merged-or-closed', and return.
 //
-//		Set status.id to the found ID, status.state to 'open', and refresh applied labels from FindOpen when the provider
-//		reports them.
+//		if found:
+//		  Set status.id to the found ID, status.state to 'open', and refresh applied labels from FindOpen when the provider
+//		  reports them.
 //
-//		if spec.state is 'merged':
-//		  Call the SCM to merge the PR.
-//		  Set status.state to 'merged' and, if available, set status.mergedTargetSha.
-//		  Return.
+//		  if spec.state is 'merged':
+//		    Call the SCM to merge the PR.
+//		    Set status.state to 'merged' and, if available, set status.mergedTargetSha.
+//		    Return.
 //
-//		if title or description has drifted:
-//		  Call the SCM to Update.
+//		  if title or description has drifted:
+//		    Call the SCM to Update.
 //
-//		if labels state has drifted:
-//		  Make API calls to update the labels and update the status.
+//		  if labels state has drifted:
+//		    Make API calls to update the labels and update the status.
 //
 //		Return.
 //
