@@ -257,7 +257,7 @@ type PullRequestCommonStatus struct {
 	// ID is the unique identifier of the pull request, set by the SCM.
 	ID string `json:"id,omitempty"`
 	// State is the state of the pull request.
-	// +kubebuilder:validation:Enum=closed;merged;open
+	// +kubebuilder:validation:Enum=closed;merged;open;merged-or-closed;unknown
 	State PullRequestState `json:"state,omitempty"`
 	// PRCreationTime is the time when the pull request was created.
 	PRCreationTime metav1.Time `json:"prCreationTime,omitempty"`

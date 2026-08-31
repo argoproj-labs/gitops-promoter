@@ -812,6 +812,59 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 
+			It("should remove CTP finalizer and persist unknown when PR disappears from SCM", func() {
+				By("Adding a pending commit")
+				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+
+				prKey := types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(prName),
+					Namespace: "default",
+				}
+
+				var createdPR promoterv1alpha1.PullRequest
+				By("Waiting for open PR with synced CTP status")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, prKey, &createdPR)).To(Succeed())
+					g.Expect(createdPR.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+					g.Expect(createdPR.Status.ID).ToNot(BeEmpty())
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.PullRequest).ToNot(BeNil())
+					g.Expect(changeTransferPolicy.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				DeferCleanup(func() {
+					var livePR promoterv1alpha1.PullRequest
+					if err := k8sClient.Get(ctx, prKey, &livePR); err != nil {
+						return
+					}
+					livePR.Finalizers = nil
+					_ = k8sClient.Update(ctx, &livePR)
+				})
+
+				By("Simulating external removal by deleting the PR from the fake SCM")
+				fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
+				Expect(fakeProvider.DeletePullRequest(ctx, createdPR)).To(Succeed())
+
+				By("Triggering PullRequest reconciliation")
+				triggerPRReconcile(ctx, prKey, &createdPR)
+
+				By("Verifying the PR is deleted and CTP records unknown with Ready=True")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, prKey, &createdPR)
+					g.Expect(errors.IsNotFound(err)).To(BeTrue())
+
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.PullRequest).ToNot(BeNil())
+					g.Expect(changeTransferPolicy.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestUnknown))
+
+					ready := meta.FindStatusCondition(changeTransferPolicy.Status.Conditions, string(promoterConditions.Ready))
+					g.Expect(ready).NotTo(BeNil())
+					g.Expect(ready.Status).To(Equal(metav1.ConditionTrue),
+						"CTP reconcile should succeed after persisting unknown, got reason=%q message=%q", ready.Reason, ready.Message)
+					g.Expect(ready.Message).NotTo(ContainSubstring("status.pullRequest.state"))
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+
 			It("should keep CTP finalizer on deleting PR while PullRequest reconcile is blocked", func() {
 				By("Adding a pending commit and waiting for open PR with synced CTP status")
 				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")

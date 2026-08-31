@@ -1348,6 +1348,8 @@ spec:
                           - closed
                           - merged
                           - open
+                          - merged-or-closed
+                          - unknown
                           type: string
                         url:
                           description: Url is the URL of the pull request.
@@ -1705,6 +1707,8 @@ spec:
                     - closed
                     - merged
                     - open
+                    - merged-or-closed
+                    - unknown
                     type: string
                   url:
                     description: Url is the URL of the pull request.
@@ -6020,6 +6024,8 @@ spec:
                                 - closed
                                 - merged
                                 - open
+                                - merged-or-closed
+                                - unknown
                                 type: string
                               url:
                                 description: Url is the URL of the pull request.
@@ -6393,6 +6399,8 @@ spec:
                           - closed
                           - merged
                           - open
+                          - merged-or-closed
+                          - unknown
                           type: string
                         url:
                           description: Url is the URL of the pull request.
