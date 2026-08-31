@@ -98,12 +98,9 @@ import (
 type EnvironmentOperations struct {
 	gap      scms.GitOperationsProvider
 	gitRepo  *v1alpha1.GitRepository
+	blobs    map[string]blobObject
+	commits  map[string]commitObject
 	identity string
-
-	// Per-reconcile caches: each reconcile constructs a fresh EnvironmentOperations, so these
-	// maps only avoid repeat git work within one pass (prefetch then read, overlapping prefetches).
-	blobs   map[string]blobObject
-	commits map[string]commitObject
 }
 
 // HydratorMetadata is an alias to v1alpha1.HydratorMetadata for convenience.

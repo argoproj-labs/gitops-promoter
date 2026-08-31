@@ -68,7 +68,7 @@ func (g *EnvironmentOperations) LoadCommitAndMetadataBlobs(ctx context.Context, 
 	}
 
 	// cat-file reports missing objects per request and still exits zero; errors here are real failures.
-	if err := g.prefetchBlobs(ctx, blobRequests...); err != nil {
+	if err := g.fetchBlobs(ctx, blobRequests...); err != nil {
 		return err
 	}
 	g.prefetchCommits(ctx, shas...)
@@ -86,15 +86,13 @@ func (g *EnvironmentOperations) getCommit(ctx context.Context, sha string) (comm
 		return commitObject{}, fmt.Errorf("refusing to look up commit %q: not a full git object ID", sha)
 	}
 
-	results, err := g.commitLogBatch(ctx, key)
-	if err != nil {
+	if err := g.fetchCommits(ctx, key); err != nil {
 		return commitObject{}, err
 	}
-	commit, ok := results[key]
+	commit, ok := g.commits[key]
 	if !ok {
 		return commitObject{}, fmt.Errorf("git log did not return a record for commit %q", sha)
 	}
-	g.commits[key] = commit
 	return commit, nil
 }
 
@@ -125,15 +123,13 @@ func (g *EnvironmentOperations) getBlob(ctx context.Context, request string) (bl
 		return blob, nil
 	}
 
-	results, err := g.catFileBatch(ctx, request)
-	if err != nil {
+	if err := g.fetchBlobs(ctx, request); err != nil {
 		return blobObject{}, err
 	}
-	blob, ok := results[request]
+	blob, ok := g.blobs[request]
 	if !ok {
 		return blobObject{}, fmt.Errorf("cat-file did not return result for %q", request)
 	}
-	g.blobs[request] = blob
 	return blob, nil
 }
 
@@ -143,7 +139,8 @@ func (g *EnvironmentOperations) getBlob(ctx context.Context, request string) (bl
 // still resolve present SHAs individually via getCommit. Trailer SHAs often point at commits
 // that were never fetched into this clone.
 func (g *EnvironmentOperations) prefetchCommits(ctx context.Context, shas ...string) {
-	pending := make(map[string]struct{}, len(shas))
+	uncached := make([]string, 0, len(shas))
+	seen := make(map[string]struct{}, len(shas))
 	for _, sha := range shas {
 		key := strings.ToLower(sha)
 		if key == "" {
@@ -152,68 +149,28 @@ func (g *EnvironmentOperations) prefetchCommits(ctx context.Context, shas ...str
 		if _, ok := g.commits[key]; ok {
 			continue
 		}
-		pending[key] = struct{}{}
-	}
-	if len(pending) == 0 {
-		return
-	}
-
-	uncached := make([]string, 0, len(pending))
-	for key := range pending {
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
 		uncached = append(uncached, key)
 	}
-
-	results, err := g.commitLogBatch(ctx, uncached...)
-	if err != nil {
-		log.FromContext(ctx).V(4).Info("failed to prefetch commits, falling back to individual lookups", "error", err)
+	if len(uncached) == 0 {
 		return
 	}
-	for key, commit := range results {
-		g.commits[key] = commit
+	if err := g.fetchCommits(ctx, uncached...); err != nil {
+		log.FromContext(ctx).V(4).Info("failed to prefetch commits, falling back to individual lookups", "error", err)
 	}
 }
 
-func (g *EnvironmentOperations) prefetchBlobs(ctx context.Context, requests ...string) error {
-	pending := make(map[string]struct{}, len(requests))
-	for _, req := range requests {
-		if req == "" {
-			continue
-		}
-		if _, ok := g.blobs[req]; ok {
-			continue
-		}
-		pending[req] = struct{}{}
-	}
-	if len(pending) == 0 {
-		return nil
-	}
-
-	uncached := make([]string, 0, len(pending))
-	for req := range pending {
-		uncached = append(uncached, req)
-	}
-
-	results, err := g.catFileBatch(ctx, uncached...)
-	if err != nil {
-		return err
-	}
-	for key, blob := range results {
-		g.blobs[key] = blob
-	}
-	return nil
-}
-
-func (g *EnvironmentOperations) commitLogBatch(ctx context.Context, shas ...string) (map[string]commitObject, error) {
-	if len(shas) == 0 {
-		return map[string]commitObject{}, nil
-	}
-
+// fetchCommits runs git log for the given SHAs and stores any records returned in g.commits.
+// Invalid SHAs are skipped; absent SHAs simply produce no cache entry.
+func (g *EnvironmentOperations) fetchCommits(ctx context.Context, shas ...string) error {
 	gitPath := g.ClonePath()
 	if gitPath == "" {
-		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+		return fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
-	// Drop invalid SHAs instead of failing the batch; getCommit reports them individually.
 	revisions := make([]string, 0, len(shas))
 	for _, sha := range shas {
 		if fullObjectID.MatchString(sha) {
@@ -221,34 +178,66 @@ func (g *EnvironmentOperations) commitLogBatch(ctx context.Context, shas ...stri
 		}
 	}
 	if len(revisions) == 0 {
-		return map[string]commitObject{}, nil
+		return nil
 	}
 
 	stdin := strings.NewReader(strings.Join(revisions, "\n") + "\n")
 	stdout, _, err := runCmdWithEnvAndStdin(ctx, g.gap, gitPath, nil, stdin,
 		"log", "--no-walk=unsorted", "--stdin", "-z", "--pretty=format:"+commitLogFormat)
 	if err != nil {
-		return nil, fmt.Errorf("git log failed: %w", err)
+		return fmt.Errorf("git log failed: %w", err)
 	}
-	return parseCommitLogOutput(stdout)
+
+	results, err := parseCommitLogOutput(stdout)
+	if err != nil {
+		return err
+	}
+	for sha, commit := range results {
+		g.commits[sha] = commit
+	}
+	return nil
 }
 
-func (g *EnvironmentOperations) catFileBatch(ctx context.Context, requests ...string) (map[string]blobObject, error) {
-	if len(requests) == 0 {
-		return map[string]blobObject{}, nil
+// fetchBlobs runs git cat-file --batch for the given requests and stores results in g.blobs.
+func (g *EnvironmentOperations) fetchBlobs(ctx context.Context, requests ...string) error {
+	uncached := make([]string, 0, len(requests))
+	seen := make(map[string]struct{}, len(requests))
+	for _, req := range requests {
+		if req == "" {
+			continue
+		}
+		if _, ok := g.blobs[req]; ok {
+			continue
+		}
+		if _, ok := seen[req]; ok {
+			continue
+		}
+		seen[req] = struct{}{}
+		uncached = append(uncached, req)
+	}
+	if len(uncached) == 0 {
+		return nil
 	}
 
 	gitPath := g.ClonePath()
 	if gitPath == "" {
-		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+		return fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
-	stdin := strings.NewReader(strings.Join(requests, "\n") + "\n")
+	stdin := strings.NewReader(strings.Join(uncached, "\n") + "\n")
 	stdout, _, err := runCmdWithEnvAndStdin(ctx, g.gap, gitPath, nil, stdin, "cat-file", "--batch")
 	if err != nil {
-		return nil, fmt.Errorf("git cat-file --batch failed: %w", err)
+		return fmt.Errorf("git cat-file --batch failed: %w", err)
 	}
-	return parseCatFileBatch(strings.NewReader(stdout), requests)
+
+	results, err := parseCatFileBatch(strings.NewReader(stdout), uncached)
+	if err != nil {
+		return err
+	}
+	for req, blob := range results {
+		g.blobs[req] = blob
+	}
+	return nil
 }
 
 func parseCommitLogOutput(stdout string) (map[string]commitObject, error) {
@@ -299,47 +288,32 @@ func parseCatFileBatch(r io.Reader, requests []string) (map[string]blobObject, e
 		if err != nil {
 			return nil, fmt.Errorf("unexpected end of cat-file output after %d of %d objects: %w", i, len(requests), err)
 		}
+		header = strings.TrimSuffix(header, "\n")
 
-		blob, err := parseCatFileBlobFromHeader(reader, req, strings.TrimSuffix(header, "\n"))
-		if err != nil {
-			return nil, err
+		if strings.HasSuffix(header, " missing") {
+			results[req] = blobObject{Missing: true}
+			continue
 		}
-		results[req] = blob
+
+		fields := strings.Fields(header)
+		if len(fields) != 3 {
+			return nil, fmt.Errorf("invalid cat-file header %q", header)
+		}
+		size, err := strconv.Atoi(fields[2])
+		if err != nil {
+			return nil, fmt.Errorf("invalid cat-file size %q in header %q: %w", fields[2], header, err)
+		}
+
+		data := make([]byte, size)
+		if _, err := io.ReadFull(reader, data); err != nil {
+			return nil, fmt.Errorf("truncated cat-file object %q: expected %d bytes: %w", req, size, err)
+		}
+		if _, err := reader.Discard(1); err != nil {
+			return nil, fmt.Errorf("missing terminator after cat-file object %q: %w", req, err)
+		}
+
+		results[req] = blobObject{Data: data}
 	}
 
 	return results, nil
-}
-
-func parseCatFileBlobFromHeader(reader *bufio.Reader, req, header string) (blobObject, error) {
-	if strings.HasSuffix(header, " missing") {
-		return blobObject{Missing: true}, nil
-	}
-
-	size, err := parseCatFileObjectSize(header)
-	if err != nil {
-		return blobObject{}, err
-	}
-
-	data := make([]byte, size)
-	if _, err := io.ReadFull(reader, data); err != nil {
-		return blobObject{}, fmt.Errorf("truncated cat-file object %q: expected %d bytes: %w", req, size, err)
-	}
-	if _, err := reader.Discard(1); err != nil {
-		return blobObject{}, fmt.Errorf("missing terminator after cat-file object %q: %w", req, err)
-	}
-
-	return blobObject{Data: data}, nil
-}
-
-// parseCatFileObjectSize extracts the content length from a "<oid> <type> <size>" batch header.
-func parseCatFileObjectSize(header string) (int, error) {
-	fields := strings.Fields(header)
-	if len(fields) != 3 {
-		return 0, fmt.Errorf("invalid cat-file header %q", header)
-	}
-	size, err := strconv.Atoi(fields[2])
-	if err != nil {
-		return 0, fmt.Errorf("invalid cat-file size %q in header %q: %w", fields[2], header, err)
-	}
-	return size, nil
 }
