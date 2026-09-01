@@ -20,6 +20,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -163,12 +164,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	provider, err := r.getPullRequestProvider(ctx, pr)
 	if err != nil {
-		if !pr.DeletionTimestamp.IsZero() {
-			if blockedErr := deletionBlockedByMissingDependencyError(err); blockedErr != nil {
-				return ctrl.Result{}, blockedErr
-			}
-		}
-		return ctrl.Result{}, fmt.Errorf("failed to get PullRequest provider: %w", err)
+		return ctrl.Result{}, err
 	}
 
 	openResult, err := provider.FindOpen(ctx, pr)
@@ -667,7 +663,10 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 		ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), pr.Spec.RepositoryReference, &pr,
 	)
 	if err != nil {
-		return nil, err //nolint:wrapcheck // Reconcile adds "failed to get PullRequest provider"
+		if !pr.DeletionTimestamp.IsZero() && k8serrors.IsNotFound(err) {
+			return nil, pullRequestDeletionBlockedByMissingDependency(err)
+		}
+		return nil, fmt.Errorf("failed to get PullRequest provider: %w", err)
 	}
 
 	switch {
@@ -909,35 +908,36 @@ func (t trailers) String() string {
 	return result.String()
 }
 
-// deletionBlockedByMissingDependencyError returns an operator-facing error when provider resolution
-// fails during PullRequest deletion because a dependency is missing. Nil means err is not that case.
-func deletionBlockedByMissingDependencyError(err error) error {
-	details, isNotFound := utils.NotFoundInErrorChain(err)
-	if !isNotFound {
-		return nil
+// pullRequestDeletionBlockedByMissingDependency builds an operator-facing error when a terminating
+// PullRequest cannot resolve its SCM provider because a dependency is missing.
+func pullRequestDeletionBlockedByMissingDependency(err error) error {
+	var details *metav1.StatusDetails
+	if statusErr, ok := errors.AsType[*k8serrors.StatusError](err); ok {
+		d := statusErr.Status().Details
+		if d != nil && d.Kind != "" && d.Name != "" {
+			details = d
+		}
 	}
 
-	var msg string
 	if details == nil {
-		msg = fmt.Sprintf(
+		return fmt.Errorf(
 			"this PullRequest cannot close its SCM pull request because a required dependency was not found - "+
 				"either restore the missing resource or remove the %s finalizer from this PullRequest and manually close the SCM pull request if it is not already closed",
 			promoterv1alpha1.PullRequestFinalizer,
 		)
-	} else {
-		typeRef := details.Kind
-		if details.Group != "" {
-			typeRef = details.Group + "/" + details.Kind
-		}
-		msg = fmt.Sprintf(
-			"this PullRequest cannot close its SCM pull request because %s %q is missing - "+
-				"either restore that resource or remove the %s finalizer from this PullRequest and manually close the SCM pull request if it is not already closed",
-			typeRef,
-			details.Name,
-			promoterv1alpha1.PullRequestFinalizer,
-		)
 	}
-	return fmt.Errorf("%s: %w", msg, err)
+
+	typeRef := details.Kind
+	if details.Group != "" {
+		typeRef = details.Group + "/" + details.Kind
+	}
+	return fmt.Errorf(
+		"this PullRequest cannot close its SCM pull request because %s %q is missing - "+
+			"either restore that resource or remove the %s finalizer from this PullRequest and manually close the SCM pull request if it is not already closed",
+		typeRef,
+		details.Name,
+		promoterv1alpha1.PullRequestFinalizer,
+	)
 }
 
 func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
