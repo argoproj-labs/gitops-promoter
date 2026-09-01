@@ -216,11 +216,10 @@ func (g *EnvironmentOperations) CloneRepo(ctx context.Context) error {
 	return nil
 }
 
-// BranchShas holds the hydrated and dry commit SHAs for a branch.
+// BranchShas holds the hydrated branch tip resolved from origin/<branch>.
+// Dry metadata is read separately via GetShaMetadataFromFile after prefetching the tip commit.
 type BranchShas struct {
-	// Dry is the SHA of the commit that was used as the dry source for hydration.
-	Dry string
-	// Hydrated is the SHA of the commit on the hydrated branch.
+	// Hydrated is the SHA of the commit at the remote branch tip.
 	Hydrated string
 }
 
@@ -251,13 +250,13 @@ func (e *MalformedHydratorMetadataError) Error() string {
 // Unwrap exposes the underlying decode failure.
 func (e *MalformedHydratorMetadataError) Unwrap() error { return e.Err }
 
-// GetBranchShas fetches the given branch and returns its hydrated and dry SHAs.
+// GetBranchShas fetches the given branch when needed and returns its hydrated tip SHA.
 //
 // Before fetching, it first checks - via a cheap, live ls-remote against this same clone's
 // repository - whether the branch's current remote SHA still matches lastKnownHydratedSha (the
 // Hydrated SHA this same branch/identity returned on a previous, successful call). If it matches,
 // the commit is guaranteed to already be present in this clone (it was fetched the last time this
-// identity observed that SHA), so the network fetch is skipped and rev-parse/ls-tree resolve it from
+// identity observed that SHA), so the network fetch is skipped and rev-parse resolves the tip from
 // the existing local objects instead. This keeps the skip decision self-contained: callers cannot
 // accidentally skip the fetch based on a stale probe or a SHA observed by a different clone/identity,
 // since the check against the live remote happens inside this call, right before the fetch would.
@@ -266,9 +265,12 @@ func (e *MalformedHydratorMetadataError) Unwrap() error { return e.Err }
 // the caller doesn't track one) to always fetch; the probe is skipped in that case since there's
 // nothing to compare against.
 //
+// Hydrator dry metadata for the tip is not read here; callers that need it should prefetch the tip
+// (for example via LoadCommitAndMetadataBlobs) and use GetShaMetadataFromFile.
+//
 // Read-only: fetches the branch ref and reads from refs/object DB; never mutates the clone's
 // index/worktree/HEAD.
-func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch, activePath, lastKnownHydratedSha string) (BranchShas, error) {
+func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch, lastKnownHydratedSha string) (BranchShas, error) {
 	logger := log.FromContext(ctx)
 
 	skipFetch := false
@@ -301,43 +303,8 @@ func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch, activ
 		return BranchShas{}, fmt.Errorf("failed to get SHA for branch %q: %w", branch, err)
 	}
 
-	shas := BranchShas{}
-	shas.Hydrated = strings.TrimSpace(stdout)
+	shas := BranchShas{Hydrated: strings.TrimSpace(stdout)}
 	logger.V(4).Info("Got hydrated branch sha", "branch", branch, "sha", shas.Hydrated)
-
-	// Determine whether <activePath>/hydrator.metadata exists on the ref using ls-tree, which reads
-	// the tree object and never consults the worktree. The metadata file legitimately may not exist
-	// on this ref yet — most commonly with activePath, where <activePath>/hydrator.metadata only
-	// appears on the active branch after that app's first promotion. We must not treat that normal
-	// pre-promotion state as a reconcile error.
-	metaPath := buildHydratorMetadataPath(activePath)
-	lsTreeStdout, stderr, err := g.runCmd(ctx, gitPath, "ls-tree", "origin/"+branch, ":(literal)"+metaPath)
-	if err != nil {
-		logger.Error(err, "could not list metadata file", "gitError", stderr)
-		return BranchShas{}, fmt.Errorf("failed to list hydrator.metadata on branch %q: %w", branch, err)
-	}
-	if strings.TrimSpace(lsTreeStdout) == "" {
-		logger.Info("hydrator.metadata file not found", "branch", branch, "activePath", activePath)
-		return shas, nil
-	}
-
-	// Get the metadata file contents directly from the remote branch. The path is known to exist on
-	// the ref at this point, so this only fails on a genuine git error.
-	metadataFileStdout, stderr, err := g.runCmd(ctx, gitPath, "show", "origin/"+branch+":"+metaPath)
-	if err != nil {
-		logger.Error(err, "could not get metadata file", "gitError", stderr)
-		return BranchShas{}, fmt.Errorf("failed to read hydrator.metadata from branch %q: %w", branch, err)
-	}
-	logger.V(4).Info("Got metadata file", "branch", branch)
-
-	var hydratorFile HydratorMetadata
-	err = json.Unmarshal([]byte(metadataFileStdout), &hydratorFile)
-	if err != nil {
-		return BranchShas{}, &MalformedHydratorMetadataError{Revision: "origin/" + branch, Path: metaPath, Err: err}
-	}
-	shas.Dry = hydratorFile.DrySha
-	logger.V(4).Info("Got dry branch sha", "branch", branch, "sha", shas.Dry)
-
 	return shas, nil
 }
 
