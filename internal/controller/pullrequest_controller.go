@@ -256,14 +256,15 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	//nolint:nestif // Get-then-maybe-Close lane is one cohesive finalizer path; extracting branches adds indirection.
 	if pullRequestIsTerminating(&pr) {
 		if !controllerutil.ContainsFinalizer(&pr, promoterv1alpha1.PullRequestFinalizer) {
-			// Released (promoter finalizer absent); nothing left for this controller to do.
+			// Either we cleared the finalizer, or it was never set. Either way, we're done.
 			logger.V(4).Info("PullRequest is terminating and no longer holds the promoter finalizer, nothing left to do")
 			return ctrl.Result{}, nil
 		}
 
 		if pullRequestStatusIsFinalized(&pr) {
 			logger.V(4).Info("PullRequest is finalized, releasing finalizer")
-			// Status is Finalized; release the promoter finalizer now so deletion can finish once other finalizers clear.
+			// The status is in a state where there's no more information to gather (i.e. Finalized); release the 
+			// promoter finalizer now so deletion can finish once other finalizers clear.
 			return ctrl.Result{}, r.releaseFinalizer(ctx, &pr)
 		}
 
@@ -319,7 +320,8 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if err := r.Delete(ctx, &pr); err != nil && !k8serrors.IsNotFound(err) {
 			return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest: %w", err)
 		}
-		// Delete sets deletionTimestamp (Terminating); the ->Terminating predicate will requeue to run the terminating Get lane.
+		// Promotion finished (merged/closed/merged-or-closed): delete the CR so the terminating
+		// lane can release our finalizer after any remaining SCM outcome is recorded.
 		return ctrl.Result{}, nil
 	}
 
@@ -370,7 +372,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		// Not open on the SCM but status.id is set; the terminating Get lane will resolve merged vs closed and recover mergedTargetSha.
 		r.Recorder.Eventf(&pr, nil, "Warning", constants.PullRequestExternallyMergedOrClosedReason, "SyncingPullRequestState", constants.PullRequestExternallyMergedOrClosedMessage, pr.Name, pr.Status.ID)
 		pr.Status.State = promoterv1alpha1.PullRequestMergedOrClosed
-		// Status is now Terminal; persist and the ->Terminal predicate will requeue to delete the CR.
+		// Status is now Terminal; persist and the ->Terminal predicate will requeue to delete the CR, which puts us in the Terminating lane.
 		return r.pullRequestRequeueResult(ctx)
 	}
 
@@ -391,7 +393,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if err := r.mergePullRequest(ctx, &pr, provider, previousReady); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to merge pull request: %w", err)
 		}
-		// mergePullRequest set status.state to merged (Terminal); persist and the ->Terminal predicate will requeue to delete the CR.
+		// mergePullRequest set status.state to merged (Terminal); persist and the ->Terminal predicate will requeue to delete the CR, which puts us in the Terminating lane.
 		return r.pullRequestRequeueResult(ctx)
 	}
 
