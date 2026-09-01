@@ -100,8 +100,9 @@
           'make generate-apiserver',
           'make generate-ui-types',
         ],
+        // Go comes from actions/setup-go in renovate.yaml (go.mod), not
+        // containerbase's latest stable — that mismatch broke Check Codegen.
         installTools: {
-          golang: {},
           node: {},
         },
         fileFilters: [
@@ -142,8 +143,9 @@
           'make generate-apiserver',
           'make generate-ui-types',
         ],
+        // Go comes from actions/setup-go in renovate.yaml (go.mod), not
+        // containerbase's latest stable — that mismatch broke Check Codegen.
         installTools: {
-          golang: {},
           node: {},
         },
         fileFilters: [
@@ -292,9 +294,6 @@
           // Regenerate CRDs, applyconfiguration, deepcopy, dist/ bundles, etc. (CI Check Codegen).
           'make build-installer',
         ],
-        installTools: {
-          golang: {},
-        },
         fileFilters: [
           '**/*.go',
           '**/mock/**',
@@ -398,9 +397,6 @@
         commands: [
           'make build-installer',
         ],
-        installTools: {
-          golang: {},
-        },
         fileFilters: [
           'dist/**',
         ],
@@ -420,9 +416,6 @@
         commands: [
           'make build-installer',
         ],
-        installTools: {
-          golang: {},
-        },
         fileFilters: [
           'config/**',
           'test/**',
@@ -447,9 +440,6 @@
           'make manifests',
           'make build-installer',
         ],
-        installTools: {
-          golang: {},
-        },
         fileFilters: [
           'config/**',
           'test/**',
