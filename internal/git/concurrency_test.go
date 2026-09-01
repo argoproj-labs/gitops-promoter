@@ -64,10 +64,10 @@ var _ = Describe("Concurrency (gitops-promoter#1495)", func() {
 			env := envs[i]
 			proposed := proposedBranches[i]
 			for range iterations {
-				if _, err := env.GetBranchShas(ctx, proposed, ""); err != nil {
+				if _, err := env.GetBranchSha(ctx, proposed, ""); err != nil {
 					return fmt.Errorf("get proposed shas: %w", err)
 				}
-				if _, err := env.GetBranchShas(ctx, s.active, ""); err != nil {
+				if _, err := env.GetBranchSha(ctx, s.active, ""); err != nil {
 					return fmt.Errorf("get active shas: %w", err)
 				}
 				if err := env.MergeWithOursStrategy(ctx, proposed, s.active); err != nil {
@@ -141,7 +141,7 @@ var _ = Describe("Concurrency (gitops-promoter#1495)", func() {
 			}
 		})
 
-		// Readers: fetch and verify each GetBranchShas snapshot is self-consistent.
+		// Readers: fetch and verify each GetBranchSha + GetShaMetadataFromFile snapshot is self-consistent.
 		for i := range readers {
 			wg.Add(1)
 			go func(i int) {
@@ -153,24 +153,24 @@ var _ = Describe("Concurrency (gitops-promoter#1495)", func() {
 						readerErrs[i] = err
 						return
 					}
-					shas, err := env.GetBranchShas(ctx, s.proposed, "")
+					branchSha, err := env.GetBranchSha(ctx, s.proposed, "")
 					if err != nil {
 						readerErrs[i] = err
 						return
 					}
-					if shas.Hydrated == "" {
+					if branchSha == "" {
 						continue
 					}
-					metadata, err := env.GetShaMetadataFromFile(ctx, shas.Hydrated, "")
+					metadata, err := env.GetShaMetadataFromFile(ctx, branchSha, "")
 					if err != nil {
 						readerErrs[i] = err
 						return
 					}
 					mu.Lock()
-					if wantDry, known := publishedPairs[shas.Hydrated]; known && metadata.Sha != wantDry {
+					if wantDry, known := publishedPairs[branchSha]; known && metadata.Sha != wantDry {
 						violations = append(violations, fmt.Sprintf(
 							"reader %d torn read: tip %s reported Dry %q but was published with %q",
-							i, shas.Hydrated, metadata.Sha, wantDry))
+							i, branchSha, metadata.Sha, wantDry))
 					}
 					mu.Unlock()
 				}

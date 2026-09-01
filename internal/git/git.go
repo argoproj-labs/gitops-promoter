@@ -53,7 +53,7 @@
 // Note on freshness preconditions (a separate concern from the resting-state invariant): operations
 // that read a specific ref/SHA/note assume the relevant objects were already fetched. HasConflict
 // and the merges assume origin/<active> and origin/<proposed> were fetched by an earlier
-// GetBranchShas; SHA-based readers (GetShaMetadataFromGit, GetShaMetadataFromFile,
+// GetBranchSha; SHA-based readers (GetShaMetadataFromGit, GetShaMetadataFromFile,
 // GetRevListFirstParent, GetTrailers) assume the commit is present; GetHydratorNote assumes
 // FetchNotes ran. These are forward ordering requirements satisfied by the controller's call
 // sequence; they are documented per method but not enforced here.
@@ -216,13 +216,6 @@ func (g *EnvironmentOperations) CloneRepo(ctx context.Context) error {
 	return nil
 }
 
-// BranchShas holds the hydrated branch tip resolved from origin/<branch>.
-// Dry metadata is read separately via GetShaMetadataFromFile after prefetching the tip commit.
-type BranchShas struct {
-	// Hydrated is the SHA of the commit at the remote branch tip.
-	Hydrated string
-}
-
 func buildHydratorMetadataPath(activePath string) string {
 	if activePath == "" {
 		return "hydrator.metadata"
@@ -250,7 +243,7 @@ func (e *MalformedHydratorMetadataError) Error() string {
 // Unwrap exposes the underlying decode failure.
 func (e *MalformedHydratorMetadataError) Unwrap() error { return e.Err }
 
-// GetBranchShas fetches the given branch when needed and returns its hydrated tip SHA.
+// GetBranchSha fetches the given branch when needed and returns the commit SHA at origin/<branch>.
 //
 // Before fetching, it first checks - via a cheap, live ls-remote against this same clone's
 // repository - whether the branch's current remote SHA still matches lastKnownHydratedSha (the
@@ -270,7 +263,7 @@ func (e *MalformedHydratorMetadataError) Unwrap() error { return e.Err }
 //
 // Read-only: fetches the branch ref and reads from refs/object DB; never mutates the clone's
 // index/worktree/HEAD.
-func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch, lastKnownHydratedSha string) (BranchShas, error) {
+func (g *EnvironmentOperations) GetBranchSha(ctx context.Context, branch, lastKnownHydratedSha string) (string, error) {
 	logger := log.FromContext(ctx)
 
 	skipFetch := false
@@ -285,7 +278,7 @@ func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch, lastK
 
 	gitPath := g.ClonePath()
 	if gitPath == "" {
-		return BranchShas{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+		return "", fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
 	logger.V(4).Info("git path", "path", gitPath)
@@ -293,19 +286,19 @@ func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch, lastK
 	if skipFetch {
 		logger.V(4).Info("branch unchanged on remote since last reconcile, skipping fetch", "branch", branch)
 	} else if err := g.FetchBranch(ctx, branch); err != nil {
-		return BranchShas{}, err
+		return "", err
 	}
 
 	// Get the SHA of the remote branch
 	stdout, stderr, err := g.runCmd(ctx, gitPath, "rev-parse", "origin/"+branch)
 	if err != nil {
 		logger.Error(err, "could not get branch sha", "gitError", stderr)
-		return BranchShas{}, fmt.Errorf("failed to get SHA for branch %q: %w", branch, err)
+		return "", fmt.Errorf("failed to get SHA for branch %q: %w", branch, err)
 	}
 
-	shas := BranchShas{Hydrated: strings.TrimSpace(stdout)}
-	logger.V(4).Info("Got hydrated branch sha", "branch", branch, "sha", shas.Hydrated)
-	return shas, nil
+	sha := strings.TrimSpace(stdout)
+	logger.V(4).Info("Got branch sha", "branch", branch, "sha", sha)
+	return sha, nil
 }
 
 // FetchBranch fetches the given branch from origin so origin/<branch> reflects the latest remote state.
@@ -555,7 +548,7 @@ func runCmdWithEnvAndStdin(ctx context.Context, gap scms.GitOperationsProvider, 
 //
 // Read-only: uses merge-tree --write-tree, a stateless check that writes only loose objects and never
 // mutates the clone's index/worktree/HEAD. Requires origin/<active> and origin/<proposed> to have
-// been fetched (GetBranchShas earlier in the reconcile).
+// been fetched (GetBranchSha earlier in the reconcile).
 func (g *EnvironmentOperations) HasConflict(ctx context.Context, proposedBranch, activeBranch string) (bool, error) {
 	logger := log.FromContext(ctx)
 	repoPath := g.ClonePath()
@@ -585,7 +578,7 @@ func (g *EnvironmentOperations) HasConflict(ctx context.Context, proposedBranch,
 // Operates on the object DB only: it builds the merge commit with commit-tree and pushes it directly,
 // never checking out or otherwise mutating the clone's worktree/index/HEAD (see the package "Clone
 // state invariant" docs). Requires origin/<proposed> and origin/<active> to have been fetched
-// (GetBranchShas earlier in the reconcile).
+// (GetBranchSha earlier in the reconcile).
 func (g *EnvironmentOperations) MergeWithOursStrategy(ctx context.Context, proposedBranch, activeBranch string) error {
 	logger := log.FromContext(ctx)
 	gitPath := g.ClonePath()
