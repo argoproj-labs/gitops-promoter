@@ -1152,7 +1152,9 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, cr)).To(Succeed())
 
-			// Wait for first reconciliation and capture the error message
+			// Wait until reconciliation has seen all three apps. A first Ready
+			// message can list only a subset of branches if the informer has
+			// not yet indexed every Application.
 			var firstErrorMessage string
 			Eventually(func(g Gomega) {
 				updated := &promoterv1alpha1.ArgoCDCommitStatus{}
@@ -1162,13 +1164,10 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				g.Expect(updated.Status.Conditions).ToNot(BeEmpty())
 				c := meta.FindStatusCondition(updated.Status.Conditions, string(promoterConditions.Ready))
 				g.Expect(c).ToNot(BeNil())
-				g.Expect(c.Message).To(ContainSubstring("env/argocd/"))
+				g.Expect(c.Message).To(MatchRegexp(`env/argocd/east.*env/argocd/north.*env/argocd/west`))
 
 				firstErrorMessage = c.Message
 			}, constants.EventuallyTimeout).Should(Succeed())
-
-			// Verify the first error message has sorted branches
-			Expect(firstErrorMessage).To(MatchRegexp(`env/argocd/east.*env/argocd/north.*env/argocd/west`))
 
 			// Force multiple reconciliations and verify they ALL produce identical error messages
 			// This catches nondeterministic behavior that the controller's map iteration would cause
