@@ -216,7 +216,7 @@ var _ = DescribeTable("fullObjectID",
 		Expect(git.FullObjectID.MatchString(revision)).To(Equal(accepted))
 	},
 	Entry("a SHA-1 object ID", "60d5f4b2e5a2c1f2a0b39a4a30fb0e40b30d2c11", true),
-	Entry("an uppercase SHA-1 object ID", "60D5F4B2E5A2C1F2A0B39A4A30FB0E40B30D2C11", true),
+	Entry("an uppercase SHA-1 object ID", "60D5F4B2E5A2C1F2A0B39A4A30FB0E40B30D2C11", false),
 	Entry("a SHA-256 object ID", strings.Repeat("a", 64), true),
 	Entry("an abbreviated object ID", "60d5f4b", false),
 	Entry("a revision-selection option", "--all", false),

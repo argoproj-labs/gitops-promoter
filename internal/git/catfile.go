@@ -39,9 +39,10 @@ const (
 	commitLogFieldCount = 6
 )
 
-// fullObjectID matches a complete SHA-1 or SHA-256 object ID. Batch inputs must be full SHAs
-// so crafted trailer values cannot inject extra revisions or newlines into git log --stdin.
-var fullObjectID = regexp.MustCompile(`^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$`)
+// fullObjectID matches a complete lowercase SHA-1 or SHA-256 object ID. Batch inputs must be full
+// SHAs so crafted trailer values cannot inject extra revisions or newlines into git log --stdin.
+// Callers normalize revisions with strings.ToLower before matching; git emits %H lowercase.
+var fullObjectID = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
 
 // LoadCommits prefetches commit metadata for the given SHAs into this instance's per-reconcile
 // cache, so that later per-SHA reads are served from memory instead of spawning a git process each.
@@ -100,7 +101,7 @@ func (g *EnvironmentOperations) getCommit(ctx context.Context, sha string) (comm
 func (g *EnvironmentOperations) getTrailers(ctx context.Context, sha string) (map[string][]string, error) {
 	key := strings.ToLower(sha)
 
-	commit, err := g.getCommit(ctx, sha)
+	commit, err := g.getCommit(ctx, key)
 	if err != nil {
 		return nil, err
 	}
