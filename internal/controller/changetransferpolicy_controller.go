@@ -294,11 +294,13 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 	}
 	logger.V(4).Info("Rev-list history for active branch", "shaList", shaListActive)
 
+	// We know which active commits we'll need, so pre-load them.
 	if err := gitOperations.LoadCommitAndMetadataBlobs(ctx, ctp.Spec.ActivePath, shaListActive...); err != nil {
 		logger.V(4).Info("failed to prefetch history commit objects", "err", err)
 		return
 	}
 
+	// Each active commit has a corresponding proposed commit. Get those shas so we can preload them.
 	var proposedHistoryShas []string
 	for _, sha := range shaListActive {
 		trailers, err := gitOperations.GetTrailers(ctx, sha)
