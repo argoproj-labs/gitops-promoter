@@ -263,8 +263,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 		if pullRequestStatusIsFinalized(&pr) {
 			logger.V(4).Info("PullRequest is finalized, releasing finalizer")
-			// The status is in a state where there's no more information to gather (i.e. Finalized); release the 
-			// promoter finalizer now so deletion can finish once other finalizers clear.
+			// Status is Finalized; release the promoter finalizer now so deletion can finish once other finalizers clear.
 			return ctrl.Result{}, r.releaseFinalizer(ctx, &pr)
 		}
 
