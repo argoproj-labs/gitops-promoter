@@ -1337,9 +1337,6 @@ var _ = Describe("PullRequest Controller", func() {
 				g.Expect(k8sClient.Status().Update(ctx, pullRequest)).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Triggering reconciliation by updating the PR spec")
-			triggerPRReconcile(ctx, typeNamespacedName, pullRequest)
-
 			By("Verifying the PullRequest is deleted because merged-or-closed is terminal")
 			// merged-or-closed is not retracted when FindOpen still lists the PR open; terminal status triggers deletion.
 			Eventually(func(g Gomega) {
@@ -1611,16 +1608,14 @@ var _ = Describe("PullRequest Controller", func() {
 
 			// Once the promoter finalizer is released this controller is done with the object, even
 			// though the blocking finalizer keeps it around and reconciles keep arriving.
-			By("Verifying a spec change on the terminating object no longer reaches the SCM")
+			By("Verifying a spec change on the terminating object is rejected by CEL immutability")
 			afterRelease := fake.FindOpenCallCount()
 			Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 			base := pullRequest.DeepCopy()
 			pullRequest.Spec.Title = pullRequest.Spec.Title + "-bumped"
-			Expect(k8sClient.Patch(ctx, pullRequest, client.MergeFrom(base))).To(Succeed())
-			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
-				g.Expect(pullRequest.Spec.Title).To(HaveSuffix("-bumped"))
-			}, constants.EventuallyTimeout).Should(Succeed())
+			err := k8sClient.Patch(ctx, pullRequest, client.MergeFrom(base))
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("spec is immutable"))
 			Consistently(func(g Gomega) {
 				g.Expect(fake.FindOpenCallCount()).To(Equal(afterRelease))
 			}, 2*time.Second, 50*time.Millisecond).Should(Succeed())

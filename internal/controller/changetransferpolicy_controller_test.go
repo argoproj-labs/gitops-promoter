@@ -833,13 +833,16 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				DeferCleanup(func() {
-					var livePR promoterv1alpha1.PullRequest
-					if err := k8sClient.Get(ctx, prKey, &livePR); err != nil {
-						Expect(ctrlclient.IgnoreNotFound(err)).To(Succeed())
-						return
-					}
-					livePR.Finalizers = nil
-					Expect(ctrlclient.IgnoreNotFound(k8sClient.Update(ctx, &livePR))).To(Succeed())
+					Eventually(func(g Gomega) {
+						var livePR promoterv1alpha1.PullRequest
+						err := k8sClient.Get(ctx, prKey, &livePR)
+						if errors.IsNotFound(err) {
+							return
+						}
+						g.Expect(err).NotTo(HaveOccurred())
+						livePR.Finalizers = nil
+						g.Expect(ctrlclient.IgnoreNotFound(k8sClient.Update(ctx, &livePR))).To(Succeed())
+					}, constants.EventuallyTimeout).Should(Succeed())
 				})
 
 				By("Simulating external removal by deleting the PR from the fake SCM")
@@ -885,13 +888,16 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				DeferCleanup(func() {
-					var livePR promoterv1alpha1.PullRequest
-					if err := k8sClient.Get(ctx, prKey, &livePR); err != nil {
-						Expect(ctrlclient.IgnoreNotFound(err)).To(Succeed())
-						return
-					}
-					livePR.Finalizers = nil
-					Expect(ctrlclient.IgnoreNotFound(k8sClient.Update(ctx, &livePR))).To(Succeed())
+					Eventually(func(g Gomega) {
+						var livePR promoterv1alpha1.PullRequest
+						err := k8sClient.Get(ctx, prKey, &livePR)
+						if errors.IsNotFound(err) {
+							return
+						}
+						g.Expect(err).NotTo(HaveOccurred())
+						livePR.Finalizers = nil
+						g.Expect(ctrlclient.IgnoreNotFound(k8sClient.Update(ctx, &livePR))).To(Succeed())
+					}, constants.EventuallyTimeout).Should(Succeed())
 				})
 
 				By("Breaking PullRequest provider lookup before deletion")
