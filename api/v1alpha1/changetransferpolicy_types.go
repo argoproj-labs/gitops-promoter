@@ -257,7 +257,7 @@ type PullRequestCommonStatus struct {
 	// ID is the unique identifier of the pull request, set by the SCM.
 	ID string `json:"id,omitempty"`
 	// State is the state of the pull request.
-	// +kubebuilder:validation:Enum=closed;merged;open
+	// +kubebuilder:validation:Enum=closed;merged;open;merged-or-closed;unknown
 	State PullRequestState `json:"state,omitempty"`
 	// PRCreationTime is the time when the pull request was created.
 	PRCreationTime metav1.Time `json:"prCreationTime,omitempty"`
@@ -280,20 +280,13 @@ type PullRequestCommonStatus struct {
 	// +kubebuilder:validation:MaxLength=64
 	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
 	MergedTargetSha string `json:"mergedTargetSha,omitempty"`
-	// ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the
-	// PullRequest still desired it open: merged or closed outside the controller, or closed on the SCM
-	// because the PullRequest resource was deleted (finalizer) before this status was reconciled.
-	// When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider.
-	// This status is preserved even after the PullRequest resource is deleted, maintaining a historical
-	// record until a new pull request is created for this environment.
+	// ExternallyMergedOrClosed indicated that the pull request was no longer open on the SCM while
+	// promotion still desired it open. The PullRequest controller no longer sets this field.
 	//
-	// The name is a misnomer and may be renamed or removed in a future API revision. It predates the
-	// Get-by-ID lookup, which now resolves merge vs. close authoritatively whenever the provider can
-	// still answer, so this field is only set when the provider cannot: "externally" is wrong (our own
-	// deletion finalizer reaches here too) and "merged or closed" claims a distinction we did not
-	// establish (the pull request may also have been deleted on the SCM). The likely replacement is an
-	// "unknown" State value, which would make the empty-State invariant above structural rather than
-	// documented.
+	// Deprecated: Use status.state merged-or-closed or unknown instead. Existing values may still
+	// appear when mirrored from older PullRequest status. This field may be removed in a future API
+	// revision.
+	// +optional
 	ExternallyMergedOrClosed *bool `json:"externallyMergedOrClosed,omitempty"`
 }
 

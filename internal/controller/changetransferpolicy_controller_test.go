@@ -767,7 +767,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(createdPR.Status.ID).ToNot(BeEmpty())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
-				By("Simulating external PR closure by setting ExternallyMergedOrClosed")
+				By("Simulating external PR closure by setting status closed")
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, types.NamespacedName{
 						Name:      createdPR.Name,
@@ -775,8 +775,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					}, &createdPR)
 					g.Expect(err).To(Succeed())
 
-					// Simulate PR controller marking it as externally closed
-					createdPR.Status.ExternallyMergedOrClosed = new(true)
 					createdPR.Status.State = promoterv1alpha1.PullRequestClosed
 					err = k8sClient.Status().Update(ctx, &createdPR)
 					g.Expect(err).To(Succeed())
@@ -788,9 +786,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(err).To(Succeed())
 					g.Expect(changeTransferPolicy.Status.PullRequest).ToNot(BeNil())
 					g.Expect(changeTransferPolicy.Status.PullRequest.ID).To(Equal(createdPR.Status.ID))
-					g.Expect(changeTransferPolicy.Status.PullRequest.State).To(Equal(createdPR.Status.State))
-					g.Expect(changeTransferPolicy.Status.PullRequest.ExternallyMergedOrClosed).ToNot(BeNil())
-					g.Expect(*changeTransferPolicy.Status.PullRequest.ExternallyMergedOrClosed).To(BeTrue())
+					g.Expect(changeTransferPolicy.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestClosed))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Marking PR for deletion")
@@ -816,6 +812,63 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 
+			It("should remove CTP finalizer and persist unknown when PR disappears from SCM", func() {
+				By("Adding a pending commit")
+				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+
+				prKey := types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(prName),
+					Namespace: "default",
+				}
+
+				var createdPR promoterv1alpha1.PullRequest
+				By("Waiting for open PR with synced CTP status")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, prKey, &createdPR)).To(Succeed())
+					g.Expect(createdPR.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+					g.Expect(createdPR.Status.ID).ToNot(BeEmpty())
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.PullRequest).ToNot(BeNil())
+					g.Expect(changeTransferPolicy.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				DeferCleanup(func() {
+					Eventually(func(g Gomega) {
+						var livePR promoterv1alpha1.PullRequest
+						err := k8sClient.Get(ctx, prKey, &livePR)
+						if errors.IsNotFound(err) {
+							return
+						}
+						g.Expect(err).NotTo(HaveOccurred())
+						livePR.Finalizers = nil
+						g.Expect(ctrlclient.IgnoreNotFound(k8sClient.Update(ctx, &livePR))).To(Succeed())
+					}, constants.EventuallyTimeout).Should(Succeed())
+				})
+
+				By("Simulating external removal by deleting the PR from the fake SCM")
+				fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
+				Expect(fakeProvider.DeletePullRequest(ctx, createdPR)).To(Succeed())
+
+				By("Triggering PullRequest reconciliation")
+				triggerPRReconcile(ctx, prKey, &createdPR)
+
+				By("Verifying the PR is deleted and CTP records unknown with Ready=True")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, prKey, &createdPR)
+					g.Expect(errors.IsNotFound(err)).To(BeTrue())
+
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.PullRequest).ToNot(BeNil())
+					g.Expect(changeTransferPolicy.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestUnknown))
+
+					ready := meta.FindStatusCondition(changeTransferPolicy.Status.Conditions, string(promoterConditions.Ready))
+					g.Expect(ready).NotTo(BeNil())
+					g.Expect(ready.Status).To(Equal(metav1.ConditionTrue),
+						"CTP reconcile should succeed after persisting unknown, got reason=%q message=%q", ready.Reason, ready.Message)
+					g.Expect(ready.Message).NotTo(ContainSubstring("status.pullRequest.state"))
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+
 			It("should keep CTP finalizer on deleting PR while PullRequest reconcile is blocked", func() {
 				By("Adding a pending commit and waiting for open PR with synced CTP status")
 				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
@@ -835,12 +888,16 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				DeferCleanup(func() {
-					var livePR promoterv1alpha1.PullRequest
-					if err := k8sClient.Get(ctx, prKey, &livePR); err != nil {
-						return
-					}
-					livePR.Finalizers = nil
-					_ = k8sClient.Update(ctx, &livePR)
+					Eventually(func(g Gomega) {
+						var livePR promoterv1alpha1.PullRequest
+						err := k8sClient.Get(ctx, prKey, &livePR)
+						if errors.IsNotFound(err) {
+							return
+						}
+						g.Expect(err).NotTo(HaveOccurred())
+						livePR.Finalizers = nil
+						g.Expect(ctrlclient.IgnoreNotFound(k8sClient.Update(ctx, &livePR))).To(Succeed())
+					}, constants.EventuallyTimeout).Should(Succeed())
 				})
 
 				By("Breaking PullRequest provider lookup before deletion")
@@ -859,7 +916,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(k8sClient.Get(ctx, prKey, &createdPR)).To(Succeed())
 					g.Expect(createdPR.DeletionTimestamp).ToNot(BeZero())
 					g.Expect(createdPR.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-					g.Expect(createdPR.Status.ExternallyMergedOrClosed).To(BeNil())
 					ready := meta.FindStatusCondition(createdPR.Status.Conditions, string(promoterConditions.Ready))
 					g.Expect(ready).NotTo(BeNil())
 					g.Expect(ready.Status).To(Equal(metav1.ConditionFalse))
@@ -923,7 +979,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
 					g.Expect(changeTransferPolicy.Status.PullRequest).ToNot(BeNil())
 					g.Expect(changeTransferPolicy.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged))
-					g.Expect(changeTransferPolicy.Status.PullRequest.ExternallyMergedOrClosed).To(BeNil())
 					g.Expect(changeTransferPolicy.Status.PullRequest.MergedTargetSha).ToNot(BeEmpty())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -1876,13 +1931,13 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
 	})
 
-	It("enqueues when externally merged flag changes", func() {
+	It("enqueues when merged-or-closed status is set", func() {
 		oldPR := &promoterv1alpha1.PullRequest{
 			ObjectMeta: metav1.ObjectMeta{Generation: 1},
 			Status:     promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"},
 		}
 		newPR := oldPR.DeepCopy()
-		newPR.Status.ExternallyMergedOrClosed = new(true)
+		newPR.Status.State = promoterv1alpha1.PullRequestMergedOrClosed
 		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
 	})
 
@@ -2937,6 +2992,21 @@ var _ = Describe("createOrUpdatePullRequest with a merged or terminating PullReq
 			var livePR promoterv1alpha1.PullRequest
 			g.Expect(k8sClient.Get(ctx, prKey, &livePR)).To(Succeed())
 			g.Expect(livePR.DeletionTimestamp.IsZero()).To(BeFalse())
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		returnedPR, err := reconciler.createOrUpdatePullRequest(ctx, ctp)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(returnedPR).NotTo(BeNil())
+		Expect(returnedPR.Name).To(Equal(prKey.Name))
+		expectSpecUntouched()
+	})
+
+	It("does not overwrite the spec of a merged-or-closed PullRequest when a newer dry commit is pending", func() {
+		Eventually(func(g Gomega) {
+			var livePR promoterv1alpha1.PullRequest
+			g.Expect(k8sClient.Get(ctx, prKey, &livePR)).To(Succeed())
+			livePR.Status.State = promoterv1alpha1.PullRequestMergedOrClosed
+			g.Expect(k8sClient.Status().Update(ctx, &livePR)).To(Succeed())
 		}, constants.EventuallyTimeout).Should(Succeed())
 
 		returnedPR, err := reconciler.createOrUpdatePullRequest(ctx, ctp)

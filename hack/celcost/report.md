@@ -17,7 +17,7 @@ Estimated static CEL costs versus kube-apiserver limits, computed from `k8s.io/a
 | GitCommitStatus | v1alpha1 | 0 | 0.00% |
 | GitRepository | v1alpha1 | 128 | 0.00% |
 | PromotionStrategy | v1alpha1 | 72,438,744 | 72.44% |
-| PullRequest | v1alpha1 | 321 | 0.00% |
+| PullRequest | v1alpha1 | 394 | 0.00% |
 | RevertCommit | v1alpha1 | 0 | 0.00% |
 | ScheduledCommitStatus | v1alpha1 | 106,003 | 0.11% |
 | ScmProvider | v1alpha1 | 135 | 0.00% |
@@ -205,12 +205,15 @@ Source: `promoter.argoproj.io_pullrequests.yaml`
 | `.spec.targetBranch` | 42 | 0.00% | `!self.contains(':')` |
 | `.spec.targetBranch` | 42 | 0.00% | `!self.contains('..')` |
 | `(root)` | 40 | 0.00% | `!has(oldSelf.status) \|\| !has(oldSelf.status.mergedTargetSha) \|\| (has(self.status) && has(self.status.mergedTarget...` |
+| `(root)` | 30 | 0.00% | `!has(oldSelf.status) \|\| !has(oldSelf.status.state) \|\| !(oldSelf.status.state in ['merged', 'closed', 'unknown']) ...` |
+| `(root)` | 26 | 0.00% | `!has(oldSelf.status) \|\| !has(oldSelf.status.state) \|\| !(oldSelf.status.state in ['merged', 'closed', 'merged-or-c...` |
+| `(root)` | 17 | 0.00% | `!has(self.status) \|\| !has(self.status.state) \|\| self.status.state != 'merged-or-closed' && self.status.state != '...` |
 | `(root)` | 11 | 0.00% | `!has(self.status) \|\| !has(self.status.mergedTargetSha) \|\| (has(self.status.state) && self.status.state == 'merged')` |
 | `(root)` | 9 | 0.00% | `self.spec.state == 'open' \|\| has(self.status.id) && self.status.id != ""` |
 | `.spec.sourceBranch` | 3 | 0.00% | `!self.startsWith('-')` |
 | `.spec.targetBranch` | 3 | 0.00% | `!self.startsWith('-')` |
 | `.status.url` | 3 | 0.00% | `self == '' \|\| isURL(self)` |
-| **Total** | **321** | **0.00%** | |
+| **Total** | **394** | **0.00%** | |
 
 #### RevertCommit
 
