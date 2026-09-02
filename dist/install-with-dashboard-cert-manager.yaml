@@ -16,7 +16,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.21.0
+    controller-gen.kubebuilder.io/version: v0.22.0
   name: argocdcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -334,7 +334,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.21.0
+    controller-gen.kubebuilder.io/version: v0.22.0
   name: changetransferpolicies.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -1732,7 +1732,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.21.0
+    controller-gen.kubebuilder.io/version: v0.22.0
   name: clusterscmproviders.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -1897,8 +1897,8 @@ spec:
             x-kubernetes-validations:
             - message: exactly one of the fields in [github gitlab forgejo gitea bitbucketCloud
                 azureDevOps fake] must be set
-              rule: '[has(self.github),has(self.gitlab),has(self.forgejo),has(self.gitea),has(self.bitbucketCloud),has(self.azureDevOps),has(self.fake)].filter(x,x==true).size()
-                == 1'
+              rule: (has(self.github)?1:0)+(has(self.gitlab)?1:0)+(has(self.forgejo)?1:0)+(has(self.gitea)?1:0)+(has(self.bitbucketCloud)?1:0)+(has(self.azureDevOps)?1:0)+(has(self.fake)?1:0)
+                == 1
           status:
             description: ScmProviderStatus defines the observed state of ScmProvider
             properties:
@@ -1991,7 +1991,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.21.0
+    controller-gen.kubebuilder.io/version: v0.22.0
   name: commitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -2217,7 +2217,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.21.0
+    controller-gen.kubebuilder.io/version: v0.22.0
   name: controllerconfigurations.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -2452,20 +2452,20 @@ spec:
                               x-kubernetes-validations:
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
-                                rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
-                                  <= 1'
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  <= 1
                             maxItems: 3
                             type: array
                         type: object
                         x-kubernetes-validations:
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket maxOf] may be set
-                          rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket),has(self.maxOf)].filter(x,x==true).size()
-                            <= 1'
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
+                            <= 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
-                          rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
-                            <= 1'
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                            <= 1
                       requeueDuration:
                         description: |-
                           RequeueDuration specifies how frequently resources should be requeued for automatic reconciliation.
@@ -2662,20 +2662,20 @@ spec:
                               x-kubernetes-validations:
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
-                                rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
-                                  <= 1'
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  <= 1
                             maxItems: 3
                             type: array
                         type: object
                         x-kubernetes-validations:
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket maxOf] may be set
-                          rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket),has(self.maxOf)].filter(x,x==true).size()
-                            <= 1'
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
+                            <= 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
-                          rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
-                            <= 1'
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                            <= 1
                       requeueDuration:
                         description: |-
                           RequeueDuration specifies how frequently resources should be requeued for automatic reconciliation.
@@ -2871,20 +2871,20 @@ spec:
                               x-kubernetes-validations:
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
-                                rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
-                                  <= 1'
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  <= 1
                             maxItems: 3
                             type: array
                         type: object
                         x-kubernetes-validations:
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket maxOf] may be set
-                          rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket),has(self.maxOf)].filter(x,x==true).size()
-                            <= 1'
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
+                            <= 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
-                          rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
-                            <= 1'
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                            <= 1
                       requeueDuration:
                         description: |-
                           RequeueDuration specifies how frequently resources should be requeued for automatic reconciliation.
@@ -3080,20 +3080,20 @@ spec:
                               x-kubernetes-validations:
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
-                                rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
-                                  <= 1'
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  <= 1
                             maxItems: 3
                             type: array
                         type: object
                         x-kubernetes-validations:
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket maxOf] may be set
-                          rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket),has(self.maxOf)].filter(x,x==true).size()
-                            <= 1'
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
+                            <= 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
-                          rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
-                            <= 1'
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                            <= 1
                       requeueDuration:
                         description: |-
                           RequeueDuration specifies how frequently resources should be requeued for automatic reconciliation.
@@ -3301,20 +3301,20 @@ spec:
                               x-kubernetes-validations:
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
-                                rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
-                                  <= 1'
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  <= 1
                             maxItems: 3
                             type: array
                         type: object
                         x-kubernetes-validations:
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket maxOf] may be set
-                          rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket),has(self.maxOf)].filter(x,x==true).size()
-                            <= 1'
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
+                            <= 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
-                          rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
-                            <= 1'
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                            <= 1
                       requeueDuration:
                         description: |-
                           RequeueDuration specifies how frequently resources should be requeued for automatic reconciliation.
@@ -3529,20 +3529,20 @@ spec:
                               x-kubernetes-validations:
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
-                                rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
-                                  <= 1'
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  <= 1
                             maxItems: 3
                             type: array
                         type: object
                         x-kubernetes-validations:
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket maxOf] may be set
-                          rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket),has(self.maxOf)].filter(x,x==true).size()
-                            <= 1'
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
+                            <= 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
-                          rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
-                            <= 1'
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                            <= 1
                       requeueDuration:
                         description: |-
                           RequeueDuration specifies how frequently resources should be requeued for automatic reconciliation.
@@ -3739,20 +3739,20 @@ spec:
                               x-kubernetes-validations:
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
-                                rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
-                                  <= 1'
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  <= 1
                             maxItems: 3
                             type: array
                         type: object
                         x-kubernetes-validations:
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket maxOf] may be set
-                          rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket),has(self.maxOf)].filter(x,x==true).size()
-                            <= 1'
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
+                            <= 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
-                          rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
-                            <= 1'
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                            <= 1
                       requeueDuration:
                         description: |-
                           RequeueDuration specifies how frequently resources should be requeued for automatic reconciliation.
@@ -3948,20 +3948,20 @@ spec:
                               x-kubernetes-validations:
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
-                                rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
-                                  <= 1'
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  <= 1
                             maxItems: 3
                             type: array
                         type: object
                         x-kubernetes-validations:
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket maxOf] may be set
-                          rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket),has(self.maxOf)].filter(x,x==true).size()
-                            <= 1'
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
+                            <= 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
-                          rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
-                            <= 1'
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                            <= 1
                       requeueDuration:
                         description: |-
                           RequeueDuration specifies how frequently resources should be requeued for automatic reconciliation.
@@ -4157,20 +4157,20 @@ spec:
                               x-kubernetes-validations:
                               - message: at most one of the fields in [fastSlow exponentialFailure
                                   bucket] may be set
-                                rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
-                                  <= 1'
+                                rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                                  <= 1
                             maxItems: 3
                             type: array
                         type: object
                         x-kubernetes-validations:
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket maxOf] may be set
-                          rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket),has(self.maxOf)].filter(x,x==true).size()
-                            <= 1'
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0)
+                            <= 1
                         - message: at most one of the fields in [fastSlow exponentialFailure
                             bucket] may be set
-                          rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
-                            <= 1'
+                          rule: (has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)
+                            <= 1
                       requeueDuration:
                         description: |-
                           RequeueDuration specifies how frequently resources should be requeued for automatic reconciliation.
@@ -4289,7 +4289,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.21.0
+    controller-gen.kubebuilder.io/version: v0.22.0
   name: gitcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -4619,7 +4619,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.21.0
+    controller-gen.kubebuilder.io/version: v0.22.0
   name: gitrepositories.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -4822,8 +4822,8 @@ spec:
             x-kubernetes-validations:
             - message: exactly one of the fields in [github gitlab forgejo gitea bitbucketCloud
                 azureDevOps fake] must be set
-              rule: '[has(self.github),has(self.gitlab),has(self.forgejo),has(self.gitea),has(self.bitbucketCloud),has(self.azureDevOps),has(self.fake)].filter(x,x==true).size()
-                == 1'
+              rule: (has(self.github)?1:0)+(has(self.gitlab)?1:0)+(has(self.forgejo)?1:0)+(has(self.gitea)?1:0)+(has(self.bitbucketCloud)?1:0)+(has(self.azureDevOps)?1:0)+(has(self.fake)?1:0)
+                == 1
           status:
             description: GitRepositoryStatus defines the observed state of GitRepository
             properties:
@@ -4916,7 +4916,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.21.0
+    controller-gen.kubebuilder.io/version: v0.22.0
   name: promotionstrategies.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -6457,7 +6457,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.21.0
+    controller-gen.kubebuilder.io/version: v0.22.0
   name: pullrequests.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -6802,7 +6802,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.21.0
+    controller-gen.kubebuilder.io/version: v0.22.0
   name: revertcommits.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -6856,7 +6856,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.21.0
+    controller-gen.kubebuilder.io/version: v0.22.0
   name: scheduledcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -7308,7 +7308,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.21.0
+    controller-gen.kubebuilder.io/version: v0.22.0
   name: scmproviders.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -7472,8 +7472,8 @@ spec:
             x-kubernetes-validations:
             - message: exactly one of the fields in [github gitlab forgejo gitea bitbucketCloud
                 azureDevOps fake] must be set
-              rule: '[has(self.github),has(self.gitlab),has(self.forgejo),has(self.gitea),has(self.bitbucketCloud),has(self.azureDevOps),has(self.fake)].filter(x,x==true).size()
-                == 1'
+              rule: (has(self.github)?1:0)+(has(self.gitlab)?1:0)+(has(self.forgejo)?1:0)+(has(self.gitea)?1:0)+(has(self.bitbucketCloud)?1:0)+(has(self.azureDevOps)?1:0)+(has(self.fake)?1:0)
+                == 1
           status:
             description: ScmProviderStatus defines the observed state of ScmProvider
             properties:
@@ -7566,7 +7566,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.21.0
+    controller-gen.kubebuilder.io/version: v0.22.0
   name: timedcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -7806,7 +7806,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.21.0
+    controller-gen.kubebuilder.io/version: v0.22.0
   name: webrequestcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -8043,8 +8043,8 @@ spec:
                     x-kubernetes-validations:
                     - message: at most one of the fields in [basic bearer oauth2 tls
                         scm] may be set
-                      rule: '[has(self.basic),has(self.bearer),has(self.oauth2),has(self.tls),has(self.scm)].filter(x,x==true).size()
-                        <= 1'
+                      rule: (has(self.basic)?1:0)+(has(self.bearer)?1:0)+(has(self.oauth2)?1:0)+(has(self.tls)?1:0)+(has(self.scm)?1:0)
+                        <= 1
                   bodyTemplate:
                     description: |-
                       BodyTemplate is the request body to send.
@@ -8262,8 +8262,7 @@ spec:
                 x-kubernetes-validations:
                 - message: exactly one of the fields in [polling trigger] must be
                     set
-                  rule: '[has(self.polling),has(self.trigger)].filter(x,x==true).size()
-                    == 1'
+                  rule: (has(self.polling)?1:0)+(has(self.trigger)?1:0) == 1
               promotionStrategyRef:
                 description: |-
                   PromotionStrategyRef references the PromotionStrategy this applies to.
