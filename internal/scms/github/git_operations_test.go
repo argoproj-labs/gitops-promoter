@@ -217,6 +217,36 @@ var _ = Describe("GetClient", func() {
 		Expect(elapsed).To(BeNumerically(">=", time.Duration(pageCount)*pageDelay))
 	})
 
+	It("resolves each caller org after a shared installation list", func() {
+		privKey := testGitHubAppPrivateKey()
+		releasePage1 := make(chan struct{})
+		server := newTestGitHubServer(testGitHubServerOpts{
+			pages:       [][]string{{"known-org"}},
+			releasePage: map[int]<-chan struct{}{1: releasePage1},
+		})
+		provider := testClusterScmProvider(server.domain)
+		secret := testSecret(privKey)
+		ctx := context.Background()
+
+		g1Done := make(chan error, 1)
+		g2Done := make(chan error, 1)
+		go func() {
+			_, _, err := GetClient(ctx, provider, secret, "productlab")
+			g1Done <- err
+		}()
+		go func() {
+			_, _, err := GetClient(ctx, provider, secret, "known-org")
+			g2Done <- err
+		}()
+
+		Eventually(server.listCalls.Load).WithTimeout(2 * time.Second).Should(Equal(int32(1)))
+		close(releasePage1)
+
+		Expect(<-g1Done).To(HaveOccurred())
+		Expect(<-g2Done).NotTo(HaveOccurred())
+		Expect(server.listCalls.Load()).To(Equal(int32(1)))
+	})
+
 	It("singleflights concurrent misses for the same app", func() {
 		privKey := testGitHubAppPrivateKey()
 		releasePage2 := make(chan struct{})

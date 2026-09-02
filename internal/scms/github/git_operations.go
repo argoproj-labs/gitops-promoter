@@ -240,30 +240,24 @@ func resolveInstallationID(ctx context.Context, client *github.Client, scmProvid
 		return id, err
 	}
 
-	result, err, _ := listInstallationsGroup.Do(fmt.Sprintf("app:%d", appID), func() (any, error) {
-		if id, found, err := lookupCachedInstallationID(org, appID); found || err != nil {
-			return id, err
-		}
-		if err := listAndCacheGitHubAppInstallations(ctx, client, scmProvider); err != nil {
-			return int64(0), err
-		}
-		if id, found, err := lookupCachedInstallationID(org, appID); found || err != nil {
-			return id, err
-		}
-		key := orgAppId{org: org, id: appID}
-		appInstallationIdCacheMutex.Lock()
-		installationMissUntil[key] = time.Now().Add(installationMissCacheTTL)
-		appInstallationIdCacheMutex.Unlock()
-		return int64(0), fmt.Errorf("installation of app %d not found for org: %s", appID, org)
+	_, err, _ := listInstallationsGroup.Do(fmt.Sprintf("app:%d", appID), func() (any, error) {
+		return nil, listAndCacheGitHubAppInstallations(ctx, client, scmProvider)
 	})
 	if err != nil {
 		return 0, err //nolint:wrapcheck // singleflight.Do returns the fn error unchanged
 	}
-	id, ok := result.(int64)
-	if !ok {
-		return 0, fmt.Errorf("unexpected installation ID type %T", result)
+
+	if id, found, err := lookupCachedInstallationID(org, appID); found {
+		return id, nil
+	} else if err != nil {
+		return 0, err
 	}
-	return id, nil
+
+	key := orgAppId{org: org, id: appID}
+	appInstallationIdCacheMutex.Lock()
+	installationMissUntil[key] = time.Now().Add(installationMissCacheTTL)
+	appInstallationIdCacheMutex.Unlock()
+	return 0, fmt.Errorf("installation of app %d not found for org: %s", appID, org)
 }
 
 // GetClient retrieves a GitHub client for the specified organization using the provided SCM provider and secret.
