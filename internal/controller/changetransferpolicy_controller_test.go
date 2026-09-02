@@ -2807,9 +2807,8 @@ var _ = Describe("writePromotionHistoryNote merge commit snapshot mismatch", fun
 		recorder := events.NewFakeRecorder(100)
 		r := &ChangeTransferPolicyReconciler{Recorder: recorder}
 
-		written, err := r.writePromotionHistoryNote(ctx, ctp, gitOps, buildLivePR(dryOne))
+		err := r.writePromotionHistoryNote(ctx, ctp, gitOps, buildLivePR(dryOne))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(written).To(BeTrue())
 
 		By("Verifying the note on the merge commit uses the merged dry sha, not the stale snapshot")
 		note, err := fetchPromotionHistoryNote(workDir, mergeSha)
@@ -2835,9 +2834,8 @@ var _ = Describe("writePromotionHistoryNote merge commit snapshot mismatch", fun
 		r := &ChangeTransferPolicyReconciler{Recorder: recorder}
 
 		// Snapshot already records dry-2, i.e. exactly what merged: no mismatch.
-		written, err := r.writePromotionHistoryNote(ctx, ctp, gitOps, buildLivePR(dryTwo))
+		err := r.writePromotionHistoryNote(ctx, ctp, gitOps, buildLivePR(dryTwo))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(written).To(BeTrue())
 
 		note, err := fetchPromotionHistoryNote(workDir, mergeSha)
 		Expect(err).NotTo(HaveOccurred())
@@ -2998,9 +2996,8 @@ var _ = Describe("handlePRFinalizerRemoval early promotion history note", func()
 		pr := newPR(promoterv1alpha1.PullRequestMerged, squashSha)
 		r := newReconciler(pr)
 
-		written, err := r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
+		err := r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(written).To(BeTrue(), "a note on the merge commit must force a history rebuild this reconcile")
 
 		By("Verifying the active branch was fetched so the merge commit could be read")
 		Expect(mustRunGit(gitOps.ClonePath(), "rev-parse", "origin/"+activeBranch)).To(Equal(squashSha))
@@ -3012,11 +3009,9 @@ var _ = Describe("handlePRFinalizerRemoval early promotion history note", func()
 		Expect(note[constants.TrailerShaHydratedProposed]).To(Equal([]string{proposedSha}))
 		Expect(note[constants.TrailerPullRequestMergeTime]).ToNot(BeEmpty())
 
-		By("Verifying the history entry built in this same reconcile already carries the PR metadata")
-		entry, include, err := r.buildHistoryEntry(ctx, squashSha, "", gitOps)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(include).To(BeTrue())
-		Expect(entry.PullRequest.ID).To(Equal(prID))
+		By("Verifying history was rebuilt from the note in this same reconcile")
+		Expect(ctp.Status.History).ToNot(BeEmpty())
+		Expect(ctp.Status.History[0].PullRequest.ID).To(Equal(prID))
 
 		By("Verifying the finalizer is still held because the CTP status has not caught up")
 		var livePR promoterv1alpha1.PullRequest
@@ -3027,23 +3022,21 @@ var _ = Describe("handlePRFinalizerRemoval early promotion history note", func()
 	It("reuses an existing note on later passes instead of rewriting it", func() {
 		r := newReconciler(newPR(promoterv1alpha1.PullRequestMerged, squashSha))
 
-		written, err := r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
+		err := r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(written).To(BeTrue())
 		firstNotesRef := notesRefSha()
 
-		written, err = r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
+		err = r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(written).To(BeTrue(), "an existing note must still force the history rebuild")
 		Expect(notesRefSha()).To(Equal(firstNotesRef), "the notes ref must not be pushed again for an unchanged note")
 	})
 
 	It("writes nothing while the SCM has not reported the merge commit", func() {
 		r := newReconciler(newPR(promoterv1alpha1.PullRequestMerged, ""))
 
-		written, err := r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
+		err := r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(written).To(BeFalse())
+		Expect(ctp.Status.History).To(BeEmpty())
 		_, err = fetchPromotionHistoryNote(workDir, squashSha)
 		Expect(err).To(HaveOccurred(), "no notes ref should exist yet")
 	})
@@ -3051,9 +3044,9 @@ var _ = Describe("handlePRFinalizerRemoval early promotion history note", func()
 	It("writes nothing for a PR closed without merging", func() {
 		r := newReconciler(newPR(promoterv1alpha1.PullRequestClosed, ""))
 
-		written, err := r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
+		err := r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(written).To(BeFalse())
+		Expect(ctp.Status.History).To(BeEmpty())
 		_, err = fetchPromotionHistoryNote(workDir, squashSha)
 		Expect(err).To(HaveOccurred(), "no notes ref should exist")
 	})
@@ -3248,118 +3241,60 @@ var _ = Describe("commit status description trailers", func() {
 	})
 
 	DescribeTable("shouldSkipHistoryRecalculation",
-		func(prev, cur promoterv1alpha1.ChangeTransferPolicyStatus, historyNoteWritten bool, expected bool) {
-			Expect(shouldSkipHistoryRecalculation(&prev, &cur, historyNoteWritten)).To(Equal(expected))
+		func(history []promoterv1alpha1.History, activeSha string, expected bool) {
+			Expect(shouldSkipHistoryRecalculation(history, activeSha)).To(Equal(expected))
 		},
-		Entry("skips when active tip unchanged and newest history entry describes it",
-			promoterv1alpha1.ChangeTransferPolicyStatus{
+		Entry("skips when newest history entry describes the active tip",
+			[]promoterv1alpha1.History{{
 				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-				History: []promoterv1alpha1.History{{
-					Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-					PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
-						ID:              "5",
-						MergedTargetSha: "abc",
-					},
-				}},
-			},
-			promoterv1alpha1.ChangeTransferPolicyStatus{
-				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-			},
-			false,
+				PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
+					ID:              "5",
+					MergedTargetSha: "abc",
+				},
+			}},
+			"abc",
 			true,
-		),
-		Entry("recalculates when a promotion history note was written this reconcile",
-			promoterv1alpha1.ChangeTransferPolicyStatus{
-				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-				History: []promoterv1alpha1.History{{
-					Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-					PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
-						MergedTargetSha: "abc",
-					},
-				}},
-			},
-			promoterv1alpha1.ChangeTransferPolicyStatus{
-				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-			},
-			true,
-			false,
 		),
 		Entry("recalculates when newest history entry has no pull request ID",
 			// A stale cached read after the note-writing reconcile still holds the trailer-less entry whose
 			// SHAs match the tip; skipping there would re-apply it over the note-derived history.
-			promoterv1alpha1.ChangeTransferPolicyStatus{
+			[]promoterv1alpha1.History{{
 				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-				History: []promoterv1alpha1.History{{
-					Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-					PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
-						MergedTargetSha: "abc",
-					},
-				}},
-			},
-			promoterv1alpha1.ChangeTransferPolicyStatus{
-				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-			},
-			false,
+				PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
+					MergedTargetSha: "abc",
+				},
+			}},
+			"abc",
 			false,
 		),
 		Entry("recalculates when newest history entry targets a different commit than the active tip",
-			promoterv1alpha1.ChangeTransferPolicyStatus{
-				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-				History: []promoterv1alpha1.History{{
-					Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "def"}},
-					PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
-						MergedTargetSha: "def",
-					},
-				}},
-			},
-			promoterv1alpha1.ChangeTransferPolicyStatus{
-				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-			},
-			false,
+			[]promoterv1alpha1.History{{
+				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "def"}},
+				PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
+					ID:              "5",
+					MergedTargetSha: "def",
+				},
+			}},
+			"abc",
 			false,
 		),
 		Entry("recalculates when newest history entry is only partially populated",
-			promoterv1alpha1.ChangeTransferPolicyStatus{
-				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-				History: []promoterv1alpha1.History{{
-					PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
-						MergedTargetSha: "abc",
-					},
-				}},
-			},
-			promoterv1alpha1.ChangeTransferPolicyStatus{
-				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-			},
-			false,
-			false,
-		),
-		Entry("recalculates when active tip changes",
-			promoterv1alpha1.ChangeTransferPolicyStatus{
-				Active:  promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-				History: []promoterv1alpha1.History{{}},
-			},
-			promoterv1alpha1.ChangeTransferPolicyStatus{
-				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "def"}},
-			},
-			false,
+			[]promoterv1alpha1.History{{
+				PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
+					MergedTargetSha: "abc",
+				},
+			}},
+			"abc",
 			false,
 		),
 		Entry("recalculates when history has never been populated",
-			promoterv1alpha1.ChangeTransferPolicyStatus{
-				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-			},
-			promoterv1alpha1.ChangeTransferPolicyStatus{
-				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-			},
-			false,
+			nil,
+			"abc",
 			false,
 		),
 		Entry("recalculates when active tip is not yet known",
-			promoterv1alpha1.ChangeTransferPolicyStatus{
-				History: []promoterv1alpha1.History{{}},
-			},
-			promoterv1alpha1.ChangeTransferPolicyStatus{},
-			false,
+			[]promoterv1alpha1.History{{}},
+			"",
 			false,
 		),
 	)
