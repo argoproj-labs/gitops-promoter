@@ -3,6 +3,9 @@ package utils
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
+	"slices"
+	"strings"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
@@ -219,13 +222,143 @@ func controllerConfigurationStatusApply(o *promoterv1alpha1.ControllerConfigurat
 // jsonRoundTrip copies all JSON-tagged fields from src into dst by marshaling src and
 // unmarshaling into dst. This works for status types whose apply configuration mirrors
 // the original type's JSON shape (which is true for all generated apply configs).
+//
+// Optional sub-objects that marshal empty are dropped from the intermediate JSON before
+// it is loaded into the apply configuration. Status types embed value-typed sub-objects
+// (for example CommitBranchState.Dry) whose zero value marshals as "{}", or as an object
+// whose only members are null (a zero metav1.Time marshals as null). Applying "{}" for a
+// field whose children this manager owned on the previous apply makes the apiserver
+// remove those children and store the now-empty field as null (structured-merge-diff
+// RemoveItems semantics, restored in v6.3.3/v6.4.2 and shipped in Kubernetes 1.36.3+ and
+// 1.37+), which the CRD's non-nullable object schema then rejects. Omitting the field
+// from the apply configuration lets server-side apply unset it cleanly instead, and the
+// Go zero value round-trips identically on read.
+//
+// Only fields tagged omitempty are dropped. controller-gen marks exactly those fields
+// optional in the CRD schema, so a required object (for example
+// PromotionStrategy status.environments[].active) keeps applying as "{}" when empty.
 func jsonRoundTrip(src, dst any) error {
 	data, err := json.Marshal(src)
 	if err != nil {
 		return fmt.Errorf("marshal status: %w", err)
 	}
+	var generic any
+	if err := json.Unmarshal(data, &generic); err != nil {
+		return fmt.Errorf("unmarshal status: %w", err)
+	}
+	data, err = json.Marshal(pruneEmptyOptionalObjects(reflect.ValueOf(src), generic))
+	if err != nil {
+		return fmt.Errorf("marshal pruned status: %w", err)
+	}
 	if err := json.Unmarshal(data, dst); err != nil {
 		return fmt.Errorf("unmarshal into apply configuration: %w", err)
 	}
 	return nil
+}
+
+// pruneEmptyOptionalObjects walks the Go value rv alongside its generic JSON encoding j
+// and removes object members that correspond to struct fields tagged omitempty whose
+// encoded value is null or an object with no remaining members. Required fields (no
+// omitempty), lists, and map entries are never removed; they are only traversed so that
+// nested optional sub-objects inside them are pruned. It returns the pruned j.
+func pruneEmptyOptionalObjects(rv reflect.Value, j any) any {
+	for rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
+		if rv.IsNil() {
+			return j
+		}
+		rv = rv.Elem()
+	}
+
+	switch rv.Kind() {
+	case reflect.Struct:
+		m, ok := j.(map[string]any)
+		if !ok {
+			// Custom marshalers (metav1.Time and friends) do not encode as objects.
+			return j
+		}
+		return pruneStructMembers(rv, m)
+	case reflect.Slice, reflect.Array:
+		items, ok := j.([]any)
+		if !ok {
+			return j
+		}
+		for i := range items {
+			if i < rv.Len() {
+				items[i] = pruneEmptyOptionalObjects(rv.Index(i), items[i])
+			}
+		}
+		return items
+	case reflect.Map:
+		m, ok := j.(map[string]any)
+		if !ok || rv.Type().Key().Kind() != reflect.String {
+			return j
+		}
+		for _, key := range rv.MapKeys() {
+			k := key.String()
+			if child, present := m[k]; present {
+				m[k] = pruneEmptyOptionalObjects(rv.MapIndex(key), child)
+			}
+		}
+		return m
+	default:
+		return j
+	}
+}
+
+func pruneStructMembers(rv reflect.Value, m map[string]any) map[string]any {
+	t := rv.Type()
+	for i := range t.NumField() {
+		f := t.Field(i)
+		if f.PkgPath != "" && !f.Anonymous {
+			continue // unexported
+		}
+		name, omitEmpty, inline := parseJSONTag(f)
+		if name == "-" {
+			continue
+		}
+		fv := rv.Field(i)
+		if inline {
+			// Embedded struct without a name: its members are flattened into m.
+			pruneEmptyOptionalObjects(fv, m)
+			continue
+		}
+		child, present := m[name]
+		if !present {
+			continue
+		}
+		pruned := pruneEmptyOptionalObjects(fv, child)
+		if omitEmpty {
+			if pruned == nil {
+				delete(m, name)
+				continue
+			}
+			if cm, ok := pruned.(map[string]any); ok && len(cm) == 0 {
+				delete(m, name)
+				continue
+			}
+		}
+		m[name] = pruned
+	}
+	return m
+}
+
+// parseJSONTag returns the JSON member name for f, whether it carries omitempty, and
+// whether it is an embedded struct that encoding/json flattens into its parent.
+func parseJSONTag(f reflect.StructField) (name string, omitEmpty bool, inline bool) {
+	name, opts, _ := strings.Cut(f.Tag.Get("json"), ",")
+	if name == "-" && opts == "" {
+		return "-", false, false
+	}
+	omitEmpty = slices.Contains(strings.Split(opts, ","), "omitempty")
+	if name != "" {
+		return name, omitEmpty, false
+	}
+	ft := f.Type
+	if ft.Kind() == reflect.Pointer {
+		ft = ft.Elem()
+	}
+	if f.Anonymous && ft.Kind() == reflect.Struct {
+		return "", omitEmpty, true
+	}
+	return f.Name, omitEmpty, false
 }
