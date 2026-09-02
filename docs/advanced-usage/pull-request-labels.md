@@ -141,4 +141,6 @@ Using pull request labels increases SCM API traffic: each label change can trigg
 
 ## Prow / Tide example
 
-Set `autoMerge: false` and add labels when checks pass. Configure Tide (or another bot) to merge when `lgtm` and `approved` are present. Promotion completion is still tracked via `ExternallyMergedOrClosed` when the PR is merged outside the promoter.
+Set `autoMerge: false` and add labels when checks pass. Configure Tide (or another bot) to merge when `lgtm` and `approved` are present. When Tide merges, the PullRequest controller sets `status.state=merged-or-closed` on FindOpen miss, then uses SCM `Get` by ID during deletion to set `status.state=merged` and `status.mergedTargetSha`. `status.state=unknown` is recorded when the SCM no longer has the PR record.
+
+External merges can set **`mergeCommitSnapshotMismatch: true`** when the proposed branch moved before the promoter refreshed `PullRequest.spec`; recorded commit statuses in that history entry may not reflect what actually merged. Squash merges receive `mergedTargetSha` from SCM `Get` like other merges, but proposed hydrated SHA is usually not recoverable from the squash commit. If the SCM no longer has the PR (`status.state=unknown` without `mergedTargetSha`), promotion history may be missing entirely. Prefer merging soon after gates pass, and read [Promotion history git notes](../debugging/finalizers.md#promotion-history-git-notes) before relying on `status.history` commit statuses.

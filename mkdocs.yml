@@ -41,6 +41,7 @@ nav:
   - Architecture: architecture.md
   - Getting Started: getting-started.md
   - Structuring Your Repos: structuring-your-repos.md
+  - Structuring Your Changes: structuring-your-changes.md
   - Gating Promotions:
       - Overview: gating-promotions/index.md
       - Built-In Gates:
@@ -64,6 +65,7 @@ nav:
   - Debugging:
       - Overview: debugging/index.md
       - Finalizers: debugging/finalizers.md
+      - Git Trailers: debugging/git-trailers.md
       - Labels: debugging/labels.md
   - Advanced Usage:
       - Overview: advanced-usage/index.md

@@ -76,7 +76,7 @@ status:
     # The active field contains the same fields as proposed.
     pullRequest:
       id: "848"
-      state: open # open, closed, or merged; empty when externallyMergedOrClosed is true
+      state: open # open, closed, merged, merged-or-closed, or unknown
       url: https://github.com/org/repo/pull/848
       prCreationTime: 2023-10-01T00:00:00Z
     history:
@@ -92,6 +92,8 @@ status:
           id: '848'
           prCreationTime: '2025-08-04T19:50:15Z'
           url: https://github.com/org/repo/pull/848
+          # The active-branch commit this history item describes, as reported by the SCM after the merge.
+          mergedTargetSha: "3333333333333333333333333333333333333333"
     lastHealthyDryShas:
     - sha: "abcdef1234567890abcdef1234567890abcdef12"
       time: 2023-10-01T00:00:00Z

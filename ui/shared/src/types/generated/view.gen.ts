@@ -273,10 +273,10 @@ export type components = {
         };
         /** @description CommitBranchStateHistoryProposed is identical to CommitBranchState minus the Dry state. In the context of History, the Dry state is not relevant as the proposed dry side at merge becomes the Active. */
         CommitBranchStateHistoryProposed: {
-            /** @description CommitStatuses is a list of commit statuses that were being monitored for this branch. This contains the state frozen at the moment the PR was merged. */
+            /** @description CommitStatuses is a list of commit statuses that were being monitored for this branch. This contains the state frozen at the moment the PR was merged. When the entry's mergeCommitSnapshotMismatch is true, these phases come from snapshot trailers describing the proposed revision the promoter last saw, which is not necessarily the revision that merged. */
             commitStatuses?: components["schemas"]["ChangeRequestPolicyCommitStatusPhase"][];
             /**
-             * @description Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on.
+             * @description Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on. Read from the snapshot trailers. On a regular merge it is corrected to the merge commit's second parent, but a squash commit has only one parent, so when the entry's mergeCommitSnapshotMismatch is true and the merge was a squash the stale snapshot value is kept.
              * @default {}
              */
             hydrated?: components["schemas"]["CommitShaState"];
@@ -965,10 +965,12 @@ export type components = {
         /** @description History describes a particular change that was promoted by the ChangeTransferPolicy. */
         History: {
             /**
-             * @description Active is the state of the active branch at the time the PR was merged.
+             * @description Active is the state of the active branch at the time the PR was merged. Its dry state is read back from <activePath>/hydrator.metadata on the merge commit and its hydrated state from that commit itself, so both describe what actually merged regardless of merge style. Its commitStatuses, by contrast, come from the snapshot trailers and may be stale when mergeCommitSnapshotMismatch is true.
              * @default {}
              */
             active?: components["schemas"]["CommitBranchState"];
+            /** @description MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with the promoter's last snapshot (typically an external merge after the proposed branch advanced). When true, the fields this entry rebuilds from the snapshot trailers — proposed.commitStatuses and active.commitStatuses, plus proposed.hydrated when the merge was a squash (a single-parent squash commit gives the controller nothing to reconstruct the hydrated sha from) — may describe the earlier proposed revision rather than what actually merged. */
+            mergeCommitSnapshotMismatch?: boolean;
             /**
              * @description Proposed is the state of the proposed branch at the time the PR was merged.
              * @default {}
@@ -1072,9 +1074,9 @@ export type components = {
          *
          *     Context (the context field below) controls request fan-out and what data is available in templates and trigger expressions:
          *
-         *       - "environments" (default): one HTTP request per environment; each environment has its own phase and status; success.when.expression is evaluated per response and must return a boolean (true → success, false → pending; failure is not expressible).
+         *       - "environments" (default): one HTTP request per environment; each environment has its own phase and status; success.when.expression is evaluated per response and returns the phase for that one environment — see SuccessSpec for the boolean and object return shapes.
          *
-         *       - "promotionstrategy": at most one HTTP request per WebRequestCommitStatus resource; CommitStatuses remain one per environment on each environment's reportOn SHA. success.when.expression runs once on that shared response — see WhenWithOutputSpec.Expression for boolean vs per-branch object return shapes.
+         *       - "promotionstrategy": at most one HTTP request per WebRequestCommitStatus resource; CommitStatuses remain one per environment on each environment's reportOn SHA. success.when.expression runs once on that shared response — see SuccessSpec for boolean vs per-branch object return shapes.
          *
          *     When context is "promotionstrategy", Branch is empty for the shared HTTP request and trigger expressions. Use PromotionStrategy (e.g. status environments) for branch-specific values. For description and url templates, {{ .Branch }} and {{ .Phase }} are set per environment when rendering that environment's CommitStatus.
          */
@@ -1382,7 +1384,7 @@ export type components = {
              */
             observedGeneration?: number;
         };
-        /** @description PullRequest is the Schema for the pullrequests API */
+        /** @description PullRequest is the Schema for the pullrequests API Once recorded, the SHA can be neither replaced nor cleared: a resource merges at most once, so any later disagreement is provider inconsistency or a status write built from a stale informer read, and honoring it would strand the promotion history note already written against the original SHA. Such a write is rejected rather than merged, which surfaces as a failed status apply and a retry. */
         PullRequest: {
             /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
             apiVersion?: string;
@@ -1397,10 +1399,16 @@ export type components = {
         };
         /** @description PullRequestCommonStatus defines the common status fields for a pull request. */
         PullRequestCommonStatus: {
-            /** @description ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the PullRequest still desired it open: merged or closed outside the controller, or closed on the SCM because the PullRequest resource was deleted (finalizer) before this status was reconciled. When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider. This status is preserved even after the PullRequest resource is deleted, maintaining a historical record until a new pull request is created for this environment. */
+            /**
+             * @description ExternallyMergedOrClosed indicated that the pull request was no longer open on the SCM while promotion still desired it open. The PullRequest controller no longer sets this field.
+             *
+             *     Deprecated: Use status.state merged-or-closed or unknown instead. Existing values may still appear when mirrored from older PullRequest status. This field may be removed in a future API revision.
+             */
             externallyMergedOrClosed?: boolean;
             /** @description ID is the unique identifier of the pull request, set by the SCM. */
             id?: string;
+            /** @description MergedTargetSha is the SHA that the target branch points at after the merge. It is a merge commit only when the SCM created one; squash and fast-forward merges report the resulting commit on the target branch instead. In the live pull request status it is mirrored from the PullRequest resource and is empty until the merge is observed; in a History entry it is the active-branch commit the entry describes. */
+            mergedTargetSha?: string;
             /** @description PRCreationTime is the time when the pull request was created. */
             prCreationTime?: components["schemas"]["Time"];
             /** @description PRMergeTime is the time when the pull request was merged. This time can vary slightly from the actual merge time because it is the time when the ChangeTransferPolicy controller sets the pull requests spec to merge. In the future we plan on making this time more accurate by fetching the actual merge time from the SCM via the webhook this would then be updated in the git note for that commit. */
@@ -1463,12 +1471,18 @@ export type components = {
             appliedLabels?: string[];
             /** @description Conditions Represents the observations of the current state. */
             conditions?: components["schemas"]["Condition"][];
-            /** @description ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the resource still desired it open (spec.state is "open"): either it was merged or closed outside the controller, or it was closed on the SCM because the PullRequest resource was deleted (finalizer) and a subsequent sync observed it missing. The controller does not distinguish those cases here. When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider. The PullRequest resource will be deleted after this flag is set when possible, but the status is preserved in the owning ChangeTransferPolicy to maintain a record. */
+            /**
+             * @description ExternallyMergedOrClosed indicated that the pull request was no longer open on the SCM while the resource still desired it open. The PullRequest controller no longer sets this field.
+             *
+             *     Deprecated: Use status.state merged-or-closed or unknown instead. Existing values are preserved when copied to ChangeTransferPolicy status. This field may be removed in a future API revision.
+             */
             externallyMergedOrClosed?: boolean;
             /** @description ID the id of the pull request */
             id?: string;
             /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
             instanceID?: string;
+            /** @description MergedTargetSha is the SHA that spec.targetBranch points at after the merge, as reported by the SCM. It is a merge commit only when the SCM created one; squash and fast-forward merges report the resulting commit on the target branch instead. Set once by the PullRequest controller, either from the merge response for providers that report the SHA there, or from a Get-by-ID lookup when FindOpen no longer finds the PR (external merges, and providers whose merge response omits the SHA). The value is write-once: a resource merges at most once, so the controller never replaces a non-empty value, even if a provider later reports a different SHA. */
+            mergedTargetSha?: string;
             /**
              * Format: int64
              * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
@@ -1673,10 +1687,32 @@ export type components = {
              */
             selector: string;
         };
-        /** @description SuccessSpec defines when the commit status phase is success. */
+        /**
+         * @description SuccessSpec defines the phase reported on the CommitStatus.
+         *
+         *     When.Expression is evaluated every reconcile (whether or not an HTTP request was made). Its variables are documented on WhenWithOutputSpec.Expression, plus Response (nil when no request was made this reconcile). The accepted return values depend on spec.mode.context:
+         *
+         *       - "environments" (default): a boolean (true → success, false → pending), or an object { phase } where phase
+         *         is "success", "pending", or "failure". An omitted or empty phase means "pending". Each evaluation is
+         *         already scoped to one environment, so the per-branch keys below are rejected in this context.
+         *
+         *       - "promotionstrategy": a boolean (all applicable environments get success or pending), or an object
+         *         { defaultPhase?, environments? } where environments is a list of { branch, phase }. Branches not listed
+         *         (or all of them, when environments is omitted or empty) get defaultPhase, which is "pending" when omitted.
+         *
+         *     Any other return type, or an unrecognized phase string, fails the reconcile.
+         *
+         *     Examples:
+         *
+         *     	# environments context: fail fast on a 5xx instead of waiting for a timeout
+         *     	- "Response == nil ? Phase == 'success' : (Response.StatusCode >= 500 ? {phase: 'failure'} : Response.StatusCode == 200)"
+         *
+         *     	# promotionstrategy context: map a batch payload to per-branch phases
+         *     	- "{ defaultPhase: 'pending', environments: map(Response.Body.results, {{branch: .env, phase: .state}}) }"
+         */
         SuccessSpec: {
             /**
-             * @description When is evaluated every reconcile. See WhenWithOutputSpec.Expression.
+             * @description When is evaluated every reconcile. See SuccessSpec for return values and WhenWithOutputSpec.Expression for variables.
              * @default {}
              */
             when: components["schemas"]["WhenWithOutputSpec"];
@@ -1875,7 +1911,7 @@ export type components = {
             /** @description LastSuccessfulSha is the last commit SHA that achieved success status for this environment. Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats. */
             lastSuccessfulSha?: string;
             /**
-             * @description Phase represents the current phase of the validation. This controller sets only "pending" or "success"; it never sets "failure" (failure is allowed by the enum for API consistency).
+             * @description Phase represents the current phase of the validation. A boolean success expression yields only "pending" or "success"; "failure" requires the { phase } object return form documented on SuccessSpec.
              * @default
              */
             phase: string;

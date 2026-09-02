@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/google/go-github/v89/github"
+	"github.com/google/go-github/v90/github"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -45,10 +45,10 @@ func NewGithubPullRequestProvider(ctx context.Context, k8sClient client.Client, 
 func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest v1alpha1.PullRequest) (string, error) {
 	logger := log.FromContext(ctx)
 
-	newPR := &github.NewPullRequest{
+	newPR := github.CreatePullRequest{
 		Title: new(title),
-		Head:  new(head),
-		Base:  new(base),
+		Head:  head,
+		Base:  base,
 		Body:  new(description),
 	}
 
@@ -154,20 +154,20 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullReque
 }
 
 // Merge merges an existing pull request with the specified commit message.
-func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullRequest) error {
+func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.MergeResult, error) {
 	logger := log.FromContext(ctx)
 
 	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
 	if err != nil {
-		return fmt.Errorf("failed to convert PR number to int: %w", err)
+		return scms.MergeResult{}, fmt.Errorf("failed to convert PR number to int: %w", err)
 	}
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil || gitRepo == nil {
-		return fmt.Errorf("failed to get GitRepository: %w", err)
+		return scms.MergeResult{}, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
 	start := time.Now()
-	_, response, err := pr.client.PullRequests.Merge(
+	mergeResult, response, err := pr.client.PullRequests.Merge(
 		ctx,
 		gitRepo.Spec.GitHub.Owner,
 		gitRepo.Spec.GitHub.Name,
@@ -182,7 +182,7 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
 	}
 	if err != nil {
-		return err //nolint:wrapcheck // Error wrapping handled at top level
+		return scms.MergeResult{}, err //nolint:wrapcheck // Error wrapping handled at top level
 	}
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
@@ -192,7 +192,7 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 	logger.V(4).Info("github response status",
 		"status", response.Status)
 
-	return nil
+	return scms.MergeResult{CommitSHA: mergeResult.GetSHA()}, nil
 }
 
 // FindOpen checks if a pull request is open and returns its status.
@@ -227,8 +227,8 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 		pr0 := pullRequests[0]
 		scmLabels := make([]string, 0, len(pr0.Labels))
 		for _, label := range pr0.Labels {
-			if label != nil && label.Name != nil {
-				scmLabels = append(scmLabels, *label.Name)
+			if label != nil && label.Name != "" {
+				scmLabels = append(scmLabels, label.Name)
 			}
 		}
 		return scms.FindOpenResult{
@@ -241,6 +241,53 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	}
 
 	return scms.FindOpenResult{}, nil
+}
+
+// Get fetches a pull request by status.id.
+func (pr *PullRequest) Get(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.GetPullRequestResult, error) {
+	logger := log.FromContext(ctx)
+	logger.V(4).Info("Getting pull request by ID")
+
+	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
+	if err != nil {
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to convert PR number to int: %w", err)
+	}
+
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil || gitRepo == nil {
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	start := time.Now()
+	githubPR, response, err := pr.client.PullRequests.Get(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, prNumber)
+	if response != nil {
+		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationGet, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
+	}
+	if err != nil {
+		if response != nil && response.StatusCode == http.StatusNotFound {
+			return scms.GetPullRequestResult{}, nil
+		}
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to get pull request: %w", err)
+	}
+	if githubPR == nil {
+		return scms.GetPullRequestResult{}, nil
+	}
+
+	result := scms.GetPullRequestResult{Found: true}
+	if githubPR.GetMerged() {
+		result.State = v1alpha1.PullRequestMerged
+		result.MergedTargetSHA = githubPR.GetMergeCommitSHA()
+		if githubPR.MergedAt != nil {
+			result.MergedAt = githubPR.MergedAt.Time
+		}
+		return result, nil
+	}
+	if githubPR.GetState() == "closed" {
+		result.State = v1alpha1.PullRequestClosed
+		return result, nil
+	}
+	result.State = v1alpha1.PullRequestOpen
+	return result, nil
 }
 
 // GetUrl returns the URL of the pull request.
@@ -330,8 +377,8 @@ func (pr *PullRequest) ensureRepositoryLabels(ctx context.Context, gitRepo *v1al
 
 func (pr *PullRequest) createRepositoryLabel(ctx context.Context, gitRepo *v1alpha1.GitRepository, owner, repo, name string) error {
 	start := time.Now()
-	_, response, err := pr.client.Issues.CreateLabel(ctx, owner, repo, &github.Label{
-		Name:  github.Ptr(name),
+	_, response, err := pr.client.Issues.CreateLabel(ctx, owner, repo, github.CreateIssueLabelRequest{
+		Name:  name,
 		Color: github.Ptr(scms.AutoCreatedLabelColor),
 	})
 	if response != nil {

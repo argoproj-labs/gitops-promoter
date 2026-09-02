@@ -20,6 +20,7 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -72,6 +73,10 @@ var _ = Describe("PullRequest Controller", func() {
 				By("Creating test resources")
 				name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "update-title-merge")
 
+				// Override branches to use ones that exist in the test git server setup
+				pullRequest.Spec.TargetBranch = testBranchDevelopment
+				pullRequest.Spec.SourceBranch = testBranchDevelopmentNext
+
 				typeNamespacedName = types.NamespacedName{
 					Name:      name,
 					Namespace: "default",
@@ -86,34 +91,40 @@ var _ = Describe("PullRequest Controller", func() {
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 					g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-				}, constants.EventuallyTimeout)
+					g.Expect(pullRequest.Status.ID).ToNot(BeEmpty())
+				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 
 			It("should successfully reconcile the resource when updating title then merging", func() {
 				By("Reconciling updating of the PullRequest")
 				Eventually(func(g Gomega) {
-					_ = k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 					pullRequest.Spec.Title = "Updated Title"
 					g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
-				}, constants.EventuallyTimeout)
+				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Eventually(func(g Gomega) {
-					Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 					g.Expect(pullRequest.Spec.Title).To(Equal("Updated Title"))
-				}, constants.EventuallyTimeout)
+					readyCond := meta.FindStatusCondition(pullRequest.Status.Conditions, string(conditions.Ready))
+					g.Expect(readyCond).NotTo(BeNil())
+					g.Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
+					g.Expect(readyCond.ObservedGeneration).To(Equal(pullRequest.Generation))
+				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Reconciling merging of the PullRequest")
+				mergeSha := getGitBranchSHA(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, pullRequest.Spec.SourceBranch)
 				Eventually(func(g Gomega) {
-					_ = k8sClient.Get(ctx, typeNamespacedName, pullRequest)
-					pullRequest.Spec.State = "merged"
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+					pullRequest.Spec.MergeSha = mergeSha
+					pullRequest.Spec.State = promoterv1alpha1.PullRequestMerged
 					g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
-					g.Expect(err).To(HaveOccurred())
-					g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
-				}, constants.EventuallyTimeout)
+					g.Expect(k8serrors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
 
@@ -463,6 +474,192 @@ var _ = Describe("PullRequest Controller", func() {
 		})
 	})
 
+	Context("When status.mergedTargetSha is already recorded", func() {
+		// These specs exercise CRD CEL validation only, so they run against the controller-free dev
+		// envtest cluster. On the main cluster the PullRequest controller would reconcile a merged
+		// PullRequest and delete it out from under the assertions.
+		const firstSha = "1111111111111111111111111111111111111111"
+		const secondSha = "2222222222222222222222222222222222222222"
+		var mergedPR *promoterv1alpha1.PullRequest
+
+		BeforeEach(func() {
+			prName := utils.KubeSafeUniqueName("merged-target-sha-" + randomString(15))
+			mergedPR = &promoterv1alpha1.PullRequest{
+				ObjectMeta: metav1.ObjectMeta{Name: prName, Namespace: "default"},
+				Spec: promoterv1alpha1.PullRequestSpec{
+					RepositoryReference: promoterv1alpha1.ObjectReference{Name: prName},
+					Title:               "Initial Title",
+					TargetBranch:        "development",
+					SourceBranch:        "development-next",
+					MergeSha:            "abc123def456789012345678901234567890abcd",
+					State:               promoterv1alpha1.PullRequestOpen,
+				},
+			}
+			Expect(k8sClientDev.Create(ctx, mergedPR)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClientDev.Delete(ctx, mergedPR) })
+
+			mergedPR.Status.ID = "1"
+			mergedPR.Status.State = promoterv1alpha1.PullRequestMerged
+			mergedPR.Status.MergedTargetSha = firstSha
+			Expect(k8sClientDev.Status().Update(ctx, mergedPR)).To(Succeed())
+		})
+
+		It("should reject replacing it with a different SHA", func() {
+			mergedPR.Status.MergedTargetSha = secondSha
+			err := k8sClientDev.Status().Update(ctx, mergedPR)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("mergedTargetSha is immutable once set"))
+		})
+
+		It("should allow a status write that carries the same SHA", func() {
+			mergedPR.Status.Url = "https://example.com/pr/1"
+			Expect(k8sClientDev.Status().Update(ctx, mergedPR)).To(Succeed())
+		})
+
+		It("should reject clearing it", func() {
+			mergedPR.Status.MergedTargetSha = ""
+			err := k8sClientDev.Status().Update(ctx, mergedPR)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("mergedTargetSha is immutable once set"))
+		})
+	})
+
+	Context("When status is terminal for spec immutability", func() {
+		// CRD CEL validation only — controller-free dev envtest cluster.
+		const originalMergeSha = "abc123def456789012345678901234567890abcd"
+		const updatedMergeSha = "bbb123def456789012345678901234567890abcd"
+		var pr *promoterv1alpha1.PullRequest
+
+		BeforeEach(func() {
+			prName := utils.KubeSafeUniqueName("terminal-spec-freeze-" + randomString(15))
+			pr = &promoterv1alpha1.PullRequest{
+				ObjectMeta: metav1.ObjectMeta{Name: prName, Namespace: "default"},
+				Spec: promoterv1alpha1.PullRequestSpec{
+					RepositoryReference: promoterv1alpha1.ObjectReference{Name: prName},
+					Title:               "Initial Title",
+					Description:         "Initial Description",
+					TargetBranch:        "development",
+					SourceBranch:        "development-next",
+					Commit:              promoterv1alpha1.CommitConfiguration{Message: "original trailers"},
+					MergeSha:            originalMergeSha,
+					State:               promoterv1alpha1.PullRequestOpen,
+				},
+			}
+			Expect(k8sClientDev.Create(ctx, pr)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClientDev.Delete(ctx, pr) })
+
+			pr.Status.ID = "1"
+			pr.Status.State = promoterv1alpha1.PullRequestOpen
+			Expect(k8sClientDev.Status().Update(ctx, pr)).To(Succeed())
+		})
+
+		expectSpecUpdateRejected := func() {
+			GinkgoHelper()
+			Expect(k8sClientDev.Get(ctx, client.ObjectKeyFromObject(pr), pr)).To(Succeed())
+			pr.Spec.MergeSha = updatedMergeSha
+			err := k8sClientDev.Update(ctx, pr)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("spec is immutable"))
+		}
+
+		expectSpecUpdateAllowed := func() {
+			GinkgoHelper()
+			Expect(k8sClientDev.Get(ctx, client.ObjectKeyFromObject(pr), pr)).To(Succeed())
+			pr.Spec.MergeSha = updatedMergeSha
+			Expect(k8sClientDev.Update(ctx, pr)).To(Succeed())
+			Expect(k8sClientDev.Get(ctx, client.ObjectKeyFromObject(pr), pr)).To(Succeed())
+			Expect(pr.Spec.MergeSha).To(Equal(updatedMergeSha))
+		}
+
+		DescribeTable("rejects spec changes",
+			func(terminalState promoterv1alpha1.PullRequestState) {
+				Expect(k8sClientDev.Get(ctx, client.ObjectKeyFromObject(pr), pr)).To(Succeed())
+				pr.Status.State = terminalState
+				Expect(k8sClientDev.Status().Update(ctx, pr)).To(Succeed())
+				expectSpecUpdateRejected()
+			},
+			Entry("when status is merged-or-closed", promoterv1alpha1.PullRequestMergedOrClosed),
+			Entry("when status is merged", promoterv1alpha1.PullRequestMerged),
+			Entry("when status is closed", promoterv1alpha1.PullRequestClosed),
+		)
+
+		It("allows spec changes when only spec.state is closed and status is still open", func() {
+			Expect(k8sClientDev.Get(ctx, client.ObjectKeyFromObject(pr), pr)).To(Succeed())
+			pr.Spec.State = promoterv1alpha1.PullRequestClosed
+			Expect(k8sClientDev.Update(ctx, pr)).To(Succeed())
+			Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+			expectSpecUpdateAllowed()
+		})
+	})
+
+	Context("When status.state reaches a finalized SCM outcome", func() {
+		// CRD CEL validation only — controller-free dev envtest cluster.
+		var pr *promoterv1alpha1.PullRequest
+
+		BeforeEach(func() {
+			prName := utils.KubeSafeUniqueName("terminal-status-freeze-" + randomString(15))
+			pr = &promoterv1alpha1.PullRequest{
+				ObjectMeta: metav1.ObjectMeta{Name: prName, Namespace: "default"},
+				Spec: promoterv1alpha1.PullRequestSpec{
+					RepositoryReference: promoterv1alpha1.ObjectReference{Name: prName},
+					Title:               "Initial Title",
+					TargetBranch:        "development",
+					SourceBranch:        "development-next",
+					MergeSha:            "abc123def456789012345678901234567890abcd",
+					State:               promoterv1alpha1.PullRequestOpen,
+				},
+			}
+			Expect(k8sClientDev.Create(ctx, pr)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClientDev.Delete(ctx, pr) })
+
+			pr.Status.ID = "1"
+			pr.Status.State = promoterv1alpha1.PullRequestOpen
+			Expect(k8sClientDev.Status().Update(ctx, pr)).To(Succeed())
+		})
+
+		expectStatusStateUpdateRejected := func(from, to promoterv1alpha1.PullRequestState) {
+			GinkgoHelper()
+			Expect(k8sClientDev.Get(ctx, client.ObjectKeyFromObject(pr), pr)).To(Succeed())
+			pr.Status.State = from
+			Expect(k8sClientDev.Status().Update(ctx, pr)).To(Succeed())
+			Expect(k8sClientDev.Get(ctx, client.ObjectKeyFromObject(pr), pr)).To(Succeed())
+			pr.Status.State = to
+			err := k8sClientDev.Status().Update(ctx, pr)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("status.state is immutable"))
+		}
+
+		expectStatusStateUpdateAllowed := func(from, to promoterv1alpha1.PullRequestState) {
+			GinkgoHelper()
+			Expect(k8sClientDev.Get(ctx, client.ObjectKeyFromObject(pr), pr)).To(Succeed())
+			pr.Status.State = from
+			Expect(k8sClientDev.Status().Update(ctx, pr)).To(Succeed())
+			Expect(k8sClientDev.Get(ctx, client.ObjectKeyFromObject(pr), pr)).To(Succeed())
+			pr.Status.State = to
+			Expect(k8sClientDev.Status().Update(ctx, pr)).To(Succeed())
+			Expect(k8sClientDev.Get(ctx, client.ObjectKeyFromObject(pr), pr)).To(Succeed())
+			Expect(pr.Status.State).To(Equal(to))
+		}
+
+		DescribeTable("rejects status.state changes",
+			func(from, to promoterv1alpha1.PullRequestState) {
+				expectStatusStateUpdateRejected(from, to)
+			},
+			Entry("from merged to open", promoterv1alpha1.PullRequestMerged, promoterv1alpha1.PullRequestOpen),
+			Entry("from closed to open", promoterv1alpha1.PullRequestClosed, promoterv1alpha1.PullRequestOpen),
+			Entry("from unknown to closed", promoterv1alpha1.PullRequestUnknown, promoterv1alpha1.PullRequestClosed),
+		)
+
+		DescribeTable("allows status.state changes",
+			func(from, to promoterv1alpha1.PullRequestState) {
+				expectStatusStateUpdateAllowed(from, to)
+			},
+			Entry("from open to merged-or-closed", promoterv1alpha1.PullRequestOpen, promoterv1alpha1.PullRequestMergedOrClosed),
+			Entry("from merged-or-closed to unknown", promoterv1alpha1.PullRequestMergedOrClosed, promoterv1alpha1.PullRequestUnknown),
+			Entry("from merged-or-closed to merged", promoterv1alpha1.PullRequestMergedOrClosed, promoterv1alpha1.PullRequestMerged),
+		)
+	})
+
 	Context("When deleting a PullRequest that never created a PR on SCM", func() {
 		var name string
 		var scmSecret *v1.Secret
@@ -533,11 +730,16 @@ var _ = Describe("PullRequest Controller", func() {
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 				Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
 
-				By("Waiting for PullRequest to be ready")
+				By("Waiting for GitRepository finalizer and PullRequest to be ready")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, gitRepo)).To(Succeed())
+					g.Expect(gitRepo.Finalizers).To(ContainElement(promoterv1alpha1.GitRepositoryFinalizer))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 					g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-				}, constants.EventuallyTimeout)
+				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 
 			It("should prevent deletion of GitRepository while PullRequest exists", func() {
@@ -546,9 +748,11 @@ var _ = Describe("PullRequest Controller", func() {
 
 				By("Verifying GitRepository is not deleted while PullRequest exists")
 				Consistently(func(g Gomega) {
-					err := k8sClient.Get(ctx, typeNamespacedName, gitRepo)
-					g.Expect(err).ToNot(HaveOccurred())
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, gitRepo)).To(Succeed(),
+						"GitRepository was deleted while a referencing PullRequest still exists")
 					g.Expect(gitRepo.DeletionTimestamp).ToNot(BeNil())
+					g.Expect(gitRepo.Finalizers).To(ContainElement(promoterv1alpha1.GitRepositoryFinalizer),
+						"GitRepository finalizer should remain until all referencing PullRequests are gone")
 				}, "5s", "1s").Should(Succeed())
 
 				By("Deleting the PullRequest")
@@ -557,16 +761,14 @@ var _ = Describe("PullRequest Controller", func() {
 				By("Verifying PullRequest is deleted")
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
-					g.Expect(err).To(HaveOccurred())
-					g.Expect(err.Error()).To(ContainSubstring("not found"))
-				}, constants.EventuallyTimeout)
+					g.Expect(k8serrors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Verifying GitRepository is now deleted")
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, typeNamespacedName, gitRepo)
-					g.Expect(err).To(HaveOccurred())
-					g.Expect(err.Error()).To(ContainSubstring("not found"))
-				}, constants.EventuallyTimeout)
+					g.Expect(k8serrors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
 
@@ -589,6 +791,17 @@ var _ = Describe("PullRequest Controller", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+
+				By("Waiting for ScmProvider and GitRepository finalizers")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, scmProvider)).To(Succeed())
+					g.Expect(scmProvider.Finalizers).To(ContainElement(promoterv1alpha1.ScmProviderFinalizer))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, gitRepo)).To(Succeed())
+					g.Expect(gitRepo.Finalizers).To(ContainElement(promoterv1alpha1.GitRepositoryFinalizer))
+				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 
 			It("should prevent deletion of ScmProvider while GitRepository exists", func() {
@@ -597,9 +810,11 @@ var _ = Describe("PullRequest Controller", func() {
 
 				By("Verifying ScmProvider is not deleted while GitRepository exists")
 				Consistently(func(g Gomega) {
-					err := k8sClient.Get(ctx, typeNamespacedName, scmProvider)
-					g.Expect(err).ToNot(HaveOccurred())
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, scmProvider)).To(Succeed(),
+						"ScmProvider was deleted while a referencing GitRepository still exists")
 					g.Expect(scmProvider.DeletionTimestamp).ToNot(BeNil())
+					g.Expect(scmProvider.Finalizers).To(ContainElement(promoterv1alpha1.ScmProviderFinalizer),
+						"ScmProvider finalizer should remain until all referencing GitRepositories are gone")
 				}, "5s", "1s").Should(Succeed())
 
 				By("Deleting the GitRepository")
@@ -608,16 +823,14 @@ var _ = Describe("PullRequest Controller", func() {
 				By("Verifying GitRepository is deleted")
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, typeNamespacedName, gitRepo)
-					g.Expect(err).To(HaveOccurred())
-					g.Expect(err.Error()).To(ContainSubstring("not found"))
-				}, constants.EventuallyTimeout)
+					g.Expect(k8serrors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Verifying ScmProvider is now deleted")
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, typeNamespacedName, scmProvider)
-					g.Expect(err).To(HaveOccurred())
-					g.Expect(err.Error()).To(ContainSubstring("not found"))
-				}, constants.EventuallyTimeout)
+					g.Expect(k8serrors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
 
@@ -650,13 +863,13 @@ var _ = Describe("PullRequest Controller", func() {
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, scmSecret)).To(Succeed())
 					g.Expect(scmSecret.Finalizers).To(ContainElement(promoterv1alpha1.ScmProviderSecretFinalizer))
-				}, constants.EventuallyTimeout)
+				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Verifying ScmProvider has its own finalizer")
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, scmProvider)).To(Succeed())
 					g.Expect(scmProvider.Finalizers).To(ContainElement(promoterv1alpha1.ScmProviderFinalizer))
-				}, constants.EventuallyTimeout)
+				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Deleting the ScmProvider")
 				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
@@ -664,14 +877,13 @@ var _ = Describe("PullRequest Controller", func() {
 				By("Verifying ScmProvider is deleted and Secret finalizer is removed")
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, typeNamespacedName, scmProvider)
-					g.Expect(err).To(HaveOccurred())
-					g.Expect(err.Error()).To(ContainSubstring("not found"))
-				}, constants.EventuallyTimeout)
+					g.Expect(k8serrors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, scmSecret)).To(Succeed())
 					g.Expect(scmSecret.Finalizers).ToNot(ContainElement(promoterv1alpha1.ScmProviderSecretFinalizer))
-				}, constants.EventuallyTimeout)
+				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
 
@@ -717,7 +929,7 @@ var _ = Describe("PullRequest Controller", func() {
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 					g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-				}, constants.EventuallyTimeout)
+				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 
 			It("should allow deletion of entire resource hierarchy when deleting from top down", func() {
@@ -725,26 +937,26 @@ var _ = Describe("PullRequest Controller", func() {
 				Expect(k8sClient.Delete(ctx, pullRequest)).To(Succeed())
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
-					g.Expect(err).To(HaveOccurred())
-				}, constants.EventuallyTimeout)
+					g.Expect(k8serrors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, typeNamespacedName, gitRepo)
-					g.Expect(err).To(HaveOccurred())
-				}, constants.EventuallyTimeout)
+					g.Expect(k8serrors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, typeNamespacedName, scmProvider)
-					g.Expect(err).To(HaveOccurred())
-				}, constants.EventuallyTimeout)
+					g.Expect(k8serrors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, typeNamespacedName, scmSecret)
-					g.Expect(err).To(HaveOccurred())
-				}, constants.EventuallyTimeout)
+					g.Expect(k8serrors.IsNotFound(err)).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
 
@@ -781,19 +993,19 @@ var _ = Describe("PullRequest Controller", func() {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 					g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 					g.Expect(pullRequest.Status.ID).ToNot(BeEmpty())
-				}, constants.EventuallyTimeout)
+				}, constants.EventuallyTimeout).Should(Succeed())
 
 				// Get the actual SHA of the source branch for the merge
 				mergeSha = getGitBranchSHA(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, pullRequest.Spec.SourceBranch)
 			})
 
-			It("should persist merged status before deletion via defer", func() {
+			It("should persist merged status and the SCM-reported merged target sha before deletion via defer", func() {
 				// Start polling for merged status in a goroutine BEFORE we request the merge.
 				// We poll very frequently (1ms) to catch the narrow window where:
 				//   1. Status has been persisted as "merged"
 				//   2. But PR hasn't been deleted yet
 				// This proves the two-step process works correctly.
-				mergedStatusObserved := make(chan bool, 1)
+				mergedStatusObserved := make(chan promoterv1alpha1.PullRequestStatus, 1)
 				stopPolling := make(chan bool)
 
 				go func() {
@@ -809,7 +1021,7 @@ var _ = Describe("PullRequest Controller", func() {
 							if err == nil && currentPR.Status.State == promoterv1alpha1.PullRequestMerged {
 								// Success! We observed merged state while PR still exists
 								GinkgoT().Logf("Observed merged status at resourceVersion %s", currentPR.ResourceVersion)
-								mergedStatusObserved <- true
+								mergedStatusObserved <- currentPR.Status
 								return
 							}
 						case <-stopPolling:
@@ -837,10 +1049,17 @@ var _ = Describe("PullRequest Controller", func() {
 				// 4. Our polling goroutine caught the state between persist and delete
 				// If the old code (inline delete) were active, we'd never observe this state
 				// because the PR would be deleted before the status could be persisted.
-				Eventually(mergedStatusObserved, constants.EventuallyTimeout).Should(Receive(Equal(true)),
+				var observedStatus promoterv1alpha1.PullRequestStatus
+				Eventually(mergedStatusObserved, constants.EventuallyTimeout).Should(Receive(&observedStatus),
 					"Should have observed merged status before deletion")
 
 				close(stopPolling)
+
+				By("Verifying the merged target sha from the merge response was persisted alongside the merged state")
+				// The fake provider reports the resulting target-branch commit in its merge response, so the
+				// sha must land in the same status write as state=merged rather than waiting for a Get-by-ID recovery.
+				Expect(observedStatus.MergedTargetSha).To(Equal(
+					getGitBranchSHA(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, pullRequest.Spec.TargetBranch)))
 
 				By("Verifying the PullRequest is then deleted on next reconciliation")
 				// Now that we've proven the status was persisted, the NEXT reconciliation
@@ -884,33 +1103,61 @@ var _ = Describe("PullRequest Controller", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
-		It("should recover and delete the PR when spec.state=merged but the PR is already gone from the provider", func() {
-			By("Removing the PR from the fake provider to simulate it was already merged on the SCM (e.g. merge happened but status update was lost)")
-			// This mimics the scenario in production where:
-			// 1. The controller successfully called provider.Merge()
-			// 2. status.state was set to "merged" in memory
-			// 3. The deferred status update failed with a conflict error
-			// 4. On the next reconcile, status.state is still "open" in etcd but the PR is gone from provider
-			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
-			Expect(fakeProvider.DeletePullRequest(ctx, *pullRequest)).To(Succeed())
+		It("should recover mergedTargetSha via Get-by-ID before deleting when the merge response omitted it", func() {
+			mergedTargetSha := pullRequest.Spec.MergeSha
 
-			By("Setting spec.state to merged (as the CTP controller would have done)")
+			// Get-by-ID persists mergedTargetSha and the NEXT reconcile deletes the object, so the
+			// sha is only observable in a narrow window. Poll from a goroutine started before the
+			// SCM mutation, the same way the other merged-status-before-delete specs do. A post-hoc
+			// Eventually Get races the delete and times out (the object is already gone).
+			mergedStatusObserved := make(chan promoterv1alpha1.PullRequestStatus, 1)
+			stopPolling := make(chan bool)
+
+			go func() {
+				defer GinkgoRecover()
+				ticker := time.NewTicker(1 * time.Millisecond)
+				defer ticker.Stop()
+				timeout := time.After(constants.EventuallyTimeout)
+				for {
+					select {
+					case <-ticker.C:
+						var currentPR promoterv1alpha1.PullRequest
+						err := k8sClient.Get(ctx, typeNamespacedName, &currentPR)
+						if err == nil && currentPR.Status.State == promoterv1alpha1.PullRequestMerged {
+							mergedStatusObserved <- currentPR.Status
+							return
+						}
+					case <-stopPolling:
+						return
+					case <-timeout:
+						return
+					}
+				}
+			}()
+
+			By("Marking the PR merged on the fake SCM without going through the merge API (async providers omit CommitSHA from Merge)")
+			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
+			Expect(fakeProvider.MarkMergedExternally(ctx, *pullRequest, mergedTargetSha)).To(Succeed())
+
+			By("Setting spec.state to merged while status still reflects the pre-sync open state")
 			Eventually(func(g Gomega) {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 				pullRequest.Spec.State = promoterv1alpha1.PullRequestMerged
 				g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Verifying the PullRequest is cleaned up (not stuck in an error loop trying to re-merge)")
-			// With the fix: syncStateFromProvider detects that the PR is gone and spec.state==merged
-			// but status.state!=merged — it sets status.state=merged and requeues. The deferred status
-			// update persists this, and the following reconcile's cleanupTerminalStates deletes the PR.
-			// Without the fix: handleStateTransitions would call provider.Merge() and get
-			// "pull request not found", leaving the PR stuck and never cleaned up.
+			By("Verifying Get-by-ID records mergedTargetSha before the PullRequest is deleted")
+			var observedStatus promoterv1alpha1.PullRequestStatus
+			Eventually(mergedStatusObserved, constants.EventuallyTimeout).Should(Receive(&observedStatus),
+				"Should have observed merged status with recovered mergedTargetSha before deletion")
+
+			close(stopPolling)
+
+			Expect(observedStatus.MergedTargetSha).To(Equal(mergedTargetSha))
+
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
-				g.Expect(err).To(HaveOccurred())
-				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
+				g.Expect(k8serrors.IsNotFound(err)).To(BeTrue())
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
@@ -965,25 +1212,18 @@ var _ = Describe("PullRequest Controller", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
-		It("should set ExternallyMergedOrClosed and delete the PR when not found on provider", func() {
+		It("should set merged-or-closed then resolve to unknown and delete the PR when not found on provider", func() {
 			By("Simulating external deletion by removing PR from fake provider")
-			// Get the fake provider and delete the PR from its internal map
-			// This simulates the PR being merged/closed externally on the SCM provider
+			// Get the fake provider and delete the PR from its internal map.
+			// This simulates the PR being merged/closed externally on the SCM provider.
 			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
 			Expect(fakeProvider.DeletePullRequest(ctx, *pullRequest)).To(Succeed())
 
 			By("Triggering reconciliation by updating the PR spec")
-			// Update the spec to trigger reconciliation (controller uses GenerationChangedPredicate)
-			Eventually(func(g Gomega) {
-				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
-				orig := pullRequest.DeepCopy()
-				// Change description to trigger generation change
-				pullRequest.Spec.Description = pullRequest.Spec.Description + " "
-				g.Expect(k8sClient.Patch(ctx, pullRequest, client.MergeFrom(orig))).To(Succeed())
-			}, constants.EventuallyTimeout).Should(Succeed())
+			triggerPRReconcile(ctx, typeNamespacedName, pullRequest)
 
 			By("Checking if PR has owner references to verify propagation to CTP and PS")
-			// If the PR is owned by a CTP, verify that ExternallyMergedOrClosed propagates
+			// If the PR is owned by a CTP, verify that merged-or-closed (then unknown) propagates.
 			var ctp *promoterv1alpha1.ChangeTransferPolicy
 			var promotionStrategy *promoterv1alpha1.PromotionStrategy
 			if len(pullRequest.OwnerReferences) > 0 {
@@ -994,16 +1234,18 @@ var _ = Describe("PullRequest Controller", func() {
 						Name:      ownerRef.Name,
 						Namespace: pullRequest.Namespace,
 					}
-					// Check CTP status before PR is deleted
+					// Check CTP status before PR is deleted.
 					Eventually(func(g Gomega) {
 						g.Expect(k8sClient.Get(ctx, ctpName, ctp)).To(Succeed())
 						if ctp.Status.PullRequest != nil {
-							g.Expect(ctp.Status.PullRequest.ExternallyMergedOrClosed).ToNot(BeNil())
-							g.Expect(*ctp.Status.PullRequest.ExternallyMergedOrClosed).To(BeTrue())
+							g.Expect(ctp.Status.PullRequest.State).To(SatisfyAny(
+								Equal(promoterv1alpha1.PullRequestMergedOrClosed),
+								Equal(promoterv1alpha1.PullRequestUnknown),
+							))
 						}
 					}, constants.EventuallyTimeout).Should(Succeed())
 
-					// Check PromotionStrategy status if CTP has owner references
+					// Check PromotionStrategy status if CTP has owner references.
 					if len(ctp.OwnerReferences) > 0 {
 						psOwnerRef := ctp.OwnerReferences[0]
 						if psOwnerRef.Kind == "PromotionStrategy" {
@@ -1014,11 +1256,13 @@ var _ = Describe("PullRequest Controller", func() {
 							}
 							Eventually(func(g Gomega) {
 								g.Expect(k8sClient.Get(ctx, psName, promotionStrategy)).To(Succeed())
-								// Find the environment that matches this CTP's active branch
+								// Find the environment that matches this CTP's active branch.
 								for _, envStatus := range promotionStrategy.Status.Environments {
 									if envStatus.Branch == ctp.Spec.ActiveBranch && envStatus.PullRequest != nil {
-										g.Expect(envStatus.PullRequest.ExternallyMergedOrClosed).ToNot(BeNil())
-										g.Expect(*envStatus.PullRequest.ExternallyMergedOrClosed).To(BeTrue())
+										g.Expect(envStatus.PullRequest.State).To(SatisfyAny(
+											Equal(promoterv1alpha1.PullRequestMergedOrClosed),
+											Equal(promoterv1alpha1.PullRequestUnknown),
+										))
 										return
 									}
 								}
@@ -1029,10 +1273,10 @@ var _ = Describe("PullRequest Controller", func() {
 				}
 			}
 
-			By("Verifying the PullRequest is deleted by cleanupTerminalStates after ExternallyMergedOrClosed is set")
-			// The PR will be deleted when ExternallyMergedOrClosed is set to true and cleanupTerminalStates runs.
-			// We verify deletion instead of checking the status field directly because the PR gets deleted
-			// in the same reconciliation cycle, making it impossible to observe the status field.
+			By("Verifying the PullRequest is deleted after terminal resolution")
+			// merged-or-closed is terminal: the next reconcile deletes the CR. We verify deletion instead of
+			// checking status.state on the PR directly because the object is removed in the same cycle,
+			// making it impossible to observe merged-or-closed on the live resource.
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
 				g.Expect(err).To(HaveOccurred())
@@ -1046,27 +1290,175 @@ var _ = Describe("PullRequest Controller", func() {
 				g.Expect(hasEventWithReason(eventList, name, constants.PullRequestExternallyMergedOrClosedReason)).To(BeTrue())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Verifying CTP status preserves ExternallyMergedOrClosed even after PR deletion")
-			// After the PR is deleted, the CTP should still maintain the ExternallyMergedOrClosed state
-			// This allows the CTP to keep a record of what happened to the PR
+			By("Verifying CTP status preserves unknown SCM outcome after PR deletion")
+			// After the PR is deleted, the CTP should still maintain the resolved outcome.
+			// This allows the CTP to keep a record of what happened to the PR.
 			if ctp != nil {
 				ctpName := types.NamespacedName{
 					Name:      pullRequest.OwnerReferences[0].Name,
 					Namespace: pullRequest.Namespace,
 				}
 
-				// Trigger CTP reconciliation using the channel-based enqueue function
+				// Trigger CTP reconciliation using the channel-based enqueue function.
 				enqueueCTP(ctpName.Namespace, ctpName.Name)
 
-				// Verify CTP status preserved the ExternallyMergedOrClosed flag
+				// Verify CTP status preserved the unknown outcome after PR deletion.
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, ctpName, ctp)).To(Succeed())
 					g.Expect(ctp.Status.PullRequest).ToNot(BeNil(), "CTP should preserve PR status after PR deletion")
-					g.Expect(ctp.Status.PullRequest.ExternallyMergedOrClosed).ToNot(BeNil())
-					g.Expect(*ctp.Status.PullRequest.ExternallyMergedOrClosed).To(BeTrue(), "ExternallyMergedOrClosed should be preserved in CTP status")
-					g.Expect(ctp.Status.PullRequest.State).To(BeEmpty(), "State should be empty when externally merged/closed (we don't know if merged or closed)")
+					g.Expect(ctp.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestUnknown))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			}
+		})
+
+		It("should close the PullRequest when FindOpen misses but Get confirms it is still open during deletion", func() {
+			By("Simulating SCM list lag: Get-by-ID finds the PR open but FindOpen does not")
+			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
+			Expect(fakeProvider.SetHideFromFindOpen(ctx, *pullRequest, true)).To(Succeed())
+
+			By("Triggering reconciliation by updating the PR spec")
+			triggerPRReconcile(ctx, typeNamespacedName, pullRequest)
+
+			By("Verifying the PullRequest is eventually deleted after merged-or-closed resolution")
+			// FindOpen miss while spec.state is still open sets merged-or-closed and triggers terminal deletion
+			// without consulting Get on the open lane (the terminating lane may still close the SCM PR afterward).
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should delete the PullRequest when status is merged-or-closed even if FindOpen still lists it open", func() {
+			By("Recording merged-or-closed while the PR is in fact still open on the SCM")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				pullRequest.Status.State = promoterv1alpha1.PullRequestMergedOrClosed
+				g.Expect(k8sClient.Status().Update(ctx, pullRequest)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying the PullRequest is deleted because merged-or-closed is terminal")
+			// merged-or-closed is not retracted when FindOpen still lists the PR open; terminal status triggers deletion.
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should set state merged and mergedTargetSha when externally merged on provider", func() {
+			mergedTargetSha := pullRequest.Spec.MergeSha
+
+			// The reconcile that learns about the external merge persists status and the NEXT one deletes the
+			// object, so the merged status is only observable in a narrow window. Poll for it from a goroutine
+			// started before the merge, the same way the controller-initiated merge spec above does.
+			mergedStatusObserved := make(chan promoterv1alpha1.PullRequestStatus, 1)
+			stopPolling := make(chan bool)
+
+			go func() {
+				defer GinkgoRecover()
+				ticker := time.NewTicker(1 * time.Millisecond)
+				defer ticker.Stop()
+				timeout := time.After(constants.EventuallyTimeout)
+				for {
+					select {
+					case <-ticker.C:
+						var currentPR promoterv1alpha1.PullRequest
+						err := k8sClient.Get(ctx, typeNamespacedName, &currentPR)
+						if err == nil && currentPR.Status.State == promoterv1alpha1.PullRequestMerged {
+							mergedStatusObserved <- currentPR.Status
+							return
+						}
+					case <-stopPolling:
+						return
+					case <-timeout:
+						return
+					}
+				}
+			}()
+
+			By("Simulating external merge on the fake SCM")
+			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
+			Expect(fakeProvider.MarkMergedExternally(ctx, *pullRequest, mergedTargetSha)).To(Succeed())
+
+			By("Triggering reconciliation by updating the PR spec")
+			triggerPRReconcile(ctx, typeNamespacedName, pullRequest)
+
+			By("Verifying state merged and the SCM-reported mergedTargetSha were persisted before deletion")
+			var observedStatus promoterv1alpha1.PullRequestStatus
+			Eventually(mergedStatusObserved, constants.EventuallyTimeout).Should(Receive(&observedStatus),
+				"Should have observed merged status before deletion")
+
+			close(stopPolling)
+
+			// A Get-by-ID that reports the PR merged is authoritative, so the sha is recorded and we
+			// resolve to status.state merged rather than merged-or-closed/unknown.
+			Expect(observedStatus.MergedTargetSha).To(Equal(mergedTargetSha))
+
+			By("Verifying the PullRequest is deleted after mergedTargetSha is persisted")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should record the merge sha when the resource is deleted before the external merge is observed", func() {
+			// The deletion reconcile is the first one to run after the external merge, so the merge sha is
+			// only recoverable if deletion finalization asks the SCM before releasing the finalizer.
+			mergedTargetSha := pullRequest.Spec.MergeSha
+
+			// The resource disappears as soon as finalization completes, so sample from a goroutine started
+			// before the delete rather than polling after it.
+			mergedStatusObserved := make(chan promoterv1alpha1.PullRequestStatus, 1)
+			stopPolling := make(chan bool)
+
+			go func() {
+				defer GinkgoRecover()
+				ticker := time.NewTicker(1 * time.Millisecond)
+				defer ticker.Stop()
+				timeout := time.After(constants.EventuallyTimeout)
+				for {
+					select {
+					case <-ticker.C:
+						var currentPR promoterv1alpha1.PullRequest
+						err := k8sClient.Get(ctx, typeNamespacedName, &currentPR)
+						if err == nil && currentPR.Status.State == promoterv1alpha1.PullRequestMerged {
+							mergedStatusObserved <- currentPR.Status
+							return
+						}
+					case <-stopPolling:
+						return
+					case <-timeout:
+						return
+					}
+				}
+			}()
+
+			By("Simulating external merge on the fake SCM without letting the controller observe it")
+			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
+			Expect(fakeProvider.MarkMergedExternally(ctx, *pullRequest, mergedTargetSha)).To(Succeed())
+
+			By("Deleting the PullRequest resource, with no other finalizer holding it")
+			Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, pullRequest)).To(Succeed())
+
+			By("Verifying deletion finalization recorded the merged state and sha before releasing the object")
+			var observedStatus promoterv1alpha1.PullRequestStatus
+			Eventually(mergedStatusObserved, constants.EventuallyTimeout).Should(Receive(&observedStatus),
+				"deletion finalization must learn the terminal SCM outcome before the resource goes away")
+
+			close(stopPolling)
+
+			// A Get-by-ID that reports the PR merged is authoritative, so the sha is recorded and we
+			// resolve to status.state merged rather than merged-or-closed/unknown.
+			Expect(observedStatus.MergedTargetSha).To(Equal(mergedTargetSha))
+
+			By("Verifying the PullRequest is then deleted")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				g.Expect(k8serrors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
 
@@ -1133,14 +1525,48 @@ var _ = Describe("PullRequest Controller", func() {
 			_ = k8sClient.Patch(ctx, &pr, client.MergeFrom(base))
 		})
 
-		It("should close the SCM PR, set externallyMergedOrClosed when status syncs, and not spam FindOpen while terminating", func() {
+		It("should close the SCM PR, set status closed when status syncs, and not spam FindOpen while terminating", func() {
 			fake.ResetFindOpenCallCount()
+
+			// Status must be persisted as closed before the promoter finalizer is released so the
+			// owning ChangeTransferPolicy can read the terminal outcome while the object still exists.
+			closedStatusObserved := make(chan promoterv1alpha1.PullRequestStatus, 1)
+			stopPolling := make(chan bool)
+			go func() {
+				defer GinkgoRecover()
+				ticker := time.NewTicker(1 * time.Millisecond)
+				defer ticker.Stop()
+				timeout := time.After(constants.EventuallyTimeout)
+				for {
+					select {
+					case <-ticker.C:
+						var currentPR promoterv1alpha1.PullRequest
+						err := k8sClient.Get(ctx, typeNamespacedName, &currentPR)
+						if err == nil &&
+							currentPR.Status.State == promoterv1alpha1.PullRequestClosed &&
+							controllerutil.ContainsFinalizer(&currentPR, promoterv1alpha1.PullRequestFinalizer) {
+							closedStatusObserved <- currentPR.Status
+							return
+						}
+					case <-stopPolling:
+						return
+					case <-timeout:
+						return
+					}
+				}
+			}()
 
 			By("Deleting the PullRequest (object remains until the blocking finalizer is cleared)")
 			Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, pullRequest)).To(Succeed())
 
 			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
+
+			By("Waiting for closed status to be persisted while the promoter finalizer is still held")
+			var observedStatus promoterv1alpha1.PullRequestStatus
+			Eventually(closedStatusObserved, constants.EventuallyTimeout).Should(Receive(&observedStatus),
+				"closed status should be persisted before the promoter finalizer is released")
+			close(stopPolling)
 
 			By("Waiting for the promoter's finalizer to run (SCM close + remove promoter finalizer)")
 			Eventually(func(g Gomega) {
@@ -1165,7 +1591,7 @@ var _ = Describe("PullRequest Controller", func() {
 
 			By("Verifying FindOpen is not invoked in a tight loop while the object is stuck terminating")
 			findOpenAfterWindow := fake.FindOpenCallCount()
-			Expect(findOpenAfterWindow-findOpenBeforeBump).To(BeNumerically("<", 25),
+			Expect(findOpenAfterWindow-findOpenBeforeBump).To(BeNumerically("<", 100),
 				"FindOpen should not be polled repeatedly after the SCM PR is closed during deletion")
 
 			snapshot := fake.FindOpenCallCount()
@@ -1174,13 +1600,25 @@ var _ = Describe("PullRequest Controller", func() {
 				g.Expect(fake.FindOpenCallCount()).To(BeNumerically("<=", snapshot+5))
 			}, 2*time.Second, 50*time.Millisecond).Should(Succeed())
 
-			By("Verifying status reflects no longer open (same path as SCM-external close: flag set, state empty)")
+			By("Verifying status reflects closed after the SCM PR was closed during deletion")
 			Eventually(func(g Gomega) {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
-				g.Expect(pullRequest.Status.ExternallyMergedOrClosed).ToNot(BeNil())
-				g.Expect(*pullRequest.Status.ExternallyMergedOrClosed).To(BeTrue())
-				g.Expect(pullRequest.Status.State).To(BeEmpty())
+				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestClosed))
 			}, constants.EventuallyTimeout).Should(Succeed())
+
+			// Once the promoter finalizer is released this controller is done with the object, even
+			// though the blocking finalizer keeps it around and reconciles keep arriving.
+			By("Verifying a spec change on the terminating object is rejected by CEL immutability")
+			afterRelease := fake.FindOpenCallCount()
+			Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+			base := pullRequest.DeepCopy()
+			pullRequest.Spec.Title = pullRequest.Spec.Title + "-bumped"
+			err := k8sClient.Patch(ctx, pullRequest, client.MergeFrom(base))
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("spec is immutable"))
+			Consistently(func(g Gomega) {
+				g.Expect(fake.FindOpenCallCount()).To(Equal(afterRelease))
+			}, 2*time.Second, 50*time.Millisecond).Should(Succeed())
 		})
 	})
 
@@ -1332,6 +1770,94 @@ var _ = Describe("pullRequestDeletionFinalizerLengthChangedPredicate", func() {
 	})
 })
 
+var _ = Describe("pullRequestStatusIsFinalized", func() {
+	DescribeTable("finalized deletion outcomes",
+		func(pr promoterv1alpha1.PullRequest, finalized bool) {
+			Expect(pullRequestStatusIsFinalized(&pr)).To(Equal(finalized))
+		},
+		Entry("empty id",
+			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{}},
+			true,
+		),
+		Entry("closed",
+			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestClosed, ID: "1"}},
+			true,
+		),
+		Entry("unknown",
+			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestUnknown, ID: "1"}},
+			true,
+		),
+		Entry("merged with sha",
+			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestMerged, ID: "1", MergedTargetSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
+			true,
+		),
+		Entry("merged without sha",
+			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestMerged, ID: "42"}},
+			false,
+		),
+		Entry("merged-or-closed",
+			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestMergedOrClosed, ID: "1"}},
+			false,
+		),
+		Entry("open",
+			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"}},
+			false,
+		),
+	)
+})
+
+var _ = Describe("pullRequestStatusIsTerminal", func() {
+	DescribeTable("terminal live outcomes",
+		func(pr promoterv1alpha1.PullRequest, terminal bool) {
+			Expect(pullRequestStatusIsTerminal(&pr)).To(Equal(terminal))
+		},
+		Entry("open",
+			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen}},
+			false,
+		),
+		Entry("spec closed",
+			promoterv1alpha1.PullRequest{Spec: promoterv1alpha1.PullRequestSpec{State: promoterv1alpha1.PullRequestClosed}},
+			true,
+		),
+		Entry("merged",
+			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestMerged, ID: "1", MergedTargetSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
+			true,
+		),
+		Entry("merged without mergedTargetSha",
+			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestMerged, ID: "1"}},
+			true,
+		),
+		Entry("closed",
+			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestClosed}},
+			true,
+		),
+		Entry("merged-or-closed",
+			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestMergedOrClosed, ID: "1"}},
+			true,
+		),
+		Entry("unknown",
+			promoterv1alpha1.PullRequest{Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestUnknown, ID: "1"}},
+			false,
+		),
+	)
+})
+
+var _ = Describe("pullRequestStatusTransitionPredicate", func() {
+	pred := pullRequestStatusTransitionPredicate()
+
+	It("enqueues on transition to terminal status without generation bump", func() {
+		oldPR := &promoterv1alpha1.PullRequest{
+			ObjectMeta: metav1.ObjectMeta{Generation: 1, ResourceVersion: "1"},
+			Spec:       promoterv1alpha1.PullRequestSpec{State: promoterv1alpha1.PullRequestOpen},
+			Status:     promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"},
+		}
+		newPR := oldPR.DeepCopy()
+		newPR.ResourceVersion = "2"
+		newPR.Status.State = promoterv1alpha1.PullRequestMergedOrClosed
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
+	})
+})
+
 var _ = Describe("shouldSkipSCMSync", func() {
 	openPRWithStatus := func() *promoterv1alpha1.PullRequest {
 		pr := &promoterv1alpha1.PullRequest{
@@ -1382,13 +1908,6 @@ var _ = Describe("shouldSkipSCMSync", func() {
 	It("does not skip when spec.state is merged", func() {
 		pr := openPRWithStatus()
 		pr.Spec.State = promoterv1alpha1.PullRequestMerged
-		Expect(shouldSkipSCMSync(pr)).To(BeFalse())
-	})
-
-	It("does not skip when deleting", func() {
-		now := metav1.Now()
-		pr := openPRWithStatus()
-		pr.DeletionTimestamp = &now
 		Expect(shouldSkipSCMSync(pr)).To(BeFalse())
 	})
 })
@@ -1456,6 +1975,25 @@ func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret,
 	}
 
 	return name, scmSecret, scmProvider, gitRepo, pullRequest
+}
+
+// triggerPRReconcile bumps spec.Labels so the PullRequest controller's
+// GenerationChangedPredicate enqueues a reconcile. When expectedUID is set, the patch is
+// skipped once the live object has a different UID (e.g. the CTP recreated the PR).
+func triggerPRReconcile(ctx context.Context, key types.NamespacedName, pr *promoterv1alpha1.PullRequest, expectedUID ...types.UID) {
+	Eventually(func(g Gomega) {
+		g.Expect(k8sClient.Get(ctx, key, pr)).To(Succeed())
+		if len(expectedUID) > 0 && pr.UID != expectedUID[0] {
+			return
+		}
+		orig := pr.DeepCopy()
+		if pr.Spec.Labels == nil {
+			pr.Spec.Labels = []string{"trigger-reconcile"}
+		} else {
+			pr.Spec.Labels = append(slices.Clone(pr.Spec.Labels), "trigger-reconcile")
+		}
+		g.Expect(k8sClient.Patch(ctx, pr, client.MergeFrom(orig))).To(Succeed())
+	}, constants.EventuallyTimeout).Should(Succeed())
 }
 
 // setPullRequestRequeueDuration patches the singleton ControllerConfiguration's

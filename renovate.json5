@@ -20,6 +20,11 @@
   postUpdateOptions: [
     'gomodTidy',
   ],
+  // Post-upgrade codegen needs the same Go as CI. Use literal install-tool pins
+  // (synced via regex manager below, grouped with Go and linter tooling).
+  // {{constraints.golang}} is unavailable in postUpgradeTasks templates (Renovate's
+  // template filter excludes `constraints`), and constraints.golang is unused by the
+  // gomod manager anyway (renovatebot/renovate#42601).
   // The hashed lockfile is generated from docs/requirements.txt via a post-upgrade
   // task; Renovate must never try to edit it directly.
   ignorePaths: [
@@ -91,6 +96,36 @@
       semanticCommitType: 'chore',
       semanticCommitScope: 'deps',
       automerge: false,
+      // k8s.io OpenAPI/types flow into committed view codegen and CRDs. Without this,
+      // a platform bump leaves zz_generated.openapi.go referencing removed types
+      // (e.g. core/v1.PodStatusResult in 0.37) and Check Codegen fails.
+      postUpgradeTasks: {
+        commands: [
+          'install-tool golang 1.26.6',
+          'make build-installer',
+          'make generate-apiserver',
+          'make generate-ui-types',
+        ],
+        installTools: {
+          node: {},
+        },
+        fileFilters: [
+          '**/*.go',
+          'go.mod',
+          'go.sum',
+          'config/**',
+          'test/**',
+          'applyconfiguration/**',
+          'dist/**',
+          'hack/celcost/report.md',
+          'hack/celcost/go.mod',
+          'hack/celcost/go.sum',
+          'ui/extension/iconStyles.generated.ts',
+          'api/view/**',
+          'ui/shared/src/types/generated/**',
+        ],
+        executionMode: 'branch',
+      },
     },
     {
       description: 'Group the envtest Makefile/e2e versions into the Kubernetes platform bump',
@@ -106,6 +141,33 @@
       semanticCommitType: 'chore',
       semanticCommitScope: 'deps',
       automerge: false,
+      postUpgradeTasks: {
+        commands: [
+          'install-tool golang 1.26.6',
+          'make build-installer',
+          'make generate-apiserver',
+          'make generate-ui-types',
+        ],
+        installTools: {
+          node: {},
+        },
+        fileFilters: [
+          '**/*.go',
+          'go.mod',
+          'go.sum',
+          'config/**',
+          'test/**',
+          'applyconfiguration/**',
+          'dist/**',
+          'hack/celcost/report.md',
+          'hack/celcost/go.mod',
+          'hack/celcost/go.sum',
+          'ui/extension/iconStyles.generated.ts',
+          'api/view/**',
+          'ui/shared/src/types/generated/**',
+        ],
+        executionMode: 'branch',
+      },
     },
     // ----------------------------------------------------------------------
     // Group A2: GitHub API client (go-github major paths + ghinstallation)
@@ -199,10 +261,12 @@
       automerge: false,
     },
     // ----------------------------------------------------------------------
-    // Group B: Go toolchain + golangci-lint (+ golang base image)
+    // Group B: Go toolchain + golangci-lint + mockery + deadcode (+ golang base image)
+    // mockery/deadcode must track Go: both use golang.org/x/tools and break on new
+    // pkgbits export formats (e.g. Go 1.27 needs x/tools v0.49.0 / mockery v3.7.4+).
     // ----------------------------------------------------------------------
     {
-      description: 'Group Go, the golang base image, and golangci-lint together',
+      description: 'Group Go, golangci-lint, mockery, deadcode, and the golang base image together',
       matchManagers: [
         'gomod',
         'custom.regex',
@@ -213,6 +277,8 @@
         'golang',
         'golangci-lint',
         'golangci/golangci-lint',
+        'vektra/mockery',
+        'golang.org/x/tools',
       ],
       groupName: 'Go and linter tooling',
       commitMessageTopic: 'Go and linter tooling',
@@ -222,18 +288,27 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
+          'install-tool golang 1.26.6',
           // go fix applies stdlib fixers for the new toolchain (any, min/max, iterators, …).
           // Run before lint-fix so golangci-lint can clean up anything fix leaves behind.
           'make go-fix || true',
           'make lint-fix || true',
+          // Regenerate mocks with the bumped mockery (must match the Go toolchain).
+          'make mockery-gen',
+          // Regenerate CRDs, applyconfiguration, deepcopy, dist/ bundles, etc. (CI Check Codegen).
+          'make build-installer',
         ],
-        installTools: {
-          golang: {},
-        },
         fileFilters: [
           '**/*.go',
+          '**/mock/**',
           'go.mod',
           'go.sum',
+          'config/**',
+          'test/**',
+          'applyconfiguration/**',
+          'dist/**',
+          'hack/celcost/report.md',
+          'ui/extension/iconStyles.generated.ts',
         ],
         executionMode: 'branch',
       },
@@ -314,29 +389,6 @@
     // Other Makefile tools with their required post-ops
     // ----------------------------------------------------------------------
     {
-      description: 'mockery: regenerate mocks after version bumps',
-      matchDepNames: [
-        'vektra/mockery',
-      ],
-      semanticCommits: 'enabled',
-      semanticCommitType: 'chore',
-      semanticCommitScope: 'deps',
-      automerge: false,
-      postUpgradeTasks: {
-        commands: [
-          'make mockery-gen',
-        ],
-        installTools: {
-          golang: {},
-        },
-        fileFilters: [
-          '**/mock/**',
-          '**/*.go',
-        ],
-        executionMode: 'branch',
-      },
-    },
-    {
       description: 'kustomize: regenerate the consolidated installer after a bump',
       matchDepNames: [
         'kubernetes-sigs/kustomize',
@@ -347,11 +399,9 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
+          'install-tool golang 1.26.6',
           'make build-installer',
         ],
-        installTools: {
-          golang: {},
-        },
         fileFilters: [
           'dist/**',
         ],
@@ -369,11 +419,9 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
+          'install-tool golang 1.26.6',
           'make build-installer',
         ],
-        installTools: {
-          golang: {},
-        },
         fileFilters: [
           'config/**',
           'test/**',
@@ -395,12 +443,10 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
+          'install-tool golang 1.26.6',
           'make manifests',
           'make build-installer',
         ],
-        installTools: {
-          golang: {},
-        },
         fileFilters: [
           'config/**',
           'test/**',
@@ -502,6 +548,19 @@
       ],
       matchStrings: [
         'go (?<currentValue>\\d+\\.\\d+(\\.\\d+)?)',
+      ],
+      depNameTemplate: 'go',
+      datasourceTemplate: 'golang-version',
+      versioningTemplate: 'semver',
+    },
+    {
+      customType: 'regex',
+      description: 'Keep post-upgrade install-tool golang pins in lockstep with go.mod',
+      managerFilePatterns: [
+        '/^renovate\\.json5$/',
+      ],
+      matchStrings: [
+        'install-tool golang (?<currentValue>\\d+\\.\\d+\\.\\d+)',
       ],
       depNameTemplate: 'go',
       datasourceTemplate: 'golang-version',

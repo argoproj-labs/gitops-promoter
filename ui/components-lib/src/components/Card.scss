@@ -3,46 +3,15 @@
 
 @include layouts.vertical-layout;
 
+.env-cards-container {
+  font-family: 'Heebo', sans-serif;
+}
+
 .env-card {
-  background: white;
-  padding: 24px;
-  flex-direction: column;
-  border-radius: 8px;
   box-sizing: border-box;
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.1),
-    0 1px 2px rgba(0, 0, 0, 0.06);
-  border: 1px solid $argo-color-gray-4;
-  min-height: 270px;
-  transition: min-height 0.3s ease;
   display: flex;
   flex-direction: column;
-  max-height: fit-content;
-
-  &.single-commit-group {
-    min-height: 250px;
-  }
-}
-
-.env-card__title {
-  display: flex;
-  align-items: center;
-  font-weight: 600;
-  font-size: 18px;
-  margin-bottom: 15px;
-  color: $argo-color-gray-7;
-}
-
-.env-card__icon {
-  font-size: 18px;
-  color: $argo-color-gray-7;
-  margin-right: 12px;
-}
-
-.env-card__env-name {
-  font-weight: 600;
-  font-size: 18px;
-  color: $argo-color-gray-7;
+  height: fit-content;
 }
 
 .env-card__proposed-loading-bar {
@@ -55,9 +24,18 @@
 
 .env-card__proposed-loading-text {
   margin-top: 4px;
-  font-size: 0.75rem;
-  font-style: italic;
-  color: $argo-color-gray-7;
+  margin-left: 24px;
+  font-size: 13px;
+  font-weight: 400;
+  color: $argo-color-gray-3;
+}
+
+.env-card__proposed-loading .commit-group-title {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: 0;
+  color: $argo-color-black;
 }
 
 @keyframes proposed-loading-pulse {

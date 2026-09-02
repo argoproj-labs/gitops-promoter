@@ -789,6 +789,21 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			_, err = runGitCmd(ctx, gitPath, "checkout", "-B", testBranchStaging, "origin/"+testBranchStaging)
 			Expect(err).NotTo(HaveOccurred())
 
+			// The webhook receiver matches a push to a ChangeTransferPolicy by looking up the
+			// payload's "before" sha against the CTP's recorded proposed/active hydrated sha, so
+			// "before" has to be the remote tip as it stands now, not a locally-created commit.
+			beforeSha, err := runGitCmd(ctx, gitPath, "rev-parse", "HEAD")
+			Expect(err).NotTo(HaveOccurred())
+			beforeSha = strings.TrimSpace(beforeSha)
+
+			By("Waiting for staging's recorded active hydrated sha to match the remote tip")
+			Eventually(func(g Gomega) {
+				var ctp promoterv1alpha1.ChangeTransferPolicy
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: stagingCTPName, Namespace: "default"}, &ctp)).To(Succeed())
+				g.Expect(ctp.Status.Active.Hydrated.Sha).To(Equal(beforeSha),
+					"the webhook's before sha must match the CTP status or the push will not trigger a reconcile")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
 			// First, create a commit that we can revert
 			f, err := os.Create(gitPath + "/feature-to-revert.yaml")
 			Expect(err).NotTo(HaveOccurred())
@@ -806,11 +821,6 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			commitToRevert, err := runGitCmd(ctx, gitPath, "rev-parse", "HEAD")
 			Expect(err).NotTo(HaveOccurred())
 			commitToRevert = strings.TrimSpace(commitToRevert)
-
-			// Get the SHA before we make the revert for the webhook
-			beforeSha, err := runGitCmd(ctx, gitPath, "rev-parse", testBranchStaging)
-			Expect(err).NotTo(HaveOccurred())
-			beforeSha = strings.TrimSpace(beforeSha)
 
 			// Use actual git revert command - this creates a commit with "Revert" prefix automatically
 			_, err = runGitCmd(ctx, gitPath, "revert", "--no-edit", commitToRevert)

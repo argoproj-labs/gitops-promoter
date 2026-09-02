@@ -633,6 +633,55 @@ var _ = Describe("webrequestsimulator.Simulate scenarios", func() {
 			Expect(byBranch["prod"].LastResponseStatusCode).ToNot(BeNil())
 			Expect(*byBranch["prod"].LastResponseStatusCode).To(Equal(201))
 		})
+
+		It("resolves failure from a { phase } object return", func() {
+			wrcs := basicWRCS(
+				promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
+				`Response.StatusCode >= 500 ? { phase: "failure" } : { phase: Response.StatusCode == 200 ? "success" : "pending" }`,
+			)
+			ps := twoEnvPromotionStrategy()
+
+			result, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+				WebRequestCommitStatus: wrcs,
+				PromotionStrategy:      ps,
+				HTTPResponses: []simulatortypes.HTTPResponse{
+					{Branch: "dev", Response: simulatortypes.Response{StatusCode: 200}},
+					{Branch: "prod", Response: simulatortypes.Response{StatusCode: 503}},
+				},
+			})
+			Expect(err).ToNot(HaveOccurred())
+			byBranch := map[string]promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus{}
+			for _, e := range result.Status.Environments {
+				byBranch[e.Branch] = e
+			}
+			Expect(byBranch["dev"].Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			Expect(byBranch["dev"].LastSuccessfulSha).To(Equal(byBranch["dev"].ReportedSha))
+			Expect(byBranch["prod"].Phase).To(Equal(promoterv1alpha1.CommitPhaseFailure))
+			Expect(byBranch["prod"].LastSuccessfulSha).To(BeEmpty(), "a failed environment must not record a successful SHA")
+
+			csByBranch := map[string]promoterv1alpha1.CommitStatusPhase{}
+			for _, cs := range result.CommitStatuses {
+				csByBranch[cs.Spec.Name] = cs.Spec.Phase
+			}
+			Expect(csByBranch[wrcs.Spec.Key+"/dev"]).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			Expect(csByBranch[wrcs.Spec.Key+"/prod"]).To(Equal(promoterv1alpha1.CommitPhaseFailure))
+		})
+
+		It("surfaces an error for a promotionstrategy-shaped object return", func() {
+			wrcs := basicWRCS(
+				promoterv1alpha1.ModeSpec{Polling: &promoterv1alpha1.PollingModeSpec{Interval: metav1.Duration{Duration: 0}}},
+				`{ defaultPhase: "success" }`,
+			)
+			ps := twoEnvPromotionStrategy()
+
+			_, err := webrequestsimulator.Simulate(ctx, simulatortypes.Input{
+				WebRequestCommitStatus: wrcs,
+				PromotionStrategy:      ps,
+				HTTPResponses:          envHTTPMocksSame([]string{"dev", "prod"}, nil),
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("promotionstrategy"))
+		})
 	})
 
 	Describe("promotionstrategy context", func() {

@@ -62,11 +62,12 @@ status:
         phase: success
   pullRequest:
     id: "848"
-    state: open # open, closed, or merged; empty when externallyMergedOrClosed is true
+    state: open # open, closed, merged, merged-or-closed, or unknown
     url: https://github.com/org/repo/pull/848
     prCreationTime: 2023-10-01T00:00:00Z
     # prMergeTime: set when merged
-    # externallyMergedOrClosed: true  # PR closed/merged outside the controller
+    # mergedTargetSha: set once the merge is observed on the SCM; the commit the active branch points at afterwards
+    # externallyMergedOrClosed: deprecated; use status.state merged-or-closed or unknown instead
   history:
     # Recent promotions merged by the controller (newest first, at most 5 entries).
     - active:
@@ -84,3 +85,26 @@ status:
         prCreationTime: 2023-09-01T00:00:00Z
         prMergeTime: 2023-09-01T01:00:00Z
         url: https://github.com/org/repo/pull/847
+        # In a history entry this is the active-branch commit the entry describes (same as active.hydrated.sha).
+        mergedTargetSha: "3333333333333333333333333333333333333333"
+    # A promotion whose PR was merged externally after the proposed branch advanced. The proposed dry sha is
+    # re-read from the merge commit, and the proposed hydrated sha from its second parent when the merge
+    # produced a real merge commit. A squash or fast-forward merge has no second parent, so the hydrated sha
+    # stays at the promoter's last snapshot and may be stale, as may the recorded commit statuses.
+    - active:
+        dry:
+          sha: "1111111111111111111111111111111111111111"
+      proposed:
+        hydrated:
+          sha: "2222222222222222222222222222222222222222"
+        commitStatuses:
+          - key: example-key
+            phase: success
+      pullRequest:
+        id: "848"
+        state: merged
+        prCreationTime: 2023-09-02T00:00:00Z
+        prMergeTime: 2023-09-02T01:00:00Z
+        url: https://github.com/org/repo/pull/848
+        mergedTargetSha: "4444444444444444444444444444444444444444"
+      mergeCommitSnapshotMismatch: true

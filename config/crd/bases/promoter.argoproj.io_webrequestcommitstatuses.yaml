@@ -501,7 +501,8 @@ spec:
                   Evaluated every reconcile. See SuccessSpec.
                 properties:
                   when:
-                    description: When is evaluated every reconcile. See WhenWithOutputSpec.Expression.
+                    description: When is evaluated every reconcile. See SuccessSpec
+                      for return values and WhenWithOutputSpec.Expression for variables.
                     properties:
                       expression:
                         description: |-
@@ -704,7 +705,8 @@ spec:
                     phase:
                       description: |-
                         Phase represents the current phase of the validation.
-                        This controller sets only "pending" or "success"; it never sets "failure" (failure is allowed by the enum for API consistency).
+                        A boolean success expression yields only "pending" or "success"; "failure" requires the { phase } object
+                        return form documented on SuccessSpec.
                       enum:
                       - pending
                       - success

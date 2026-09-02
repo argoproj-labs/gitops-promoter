@@ -71,6 +71,11 @@ const DetailDrawer: React.FC<{
     : undefined;
   const refs = cell.references ?? [];
 
+  const [prId, prUrl] =
+    cell.pullRequest?.id && cell.pullRequest?.url
+      ? [cell.pullRequest.id, cell.pullRequest.url]
+      : [row.prId, row.prUrl];
+
   return (
     <aside
       className={`hp-drawer hp-drawer--open ${isResizing ? 'hp-drawer--resizing' : ''}`}
@@ -145,19 +150,19 @@ const DetailDrawer: React.FC<{
                 <span className="hp-drawer__sha">{row.dryShaShort}</span>
               </Tooltip>
             )}
-            {row.prId && (
+            {prId && prUrl && (
               <>
                 <span className="hp-drawer__sep" aria-hidden="true">
                   ·
                 </span>
                 <a
-                  href={row.prUrl}
+                  href={prUrl}
                   target="_blank"
                   rel="noreferrer"
                   className="hp-drawer__pr"
-                  aria-label={`Pull request #${row.prId}, opens in new tab`}
+                  aria-label={`Pull request #${prId}, opens in new tab`}
                 >
-                  <GoGitPullRequest aria-hidden="true" /> #{row.prId}
+                  <GoGitPullRequest aria-hidden="true" /> #{prId}
                 </a>
               </>
             )}
@@ -205,7 +210,7 @@ const DetailDrawer: React.FC<{
 
         {refs.length > 0 && (
           <div className="hp-drawer__section">
-            <h3>app commits ({refs.length})</h3>
+            <h3>referenced commits ({refs.length})</h3>
             <ul className="hp-drawer__refs">
               {refs.map((ref, i) => {
                 const body = ref.body ? extractBodyPreTrailer(ref.body) : '';

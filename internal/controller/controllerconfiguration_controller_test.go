@@ -19,11 +19,15 @@ package controller
 import (
 	"context"
 	_ "embed"
+	"fmt"
+	"os"
+	"path/filepath"
 	"sync/atomic"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -270,3 +274,26 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 		})
 	})
 })
+
+// loadShippedControllerConfigurationForTests loads config/config/controllerconfiguration.yaml
+// (the same manifest wired into kustomize) and applies test metadata. Tests run with the
+// working directory set to this package (standard `go test`), so the path is resolved from
+// internal/controller.
+func loadShippedControllerConfigurationForTests(name string) (*promoterv1alpha1.ControllerConfiguration, error) {
+	path := filepath.Join("..", "..", "config", "config", "controllerconfiguration.yaml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read shipped controller configuration %s: %w", path, err)
+	}
+	cc := &promoterv1alpha1.ControllerConfiguration{}
+	if err := unmarshalYamlStrict(string(data), cc); err != nil {
+		return nil, err
+	}
+	cc.ObjectMeta = metav1.ObjectMeta{
+		Namespace:   "default",
+		Name:        name,
+		Labels:      cc.Labels,
+		Annotations: cc.Annotations,
+	}
+	return cc, nil
+}

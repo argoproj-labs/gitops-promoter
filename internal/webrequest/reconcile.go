@@ -242,6 +242,10 @@ func applyHTTPExecutionDecision(
 	return reconcileOutcomeFromHTTPResponse(ctx, evaluator, wrcs, td, resp)
 }
 
+// resolvePhaseFromSuccessWhen evaluates spec.success.when.expression for the current mode.context.
+// In environments context the expression returns a bool or { phase } and resolves to a single phase for the
+// branch being processed (phasePerBranch is always nil). In promotionstrategy context it returns a bool or
+// { defaultPhase?, environments? } and may additionally resolve a per-branch phase map.
 func resolvePhaseFromSuccessWhen(
 	ctx context.Context,
 	evaluator *ExpressionEvaluator,
@@ -255,14 +259,11 @@ func resolvePhaseFromSuccessWhen(
 		}
 		return phase, phasePerBranch, nil
 	}
-	passed, err := evaluator.evaluateValidationExpression(ctx, wrcs.Spec.Success.When.Expression, exprData)
+	phase, err := evaluator.evaluateValidationExpressionForEnvironments(ctx, wrcs.Spec.Success.When.Expression, exprData)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to evaluate validation expression: %w", err)
 	}
-	if passed {
-		return promoterv1alpha1.CommitPhaseSuccess, nil, nil
-	}
-	return promoterv1alpha1.CommitPhasePending, nil, nil
+	return phase, nil, nil
 }
 
 func marshalSuccessWhenOutput(

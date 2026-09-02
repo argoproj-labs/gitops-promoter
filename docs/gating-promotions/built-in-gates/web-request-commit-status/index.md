@@ -6,6 +6,9 @@ The Web Request Commit Status controller enables environment gating based on ext
 
 The WebRequestCommitStatus controller provides flexible validation by calling external HTTP APIs and evaluating the responses. It supports both simple polling and advanced expression-based triggering, making it suitable for a wide range of integration scenarios.
 
+> [!NOTE]
+> WebRequestCommitStatus uses the [expr](https://github.com/expr-lang/expr) library for expression evaluation. The library provides a powerful expression language with familiar syntax.
+
 ### How It Works
 
 Behavior depends on **`spec.mode.context`** (see [Request scope](#request-scope-environments-vs-promotionstrategy) below). By default (`environments`), the controller runs **one HTTP request per applicable environment**. With `promotionstrategy`, it runs **at most one HTTP request per WebRequestCommitStatus** and maps the result to every applicable environment’s `CommitStatus`.
@@ -98,7 +101,7 @@ The controller reconciles when the `WebRequestCommitStatus` or the referenced **
 Use it when a **single** external API call represents validation for the whole PromotionStrategy (or a subset of environments that share one backend), and you do not want N identical HTTP calls for N environments. Examples:
 
 - One “release train” or “deployment pipeline” status API keyed by application or repo, not by individual environment branch
-- A batch endpoint that returns status for multiple environments in one JSON payload (pair with a success expression that returns [per-branch phases](#success-expression-return-types-promotionstrategy-context))
+- A batch endpoint that returns status for multiple environments in one JSON payload (pair with a success expression that returns [per-branch phases](#promotionstrategy-context))
 
 ### Template and trigger variables (`promotionstrategy` context)
 
@@ -133,9 +136,28 @@ Response != nil ? Response.StatusCode == 200 : Phase == "success"
 
 This is the **carry-forward pattern**: when an HTTP response is available, evaluate it (`Response.StatusCode == 200`). When no request was made this reconcile (`Response` is `nil`), fall back to `Phase` -- which holds the phase from the previous reconcile. If the previous reconcile already determined `"success"`, the expression preserves it without needing another HTTP call. On the very first reconcile `Phase` is `""` (empty), so the fallback returns `false` and the phase starts as `pending`.
 
-### Success expression return types (`promotionstrategy` context)
+### Success expression return types
 
-**Return types:**
+Both contexts accept a **boolean** or an **object**. The object shape differs because of what each context resolves: one environment per evaluation, or every environment from a single shared evaluation. Any other return type — or a `phase` string outside `success` / `pending` / `failure` — fails the reconcile and surfaces on the `Ready` condition.
+
+#### `environments` context
+
+1. **Boolean** — `true`: phase **success** for the environment being processed; `false`: **pending**.
+2. **Object** — shape: `{ "phase"?: "success" \| "pending" \| "failure" }`. An omitted or empty `phase` means **`pending`**, so the object form is what you use to report **failure** and fail the gate fast instead of staying pending until a timeout.
+
+Each evaluation is already scoped to one branch, so the per-branch keys below (`defaultPhase`, `environments`) are **rejected** in this context.
+
+```yaml
+success:
+  when:
+    # 5xx is a hard rejection; anything else is the usual success/pending ladder
+    expression: |
+      Response == nil ? { phase: Phase } :
+      Response.StatusCode >= 500 ? { phase: "failure" } :
+      { phase: Response.StatusCode == 200 && Response.Body.approved ? "success" : "pending" }
+```
+
+#### `promotionstrategy` context
 
 1. **Boolean** — `true`: all applicable environments get phase **success**; `false`: all get **pending** (not failure).
 2. **Object** — shape: `{ "defaultPhase"?: "success" \| "pending" \| "failure", "environments"?: [ { "branch": "<branch>", "phase": "..." }, ... ] }`  
@@ -1045,7 +1067,3 @@ Field-level documentation (required/optional, template variables, expression var
 
 - **Godoc:** `api/v1alpha1/webrequestcommitstatus_types.go`
 - **CLI:** `kubectl explain webrequestcommitstatus.spec` (and drill down, e.g. `kubectl explain webrequestcommitstatus.spec.mode.trigger`)
-
-## Expression Language
-
-WebRequestCommitStatus uses the [expr](https://github.com/expr-lang/expr) library for expression evaluation. The library provides a powerful expression language with familiar syntax.

@@ -512,10 +512,7 @@ func evaluateWindows(now time.Time, allow, exclude []promoterv1alpha1.CronWindow
 // transition time (windowEnd) is as far in the future as possible, avoiding spurious reconciliation churn for
 // high-frequency crons with long durations (e.g. "* * * * *" with 2h duration).
 func isInsideCronWindow(now time.Time, sched cron.Schedule, duration time.Duration) (bool, time.Time) {
-	maxIterations := int(duration.Minutes()) + 1
-	if maxIterations > 525_600 {
-		maxIterations = 525_600
-	}
+	maxIterations := min(int(duration.Minutes())+1, 525_600)
 	checkpoint := now.Add(-duration)
 	candidate := sched.Next(checkpoint)
 
