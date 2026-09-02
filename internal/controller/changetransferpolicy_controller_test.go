@@ -3078,6 +3078,24 @@ var _ = Describe("commit status description trailers", func() {
 			true,
 			false,
 		),
+		Entry("recalculates when newest history entry has no pull request ID",
+			// A stale cached read after the note-writing reconcile still holds the trailer-less entry whose
+			// SHAs match the tip; skipping there would re-apply it over the note-derived history.
+			promoterv1alpha1.ChangeTransferPolicyStatus{
+				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
+				History: []promoterv1alpha1.History{{
+					Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
+					PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
+						MergedTargetSha: "abc",
+					},
+				}},
+			},
+			promoterv1alpha1.ChangeTransferPolicyStatus{
+				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
+			},
+			false,
+			false,
+		),
 		Entry("recalculates when newest history entry targets a different commit than the active tip",
 			promoterv1alpha1.ChangeTransferPolicyStatus{
 				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},

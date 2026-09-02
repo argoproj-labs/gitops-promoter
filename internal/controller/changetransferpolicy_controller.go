@@ -259,6 +259,15 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 // finalization: a prior pass may have populated history from a trailer-less merge commit before
 // the note existed, while the newest entry's SHAs already match the active tip.
 //
+// A newest entry without a pull request ID is never trusted either. The note-writing reconcile
+// rebuilds history correctly, but the PullRequest deletion enqueues another reconcile right behind
+// it, and that reconcile's cached read of the CTP can predate the status patch. Its prev.History
+// then still holds the trailer-less entry (SHAs matching the tip, no PR ID); skipping there would
+// re-apply the stale entry over the correct one and pin it until the active tip moves. Rebuilding
+// whenever the PR ID is missing keeps that path self-healing: the note is on the remote, so the
+// rebuild picks it up. Commits that genuinely carry no PR metadata (direct pushes to the active
+// branch) simply keep the pre-optimization behavior of recalculating every reconcile.
+//
 // A Spec.ActivePath change without a new active tip is not detected here; history is refreshed on
 // the next promotion that moves the active branch.
 func shouldSkipHistoryRecalculation(prev, cur *promoterv1alpha1.ChangeTransferPolicyStatus, historyNoteWritten bool) bool {
@@ -275,7 +284,7 @@ func shouldSkipHistoryRecalculation(prev, cur *promoterv1alpha1.ChangeTransferPo
 		return false
 	}
 	newest := prev.History[0]
-	if newest.PullRequest == nil || newest.PullRequest.MergedTargetSha != cur.Active.Hydrated.Sha {
+	if newest.PullRequest == nil || newest.PullRequest.ID == "" || newest.PullRequest.MergedTargetSha != cur.Active.Hydrated.Sha {
 		return false
 	}
 	return newest.Active.Hydrated.Sha == cur.Active.Hydrated.Sha
