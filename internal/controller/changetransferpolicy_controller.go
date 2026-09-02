@@ -1170,13 +1170,15 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 
 // ensurePromotionHistoryNote makes sure the promotion-history note for a merged, terminating PullRequest
 // exists on its merge commit and rebuilds history from it. A persisted entry for the merge commit may
-// predate the note and carry no pull request metadata; rebuilding here corrects that before the rest of
-// the reconcile runs.
+// predate the note and carry trailer-derived metadata (including a PR ID from merge-commit trailers);
+// rebuilding here corrects that before the rest of the reconcile runs.
 //
 // handlePRFinalizerRemoval calls this on every reconcile between the PullRequest reporting the merge and
 // the finalizer release, typically two or three passes. The note's content is fixed once the PR is merged
 // (spec.commit.message is never rewritten for a merged PR and the merge commit is immutable), so an existing
-// note is reused rather than rewritten, which avoids a redundant notes-ref push per pass.
+// note is reused rather than rewritten, which avoids a redundant notes-ref push per pass. GetHistoryNote
+// reads the remote notes ref and does not need the merge commit locally; when the note already exists and
+// history fully describes the merge commit, both the branch fetch and history rebuild are skipped.
 //
 // The merge commit may not be in the local clone yet: CloneRepo is blob-less and the active branch is only
 // fetched later in the reconcile by calculateStatus, so on the first pass after an external merge the active
@@ -1191,35 +1193,33 @@ func (r *ChangeTransferPolicyReconciler) ensurePromotionHistoryNote(ctx context.
 	}
 	mergedTargetSha := livePR.Status.MergedTargetSha
 
-	// calculateHistory below reads the merge commit out of origin/<activeBranch>, and the blob-less clone
-	// may not hold it yet: calculateStatus only fetches the branch later in this reconcile.
-	// GetBranchSha skips the fetch when a live ls-remote confirms the remote tip still matches
-	// Status.Active.Hydrated.Sha from a prior reconcile (same cache as calculateStatus).
-	if _, err := gitOperations.GetBranchSha(ctx, ctp.Spec.ActiveBranch, ctp.Status.Active.Hydrated.Sha); err != nil {
-		return fmt.Errorf("failed to fetch active branch %q before writing promotion history note: %w", ctp.Spec.ActiveBranch, err)
-	}
-
 	existing, err := gitOperations.GetHistoryNote(ctx, mergedTargetSha)
 	if err != nil {
 		return fmt.Errorf("failed to check for an existing history note on merge commit %q: %w", mergedTargetSha, err)
 	}
-	if len(existing) > 0 {
-		logger.V(4).Info("Promotion history note already present on merge commit", "mergeCommit", mergedTargetSha, "prID", livePR.Status.ID)
-	} else if err := r.writePromotionHistoryNote(ctx, ctp, gitOperations, livePR); err != nil {
-		return err
+	if len(existing) > 0 && shouldSkipHistoryRecalculation(ctp.Status.History, mergedTargetSha) {
+		logger.V(4).Info("Promotion history note already present and history describes the merge commit",
+			"mergeCommit", mergedTargetSha, "prID", livePR.Status.ID)
+		return nil
+	}
+
+	// writePromotionHistoryNote and calculateHistory read from origin/<activeBranch>, and the blob-less
+	// clone may not hold the merge commit yet: calculateStatus only fetches the branch later in this
+	// reconcile. GetBranchSha skips the fetch when a live ls-remote confirms the remote tip still matches
+	// Status.Active.Hydrated.Sha from a prior reconcile (same cache as calculateStatus).
+	if _, err := gitOperations.GetBranchSha(ctx, ctp.Spec.ActiveBranch, ctp.Status.Active.Hydrated.Sha); err != nil {
+		return fmt.Errorf("failed to fetch active branch %q before writing promotion history note: %w", ctp.Spec.ActiveBranch, err)
+	}
+	if len(existing) == 0 {
+		if err := r.writePromotionHistoryNote(ctx, ctp, gitOperations, livePR); err != nil {
+			return err
+		}
 	}
 
 	// Rebuild history from the note now rather than signalling the caller to do it: a persisted entry for
-	// this merge commit may predate the note and carry no pull request metadata.
-	//
-	// This runs on every reconcile while the terminating PullRequest still carries our finalizer — typically
-	// two or three passes between the SCM reporting the merge and the CTP status catching up enough to release
-	// it. The first pass rebuilds from the note; later passes skip when a prior reconcile already persisted
-	// history that describes mergedTargetSha. Use mergedTargetSha, not Status.Active.Hydrated.Sha:
-	// calculateStatus has not run yet on this pass and the persisted active tip may still lag.
-	if shouldSkipHistoryRecalculation(ctp.Status.History, mergedTargetSha) {
-		return nil
-	}
+	// this merge commit may predate the note and carry trailer-derived metadata that the note corrects.
+	// Use mergedTargetSha, not Status.Active.Hydrated.Sha: calculateStatus has not run yet on this pass
+	// and the persisted active tip may still lag.
 	r.calculateHistory(ctx, ctp, gitOperations)
 	return nil
 }

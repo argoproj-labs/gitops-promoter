@@ -3031,6 +3031,36 @@ var _ = Describe("handlePRFinalizerRemoval early promotion history note", func()
 		Expect(notesRefSha()).To(Equal(firstNotesRef), "the notes ref must not be pushed again for an unchanged note")
 	})
 
+	It("rebuilds trailer-derived history when writing the note for the first time", func() {
+		const sentinelURL = "https://example.com/sentinel-from-trailers"
+		const noteURL = "https://example.com/pr/" + prID
+
+		// A prior reconcile persisted a trailer-derived entry before the note existed: the SHAs and PR ID
+		// match the merge commit, so the skip guard would have suppressed the note-driven rebuild.
+		ctp.Status.History = []promoterv1alpha1.History{{
+			Active: promoterv1alpha1.CommitBranchState{
+				Hydrated: promoterv1alpha1.CommitShaState{Sha: squashSha},
+			},
+			PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
+				ID:              prID,
+				MergedTargetSha: squashSha,
+				Url:             sentinelURL,
+			},
+		}}
+
+		pr := newPR(promoterv1alpha1.PullRequestMerged, squashSha)
+		pr.Spec.Commit.Message += "\n" + constants.TrailerPullRequestUrl + ": " + noteURL
+		r := newReconciler(pr)
+
+		err := r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(ctp.Status.History).ToNot(BeEmpty())
+		Expect(ctp.Status.History[0].PullRequest.ID).To(Equal(prID))
+		Expect(ctp.Status.History[0].PullRequest.Url).To(Equal(noteURL))
+		Expect(ctp.Status.History[0].PullRequest.Url).ToNot(Equal(sentinelURL))
+	})
+
 	It("writes nothing while the SCM has not reported the merge commit", func() {
 		r := newReconciler(newPR(promoterv1alpha1.PullRequestMerged, ""))
 
