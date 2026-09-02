@@ -17,11 +17,11 @@
     }
   },
   "include": [
+    "./env.d.ts",
     "./index.tsx",
     "./*.test.ts",
     "./*.test.tsx",
     "./hasOnePromotionStrategy.ts",
-    "./AppViewExtension.tsx",
-    "./mockData.ts"
+    "./AppViewExtension.tsx"
   ]
 }
