@@ -30,6 +30,38 @@ import (
 // ScmProviderKind is the kind of the ScmProvider resource.
 var ScmProviderKind = reflect.TypeFor[ScmProvider]().Name()
 
+// InboundWebhookVerificationMode controls whether inbound SCM webhooks for GitRepositories
+// using this provider must pass signature verification at the promoter webhook receiver.
+// +k8s:enum
+type InboundWebhookVerificationMode string
+
+const (
+	// InboundWebhookVerificationNoVerification accepts webhooks without signature checks (default).
+	InboundWebhookVerificationNoVerification InboundWebhookVerificationMode = "NoVerification"
+	// InboundWebhookVerificationRequireVerification requires a valid signature using ScmProviderSecretKeyWebhookSecret
+	// on the Provider secret before processing webhook deliveries for this provider's repositories.
+	InboundWebhookVerificationRequireVerification InboundWebhookVerificationMode = "RequireVerification"
+)
+
+// Provider secret keys for inbound webhook verification (the Secret referenced by secretRef).
+const (
+	// ScmProviderSecretKeyWebhookSecret is the shared secret / HMAC key for verifying inbound webhooks.
+	ScmProviderSecretKeyWebhookSecret = "webhookSecret"
+	// ScmProviderSecretKeyWebhookSignatureHeader is the HTTP header that carries the signature or token.
+	// Optional; when omitted the webhook receiver uses a provider-sensible default
+	// (X-Hub-Signature-256 for GitHub-style providers, X-Gitlab-Token for GitLab).
+	ScmProviderSecretKeyWebhookSignatureHeader = "webhookSignatureHeader"
+)
+
+// InboundWebhookVerificationOrDefault returns the configured inbound webhook verification mode,
+// defaulting to NoVerification when unset.
+func (spec *ScmProviderSpec) InboundWebhookVerificationOrDefault() InboundWebhookVerificationMode {
+	if spec == nil || spec.InboundWebhookVerification == "" {
+		return InboundWebhookVerificationNoVerification
+	}
+	return spec.InboundWebhookVerification
+}
+
 // ScmProviderSpec defines the desired state of ScmProvider
 // +kubebuilder:validation:ExactlyOneOf=github;gitlab;forgejo;gitea;bitbucketCloud;azureDevOps;fake
 type ScmProviderSpec struct {
@@ -38,6 +70,14 @@ type ScmProviderSpec struct {
 
 	// SecretRef contains the credentials required to auth to a specific provider
 	SecretRef *v1.LocalObjectReference `json:"secretRef,omitempty"`
+
+	// InboundWebhookVerification controls signature verification for inbound SCM webhooks
+	// delivered to the promoter webhook receiver for GitRepositories using this provider.
+	// RequireVerification needs ScmProviderSecretKeyWebhookSecret on the Provider secret referenced by secretRef.
+	// +optional
+	// +kubebuilder:default=NoVerification
+	// +kubebuilder:validation:Enum=NoVerification;RequireVerification
+	InboundWebhookVerification InboundWebhookVerificationMode `json:"inboundWebhookVerification,omitempty"`
 
 	// GitHub required configuration for GitHub as the SCM provider
 	GitHub *GitHub `json:"github,omitempty"`

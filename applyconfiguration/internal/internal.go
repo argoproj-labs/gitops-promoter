@@ -173,6 +173,8 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: domain
       type:
         scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.InboundWebhookVerificationMode
+  scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PromotionStrategy
   scalar: untyped
   list:
@@ -247,6 +249,10 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: gitlab
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.GitLab
+    - name: inboundWebhookVerification
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.InboundWebhookVerificationMode
+      default: NoVerification
     - name: secretRef
       type:
         namedType: io.k8s.api.core.v1.LocalObjectReference
