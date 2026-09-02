@@ -350,6 +350,7 @@ spec:
                         dry:
                           description: Dry is the dry state of the branch, which is
                             the commit that is being proposed.
+                          nullable: true
                           properties:
                             author:
                               description: Author is the author of the commit
@@ -661,6 +662,7 @@ spec:
                               dry:
                                 description: Dry is the dry state of the branch, which
                                   is the commit that is being proposed.
+                                nullable: true
                                 properties:
                                   author:
                                     description: Author is the author of the commit
@@ -1197,6 +1199,7 @@ spec:
                         dry:
                           description: Dry is the dry state of the branch, which is
                             the commit that is being proposed.
+                          nullable: true
                           properties:
                             author:
                               description: Author is the author of the commit
