@@ -932,7 +932,11 @@ func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, 
 		// PromotionStrategy.updatePreviousEnvironmentCommitStatus to compute
 		// targetDrySha from a stale note and incorrectly mark the previous-env
 		// CommitStatus success against the wrong dry SHA.
-		ctp.Status.Proposed.Note = nil
+		//
+		// Use an empty struct (not nil) so status SSA includes `note: {}` and
+		// the atomic note field takes ownership, evicting legacy field-manager
+		// state for note.drySha from pre-SSA controllers.
+		ctp.Status.Proposed.Note = &promoterv1alpha1.HydratorMetadata{}
 	}
 	logger.V(4).Info("Set proposed Note.DrySha from git note",
 		"proposedHydratedSha", proposedHydratedSha,

@@ -1529,14 +1529,14 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 					// The new proposed hydrated commit has no git note, and
 					// makeChangeAndHydrateRepo never writes one. setCommitMetadata
-					// must therefore clear Status.Proposed.Note to nil so
-					// downstream gates (getEffectiveHydratedDrySha) do not trust
-					// the firstDrySha as the current env's "effective" hydrated
-					// dry. Asserting nil directly (rather than guarding with an
-					// if) also pins the contract that "no note" is
-					// represented as nil, not &HydratorMetadata{}.
-					g.Expect(ctp.Status.Proposed.Note).To(BeNil(),
-						"Status.Proposed.Note must be cleared when the new proposed hydrated commit has no git note; leaving the previous reconcile's drySha (%q) lets PromotionStrategy compute targetDrySha from a stale note and merge production ahead of dev/staging", firstDrySha)
+					// must clear any stale proposed.note.drySha so downstream gates
+					// (getEffectiveHydratedDrySha) do not trust the firstDrySha as
+					// the current env's "effective" hydrated dry. The controller
+					// represents "no note" as an empty HydratorMetadata (not nil) so
+					// status SSA includes `note: {}` and the atomic note field takes
+					// ownership, evicting legacy field-manager state for note.drySha.
+					g.Expect(noteDrySha(ctp.Status.Proposed.Note)).To(BeEmpty(),
+						"Status.Proposed.Note.drySha must be cleared when the new proposed hydrated commit has no git note; leaving the previous reconcile's drySha (%q) lets PromotionStrategy compute targetDrySha from a stale note and merge production ahead of dev/staging", firstDrySha)
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
