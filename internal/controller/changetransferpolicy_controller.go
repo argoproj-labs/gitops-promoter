@@ -1082,11 +1082,20 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 	return nil
 }
 
-// handlePRFinalizerRemoval checks if there's a PR being deleted with our finalizer where the CTP status
-// already matches the PR status. If so, it writes the promotion-history git note for the merge and then
-// removes the finalizer to allow the PR to be deleted. The returned bool is true when a note was written
-// on this reconcile, which forces a history rebuild: a prior pass may have populated history from the
-// trailer-less merge commit before the note existed.
+// handlePRFinalizerRemoval handles a PR being deleted with our finalizer. As soon as the PR reports a merge
+// it makes sure the promotion-history git note exists on the merge commit, and once the CTP status matches
+// the PR status it removes the finalizer to allow the PR to be deleted. The returned bool is true when a
+// note is present on the merge commit (written now or by an earlier pass), which forces a history rebuild
+// from it instead of trusting a persisted entry that may predate the note.
+//
+// The note is written before the CTP-status gate on purpose. The PullRequest controller reports the merge
+// (state and mergedTargetSha) a reconcile or two before the CTP's own copy of that status is persisted, and
+// during that window the active tip has already moved to the merge commit. Without the note, the history
+// rebuild in those reconciles falls back to the merge commit's message, which for a squash or SCM-side merge
+// carries no trailers, and persists an entry with no pull request metadata that a later pass has to correct.
+// Writing the note first means every persisted history entry for the merge commit is built from it. Only
+// the finalizer release keeps waiting for the CTP status, so the PR object stays around until the CTP has
+// durably recorded it.
 func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) (bool, error) {
 	logger := log.FromContext(ctx)
 
@@ -1120,9 +1129,21 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 		return false, nil
 	}
 
+	// Write the promotion-history note before the CTP-status checks below: the note is built from the PR
+	// object and the merge commit, neither of which the CTP status gates, and the history rebuild later in
+	// this reconcile needs it to describe the new active tip correctly. The PR's commit message is the last
+	// place the trailers survive when the SCM rewrote the merge commit (squash or external merge), and the
+	// finalizer is what guarantees that data is still around. A failure here keeps the finalizer so the next
+	// reconcile retries; SetHistoryNote's overwrite semantics make the retry idempotent.
+	historyNoteWritten, err := r.ensurePromotionHistoryNote(ctx, ctp, gitOperations, &livePR)
+	if err != nil {
+		r.Recorder.Eventf(ctp, nil, "Warning", constants.PromotionHistoryNoteFailedReason, "WritingPromotionHistoryNote", constants.PromotionHistoryNoteFailedMessage, livePR.Name, err)
+		return false, fmt.Errorf("failed to write promotion history note for PullRequest %q: %w", livePR.Name, err)
+	}
+
 	if ctp.Status.PullRequest == nil {
 		logger.V(4).Info("PR being deleted but CTP has no PR status, cannot remove finalizer yet")
-		return false, nil
+		return historyNoteWritten, nil
 	}
 
 	statusMatches := ctp.Status.PullRequest.ID == livePR.Status.ID &&
@@ -1136,7 +1157,7 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 			"prState", livePR.Status.State,
 			"ctpMergedTargetSha", ctp.Status.PullRequest.MergedTargetSha,
 			"prMergedTargetSha", livePR.Status.MergedTargetSha)
-		return false, nil
+		return historyNoteWritten, nil
 	}
 
 	// Do not release our finalizer until the PullRequest controller records a finalized deletion outcome.
@@ -1144,17 +1165,7 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 		logger.V(4).Info("PR being deleted but PullRequest status is not finalized yet, cannot remove finalizer yet",
 			"prState", livePR.Status.State,
 			"mergedTargetSha", livePR.Status.MergedTargetSha)
-		return false, nil
-	}
-
-	// Write the promotion-history note before releasing the finalizer: the PR's commit message is the last
-	// place the trailers survive when the SCM rewrote the merge commit (squash or external merge), and the
-	// finalizer is what guarantees that data is still around. A failure here keeps the finalizer so the next
-	// reconcile retries; SetHistoryNote's overwrite semantics make the retry idempotent.
-	historyNoteWritten, err := r.writePromotionHistoryNote(ctx, ctp, gitOperations, &livePR)
-	if err != nil {
-		r.Recorder.Eventf(ctp, nil, "Warning", constants.PromotionHistoryNoteFailedReason, "WritingPromotionHistoryNote", constants.PromotionHistoryNoteFailedMessage, livePR.Name, err)
-		return false, fmt.Errorf("failed to write promotion history note for PullRequest %q: %w", livePR.Name, err)
+		return historyNoteWritten, nil
 	}
 
 	logger.Info("Removing CTP finalizer from PR - status already synced",
@@ -1173,6 +1184,44 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 
 	logger.V(4).Info("PR finalizer removed")
 	return historyNoteWritten, nil
+}
+
+// ensurePromotionHistoryNote makes sure the promotion-history note for a merged, terminating PullRequest
+// exists on its merge commit. It returns true when a note is present on the merge commit after the call,
+// whether written now or by an earlier reconcile, so the caller forces a history rebuild from it.
+//
+// handlePRFinalizerRemoval calls this on every reconcile between the PullRequest reporting the merge and
+// the finalizer release, typically two or three passes. The note's content is fixed once the PR is merged
+// (spec.commit.message is never rewritten for a merged PR and the merge commit is immutable), so an existing
+// note is reused rather than rewritten, which avoids a redundant notes-ref push per pass.
+//
+// The merge commit may not be in the local clone yet: CloneRepo is blob-less and the active branch is only
+// fetched later in the reconcile by calculateStatus, so on the first pass after an external merge the active
+// branch is fetched here before the note is built from the commit.
+func (r *ChangeTransferPolicyReconciler) ensurePromotionHistoryNote(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations, livePR *promoterv1alpha1.PullRequest) (bool, error) {
+	logger := log.FromContext(ctx)
+
+	// Nothing to record yet: the PR was closed, or the SCM has not reported the merge commit. This mirrors
+	// writePromotionHistoryNote's own early returns and skips the branch fetch in those cases.
+	if livePR.Status.State != promoterv1alpha1.PullRequestMerged || livePR.Status.MergedTargetSha == "" {
+		return false, nil
+	}
+	mergedTargetSha := livePR.Status.MergedTargetSha
+
+	existing, err := gitOperations.GetHistoryNote(ctx, mergedTargetSha)
+	if err != nil {
+		return false, fmt.Errorf("failed to check for an existing history note on merge commit %q: %w", mergedTargetSha, err)
+	}
+	if len(existing) > 0 {
+		logger.V(4).Info("Promotion history note already present on merge commit", "mergeCommit", mergedTargetSha, "prID", livePR.Status.ID)
+		return true, nil
+	}
+
+	if err := gitOperations.FetchBranch(ctx, ctp.Spec.ActiveBranch); err != nil {
+		return false, fmt.Errorf("failed to fetch active branch %q before writing promotion history note: %w", ctp.Spec.ActiveBranch, err)
+	}
+
+	return r.writePromotionHistoryNote(ctx, ctp, gitOperations, livePR)
 }
 
 // writePromotionHistoryNote records the pull request's commit message trailers as a git note on the merge

@@ -44,6 +44,7 @@ import (
 	"k8s.io/client-go/tools/events"
 	"k8s.io/utils/ptr"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 )
 
@@ -2850,6 +2851,211 @@ var _ = Describe("writePromotionHistoryNote merge commit snapshot mismatch", fun
 		Expect(err).NotTo(HaveOccurred())
 		Expect(include).To(BeTrue())
 		Expect(entry.MergeCommitSnapshotMismatch).To(BeFalse())
+	})
+})
+
+var _ = Describe("handlePRFinalizerRemoval early promotion history note", func() {
+	var workDir string
+	var bareDir string
+	var gitOps *git.EnvironmentOperations
+	var ctp *promoterv1alpha1.ChangeTransferPolicy
+	var proposedSha, squashSha string
+
+	const (
+		activeBranch   = "env-active"
+		proposedBranch = "env-proposed"
+		prID           = "77"
+		drySha         = "dry-1-sha"
+	)
+
+	mustRunGit := func(dir string, args ...string) string {
+		GinkgoHelper()
+		out, err := runGitCmd(ctx, dir, args...)
+		Expect(err).NotTo(HaveOccurred())
+		return strings.TrimSpace(out)
+	}
+
+	// newPR returns a terminating PullRequest that still carries the CTP finalizer, in the given SCM state.
+	// Its spec.commit.message carries the trailers the promoter wrote before the merge, exactly what the
+	// history note is built from.
+	newPR := func(state promoterv1alpha1.PullRequestState, mergedTargetSha string) *promoterv1alpha1.PullRequest {
+		msg := "Promote change\n\n" +
+			constants.TrailerPullRequestID + ": " + prID + "\n" +
+			constants.TrailerShaHydratedProposed + ": " + proposedSha + "\n" +
+			constants.TrailerShaDryProposed + ": " + drySha
+		return &promoterv1alpha1.PullRequest{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "early-note-pr",
+				Namespace: ctp.Namespace,
+				Labels: map[string]string{
+					promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
+					promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
+					promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(activeBranch),
+				},
+				Finalizers:        []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
+				DeletionTimestamp: &metav1.Time{Time: time.Now()},
+			},
+			Spec: promoterv1alpha1.PullRequestSpec{
+				RepositoryReference: promoterv1alpha1.ObjectReference{Name: "early-note-repo"},
+				MergeSha:            proposedSha,
+				Commit:              promoterv1alpha1.CommitConfiguration{Message: msg},
+			},
+			Status: promoterv1alpha1.PullRequestStatus{
+				ID:              prID,
+				State:           state,
+				MergedTargetSha: mergedTargetSha,
+			},
+		}
+	}
+
+	newReconciler := func(pr *promoterv1alpha1.PullRequest) *ChangeTransferPolicyReconciler {
+		c := ctrlfake.NewClientBuilder().WithScheme(k8sClient.Scheme()).WithObjects(pr).Build()
+		return &ChangeTransferPolicyReconciler{Client: c, Recorder: events.NewFakeRecorder(100)}
+	}
+
+	notesRefSha := func() string {
+		GinkgoHelper()
+		return mustRunGit(bareDir, "rev-parse", git.PromoterHistoryNotesRef)
+	}
+
+	BeforeEach(func() {
+		var err error
+		bareDir, err = os.MkdirTemp("", "early-note-bare-*")
+		Expect(err).NotTo(HaveOccurred())
+		mustRunGit(bareDir, "init", "--bare")
+
+		workDir, err = os.MkdirTemp("", "early-note-work-*")
+		Expect(err).NotTo(HaveOccurred())
+		mustRunGit(workDir, "clone", bareDir, ".")
+		mustRunGit(workDir, "config", "user.name", "Test User")
+		mustRunGit(workDir, "config", "user.email", "test@example.com")
+		mustRunGit(workDir, "config", "commit.gpgsign", "false")
+
+		Expect(os.WriteFile(path.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"dry-0-sha"}`), 0o644)).To(Succeed())
+		mustRunGit(workDir, "add", "-A")
+		mustRunGit(workDir, "commit", "-m", "base")
+		defaultBranch := mustRunGit(workDir, "rev-parse", "--abbrev-ref", "HEAD")
+		mustRunGit(workDir, "push", "-u", "origin", defaultBranch)
+
+		mustRunGit(workDir, "checkout", "-B", activeBranch, defaultBranch)
+		mustRunGit(workDir, "push", "-u", "origin", activeBranch)
+
+		mustRunGit(workDir, "checkout", "-B", proposedBranch, defaultBranch)
+		Expect(os.WriteFile(path.Join(workDir, "hydrator.metadata"), []byte(`{"drySha":"`+drySha+`"}`), 0o644)).To(Succeed())
+		mustRunGit(workDir, "add", "-A")
+		mustRunGit(workDir, "commit", "-m", "p1")
+		proposedSha = mustRunGit(workDir, "rev-parse", "HEAD")
+		mustRunGit(workDir, "push", "-u", "origin", proposedBranch)
+
+		ctp = &promoterv1alpha1.ChangeTransferPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "early-note-ctp",
+				Namespace: "default",
+				Labels:    map[string]string{promoterv1alpha1.PromotionStrategyLabel: "early-note-ps"},
+			},
+			Spec: promoterv1alpha1.ChangeTransferPolicySpec{
+				ActiveBranch:   activeBranch,
+				ProposedBranch: proposedBranch,
+			},
+			// The CTP has not yet copied the merged state from the PullRequest. This is the window in which
+			// the finalizer must stay put but the note can already be written.
+			Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+				PullRequest: &promoterv1alpha1.PullRequestCommonStatus{ID: prID, State: promoterv1alpha1.PullRequestOpen},
+			},
+		}
+
+		// Clone for the controller BEFORE the external merge lands, so the merge commit is not in the local
+		// clone yet: handlePRFinalizerRemoval runs before calculateStatus fetches the active branch.
+		gitRepo := &promoterv1alpha1.GitRepository{
+			ObjectMeta: metav1.ObjectMeta{Name: "early-note-repo", Namespace: "default"},
+			Spec: promoterv1alpha1.GitRepositorySpec{
+				Fake: &promoterv1alpha1.FakeRepo{Owner: "test-owner", Name: "early-note-repo"},
+			},
+		}
+		gitOps = git.NewEnvironmentOperations(gitRepo, &localGitProvider{repoPath: bareDir}, "default/early-note-"+proposedSha)
+		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
+		Expect(gitOps.FetchNotes(ctx)).To(Succeed())
+
+		// An external squash merge: the commit message carries no trailers, exactly like a merge performed
+		// in the SCM UI.
+		mustRunGit(workDir, "checkout", activeBranch)
+		mustRunGit(workDir, "merge", "--squash", proposedBranch)
+		mustRunGit(workDir, "commit", "-m", "external squash merge")
+		squashSha = mustRunGit(workDir, "rev-parse", "HEAD")
+		mustRunGit(workDir, "push", "origin", activeBranch)
+	})
+
+	AfterEach(func() {
+		_ = os.RemoveAll(bareDir)
+		_ = os.RemoveAll(workDir)
+	})
+
+	It("writes the note as soon as the PR reports the merge, without releasing the finalizer", func() {
+		By("Confirming the controller's clone has not fetched the merge yet")
+		// The clone predates the external merge; origin/<active> only advances when FetchBranch runs.
+		Expect(mustRunGit(gitOps.ClonePath(), "rev-parse", "origin/"+activeBranch)).NotTo(Equal(squashSha))
+
+		pr := newPR(promoterv1alpha1.PullRequestMerged, squashSha)
+		r := newReconciler(pr)
+
+		written, err := r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(written).To(BeTrue(), "a note on the merge commit must force a history rebuild this reconcile")
+
+		By("Verifying the active branch was fetched so the merge commit could be read")
+		Expect(mustRunGit(gitOps.ClonePath(), "rev-parse", "origin/"+activeBranch)).To(Equal(squashSha))
+
+		By("Verifying the note is on the remote with the PR's trailers")
+		note, err := fetchPromotionHistoryNote(workDir, squashSha)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(note[constants.TrailerPullRequestID]).To(Equal([]string{prID}))
+		Expect(note[constants.TrailerShaHydratedProposed]).To(Equal([]string{proposedSha}))
+		Expect(note[constants.TrailerPullRequestMergeTime]).ToNot(BeEmpty())
+
+		By("Verifying the history entry built in this same reconcile already carries the PR metadata")
+		entry, include, err := r.buildHistoryEntry(ctx, squashSha, "", gitOps)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(include).To(BeTrue())
+		Expect(entry.PullRequest.ID).To(Equal(prID))
+
+		By("Verifying the finalizer is still held because the CTP status has not caught up")
+		var livePR promoterv1alpha1.PullRequest
+		Expect(r.Get(ctx, ctrlclient.ObjectKeyFromObject(pr), &livePR)).To(Succeed())
+		Expect(livePR.Finalizers).To(ContainElement(promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer))
+	})
+
+	It("reuses an existing note on later passes instead of rewriting it", func() {
+		r := newReconciler(newPR(promoterv1alpha1.PullRequestMerged, squashSha))
+
+		written, err := r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(written).To(BeTrue())
+		firstNotesRef := notesRefSha()
+
+		written, err = r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(written).To(BeTrue(), "an existing note must still force the history rebuild")
+		Expect(notesRefSha()).To(Equal(firstNotesRef), "the notes ref must not be pushed again for an unchanged note")
+	})
+
+	It("writes nothing while the SCM has not reported the merge commit", func() {
+		r := newReconciler(newPR(promoterv1alpha1.PullRequestMerged, ""))
+
+		written, err := r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(written).To(BeFalse())
+		_, err = fetchPromotionHistoryNote(workDir, squashSha)
+		Expect(err).To(HaveOccurred(), "no notes ref should exist yet")
+	})
+
+	It("writes nothing for a PR closed without merging", func() {
+		r := newReconciler(newPR(promoterv1alpha1.PullRequestClosed, ""))
+
+		written, err := r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(written).To(BeFalse())
+		_, err = fetchPromotionHistoryNote(workDir, squashSha)
+		Expect(err).To(HaveOccurred(), "no notes ref should exist")
 	})
 })
 
