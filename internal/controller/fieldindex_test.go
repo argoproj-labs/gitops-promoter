@@ -25,30 +25,63 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
+// registeredGateCommitStatusTypes lists every gate manager type in api/v1alpha1.
+// When you add a new Spec.PromotionStrategyRef gate, append its struct type here
+// and register it with SchemeBuilder — discovery tests use this as an independent
+// oracle so a broken predicate or missing registration cannot pass silently.
+var registeredGateCommitStatusTypes = []reflect.Type{
+	reflect.TypeFor[promoterv1alpha1.ArgoCDCommitStatus](),
+	reflect.TypeFor[promoterv1alpha1.GitCommitStatus](),
+	reflect.TypeFor[promoterv1alpha1.TimedCommitStatus](),
+	reflect.TypeFor[promoterv1alpha1.WebRequestCommitStatus](),
+	reflect.TypeFor[promoterv1alpha1.ScheduledCommitStatus](),
+}
+
+var _ = Describe("IsPromotionStrategyRefGateType", func() {
+	DescribeTable("identifies gate struct types independently of scheme discovery",
+		func(typ reflect.Type, want bool) {
+			Expect(IsPromotionStrategyRefGateType(typ)).To(Equal(want))
+		},
+		Entry("ArgoCDCommitStatus", reflect.TypeFor[promoterv1alpha1.ArgoCDCommitStatus](), true),
+		Entry("GitCommitStatus", reflect.TypeFor[promoterv1alpha1.GitCommitStatus](), true),
+		Entry("TimedCommitStatus", reflect.TypeFor[promoterv1alpha1.TimedCommitStatus](), true),
+		Entry("WebRequestCommitStatus", reflect.TypeFor[promoterv1alpha1.WebRequestCommitStatus](), true),
+		Entry("ScheduledCommitStatus", reflect.TypeFor[promoterv1alpha1.ScheduledCommitStatus](), true),
+		Entry("PromotionStrategy", reflect.TypeFor[promoterv1alpha1.PromotionStrategy](), false),
+		Entry("ChangeTransferPolicy", reflect.TypeFor[promoterv1alpha1.ChangeTransferPolicy](), false),
+		Entry("CommitStatus", reflect.TypeFor[promoterv1alpha1.CommitStatus](), false),
+		Entry("PullRequest", reflect.TypeFor[promoterv1alpha1.PullRequest](), false),
+		Entry("GitRepository", reflect.TypeFor[promoterv1alpha1.GitRepository](), false),
+	)
+})
+
 var _ = Describe("GateCommitStatusKinds", func() {
-	It("discovers PromotionStrategyRef gate types from the scheme", func() {
+	It("discovers every registered PromotionStrategyRef gate type from the scheme", func() {
 		gates := GateCommitStatusKinds()
 		Expect(gates).NotTo(BeEmpty(),
 			"GateCommitStatusKinds returned nothing; check SchemeBuilder registration in api/v1alpha1")
 
-		got := map[string]struct{}{}
+		discovered := make(map[reflect.Type]struct{}, len(gates))
 		for _, obj := range gates {
-			elemType := reflect.TypeOf(obj).Elem()
-			got[elemType.Name()] = struct{}{}
-			Expect(IsPromotionStrategyRefGateType(elemType)).To(BeTrue(),
-				"%s was discovered but does not have Spec.PromotionStrategyRef", elemType.Name())
+			discovered[reflect.TypeOf(obj).Elem()] = struct{}{}
 		}
 
-		for _, notWant := range []string{
-			"PromotionStrategy",
-			"ChangeTransferPolicy",
-			"CommitStatus",
-			"PullRequest",
-			"GitRepository",
+		for _, want := range registeredGateCommitStatusTypes {
+			Expect(discovered).To(HaveKey(want),
+				"%s missing from GateCommitStatusKinds. Register the type with SchemeBuilder in api/v1alpha1",
+				want.Name())
+		}
+
+		for _, notWant := range []reflect.Type{
+			reflect.TypeFor[promoterv1alpha1.PromotionStrategy](),
+			reflect.TypeFor[promoterv1alpha1.ChangeTransferPolicy](),
+			reflect.TypeFor[promoterv1alpha1.CommitStatus](),
+			reflect.TypeFor[promoterv1alpha1.PullRequest](),
+			reflect.TypeFor[promoterv1alpha1.GitRepository](),
 		} {
-			Expect(got).NotTo(HaveKey(notWant),
+			Expect(discovered).NotTo(HaveKey(notWant),
 				"%s must not be treated as a PromotionStrategyRef gate; it lacks Spec.PromotionStrategyRef",
-				notWant)
+				notWant.Name())
 		}
 	})
 })

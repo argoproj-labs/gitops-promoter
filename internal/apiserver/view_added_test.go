@@ -54,8 +54,9 @@ import (
 //  4. Add the resource plural to config/apiserver/base/rbac.yaml (promoter-apiserver)
 var _ = Describe("Gate commit-status managers stay in sync with the view aggregate", func() {
 	It("keeps PromotionStrategyDetails gate slice fields in sync with scheme discovery", func() {
-		discovered := map[reflect.Type]struct{}{}
-		for _, gate := range controller.GateCommitStatusKinds() {
+		gates := discoveredGateCommitStatusKinds()
+		discovered := make(map[reflect.Type]struct{}, len(gates))
+		for _, gate := range gates {
 			discovered[reflect.TypeOf(gate).Elem()] = struct{}{}
 		}
 		for elemType, fieldName := range promotionStrategyDetailsGateSliceFields() {
@@ -71,7 +72,7 @@ var _ = Describe("Gate commit-status managers stay in sync with the view aggrega
 
 	It("exposes every discovered gate kind on PromotionStrategyDetails", func() {
 		viewFields := promotionStrategyDetailsGateSliceFields()
-		for _, gate := range controller.GateCommitStatusKinds() {
+		for _, gate := range discoveredGateCommitStatusKinds() {
 			elemType := reflect.TypeOf(gate).Elem()
 			_, ok := viewFields[elemType]
 			Expect(ok).To(BeTrue(),
@@ -85,7 +86,7 @@ var _ = Describe("Gate commit-status managers stay in sync with the view aggrega
 		provider := newProviderWithReader(newFakeReader(mappingSeed()...))
 		psKey := types.NamespacedName{Namespace: testNamespace, Name: testPSName}
 
-		for _, gate := range controller.GateCommitStatusKinds() {
+		for _, gate := range discoveredGateCommitStatusKinds() {
 			gate.SetName("gate-" + reflect.TypeOf(gate).Elem().Name())
 			gate.SetNamespace(testNamespace)
 			setPromotionStrategyRefName(gate, testPSName)
@@ -103,7 +104,7 @@ var _ = Describe("Gate commit-status managers stay in sync with the view aggrega
 	})
 
 	It("includes every discovered gate kind when building a bundle", func() {
-		gates := controller.GateCommitStatusKinds()
+		gates := discoveredGateCommitStatusKinds()
 		objs := make([]client.Object, 0, 1+len(gates))
 		objs = append(objs, &promoterv1alpha1.PromotionStrategy{
 			ObjectMeta: metav1.ObjectMeta{Name: testPSName, Namespace: testNamespace, UID: testPSUID},
@@ -142,7 +143,7 @@ var _ = Describe("Gate commit-status managers stay in sync with the view aggrega
 	It("grants the apiserver ClusterRole read access to every discovered gate kind", func() {
 		scheme := utils.GetScheme()
 		resources := apiserverClusterRoleResources()
-		for _, proto := range controller.GateCommitStatusKinds() {
+		for _, proto := range discoveredGateCommitStatusKinds() {
 			gvk, err := apiutil.GVKForObject(proto, scheme)
 			Expect(err).NotTo(HaveOccurred())
 			plural := gateResourcePlural(gvk)
@@ -153,6 +154,15 @@ var _ = Describe("Gate commit-status managers stay in sync with the view aggrega
 		}
 	})
 })
+
+// discoveredGateCommitStatusKinds returns scheme-registered gate prototypes and
+// fails the spec when discovery is empty so sync tests cannot pass vacuously.
+func discoveredGateCommitStatusKinds() []client.Object {
+	gates := controller.GateCommitStatusKinds()
+	Expect(gates).NotTo(BeEmpty(),
+		"GateCommitStatusKinds returned nothing; register gate CRDs with SchemeBuilder in api/v1alpha1")
+	return gates
+}
 
 // promotionStrategyDetailsGateSliceFields maps gate element types (e.g.
 // promoterv1alpha1.TimedCommitStatus) to the PromotionStrategyDetails field name
