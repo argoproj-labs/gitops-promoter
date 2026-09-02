@@ -1210,8 +1210,13 @@ func (r *ChangeTransferPolicyReconciler) ensurePromotionHistoryNote(ctx context.
 	}
 
 	// Rebuild history from the note now rather than signalling the caller to do it: a persisted entry for
-	// this merge commit may predate the note and carry no pull request metadata. Use mergedTargetSha, not
-	// Status.Active.Hydrated.Sha: calculateStatus has not run yet and the persisted active tip may lag.
+	// this merge commit may predate the note and carry no pull request metadata.
+	//
+	// This runs on every reconcile while the terminating PullRequest still carries our finalizer — typically
+	// two or three passes between the SCM reporting the merge and the CTP status catching up enough to release
+	// it. The first pass rebuilds from the note; later passes skip when a prior reconcile already persisted
+	// history that describes mergedTargetSha. Use mergedTargetSha, not Status.Active.Hydrated.Sha:
+	// calculateStatus has not run yet on this pass and the persisted active tip may still lag.
 	if shouldSkipHistoryRecalculation(ctp.Status.History, mergedTargetSha) {
 		return nil
 	}
