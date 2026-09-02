@@ -1193,7 +1193,9 @@ func (r *ChangeTransferPolicyReconciler) ensurePromotionHistoryNote(ctx context.
 
 	// calculateHistory below reads the merge commit out of origin/<activeBranch>, and the blob-less clone
 	// may not hold it yet: calculateStatus only fetches the branch later in this reconcile.
-	if err := gitOperations.FetchBranch(ctx, ctp.Spec.ActiveBranch); err != nil {
+	// GetBranchSha skips the fetch when a live ls-remote confirms the remote tip still matches
+	// Status.Active.Hydrated.Sha from a prior reconcile (same cache as calculateStatus).
+	if _, err := gitOperations.GetBranchSha(ctx, ctp.Spec.ActiveBranch, ctp.Status.Active.Hydrated.Sha); err != nil {
 		return fmt.Errorf("failed to fetch active branch %q before writing promotion history note: %w", ctp.Spec.ActiveBranch, err)
 	}
 
