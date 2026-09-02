@@ -422,12 +422,16 @@
           'install-tool golang 1.26.6',
           'make build-installer',
         ],
+        // build-installer also runs cel-cost-report and generate-extension-icon-styles;
+        // without these filters Renovate drops regenerated files and Check Codegen fails.
         fileFilters: [
           'config/**',
           'test/**',
           'applyconfiguration/**',
           'dist/**',
           '**/*.go',
+          'hack/celcost/report.md',
+          'ui/extension/iconStyles.generated.ts',
         ],
         executionMode: 'branch',
       },
