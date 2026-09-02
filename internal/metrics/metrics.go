@@ -83,6 +83,8 @@ const (
 	SCMOperationCreateLabel SCMOperation = "create-label"
 	// SCMOperationRemoveLabels is used when removing labels from pull requests.
 	SCMOperationRemoveLabels SCMOperation = "remove-labels"
+	// SCMOperationListInstallations is used when listing GitHub App installations to resolve an org installation ID.
+	SCMOperationListInstallations SCMOperation = "list-installations"
 )
 
 // RateLimit represents the rate limit information for SCM API calls.
@@ -249,24 +251,12 @@ func init() {
 	)
 }
 
-// scmProviderKindLabel returns spec.scmProviderRef.kind, defaulting to ScmProvider when unset (matches the CRD default).
-func scmProviderKindLabel(gitRepo *v1alpha1.GitRepository) string {
-	if gitRepo == nil {
-		return "ScmProvider"
-	}
-	if gitRepo.Spec.ScmProviderRef.Kind == "" {
-		return "ScmProvider"
-	}
-	return gitRepo.Spec.ScmProviderRef.Kind
-}
-
 // RecordGitOperation records both the increment and observation for git operations.
 func RecordGitOperation(gitRepo *v1alpha1.GitRepository, operation GitOperation, result GitOperationResult, duration time.Duration) {
-	kind := scmProviderKindLabel(gitRepo)
 	labels := prometheus.Labels{
 		"git_repository":    gitRepo.Name,
-		"scm_provider":      gitRepo.Spec.ScmProviderRef.Name,
-		"scm_provider_kind": kind,
+		"scm_provider":      gitRepo.SCMCallSCMProvider(),
+		"scm_provider_kind": gitRepo.SCMCallSCMProviderKind(),
 		"operation":         string(operation),
 		"result":            string(result),
 	}
@@ -276,12 +266,17 @@ func RecordGitOperation(gitRepo *v1alpha1.GitRepository, operation GitOperation,
 
 // RecordSCMCall records both the increment and observation for SCM API calls, and optionally observes rate limit metrics.
 // It emits a structured debug log (verbosity V(1); enable with e.g. --zap-log-level=1) for each call, matching metric labels.
-func RecordSCMCall(ctx context.Context, gitRepo *v1alpha1.GitRepository, api SCMAPI, operation SCMOperation, responseCode int, duration time.Duration, rateLimit *RateLimit) {
-	kind := scmProviderKindLabel(gitRepo)
+// scope is typically a *GitRepository or GenericScmProvider (provider-only calls use empty git_repository labels).
+func RecordSCMCall(ctx context.Context, scope v1alpha1.SCMCallScope, api SCMAPI, operation SCMOperation, responseCode int, duration time.Duration, rateLimit *RateLimit) {
+	scmProvider := scope.SCMCallSCMProvider()
+	scmProviderKind := scope.SCMCallSCMProviderKind()
+	gitRepository := scope.SCMCallGitRepository()
+	gitRepositoryNamespace := scope.SCMCallGitRepositoryNamespace()
+
 	labels := prometheus.Labels{
-		"git_repository":    gitRepo.Name,
-		"scm_provider":      gitRepo.Spec.ScmProviderRef.Name,
-		"scm_provider_kind": kind,
+		"git_repository":    gitRepository,
+		"scm_provider":      scmProvider,
+		"scm_provider_kind": scmProviderKind,
 		"api":               string(api),
 		"operation":         string(operation),
 		"response_code":     strconv.Itoa(responseCode),
@@ -290,10 +285,10 @@ func RecordSCMCall(ctx context.Context, gitRepo *v1alpha1.GitRepository, api SCM
 	scmCallsDurationSeconds.With(labels).Observe(duration.Seconds())
 
 	log.FromContext(ctx).V(1).Info("SCM API call",
-		"git_repository", gitRepo.Name,
-		"git_repository_namespace", gitRepo.Namespace,
-		"scm_provider", gitRepo.Spec.ScmProviderRef.Name,
-		"scm_provider_kind", kind,
+		"git_repository", gitRepository,
+		"git_repository_namespace", gitRepositoryNamespace,
+		"scm_provider", scmProvider,
+		"scm_provider_kind", scmProviderKind,
 		"api", string(api),
 		"operation", string(operation),
 		"response_code", responseCode,
@@ -302,8 +297,8 @@ func RecordSCMCall(ctx context.Context, gitRepo *v1alpha1.GitRepository, api SCM
 
 	if rateLimit != nil {
 		rateLimitLabels := prometheus.Labels{
-			"scm_provider":      gitRepo.Spec.ScmProviderRef.Name,
-			"scm_provider_kind": kind,
+			"scm_provider":      scmProvider,
+			"scm_provider_kind": scmProviderKind,
 		}
 
 		scmCallsRateLimitLimit.With(rateLimitLabels).Set(float64(rateLimit.Limit))
