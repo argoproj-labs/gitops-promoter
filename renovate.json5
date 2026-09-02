@@ -20,6 +20,13 @@
   postUpdateOptions: [
     'gomodTidy',
   ],
+  // Post-upgrade `make` compiles controller-gen with this Go. Keep in lockstep
+  // with go.mod via the regex manager below (grouped with Go and linter tooling).
+  // Do not rely on installTools + this field: executionMode=branch drops
+  // constraints (https://github.com/renovatebot/renovate/discussions/43633).
+  constraints: {
+    golang: '1.26.6',
+  },
   // The hashed lockfile is generated from docs/requirements.txt via a post-upgrade
   // task; Renovate must never try to edit it directly.
   ignorePaths: [
@@ -96,12 +103,11 @@
       // (e.g. core/v1.PodStatusResult in 0.37) and Check Codegen fails.
       postUpgradeTasks: {
         commands: [
+          'install-tool golang {{constraints.golang}}',
           'make build-installer',
           'make generate-apiserver',
           'make generate-ui-types',
         ],
-        // Go comes from actions/setup-go in renovate.yaml (go.mod), not
-        // containerbase's latest stable — that mismatch broke Check Codegen.
         installTools: {
           node: {},
         },
@@ -139,12 +145,11 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
+          'install-tool golang {{constraints.golang}}',
           'make build-installer',
           'make generate-apiserver',
           'make generate-ui-types',
         ],
-        // Go comes from actions/setup-go in renovate.yaml (go.mod), not
-        // containerbase's latest stable — that mismatch broke Check Codegen.
         installTools: {
           node: {},
         },
@@ -285,6 +290,7 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
+          'install-tool golang {{constraints.golang}}',
           // go fix applies stdlib fixers for the new toolchain (any, min/max, iterators, …).
           // Run before lint-fix so golangci-lint can clean up anything fix leaves behind.
           'make go-fix || true',
@@ -395,6 +401,7 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
+          'install-tool golang {{constraints.golang}}',
           'make build-installer',
         ],
         fileFilters: [
@@ -414,6 +421,7 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
+          'install-tool golang {{constraints.golang}}',
           'make build-installer',
         ],
         fileFilters: [
@@ -437,6 +445,7 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
+          'install-tool golang {{constraints.golang}}',
           'make manifests',
           'make build-installer',
         ],
@@ -541,6 +550,19 @@
       ],
       matchStrings: [
         'go (?<currentValue>\\d+\\.\\d+(\\.\\d+)?)',
+      ],
+      depNameTemplate: 'go',
+      datasourceTemplate: 'golang-version',
+      versioningTemplate: 'semver',
+    },
+    {
+      customType: 'regex',
+      description: 'Keep post-upgrade golang pin in lockstep with go.mod',
+      managerFilePatterns: [
+        '/^renovate\\.json5$/',
+      ],
+      matchStrings: [
+        "golang: '(?<currentValue>\\d+\\.\\d+\\.\\d+)'",
       ],
       depNameTemplate: 'go',
       datasourceTemplate: 'golang-version',
