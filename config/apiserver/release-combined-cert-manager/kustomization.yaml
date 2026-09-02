@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Combined release bundle: the promoter controller (config/default) PLUS the dashboard
+# aggregation apiserver with cert-manager-managed serving certs. Builds the published
+# install-with-dashboard-cert-manager.yaml.
+#
+# This unions two already-self-contained kustomizations and adds NO namespace/namePrefix
+# transformer of its own, so the apiserver base stays intact - in particular the
+# extension-apiserver-authentication-reader RoleBinding remains in kube-system (see
+# docs/advanced-usage/dashboard-apiserver.md). The single images: entry pins both the controller and the
+# apiserver Deployments (same image) to the release tag via hack/manifests-release.sh.
+
+resources:
+  - ../../default
+  - ../certs-cert-manager
+
+images:
+  - name: quay.io/argoprojlabs/gitops-promoter

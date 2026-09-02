@@ -21,6 +21,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -31,6 +33,12 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
+
+// allowedHTTPMethods is the canonical, ordered set of HTTP methods accepted by HTTPRequestSpec.
+// It mirrors the +kubebuilder:validation:Enum on the static Method field and is enforced at render
+// time for MethodTemplate as well. Both the membership check and the user-facing error message
+// derive from this single source of truth.
+var allowedHTTPMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE"}
 
 // Reconciler runs WebRequestCommitStatus reconcile logic with injectable HTTP execution
 // and CommitStatus emission (controller: real HTTP + SSA upsert; simulator: mock HTTP + local render).
@@ -90,12 +98,13 @@ func resolveHTTPExecutionDecision(
 	}
 
 	if mode.Trigger != nil {
-		sf, ntd, err := evaluator.evaluateTriggerWhenBranch(ctx, mode.Trigger, td)
+		sf, ntd, triggerVars, err := evaluator.evaluateTriggerWhenBranch(ctx, mode.Trigger, td)
 		if err != nil {
 			return httpExecutionDecision{}, fmt.Errorf("failed to evaluate trigger.when: %w", err)
 		}
 		shouldFire = sf
 		newTriggerData = ntd
+		return httpExecutionDecision{ShouldFire: shouldFire, NewTriggerData: newTriggerData, TriggerVariables: triggerVars}, nil
 	}
 
 	return httpExecutionDecision{ShouldFire: shouldFire, NewTriggerData: newTriggerData}, nil
@@ -143,6 +152,12 @@ func reconcileOutcomeFromHTTPResponse(
 	if err != nil {
 		return reconcileOutcome{}, fmt.Errorf("failed to evaluate success.when.variables: %w", err)
 	}
+	var successVars map[string]any
+	if v, ok := exprData["Variables"]; ok {
+		if vm, ok := v.(map[string]any); ok {
+			successVars = vm
+		}
+	}
 	phase, phasePerBranch, err := resolvePhaseFromSuccessWhen(ctx, evaluator, wrcs, exprData)
 	if err != nil {
 		return reconcileOutcome{}, fmt.Errorf("failed to evaluate validation expression: %w", err)
@@ -160,6 +175,7 @@ func reconcileOutcomeFromHTTPResponse(
 		LastResponseStatusCode: lastResponseStatusCode,
 		ResponseDataJSON:       responseDataJSON,
 		SuccessDataJSON:        successDataJSON,
+		SuccessVariables:       successVars,
 	}, nil
 }
 
@@ -178,6 +194,12 @@ func reconcileOutcomeWithoutNewResponse(
 	if err != nil {
 		return reconcileOutcome{}, fmt.Errorf("failed to evaluate success.when.variables: %w", err)
 	}
+	var successVars map[string]any
+	if v, ok := exprData["Variables"]; ok {
+		if vm, ok := v.(map[string]any); ok {
+			successVars = vm
+		}
+	}
 	phase, phasePerBranch, err := resolvePhaseFromSuccessWhen(ctx, evaluator, wrcs, exprData)
 	if err != nil {
 		return reconcileOutcome{}, fmt.Errorf("failed to evaluate success.when expression: %w", err)
@@ -195,6 +217,7 @@ func reconcileOutcomeWithoutNewResponse(
 		LastResponseStatusCode: lastState.LastResponseStatusCode,
 		ResponseDataJSON:       lastState.ResponseOutput,
 		SuccessDataJSON:        successDataJSON,
+		SuccessVariables:       successVars,
 	}, nil
 }
 
@@ -219,6 +242,10 @@ func applyHTTPExecutionDecision(
 	return reconcileOutcomeFromHTTPResponse(ctx, evaluator, wrcs, td, resp)
 }
 
+// resolvePhaseFromSuccessWhen evaluates spec.success.when.expression for the current mode.context.
+// In environments context the expression returns a bool or { phase } and resolves to a single phase for the
+// branch being processed (phasePerBranch is always nil). In promotionstrategy context it returns a bool or
+// { defaultPhase?, environments? } and may additionally resolve a per-branch phase map.
 func resolvePhaseFromSuccessWhen(
 	ctx context.Context,
 	evaluator *ExpressionEvaluator,
@@ -232,14 +259,11 @@ func resolvePhaseFromSuccessWhen(
 		}
 		return phase, phasePerBranch, nil
 	}
-	passed, err := evaluator.evaluateValidationExpression(ctx, wrcs.Spec.Success.When.Expression, exprData)
+	phase, err := evaluator.evaluateValidationExpressionForEnvironments(ctx, wrcs.Spec.Success.When.Expression, exprData)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to evaluate validation expression: %w", err)
 	}
-	if passed {
-		return promoterv1alpha1.CommitPhaseSuccess, nil, nil
-	}
-	return promoterv1alpha1.CommitPhasePending, nil, nil
+	return phase, nil, nil
 }
 
 func marshalSuccessWhenOutput(
@@ -260,12 +284,24 @@ func marshalSuccessWhenOutput(
 	return marshalJSONMap(extractedData)
 }
 
-// BuildRenderedHTTPRequestFromTemplates renders URL, headers, and body from WebRequestCommitStatus HTTP templates.
-// Used by HTTPEXecutor implementations (controller HTTP transport and simulator rendered-request snapshots).
+// BuildRenderedHTTPRequestFromTemplates renders method, URL, headers, and body from
+// WebRequestCommitStatus spec.httpRequest templates.
 func BuildRenderedHTTPRequestFromTemplates(wrcs *promoterv1alpha1.WebRequestCommitStatus, td TemplateData) (RenderedHTTPRequest, error) {
+	method := wrcs.Spec.HTTPRequest.Method //nolint:staticcheck // SA1019: backward-compat fallback for the deprecated Method field; CRD CEL rejects setting both Method and MethodTemplate.
+	if wrcs.Spec.HTTPRequest.MethodTemplate != "" {
+		renderedMethod, err := utils.RenderStringTemplate(wrcs.Spec.HTTPRequest.MethodTemplate, td)
+		if err != nil {
+			return RenderedHTTPRequest{}, fmt.Errorf("failed to render method template: %w", err)
+		}
+		method = strings.ToUpper(strings.TrimSpace(renderedMethod))
+	}
+	if !slices.Contains(allowedHTTPMethods, method) {
+		return RenderedHTTPRequest{}, fmt.Errorf("invalid HTTP method %q (must be one of %s)", method, strings.Join(allowedHTTPMethods, ", "))
+	}
+
 	req := RenderedHTTPRequest{
 		Branch: td.Branch,
-		Method: wrcs.Spec.HTTPRequest.Method,
+		Method: method,
 	}
 
 	url, err := utils.RenderStringTemplate(wrcs.Spec.HTTPRequest.URLTemplate, td)
@@ -322,7 +358,7 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusEnvironments(ctx context.Con
 	}
 
 	psEnvStatusMap := getEnvsByBranch(ps)
-	applicableEnvs := getApplicableEnvironments(ps, wrcs.Spec.Key, wrcs.Spec.ReportOn)
+	applicableEnvs := utils.GetApplicableEnvironments(ps, wrcs.Spec.Key, wrcs.Spec.ReportOn)
 	currentShas, err := getCurrentShasByBranch(applicableEnvs, psEnvStatusMap, wrcs.Spec.ReportOn)
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("failed to resolve current SHAs: %w", err)
@@ -371,6 +407,7 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusEnvironments(ctx context.Con
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("trigger decision for environment %q: %w", branch, err)
 		}
+		td.TriggerVariables = decision.TriggerVariables
 
 		result, err := applyHTTPExecutionDecision(ctx, defaultExpressionEvaluator, wrcs, td, decision, lastState, r.httpExec)
 		if err != nil {
@@ -404,6 +441,8 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusEnvironments(ctx context.Con
 
 		commitTd := td.withLatestOutputs(result.ResponseDataJSON, decision.NewTriggerData, result.SuccessDataJSON)
 		commitTd.Phase = string(result.Phase)
+		commitTd.TriggerVariables = decision.TriggerVariables
+		commitTd.SuccessVariables = result.SuccessVariables
 		cs, err := r.commitEmitter.EmitCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, reportedSha, result.Phase, commitTd)
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", branch, err)
@@ -439,7 +478,7 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusPromotionStrategy(ctx contex
 		return nil, nil, 0, errors.New("WebRequestCommitStatus is required")
 	}
 
-	applicableEnvs := getApplicableEnvironments(ps, wrcs.Spec.Key, wrcs.Spec.ReportOn)
+	applicableEnvs := utils.GetApplicableEnvironments(ps, wrcs.Spec.Key, wrcs.Spec.ReportOn)
 	if len(applicableEnvs) == 0 {
 		// RequeueAfter 0: do not schedule a timed requeue; the reconciler runs again on watch events
 		// (e.g. PromotionStrategy or WRCS spec changes) or informer resync—not on a polling interval.
@@ -504,6 +543,7 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusPromotionStrategy(ctx contex
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("trigger decision (context=promotionstrategy): %w", err)
 	}
+	td.TriggerVariables = decision.TriggerVariables
 
 	result, err := applyHTTPExecutionDecision(ctx, defaultExpressionEvaluator, wrcs, td, decision, lastState, r.httpExec)
 	if err != nil {
@@ -543,6 +583,8 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusPromotionStrategy(ctx contex
 	}
 
 	commitTd := td.withLatestOutputs(result.ResponseDataJSON, decision.NewTriggerData, result.SuccessDataJSON)
+	commitTd.TriggerVariables = decision.TriggerVariables
+	commitTd.SuccessVariables = result.SuccessVariables
 	commitStatuses = make([]*promoterv1alpha1.CommitStatus, 0, len(applicableEnvs))
 	for _, env := range applicableEnvs {
 		branch := env.Branch

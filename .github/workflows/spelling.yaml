@@ -20,6 +20,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout Actions Repository
-      uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98 # pin@v6
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - name: Spell Check Repo
-      uses: crate-ci/typos@bbaefadf97b0ec5fdc942684b647f1a6ab250274  # v1.46.0
+      uses: crate-ci/typos@4d9c206a77c041268485162b8e2579ad7a5cb9a3  # v1.50.0

@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["src", "test", "vitest.config.ts", "../shared/src/**/*.ts"],
+  "exclude": ["../shared/src/types/generated"]
+}

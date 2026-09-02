@@ -20,14 +20,16 @@ import (
 	"reflect"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // ClusterScmProviderKind is the kind of the ClusterScmProvider resource.
-var ClusterScmProviderKind = reflect.TypeOf(ClusterScmProvider{}).Name()
+var ClusterScmProviderKind = reflect.TypeFor[ClusterScmProvider]().Name()
 
+// +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#clusterscmprovider",description="CRD reference (examples and behavior)"
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster
@@ -52,6 +54,11 @@ func (s *ClusterScmProvider) SetObservedGeneration(generation int64) {
 	s.Status.ObservedGeneration = generation
 }
 
+// SetStatusInstanceID records the instance-id label mirrored into status on each reconcile attempt.
+func (s *ClusterScmProvider) SetStatusInstanceID(v *string) {
+	s.Status.InstanceID = v
+}
+
 // +kubebuilder:object:root=true
 
 // ClusterScmProviderList contains a list of ClusterScmProvider.
@@ -62,7 +69,10 @@ type ClusterScmProviderList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&ClusterScmProvider{}, &ClusterScmProviderList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &ClusterScmProvider{}, &ClusterScmProviderList{})
+		return nil
+	})
 }
 
 // +kubebuilder:object:root:false

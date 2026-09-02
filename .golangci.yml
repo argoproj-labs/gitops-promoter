@@ -19,6 +19,7 @@ linters:
     - goconst
     - gocritic
     - gocyclo
+    - ginkgolinter
     - govet
     - lll
     - loggercheck
@@ -47,6 +48,8 @@ linters:
   settings:
     copyloopvar:
       check-alias: true
+    goconst:
+      ignore-tests: true
     gocritic:
       disabled-checks:
         - assignOp
@@ -154,6 +157,11 @@ linters:
       - linters:
           - govet
         path: api/.*
+      # Kubebuilder scaffold: wiring every reconciler in one place is intentionally high-complexity.
+      - linters:
+          - gocyclo
+        path: cmd/main\.go
+        text: "func `runController`"
     paths:
       - third_party$
       - builtin$

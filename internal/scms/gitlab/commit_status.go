@@ -86,9 +86,9 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 
 	commitStatusOptions := &gitlab.SetCommitStatusOptions{
 		State:       phaseToBuildState(commitStatus.Spec.Phase),
-		TargetURL:   gitlab.Ptr(commitStatus.Spec.Url),
-		Name:        gitlab.Ptr(commitStatus.Spec.Name),
-		Description: gitlab.Ptr(commitStatus.Spec.Description),
+		TargetURL:   new(commitStatus.Spec.Url),
+		Name:        new(commitStatus.Spec.Name),
+		Description: new(commitStatus.Spec.Description),
 	}
 
 	start := time.Now()

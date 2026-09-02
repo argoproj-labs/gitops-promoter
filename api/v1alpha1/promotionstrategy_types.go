@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -55,16 +56,33 @@ type PromotionStrategySpec struct {
 
 	// Environments is the sequence of environments that a dry commit will be promoted through.
 	// +kubebuilder:validation:MinItems:=1
+	// +kubebuilder:validation:MaxItems:=1000
 	// +listType:=map
 	// +listMapKey=branch
 	Environments []Environment `json:"environments"`
+
+	// ActivePath is the default repository subpath for this strategy's active state.
+	// When set, proposed branches are created as <environment-branch>-next/<activePath>.
+	// Individual environments can override this value via their own activePath field.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MinLength=1
+	ActivePath string `json:"activePath,omitempty"`
+
+	// PullRequest configures SCM pull request behavior for all environments in this strategy.
+	// +kubebuilder:validation:Optional
+	PullRequest *PullRequestPolicySpec `json:"pullRequest,omitempty"`
 }
 
 // Environment defines a single environment in the promotion sequence.
 type Environment struct {
 	// Branch is the name of the active branch for the environment.
+	// Must not start with '-', contain ':', or contain '..'.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=100
+	// +kubebuilder:validation:XValidation:rule="!self.startsWith('-')",message="branch must not start with '-'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains(':')",message="branch must not contain ':'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains('..')",message="branch must not contain '..'"
 	Branch string `json:"branch"`
 	// AutoMerge determines whether the dry commit should be automatically merged into the next branch in the sequence.
 	// If false, the dry commit will be proposed but not merged.
@@ -90,6 +108,12 @@ type Environment struct {
 	// +listType:=map
 	// +listMapKey=key
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses,omitempty"`
+
+	// ActivePath optionally overrides the strategy-level activePath for this environment.
+	// When set, this environment's CTP uses this path instead of spec.activePath.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MinLength=1
+	ActivePath string `json:"activePath,omitempty"`
 }
 
 // GetAutoMerge returns the value of the AutoMerge field, defaulting to true if the field is nil.
@@ -107,6 +131,32 @@ type CommitStatusSelector struct {
 	// +kubebuilder:validation:MaxLength:=63
 	// +kubebuilder:validation:Pattern:=([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
 	Key string `json:"key"`
+}
+
+// ScmLabelsSpec configures dynamic SCM pull request labels via an expression.
+type ScmLabelsSpec struct {
+	// Expression is evaluated using the expr library (github.com/expr-lang/expr) against
+	// ChangeTransferPolicy status and spec. It must return a list of SCM label name strings.
+	//
+	// Available variables:
+	//   - Status: ChangeTransferPolicy status (Proposed/Active commit statuses, branch SHAs, etc.)
+	//   - Spec: ChangeTransferPolicy spec (ActiveBranch, ProposedBranch, etc.)
+	//   - PromotionStrategy: owning PromotionStrategy spec and status when available
+	//
+	// Each returned label name must satisfy the same validation as PullRequest.spec.labels
+	// (non-empty, max 50 characters, no newlines, max 10 labels, unique).
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=8192
+	Expression string `json:"expression"`
+}
+
+// PullRequestPolicySpec configures SCM pull request behavior for a promotion policy.
+type PullRequestPolicySpec struct {
+	// Labels configures dynamic SCM labels applied to promotion pull requests.
+	// +kubebuilder:validation:Optional
+	Labels *ScmLabelsSpec `json:"labels,omitempty"`
 }
 
 // PromotionStrategyStatus defines the observed state of PromotionStrategy
@@ -129,6 +179,15 @@ type PromotionStrategyStatus struct {
 	// +listType=map
 	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+
+	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+	// reconcile attempt by this install's controller, including when Ready=False; omitted
+	// when the resource has no instance-id label (default install).
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$`
+	InstanceID *string `json:"instanceID,omitempty"`
 }
 
 // GetConditions returns the conditions of the PromotionStrategy.
@@ -139,6 +198,11 @@ func (ps *PromotionStrategy) GetConditions() *[]metav1.Condition {
 // SetObservedGeneration records the object generation that produced the current status.
 func (ps *PromotionStrategy) SetObservedGeneration(generation int64) {
 	ps.Status.ObservedGeneration = generation
+}
+
+// SetStatusInstanceID records the instance-id label mirrored into status on each reconcile attempt.
+func (ps *PromotionStrategy) SetStatusInstanceID(v *string) {
+	ps.Status.InstanceID = v
 }
 
 // EnvironmentStatus defines the observed state of an environment in a PromotionStrategy.
@@ -178,6 +242,7 @@ type HealthyDryShas struct {
 }
 
 // +kubebuilder:ac:generate=true
+// +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#promotionstrategy",description="CRD reference (examples and behavior)"
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
@@ -187,7 +252,7 @@ type PromotionStrategy struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   PromotionStrategySpec   `json:"spec,omitempty"`
+	Spec   PromotionStrategySpec   `json:"spec"`
 	Status PromotionStrategyStatus `json:"status,omitempty"`
 }
 
@@ -201,5 +266,8 @@ type PromotionStrategyList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&PromotionStrategy{}, &PromotionStrategyList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &PromotionStrategy{}, &PromotionStrategyList{})
+		return nil
+	})
 }

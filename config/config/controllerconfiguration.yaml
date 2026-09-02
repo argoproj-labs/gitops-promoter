@@ -47,8 +47,54 @@ spec:
               slowDelay: "5m"
               maxFastAttempts: 3
     template:
-      title: "Promote {{ trunc 5 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }} to `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`"
-      description: "This PR is promoting the environment branch `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}` which is currently on dry sha {{ .ChangeTransferPolicy.Status.Active.Dry.Sha }} to dry sha {{ .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}."
+      title: "Promote {{ with .ChangeTransferPolicy.Spec.ActivePath }}`{{ . }}` {{ end }}({{ trunc 5 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}) to `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`"
+      description: |
+        This PR promotes changes to **`{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`**{{ if .PromotionStrategy }} (PromotionStrategy `{{ .PromotionStrategy.Name }}`){{ end }}.
+
+        ### Deployment commit
+
+        | | Active (deployed) | Proposed |
+        |---|---|---|
+        | SHA | {{ with .ChangeTransferPolicy.Status.Active.Dry }}{{ if and .RepoURL .Sha }}[{{ trunc 7 .Sha }}]({{ trimSuffix "/" .RepoURL }}/commit/{{ .Sha }}){{ else }}{{ trunc 7 .Sha }}{{ end }}{{ end }} | {{ with .ChangeTransferPolicy.Status.Proposed.Dry }}{{ if and .RepoURL .Sha }}[{{ trunc 7 .Sha }}]({{ trimSuffix "/" .RepoURL }}/commit/{{ .Sha }}){{ else }}{{ trunc 7 .Sha }}{{ end }}{{ end }} |
+        | Subject | {{ replace "|" "\\|" .ChangeTransferPolicy.Status.Active.Dry.Subject }} | {{ replace "|" "\\|" .ChangeTransferPolicy.Status.Proposed.Dry.Subject }} |
+
+        {{- $repo := "" -}}
+        {{- $base := "" -}}
+        {{- $head := "" -}}
+        {{- $activeSubject := "" -}}
+        {{- $proposedSubject := "" -}}
+        {{- with .ChangeTransferPolicy.Status.Active.Dry.References }}{{- with index . 0 }}{{- with .Commit -}}
+        {{- $base = .Sha -}}{{- $activeSubject = .Subject -}}{{- if .RepoURL -}}{{- $repo = .RepoURL -}}{{- end -}}
+        {{- end -}}{{- end -}}{{- end -}}
+        {{- with .ChangeTransferPolicy.Status.Proposed.Dry.References }}{{- with index . 0 }}{{- with .Commit -}}
+        {{- $head = .Sha -}}{{- $proposedSubject = .Subject -}}{{- if and (not $repo) .RepoURL -}}{{- $repo = .RepoURL -}}{{- end -}}
+        {{- end -}}{{- end -}}{{- end -}}
+        {{- if or $base $head }}
+
+        ### Code reference
+        {{- if $base }}
+        **Active:** {{ if and $repo $base }}[{{ trunc 7 $base }}]({{ trimSuffix "/" $repo }}/commit/{{ $base }}){{ else }}{{ trunc 7 $base }}{{ end }} — {{ $activeSubject }}
+        {{- end }}
+        {{- if $head }}
+        **Proposed:** {{ if and $repo $head }}[{{ trunc 7 $head }}]({{ trimSuffix "/" $repo }}/commit/{{ $head }}){{ else }}{{ trunc 7 $head }}{{ end }} — {{ $proposedSubject }}
+        {{- end }}
+        {{- if and $repo $base $head }}
+        **Diff:** [{{ trunc 7 $base }}...{{ trunc 7 $head }}]({{ trimSuffix "/" $repo }}/compare/{{ $base }}...{{ $head }})
+        {{- end }}
+        {{- end }}
+
+        {{- with .PromotionStrategy }}
+        {{- if .Status.Environments }}
+
+        ### Promotion pipeline
+
+        | Environment | Active dry | Proposed dry | PR |
+        |---|---|---|---|
+        {{- range .Status.Environments }}
+        | `{{ .Branch }}`{{ if eq .Branch $.ChangeTransferPolicy.Spec.ActiveBranch }} **(this PR)**{{ end }} | {{ trunc 7 .Active.Dry.Sha }} | {{ trunc 7 .Proposed.Dry.Sha }} | {{ with .PullRequest }}{{ if .Url }}[#{{ .ID }}]({{ .Url }}){{ else }}—{{ end }}{{ else }}—{{ end }} |
+        {{- end }}
+        {{- end }}
+        {{- end }}
   commitStatus:
     workQueue:
       maxConcurrentReconciles: 10
@@ -103,6 +149,19 @@ spec:
               slowDelay: "5m"
               maxFastAttempts: 3
   webRequestCommitStatus:
+    workQueue:
+      maxConcurrentReconciles: 10
+      requeueDuration: "5m"
+      rateLimiter:
+        maxOf:
+          - bucket:
+              qps: 10
+              bucket: 100
+          - fastSlow:
+              fastDelay: "1s"
+              slowDelay: "5m"
+              maxFastAttempts: 3
+  scheduledCommitStatus:
     workQueue:
       maxConcurrentReconciles: 10
       requeueDuration: "5m"

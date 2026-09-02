@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.1
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: webrequestcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -32,6 +32,9 @@ spec:
       openAPIV3Schema:
         description: WebRequestCommitStatus is the Schema for the webrequestcommitstatuses
           API
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#webrequestcommitstatus
         properties:
           apiVersion:
             description: |-
@@ -59,6 +62,10 @@ spec:
                   Uses Go templates; variable list and Sprig rules match HTTPRequestSpec (spec.httpRequest). Rendered with the latest
                   data after the most recent HTTP request and trigger evaluation (unlike spec.httpRequest URL/body/headers, which use pre-request data — see HTTPRequestSpec).
                   How spec.mode.context restricts template data: see ModeSpec.
+
+                  Additional template variables (not in HTTPRequestSpec):
+                    - {{ index .TriggerVariables "key" }}: result of trigger.when.variables.expression this reconcile (nil if not configured)
+                    - {{ index .SuccessVariables "key" }}: result of success.when.variables.expression this reconcile (nil if not configured)
 
                   Examples: "External approval for {{ .Branch }}", "{{ .Phase }} - waiting for external approval".
 
@@ -249,12 +256,29 @@ spec:
                       See HTTPRequestSpec for available template variables.
                     type: object
                   method:
-                    description: Method is the HTTP method to use.
+                    description: |-
+                      Method is the static HTTP method to use. Mutually exclusive with MethodTemplate.
+
+                      Deprecated: Use MethodTemplate instead. A literal value such as `methodTemplate: GET` behaves
+                      identically to `method: GET` and avoids needing two separate fields. Existing resources that
+                      set Method continue to work, but new resources should set MethodTemplate. Method may be
+                      removed in a future release.
                     enum:
                     - GET
                     - POST
                     - PUT
                     - PATCH
+                    - DELETE
+                    type: string
+                  methodTemplate:
+                    description: |-
+                      MethodTemplate is the HTTP method, rendered as a Go template with the same variables and
+                      Sprig functions as URLTemplate/BodyTemplate/HeaderTemplates. The rendered string is trimmed
+                      of surrounding whitespace and uppercased; the final value must be one of GET/POST/PUT/PATCH/DELETE
+                      or the reconcile returns an error. A literal value such as `methodTemplate: GET` works
+                      identically to a static method; use templating when the method must vary by reconcile
+                      state (e.g. issuing a search GET on one reconcile and a close POST on the next).
+                      Mutually exclusive with Method (deprecated).
                     type: string
                   timeout:
                     default: 30s
@@ -267,9 +291,12 @@ spec:
                       Supports Go templates (see HTTPRequestSpec for available variables).
                     type: string
                 required:
-                - method
                 - urlTemplate
                 type: object
+                x-kubernetes-validations:
+                - message: exactly one of method or methodTemplate must be set
+                  rule: (has(self.method) && self.method.size() > 0) != (has(self.methodTemplate)
+                    && self.methodTemplate.size() > 0)
               key:
                 description: |-
                   Key is the unique identifier for this validation rule.
@@ -410,7 +437,10 @@ spec:
                               Variables optionally holds an expression that runs before Expression and Output.Expression.
                               It receives the same variables as Expression (see Expression documentation below) and must return a map/object.
                               The result is injected as top-level binding Variables (map) for Expression and Output.Expression only — use Variables.<key> in those expressions.
-                              The Variables binding is not set when spec.variables is omitted. It is not available to response.output.expression or to Go templates.
+                              The Variables binding is not set when spec.variables is omitted. It is not available to response.output.expression.
+                              The result is also available in Go templates for DescriptionTemplate and UrlTemplate:
+                                - trigger.when.variables result → {{ index .TriggerVariables "key" }}
+                                - success.when.variables result → {{ index .SuccessVariables "key" }}
                             properties:
                               expression:
                                 description: Expression is an expr expression that
@@ -471,7 +501,8 @@ spec:
                   Evaluated every reconcile. See SuccessSpec.
                 properties:
                   when:
-                    description: When is evaluated every reconcile. See WhenWithOutputSpec.Expression.
+                    description: When is evaluated every reconcile. See SuccessSpec
+                      for return values and WhenWithOutputSpec.Expression for variables.
                     properties:
                       expression:
                         description: |-
@@ -541,7 +572,10 @@ spec:
                           Variables optionally holds an expression that runs before Expression and Output.Expression.
                           It receives the same variables as Expression (see Expression documentation below) and must return a map/object.
                           The result is injected as top-level binding Variables (map) for Expression and Output.Expression only — use Variables.<key> in those expressions.
-                          The Variables binding is not set when spec.variables is omitted. It is not available to response.output.expression or to Go templates.
+                          The Variables binding is not set when spec.variables is omitted. It is not available to response.output.expression.
+                          The result is also available in Go templates for DescriptionTemplate and UrlTemplate:
+                            - trigger.when.variables result → {{ index .TriggerVariables "key" }}
+                            - success.when.variables result → {{ index .SuccessVariables "key" }}
                         properties:
                           expression:
                             description: Expression is an expr expression that must
@@ -558,7 +592,7 @@ spec:
                 type: object
               urlTemplate:
                 description: |-
-                  UrlTemplate is the commit status target URL in the SCM provider. Same Go templates, variables, timing, and context rules as DescriptionTemplate.
+                  UrlTemplate is the commit status target URL in the SCM provider. Same Go templates, variables (including .TriggerVariables and .SuccessVariables), timing, and context rules as DescriptionTemplate.
                   Typical uses: approval UI, dashboard, API, or runbook links.
                   To include the reported SHA, walk PromotionStrategy.Status.Environments by Branch:
                     "https://approvals.example.com/{{ range .PromotionStrategy.Status.Environments }}{{ if eq .Branch $.Branch }}{{ .Proposed.Hydrated.Sha }}{{ end }}{{ end }}"
@@ -671,7 +705,8 @@ spec:
                     phase:
                       description: |-
                         Phase represents the current phase of the validation.
-                        This controller sets only "pending" or "success"; it never sets "failure" (failure is allowed by the enum for API consistency).
+                        A boolean success expression yields only "pending" or "success"; "failure" requires the { phase } object
+                        return form documented on SuccessSpec.
                       enum:
                       - pending
                       - success
@@ -710,6 +745,15 @@ spec:
                 x-kubernetes-list-map-keys:
                 - branch
                 x-kubernetes-list-type: map
+              instanceID:
+                description: |-
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+                  reconcile attempt by this install's controller, including when Ready=False; omitted
+                  when the resource has no instance-id label (default install).
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
+                type: string
               observedGeneration:
                 description: |-
                   ObservedGeneration is the .metadata.generation that this status was reconciled from.

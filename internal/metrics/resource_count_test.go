@@ -26,6 +26,8 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/kinds"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
 func TestMetrics(t *testing.T) {
@@ -90,10 +92,11 @@ func gvkKey(sc *runtime.Scheme, obj client.Object) schema.GroupVersionKind {
 func buildStubInformerSourceWithCounts() *stubResourceCountInformerSource {
 	s := testMetricsScheme()
 	gvkInf := make(map[schema.GroupVersionKind]toolscache.SharedIndexInformer)
-	for _, r := range promoterResources {
-		gvk := gvkKey(s, r.obj)
+	for _, obj := range kinds.All(s) {
+		gvk := gvkKey(s, obj)
+		kind := kinds.Kind(s, obj)
 		var items []runtime.Object
-		switch r.kind {
+		switch kind {
 		case "PromotionStrategy":
 			readyTrue := metav1.ConditionTrue
 			readyFalse := metav1.ConditionFalse
@@ -118,15 +121,17 @@ func buildStubInformerSourceWithCounts() *stubResourceCountInformerSource {
 		default:
 			items = nil
 		}
-		gvkInf[gvk] = informerWithExampleAndItems(r.obj, items...)
+		gvkInf[gvk] = informerWithExampleAndItems(obj, items...)
 	}
 	return &stubResourceCountInformerSource{scheme: s, gvkInf: gvkInf}
 }
 
 func resetPromoterKubernetesResourceGauges() {
-	for _, r := range promoterResources {
+	scheme := utils.GetScheme()
+	for _, obj := range kinds.All(scheme) {
+		kind := kinds.Kind(scheme, obj)
 		for _, readiness := range readinessBuckets {
-			kubernetesResources.DeleteLabelValues(r.kind, readiness)
+			kubernetesResources.DeleteLabelValues(kind, readiness)
 		}
 	}
 }
@@ -204,6 +209,28 @@ var _ = Describe("Resource count metrics", func() {
 				ContainSubstring("injected get informer failure"),
 			))
 		})
+
+		It("skips ControllerConfiguration without calling GetInformer", func() {
+			var logLines []string
+			log := funcr.New(func(prefix, args string) {
+				if prefix != "" {
+					logLines = append(logLines, prefix+": "+args)
+					return
+				}
+				logLines = append(logLines, args)
+			}, funcr.Options{})
+
+			stub := buildStubInformerSourceWithCounts()
+			stub.getCount = &atomic.Int32{}
+			ccGVK := gvkKey(stub.scheme, &promoterv1alpha1.ControllerConfiguration{})
+			// No informer registered — would error if GetInformer were called for this kind.
+			delete(stub.gvkInf, ccGVK)
+
+			refreshKubernetesResourceCounts(context.Background(), stub, log)
+
+			Expect(stub.getCount.Load()).To(Equal(int32(len(kinds.All(stub.scheme)) - 1)))
+			Expect(strings.Join(logLines, "\n")).NotTo(ContainSubstring("ControllerConfiguration"))
+		})
 	})
 
 	Describe("ResourceCountRunnable", func() {
@@ -232,7 +259,8 @@ var _ = Describe("Resource count metrics", func() {
 				close(done)
 			}()
 
-			minGets := 2 * len(promoterResources)
+			// ControllerConfiguration is skipped, so each refresh lists one fewer kind.
+			minGets := 2 * (len(kinds.All(utils.GetScheme())) - 1)
 			Eventually(func() int32 { return stub.getCount.Load() }).WithTimeout(3 * time.Second).WithPolling(5 * time.Millisecond).
 				Should(BeNumerically(">=", minGets))
 

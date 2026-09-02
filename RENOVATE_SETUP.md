@@ -21,7 +21,7 @@ Renovate has been configured to:
 ## Why Self-Hosted Renovate?
 
 We use self-hosted Renovate (via GitHub Workflows) instead of the hosted GitHub App because:
-- **Post-upgrade tasks are only supported in self-hosted mode** - We need to run `go mod tidy` and `make lint-fix` automatically
+- **Post-upgrade tasks are only supported in self-hosted mode** - We need to run `go mod tidy`, `make go-fix`, and `make lint-fix` automatically
 - Full control over when and how Renovate runs
 - No external dependencies on Renovate's hosted infrastructure
 
@@ -96,9 +96,9 @@ Renovate is triggered by `.github/workflows/renovate.yaml` (Sun/Wed/Sat). A sepa
 
 Renovate uses regex managers to detect version strings in various files:
 
-- **Go version** in `go.mod`: `go 1.26.1`
-- **Go version** in workflows: `go-version: "1.26.1"` (patch segment optional in the regex)
-- **Go version** in Dockerfiles: `FROM golang:1.26.1@sha256:...`
+- **Go version** in `go.mod`: `go 1.26.3`
+- **Go version** in workflows: `go-version: "1.26.3"` (patch segment optional in the regex)
+- **Go version** in Dockerfiles: `FROM golang:1.26.3@sha256:...`
 - **golangci-lint** in Makefile: `GOLANGCI_LINT_VERSION ?= v2.5.0`
 - **golangci-lint** in workflows: `version: v2.5.0`
 
@@ -108,9 +108,10 @@ When Renovate creates a PR for Go or golangci-lint updates, it will:
 
 1. Update all version references across the repository
 2. Run `go mod tidy` to update dependencies
-3. Run `make lint-fix` to automatically fix linting issues
+3. Run `make go-fix` to apply stdlib fixers for the new toolchain (e.g. `interface{}` → `any`, iterator helpers)
+4. Run `make lint-fix` to automatically fix linting issues
 
-The `lint-fix` command is run with `|| true` to allow the PR to be created even if there are linting errors that can't be auto-fixed.
+`go-fix` and `lint-fix` are run with `|| true` so the PR is still created if a fixer fails or leaves issues that need manual review.
 
 **Note**: Post-upgrade tasks only work with self-hosted Renovate. The hosted GitHub App does not support this feature.
 
@@ -152,7 +153,7 @@ Key configuration options:
 - **Labels**: PRs are labeled with `dependencies`
 - **Concurrent Limit**: Maximum of 3 PRs at once
 - **Automerge**: Disabled (requires manual review)
-- **Post-upgrade tasks**: Runs `go mod tidy` and `make lint-fix`
+- **Post-upgrade tasks**: Runs `go mod tidy`, `make go-fix`, and `make lint-fix`
   - These only work because we're using self-hosted Renovate
   - Commands must be whitelisted in the workflow
 
@@ -234,6 +235,7 @@ To test the workflow without making real changes:
 
 The workflow only allows specific commands in `RENOVATE_ALLOWED_POST_UPGRADE_COMMANDS`:
 - `go mod tidy` - Safe, only updates dependency checksums
+- `make go-fix` - Runs `go fix ./...` (stdlib modernizations for the new Go version)
 - `make lint-fix` - Runs golangci-lint with auto-fix
 
 If you need to add more commands, update both:

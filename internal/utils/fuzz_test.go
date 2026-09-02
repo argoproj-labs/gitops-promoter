@@ -1,7 +1,6 @@
 package utils_test
 
 import (
-	"context"
 	"regexp"
 	"testing"
 	"unicode/utf8"
@@ -34,10 +33,7 @@ func FuzzTruncateStringFromBeginning(f *testing.F) {
 		}
 		inRunes := utf8.RuneCountInString(s)
 		outRunes := utf8.RuneCountInString(out)
-		want := inRunes
-		if length < want {
-			want = length
-		}
+		want := min(length, inRunes)
 		if outRunes != want {
 			t.Fatalf("rune count: in=%d length=%d want out runes %d got %d out=%q",
 				inRunes, length, want, outRunes, out)
@@ -46,7 +42,6 @@ func FuzzTruncateStringFromBeginning(f *testing.F) {
 }
 
 func FuzzKubeSafeUniqueName(f *testing.F) {
-	ctx := context.Background()
 	f.Add("ab")
 	f.Add("foo-bar-baz")
 
@@ -54,7 +49,7 @@ func FuzzKubeSafeUniqueName(f *testing.F) {
 		if len(name) > 4096 {
 			t.Skip()
 		}
-		out := utils.KubeSafeUniqueName(ctx, name)
+		out := utils.KubeSafeUniqueName(name)
 		if !utf8.ValidString(out) {
 			t.Fatalf("KubeSafeUniqueName produced invalid UTF-8: in=%q out=%q", name, out)
 		}

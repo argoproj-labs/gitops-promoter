@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.1
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: pullrequests.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -39,7 +39,15 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: PullRequest is the Schema for the pullrequests API
+        description: |-
+          PullRequest is the Schema for the pullrequests API
+          Once recorded, the SHA can be neither replaced nor cleared: a resource merges at most once, so any
+          later disagreement is provider inconsistency or a status write built from a stale informer read, and
+          honoring it would strand the promotion history note already written against the original SHA. Such a
+          write is rejected rather than merged, which surfaces as a failed status apply and a retry.
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#pullrequest
         properties:
           apiVersion:
             description: |-
@@ -89,6 +97,18 @@ spec:
                 required:
                 - name
                 type: object
+              labels:
+                description: |-
+                  Labels is the desired set of SCM pull request labels (not Kubernetes metadata labels).
+                  Written by the ChangeTransferPolicy controller from pullRequest.labels.expression evaluation.
+                items:
+                  maxLength: 50
+                  minLength: 1
+                  pattern: ^[^\n\r\x00]+$
+                  type: string
+                maxItems: 10
+                type: array
+                x-kubernetes-list-type: set
               mergeSha:
                 description: |-
                   MergeSha is the commit SHA that the head branch must match before the PR can be merged.
@@ -99,12 +119,21 @@ spec:
                 pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
                 type: string
               sourceBranch:
-                description: SourceBranch is the base the git reference that we are
-                  merging into Head ---> Base
+                description: |-
+                  SourceBranch is the base the git reference that we are merging into Head ---> Base
+                  Must not start with '-', contain ':', or contain '..'.
+                maxLength: 100
+                minLength: 1
                 type: string
                 x-kubernetes-validations:
-                - message: Value is immutable
+                - message: field is immutable
                   rule: self == oldSelf
+                - message: branch must not start with '-'
+                  rule: '!self.startsWith(''-'')'
+                - message: branch must not contain ':'
+                  rule: '!self.contains('':'')'
+                - message: branch must not contain '..'
+                  rule: '!self.contains(''..'')'
               state:
                 default: open
                 description: |-
@@ -116,12 +145,21 @@ spec:
                 - open
                 type: string
               targetBranch:
-                description: TargetBranch is the head the git reference we are merging
-                  from Head ---> Base
+                description: |-
+                  TargetBranch is the head the git reference we are merging from Head ---> Base
+                  Must not start with '-', contain ':', or contain '..'.
+                maxLength: 100
+                minLength: 1
                 type: string
                 x-kubernetes-validations:
-                - message: Value is immutable
+                - message: field is immutable
                   rule: self == oldSelf
+                - message: branch must not start with '-'
+                  rule: '!self.startsWith(''-'')'
+                - message: branch must not contain ':'
+                  rule: '!self.contains('':'')'
+                - message: branch must not contain '..'
+                  rule: '!self.contains(''..'')'
               title:
                 description: Title is the title of the pull request.
                 minLength: 1
@@ -137,6 +175,17 @@ spec:
           status:
             description: PullRequestStatus defines the observed state of PullRequest
             properties:
+              appliedLabels:
+                description: AppliedLabels lists SCM labels successfully applied by
+                  gitops-promoter (for sync and retraction).
+                items:
+                  maxLength: 50
+                  minLength: 1
+                  pattern: ^[^\n\r\x00]+$
+                  type: string
+                maxItems: 10
+                type: array
+                x-kubernetes-list-type: set
               conditions:
                 description: Conditions Represents the observations of the current
                   state.
@@ -200,16 +249,37 @@ spec:
                 x-kubernetes-list-type: map
               externallyMergedOrClosed:
                 description: |-
-                  ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the
-                  resource still desired it open (spec.state is "open"): either it was merged or closed outside the
-                  controller, or it was closed on the SCM because the PullRequest resource was deleted (finalizer)
-                  and a subsequent sync observed it missing. The controller does not distinguish those cases here.
-                  When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider.
-                  The PullRequest resource will be deleted after this flag is set when possible, but the status is
-                  preserved in the owning ChangeTransferPolicy to maintain a record.
+                  ExternallyMergedOrClosed indicated that the pull request was no longer open on the SCM while the
+                  resource still desired it open. The PullRequest controller no longer sets this field.
+
+                  Deprecated: Use status.state merged-or-closed or unknown instead. Existing values are preserved
+                  when copied to ChangeTransferPolicy status. This field may be removed in a future API revision.
                 type: boolean
               id:
                 description: ID the id of the pull request
+                type: string
+              instanceID:
+                description: |-
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+                  reconcile attempt by this install's controller, including when Ready=False; omitted
+                  when the resource has no instance-id label (default install).
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
+                type: string
+              mergedTargetSha:
+                description: |-
+                  MergedTargetSha is the SHA that spec.targetBranch points at after the merge, as reported by
+                  the SCM. It is a merge commit only when the SCM created one; squash and fast-forward merges
+                  report the resulting commit on the target branch instead.
+                  Set once by the PullRequest controller, either from the merge response for providers that
+                  report the SHA there, or from a Get-by-ID lookup when FindOpen no longer finds the PR
+                  (external merges, and providers whose merge response omits the SHA). The value is write-once:
+                  a resource merges at most once, so the controller never replaces a non-empty value, even if a
+                  provider later reports a different SHA.
+                maxLength: 64
+                minLength: 40
+                pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
                 type: string
               observedGeneration:
                 description: |-
@@ -223,6 +293,11 @@ spec:
                 description: PRCreationTime the time the PR was created
                 format: date-time
                 type: string
+              scmSyncedSpecDigest:
+                description: |-
+                  SCMSyncedSpecDigest fingerprints title and description last successfully synced
+                  to the SCM via provider.Update on an open pull request.
+                type: string
               state:
                 description: State of the merge request closed/merged/open
                 enum:
@@ -230,6 +305,8 @@ spec:
                 - closed
                 - merged
                 - open
+                - merged-or-closed
+                - unknown
                 type: string
               url:
                 description: Url is the URL of the pull request.
@@ -245,6 +322,23 @@ spec:
             is empty
           rule: self.spec.state == 'open' || has(self.status.id) && self.status.id
             != ""
+        - message: mergedTargetSha may only be set when status.state is merged
+          rule: '!has(self.status) || !has(self.status.mergedTargetSha) || (has(self.status.state)
+            && self.status.state == ''merged'')'
+        - message: mergedTargetSha may not be set when status.state is merged-or-closed
+            or unknown
+          rule: '!has(self.status) || !has(self.status.state) || self.status.state
+            != ''merged-or-closed'' && self.status.state != ''unknown'' || !has(self.status.mergedTargetSha)'
+        - message: mergedTargetSha is immutable once set
+          rule: '!has(oldSelf.status) || !has(oldSelf.status.mergedTargetSha) || (has(self.status)
+            && has(self.status.mergedTargetSha) && self.status.mergedTargetSha ==
+            oldSelf.status.mergedTargetSha)'
+        - message: spec is immutable once status.state is merged, closed, or merged-or-closed
+          rule: '!has(oldSelf.status) || !has(oldSelf.status.state) || !(oldSelf.status.state
+            in [''merged'', ''closed'', ''merged-or-closed'']) || self.spec == oldSelf.spec'
+        - message: status.state is immutable once merged, closed, or unknown
+          rule: '!has(oldSelf.status) || !has(oldSelf.status.state) || !(oldSelf.status.state
+            in [''merged'', ''closed'', ''unknown'']) || self.status.state == oldSelf.status.state'
     served: true
     storage: true
     subresources:

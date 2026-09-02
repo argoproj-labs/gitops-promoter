@@ -1,3 +1,4 @@
+//nolint:goconst // Prometheus label names are inlined next to metric definitions; extracting constants hurts readability.
 package metrics
 
 import (
@@ -22,6 +23,8 @@ const (
 	GitOperationFetch GitOperation = "fetch"
 	// GitOperationFetchNotes is used when fetching git notes from a git repository.
 	GitOperationFetchNotes GitOperation = "fetch-notes"
+	// GitOperationPushNotes is used when pushing git notes to a git repository.
+	GitOperationPushNotes GitOperation = "push-notes"
 	// GitOperationPull is used when pulling changes from a git repository.
 	GitOperationPull GitOperation = "pull"
 	// GitOperationPush is used when pushing changes to a git repository.
@@ -74,6 +77,12 @@ const (
 	SCMOperationList SCMOperation = "list"
 	// SCMOperationGet is used when getting a single resource, such as a specific pull request.
 	SCMOperationGet SCMOperation = "get"
+	// SCMOperationAddLabels is used when adding labels to pull requests.
+	SCMOperationAddLabels SCMOperation = "add-labels"
+	// SCMOperationCreateLabel is used when creating repository or project labels before applying them to pull requests.
+	SCMOperationCreateLabel SCMOperation = "create-label"
+	// SCMOperationRemoveLabels is used when removing labels from pull requests.
+	SCMOperationRemoveLabels SCMOperation = "remove-labels"
 )
 
 // RateLimit represents the rate limit information for SCM API calls.
@@ -174,6 +183,14 @@ var (
 		[]string{"ctp_found", "response_code"},
 	)
 
+	// WebhookMissRetryPending tracks in-flight async miss-retry goroutines (0–max capacity).
+	WebhookMissRetryPending = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "webhook_miss_retry_pending",
+			Help: "Current number of in-flight async webhook miss-retry goroutines.",
+		},
+	)
+
 	webRequestCommitStatusHTTPRequestsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "webrequest_commit_status_http_requests_total",
@@ -224,6 +241,7 @@ func init() {
 		scmCallsRateLimitRemaining,
 		scmCallsRateLimitResetRemainingSeconds,
 		webhookProcessingDurationSeconds,
+		WebhookMissRetryPending,
 		webRequestCommitStatusHTTPRequestsTotal,
 		webRequestCommitStatusHTTPRequestDurationSeconds,
 		FinalizerDependentCount,
@@ -302,6 +320,16 @@ func RecordWebhookCall(ctpFound bool, responseCode int, duration time.Duration) 
 	}
 	webhookCallsTotal.With(labels).Inc()
 	webhookProcessingDurationSeconds.With(labels).Observe(duration.Seconds())
+}
+
+// IncWebhookMissRetryPending increments the in-flight miss-retry gauge when a slot is acquired.
+func IncWebhookMissRetryPending() {
+	WebhookMissRetryPending.Inc()
+}
+
+// DecWebhookMissRetryPending decrements the in-flight miss-retry gauge when a slot is released.
+func DecWebhookMissRetryPending() {
+	WebhookMissRetryPending.Dec()
 }
 
 // RecordWebRequestCommitStatusHTTPRequest records count and duration for a completed outbound HTTP

@@ -19,18 +19,16 @@ package controller
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"time"
 
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -39,9 +37,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-
-	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 )
 
 // TimedCommitStatusReconciler reconciles a TimedCommitStatus object
@@ -53,9 +48,11 @@ type TimedCommitStatusReconciler struct {
 	EnqueueCTP  CTPEnqueueFunc
 }
 
-// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=timedcommitstatuses,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=timedcommitstatuses,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=timedcommitstatuses/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=timedcommitstatuses/finalizers,verbs=update
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch;patch;create;delete
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -66,6 +63,8 @@ type TimedCommitStatusReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.21.0/pkg/reconcile
+//
+//nolint:dupl // Gate controllers share the same reconciliation skeleton by design.
 func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling TimedCommitStatus")
@@ -73,7 +72,8 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	var tcs promoterv1alpha1.TimedCommitStatus
 	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &tcs, r.Client, r.Recorder, constants.TimedCommitStatusControllerFieldOwner, &result, &err)
+	var previousReady *metav1.Condition
+	defer utils.HandleReconciliationResult(ctx, startTime, &tcs, r.Client, r.Recorder, constants.TimedCommitStatusControllerFieldOwner, &result, &err, &previousReady)
 
 	// 1. Fetch the TimedCommitStatus instance
 	err = r.Get(ctx, req.NamespacedName, &tcs, &client.GetOptions{})
@@ -87,7 +87,11 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	// Remove any existing Ready condition. We want to start fresh.
-	meta.RemoveStatusCondition(tcs.GetConditions(), string(promoterConditions.Ready))
+	previousReady = utils.RemoveReadyCondition(&tcs)
+
+	if err := ensureControllerInstanceIDStable(ctx, r.SettingsMgr); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	// 2. Fetch the referenced PromotionStrategy
 	var ps promoterv1alpha1.PromotionStrategy
@@ -113,7 +117,7 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	// 4. Clean up orphaned CommitStatus resources that are no longer in the environment list
-	err = r.cleanupOrphanedCommitStatuses(ctx, &tcs, commitStatuses)
+	err = utils.CleanupOrphanedCommitStatuses(ctx, r.Client, r.Recorder, &tcs, commitStatuses)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to cleanup orphaned CommitStatus resources: %w", err)
 	}
@@ -121,10 +125,8 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// 5. Inherit conditions from CommitStatus objects
 	utils.InheritNotReadyConditionFromObjects(&tcs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
 
-	// 6. If any time gates transitioned to success, touch the corresponding ChangeTransferPolicies to trigger reconciliation
-	if len(transitionedEnvironments) > 0 {
-		r.touchChangeTransferPolicies(ctx, &ps, transitionedEnvironments)
-	}
+	// 6. If any time gates transitioned to success, enqueue the corresponding ChangeTransferPolicies to trigger reconciliation
+	utils.EnqueueChangeTransferPolicies(ctx, r.EnqueueCTP, &ps, transitionedEnvironments, "time gate transition")
 
 	// Requeue based on the shortest duration or default requeue duration
 	requeueDuration := r.calculateRequeueDuration(ctx, &tcs)
@@ -213,10 +215,7 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 
 		// Calculate timing information based on current environment's active commit
 		elapsed := time.Since(currentActiveCommitTime)
-		timeRemaining := envConfig.Duration.Duration - elapsed
-		if timeRemaining < 0 {
-			timeRemaining = 0
-		}
+		timeRemaining := max(envConfig.Duration.Duration-elapsed, 0)
 
 		// Determine commit status phase based on time elapsed in current environment
 		// This status will be reported for the current environment's active SHA
@@ -253,11 +252,24 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 
 		// Create or update the CommitStatus for the current environment's active SHA
 		// This acts as an active commit status that gates promotions from this environment
-		cs, err := r.upsertCommitStatus(ctx, tcs, ps, envConfig.Branch, currentActiveSha, phase, message, envConfig.Branch)
+		key := tcs.Spec.CommitStatusKey() //nolint:staticcheck // SA1019: #1465 use spec.Key directly in v1.0
+		cs, err := utils.UpsertCommitStatus(ctx, r.Client, utils.UpsertCommitStatusParams{
+			Parent:      tcs,
+			RepoRefName: ps.Spec.RepositoryReference.Name,
+			Branch:      envConfig.Branch,
+			Sha:         currentActiveSha,
+			Key:         key,
+			Description: message,
+			Phase:       phase,
+			FieldOwner:  constants.TimedCommitStatusControllerFieldOwner,
+		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", envConfig.Branch, err)
 		}
 		commitStatuses = append(commitStatuses, cs)
+
+		// Emit only after the upsert succeeded so the event always describes persisted state.
+		emitCommitStatusPhaseChangedEvent(r.Recorder, tcs, tcs.Spec.Key, envConfig.Branch, previousPhase, string(phase))
 
 		logger.Info("Processed environment time gate",
 			"branch", envConfig.Branch,
@@ -270,64 +282,6 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 	return transitionedEnvironments, commitStatuses, nil
 }
 
-// cleanupOrphanedCommitStatuses deletes CommitStatus resources that are owned by this TimedCommitStatus
-// but are not in the current list of valid CommitStatus resources (i.e., they correspond to removed or renamed environments).
-//
-//nolint:dupl // Similar to PromotionStrategy cleanup but works with different types
-func (r *TimedCommitStatusReconciler) cleanupOrphanedCommitStatuses(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, validCommitStatuses []*promoterv1alpha1.CommitStatus) error {
-	logger := log.FromContext(ctx)
-
-	// Create a set of valid CommitStatus names for quick lookup
-	validCommitStatusNames := make(map[string]bool)
-	for _, cs := range validCommitStatuses {
-		validCommitStatusNames[cs.Name] = true
-	}
-
-	// List all CommitStatus resources in the namespace with the TimedCommitStatus label
-	var commitStatusList promoterv1alpha1.CommitStatusList
-	err := r.List(ctx, &commitStatusList, client.InNamespace(tcs.Namespace), client.MatchingLabels{
-		promoterv1alpha1.TimedCommitStatusLabel: utils.KubeSafeLabel(tcs.Name),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to list CommitStatus resources: %w", err)
-	}
-
-	// Delete CommitStatus resources that are not in the valid list
-	for _, cs := range commitStatusList.Items {
-		// Skip if this CommitStatus is in the valid list
-		if validCommitStatusNames[cs.Name] {
-			continue
-		}
-
-		// Verify this CommitStatus is owned by this TimedCommitStatus before deleting
-		if !metav1.IsControlledBy(&cs, tcs) {
-			logger.V(4).Info("Skipping CommitStatus not owned by this TimedCommitStatus",
-				"commitStatusName", cs.Name,
-				"timedCommitStatus", tcs.Name)
-			continue
-		}
-
-		// Delete the orphaned CommitStatus
-		logger.Info("Deleting orphaned CommitStatus",
-			"commitStatusName", cs.Name,
-			"timedCommitStatus", tcs.Name,
-			"namespace", tcs.Namespace)
-
-		if err := r.Delete(ctx, &cs); err != nil {
-			if k8serrors.IsNotFound(err) {
-				// Already deleted, which is fine
-				logger.V(4).Info("CommitStatus already deleted", "commitStatusName", cs.Name)
-				continue
-			}
-			return fmt.Errorf("failed to delete orphaned CommitStatus %q: %w", cs.Name, err)
-		}
-
-		r.Recorder.Eventf(tcs, nil, "Normal", constants.OrphanedCommitStatusDeletedReason, "CleaningOrphanedResources", constants.OrphanedCommitStatusDeletedMessage, cs.Name)
-	}
-
-	return nil
-}
-
 // calculateCommitStatusPhase determines the commit status phase based on time elapsed since deployment
 func (r *TimedCommitStatusReconciler) calculateCommitStatusPhase(requiredDuration time.Duration, elapsed time.Duration, envBranch string) (promoterv1alpha1.CommitStatusPhase, string) {
 	if elapsed >= requiredDuration {
@@ -337,68 +291,6 @@ func (r *TimedCommitStatusReconciler) calculateCommitStatusPhase(requiredDuratio
 
 	// Not enough time has passed yet
 	return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Waiting for %s duration gate to complete on %s environment", requiredDuration.String(), envBranch)
-}
-
-func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, message string, envBranch string) (*promoterv1alpha1.CommitStatus, error) {
-	// Generate a consistent name for the CommitStatus
-	commitStatusName := utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-timed", tcs.Name, branch))
-
-	// Build owner reference
-	kind := reflect.TypeOf(promoterv1alpha1.TimedCommitStatus{}).Name()
-	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
-
-	// Build the apply configuration
-	commitStatusApply := acv1alpha1.CommitStatus(commitStatusName, tcs.Namespace).
-		WithLabels(map[string]string{
-			promoterv1alpha1.TimedCommitStatusLabel: utils.KubeSafeLabel(tcs.Name),
-			promoterv1alpha1.EnvironmentLabel:       utils.KubeSafeLabel(branch),
-			promoterv1alpha1.CommitStatusLabel:      "timer",
-		}).
-		WithOwnerReferences(acmetav1.OwnerReference().
-			WithAPIVersion(gvk.GroupVersion().String()).
-			WithKind(gvk.Kind).
-			WithName(tcs.Name).
-			WithUID(tcs.UID).
-			WithController(true).
-			WithBlockOwnerDeletion(true)).
-		WithSpec(acv1alpha1.CommitStatusSpec().
-			WithRepositoryReference(acv1alpha1.ObjectReference().WithName(ps.Spec.RepositoryReference.Name)).
-			WithName("timer/" + envBranch).
-			WithDescription(message).
-			WithPhase(phase).
-			WithSha(sha))
-
-	// Apply using Server-Side Apply with Patch to get the result directly
-	commitStatus := &promoterv1alpha1.CommitStatus{}
-	commitStatus.Name = commitStatusName
-	commitStatus.Namespace = tcs.Namespace
-	if err := r.Patch(ctx, commitStatus, utils.ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(constants.TimedCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
-		return nil, fmt.Errorf("failed to apply CommitStatus: %w", err)
-	}
-
-	return commitStatus, nil
-}
-
-// touchChangeTransferPolicies triggers reconciliation of the ChangeTransferPolicies
-// for the environments that had time gates transition to success.
-// This triggers the ChangeTransferPolicy controller to reconcile and potentially merge PRs.
-func (r *TimedCommitStatusReconciler) touchChangeTransferPolicies(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, transitionedEnvironments []string) {
-	logger := log.FromContext(ctx)
-
-	// For each transitioned environment, trigger reconciliation of the corresponding ChangeTransferPolicy
-	for _, envBranch := range transitionedEnvironments {
-		// Generate the ChangeTransferPolicy name using the same logic as the PromotionStrategy controller
-		ctpName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(ps.Name, envBranch))
-
-		logger.Info("Triggering ChangeTransferPolicy reconciliation due to time gate transition",
-			"changeTransferPolicy", ctpName,
-			"branch", envBranch)
-
-		// Use the enqueue function to trigger reconciliation.
-		if r.EnqueueCTP != nil {
-			r.EnqueueCTP(ps.Namespace, ctpName)
-		}
-	}
 }
 
 // calculateRequeueDuration determines when to requeue based on whether there are pending time gates.
@@ -446,21 +338,20 @@ func (r *TimedCommitStatusReconciler) enqueueTimedCommitStatusForPromotionStrate
 			return nil
 		}
 
-		// List all TimedCommitStatus resources in the same namespace
 		var tcsList promoterv1alpha1.TimedCommitStatusList
-		if err := r.List(ctx, &tcsList, client.InNamespace(ps.Namespace)); err != nil {
+		if err := r.List(ctx, &tcsList,
+			client.InNamespace(ps.Namespace),
+			client.MatchingFields{PromotionStrategyRefField: ps.Name},
+		); err != nil {
 			log.FromContext(ctx).Error(err, "failed to list TimedCommitStatus resources")
 			return nil
 		}
 
-		// Enqueue all TimedCommitStatus resources that reference this PromotionStrategy
-		var requests []ctrl.Request
-		for _, tcs := range tcsList.Items {
-			if tcs.Spec.PromotionStrategyRef.Name == ps.Name {
-				requests = append(requests, ctrl.Request{
-					NamespacedName: client.ObjectKeyFromObject(&tcs),
-				})
-			}
+		requests := make([]ctrl.Request, 0, len(tcsList.Items))
+		for i := range tcsList.Items {
+			requests = append(requests, ctrl.Request{
+				NamespacedName: client.ObjectKeyFromObject(&tcsList.Items[i]),
+			})
 		}
 
 		return requests

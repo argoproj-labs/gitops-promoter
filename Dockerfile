@@ -1,5 +1,5 @@
 # Build the dashboard UI
-FROM node:24-bullseye-slim@sha256:727689e6f04f3f6c5487a8d2775842bc5c3115c8fa28fd1f67eae43229fcfa1d AS dashboard-builder
+FROM node:24.20.0-bullseye-slim@sha256:f7818cba7c85740e6f9dd31553636131d01e9992fb7d112b9b0893afd884d1d6 AS dashboard-builder
 WORKDIR /workspace
 
 # Copy package files first for better layer caching
@@ -23,7 +23,7 @@ RUN npx vite build
 RUN mkdir -p ../web/static && cp -r dist/* ../web/static/
 
 # Build the gitops-promoter binary
-FROM golang:1.26.1@sha256:595c7847cff97c9a9e76f015083c481d26078f961c9c8dca3923132f51fe12f1 AS builder
+FROM golang:1.26.6@sha256:640a234f4bea3e399c056b7b8f9c667c4939befae8db2f14e9785e16eccd4205 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
@@ -56,7 +56,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o gi
 # Use distroless as minimal base image to package the gitops-promoter binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
 #FROM gcr.io/distroless/static:nonroot #TODO: figure out smallest/safest way to get git installed
-FROM golang:1.26.1@sha256:595c7847cff97c9a9e76f015083c481d26078f961c9c8dca3923132f51fe12f1
+FROM golang:1.26.6@sha256:640a234f4bea3e399c056b7b8f9c667c4939befae8db2f14e9785e16eccd4205
 WORKDIR /
 
 # Install tini to handle process management and prevent process leaks
@@ -65,7 +65,6 @@ RUN apt-get update && apt-get install -y tini && apt-get clean && rm -rf /var/li
 RUN mkdir /git
 COPY --from=builder /workspace/gitops-promoter .
 COPY --from=builder /workspace/hack/git/promoter_askpass.sh /git/promoter_askpass.sh
-COPY --from=dashboard-builder /workspace/ui/web/static ./ui/web/static
 ENV PATH="${PATH}:/git"
 RUN echo "${PATH}" >> /etc/bash.bashrc
 USER 65532:65532

@@ -13,16 +13,22 @@ const PromotionStrategyLabel = "promoter.argoproj.io/promotion-strategy"
 // EnvironmentLabel the environment branch for the proposed commit
 const EnvironmentLabel = "promoter.argoproj.io/environment"
 
+// CommitStatusGateLabelPrefix is the prefix for parent-gate label keys on CommitStatus resources
+// (for example promoter.argoproj.io/timed-commit-status for TimedCommitStatus).
+const CommitStatusGateLabelPrefix = "promoter.argoproj.io/"
+
 // ChangeTransferPolicyLabel the change transfer policy which the proposed commit is associated with.
 const ChangeTransferPolicyLabel = "promoter.argoproj.io/change-transfer-policy"
 
-// TimedCommitStatusLabel the timed commit status which the commit status is associated with.
-const TimedCommitStatusLabel = "promoter.argoproj.io/timed-commit-status"
+// ArgoCDCommitStatusDefaultKey is the default commit status key for ArgoCDCommitStatus when spec.key is omitted.
+const ArgoCDCommitStatusDefaultKey = "argocd-health"
 
-// WebRequestCommitStatusLabel the web request commit status which the commit status is associated with.
-const WebRequestCommitStatusLabel = "promoter.argoproj.io/web-request-commit-status"
+// TimedCommitStatusDefaultKey is the default commit status key for TimedCommitStatus when spec.key is omitted.
+const TimedCommitStatusDefaultKey = "timer"
 
-// PreviousEnvironmentCommitStatusKey the commit status key name used to indicate the previous environment health
+// PreviousEnvironmentCommitStatusKey is the commit status name used to indicate the previous environment health.
+// This value is used as the SCM commit status context (e.g. GitHub check run name) and is part of the public API.
+// Changing it will break branch protection rules and rulesets that reference this name.
 const PreviousEnvironmentCommitStatusKey = "promoter-previous-environment"
 
 // CommitStatusPreviousEnvironmentStatusesAnnotation is the label used to identify commit statuses that make up the aggregated active commit status
@@ -55,3 +61,8 @@ const ScmProviderSecretFinalizer = "scmprovider.promoter.argoproj.io/secret-fina
 
 // ClusterScmProviderSecretFinalizer prevents deletion of Secret while ClusterScmProvider references it
 const ClusterScmProviderSecretFinalizer = "clusterscmprovider.promoter.argoproj.io/secret-finalizer"
+
+// InstanceIDLabel partitions resources between multiple controller installs sharing an API server.
+// Each install configures ControllerConfiguration.spec.instanceID (exact label match) or leaves it
+// unset (only unlabeled resources). Labeled and unlabeled resources are never reconciled together.
+const InstanceIDLabel = "promoter.argoproj.io/instance-id"

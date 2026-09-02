@@ -1,22 +1,13 @@
-with-expecter: true
+template: testify
+template-data:
+  unroll-variadic: true
 packages:
   github.com/argoproj-labs/gitops-promoter/internal/scms:
-    # place your package-specific config here
     config:
+      dir: internal/scms/mock
+      pkgname: mock
+      filename: mocks.go
     interfaces:
-      # select the interfaces you want mocked
-      PullRequestProvider:
-        # Modify package-level config for this specific interface (if applicable)
-        config:
-          dir: "internal/scms/mock"
-          outpkg: "mock"
       CommitStatusProvider:
-        # Modify package-level config for this specific interface (if applicable)
-        config:
-          dir: "internal/scms/mock"
-          outpkg: "mock"
       GitOperationsProvider:
-        # Modify package-level config for this specific interface (if applicable)
-        config:
-          dir: "internal/scms/mock"
-          outpkg: "mock"
+      PullRequestProvider:

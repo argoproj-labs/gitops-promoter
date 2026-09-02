@@ -13,7 +13,8 @@ export const namespaceStore = create(
       namespace: '',
       namespaces: [],
       setNamespace: (ns) => set({ namespace: ns }),
-      setNamespaces: (nsList) => set({ namespaces: nsList }),
+      setNamespaces: (nsList) =>
+        set({ namespaces: [...nsList].sort((a, b) => a.localeCompare(b)) }),
     }),
     {
       name: 'namespace-storage',
