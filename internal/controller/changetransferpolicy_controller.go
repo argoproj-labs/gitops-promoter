@@ -1210,7 +1210,11 @@ func (r *ChangeTransferPolicyReconciler) ensurePromotionHistoryNote(ctx context.
 	}
 
 	// Rebuild history from the note now rather than signalling the caller to do it: a persisted entry for
-	// this merge commit may predate the note and carry no pull request metadata.
+	// this merge commit may predate the note and carry no pull request metadata. Use mergedTargetSha, not
+	// Status.Active.Hydrated.Sha: calculateStatus has not run yet and the persisted active tip may lag.
+	if shouldSkipHistoryRecalculation(ctp.Status.History, mergedTargetSha) {
+		return nil
+	}
 	r.calculateHistory(ctx, ctp, gitOperations)
 	return nil
 }
