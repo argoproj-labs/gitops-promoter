@@ -53,22 +53,19 @@ import (
 //  3. List it in buildBundle
 //  4. Add the resource plural to config/apiserver/base/rbac.yaml (promoter-apiserver)
 var _ = Describe("Gate commit-status managers stay in sync with the view aggregate", func() {
-	It("discovers at least the known PromotionStrategyRef gate kinds", func() {
-		got := map[string]struct{}{}
+	It("keeps PromotionStrategyDetails gate slice fields in sync with scheme discovery", func() {
+		discovered := map[reflect.Type]struct{}{}
 		for _, gate := range controller.GateCommitStatusKinds() {
-			got[reflect.TypeOf(gate).Elem().Name()] = struct{}{}
+			discovered[reflect.TypeOf(gate).Elem()] = struct{}{}
 		}
-		for _, want := range []string{
-			"ArgoCDCommitStatus",
-			"GitCommitStatus",
-			"TimedCommitStatus",
-			"WebRequestCommitStatus",
-			"ScheduledCommitStatus",
-		} {
-			Expect(got).To(HaveKey(want),
-				"scheme discovery should find %s. Add Spec.PromotionStrategyRef and register the type "+
-					"with SchemeBuilder in api/v1alpha1",
-				want)
+		for elemType, fieldName := range promotionStrategyDetailsGateSliceFields() {
+			if !controller.IsPromotionStrategyRefGateType(elemType) {
+				continue
+			}
+			Expect(discovered).To(HaveKey(elemType),
+				"PromotionStrategyDetails.%s ([]%s) has no matching scheme-registered gate. "+
+					"Register the CRD with Spec.PromotionStrategyRef in api/v1alpha1, or remove the stale view field",
+				fieldName, elemType.Name())
 		}
 	})
 

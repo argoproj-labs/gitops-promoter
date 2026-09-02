@@ -27,22 +27,16 @@ import (
 
 var _ = Describe("GateCommitStatusKinds", func() {
 	It("discovers PromotionStrategyRef gate types from the scheme", func() {
-		got := map[string]struct{}{}
-		for _, obj := range GateCommitStatusKinds() {
-			got[reflect.TypeOf(obj).Elem().Name()] = struct{}{}
-		}
+		gates := GateCommitStatusKinds()
+		Expect(gates).NotTo(BeEmpty(),
+			"GateCommitStatusKinds returned nothing; check SchemeBuilder registration in api/v1alpha1")
 
-		for _, want := range []string{
-			"ArgoCDCommitStatus",
-			"GitCommitStatus",
-			"TimedCommitStatus",
-			"WebRequestCommitStatus",
-			"ScheduledCommitStatus",
-		} {
-			Expect(got).To(HaveKey(want),
-				"%s missing from GateCommitStatusKinds. Ensure Spec has PromotionStrategyRef and the type is "+
-					"registered with SchemeBuilder in api/v1alpha1",
-				want)
+		got := map[string]struct{}{}
+		for _, obj := range gates {
+			elemType := reflect.TypeOf(obj).Elem()
+			got[elemType.Name()] = struct{}{}
+			Expect(IsPromotionStrategyRefGateType(elemType)).To(BeTrue(),
+				"%s was discovered but does not have Spec.PromotionStrategyRef", elemType.Name())
 		}
 
 		for _, notWant := range []string{

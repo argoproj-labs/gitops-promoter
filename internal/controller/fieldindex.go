@@ -93,6 +93,12 @@ func discoverPromotionStrategyRefGateKinds(scheme *runtime.Scheme) []client.Obje
 	return out
 }
 
+// IsPromotionStrategyRefGateType reports whether t is a struct type (or pointer
+// to struct) whose Spec embeds PromotionStrategyRef.
+func IsPromotionStrategyRefGateType(t reflect.Type) bool {
+	return typeHasPromotionStrategyRef(t)
+}
+
 // typeHasPromotionStrategyRef reports whether t (a non-pointer struct type) has
 // Spec.PromotionStrategyRef.
 func typeHasPromotionStrategyRef(t reflect.Type) bool {
