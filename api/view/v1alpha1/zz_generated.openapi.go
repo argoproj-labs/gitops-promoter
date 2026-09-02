@@ -1475,14 +1475,14 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitBranchStateHistoryP
 				Properties: map[string]spec.Schema{
 					"hydrated": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on.",
+							Description: "Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on. Read from the snapshot trailers. On a regular merge it is corrected to the merge commit's second parent, but a squash commit has only one parent, so when the entry's mergeCommitSnapshotMismatch is true and the merge was a squash the stale snapshot value is kept.",
 							Default:     map[string]interface{}{},
 							Ref:         ref(apiv1alpha1.CommitShaState{}.OpenAPIModelName()),
 						},
 					},
 					"commitStatuses": {
 						SchemaProps: spec.SchemaProps{
-							Description: "CommitStatuses is a list of commit statuses that were being monitored for this branch. This contains the state frozen at the moment the PR was merged.",
+							Description: "CommitStatuses is a list of commit statuses that were being monitored for this branch. This contains the state frozen at the moment the PR was merged. When the entry's mergeCommitSnapshotMismatch is true, these phases come from snapshot trailers describing the proposed revision the promoter last saw, which is not necessarily the revision that merged.",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
@@ -3360,7 +3360,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_History(ref common.Refere
 					},
 					"active": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Active is the state of the active branch at the time the PR was merged.",
+							Description: "Active is the state of the active branch at the time the PR was merged. Its dry state is read back from <activePath>/hydrator.metadata on the merge commit and its hydrated state from that commit itself, so both describe what actually merged regardless of merge style. Its commitStatuses, by contrast, come from the snapshot trailers and may be stale when mergeCommitSnapshotMismatch is true.",
 							Default:     map[string]interface{}{},
 							Ref:         ref(apiv1alpha1.CommitBranchState{}.OpenAPIModelName()),
 						},
@@ -3369,6 +3369,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_History(ref common.Refere
 						SchemaProps: spec.SchemaProps{
 							Description: "PullRequest is the state of the pull request that was created for this ChangeTransferPolicy.",
 							Ref:         ref(apiv1alpha1.PullRequestCommonStatus{}.OpenAPIModelName()),
+						},
+					},
+					"mergeCommitSnapshotMismatch": {
+						SchemaProps: spec.SchemaProps{
+							Description: "MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with the promoter's last snapshot (typically an external merge after the proposed branch advanced). When true, the fields this entry rebuilds from the snapshot trailers — proposed.commitStatuses and active.commitStatuses, plus proposed.hydrated when the merge was a squash (a single-parent squash commit gives the controller nothing to reconstruct the hydrated sha from) — may describe the earlier proposed revision rather than what actually merged.",
+							Type:        []string{"boolean"},
+							Format:      "",
 						},
 					},
 				},
@@ -3889,7 +3896,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequest(ref common.Re
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "PullRequest is the Schema for the pullrequests API",
+				Description: "PullRequest is the Schema for the pullrequests API Once recorded, the SHA can be neither replaced nor cleared: a resource merges at most once, so any later disagreement is provider inconsistency or a status write built from a stale informer read, and honoring it would strand the promotion history note already written against the original SHA. Such a write is rejected rather than merged, which surfaces as a failed status apply and a retry.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
@@ -3972,9 +3979,16 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestCommonStatus(r
 							Format:      "",
 						},
 					},
+					"mergedTargetSha": {
+						SchemaProps: spec.SchemaProps{
+							Description: "MergedTargetSha is the SHA that the target branch points at after the merge. It is a merge commit only when the SCM created one; squash and fast-forward merges report the resulting commit on the target branch instead. In the live pull request status it is mirrored from the PullRequest resource and is empty until the merge is observed; in a History entry it is the active-branch commit the entry describes.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 					"externallyMergedOrClosed": {
 						SchemaProps: spec.SchemaProps{
-							Description: "ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the PullRequest still desired it open: merged or closed outside the controller, or closed on the SCM because the PullRequest resource was deleted (finalizer) before this status was reconciled. When true, the State field will be empty (\"\") since we cannot tell merge vs. close from the provider. This status is preserved even after the PullRequest resource is deleted, maintaining a historical record until a new pull request is created for this environment.",
+							Description: "ExternallyMergedOrClosed indicated that the pull request was no longer open on the SCM while promotion still desired it open. The PullRequest controller no longer sets this field.\n\nDeprecated: Use status.state merged-or-closed or unknown instead. Existing values may still appear when mirrored from older PullRequest status. This field may be removed in a future API revision.",
 							Type:        []string{"boolean"},
 							Format:      "",
 						},
@@ -4223,9 +4237,16 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestStatus(ref com
 							Format:      "",
 						},
 					},
+					"mergedTargetSha": {
+						SchemaProps: spec.SchemaProps{
+							Description: "MergedTargetSha is the SHA that spec.targetBranch points at after the merge, as reported by the SCM. It is a merge commit only when the SCM created one; squash and fast-forward merges report the resulting commit on the target branch instead. Set once by the PullRequest controller, either from the merge response for providers that report the SHA there, or from a Get-by-ID lookup when FindOpen no longer finds the PR (external merges, and providers whose merge response omits the SHA). The value is write-once: a resource merges at most once, so the controller never replaces a non-empty value, even if a provider later reports a different SHA.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 					"externallyMergedOrClosed": {
 						SchemaProps: spec.SchemaProps{
-							Description: "ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the resource still desired it open (spec.state is \"open\"): either it was merged or closed outside the controller, or it was closed on the SCM because the PullRequest resource was deleted (finalizer) and a subsequent sync observed it missing. The controller does not distinguish those cases here. When true, the State field will be empty (\"\") since we cannot tell merge vs. close from the provider. The PullRequest resource will be deleted after this flag is set when possible, but the status is preserved in the owning ChangeTransferPolicy to maintain a record.",
+							Description: "ExternallyMergedOrClosed indicated that the pull request was no longer open on the SCM while the resource still desired it open. The PullRequest controller no longer sets this field.\n\nDeprecated: Use status.state merged-or-closed or unknown instead. Existing values are preserved when copied to ChangeTransferPolicy status. This field may be removed in a future API revision.",
 							Type:        []string{"boolean"},
 							Format:      "",
 						},

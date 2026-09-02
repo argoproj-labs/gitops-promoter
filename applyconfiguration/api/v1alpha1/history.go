@@ -24,10 +24,20 @@ package v1alpha1
 type HistoryApplyConfiguration struct {
 	// Proposed is the state of the proposed branch at the time the PR was merged.
 	Proposed *CommitBranchStateHistoryProposedApplyConfiguration `json:"proposed,omitempty"`
-	// Active is the state of the active branch at the time the PR was merged.
+	// Active is the state of the active branch at the time the PR was merged. Its dry state is read back from
+	// <activePath>/hydrator.metadata on the merge commit and its hydrated state from that commit itself, so both
+	// describe what actually merged regardless of merge style. Its commitStatuses, by contrast, come from the
+	// snapshot trailers and may be stale when mergeCommitSnapshotMismatch is true.
 	Active *CommitBranchStateApplyConfiguration `json:"active,omitempty"`
 	// PullRequest is the state of the pull request that was created for this ChangeTransferPolicy.
 	PullRequest *PullRequestCommonStatusApplyConfiguration `json:"pullRequest,omitempty"`
+	// MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with
+	// the promoter's last snapshot (typically an external merge after the proposed branch advanced). When true,
+	// the fields this entry rebuilds from the snapshot trailers — proposed.commitStatuses and
+	// active.commitStatuses, plus proposed.hydrated when the merge was a squash (a single-parent squash commit
+	// gives the controller nothing to reconstruct the hydrated sha from) — may describe the earlier proposed
+	// revision rather than what actually merged.
+	MergeCommitSnapshotMismatch *bool `json:"mergeCommitSnapshotMismatch,omitempty"`
 }
 
 // HistoryApplyConfiguration constructs a declarative configuration of the History type for use with
@@ -57,5 +67,13 @@ func (b *HistoryApplyConfiguration) WithActive(value *CommitBranchStateApplyConf
 // If called multiple times, the PullRequest field is set to the value of the last call.
 func (b *HistoryApplyConfiguration) WithPullRequest(value *PullRequestCommonStatusApplyConfiguration) *HistoryApplyConfiguration {
 	b.PullRequest = value
+	return b
+}
+
+// WithMergeCommitSnapshotMismatch sets the MergeCommitSnapshotMismatch field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the MergeCommitSnapshotMismatch field is set to the value of the last call.
+func (b *HistoryApplyConfiguration) WithMergeCommitSnapshotMismatch(value bool) *HistoryApplyConfiguration {
+	b.MergeCommitSnapshotMismatch = &value
 	return b
 }

@@ -177,12 +177,12 @@ func (pr *PullRequest) Close(ctx context.Context, prObj v1alpha1.PullRequest) er
 }
 
 // Merge merges an existing pull request with the specified commit message.
-func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) error {
+func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) (scms.MergeResult, error) {
 	logger := log.FromContext(ctx)
 
 	mrIID, err := strconv.ParseInt(prObj.Status.ID, 10, 64)
 	if err != nil {
-		return fmt.Errorf("failed to convert MR number to int64: %w", err)
+		return scms.MergeResult{}, fmt.Errorf("failed to convert MR number to int64: %w", err)
 	}
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
@@ -190,7 +190,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) er
 		Name:      prObj.Spec.RepositoryReference.Name,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to get repo: %w", err)
+		return scms.MergeResult{}, fmt.Errorf("failed to get repo: %w", err)
 	}
 
 	options := &gitlab.AcceptMergeRequestOptions{
@@ -205,7 +205,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) er
 	}
 
 	start := time.Now()
-	_, resp, err := pr.client.MergeRequests.AcceptMergeRequest(
+	mr, resp, err := pr.client.MergeRequests.AcceptMergeRequest(
 		repo.Spec.GitLab.ProjectID,
 		mrIID,
 		options,
@@ -215,7 +215,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) er
 		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
-		return err //nolint:wrapcheck // Error wrapping handled at top level
+		return scms.MergeResult{}, err //nolint:wrapcheck // Error wrapping handled at top level
 	}
 
 	logGitLabRateLimitsIfAvailable(
@@ -226,7 +226,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) er
 	logger.V(4).Info("gitlab response status",
 		"status", resp.Status)
 
-	return nil
+	return scms.MergeResult{CommitSHA: mergedTargetSHA(mr)}, nil
 }
 
 // FindOpen checks if a pull request is open and returns its status.
@@ -280,6 +280,67 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	}
 
 	return scms.FindOpenResult{}, nil
+}
+
+// mergedTargetSHA returns the commit the merge produced on the target branch. A squashed merge
+// reports its commit under squash_commit_sha and leaves merge_commit_sha empty.
+func mergedTargetSHA(mr *gitlab.MergeRequest) string {
+	if mr == nil {
+		return ""
+	}
+	if mr.SquashCommitSHA != "" {
+		return mr.SquashCommitSHA
+	}
+	return mr.MergeCommitSHA
+}
+
+// Get fetches a pull request by status.id.
+func (pr *PullRequest) Get(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.GetPullRequestResult, error) {
+	logger := log.FromContext(ctx)
+	logger.V(4).Info("Getting merge request by ID")
+
+	mrIID, err := strconv.ParseInt(pullRequest.Status.ID, 10, 64)
+	if err != nil {
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to convert MR number to int64: %w", err)
+	}
+
+	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
+		Namespace: pullRequest.Namespace,
+		Name:      pullRequest.Spec.RepositoryReference.Name,
+	})
+	if err != nil {
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to get repo: %w", err)
+	}
+
+	start := time.Now()
+	mr, resp, err := pr.client.MergeRequests.GetMergeRequest(repo.Spec.GitLab.ProjectID, mrIID, nil, gitlab.WithContext(ctx))
+	if resp != nil {
+		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationGet, resp.StatusCode, time.Since(start), nil)
+	}
+	if err != nil {
+		if resp != nil && resp.StatusCode == http.StatusNotFound {
+			return scms.GetPullRequestResult{}, nil
+		}
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to get merge request: %w", err)
+	}
+	if mr == nil {
+		return scms.GetPullRequestResult{}, nil
+	}
+
+	result := scms.GetPullRequestResult{Found: true}
+	switch mr.State {
+	case "merged":
+		result.State = v1alpha1.PullRequestMerged
+		result.MergedTargetSHA = mergedTargetSHA(mr)
+		if mr.MergedAt != nil {
+			result.MergedAt = *mr.MergedAt
+		}
+	case "closed":
+		result.State = v1alpha1.PullRequestClosed
+	default:
+		result.State = v1alpha1.PullRequestOpen
+	}
+	return result, nil
 }
 
 // GetUrl retrieves the URL of the pull request.

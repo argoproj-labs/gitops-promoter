@@ -30,6 +30,10 @@ import (
 // with apply.
 //
 // PullRequest is the Schema for the pullrequests API
+// Once recorded, the SHA can be neither replaced nor cleared: a resource merges at most once, so any
+// later disagreement is provider inconsistency or a status write built from a stale informer read, and
+// honoring it would strand the promotion history note already written against the original SHA. Such a
+// write is rejected rather than merged, which surfaces as a failed status apply and a retry.
 type PullRequestApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`

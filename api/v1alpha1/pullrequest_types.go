@@ -113,7 +113,7 @@ type PullRequestStatus struct {
 	// ID the id of the pull request
 	ID string `json:"id,omitempty"`
 	// State of the merge request closed/merged/open
-	// +kubebuilder:validation:Enum="";closed;merged;open
+	// +kubebuilder:validation:Enum="";closed;merged;open;merged-or-closed;unknown
 	State PullRequestState `json:"state,omitempty"`
 	// PRCreationTime the time the PR was created
 	PRCreationTime metav1.Time `json:"prCreationTime,omitempty"`
@@ -121,13 +121,25 @@ type PullRequestStatus struct {
 	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"
 	// +kubebuilder:validation:Pattern="^(https?://.*)?$"
 	Url string `json:"url,omitempty"`
-	// ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the
-	// resource still desired it open (spec.state is "open"): either it was merged or closed outside the
-	// controller, or it was closed on the SCM because the PullRequest resource was deleted (finalizer)
-	// and a subsequent sync observed it missing. The controller does not distinguish those cases here.
-	// When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider.
-	// The PullRequest resource will be deleted after this flag is set when possible, but the status is
-	// preserved in the owning ChangeTransferPolicy to maintain a record.
+	// MergedTargetSha is the SHA that spec.targetBranch points at after the merge, as reported by
+	// the SCM. It is a merge commit only when the SCM created one; squash and fast-forward merges
+	// report the resulting commit on the target branch instead.
+	// Set once by the PullRequest controller, either from the merge response for providers that
+	// report the SHA there, or from a Get-by-ID lookup when FindOpen no longer finds the PR
+	// (external merges, and providers whose merge response omits the SHA). The value is write-once:
+	// a resource merges at most once, so the controller never replaces a non-empty value, even if a
+	// provider later reports a different SHA.
+	// +optional
+	// +kubebuilder:validation:MinLength=40
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
+	MergedTargetSha string `json:"mergedTargetSha,omitempty"`
+	// ExternallyMergedOrClosed indicated that the pull request was no longer open on the SCM while the
+	// resource still desired it open. The PullRequest controller no longer sets this field.
+	//
+	// Deprecated: Use status.state merged-or-closed or unknown instead. Existing values are preserved
+	// when copied to ChangeTransferPolicy status. This field may be removed in a future API revision.
+	// +optional
 	ExternallyMergedOrClosed *bool `json:"externallyMergedOrClosed,omitempty"`
 
 	// SCMSyncedSpecDigest fingerprints title and description last successfully synced
@@ -189,6 +201,15 @@ func (ps *PullRequest) SetStatusInstanceID(v *string) {
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="URL",type=string,JSONPath=`.status.url`,priority=1
 // +kubebuilder:validation:XValidation:rule=`self.spec.state == 'open' || has(self.status.id) && self.status.id != ""`,message="Cannot transition to 'closed' or 'merged' state when status.id is empty"
+// +kubebuilder:validation:XValidation:rule=`!has(self.status) || !has(self.status.mergedTargetSha) || (has(self.status.state) && self.status.state == 'merged')`,message="mergedTargetSha may only be set when status.state is merged"
+// +kubebuilder:validation:XValidation:rule=`!has(self.status) || !has(self.status.state) || self.status.state != 'merged-or-closed' && self.status.state != 'unknown' || !has(self.status.mergedTargetSha)`,message="mergedTargetSha may not be set when status.state is merged-or-closed or unknown"
+// Once recorded, the SHA can be neither replaced nor cleared: a resource merges at most once, so any
+// later disagreement is provider inconsistency or a status write built from a stale informer read, and
+// honoring it would strand the promotion history note already written against the original SHA. Such a
+// write is rejected rather than merged, which surfaces as a failed status apply and a retry.
+// +kubebuilder:validation:XValidation:rule=`!has(oldSelf.status) || !has(oldSelf.status.mergedTargetSha) || (has(self.status) && has(self.status.mergedTargetSha) && self.status.mergedTargetSha == oldSelf.status.mergedTargetSha)`,message="mergedTargetSha is immutable once set"
+// +kubebuilder:validation:XValidation:rule=`!has(oldSelf.status) || !has(oldSelf.status.state) || !(oldSelf.status.state in ['merged', 'closed', 'merged-or-closed']) || self.spec == oldSelf.spec`,message="spec is immutable once status.state is merged, closed, or merged-or-closed"
+// +kubebuilder:validation:XValidation:rule=`!has(oldSelf.status) || !has(oldSelf.status.state) || !(oldSelf.status.state in ['merged', 'closed', 'unknown']) || self.status.state == oldSelf.status.state`,message="status.state is immutable once merged, closed, or unknown"
 type PullRequest struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -223,4 +244,8 @@ const (
 	PullRequestOpen PullRequestState = "open"
 	// PullRequestMerged indicates that the pull request has been merged.
 	PullRequestMerged PullRequestState = "merged"
+	// PullRequestMergedOrClosed indicates FindOpen missed the PR while status.id is set; Get resolves merge vs close.
+	PullRequestMergedOrClosed PullRequestState = "merged-or-closed"
+	// PullRequestUnknown indicates the SCM no longer has a record for status.id.
+	PullRequestUnknown PullRequestState = "unknown"
 )
