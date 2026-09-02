@@ -107,6 +107,7 @@ type ChangeRequestPolicyCommitStatusPhase struct {
 // CommitBranchState defines the state of a branch in a ChangeTransferPolicy.
 type CommitBranchState struct {
 	// Dry is the dry state of the branch, which is the commit that is being proposed.
+	// +nullable
 	Dry CommitShaState `json:"dry,omitempty"`
 	// Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on.
 	Hydrated CommitShaState `json:"hydrated,omitempty"`
