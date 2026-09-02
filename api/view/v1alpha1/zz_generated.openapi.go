@@ -86,6 +86,9 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.GitCommitStatusList{}.OpenAPIModelName():                                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusList(ref),
 		apiv1alpha1.GitCommitStatusSpec{}.OpenAPIModelName():                                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusSpec(ref),
 		apiv1alpha1.GitCommitStatusStatus{}.OpenAPIModelName():                                schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusStatus(ref),
+		apiv1alpha1.GitCommitVerification{}.OpenAPIModelName():                                schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitVerification(ref),
+		apiv1alpha1.GitCommitVerificationGPG{}.OpenAPIModelName():                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitVerificationGPG(ref),
+		apiv1alpha1.GitCommitVerificationGPGPublicKey{}.OpenAPIModelName():                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitVerificationGPGPublicKey(ref),
 		apiv1alpha1.GitHub{}.OpenAPIModelName():                                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitHub(ref),
 		apiv1alpha1.GitHubRepo{}.OpenAPIModelName():                                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitHubRepo(ref),
 		apiv1alpha1.GitLab{}.OpenAPIModelName():                                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitLab(ref),
@@ -2735,12 +2738,18 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusSpec(ref c
 							Format:      "",
 						},
 					},
+					"verification": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Verification allows enabling GPG signature verification for every commit the promotion would add, independent of Target. When set, the expression additionally sees a top-level Verification variable with the fields Verified and Commits; each entry in Commits has SHA, Verified, Type, KeyID and Signer, and every field other than SHA and Verified is empty unless that commit verified. Verification is nil when this field is unset.",
+							Ref:         ref(apiv1alpha1.GitCommitVerification{}.OpenAPIModelName()),
+						},
+					},
 				},
 				Required: []string{"promotionStrategyRef", "key", "expression"},
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.ObjectReference{}.OpenAPIModelName()},
+			apiv1alpha1.GitCommitVerification{}.OpenAPIModelName(), apiv1alpha1.ObjectReference{}.OpenAPIModelName()},
 	}
 }
 
@@ -2812,6 +2821,78 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusStatus(ref
 		},
 		Dependencies: []string{
 			apiv1alpha1.GitCommitStatusEnvironmentStatus{}.OpenAPIModelName(), metav1.Condition{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitVerification(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "GitCommitVerification configures how a commit's signature is verified.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"gpg": {
+						SchemaProps: spec.SchemaProps{
+							Description: "GPG verifies the commit against a set of trusted GPG public keys.",
+							Ref:         ref(apiv1alpha1.GitCommitVerificationGPG{}.OpenAPIModelName()),
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.GitCommitVerificationGPG{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitVerificationGPG(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "GitCommitVerificationGPG holds the GPG public keys a commit signature is trusted against.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"publicKeys": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PublicKeys are the keys a signature must verify against. A commit signed by a key outside this set is reported as unverified, so the list is the complete trust anchor for this validation.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.GitCommitVerificationGPGPublicKey{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"publicKeys"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.GitCommitVerificationGPGPublicKey{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitVerificationGPGPublicKey(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "GitCommitVerificationGPGPublicKey is a single trusted GPG public key.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"armored": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Armored is the ASCII-armored public key, as produced by `gpg --armor --export <fingerprint>`.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"armored"},
+			},
+		},
 	}
 }
 

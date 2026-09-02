@@ -14,7 +14,7 @@ Estimated static CEL costs versus kube-apiserver limits, computed from `k8s.io/a
 | ClusterScmProvider | v1alpha1 | 135 | 0.00% |
 | CommitStatus | v1alpha1 | 3 | 0.00% |
 | ControllerConfiguration | v1alpha1 | 3,195 | 0.00% |
-| GitCommitStatus | v1alpha1 | 0 | 0.00% |
+| GitCommitStatus | v1alpha1 | 1 | 0.00% |
 | GitRepository | v1alpha1 | 128 | 0.00% |
 | PromotionStrategy | v1alpha1 | 72,438,744 | 72.44% |
 | PullRequest | v1alpha1 | 394 | 0.00% |
@@ -141,7 +141,10 @@ Source: `promoter.argoproj.io_gitcommitstatuses.yaml`
 
 ##### Version `v1alpha1`
 
-_No CEL validation rules._
+| Path | Cost | % of rule limit | Expression |
+|---|---:|---:|---|
+| `.spec.verification` | 1 | 0.00% | `has(self.gpg)` |
+| **Total** | **1** | **0.00%** | |
 
 #### GitRepository
 

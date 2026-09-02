@@ -276,6 +276,21 @@ func (in GitCommitStatusStatus) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in GitCommitVerification) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.GitCommitVerification"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in GitCommitVerificationGPG) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.GitCommitVerificationGPG"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in GitCommitVerificationGPGPublicKey) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.GitCommitVerificationGPGPublicKey"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in GitHub) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.GitHub"
 }
