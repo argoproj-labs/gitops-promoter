@@ -20,15 +20,11 @@
   postUpdateOptions: [
     'gomodTidy',
   ],
-  // Post-upgrade `make` compiles controller-gen with this Go. Keep in lockstep
-  // with go.mod via the regex managers below (grouped with Go and linter tooling).
-  // postUpgradeTasks cannot use {{constraints.golang}}: Renovate's template filter
-  // excludes `constraints`, so use literal install-tool lines synced by regex instead.
-  // Do not rely on installTools + this field: executionMode=branch drops
-  // constraints (https://github.com/renovatebot/renovate/discussions/43633).
-  constraints: {
-    golang: '1.26.6',
-  },
+  // Post-upgrade codegen needs the same Go as CI. Use literal install-tool pins
+  // (synced via regex manager below, grouped with Go and linter tooling).
+  // {{constraints.golang}} is unavailable in postUpgradeTasks templates (Renovate's
+  // template filter excludes `constraints`), and constraints.golang is unused by the
+  // gomod manager anyway (renovatebot/renovate#42601).
   // The hashed lockfile is generated from docs/requirements.txt via a post-upgrade
   // task; Renovate must never try to edit it directly.
   ignorePaths: [
@@ -552,19 +548,6 @@
       ],
       matchStrings: [
         'go (?<currentValue>\\d+\\.\\d+(\\.\\d+)?)',
-      ],
-      depNameTemplate: 'go',
-      datasourceTemplate: 'golang-version',
-      versioningTemplate: 'semver',
-    },
-    {
-      customType: 'regex',
-      description: 'Keep constraints.golang in lockstep with go.mod',
-      managerFilePatterns: [
-        '/^renovate\\.json5$/',
-      ],
-      matchStrings: [
-        "golang: '(?<currentValue>\\d+\\.\\d+\\.\\d+)'",
       ],
       depNameTemplate: 'go',
       datasourceTemplate: 'golang-version',
