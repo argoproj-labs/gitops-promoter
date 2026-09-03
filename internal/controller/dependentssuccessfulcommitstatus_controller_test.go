@@ -235,6 +235,84 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 			}
 		})
 
+		It("should infer a linear dependency chain when spec.environments is empty", func() {
+			By("Creating a DependentsSuccessfulCommitStatus with no spec.environments")
+			dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-linear-default",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+				},
+			}
+			Expect(k8sClient.Create(ctx, dependentsSuccessfulCommitStatus)).To(Succeed())
+
+			By("Waiting for the DependentsSuccessfulCommitStatus to become Ready")
+			Eventually(func(g Gomega) {
+				updated := &promoterv1alpha1.DependentsSuccessfulCommitStatus{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dependentsSuccessfulCommitStatus), updated)).To(Succeed())
+				readyCondition := meta.FindStatusCondition(updated.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(readyCondition).ToNot(BeNil())
+				g.Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Creating a proposed change so the inferred linear chain writes CommitStatuses")
+			gitPath, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() { _ = os.RemoveAll(gitPath) })
+			makeChangeAndHydrateRepo(gitPath, gitRepo, "linear default test change", "")
+
+			By("Checking CommitStatuses are created for all PromotionStrategy environments from the inferred linear chain")
+			for _, branch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
+				Eventually(func(g Gomega) {
+					cs := &promoterv1alpha1.CommitStatus{}
+					csName := utils.CommitStatusResourceName(ctx, dependentsSuccessfulCommitStatus, branch)
+					g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: csName}, cs)).To(Succeed())
+					g.Expect(cs.Labels[promoterv1alpha1.CommitStatusLabel]).To(Equal(promoterv1alpha1.DependentsSuccessfulCommitStatusKey))
+				}, constants.EventuallyTimeout).Should(Succeed())
+			}
+
+			By("Checking the root environment gate succeeds with no upstream dependencies")
+			Eventually(func(g Gomega) {
+				devCS := &promoterv1alpha1.CommitStatus{}
+				devName := utils.CommitStatusResourceName(ctx, dependentsSuccessfulCommitStatus, testBranchDevelopment)
+				g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: devName}, devCS)).To(Succeed())
+				g.Expect(devCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should set Ready=False when declared branches do not match the PromotionStrategy", func() {
+			By("Creating a DependentsSuccessfulCommitStatus that declares a branch not on the PromotionStrategy")
+			dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-dag-mismatch",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+					Environments: []promoterv1alpha1.DependentEnvironment{
+						{Branch: testBranchDevelopment},
+						{Branch: testBranchStaging, DependsOn: []string{testBranchDevelopment}},
+						{Branch: "environment/ghost", DependsOn: []string{testBranchStaging}},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, dependentsSuccessfulCommitStatus)).To(Succeed())
+
+			By("Waiting for Ready=False from environment validation")
+			Eventually(func(g Gomega) {
+				updated := &promoterv1alpha1.DependentsSuccessfulCommitStatus{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dependentsSuccessfulCommitStatus), updated)).To(Succeed())
+				readyCondition := meta.FindStatusCondition(updated.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(readyCondition).ToNot(BeNil())
+				g.Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(readyCondition.Message).To(ContainSubstring(`declares branch "environment/ghost"`))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
 		It("should set Ready=False when the dependency graph contains a cycle", func() {
 			By("Creating a DependentsSuccessfulCommitStatus whose environments form a dependency cycle")
 			dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
@@ -492,6 +570,42 @@ var _ = Describe("DAG graph logic", func() {
 		It("detects a self-dependency cycle", func() {
 			g, _ := buildDAG(dagEnvs("a", "a"))
 			Expect(g.validateDAG()).To(MatchError(ContainSubstring("cycle")))
+		})
+	})
+
+	Describe("checkCommitStatusesPassing", func() {
+		It("returns not pending when all commit statuses are passing", func() {
+			pending, reason := checkCommitStatusesPassing([]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+				{Key: "health", Phase: string(promoterv1alpha1.CommitPhaseSuccess)},
+				{Key: "smoke", Phase: string(promoterv1alpha1.CommitPhaseSuccess)},
+			}, "environment/dev")
+			Expect(pending).To(BeFalse())
+			Expect(reason).To(BeEmpty())
+		})
+
+		It("returns a single-key reason when one commit status is not passing", func() {
+			pending, reason := checkCommitStatusesPassing([]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+				{Key: "health", Phase: string(promoterv1alpha1.CommitPhasePending)},
+			}, "environment/staging")
+			Expect(pending).To(BeTrue())
+			Expect(reason).To(Equal(`Waiting for "environment/staging" environment's "health" commit status to be successful`))
+		})
+
+		It("returns a plural reason when multiple commit statuses are not passing", func() {
+			pending, reason := checkCommitStatusesPassing([]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+				{Key: "health", Phase: string(promoterv1alpha1.CommitPhasePending)},
+				{Key: "smoke", Phase: string(promoterv1alpha1.CommitPhasePending)},
+			}, "environment/staging")
+			Expect(pending).To(BeTrue())
+			Expect(reason).To(Equal(`Waiting for "environment/staging" environment's commit statuses to be successful`))
+		})
+
+		It("uses previous environment wording when branch is empty", func() {
+			pending, reason := checkCommitStatusesPassing([]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+				{Key: "health", Phase: string(promoterv1alpha1.CommitPhasePending)},
+			}, "")
+			Expect(pending).To(BeTrue())
+			Expect(reason).To(Equal(`Waiting for previous environment's "health" commit status to be successful`))
 		})
 	})
 
