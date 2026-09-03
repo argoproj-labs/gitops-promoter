@@ -12,7 +12,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/bradleyfalzon/ghinstallation/v2"
-	"github.com/google/go-github/v90/github"
+	"github.com/google/go-github/v91/github"
 	"golang.org/x/sync/singleflight"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"

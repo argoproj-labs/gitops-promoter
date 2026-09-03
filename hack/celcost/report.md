@@ -11,18 +11,18 @@ Estimated static CEL costs versus kube-apiserver limits, computed from `k8s.io/a
 |---|---|---:|---:|
 | ArgoCDCommitStatus | v1alpha1 | 0 | 0.00% |
 | ChangeTransferPolicy | v1alpha1 | 56,623,293 | 56.62% |
-| ClusterScmProvider | v1alpha1 | 135 | 0.00% |
+| ClusterScmProvider | v1alpha1 | 21 | 0.00% |
 | CommitStatus | v1alpha1 | 3 | 0.00% |
-| ControllerConfiguration | v1alpha1 | 3,195 | 0.00% |
+| ControllerConfiguration | v1alpha1 | 288 | 0.00% |
 | GitCommitStatus | v1alpha1 | 0 | 0.00% |
-| GitRepository | v1alpha1 | 128 | 0.00% |
+| GitRepository | v1alpha1 | 14 | 0.00% |
 | PromotionStrategy | v1alpha1 | 72,438,744 | 72.44% |
 | PullRequest | v1alpha1 | 394 | 0.00% |
 | RevertCommit | v1alpha1 | 0 | 0.00% |
 | ScheduledCommitStatus | v1alpha1 | 106,003 | 0.11% |
-| ScmProvider | v1alpha1 | 135 | 0.00% |
+| ScmProvider | v1alpha1 | 21 | 0.00% |
 | TimedCommitStatus | v1alpha1 | 0 | 0.00% |
-| WebRequestCommitStatus | v1alpha1 | 162 | 0.00% |
+| WebRequestCommitStatus | v1alpha1 | 25 | 0.00% |
 
 ### Per-resource detail
 
@@ -81,11 +81,11 @@ Source: `promoter.argoproj.io_clusterscmproviders.yaml`
 
 | Path | Cost | % of rule limit | Expression |
 |---|---:|---:|---|
-| `.spec` | 128 | 0.00% | `[has(self.github),has(self.gitlab),has(self.forgejo),has(self.gitea),has(self.bitbucketCloud),has(self.azureDevOps),h...` |
+| `.spec` | 14 | 0.00% | `(has(self.github)?1:0)+(has(self.gitlab)?1:0)+(has(self.forgejo)?1:0)+(has(self.gitea)?1:0)+(has(self.bitbucketCloud)...` |
 | `.spec.azureDevOps.domain` | 3 | 0.00% | `self != "dev.azure.com"` |
 | `.spec.github.domain` | 2 | 0.00% | `self != "github.com"` |
 | `.spec.gitlab.domain` | 2 | 0.00% | `self != "gitlab.com"` |
-| **Total** | **135** | **0.00%** | |
+| **Total** | **21** | **0.00%** | |
 
 #### CommitStatus
 
@@ -106,34 +106,34 @@ Source: `promoter.argoproj.io_controllerconfigurations.yaml`
 
 | Path | Cost | % of rule limit | Expression |
 |---|---:|---:|---|
-| `.spec.argocdCommitStatus.workQueue.rateLimiter.maxOf[]` | 204 | 0.00% | `[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size() <= 1` |
-| `.spec.changeTransferPolicy.workQueue.rateLimiter.maxOf[]` | 204 | 0.00% | `[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size() <= 1` |
-| `.spec.commitStatus.workQueue.rateLimiter.maxOf[]` | 204 | 0.00% | `[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size() <= 1` |
-| `.spec.gitCommitStatus.workQueue.rateLimiter.maxOf[]` | 204 | 0.00% | `[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size() <= 1` |
-| `.spec.promotionStrategy.workQueue.rateLimiter.maxOf[]` | 204 | 0.00% | `[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size() <= 1` |
-| `.spec.pullRequest.workQueue.rateLimiter.maxOf[]` | 204 | 0.00% | `[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size() <= 1` |
-| `.spec.scheduledCommitStatus.workQueue.rateLimiter.maxOf[]` | 204 | 0.00% | `[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size() <= 1` |
-| `.spec.timedCommitStatus.workQueue.rateLimiter.maxOf[]` | 204 | 0.00% | `[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size() <= 1` |
-| `.spec.webRequestCommitStatus.workQueue.rateLimiter.maxOf[]` | 204 | 0.00% | `[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size() <= 1` |
-| `.spec.argocdCommitStatus.workQueue.rateLimiter` | 83 | 0.00% | `[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket),has(self.maxOf)].filter(x,x==true).size() <= 1` |
-| `.spec.changeTransferPolicy.workQueue.rateLimiter` | 83 | 0.00% | `[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket),has(self.maxOf)].filter(x,x==true).size() <= 1` |
-| `.spec.commitStatus.workQueue.rateLimiter` | 83 | 0.00% | `[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket),has(self.maxOf)].filter(x,x==true).size() <= 1` |
-| `.spec.gitCommitStatus.workQueue.rateLimiter` | 83 | 0.00% | `[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket),has(self.maxOf)].filter(x,x==true).size() <= 1` |
-| `.spec.promotionStrategy.workQueue.rateLimiter` | 83 | 0.00% | `[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket),has(self.maxOf)].filter(x,x==true).size() <= 1` |
-| `.spec.pullRequest.workQueue.rateLimiter` | 83 | 0.00% | `[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket),has(self.maxOf)].filter(x,x==true).size() <= 1` |
-| `.spec.scheduledCommitStatus.workQueue.rateLimiter` | 83 | 0.00% | `[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket),has(self.maxOf)].filter(x,x==true).size() <= 1` |
-| `.spec.timedCommitStatus.workQueue.rateLimiter` | 83 | 0.00% | `[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket),has(self.maxOf)].filter(x,x==true).size() <= 1` |
-| `.spec.webRequestCommitStatus.workQueue.rateLimiter` | 83 | 0.00% | `[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket),has(self.maxOf)].filter(x,x==true).size() <= 1` |
-| `.spec.argocdCommitStatus.workQueue.rateLimiter` | 68 | 0.00% | `[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size() <= 1` |
-| `.spec.changeTransferPolicy.workQueue.rateLimiter` | 68 | 0.00% | `[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size() <= 1` |
-| `.spec.commitStatus.workQueue.rateLimiter` | 68 | 0.00% | `[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size() <= 1` |
-| `.spec.gitCommitStatus.workQueue.rateLimiter` | 68 | 0.00% | `[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size() <= 1` |
-| `.spec.promotionStrategy.workQueue.rateLimiter` | 68 | 0.00% | `[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size() <= 1` |
-| `.spec.pullRequest.workQueue.rateLimiter` | 68 | 0.00% | `[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size() <= 1` |
-| `.spec.scheduledCommitStatus.workQueue.rateLimiter` | 68 | 0.00% | `[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size() <= 1` |
-| `.spec.timedCommitStatus.workQueue.rateLimiter` | 68 | 0.00% | `[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size() <= 1` |
-| `.spec.webRequestCommitStatus.workQueue.rateLimiter` | 68 | 0.00% | `[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size() <= 1` |
-| **Total** | **3,195** | **0.00%** | |
+| `.spec.argocdCommitStatus.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
+| `.spec.changeTransferPolicy.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
+| `.spec.commitStatus.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
+| `.spec.gitCommitStatus.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
+| `.spec.promotionStrategy.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
+| `.spec.pullRequest.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
+| `.spec.scheduledCommitStatus.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
+| `.spec.timedCommitStatus.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
+| `.spec.webRequestCommitStatus.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
+| `.spec.argocdCommitStatus.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
+| `.spec.changeTransferPolicy.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
+| `.spec.commitStatus.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
+| `.spec.gitCommitStatus.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
+| `.spec.promotionStrategy.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
+| `.spec.pullRequest.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
+| `.spec.scheduledCommitStatus.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
+| `.spec.timedCommitStatus.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
+| `.spec.webRequestCommitStatus.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
+| `.spec.argocdCommitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
+| `.spec.changeTransferPolicy.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
+| `.spec.commitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
+| `.spec.gitCommitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
+| `.spec.promotionStrategy.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
+| `.spec.pullRequest.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
+| `.spec.scheduledCommitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
+| `.spec.timedCommitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
+| `.spec.webRequestCommitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
+| **Total** | **288** | **0.00%** | |
 
 #### GitCommitStatus
 
@@ -151,8 +151,8 @@ Source: `promoter.argoproj.io_gitrepositories.yaml`
 
 | Path | Cost | % of rule limit | Expression |
 |---|---:|---:|---|
-| `.spec` | 128 | 0.00% | `[has(self.github),has(self.gitlab),has(self.forgejo),has(self.gitea),has(self.bitbucketCloud),has(self.azureDevOps),h...` |
-| **Total** | **128** | **0.00%** | |
+| `.spec` | 14 | 0.00% | `(has(self.github)?1:0)+(has(self.gitlab)?1:0)+(has(self.forgejo)?1:0)+(has(self.gitea)?1:0)+(has(self.bitbucketCloud)...` |
+| **Total** | **14** | **0.00%** | |
 
 #### PromotionStrategy
 
@@ -245,11 +245,11 @@ Source: `promoter.argoproj.io_scmproviders.yaml`
 
 | Path | Cost | % of rule limit | Expression |
 |---|---:|---:|---|
-| `.spec` | 128 | 0.00% | `[has(self.github),has(self.gitlab),has(self.forgejo),has(self.gitea),has(self.bitbucketCloud),has(self.azureDevOps),h...` |
+| `.spec` | 14 | 0.00% | `(has(self.github)?1:0)+(has(self.gitlab)?1:0)+(has(self.forgejo)?1:0)+(has(self.gitea)?1:0)+(has(self.bitbucketCloud)...` |
 | `.spec.azureDevOps.domain` | 3 | 0.00% | `self != "dev.azure.com"` |
 | `.spec.github.domain` | 2 | 0.00% | `self != "github.com"` |
 | `.spec.gitlab.domain` | 2 | 0.00% | `self != "gitlab.com"` |
-| **Total** | **135** | **0.00%** | |
+| **Total** | **21** | **0.00%** | |
 
 #### TimedCommitStatus
 
@@ -267,8 +267,8 @@ Source: `promoter.argoproj.io_webrequestcommitstatuses.yaml`
 
 | Path | Cost | % of rule limit | Expression |
 |---|---:|---:|---|
-| `.spec.httpRequest.authentication` | 98 | 0.00% | `[has(self.basic),has(self.bearer),has(self.oauth2),has(self.tls),has(self.scm)].filter(x,x==true).size() <= 1` |
-| `.spec.mode` | 53 | 0.00% | `[has(self.polling),has(self.trigger)].filter(x,x==true).size() == 1` |
 | `.spec.httpRequest` | 11 | 0.00% | `(has(self.method) && self.method.size() > 0) != (has(self.methodTemplate) && self.methodTemplate.size() > 0)` |
-| **Total** | **162** | **0.00%** | |
+| `.spec.httpRequest.authentication` | 10 | 0.00% | `(has(self.basic)?1:0)+(has(self.bearer)?1:0)+(has(self.oauth2)?1:0)+(has(self.tls)?1:0)+(has(self.scm)?1:0) <= 1` |
+| `.spec.mode` | 4 | 0.00% | `(has(self.polling)?1:0)+(has(self.trigger)?1:0) == 1` |
+| **Total** | **25** | **0.00%** | |
 
