@@ -35,6 +35,14 @@ const PreviousEnvironmentCommitStatusKey = "promoter-previous-environment"
 // DAG dependencies are satisfied.
 const DAGCommitStatusKey = "promoter-dag"
 
+// DryShaValidationCommitStatusKey is the commit status key name used to indicate that an
+// environment's dry commit has already been validated in a lower environment.
+const DryShaValidationCommitStatusKey = "promoter-dry-sha-validation"
+
+// DryShaValidationDefaultLookbackLimit is how many first-parent commits are scanned on each
+// upstream environment's active branch when spec.lookbackLimit is unset.
+const DryShaValidationDefaultLookbackLimit = 10
+
 // CommitStatusPreviousEnvironmentStatusesAnnotation is the label used to identify commit statuses that make up the aggregated active commit status
 const CommitStatusPreviousEnvironmentStatusesAnnotation = "promoter.argoproj.io/previous-environment-statuses"
 

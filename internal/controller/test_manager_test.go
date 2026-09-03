@@ -153,6 +153,12 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 		Recorder:    localMgr.GetEventRecorder("DAGCommitStatus"),
 		SettingsMgr: settingsMgr,
 	}).SetupWithManager(mgrCtx, localMgr)).To(Succeed())
+	Expect((&DryShaValidationCommitStatusReconciler{
+		Client:      localMgr.GetClient(),
+		Scheme:      localMgr.GetScheme(),
+		Recorder:    localMgr.GetEventRecorder("DryShaValidationCommitStatus"),
+		SettingsMgr: settingsMgr,
+	}).SetupWithManager(mgrCtx, localMgr)).To(Succeed())
 
 	Expect((&PromotionStrategyReconciler{
 		Client:      localMgr.GetClient(),

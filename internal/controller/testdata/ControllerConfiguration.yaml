@@ -138,6 +138,17 @@ spec:
           baseDelay: "500ms"
           maxDelay: "1m"
 
+  # DryShaValidationCommitStatus controller gates on whether the dry commit has already been
+  # promoted and observed healthy in a lower environment
+  dryShaValidationCommitStatus:
+    workQueue:
+      requeueDuration: "5m"
+      maxConcurrentReconciles: 5
+      rateLimiter:
+        exponentialFailure:
+          baseDelay: "500ms"
+          maxDelay: "1m"
+
   # TimedCommitStatus controller enforces soak-time gates via CommitStatus resources
   timedCommitStatus:
     workQueue:

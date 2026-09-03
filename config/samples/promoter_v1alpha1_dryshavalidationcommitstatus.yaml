@@ -1,0 +1,13 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: DryShaValidationCommitStatus
+metadata:
+  labels:
+    app.kubernetes.io/name: promoter
+    app.kubernetes.io/managed-by: kustomize
+  name: dryshavalidationcommitstatus-sample
+spec:
+  promotionStrategyRef:
+    name: promotionstrategy-sample
+  key: promoter-dry-sha-validation
+  # environments is optional; when omitted the PromotionStrategy's environment
+  # order is compiled into a chain.

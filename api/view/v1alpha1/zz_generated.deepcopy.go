@@ -94,6 +94,13 @@ func (in *PromotionStrategyDetails) DeepCopyInto(out *PromotionStrategyDetails) 
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.DryShaValidationCommitStatuses != nil {
+		in, out := &in.DryShaValidationCommitStatuses, &out.DryShaValidationCommitStatuses
+		*out = make([]apiv1alpha1.DryShaValidationCommitStatus, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	if in.ScheduledCommitStatuses != nil {
 		in, out := &in.ScheduledCommitStatuses, &out.ScheduledCommitStatuses
 		*out = make([]apiv1alpha1.ScheduledCommitStatus, len(*in))

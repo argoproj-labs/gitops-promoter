@@ -106,6 +106,19 @@ commit and are healthy. Declare the same `spec.key` in the PromotionStrategy's g
 {!internal/controller/testdata/DAGCommitStatus.yaml!}
 ```
 
+### DryShaValidationCommitStatus
+
+A DryShaValidationCommitStatus gates promotions on whether the dry commit an environment is promoting has **already
+been promoted and observed healthy in a lower environment** — at any point, not necessarily right now. That looser test
+keeps upper environments from starving when the dry branch moves faster than promotions complete. Like DAGCommitStatus
+it accepts an arbitrary acyclic `dependsOn` graph, and any lower environment (transitively) satisfies the gate. Declare
+the same `spec.key` in the PromotionStrategy's global `proposedCommitStatuses`. See
+[Dry Sha Validation Commit Status](gating-promotions/built-in-gates/dry-sha-validation-commit-status.md).
+
+```yaml
+{!internal/controller/testdata/DryShaValidationCommitStatus.yaml!}
+```
+
 ### ArgoCDCommitStatus
 
 An ArgoCDCommitStatus is used as a way to aggregate all the Argo CD Applications that are being used in the promotion strategy. It is used

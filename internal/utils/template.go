@@ -37,3 +37,17 @@ func RenderStringTemplate(templateStr string, data any, options ...string) (stri
 
 	return buf.String(), nil
 }
+
+// ValidateHTTPURL parses a rendered URL template and rejects anything an SCM will not render as a
+// details link. Commit status URLs come from user-supplied templates, so a template that renders a
+// javascript:, file: or relative URL must fail the reconcile rather than reach the SCM.
+func ValidateHTTPURL(rendered string) error {
+	parsedURL, err := url.Parse(rendered)
+	if err != nil {
+		return fmt.Errorf("failed to parse URL: %w", err)
+	}
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return fmt.Errorf("URL scheme is not http or https: %s", parsedURL.Scheme)
+	}
+	return nil
+}

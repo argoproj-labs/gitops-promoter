@@ -141,6 +141,12 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 	}
 	bundle.PreviousEnvironmentCommitStatuses = nilIfEmpty(prevEnvCSList.Items)
 
+	dryShaValidationCSList := &promoterv1alpha1.DryShaValidationCommitStatusList{}
+	if err := reader.List(ctx, dryShaValidationCSList, client.InNamespace(namespace), client.MatchingFields{controller.PromotionStrategyRefField: name}); err != nil {
+		return nil, fmt.Errorf("failed to list DryShaValidationCommitStatuses: %w", err)
+	}
+	bundle.DryShaValidationCommitStatuses = nilIfEmpty(dryShaValidationCSList.Items)
+
 	scheduledCSList := &promoterv1alpha1.ScheduledCommitStatusList{}
 	if err := reader.List(ctx, scheduledCSList, client.InNamespace(namespace), client.MatchingFields{controller.PromotionStrategyRefField: name}); err != nil {
 		return nil, fmt.Errorf("failed to list ScheduledCommitStatuses: %w", err)

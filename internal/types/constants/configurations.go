@@ -42,6 +42,10 @@ const (
 	// performed by the DAGCommitStatus controller.
 	DAGCommitStatusControllerFieldOwner = "promoter.argoproj.io/dagcommitstatus-controller"
 
+	// DryShaValidationCommitStatusControllerFieldOwner is the field owner for Server-Side Apply operations
+	// performed by the DryShaValidationCommitStatus controller.
+	DryShaValidationCommitStatusControllerFieldOwner = "promoter.argoproj.io/dryshavalidationcommitstatus-controller"
+
 	// ScmProviderControllerFieldOwner is the field owner for Server-Side Apply operations
 	// performed by the ScmProvider controller.
 	ScmProviderControllerFieldOwner = "promoter.argoproj.io/scmprovider-controller"

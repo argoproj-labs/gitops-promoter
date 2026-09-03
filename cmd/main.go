@@ -375,6 +375,15 @@ func runController(
 		setupLog.Error(err, "unable to create controller", "controller", "DAGCommitStatus")
 		panic(fmt.Errorf("unable to create DAGCommitStatus controller: %w", err))
 	}
+	if err := (&controller.DryShaValidationCommitStatusReconciler{
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorder("DryShaValidationCommitStatus"),
+		SettingsMgr: settingsMgr,
+	}).SetupWithManager(runCtx, localManager); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "DryShaValidationCommitStatus")
+		panic(fmt.Errorf("unable to create DryShaValidationCommitStatus controller: %w", err))
+	}
 	if err := (&controller.ScheduledCommitStatusReconciler{
 		Client:      localManager.GetClient(),
 		Scheme:      localManager.GetScheme(),

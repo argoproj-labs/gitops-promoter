@@ -93,6 +93,11 @@ type ControllerConfigurationSpec struct {
 	// +required
 	DAGCommitStatus DAGCommitStatusConfiguration `json:"dagCommitStatus"`
 
+	// DryShaValidationCommitStatus contains the configuration for the DryShaValidationCommitStatus controller,
+	// including WorkQueue settings that control reconciliation behavior.
+	// +required
+	DryShaValidationCommitStatus DryShaValidationCommitStatusConfiguration `json:"dryShaValidationCommitStatus"`
+
 	// ScheduledCommitStatus contains the configuration for the ScheduledCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	// +required
@@ -195,6 +200,17 @@ type PreviousEnvironmentCommitStatusConfiguration struct {
 // requests, including requeue intervals, concurrency limits, and rate limiting behavior.
 type DAGCommitStatusConfiguration struct {
 	// WorkQueue contains the work queue configuration for the DAGCommitStatus controller.
+	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+	// +required
+	WorkQueue WorkQueue `json:"workQueue"`
+}
+
+// DryShaValidationCommitStatusConfiguration defines the configuration for the DryShaValidationCommitStatus controller.
+//
+// This configuration controls how the DryShaValidationCommitStatus controller processes reconciliation
+// requests, including requeue intervals, concurrency limits, and rate limiting behavior.
+type DryShaValidationCommitStatusConfiguration struct {
+	// WorkQueue contains the work queue configuration for the DryShaValidationCommitStatus controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
 	WorkQueue WorkQueue `json:"workQueue"`

@@ -40,6 +40,9 @@ resources:
 - dagcommitstatus_admin_role.yaml
 - dagcommitstatus_editor_role.yaml
 - dagcommitstatus_viewer_role.yaml
+- dryshavalidationcommitstatus_admin_role.yaml
+- dryshavalidationcommitstatus_editor_role.yaml
+- dryshavalidationcommitstatus_viewer_role.yaml
 - previousenvironmentcommitstatus_admin_role.yaml
 - previousenvironmentcommitstatus_editor_role.yaml
 - previousenvironmentcommitstatus_viewer_role.yaml

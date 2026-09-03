@@ -103,6 +103,18 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.DAGCommitStatusStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("DAGEnvironment"):
 		return &apiv1alpha1.DAGEnvironmentApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DryShaValidationCommitStatus"):
+		return &apiv1alpha1.DryShaValidationCommitStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DryShaValidationCommitStatusConfiguration"):
+		return &apiv1alpha1.DryShaValidationCommitStatusConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DryShaValidationCommitStatusSpec"):
+		return &apiv1alpha1.DryShaValidationCommitStatusSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DryShaValidationCommitStatusStatus"):
+		return &apiv1alpha1.DryShaValidationCommitStatusStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DryShaValidationEnvironment"):
+		return &apiv1alpha1.DryShaValidationEnvironmentApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DryShaValidationEnvironmentStatus"):
+		return &apiv1alpha1.DryShaValidationEnvironmentStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("Environment"):
 		return &apiv1alpha1.EnvironmentApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("EnvironmentStatus"):

@@ -492,6 +492,100 @@ export type components = {
             /** @description DependsOn is the list of upstream branches this environment depends on. The environment is only eligible for promotion once every branch listed here is satisfied. An empty or omitted list makes this environment a root of the graph. Each item must not start with '-', contain ':', or contain '..'. */
             dependsOn?: string[];
         };
+        /** @description DryShaValidationCommitStatus is the Schema for the dryshavalidationcommitstatuses API */
+        DryShaValidationCommitStatus: {
+            /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
+            apiVersion?: string;
+            /** @description Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds */
+            kind?: string;
+            /**
+             * @description metadata is a standard object metadata
+             * @default {}
+             */
+            metadata?: components["schemas"]["ObjectMeta"];
+            /**
+             * @description spec defines the desired state of DryShaValidationCommitStatus
+             * @default {}
+             */
+            spec: components["schemas"]["DryShaValidationCommitStatusSpec"];
+            /**
+             * @description status defines the observed state of DryShaValidationCommitStatus
+             * @default {}
+             */
+            status?: components["schemas"]["DryShaValidationCommitStatusStatus"];
+        };
+        /** @description DryShaValidationCommitStatusSpec defines the desired state of DryShaValidationCommitStatus. */
+        DryShaValidationCommitStatusSpec: {
+            /** @description Environments declares the promotion dependency graph. Each entry names an environment branch and the lower branches it depends on; a dry commit validated in any of those (transitively) satisfies this environment. An entry with no dependsOn is a graph root and always passes. When omitted, a linear chain is derived from the referenced PromotionStrategy's spec.environments order (each environment depends on the one before it). The graph must be acyclic; cycles and references to unknown branches are rejected. */
+            environments?: components["schemas"]["DryShaValidationEnvironment"][];
+            /**
+             * @description Key is the commit status key referenced in the PromotionStrategy's proposedCommitStatuses. It must match a key declared there so the gate this controller produces is enforced. Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
+             * @default
+             */
+            key: string;
+            /**
+             * Format: int32
+             * @description LookbackLimit is how many first-parent commits to scan on each upstream environment's active branch when looking for the dry commit. A dry commit promoted longer ago than this many promotions in every upstream reads as unvalidated, and the gate stays pending.
+             */
+            lookbackLimit?: number;
+            /**
+             * @description PromotionStrategyRef is a reference to the PromotionStrategy this gate applies to. The controller watches it and, for each environment, reports whether the dry commit being promoted has already been validated in a lower environment.
+             * @default {}
+             */
+            promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /**
+             * @description URL generates the URL to use on the per-environment CommitStatus (SCM details link), for example a link into the Promoter UI that highlights this environment's upstreams. Optional; when empty, no URL is set on the child CommitStatus. The template receives .Environment, .DryShaValidationCommitStatus, .PromotionStrategy, .DependsOn and .DependsOnQuery (see controller docs).
+             * @default {}
+             */
+            url?: components["schemas"]["URLConfig"];
+        };
+        /** @description DryShaValidationCommitStatusStatus defines the observed state of DryShaValidationCommitStatus. */
+        DryShaValidationCommitStatusStatus: {
+            /** @description Conditions represent the latest available observations of an object's state */
+            conditions?: components["schemas"]["Condition"][];
+            /** @description Environments reports, per environment, the outcome of the most recent evaluation. The gate itself is enforced through the generated per-environment CommitStatus resources; this is the at-a-glance record of why each one is in the phase it is, because the evidence behind the decision lives in git history rather than in any API object. */
+            environments?: components["schemas"]["DryShaValidationEnvironmentStatus"][];
+            /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
+            instanceID?: string;
+            /**
+             * Format: int64
+             * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
+             */
+            observedGeneration?: number;
+        };
+        /** @description DryShaValidationEnvironment is a single node in the promotion dependency graph. */
+        DryShaValidationEnvironment: {
+            /**
+             * @description Branch is the name of the active branch for the environment. It must match a branch declared in the referenced PromotionStrategy's environments. Must not start with '-', contain ':', or contain '..'.
+             * @default
+             */
+            branch: string;
+            /** @description DependsOn is the list of lower branches this environment promotes after. The environment is eligible once its target dry commit has been validated in any of them, transitively. An empty or omitted list makes this environment a root of the graph. Each item must not start with '-', contain ':', or contain '..'. */
+            dependsOn?: string[];
+        };
+        /** @description DryShaValidationEnvironmentStatus is the most recent gate evaluation for one environment. */
+        DryShaValidationEnvironmentStatus: {
+            /**
+             * @description Branch is the environment's active branch.
+             * @default
+             */
+            branch: string;
+            /**
+             * Format: int32
+             * @description CommitsScanned is how many first-parent commits were walked in the upstream environments on the last evaluation, bounded by spec.lookbackLimit. It tells "not validated yet" apart from "validated, but it aged out of the lookback window".
+             */
+            commitsScanned?: number;
+            /** @description LastEvaluationTime is when this environment was last evaluated. */
+            lastEvaluationTime?: components["schemas"]["Time"];
+            /** @description Phase mirrors the phase written to this environment's generated CommitStatus. */
+            phase?: string;
+            /** @description TargetDrySha is the dry commit this environment is currently promoting, resolved from the hydrator note and falling back to the proposed dry SHA. Empty when nothing is in flight. Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats. */
+            targetDrySha?: string;
+            /** @description ValidatedAt is the commit time of the merge commit that made TargetDrySha active in ValidatedIn. Empty while the gate is pending. */
+            validatedAt?: components["schemas"]["Time"];
+            /** @description ValidatedIn is the lower environment branch whose history proved TargetDrySha was active and healthy there. Empty while the gate is pending. */
+            validatedIn?: string;
+        };
         /** @description Duration is a wrapper around time.Duration which supports correct marshaling to YAML and JSON. In particular, it marshals into strings, which can be used as map keys in json. */
         Duration: string;
         /** @description Environment defines a single environment in the promotion sequence. */
@@ -1308,6 +1402,8 @@ export type components = {
             commitStatuses?: components["schemas"]["CommitStatus"][];
             /** @description DAGCommitStatuses are the DAGCommitStatus managers that reference the PromotionStrategy. */
             dagCommitStatuses?: components["schemas"]["DAGCommitStatus"][];
+            /** @description DryShaValidationCommitStatuses are the DryShaValidationCommitStatus managers that reference the PromotionStrategy. */
+            dryShaValidationCommitStatuses?: components["schemas"]["DryShaValidationCommitStatus"][];
             /** @description GitCommitStatuses are the GitCommitStatus managers that reference the PromotionStrategy. */
             gitCommitStatuses?: components["schemas"]["GitCommitStatus"][];
             /** @description GitRepository is the GitRepository referenced by the PromotionStrategy, if resolvable. */

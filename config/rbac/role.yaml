@@ -41,6 +41,7 @@ rules:
   - promoter.argoproj.io
   resources:
   - argocdcommitstatuses
+  - dryshavalidationcommitstatuses
   - gitcommitstatuses
   - previousenvironmentcommitstatuses
   - promotionstrategies
@@ -59,6 +60,7 @@ rules:
   - changetransferpolicies/finalizers
   - clusterscmproviders/finalizers
   - dagcommitstatuses/finalizers
+  - dryshavalidationcommitstatuses/finalizers
   - gitcommitstatuses/finalizers
   - gitrepositories/finalizers
   - previousenvironmentcommitstatuses/finalizers
@@ -78,6 +80,7 @@ rules:
   - clusterscmproviders/status
   - commitstatuses/status
   - dagcommitstatuses/status
+  - dryshavalidationcommitstatuses/status
   - gitcommitstatuses/status
   - gitrepositories/status
   - previousenvironmentcommitstatuses/status

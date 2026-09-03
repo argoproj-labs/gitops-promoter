@@ -236,6 +236,41 @@ func (in DAGEnvironment) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DryShaValidationCommitStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DryShaValidationCommitStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DryShaValidationCommitStatusConfiguration) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DryShaValidationCommitStatusConfiguration"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DryShaValidationCommitStatusList) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DryShaValidationCommitStatusList"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DryShaValidationCommitStatusSpec) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DryShaValidationCommitStatusSpec"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DryShaValidationCommitStatusStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DryShaValidationCommitStatusStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DryShaValidationEnvironment) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DryShaValidationEnvironment"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DryShaValidationEnvironmentStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DryShaValidationEnvironmentStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in Environment) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.Environment"
 }

@@ -178,7 +178,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// produces is never consumed, and the user's intended ordering silently does not apply. We
 	// hard-fail the reconcile so the misconfiguration surfaces instead of being ignored.
 	// TODO: remove this safety check in 1.0.
-	if err = r.checkDAGCommitStatusKeysDeclared(ctx, &ps); err != nil {
+	if err = r.checkOrderingGateKeysDeclared(ctx, &ps); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -263,29 +263,39 @@ func (r *PromotionStrategyReconciler) SetupWithManager(ctx context.Context, mgr 
 	return nil
 }
 
-// checkDAGCommitStatusKeysDeclared verifies that this PromotionStrategy has valid promotion
+// orderingGate is one promotion-ordering gate found targeting a PromotionStrategy: the kind and
+// name identify it in error messages, and key is what must appear in proposedCommitStatuses.
+type orderingGate struct {
+	kind string
+	name string
+	key  string
+}
+
+// checkOrderingGateKeysDeclared verifies that this PromotionStrategy has valid promotion
 // ordering configured. It hard-fails the reconcile (surfacing the misconfiguration instead of
 // silently promoting environments out of order) in two cases:
 //
-//   - No DAGCommitStatus targets the PromotionStrategy. A PreviousEnvironmentCommitStatus
-//     generates a chain-shaped DAGCommitStatus as its gate, so an empty list means neither
+//   - No ordering gate targets the PromotionStrategy. A PreviousEnvironmentCommitStatus
+//     generates a chain-shaped DAGCommitStatus as its gate, so an empty list means no
 //     ordering mechanism is configured and no ordering applies at all.
-//   - A DAGCommitStatus targets the PromotionStrategy but its key is not declared in the PS's
+//   - An ordering gate targets the PromotionStrategy but its key is not declared in the PS's
 //     global proposedCommitStatuses, so the gate it produces is never consumed and the intended
 //     ordering silently does not apply.
 //
+// A DryShaValidationCommitStatus counts as ordering in its own right: it orders promotions by
+// whether a lower environment has already run the dry commit, rather than by whether one is
+// running it right now, so a PromotionStrategy gated only by it is correctly configured.
+//
 // TODO: remove this safety check in 1.0.
-func (r *PromotionStrategyReconciler) checkDAGCommitStatusKeysDeclared(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy) error {
-	var dcsList promoterv1alpha1.DAGCommitStatusList
-	if err := r.List(ctx, &dcsList,
-		client.InNamespace(ps.Namespace),
-		client.MatchingFields{PromotionStrategyRefField: ps.Name}); err != nil {
-		return fmt.Errorf("failed to list DAGCommitStatuses for PromotionStrategy %q: %w", ps.Name, err)
+func (r *PromotionStrategyReconciler) checkOrderingGateKeysDeclared(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy) error {
+	gates, err := r.listOrderingGates(ctx, ps)
+	if err != nil {
+		return err
 	}
 
-	if len(dcsList.Items) < 1 {
+	if len(gates) < 1 {
 		return fmt.Errorf("PromotionStrategy %q has no DAGCommitStatus (or PreviousEnvironmentCommitStatus, "+
-			"which generates one); configure one so promotion ordering is enforced", ps.Name)
+			"which generates one) and no DryShaValidationCommitStatus; configure one so promotion ordering is enforced", ps.Name)
 	}
 
 	declared := make(map[string]bool, len(ps.Spec.ProposedCommitStatuses))
@@ -293,16 +303,42 @@ func (r *PromotionStrategyReconciler) checkDAGCommitStatusKeysDeclared(ctx conte
 		declared[sel.Key] = true
 	}
 
-	for i := range dcsList.Items {
-		key := dcsList.Items[i].Spec.Key
-		if !declared[key] {
-			return fmt.Errorf("DAGCommitStatus %q references PromotionStrategy %q with key %q, "+
+	for _, gate := range gates {
+		if !declared[gate.key] {
+			return fmt.Errorf("%s %q references PromotionStrategy %q with key %q, "+
 				"but that key is not in the PromotionStrategy's proposedCommitStatuses; add it so the gate is enforced",
-				dcsList.Items[i].Name, ps.Name, key)
+				gate.kind, gate.name, ps.Name, gate.key)
 		}
 	}
 
 	return nil
+}
+
+// listOrderingGates returns every promotion-ordering gate targeting the PromotionStrategy.
+func (r *PromotionStrategyReconciler) listOrderingGates(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy) ([]orderingGate, error) {
+	inStrategy := []client.ListOption{
+		client.InNamespace(ps.Namespace),
+		client.MatchingFields{PromotionStrategyRefField: ps.Name},
+	}
+
+	var dcsList promoterv1alpha1.DAGCommitStatusList
+	if err := r.List(ctx, &dcsList, inStrategy...); err != nil {
+		return nil, fmt.Errorf("failed to list DAGCommitStatuses for PromotionStrategy %q: %w", ps.Name, err)
+	}
+
+	var dsvcsList promoterv1alpha1.DryShaValidationCommitStatusList
+	if err := r.List(ctx, &dsvcsList, inStrategy...); err != nil {
+		return nil, fmt.Errorf("failed to list DryShaValidationCommitStatuses for PromotionStrategy %q: %w", ps.Name, err)
+	}
+
+	gates := make([]orderingGate, 0, len(dcsList.Items)+len(dsvcsList.Items))
+	for i := range dcsList.Items {
+		gates = append(gates, orderingGate{kind: "DAGCommitStatus", name: dcsList.Items[i].Name, key: dcsList.Items[i].Spec.Key})
+	}
+	for i := range dsvcsList.Items {
+		gates = append(gates, orderingGate{kind: "DryShaValidationCommitStatus", name: dsvcsList.Items[i].Name, key: dsvcsList.Items[i].Spec.Key})
+	}
+	return gates, nil
 }
 
 func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, environment promoterv1alpha1.Environment) (*promoterv1alpha1.ChangeTransferPolicy, error) {

@@ -23,6 +23,7 @@ rules:
       - scheduledcommitstatuses
       - previousenvironmentcommitstatuses
       - dagcommitstatuses
+      - dryshavalidationcommitstatuses
       - gitrepositories
       - scmproviders
       - clusterscmproviders

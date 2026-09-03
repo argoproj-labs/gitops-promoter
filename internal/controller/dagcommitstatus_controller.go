@@ -105,6 +105,8 @@ type DAGCommitStatusReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/reconcile
+//
+//nolint:dupl // The fetch/validate/requeue lifecycle mirrors DryShaValidationCommitStatus by design; extracting it would couple the two controllers and require generics.
 func (r *DAGCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := logf.FromContext(ctx)
 	logger.Info("Reconciling DAGCommitStatus")
@@ -533,6 +535,8 @@ func (g *dag) validateEnvironmentsMatchPS(dcsName string, ps *promoterv1alpha1.P
 //   - a dependency cycle (the branches in the cycle can never all be satisfied).
 //
 // Surfacing either as an error is clearer than letting the depending environment hang.
+//
+//nolint:dupl // Mirrors DryShaValidationCommitStatus's cycle detection by design; sharing it would couple the two controllers.
 func (g *dag) validateDAG() error {
 	// Every dependsOn must resolve to a declared branch.
 	for _, branch := range g.branches {

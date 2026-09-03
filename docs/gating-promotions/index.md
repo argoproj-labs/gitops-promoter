@@ -198,6 +198,9 @@ Promotion ordering is required for every PromotionStrategy. Use one of:
 - [PreviousEnvironmentCommitStatus](built-in-gates/previous-environment-commit-status.md) — linear pipelines
   (dev → staging → prod). Generates a chain-shaped [DAGCommitStatus](built-in-gates/dag-commit-status.md).
 - [DAGCommitStatus](built-in-gates/dag-commit-status.md) — arbitrary directed acyclic graphs.
+- [DryShaValidationCommitStatus](built-in-gates/dry-sha-validation-commit-status.md) — arbitrary directed acyclic
+  graphs, gated on whether a lower environment has *ever* run the dry commit rather than whether it is running it now.
+  Use it when a fast-moving dry branch starves the upper environments.
 
 Declare the gate `key` in the PromotionStrategy's global `proposedCommitStatuses`. See those pages for wiring details.
 

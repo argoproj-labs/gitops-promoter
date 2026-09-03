@@ -1,0 +1,56 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: DryShaValidationCommitStatus
+metadata:
+  name: dryshavalidationcommitstatus-sample
+spec:
+  # Gate key for PromotionStrategy.spec.proposedCommitStatuses
+  key: promoter-dry-sha-validation
+  promotionStrategyRef:
+    name: example-promotion-strategy
+  # How many first-parent commits to walk on each lower environment's active branch when looking
+  # for the dry commit. A promotion older than this reads as unvalidated.
+  lookbackLimit: 10
+  # Optional. When omitted, the referenced PromotionStrategy's environment order is compiled into a
+  # chain. Declared here as a diamond: dev fans out to e2e and perf, which fan in to prod.
+  environments:
+    - branch: environment/dev
+    - branch: environment/e2e
+      dependsOn:
+        - environment/dev
+    - branch: environment/perf
+      dependsOn:
+        - environment/dev
+    - branch: environment/prod
+      dependsOn:
+        - environment/e2e
+        - environment/perf
+  # Optional SCM details URL on each per-environment gate CommitStatus
+  url:
+    template: "https://promoter.example.com/promotion-strategies/{{ .PromotionStrategy.Name }}?env={{ urlQueryEscape .Environment }}"
+status:
+  observedGeneration: 123 # compare with metadata.generation to detect stale status
+  # The most recent evaluation per environment. The evidence behind each decision lives in git
+  # history, so this is where you look to see why a gate is in the phase it is.
+  environments:
+    - branch: environment/dev
+      # A graph root: nothing below it to validate against, so it always passes.
+      phase: success
+      lastEvaluationTime: 2023-10-01T00:00:00Z
+    - branch: environment/prod
+      targetDrySha: 9f2c1ab4e7d05c3182a6b40fe9c7d8135a0b6e42
+      phase: success
+      validatedIn: environment/e2e # the lower environment whose history proved the dry commit healthy
+      validatedAt: 2023-10-01T00:00:00Z # when the promotion that validated it landed there
+      commitsScanned: 10 # tells "not validated yet" apart from "aged out of the lookback window"
+      lastEvaluationTime: 2023-10-01T00:00:00Z
+  conditions:
+    # The Ready condition indicates that the resource has been successfully reconciled, when there is an error during
+    # reconciliation, the condition will be False with a reason of ReconciliationError. When we successfully reconcile the resource,
+    # the condition will be True with a reason of ReconciliationSuccess. The Ready condition is essentially a way to show reconciliation
+    # errors to the user. This condition exists on all resources that have reconciliation logic.
+    - type: Ready
+      lastTransitionTime: 2023-10-01T00:00:00Z
+      message: Reconciliation succeeded
+      reason: ReconciliationSuccess # ReconciliationSuccess or ReconciliationError
+      status: "True" # "True," "False," or "Unknown"
+      observedGeneration: 123

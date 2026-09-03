@@ -66,6 +66,9 @@ type ControllerConfigurationSpecApplyConfiguration struct {
 	// DAGCommitStatus contains the configuration for the DAGCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	DAGCommitStatus *DAGCommitStatusConfigurationApplyConfiguration `json:"dagCommitStatus,omitempty"`
+	// DryShaValidationCommitStatus contains the configuration for the DryShaValidationCommitStatus controller,
+	// including WorkQueue settings that control reconciliation behavior.
+	DryShaValidationCommitStatus *DryShaValidationCommitStatusConfigurationApplyConfiguration `json:"dryShaValidationCommitStatus,omitempty"`
 	// ScheduledCommitStatus contains the configuration for the ScheduledCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	ScheduledCommitStatus *ScheduledCommitStatusConfigurationApplyConfiguration `json:"scheduledCommitStatus,omitempty"`
@@ -162,6 +165,14 @@ func (b *ControllerConfigurationSpecApplyConfiguration) WithPreviousEnvironmentC
 // If called multiple times, the DAGCommitStatus field is set to the value of the last call.
 func (b *ControllerConfigurationSpecApplyConfiguration) WithDAGCommitStatus(value *DAGCommitStatusConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
 	b.DAGCommitStatus = value
+	return b
+}
+
+// WithDryShaValidationCommitStatus sets the DryShaValidationCommitStatus field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the DryShaValidationCommitStatus field is set to the value of the last call.
+func (b *ControllerConfigurationSpecApplyConfiguration) WithDryShaValidationCommitStatus(value *DryShaValidationCommitStatusConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
+	b.DryShaValidationCommitStatus = value
 	return b
 }
 
