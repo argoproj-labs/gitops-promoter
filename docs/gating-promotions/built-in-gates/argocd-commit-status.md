@@ -51,7 +51,7 @@ metadata:
   name: argocon-demo
 spec:
   proposedCommitStatuses:
-    - key: promoter-previous-environment # required ordering gate; see PreviousEnvironmentCommitStatus
+    - key: promoter-dag # required ordering gate; see DAGCommitStatus
   activeCommitStatuses:
     - key: argocd-health  # same as ArgoCDCommitStatus.spec.key
   environments:

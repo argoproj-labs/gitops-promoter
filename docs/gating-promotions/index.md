@@ -17,7 +17,7 @@ to the commit hash of the active change in the live environment branch.
 
 Promotion ordering (which environments may promote relative to others) is also expressed as a proposed commit
 status. It is **not** injected automatically: you must create a
-[PreviousEnvironmentCommitStatus](built-in-gates/previous-environment-commit-status.md) (linear pipelines) or a
+[DAGCommitStatus](built-in-gates/dag-commit-status.md) (linear pipelines) or a
 [DAGCommitStatus](built-in-gates/dag-commit-status.md) (arbitrary graphs) and declare its `key` in the
 PromotionStrategy's global `proposedCommitStatuses`. Without an ordering gate, the PromotionStrategy controller fails
 its reconcile so environments cannot promote out of order by accident.
@@ -33,7 +33,7 @@ metadata:
   name: demo
 spec:
   proposedCommitStatuses:
-    - key: promoter-previous-environment # ordering gate; must match PreviousEnvironmentCommitStatus.spec.key
+    - key: promoter-dag # ordering gate; must match DAGCommitStatus.spec.key
   activeCommitStatuses:
     - key: healthy
   environments:
@@ -43,18 +43,18 @@ spec:
       proposedCommitStatuses:
         - key: deployment-freeze
 ---
-kind: PreviousEnvironmentCommitStatus
+kind: DAGCommitStatus
 metadata:
   name: demo
 spec:
-  key: promoter-previous-environment
+  key: promoter-dag
   promotionStrategyRef:
     name: demo
 ```
 
 In this example, the PromotionStrategy has three environments: `environment/dev`, `environment/test`, and `environment/prod`.
 All environments have a `healthy` active commit status check and the linear ordering gate
-`promoter-previous-environment`. The `environment/prod` environment has an additional `deployment-freeze` proposed
+`promoter-dag`. The `environment/prod` environment has an additional `deployment-freeze` proposed
 commit status check.
 
 Suppose the environment branches have been hydrated from the `main` branch and that the branches have the following
@@ -100,7 +100,7 @@ spec:
 kind: CommitStatus
 metadata:
   labels:
-    promoter.argoproj.io/commit-status: promoter-previous-environment
+    promoter.argoproj.io/commit-status: promoter-dag
 spec:
   sha: d0e1f2  # environment/test-next
   phase: success
@@ -108,7 +108,7 @@ spec:
 kind: CommitStatus
 metadata:
   labels:
-    promoter.argoproj.io/commit-status: promoter-previous-environment
+    promoter.argoproj.io/commit-status: promoter-dag
 spec:
   sha: d6e7f8  # environment/prod-next
   phase: success
@@ -142,7 +142,7 @@ proposed commit status: the CTP waits for a CommitStatus whose `promoter.argopro
 ordering key and whose `spec.sha` matches the proposed hydrated SHA.
 
 Those ordering CommitStatuses are written by the [DAGCommitStatus](built-in-gates/dag-commit-status.md) controller.
-[PreviousEnvironmentCommitStatus](built-in-gates/previous-environment-commit-status.md) is a thin adapter that generates
+[DAGCommitStatus](built-in-gates/dag-commit-status.md) is a thin adapter that generates
 a chain-shaped DAGCommitStatus from the PromotionStrategy's environment list (in spec order). The DAG controller
 evaluates upstream environments (same dry commit promoted and healthy) and sets `phase` accordingly.
 
@@ -158,7 +158,7 @@ spec:
     # will be stored on the 
     - key: healthy
   proposedCommitStatuses:
-    - key: promoter-previous-environment
+    - key: promoter-dag
 ```
 
 When the previous environment (`environment/dev`) has promoted the same dry commit and is healthy, the ordering
@@ -168,7 +168,7 @@ CommitStatus for test looks like this:
 kind: CommitStatus
 metadata:
   labels:
-    promoter.argoproj.io/commit-status: promoter-previous-environment
+    promoter.argoproj.io/commit-status: promoter-dag
 spec:
   sha: d0e1f2  # environment/test-next
   phase: success
@@ -176,7 +176,7 @@ spec:
 
 The SHA is the proposed hydrated SHA of the environment being gated (`environment/test-next`). Phase is `success`
 when the previous environment has promoted the same dry commit and is healthy. In this linear example,
-PreviousEnvironmentCommitStatus produces that CommitStatus via the DAGCommitStatus it generates.
+DAGCommitStatus produces that CommitStatus via the DAGCommitStatus it generates.
 
 #### Previous Environment CommitStatus URL
 
@@ -195,7 +195,7 @@ GitOps Promoter ships built-in gate controllers that create and manage `CommitSt
 
 Promotion ordering is required for every PromotionStrategy. Use one of:
 
-- [PreviousEnvironmentCommitStatus](built-in-gates/previous-environment-commit-status.md) — linear pipelines
+- [DAGCommitStatus](built-in-gates/dag-commit-status.md) — linear pipelines
   (dev → staging → prod). Generates a chain-shaped [DAGCommitStatus](built-in-gates/dag-commit-status.md).
 - [DAGCommitStatus](built-in-gates/dag-commit-status.md) — arbitrary directed acyclic graphs.
 

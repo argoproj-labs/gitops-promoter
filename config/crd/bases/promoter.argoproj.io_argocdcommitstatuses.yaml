@@ -148,7 +148,7 @@ spec:
                       with options (url.options) to control behavior when a variable is not present.
 
                       Available template variables depend on the parent resource that embeds URLConfig
-                      (ArgoCDCommitStatus, DAGCommitStatus, or PreviousEnvironmentCommitStatus). See the
+                      (ArgoCDCommitStatus or DAGCommitStatus). See the
                       corresponding gate documentation for the variable set and examples.
                     type: string
                 type: object

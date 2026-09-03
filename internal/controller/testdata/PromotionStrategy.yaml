@@ -8,8 +8,8 @@ spec:
   activeCommitStatuses:
     - key: argocd-app-health
   proposedCommitStatuses:
-    # Ordering gate key; must match PreviousEnvironmentCommitStatus.spec.key or DAGCommitStatus.spec.key
-    - key: promoter-previous-environment
+    # Ordering gate key; must match DAGCommitStatus.spec.key
+    - key: promoter-dag
     - key: security-scan
   environments:
     - branch: environment/dev

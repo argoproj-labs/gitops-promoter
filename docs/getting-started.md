@@ -491,9 +491,9 @@ The PromotionStrategy resource is the main resource that you will use to configu
 
 Promotion ordering is **not** injected automatically. For the common linear
 dev → staging → production pipeline, create a
-[PreviousEnvironmentCommitStatus](gating-promotions/built-in-gates/previous-environment-commit-status.md)
+[DAGCommitStatus](gating-promotions/built-in-gates/dag-commit-status.md)
 and declare its `key` on the PromotionStrategy. Without an ordering gate
-(PreviousEnvironmentCommitStatus or
+(DAGCommitStatus or
 [DAGCommitStatus](gating-promotions/built-in-gates/dag-commit-status.md)), the
 PromotionStrategy controller fails its reconcile so environments cannot promote
 out of order by accident.
@@ -507,7 +507,7 @@ metadata:
   name: demo
 spec:
   proposedCommitStatuses:
-  - key: promoter-previous-environment # must match PreviousEnvironmentCommitStatus.spec.key
+  - key: promoter-dag # must match DAGCommitStatus.spec.key
   environments:
   - autoMerge: false
     branch: environment/development
@@ -519,11 +519,11 @@ spec:
     name: <git-repository-ref-name> # The name of the GitRepository resource
 ---
 apiVersion: promoter.argoproj.io/v1alpha1
-kind: PreviousEnvironmentCommitStatus
+kind: DAGCommitStatus
 metadata:
   name: demo
 spec:
-  key: promoter-previous-environment
+  key: promoter-dag
   promotionStrategyRef:
     name: demo
 ```
@@ -539,7 +539,7 @@ spec:
 > [!TIP]
 > For non-linear promotion graphs, use a
 > [DAGCommitStatus](gating-promotions/built-in-gates/dag-commit-status.md) instead of
-> PreviousEnvironmentCommitStatus.
+> DAGCommitStatus.
 
 > [!TIP]
 > For monorepos, you can share a single active branch across multiple PromotionStrategies by setting

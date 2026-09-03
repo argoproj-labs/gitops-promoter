@@ -40,9 +40,6 @@ resources:
 - dagcommitstatus_admin_role.yaml
 - dagcommitstatus_editor_role.yaml
 - dagcommitstatus_viewer_role.yaml
-- previousenvironmentcommitstatus_admin_role.yaml
-- previousenvironmentcommitstatus_editor_role.yaml
-- previousenvironmentcommitstatus_viewer_role.yaml
 - gitcommitstatus_admin_role.yaml
 - gitcommitstatus_editor_role.yaml
 - gitcommitstatus_viewer_role.yaml

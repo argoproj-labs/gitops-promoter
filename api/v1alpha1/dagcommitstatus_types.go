@@ -45,8 +45,11 @@ type DAGCommitStatusSpec struct {
 	// and the upstream branches it depends on. An environment becomes eligible for promotion once
 	// all of its dependsOn upstreams are satisfied. An entry with no dependsOn is a graph root.
 	// The graph must be acyclic; cycles and references to unknown branches are rejected.
-	// +required
-	// +kubebuilder:validation:MinItems:=1
+	//
+	// When omitted or empty, the controller infers a linear chain from the referenced
+	// PromotionStrategy's spec.environments order: the first environment is a root, and each
+	// subsequent environment dependsOn the one before it.
+	// +optional
 	// +kubebuilder:validation:MaxItems:=1000
 	// +listType:=map
 	// +listMapKey=branch

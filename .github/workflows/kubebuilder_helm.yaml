@@ -47,8 +47,8 @@ jobs:
       - name: Update example blocks from generated CRDs
         run: |
           # URLConfig godoc examples contain Go text/templates with {{ }}. Helm would
-          # otherwise execute them while linting CRDs that embed URLConfig (ArgoCD, DAG, PECS).
-          for crd in argocdcommitstatuses dagcommitstatuses previousenvironmentcommitstatuses; do
+          # otherwise execute them while linting CRDs that embed URLConfig (ArgoCD, DAG).
+          for crd in argocdcommitstatuses dagcommitstatuses; do
             sed -i 's/{{- if eq \(.Environment\)/{{ `{{- if eq .Environment` }}/g; s/{{- else if eq \(.Environment\)/{{ `{{- else if eq .Environment` }}/g; s/{{- end -}}/{{ `{{- end -}}` }}/g; s/{{- range \$key, \$value := \.ArgoCDCommitStatus/{{ `{{- range $key, $value := .ArgoCDCommitStatus` }}/g' "tmp_chart/chart/templates/crd/${crd}.promoter.argoproj.io.yaml"
           done
           # Kubebuilder leaves {{ range }}/{{ if }} in urlTemplate example as real Helm actions; wrap as a raw string (same pattern as ArgoCD CRD above).

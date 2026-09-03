@@ -12,13 +12,29 @@ and writes a per-environment `CommitStatus` (the gate) that reports whether that
 upstream dependencies are satisfied.
 
 > [!IMPORTANT]
-> The gate is not created or injected automatically. You must create a DAGCommitStatus (or a
-> [PreviousEnvironmentCommitStatus](previous-environment-commit-status.md), which generates one for
-> the linear case) for each PromotionStrategy you want to gate, and add its `key` to that
-> PromotionStrategy's global `proposedCommitStatuses`. See [Wiring the gate into the
+> The gate is not created or injected automatically. You must create a `DAGCommitStatus` for each
+> PromotionStrategy you want to gate, and add its `key` to that PromotionStrategy's global
+> `proposedCommitStatuses`. See [Wiring the gate into the
 > PromotionStrategy](#wiring-the-gate-into-the-promotionstrategy) below.
 
-## Example Configuration
+## Linear default (no graph)
+
+For a standard linear pipeline (dev → staging → prod), omit `spec.environments`. The controller
+infers a chain from the referenced PromotionStrategy's `spec.environments` order: the first
+environment is a root, and each subsequent environment `dependsOn` the one before it.
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: DAGCommitStatus
+metadata:
+  name: demo
+spec:
+  key: promoter-dag
+  promotionStrategyRef:
+    name: demo
+```
+
+## Custom graph example
 
 A diamond graph — `dev` fans out to `e2e` and `perf`, which fan back in to `prod`:
 
@@ -47,10 +63,12 @@ spec:
 
 ### `spec.environments`
 
-Declares the promotion dependency graph. Each entry names an environment `branch` and the upstream
-`dependsOn` branches it waits on. An entry with no `dependsOn` is a graph root (for example `dev`
-above). The set of `branch` values must exactly match the referenced PromotionStrategy's
-`environments`. The graph must be acyclic; cycles and references to unknown branches are rejected.
+Declares the promotion dependency graph. **Optional** — when omitted or empty, the controller
+infers a linear chain from the PromotionStrategy's `spec.environments` order. When set, each entry
+names an environment `branch` and the upstream `dependsOn` branches it waits on. An entry with no
+`dependsOn` is a graph root (for example `dev` below). The set of `branch` values must exactly
+match the referenced PromotionStrategy's `environments`. The graph must be acyclic; cycles and
+references to unknown branches are rejected.
 
 ### `spec.key`
 

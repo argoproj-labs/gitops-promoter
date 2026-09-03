@@ -6,4 +6,6 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: dagcommitstatus-sample
 spec:
-  # TODO(user): Add fields here
+  key: promoter-dag
+  promotionStrategyRef:
+    name: promotionstrategy-sample

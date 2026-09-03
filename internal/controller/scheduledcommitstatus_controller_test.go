@@ -54,7 +54,7 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 			{Key: "promotion-window"},
 		}
 		// PS hard-fails without an ordering gate; declare and create PECS like other gate tests.
-		declarePreviousEnvironmentGate(promotionStrategy)
+		declareDAGGate(promotionStrategy)
 
 		setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
@@ -62,13 +62,13 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-		createPreviousEnvironmentCommitStatus(ctx, promotionStrategy)
+		createDAGCommitStatus(ctx, promotionStrategy)
 	})
 
 	AfterAll(func() {
 		By("Cleaning up test resources")
 		if promotionStrategy != nil {
-			_ = k8sClient.Delete(ctx, &promoterv1alpha1.PreviousEnvironmentCommitStatus{
+			_ = k8sClient.Delete(ctx, &promoterv1alpha1.DAGCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{Name: promotionStrategy.Name, Namespace: promotionStrategy.Namespace},
 			})
 			_ = k8sClient.Delete(ctx, promotionStrategy)
@@ -404,7 +404,7 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 			keyPS.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 				{Key: customKey},
 			}
-			declarePreviousEnvironmentGate(keyPS)
+			declareDAGGate(keyPS)
 
 			setupInitialTestGitRepoOnServer(keyCtx, keyGitRepo)
 
@@ -412,7 +412,7 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 			Expect(k8sClient.Create(keyCtx, keyScmProv)).To(Succeed())
 			Expect(k8sClient.Create(keyCtx, keyGitRepo)).To(Succeed())
 			Expect(k8sClient.Create(keyCtx, keyPS)).To(Succeed())
-			createPreviousEnvironmentCommitStatus(keyCtx, keyPS)
+			createDAGCommitStatus(keyCtx, keyPS)
 
 			keyPwcs = &promoterv1alpha1.ScheduledCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
@@ -439,7 +439,7 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 
 		AfterEach(func() {
 			_ = k8sClient.Delete(keyCtx, keyPwcs)
-			_ = k8sClient.Delete(keyCtx, &promoterv1alpha1.PreviousEnvironmentCommitStatus{
+			_ = k8sClient.Delete(keyCtx, &promoterv1alpha1.DAGCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{Name: keyPS.Name, Namespace: keyPS.Namespace},
 			})
 			_ = k8sClient.Delete(keyCtx, keyPS)
@@ -541,7 +541,7 @@ var _ = Describe("ScheduledCommitStatus Controller - Branch Mismatch", Ordered, 
 		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 			{Key: "promotion-window"},
 		}
-		declarePreviousEnvironmentGate(promotionStrategy)
+		declareDAGGate(promotionStrategy)
 
 		setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
@@ -549,7 +549,7 @@ var _ = Describe("ScheduledCommitStatus Controller - Branch Mismatch", Ordered, 
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-		createPreviousEnvironmentCommitStatus(ctx, promotionStrategy)
+		createDAGCommitStatus(ctx, promotionStrategy)
 	})
 
 	AfterAll(func() {
@@ -557,7 +557,7 @@ var _ = Describe("ScheduledCommitStatus Controller - Branch Mismatch", Ordered, 
 			_ = k8sClient.Delete(ctx, scs)
 		}
 		if promotionStrategy != nil {
-			_ = k8sClient.Delete(ctx, &promoterv1alpha1.PreviousEnvironmentCommitStatus{
+			_ = k8sClient.Delete(ctx, &promoterv1alpha1.DAGCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{Name: promotionStrategy.Name, Namespace: promotionStrategy.Namespace},
 			})
 			_ = k8sClient.Delete(ctx, promotionStrategy)

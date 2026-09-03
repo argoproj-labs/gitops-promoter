@@ -41,8 +41,8 @@ const (
 	ChangeTransferPolicyNotReady CommonReason = "ChangeTransferPolicyNotReady"
 )
 
-// Reasons that apply to PreviousEnvironmentCommitStatus.
+// Reasons that apply to DAGCommitStatus.
 const (
-	// DAGCommitStatusNotReady is the reason when an owned DAGCommitStatus is not Ready.
+	// DAGCommitStatusNotReady is the reason when owned CommitStatuses are not Ready.
 	DAGCommitStatusNotReady CommonReason = "DAGCommitStatusNotReady"
 )

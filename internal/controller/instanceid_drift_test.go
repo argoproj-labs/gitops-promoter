@@ -170,21 +170,21 @@ func setupInstanceIDDriftPromotionStrategy(ctx context.Context) (utils.PromoterR
 			// Ordering gate must be declared so reconcile reaches ensureControllerInstanceIDStable
 			// instead of hard-failing earlier on a missing DAGCommitStatus.
 			ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{
-				{Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey},
+				{Key: promoterv1alpha1.DAGCommitStatusKey},
 			},
 		},
 	}
 	Expect(k8sClient.Create(ctx, ps)).To(Succeed())
-	pecs := &promoterv1alpha1.PreviousEnvironmentCommitStatus{
+	dcs := &promoterv1alpha1.DAGCommitStatus{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
-		Spec: promoterv1alpha1.PreviousEnvironmentCommitStatusSpec{
+		Spec: promoterv1alpha1.DAGCommitStatusSpec{
 			PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
-			Key:                  promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+			Key:                  promoterv1alpha1.DAGCommitStatusKey,
 		},
 	}
-	Expect(k8sClient.Create(ctx, pecs)).To(Succeed())
+	Expect(k8sClient.Create(ctx, dcs)).To(Succeed())
 	return ps, key, func() {
-		deleteIgnoringNotFound(ctx, pecs)
+		deleteIgnoringNotFound(ctx, dcs)
 		deleteIgnoringNotFound(ctx, ps)
 	}
 }

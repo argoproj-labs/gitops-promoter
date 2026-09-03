@@ -13,11 +13,10 @@ Estimated static CEL costs versus kube-apiserver limits, computed from `k8s.io/a
 | ChangeTransferPolicy | v1alpha1 | 56,623,293 | 56.62% |
 | ClusterScmProvider | v1alpha1 | 21 | 0.00% |
 | CommitStatus | v1alpha1 | 3 | 0.00% |
-| ControllerConfiguration | v1alpha1 | 352 | 0.00% |
+| ControllerConfiguration | v1alpha1 | 320 | 0.00% |
 | DAGCommitStatus | v1alpha1 | 13,392,000 | 13.39% |
 | GitCommitStatus | v1alpha1 | 0 | 0.00% |
 | GitRepository | v1alpha1 | 14 | 0.00% |
-| PreviousEnvironmentCommitStatus | v1alpha1 | 0 | 0.00% |
 | PromotionStrategy | v1alpha1 | 72,438,744 | 72.44% |
 | PullRequest | v1alpha1 | 394 | 0.00% |
 | RevertCommit | v1alpha1 | 0 | 0.00% |
@@ -113,7 +112,6 @@ Source: `promoter.argoproj.io_controllerconfigurations.yaml`
 | `.spec.commitStatus.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.dagCommitStatus.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.gitCommitStatus.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
-| `.spec.previousEnvironmentCommitStatus.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.promotionStrategy.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.pullRequest.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.scheduledCommitStatus.workQueue.rateLimiter.maxOf[]` | 18 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
@@ -124,7 +122,6 @@ Source: `promoter.argoproj.io_controllerconfigurations.yaml`
 | `.spec.commitStatus.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
 | `.spec.dagCommitStatus.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
 | `.spec.gitCommitStatus.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
-| `.spec.previousEnvironmentCommitStatus.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
 | `.spec.promotionStrategy.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
 | `.spec.pullRequest.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
 | `.spec.scheduledCommitStatus.workQueue.rateLimiter` | 8 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0)+(has(self.maxOf)?1:0) <= 1` |
@@ -135,13 +132,12 @@ Source: `promoter.argoproj.io_controllerconfigurations.yaml`
 | `.spec.commitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.dagCommitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.gitCommitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
-| `.spec.previousEnvironmentCommitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.promotionStrategy.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.pullRequest.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.scheduledCommitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.timedCommitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
 | `.spec.webRequestCommitStatus.workQueue.rateLimiter` | 6 | 0.00% | `(has(self.fastSlow)?1:0)+(has(self.exponentialFailure)?1:0)+(has(self.bucket)?1:0) <= 1` |
-| **Total** | **352** | **0.00%** | |
+| **Total** | **320** | **0.00%** | |
 
 #### DAGCommitStatus
 
@@ -178,14 +174,6 @@ Source: `promoter.argoproj.io_gitrepositories.yaml`
 |---|---:|---:|---|
 | `.spec` | 14 | 0.00% | `(has(self.github)?1:0)+(has(self.gitlab)?1:0)+(has(self.forgejo)?1:0)+(has(self.gitea)?1:0)+(has(self.bitbucketCloud)...` |
 | **Total** | **14** | **0.00%** | |
-
-#### PreviousEnvironmentCommitStatus
-
-Source: `promoter.argoproj.io_previousenvironmentcommitstatuses.yaml`
-
-##### Version `v1alpha1`
-
-_No CEL validation rules._
 
 #### PromotionStrategy
 

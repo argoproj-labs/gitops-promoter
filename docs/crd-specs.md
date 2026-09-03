@@ -3,8 +3,7 @@
 The PromotionStrategy is the user's interface to controlling how changes are promoted through their environments. In 
 this CR, the user configures the list of live hydrated environment branches and the checks which must pass between
 promotion steps. Promotion ordering is not injected automatically: declare an ordering gate key in
-`proposedCommitStatuses` and create a matching [PreviousEnvironmentCommitStatus](#previousenvironmentcommitstatus) or
-[DAGCommitStatus](#dagcommitstatus).
+`proposedCommitStatuses` and create a matching [DAGCommitStatus](#dagcommitstatus).
 
 ```yaml
 {!internal/controller/testdata/PromotionStrategy.yaml!}
@@ -20,8 +19,8 @@ A PromotionStrategy will create a ChangeTransferPolicy for each configured envir
 `activeCommitStatuses` / `proposedCommitStatuses` onto that CTP. It does **not** inject an ordering gate.
 
 Promotion ordering is configured separately: create a
-[PreviousEnvironmentCommitStatus](#previousenvironmentcommitstatus) (linear) or
-[DAGCommitStatus](#dagcommitstatus) (graph), and declare its `key` in the PromotionStrategy's global
+[DAGCommitStatus](#dagcommitstatus) (omit `spec.environments` for linear promotion, or declare a
+graph explicitly), and declare its `key` in the PromotionStrategy's global
 `proposedCommitStatuses`. Without an ordering gate, the PromotionStrategy controller fails its reconcile. See
 [Gating Promotions](gating-promotions/index.md) for details.
 
@@ -83,23 +82,13 @@ auth mechanism. A ClusterScmProvider can be referenced by any GitRepository in t
 {!internal/controller/testdata/ClusterScmProvider.yaml!}
 ```
 
-### PreviousEnvironmentCommitStatus
-
-A PreviousEnvironmentCommitStatus gates each environment on the previous environment in a **linear** pipeline
-(for example dev → staging → prod). It is a thin adapter over [DAGCommitStatus](#dagcommitstatus): it builds a
-chain-shaped dependency graph from the PromotionStrategy's environments (in spec order) and lets the DAG controller
-perform the gating. Declare the same `spec.key` in the PromotionStrategy's global `proposedCommitStatuses`. See
-[Previous Environment Commit Status](gating-promotions/built-in-gates/previous-environment-commit-status.md).
-
-```yaml
-{!internal/controller/testdata/PreviousEnvironmentCommitStatus.yaml!}
-```
-
 ### DAGCommitStatus
 
-A DAGCommitStatus gates promotions based on a **dependency graph** between environments. Each environment declares the
-upstream environments it `dependsOn`; an environment becomes eligible once all upstreams have promoted the same dry
-commit and are healthy. Declare the same `spec.key` in the PromotionStrategy's global `proposedCommitStatuses`. See
+A DAGCommitStatus gates promotions based on environment ordering. When `spec.environments` is omitted or empty, the
+controller infers a **linear** chain from the PromotionStrategy's `spec.environments` order (for example
+dev → staging → prod). When `spec.environments` is set, each environment declares upstream `dependsOn` branches and the
+controller evaluates an arbitrary directed acyclic graph. Declare the same `spec.key` in the PromotionStrategy's
+global `proposedCommitStatuses`. See
 [DAG Commit Status](gating-promotions/built-in-gates/dag-commit-status.md).
 
 ```yaml
@@ -201,9 +190,9 @@ The `DAGCommitStatus` CRD may also have the following condition reasons:
 
 * `CommitStatusesNotReady`
 
-#### `PreviousEnvironmentCommitStatus`
+#### `DAGCommitStatus`
 
-The `PreviousEnvironmentCommitStatus` CRD may also have the following condition reasons:
+The `DAGCommitStatus` CRD may also have the following condition reasons:
 
 * `DAGCommitStatusNotReady`
 
@@ -219,7 +208,7 @@ The `PromotionStrategy` CRD may also have the following condition reasons:
 
 * `ChangeTransferPolicyNotReady`
 
-Missing or undeclared promotion ordering (no `DAGCommitStatus` / `PreviousEnvironmentCommitStatus`, or a gate `key`
+Missing or undeclared promotion ordering (no `DAGCommitStatus` / `DAGCommitStatus`, or a gate `key`
 not listed in `proposedCommitStatuses`) surfaces as `ReconciliationError`.
 
 ## Finalizers

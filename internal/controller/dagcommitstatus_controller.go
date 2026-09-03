@@ -151,13 +151,39 @@ func (r *DAGCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	return ctrl.Result{Requeue: true, RequeueAfter: requeueDuration}, nil
 }
 
+// resolveDAGEnvironments returns the effective dependency graph for a DAGCommitStatus. When
+// spec.environments is empty, a linear chain is inferred from the PromotionStrategy's
+// spec.environments order (each environment dependsOn the one before it; the first is a root).
+func resolveDAGEnvironments(dcs *promoterv1alpha1.DAGCommitStatus, ps *promoterv1alpha1.PromotionStrategy) ([]promoterv1alpha1.DAGEnvironment, error) {
+	if len(dcs.Spec.Environments) > 0 {
+		return dcs.Spec.Environments, nil
+	}
+	if len(ps.Spec.Environments) == 0 {
+		return nil, fmt.Errorf("DAGCommitStatus %q has no spec.environments and PromotionStrategy %q has no environments to infer a linear chain from",
+			dcs.Name, ps.Name)
+	}
+	environments := make([]promoterv1alpha1.DAGEnvironment, 0, len(ps.Spec.Environments))
+	for i, env := range ps.Spec.Environments {
+		dagEnv := promoterv1alpha1.DAGEnvironment{Branch: env.Branch}
+		if i > 0 {
+			dagEnv.DependsOn = []string{ps.Spec.Environments[i-1].Branch}
+		}
+		environments = append(environments, dagEnv)
+	}
+	return environments, nil
+}
+
 // updateDAGCommitStatus builds the dependency graph from the spec, validates it (unknown
 // references, cycles, exact match against the PromotionStrategy environments), derives which
 // environments are satisfied (synced and healthy) from the PromotionStrategy state, and writes a
 // per-environment CommitStatus: success once all of an environment's dependsOn upstreams are
 // satisfied, pending otherwise.
 func (r *DAGCommitStatusReconciler) updateDAGCommitStatus(ctx context.Context, dcs *promoterv1alpha1.DAGCommitStatus, ps *promoterv1alpha1.PromotionStrategy) error {
-	graph, err := buildDAG(dcs.Spec.Environments)
+	environments, err := resolveDAGEnvironments(dcs, ps)
+	if err != nil {
+		return err
+	}
+	graph, err := buildDAG(environments)
 	if err != nil {
 		return fmt.Errorf("failed to build dependency graph: %w", err)
 	}
@@ -409,8 +435,6 @@ func (r *DAGCommitStatusReconciler) createOrUpdateDAGCommitStatus(
 }
 
 // SetupWithManager sets up the controller with the Manager.
-//
-//nolint:dupl // Controller setup mirrors PreviousEnvironmentCommitStatus by design; extracting it would couple the two controllers and require generics.
 func (r *DAGCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	// Use Direct methods to read configuration from the API server without cache during setup.
 	// The cache is not started during SetupWithManager, so we must use the non-cached API reader.
@@ -438,8 +462,6 @@ func (r *DAGCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ct
 
 // enqueueDAGCommitStatusForPromotionStrategy returns a handler that enqueues all
 // DAGCommitStatus resources that reference a PromotionStrategy when that PromotionStrategy changes.
-//
-//nolint:dupl // Mirrors PreviousEnvironmentCommitStatus's enqueue handler by design; extracting it would couple the two controllers and require generics.
 func (r *DAGCommitStatusReconciler) enqueueDAGCommitStatusForPromotionStrategy() handler.EventHandler {
 	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []ctrl.Request {
 		ps, ok := obj.(*promoterv1alpha1.PromotionStrategy)
@@ -584,4 +606,21 @@ func (g *dag) validateDAG() error {
 		return errors.New("environments contain a dependency cycle")
 	}
 	return nil
+}
+
+func getNoteDrySha(note *promoterv1alpha1.HydratorMetadata) string {
+	if note == nil {
+		return ""
+	}
+	return note.DrySha
+}
+
+// getEffectiveHydratedDrySha returns the dry SHA that an environment's hydrator has processed.
+// Uses Note.DrySha if available (git note), otherwise falls back to Proposed.Dry.Sha (hydrator.metadata).
+func getEffectiveHydratedDrySha(envStatus promoterv1alpha1.EnvironmentStatus) string {
+	noteSha := getNoteDrySha(envStatus.Proposed.Note)
+	if noteSha != "" {
+		return noteSha
+	}
+	return envStatus.Proposed.Dry.Sha
 }

@@ -93,7 +93,7 @@ spec:
     name: platform-config
   activePath: apps/payments
   proposedCommitStatuses:
-    - key: promoter-previous-environment # required ordering gate; see PreviousEnvironmentCommitStatus
+    - key: promoter-dag # required ordering gate; see DAGCommitStatus
   activeCommitStatuses:
     - key: argocd-health-payments
   environments:
@@ -102,11 +102,11 @@ spec:
     - branch: environment/prod
 ---
 apiVersion: promoter.argoproj.io/v1alpha1
-kind: PreviousEnvironmentCommitStatus
+kind: DAGCommitStatus
 metadata:
   name: payments
 spec:
-  key: promoter-previous-environment
+  key: promoter-dag
   promotionStrategyRef:
     name: payments
 ---

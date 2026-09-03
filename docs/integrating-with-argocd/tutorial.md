@@ -275,7 +275,7 @@ EOF
 ## Create the promotion strategy
 
 Create the PromotionStrategy and a
-[PreviousEnvironmentCommitStatus](../gating-promotions/built-in-gates/previous-environment-commit-status.md)
+[DAGCommitStatus](../gating-promotions/built-in-gates/dag-commit-status.md)
 so promotions are ordered (development → staging → prod). Ordering is not injected automatically; without this gate the
 PromotionStrategy controller fails its reconcile.
 
@@ -287,8 +287,8 @@ metadata:
   name: demo-github
 spec:
   proposedCommitStatuses:
-  # The PreviousEnvironmentCommitStatus CR will maintain this ordering gate.
-  - key: promoter-previous-environment
+  # The DAGCommitStatus CR will maintain this ordering gate.
+  - key: promoter-dag
   activeCommitStatuses:
   # The ArgoCDCommitStatus CR will maintain this commit status based on the application health.
   - key: argocd-health
@@ -303,11 +303,11 @@ spec:
     name: github-argocd-example-apps
 ---
 apiVersion: promoter.argoproj.io/v1alpha1
-kind: PreviousEnvironmentCommitStatus
+kind: DAGCommitStatus
 metadata:
   name: demo-github
 spec:
-  key: promoter-previous-environment
+  key: promoter-dag
   promotionStrategyRef:
     name: demo-github
 EOF

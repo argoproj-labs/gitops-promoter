@@ -267,9 +267,7 @@ func (r *PromotionStrategyReconciler) SetupWithManager(ctx context.Context, mgr 
 // ordering configured. It hard-fails the reconcile (surfacing the misconfiguration instead of
 // silently promoting environments out of order) in two cases:
 //
-//   - No DAGCommitStatus targets the PromotionStrategy. A PreviousEnvironmentCommitStatus
-//     generates a chain-shaped DAGCommitStatus as its gate, so an empty list means neither
-//     ordering mechanism is configured and no ordering applies at all.
+//   - No DAGCommitStatus targets the PromotionStrategy, so no ordering applies at all.
 //   - A DAGCommitStatus targets the PromotionStrategy but its key is not declared in the PS's
 //     global proposedCommitStatuses, so the gate it produces is never consumed and the intended
 //     ordering silently does not apply.
@@ -284,8 +282,7 @@ func (r *PromotionStrategyReconciler) checkDAGCommitStatusKeysDeclared(ctx conte
 	}
 
 	if len(dcsList.Items) < 1 {
-		return fmt.Errorf("PromotionStrategy %q has no DAGCommitStatus (or PreviousEnvironmentCommitStatus, "+
-			"which generates one); configure one so promotion ordering is enforced", ps.Name)
+		return fmt.Errorf("PromotionStrategy %q has no DAGCommitStatus; configure one so promotion ordering is enforced", ps.Name)
 	}
 
 	declared := make(map[string]bool, len(ps.Spec.ProposedCommitStatuses))

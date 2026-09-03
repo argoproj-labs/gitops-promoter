@@ -923,7 +923,7 @@ spec:
   gitRepositoryRef:
     name: my-app-repo
   proposedCommitStatuses:
-    - key: promoter-previous-environment # required ordering gate; see PreviousEnvironmentCommitStatus
+    - key: promoter-dag # required ordering gate; see DAGCommitStatus
     - key: external-approval  # Must match WebRequestCommitStatus.spec.key
   environments:
     - branch: environment/development

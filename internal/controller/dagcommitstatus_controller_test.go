@@ -394,6 +394,61 @@ var _ = Describe("DAG URL template helpers", func() {
 	})
 })
 
+var _ = Describe("resolveDAGEnvironments", func() {
+	It("returns spec.environments when set", func() {
+		explicit := []promoterv1alpha1.DAGEnvironment{
+			{Branch: "dev"},
+			{Branch: "prd", DependsOn: []string{"dev"}},
+		}
+		dcs := &promoterv1alpha1.DAGCommitStatus{
+			Spec: promoterv1alpha1.DAGCommitStatusSpec{Environments: explicit},
+		}
+		ps := &promoterv1alpha1.PromotionStrategy{
+			Spec: promoterv1alpha1.PromotionStrategySpec{
+				Environments: []promoterv1alpha1.Environment{
+					{Branch: "dev"},
+					{Branch: "stg"},
+					{Branch: "prd"},
+				},
+			},
+		}
+		envs, err := resolveDAGEnvironments(dcs, ps)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(envs).To(Equal(explicit))
+	})
+
+	It("infers a linear chain when spec.environments is empty", func() {
+		dcs := &promoterv1alpha1.DAGCommitStatus{
+			ObjectMeta: metav1.ObjectMeta{Name: "demo"},
+			Spec:       promoterv1alpha1.DAGCommitStatusSpec{},
+		}
+		ps := &promoterv1alpha1.PromotionStrategy{
+			ObjectMeta: metav1.ObjectMeta{Name: "demo-ps"},
+			Spec: promoterv1alpha1.PromotionStrategySpec{
+				Environments: []promoterv1alpha1.Environment{
+					{Branch: "dev"},
+					{Branch: "stg"},
+					{Branch: "prd"},
+				},
+			},
+		}
+		envs, err := resolveDAGEnvironments(dcs, ps)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(envs).To(Equal([]promoterv1alpha1.DAGEnvironment{
+			{Branch: "dev"},
+			{Branch: "stg", DependsOn: []string{"dev"}},
+			{Branch: "prd", DependsOn: []string{"stg"}},
+		}))
+	})
+
+	It("errors when both spec.environments and PromotionStrategy environments are empty", func() {
+		dcs := &promoterv1alpha1.DAGCommitStatus{ObjectMeta: metav1.ObjectMeta{Name: "demo"}}
+		ps := &promoterv1alpha1.PromotionStrategy{ObjectMeta: metav1.ObjectMeta{Name: "demo-ps"}}
+		_, err := resolveDAGEnvironments(dcs, ps)
+		Expect(err).To(MatchError(ContainSubstring("no environments to infer")))
+	})
+})
+
 var _ = Describe("DAG graph logic", func() {
 	Describe("buildDAG", func() {
 		It("builds a graph preserving spec order", func() {
@@ -472,8 +527,8 @@ var _ = Describe("DAG graph logic", func() {
 
 	// upstreamsPending runs the following truth table against every dependsOn upstream (a fan-in
 	// passes only when all upstreams are satisfied; a linear chain is the single-upstream case). The
-	// logic is a direct port of the PreviousEnvironmentCommitStatus controller's linear
-	// isPreviousEnvironmentPending, generalized to a DAG.
+	// logic is a direct port of the DAGCommitStatus controller's linear
+	// upstreamsPending (legacy linear), generalized to a DAG.
 	//
 	// Truth table for isUpstreamPending (per upstream):
 	// | Hydrated | NoOp | Pending | Merged | Healthy | Result |
@@ -628,7 +683,7 @@ var _ = Describe("DAG graph logic", func() {
 		// commit (midDry) changed stg and its PR is not yet merged (active still oldDry), while the
 		// target (newDry) is a no-op for stg (its note advanced to newDry without a new commit). stg
 		// is a no-op for the target yet still has an in-flight change of its own, so it must block
-		// rather than be recursed past. Mirrors the old isPreviousEnvironmentPending Case 5 test
+		// rather than be recursed past. Mirrors the old upstreamsPending (legacy linear) Case 5 test
 		// (active=OLD, proposed=COMMIT1, note=COMMIT2).
 		It("no-op recursion: pending when a no-op upstream has its own pending change", func() {
 			status := map[string]promoterv1alpha1.EnvironmentStatus{

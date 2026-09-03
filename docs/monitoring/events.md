@@ -101,13 +101,13 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 | Warning    | CommitStatusesNotReady      | One or more of the [CommitStatus](../crd-specs.md#commitstatus) resources managed by this DAGCommitStatus is not Ready. |
 | Normal     | OrphanedCommitStatusDeleted | An orphaned [CommitStatus](../crd-specs.md#commitstatus) was deleted after it no longer applied (e.g., branch removed). |
 
-## PreviousEnvironmentCommitStatus
+## DAGCommitStatus
 
-[PreviousEnvironmentCommitStatuses](../crd-specs.md#previousenvironmentcommitstatus) may produce the following events:
+[DAGCommitStatuses](../crd-specs.md#dagcommitstatus) may produce the following events:
 
 | Event Type | Event Reason            | Description                                                                                                                              |
 |------------|-------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
-| Warning    | DAGCommitStatusNotReady | The [DAGCommitStatus](../crd-specs.md#dagcommitstatus) owned by this PreviousEnvironmentCommitStatus is not Ready.                      |
+| Warning    | DAGCommitStatusNotReady | The [DAGCommitStatus](../crd-specs.md#dagcommitstatus) owned by this DAGCommitStatus is not Ready.                      |
 
 ## PromotionStrategy
 
@@ -119,7 +119,7 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 | Warning    | ChangeTransferPolicyNotReady            | One or more of the [ChangeTransferPolicy](../crd-specs.md#changetransferpolicy) resources managed by this PromotionStrategy is not Ready. |
 
 Missing or undeclared promotion ordering (no [DAGCommitStatus](../crd-specs.md#dagcommitstatus) /
-[PreviousEnvironmentCommitStatus](../crd-specs.md#previousenvironmentcommitstatus), or a gate `key` not listed in
+[DAGCommitStatus](../crd-specs.md#dagcommitstatus), or a gate `key` not listed in
 `proposedCommitStatuses`) surfaces as a `ReconciliationError` on the PromotionStrategy `Ready` condition rather than a
 dedicated event reason.
 

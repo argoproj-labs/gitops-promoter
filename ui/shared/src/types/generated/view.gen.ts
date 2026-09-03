@@ -452,8 +452,12 @@ export type components = {
         };
         /** @description DAGCommitStatusSpec defines the desired state of DAGCommitStatus. */
         DAGCommitStatusSpec: {
-            /** @description Environments declares the promotion dependency graph. Each entry names an environment branch and the upstream branches it depends on. An environment becomes eligible for promotion once all of its dependsOn upstreams are satisfied. An entry with no dependsOn is a graph root. The graph must be acyclic; cycles and references to unknown branches are rejected. */
-            environments: components["schemas"]["DAGEnvironment"][];
+            /**
+             * @description Environments declares the promotion dependency graph. Each entry names an environment branch and the upstream branches it depends on. An environment becomes eligible for promotion once all of its dependsOn upstreams are satisfied. An entry with no dependsOn is a graph root. The graph must be acyclic; cycles and references to unknown branches are rejected.
+             *
+             *     When omitted or empty, the controller infers a linear chain from the referenced PromotionStrategy's spec.environments order: the first environment is a root, and each subsequent environment dependsOn the one before it.
+             */
+            environments?: components["schemas"]["DAGEnvironment"][];
             /**
              * @description Key is the commit status key referenced in the PromotionStrategy's proposedCommitStatuses. It must match a key declared there so the gate this controller produces is enforced. Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
              * @default
@@ -1225,58 +1229,6 @@ export type components = {
             /** @description Interval controls how often to retry the HTTP request while in pending state. When reportOn is "proposed": stops polling after success for a given SHA. When reportOn is "active": always polls at this interval. */
             interval?: components["schemas"]["Duration"];
         };
-        /** @description PreviousEnvironmentCommitStatus is the Schema for the previousenvironmentcommitstatuses API */
-        PreviousEnvironmentCommitStatus: {
-            /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
-            apiVersion?: string;
-            /** @description Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds */
-            kind?: string;
-            /**
-             * @description metadata is a standard object metadata
-             * @default {}
-             */
-            metadata?: components["schemas"]["ObjectMeta"];
-            /**
-             * @description spec defines the desired state of PreviousEnvironmentCommitStatus
-             * @default {}
-             */
-            spec: components["schemas"]["PreviousEnvironmentCommitStatusSpec"];
-            /**
-             * @description status defines the observed state of PreviousEnvironmentCommitStatus
-             * @default {}
-             */
-            status?: components["schemas"]["PreviousEnvironmentCommitStatusStatus"];
-        };
-        /** @description PreviousEnvironmentCommitStatusSpec defines the desired state of PreviousEnvironmentCommitStatus. */
-        PreviousEnvironmentCommitStatusSpec: {
-            /**
-             * @description Key is the commit status key referenced in the PromotionStrategy's proposedCommitStatuses. It must match a key declared there so the gate this controller produces is enforced. Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
-             * @default
-             */
-            key: string;
-            /**
-             * @description PromotionStrategyRef is a reference to the promotion strategy that this previous environment commit status applies to. The controller watches this PromotionStrategy and, for each environment, reports whether the preceding environment is synced and healthy.
-             * @default {}
-             */
-            promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
-            /**
-             * @description URL is passed through to the owned chain-shaped DAGCommitStatus. The DAG controller renders it when writing per-environment CommitStatuses. Optional; when empty, no URL is set.
-             * @default {}
-             */
-            url?: components["schemas"]["URLConfig"];
-        };
-        /** @description PreviousEnvironmentCommitStatusStatus defines the observed state of PreviousEnvironmentCommitStatus. */
-        PreviousEnvironmentCommitStatusStatus: {
-            /** @description Conditions represent the latest available observations of an object's state */
-            conditions?: components["schemas"]["Condition"][];
-            /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
-            instanceID?: string;
-            /**
-             * Format: int64
-             * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
-             */
-            observedGeneration?: number;
-        };
         /** @description PromotionStrategy is the Schema for the promotionstrategies API */
         PromotionStrategy: {
             /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
@@ -1316,8 +1268,6 @@ export type components = {
             kind: string;
             /** @default {} */
             metadata: components["schemas"]["ObjectMeta"];
-            /** @description PreviousEnvironmentCommitStatuses are the PreviousEnvironmentCommitStatus managers that reference the PromotionStrategy. */
-            previousEnvironmentCommitStatuses?: components["schemas"]["PreviousEnvironmentCommitStatus"][];
             /**
              * @description PromotionStrategy is the source PromotionStrategy this bundle describes.
              * @default {}
@@ -1864,7 +1814,7 @@ export type components = {
             /**
              * @description Template is a Go text template used to generate the CommitStatus URL. A function called urlQueryEscape is available to escape URL query parameters. The template can be configured with options (url.options) to control behavior when a variable is not present.
              *
-             *     Available template variables depend on the parent resource that embeds URLConfig (ArgoCDCommitStatus, DAGCommitStatus, or PreviousEnvironmentCommitStatus). See the corresponding gate documentation for the variable set and examples.
+             *     Available template variables depend on the parent resource that embeds URLConfig (ArgoCDCommitStatus or DAGCommitStatus). See the corresponding gate documentation for the variable set and examples.
              */
             template?: string;
         };

@@ -48,6 +48,10 @@ spec:
                   and the upstream branches it depends on. An environment becomes eligible for promotion once
                   all of its dependsOn upstreams are satisfied. An entry with no dependsOn is a graph root.
                   The graph must be acyclic; cycles and references to unknown branches are rejected.
+
+                  When omitted or empty, the controller infers a linear chain from the referenced
+                  PromotionStrategy's spec.environments order: the first environment is a root, and each
+                  subsequent environment dependsOn the one before it.
                 items:
                   description: DAGEnvironment is a single node in the promotion dependency
                     graph.
@@ -94,7 +98,6 @@ spec:
                   - message: branch cannot depend on itself
                     rule: '!has(self.dependsOn) || self.dependsOn.all(d, d != self.branch)'
                 maxItems: 1000
-                minItems: 1
                 type: array
                 x-kubernetes-list-map-keys:
                 - branch
@@ -154,12 +157,11 @@ spec:
                       with options (url.options) to control behavior when a variable is not present.
 
                       Available template variables depend on the parent resource that embeds URLConfig
-                      (ArgoCDCommitStatus, DAGCommitStatus, or PreviousEnvironmentCommitStatus). See the
+                      (ArgoCDCommitStatus or DAGCommitStatus). See the
                       corresponding gate documentation for the variable set and examples.
                     type: string
                 type: object
             required:
-            - environments
             - key
             - promotionStrategyRef
             type: object

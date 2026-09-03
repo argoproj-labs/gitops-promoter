@@ -135,12 +135,6 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 	}
 	bundle.DAGCommitStatuses = nilIfEmpty(dagCSList.Items)
 
-	prevEnvCSList := &promoterv1alpha1.PreviousEnvironmentCommitStatusList{}
-	if err := reader.List(ctx, prevEnvCSList, client.InNamespace(namespace), client.MatchingFields{controller.PromotionStrategyRefField: name}); err != nil {
-		return nil, fmt.Errorf("failed to list PreviousEnvironmentCommitStatuses: %w", err)
-	}
-	bundle.PreviousEnvironmentCommitStatuses = nilIfEmpty(prevEnvCSList.Items)
-
 	scheduledCSList := &promoterv1alpha1.ScheduledCommitStatusList{}
 	if err := reader.List(ctx, scheduledCSList, client.InNamespace(namespace), client.MatchingFields{controller.PromotionStrategyRefField: name}); err != nil {
 		return nil, fmt.Errorf("failed to list ScheduledCommitStatuses: %w", err)

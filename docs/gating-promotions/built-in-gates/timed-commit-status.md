@@ -62,7 +62,7 @@ spec:
   gitRepositoryRef:
     name: webservice-tier-1
   proposedCommitStatuses:
-    - key: promoter-previous-environment # required ordering gate; see PreviousEnvironmentCommitStatus
+    - key: promoter-dag # required ordering gate; see DAGCommitStatus
   activeCommitStatuses:
     - key: timer
   environments:
@@ -92,7 +92,7 @@ spec:
     - key: argocd-health
     - key: timer
   proposedCommitStatuses:
-    - key: promoter-previous-environment # required ordering gate; see PreviousEnvironmentCommitStatus
+    - key: promoter-dag # required ordering gate; see DAGCommitStatus
     - key: manual-approval
   environments:
     - branch: environment/development
