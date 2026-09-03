@@ -379,7 +379,7 @@ func (pr *PullRequest) createRepositoryLabel(ctx context.Context, gitRepo *v1alp
 	start := time.Now()
 	_, response, err := pr.client.Issues.CreateLabel(ctx, owner, repo, github.CreateIssueLabelRequest{
 		Name:  name,
-		Color: github.Ptr(scms.AutoCreatedLabelColor),
+		Color: new(scms.AutoCreatedLabelColor),
 	})
 	if response != nil {
 		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreateLabel, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
