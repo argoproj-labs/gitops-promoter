@@ -2,11 +2,7 @@ import { StatusIcon, StatusType } from './StatusIcon';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import ActiveCard from './ActiveCard';
 import ProposedChangesCard from './ProposedChangesCard';
-import {
-  EnrichedEnvDetails,
-  enrichFromEnvironments,
-  getProcessingEnvs,
-} from '@shared/utils/PSData';
+import { EnrichedEnvDetails, enrichFromEnvironments, getProcessingEnvs } from '@shared/utils/PSData';
 import type { Environment } from '@shared/types/promotion';
 import './Card.scss';
 
