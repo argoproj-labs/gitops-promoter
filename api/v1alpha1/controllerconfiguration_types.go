@@ -83,6 +83,16 @@ type ControllerConfigurationSpec struct {
 	// +required
 	WebRequestCommitStatus WebRequestCommitStatusConfiguration `json:"webRequestCommitStatus"`
 
+	// PreviousEnvironmentCommitStatus contains the configuration for the PreviousEnvironmentCommitStatus controller,
+	// including WorkQueue settings that control reconciliation behavior.
+	// +required
+	PreviousEnvironmentCommitStatus PreviousEnvironmentCommitStatusConfiguration `json:"previousEnvironmentCommitStatus"`
+
+	// DAGCommitStatus contains the configuration for the DAGCommitStatus controller,
+	// including WorkQueue settings that control reconciliation behavior.
+	// +required
+	DAGCommitStatus DAGCommitStatusConfiguration `json:"dagCommitStatus"`
+
 	// ScheduledCommitStatus contains the configuration for the ScheduledCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	// +required
@@ -163,6 +173,28 @@ type ArgoCDCommitStatusConfiguration struct {
 // requests, including requeue intervals, concurrency limits, and rate limiting behavior.
 type TimedCommitStatusConfiguration struct {
 	// WorkQueue contains the work queue configuration for the TimedCommitStatus controller.
+	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+	// +required
+	WorkQueue WorkQueue `json:"workQueue"`
+}
+
+// PreviousEnvironmentCommitStatusConfiguration defines the configuration for the PreviousEnvironmentCommitStatus controller.
+//
+// This configuration controls how the PreviousEnvironmentCommitStatus controller processes reconciliation
+// requests, including requeue intervals, concurrency limits, and rate limiting behavior.
+type PreviousEnvironmentCommitStatusConfiguration struct {
+	// WorkQueue contains the work queue configuration for the PreviousEnvironmentCommitStatus controller.
+	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+	// +required
+	WorkQueue WorkQueue `json:"workQueue"`
+}
+
+// DAGCommitStatusConfiguration defines the configuration for the DAGCommitStatus controller.
+//
+// This configuration controls how the DAGCommitStatus controller processes reconciliation
+// requests, including requeue intervals, concurrency limits, and rate limiting behavior.
+type DAGCommitStatusConfiguration struct {
+	// WorkQueue contains the work queue configuration for the DAGCommitStatus controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
 	WorkQueue WorkQueue `json:"workQueue"`

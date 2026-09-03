@@ -515,12 +515,18 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: commitStatus
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusConfiguration
+    - name: dagCommitStatus
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DAGCommitStatusConfiguration
     - name: gitCommitStatus
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.GitCommitStatusConfiguration
     - name: instanceID
       type:
         scalar: string
+    - name: previousEnvironmentCommitStatus
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PreviousEnvironmentCommitStatusConfiguration
     - name: promotionStrategy
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PromotionStrategyConfiguration
@@ -568,6 +574,79 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: timezone
       type:
         scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DAGCommitStatus
+  map:
+    fields:
+    - name: apiVersion
+      type:
+        scalar: string
+    - name: kind
+      type:
+        scalar: string
+    - name: metadata
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
+    - name: spec
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DAGCommitStatusSpec
+    - name: status
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DAGCommitStatusStatus
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DAGCommitStatusConfiguration
+  map:
+    fields:
+    - name: workQueue
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WorkQueue
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DAGCommitStatusSpec
+  map:
+    fields:
+    - name: environments
+      type:
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DAGEnvironment
+          elementRelationship: associative
+          keys:
+          - branch
+    - name: key
+      type:
+        scalar: string
+    - name: promotionStrategyRef
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
+    - name: url
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.URLConfig
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DAGCommitStatusStatus
+  map:
+    fields:
+    - name: conditions
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Condition
+          elementRelationship: associative
+          keys:
+          - type
+    - name: instanceID
+      type:
+        scalar: string
+    - name: observedGeneration
+      type:
+        scalar: numeric
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DAGEnvironment
+  map:
+    fields:
+    - name: branch
+      type:
+        scalar: string
+    - name: dependsOn
+      type:
+        list:
+          elementType:
+            scalar: string
+          elementRelationship: associative
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.Environment
   map:
     fields:
@@ -1023,6 +1102,59 @@ var schemaYAML = typed.YAMLObject(`types:
       type:
         namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Duration
       default: 1m
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PreviousEnvironmentCommitStatus
+  map:
+    fields:
+    - name: apiVersion
+      type:
+        scalar: string
+    - name: kind
+      type:
+        scalar: string
+    - name: metadata
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
+    - name: spec
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PreviousEnvironmentCommitStatusSpec
+    - name: status
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PreviousEnvironmentCommitStatusStatus
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PreviousEnvironmentCommitStatusConfiguration
+  map:
+    fields:
+    - name: workQueue
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WorkQueue
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PreviousEnvironmentCommitStatusSpec
+  map:
+    fields:
+    - name: key
+      type:
+        scalar: string
+    - name: promotionStrategyRef
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
+    - name: url
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.URLConfig
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PreviousEnvironmentCommitStatusStatus
+  map:
+    fields:
+    - name: conditions
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Condition
+          elementRelationship: associative
+          keys:
+          - type
+    - name: instanceID
+      type:
+        scalar: string
+    - name: observedGeneration
+      type:
+        scalar: numeric
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PromotionStrategy
   map:
     fields:

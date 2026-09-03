@@ -2118,7 +2118,9 @@ var _ = Describe("emitPromotionLifecycleEvents", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				declarePreviousEnvironmentGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				createPreviousEnvironmentCommitStatus(ctx, promotionStrategy)
 
 				ctpNamespacedName = types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, testBranchDevelopment)),
@@ -2453,7 +2455,9 @@ var _ = Describe("emitPromotionLifecycleEvents", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				declarePreviousEnvironmentGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				createPreviousEnvironmentCommitStatus(ctx, promotionStrategy)
 
 				ctpNamespacedName = types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, testBranchDevelopment)),
