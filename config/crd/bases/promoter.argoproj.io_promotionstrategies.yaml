@@ -595,6 +595,7 @@ spec:
                                 commit that was used to hydrate the branch.
                               type: string
                           type: object
+                          x-kubernetes-map-type: atomic
                       type: object
                     branch:
                       description: Branch is the name of the active branch for the
@@ -923,6 +924,7 @@ spec:
                                       dry commit that was used to hydrate the branch.
                                     type: string
                                 type: object
+                                x-kubernetes-map-type: atomic
                             type: object
                           mergeCommitSnapshotMismatch:
                             description: |-
@@ -1444,6 +1446,7 @@ spec:
                                 commit that was used to hydrate the branch.
                               type: string
                           type: object
+                          x-kubernetes-map-type: atomic
                       type: object
                     pullRequest:
                       description: PullRequest is the state of the pull request that
