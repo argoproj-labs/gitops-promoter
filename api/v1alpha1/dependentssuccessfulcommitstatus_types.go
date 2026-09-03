@@ -24,11 +24,11 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// DAGCommitStatusSpec defines the desired state of DAGCommitStatus.
-type DAGCommitStatusSpec struct {
-	// PromotionStrategyRef is a reference to the promotion strategy that this DAG commit status
-	// applies to. The controller watches this PromotionStrategy and, for each environment, reports
-	// whether the environment's upstream dependencies (as declared in Environments) are satisfied.
+// DependentsSuccessfulCommitStatusSpec defines the desired state of DependentsSuccessfulCommitStatus.
+type DependentsSuccessfulCommitStatusSpec struct {
+	// PromotionStrategyRef is a reference to the promotion strategy that this dependents successful commit status
+	// applies to. The controller watches this PromotionStrategy and, for each environment, reports whether the
+	// environment's dependent environments (as declared in Environments) are promoted and successful.
 	// +required
 	PromotionStrategyRef ObjectReference `json:"promotionStrategyRef"`
 
@@ -41,10 +41,9 @@ type DAGCommitStatusSpec struct {
 	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
 	Key string `json:"key"`
 
-	// Environments declares the promotion dependency graph. Each entry names an environment branch
-	// and the upstream branches it depends on. An environment becomes eligible for promotion once
-	// all of its dependsOn upstreams are satisfied. An entry with no dependsOn is a graph root.
-	// The graph must be acyclic; cycles and references to unknown branches are rejected.
+	// Environments declares which environments each branch depends on. An environment becomes eligible for
+	// promotion once all of its dependsOn dependents are promoted and successful. An entry with no dependsOn
+	// is a root. The graph must be acyclic; cycles and references to unknown branches are rejected.
 	//
 	// When omitted or empty, the controller infers a linear chain from the referenced
 	// PromotionStrategy's spec.environments order: the first environment is a root, and each
@@ -53,20 +52,20 @@ type DAGCommitStatusSpec struct {
 	// +kubebuilder:validation:MaxItems:=1000
 	// +listType:=map
 	// +listMapKey=branch
-	Environments []DAGEnvironment `json:"environments"`
+	Environments []DependentEnvironment `json:"environments"`
 
 	// URL generates the URL to use on the per-environment CommitStatus (SCM details link), for
 	// example a link into the Promoter UI that highlights this environment's dependsOn upstreams.
 	// Optional; when empty, no URL is set on the child CommitStatus. The template receives
-	// .Environment, .DAGCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery
+	// .Environment, .DependentsSuccessfulCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery
 	// (see controller docs).
 	// +kubebuilder:validation:Optional
 	URL URLConfig `json:"url,omitempty"`
 }
 
-// DAGEnvironment is a single node in the promotion dependency graph.
+// DependentEnvironment declares one environment branch and the other branches it depends on.
 // +kubebuilder:validation:XValidation:rule="!has(self.dependsOn) || self.dependsOn.all(d, d != self.branch)",message="branch cannot depend on itself"
-type DAGEnvironment struct {
+type DependentEnvironment struct {
 	// Branch is the name of the active branch for the environment. It must match a branch declared
 	// in the referenced PromotionStrategy's environments.
 	// Must not start with '-', contain ':', or contain '..'.
@@ -78,9 +77,9 @@ type DAGEnvironment struct {
 	// +kubebuilder:validation:XValidation:rule="!self.contains('..')",message="branch must not contain '..'"
 	Branch string `json:"branch"`
 
-	// DependsOn is the list of upstream branches this environment depends on. The environment is
-	// only eligible for promotion once every branch listed here is satisfied. An empty or omitted
-	// list makes this environment a root of the graph.
+	// DependsOn is the list of dependent environment branches this environment waits on. The environment is
+	// only eligible for promotion once every branch listed here is promoted and successful. An empty or
+	// omitted list makes this environment a root.
 	// Each item must not start with '-', contain ':', or contain '..'.
 	// +optional
 	// +listType:=set
@@ -93,8 +92,8 @@ type DAGEnvironment struct {
 	DependsOn []string `json:"dependsOn,omitempty"`
 }
 
-// DAGCommitStatusStatus defines the observed state of DAGCommitStatus.
-type DAGCommitStatusStatus struct {
+// DependentsSuccessfulCommitStatusStatus defines the observed state of DependentsSuccessfulCommitStatus.
+type DependentsSuccessfulCommitStatusStatus struct {
 	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
 	// Because status is written via Server-Side Apply with ForceOwnership (which has no
 	// optimistic-concurrency check), this field is the canonical way to detect stale
@@ -119,54 +118,54 @@ type DAGCommitStatusStatus struct {
 }
 
 // +kubebuilder:ac:generate=true
-// +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#dagcommitstatus",description="CRD reference (examples and behavior)"
+// +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#dependentssuccessfulcommitstatus",description="CRD reference (examples and behavior)"
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
-// DAGCommitStatus is the Schema for the dagcommitstatuses API
-type DAGCommitStatus struct {
+// DependentsSuccessfulCommitStatus is the Schema for the dependentssuccessfulcommitstatuses API
+type DependentsSuccessfulCommitStatus struct {
 	metav1.TypeMeta `json:",inline"`
 
 	// metadata is a standard object metadata
 	// +optional
 	metav1.ObjectMeta `json:"metadata,omitzero"`
 
-	// spec defines the desired state of DAGCommitStatus
+	// spec defines the desired state of DependentsSuccessfulCommitStatus
 	// +required
-	Spec DAGCommitStatusSpec `json:"spec"`
+	Spec DependentsSuccessfulCommitStatusSpec `json:"spec"`
 
-	// status defines the observed state of DAGCommitStatus
+	// status defines the observed state of DependentsSuccessfulCommitStatus
 	// +optional
-	Status DAGCommitStatusStatus `json:"status,omitzero"`
+	Status DependentsSuccessfulCommitStatusStatus `json:"status,omitzero"`
 }
 
 // +kubebuilder:object:root=true
 
-// DAGCommitStatusList contains a list of DAGCommitStatus
-type DAGCommitStatusList struct {
+// DependentsSuccessfulCommitStatusList contains a list of DependentsSuccessfulCommitStatus
+type DependentsSuccessfulCommitStatusList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitzero"`
-	Items           []DAGCommitStatus `json:"items"`
+	Items           []DependentsSuccessfulCommitStatus `json:"items"`
 }
 
-// GetConditions returns the conditions of the DAGCommitStatus.
-func (d *DAGCommitStatus) GetConditions() *[]metav1.Condition {
+// GetConditions returns the conditions of the DependentsSuccessfulCommitStatus.
+func (d *DependentsSuccessfulCommitStatus) GetConditions() *[]metav1.Condition {
 	return &d.Status.Conditions
 }
 
 // SetObservedGeneration records the object generation that produced the current status.
-func (d *DAGCommitStatus) SetObservedGeneration(generation int64) {
+func (d *DependentsSuccessfulCommitStatus) SetObservedGeneration(generation int64) {
 	d.Status.ObservedGeneration = generation
 }
 
 // SetStatusInstanceID records the instance-id label mirrored into status on each reconcile attempt.
-func (d *DAGCommitStatus) SetStatusInstanceID(v *string) {
+func (d *DependentsSuccessfulCommitStatus) SetStatusInstanceID(v *string) {
 	d.Status.InstanceID = v
 }
 
 func init() {
 	SchemeBuilder.Register(func(s *runtime.Scheme) error {
-		s.AddKnownTypes(SchemeGroupVersion, &DAGCommitStatus{}, &DAGCommitStatusList{})
+		s.AddKnownTypes(SchemeGroupVersion, &DependentsSuccessfulCommitStatus{}, &DependentsSuccessfulCommitStatusList{})
 		return nil
 	})
 }

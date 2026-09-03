@@ -51,10 +51,10 @@ func setPromotionStrategyGlobalProposedCommitStatusKey(ctx context.Context, psNa
 		var ps promoterv1alpha1.PromotionStrategy
 		g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: psName, Namespace: "default"}, &ps)).To(Succeed())
 		// Keep the DAG ordering gate declared alongside the test's key: the PS's
-		// DAGCommitStatus generates a DAGCommitStatus that reports this key, and
+		// DependentsSuccessfulCommitStatus generates a DependentsSuccessfulCommitStatus that reports this key, and
 		// the safety check rejects a DAG gate key that isn't declared in proposedCommitStatuses.
 		ps.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-			{Key: promoterv1alpha1.DAGCommitStatusKey},
+			{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
 			{Key: key},
 		}
 		for i := range ps.Spec.Environments {
@@ -86,9 +86,9 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-		declareDAGGate(promotionStrategy)
+		declareDependentsSuccessfulGate(promotionStrategy)
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-		createDAGCommitStatus(ctx, promotionStrategy)
+		createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 	})
 
 	AfterAll(func() {
@@ -942,9 +942,9 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			declareDAGGate(gatingPS)
+			declareDependentsSuccessfulGate(gatingPS)
 			Expect(k8sClient.Create(ctx, gatingPS)).To(Succeed())
-			createDAGCommitStatus(ctx, gatingPS)
+			createDependentsSuccessfulCommitStatus(ctx, gatingPS)
 		})
 
 		AfterEach(func() {

@@ -11,12 +11,12 @@ metadata:
   labels:
     app.kubernetes.io/name: promoter
     app.kubernetes.io/managed-by: kustomize
-  name: dagcommitstatus-viewer-role
+  name: dependentssuccessfulcommitstatus-viewer-role
 rules:
 - apiGroups:
   - promoter.argoproj.io
   resources:
-  - dagcommitstatuses
+  - dependentssuccessfulcommitstatuses
   verbs:
   - get
   - list
@@ -24,6 +24,6 @@ rules:
 - apiGroups:
   - promoter.argoproj.io
   resources:
-  - dagcommitstatuses/status
+  - dependentssuccessfulcommitstatuses/status
   verbs:
   - get

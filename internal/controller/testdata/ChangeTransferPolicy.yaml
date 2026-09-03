@@ -13,7 +13,7 @@ spec:
   - key: argocd-app-health
   proposedCommitStatuses:
   - key: security-scan
-  - key: promoter-dag
+  - key: dependents-successful
   pullRequest:
     labels:
       expression: "all(Status.Proposed.CommitStatuses, {.Phase == 'success'}) ? ['lgtm'] : []"

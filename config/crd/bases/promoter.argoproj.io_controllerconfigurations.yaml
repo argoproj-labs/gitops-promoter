@@ -685,14 +685,14 @@ spec:
                 required:
                 - workQueue
                 type: object
-              dagCommitStatus:
+              dependentsSuccessfulCommitStatus:
                 description: |-
-                  DAGCommitStatus contains the configuration for the DAGCommitStatus controller,
+                  DependentsSuccessfulCommitStatus contains the configuration for the DependentsSuccessfulCommitStatus controller,
                   including WorkQueue settings that control reconciliation behavior.
                 properties:
                   workQueue:
                     description: |-
-                      WorkQueue contains the work queue configuration for the DAGCommitStatus controller.
+                      WorkQueue contains the work queue configuration for the DependentsSuccessfulCommitStatus controller.
                       This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
                     properties:
                       maxConcurrentReconciles:
@@ -2184,7 +2184,7 @@ spec:
             - argocdCommitStatus
             - changeTransferPolicy
             - commitStatus
-            - dagCommitStatus
+            - dependentsSuccessfulCommitStatus
             - gitCommitStatus
             - promotionStrategy
             - pullRequest

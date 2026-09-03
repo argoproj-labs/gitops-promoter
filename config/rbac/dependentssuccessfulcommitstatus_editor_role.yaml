@@ -11,12 +11,12 @@ metadata:
   labels:
     app.kubernetes.io/name: promoter
     app.kubernetes.io/managed-by: kustomize
-  name: dagcommitstatus-editor-role
+  name: dependentssuccessfulcommitstatus-editor-role
 rules:
 - apiGroups:
   - promoter.argoproj.io
   resources:
-  - dagcommitstatuses
+  - dependentssuccessfulcommitstatuses
   verbs:
   - create
   - delete
@@ -28,6 +28,6 @@ rules:
 - apiGroups:
   - promoter.argoproj.io
   resources:
-  - dagcommitstatuses/status
+  - dependentssuccessfulcommitstatuses/status
   verbs:
   - get

@@ -173,12 +173,12 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// Remove any existing Ready condition. We want to start fresh.
 	previousReady = utils.RemoveReadyCondition(&ps)
 
-	// Safety check: every DAGCommitStatus that targets this PromotionStrategy must have its key
-	// declared in the PS's global proposedCommitStatuses. Otherwise the gate the DAGCommitStatus
+	// Safety check: every DependentsSuccessfulCommitStatus that targets this PromotionStrategy must have its key
+	// declared in the PS's global proposedCommitStatuses. Otherwise the gate the DependentsSuccessfulCommitStatus
 	// produces is never consumed, and the user's intended ordering silently does not apply. We
 	// hard-fail the reconcile so the misconfiguration surfaces instead of being ignored.
 	// TODO: remove this safety check in 1.0.
-	if err = r.checkDAGCommitStatusKeysDeclared(ctx, &ps); err != nil {
+	if err = r.checkDependentsSuccessfulCommitStatusKeysDeclared(ctx, &ps); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -263,26 +263,26 @@ func (r *PromotionStrategyReconciler) SetupWithManager(ctx context.Context, mgr 
 	return nil
 }
 
-// checkDAGCommitStatusKeysDeclared verifies that this PromotionStrategy has valid promotion
+// checkDependentsSuccessfulCommitStatusKeysDeclared verifies that this PromotionStrategy has valid promotion
 // ordering configured. It hard-fails the reconcile (surfacing the misconfiguration instead of
 // silently promoting environments out of order) in two cases:
 //
-//   - No DAGCommitStatus targets the PromotionStrategy, so no ordering applies at all.
-//   - A DAGCommitStatus targets the PromotionStrategy but its key is not declared in the PS's
+//   - No DependentsSuccessfulCommitStatus targets the PromotionStrategy, so no ordering applies at all.
+//   - A DependentsSuccessfulCommitStatus targets the PromotionStrategy but its key is not declared in the PS's
 //     global proposedCommitStatuses, so the gate it produces is never consumed and the intended
 //     ordering silently does not apply.
 //
 // TODO: remove this safety check in 1.0.
-func (r *PromotionStrategyReconciler) checkDAGCommitStatusKeysDeclared(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy) error {
-	var dcsList promoterv1alpha1.DAGCommitStatusList
+func (r *PromotionStrategyReconciler) checkDependentsSuccessfulCommitStatusKeysDeclared(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy) error {
+	var dcsList promoterv1alpha1.DependentsSuccessfulCommitStatusList
 	if err := r.List(ctx, &dcsList,
 		client.InNamespace(ps.Namespace),
 		client.MatchingFields{PromotionStrategyRefField: ps.Name}); err != nil {
-		return fmt.Errorf("failed to list DAGCommitStatuses for PromotionStrategy %q: %w", ps.Name, err)
+		return fmt.Errorf("failed to list DependentsSuccessfulCommitStatuses for PromotionStrategy %q: %w", ps.Name, err)
 	}
 
 	if len(dcsList.Items) < 1 {
-		return fmt.Errorf("PromotionStrategy %q has no DAGCommitStatus; configure one so promotion ordering is enforced", ps.Name)
+		return fmt.Errorf("PromotionStrategy %q has no DependentsSuccessfulCommitStatus; configure one so promotion ordering is enforced", ps.Name)
 	}
 
 	declared := make(map[string]bool, len(ps.Spec.ProposedCommitStatuses))
@@ -293,7 +293,7 @@ func (r *PromotionStrategyReconciler) checkDAGCommitStatusKeysDeclared(ctx conte
 	for i := range dcsList.Items {
 		key := dcsList.Items[i].Spec.Key
 		if !declared[key] {
-			return fmt.Errorf("DAGCommitStatus %q references PromotionStrategy %q with key %q, "+
+			return fmt.Errorf("DependentsSuccessfulCommitStatus %q references PromotionStrategy %q with key %q, "+
 				"but that key is not in the PromotionStrategy's proposedCommitStatuses; add it so the gate is enforced",
 				dcsList.Items[i].Name, ps.Name, key)
 		}

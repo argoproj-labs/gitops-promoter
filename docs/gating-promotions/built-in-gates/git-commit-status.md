@@ -92,7 +92,7 @@ spec:
   gitRepositoryRef:
     name: webservice-tier-1
   proposedCommitStatuses:
-    - key: promoter-dag # required ordering gate; see DAGCommitStatus
+    - key: dependents-successful # required ordering gate; see DependentsSuccessfulCommitStatus
     - key: commit-format  # Must match GitCommitStatus.spec.key
   environments:
     - branch: environment/development
@@ -113,7 +113,7 @@ spec:
   gitRepositoryRef:
     name: webservice-tier-1
   proposedCommitStatuses:
-    - key: promoter-dag # required ordering gate; see DAGCommitStatus
+    - key: dependents-successful # required ordering gate; see DependentsSuccessfulCommitStatus
   environments:
     - branch: environment/development
     - branch: environment/staging

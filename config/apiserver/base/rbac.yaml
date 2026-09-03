@@ -21,7 +21,7 @@ rules:
       - timedcommitstatuses
       - webrequestcommitstatuses
       - scheduledcommitstatuses
-      - dagcommitstatuses
+      - dependentssuccessfulcommitstatuses
       - gitrepositories
       - scmproviders
       - clusterscmproviders

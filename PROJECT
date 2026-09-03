@@ -121,7 +121,7 @@ resources:
   controller: true
   domain: argoproj.io
   group: promoter
-  kind: DAGCommitStatus
+  kind: DependentsSuccessfulCommitStatus
   path: github.com/argoproj-labs/gitops-promoter/api/v1alpha1
   version: v1alpha1
 - api:

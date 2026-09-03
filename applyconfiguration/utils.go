@@ -93,16 +93,16 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ControllerConfigurationStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("CronWindow"):
 		return &apiv1alpha1.CronWindowApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("DAGCommitStatus"):
-		return &apiv1alpha1.DAGCommitStatusApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("DAGCommitStatusConfiguration"):
-		return &apiv1alpha1.DAGCommitStatusConfigurationApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("DAGCommitStatusSpec"):
-		return &apiv1alpha1.DAGCommitStatusSpecApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("DAGCommitStatusStatus"):
-		return &apiv1alpha1.DAGCommitStatusStatusApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("DAGEnvironment"):
-		return &apiv1alpha1.DAGEnvironmentApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DependentEnvironment"):
+		return &apiv1alpha1.DependentEnvironmentApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DependentsSuccessfulCommitStatus"):
+		return &apiv1alpha1.DependentsSuccessfulCommitStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DependentsSuccessfulCommitStatusConfiguration"):
+		return &apiv1alpha1.DependentsSuccessfulCommitStatusConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DependentsSuccessfulCommitStatusSpec"):
+		return &apiv1alpha1.DependentsSuccessfulCommitStatusSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("DependentsSuccessfulCommitStatusStatus"):
+		return &apiv1alpha1.DependentsSuccessfulCommitStatusStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("Environment"):
 		return &apiv1alpha1.EnvironmentApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("EnvironmentStatus"):

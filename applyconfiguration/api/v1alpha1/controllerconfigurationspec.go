@@ -60,9 +60,9 @@ type ControllerConfigurationSpecApplyConfiguration struct {
 	// WebRequestCommitStatus contains the configuration for the WebRequestCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	WebRequestCommitStatus *WebRequestCommitStatusConfigurationApplyConfiguration `json:"webRequestCommitStatus,omitempty"`
-	// DAGCommitStatus contains the configuration for the DAGCommitStatus controller,
+	// DependentsSuccessfulCommitStatus contains the configuration for the DependentsSuccessfulCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
-	DAGCommitStatus *DAGCommitStatusConfigurationApplyConfiguration `json:"dagCommitStatus,omitempty"`
+	DependentsSuccessfulCommitStatus *DependentsSuccessfulCommitStatusConfigurationApplyConfiguration `json:"dependentsSuccessfulCommitStatus,omitempty"`
 	// ScheduledCommitStatus contains the configuration for the ScheduledCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	ScheduledCommitStatus *ScheduledCommitStatusConfigurationApplyConfiguration `json:"scheduledCommitStatus,omitempty"`
@@ -146,11 +146,11 @@ func (b *ControllerConfigurationSpecApplyConfiguration) WithWebRequestCommitStat
 	return b
 }
 
-// WithDAGCommitStatus sets the DAGCommitStatus field in the declarative configuration to the given value
+// WithDependentsSuccessfulCommitStatus sets the DependentsSuccessfulCommitStatus field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the DAGCommitStatus field is set to the value of the last call.
-func (b *ControllerConfigurationSpecApplyConfiguration) WithDAGCommitStatus(value *DAGCommitStatusConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
-	b.DAGCommitStatus = value
+// If called multiple times, the DependentsSuccessfulCommitStatus field is set to the value of the last call.
+func (b *ControllerConfigurationSpecApplyConfiguration) WithDependentsSuccessfulCommitStatus(value *DependentsSuccessfulCommitStatusConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
+	b.DependentsSuccessfulCommitStatus = value
 	return b
 }
 

@@ -161,7 +161,7 @@ spec:
               fastDelay: "1s"
               slowDelay: "5m"
               maxFastAttempts: 3
-  dagCommitStatus:
+  dependentsSuccessfulCommitStatus:
     workQueue:
       maxConcurrentReconciles: 10
       requeueDuration: "5m"

@@ -139,7 +139,7 @@ var _ = Describe("Instance ID migration", Ordered, func() {
 			{Key: migrationGateGitKey},
 			{Key: migrationGateWebKey},
 			{Key: migrationGateScheduledKey},
-			{Key: promoterv1alpha1.DAGCommitStatusKey},
+			{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
 		}
 
 		timedCommitStatus := &promoterv1alpha1.TimedCommitStatus{
@@ -227,14 +227,14 @@ var _ = Describe("Instance ID migration", Ordered, func() {
 			},
 		}
 
-		dagCommitStatus := &promoterv1alpha1.DAGCommitStatus{
+		dependentsSuccessfulCommitStatus := &promoterv1alpha1.DependentsSuccessfulCommitStatus{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      psName,
 				Namespace: "default",
 			},
-			Spec: promoterv1alpha1.DAGCommitStatusSpec{
+			Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName},
-				Key:                  promoterv1alpha1.DAGCommitStatusKey,
+				Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
 			},
 		}
 
@@ -243,7 +243,7 @@ var _ = Describe("Instance ID migration", Ordered, func() {
 		Expect(migClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(migClient.Create(ctx, gitRepo)).To(Succeed())
 		Expect(migClient.Create(ctx, promotionStrategy)).To(Succeed())
-		Expect(migClient.Create(ctx, dagCommitStatus)).To(Succeed())
+		Expect(migClient.Create(ctx, dependentsSuccessfulCommitStatus)).To(Succeed())
 		Expect(migClient.Create(ctx, timedCommitStatus)).To(Succeed())
 		Expect(migClient.Create(ctx, gitCommitStatus)).To(Succeed())
 		Expect(migClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
@@ -331,8 +331,8 @@ var _ = Describe("Instance ID migration", Ordered, func() {
 
 		patchInstanceIDLabel(ctx, migClient, promotionStrategy, wave0)
 		patchInstanceIDLabel(ctx, migClient, scmSecret, wave0)
-		patchInstanceIDLabel(ctx, migClient, dagCommitStatus, wave0)
-		var dag promoterv1alpha1.DAGCommitStatus
+		patchInstanceIDLabel(ctx, migClient, dependentsSuccessfulCommitStatus, wave0)
+		var dag promoterv1alpha1.DependentsSuccessfulCommitStatus
 		Expect(migClient.Get(ctx, types.NamespacedName{Name: psName, Namespace: "default"}, &dag)).To(Succeed())
 		patchInstanceIDLabel(ctx, migClient, &dag, wave0)
 		for _, gate := range migrationGates {

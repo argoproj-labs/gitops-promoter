@@ -4,23 +4,24 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.22.0
-  name: dagcommitstatuses.promoter.argoproj.io
+  name: dependentssuccessfulcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
   names:
-    kind: DAGCommitStatus
-    listKind: DAGCommitStatusList
-    plural: dagcommitstatuses
-    singular: dagcommitstatus
+    kind: DependentsSuccessfulCommitStatus
+    listKind: DependentsSuccessfulCommitStatusList
+    plural: dependentssuccessfulcommitstatuses
+    singular: dependentssuccessfulcommitstatus
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: DAGCommitStatus is the Schema for the dagcommitstatuses API
+        description: DependentsSuccessfulCommitStatus is the Schema for the dependentssuccessfulcommitstatuses
+          API
         externalDocs:
           description: CRD reference (examples and behavior)
-          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#dagcommitstatus
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#dependentssuccessfulcommitstatus
         properties:
           apiVersion:
             description: |-
@@ -40,21 +41,20 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec defines the desired state of DAGCommitStatus
+            description: spec defines the desired state of DependentsSuccessfulCommitStatus
             properties:
               environments:
                 description: |-
-                  Environments declares the promotion dependency graph. Each entry names an environment branch
-                  and the upstream branches it depends on. An environment becomes eligible for promotion once
-                  all of its dependsOn upstreams are satisfied. An entry with no dependsOn is a graph root.
-                  The graph must be acyclic; cycles and references to unknown branches are rejected.
+                  Environments declares which environments each branch depends on. An environment becomes eligible for
+                  promotion once all of its dependsOn dependents are promoted and successful. An entry with no dependsOn
+                  is a root. The graph must be acyclic; cycles and references to unknown branches are rejected.
 
                   When omitted or empty, the controller infers a linear chain from the referenced
                   PromotionStrategy's spec.environments order: the first environment is a root, and each
                   subsequent environment dependsOn the one before it.
                 items:
-                  description: DAGEnvironment is a single node in the promotion dependency
-                    graph.
+                  description: DependentEnvironment declares one environment branch
+                    and the other branches it depends on.
                   properties:
                     branch:
                       description: |-
@@ -73,9 +73,9 @@ spec:
                         rule: '!self.contains(''..'')'
                     dependsOn:
                       description: |-
-                        DependsOn is the list of upstream branches this environment depends on. The environment is
-                        only eligible for promotion once every branch listed here is satisfied. An empty or omitted
-                        list makes this environment a root of the graph.
+                        DependsOn is the list of dependent environment branches this environment waits on. The environment is
+                        only eligible for promotion once every branch listed here is promoted and successful. An empty or
+                        omitted list makes this environment a root.
                         Each item must not start with '-', contain ':', or contain '..'.
                       items:
                         maxLength: 100
@@ -113,9 +113,9 @@ spec:
                 type: string
               promotionStrategyRef:
                 description: |-
-                  PromotionStrategyRef is a reference to the promotion strategy that this DAG commit status
-                  applies to. The controller watches this PromotionStrategy and, for each environment, reports
-                  whether the environment's upstream dependencies (as declared in Environments) are satisfied.
+                  PromotionStrategyRef is a reference to the promotion strategy that this dependents successful commit status
+                  applies to. The controller watches this PromotionStrategy and, for each environment, reports whether the
+                  environment's dependent environments (as declared in Environments) are promoted and successful.
                 properties:
                   name:
                     description: Name is the name of the object to refer to.
@@ -131,7 +131,7 @@ spec:
                   URL generates the URL to use on the per-environment CommitStatus (SCM details link), for
                   example a link into the Promoter UI that highlights this environment's dependsOn upstreams.
                   Optional; when empty, no URL is set on the child CommitStatus. The template receives
-                  .Environment, .DAGCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery
+                  .Environment, .DependentsSuccessfulCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery
                   (see controller docs).
                 properties:
                   options:
@@ -157,7 +157,7 @@ spec:
                       with options (url.options) to control behavior when a variable is not present.
 
                       Available template variables depend on the parent resource that embeds URLConfig
-                      (ArgoCDCommitStatus or DAGCommitStatus). See the
+                      (ArgoCDCommitStatus or DependentsSuccessfulCommitStatus). See the
                       corresponding gate documentation for the variable set and examples.
                     type: string
                 type: object
@@ -166,7 +166,7 @@ spec:
             - promotionStrategyRef
             type: object
           status:
-            description: status defines the observed state of DAGCommitStatus
+            description: status defines the observed state of DependentsSuccessfulCommitStatus
             properties:
               conditions:
                 description: Conditions represent the latest available observations

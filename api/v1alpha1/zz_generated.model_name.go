@@ -206,33 +206,33 @@ func (in CronWindow) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
-func (in DAGCommitStatus) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.DAGCommitStatus"
+func (in DependentEnvironment) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DependentEnvironment"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
-func (in DAGCommitStatusConfiguration) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.DAGCommitStatusConfiguration"
+func (in DependentsSuccessfulCommitStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DependentsSuccessfulCommitStatus"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
-func (in DAGCommitStatusList) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.DAGCommitStatusList"
+func (in DependentsSuccessfulCommitStatusConfiguration) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DependentsSuccessfulCommitStatusConfiguration"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
-func (in DAGCommitStatusSpec) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.DAGCommitStatusSpec"
+func (in DependentsSuccessfulCommitStatusList) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DependentsSuccessfulCommitStatusList"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
-func (in DAGCommitStatusStatus) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.DAGCommitStatusStatus"
+func (in DependentsSuccessfulCommitStatusSpec) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DependentsSuccessfulCommitStatusSpec"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
-func (in DAGEnvironment) OpenAPIModelName() string {
-	return "io.argoproj.promoter.v1alpha1.DAGEnvironment"
+func (in DependentsSuccessfulCommitStatusStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DependentsSuccessfulCommitStatusStatus"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.

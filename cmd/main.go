@@ -357,14 +357,14 @@ func runController(
 		setupLog.Error(err, "unable to create controller", "controller", "WebRequestCommitStatus")
 		panic(fmt.Errorf("unable to create WebRequestCommitStatus controller: %w", err))
 	}
-	if err := (&controller.DAGCommitStatusReconciler{
+	if err := (&controller.DependentsSuccessfulCommitStatusReconciler{
 		Client:      localManager.GetClient(),
 		Scheme:      localManager.GetScheme(),
-		Recorder:    localManager.GetEventRecorder("DAGCommitStatus"),
+		Recorder:    localManager.GetEventRecorder("DependentsSuccessfulCommitStatus"),
 		SettingsMgr: settingsMgr,
 	}).SetupWithManager(runCtx, localManager); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "DAGCommitStatus")
-		panic(fmt.Errorf("unable to create DAGCommitStatus controller: %w", err))
+		setupLog.Error(err, "unable to create controller", "controller", "DependentsSuccessfulCommitStatus")
+		panic(fmt.Errorf("unable to create DependentsSuccessfulCommitStatus controller: %w", err))
 	}
 	if err := (&controller.ScheduledCommitStatusReconciler{
 		Client:      localManager.GetClient(),

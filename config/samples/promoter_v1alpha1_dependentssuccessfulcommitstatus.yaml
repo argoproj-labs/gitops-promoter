@@ -1,11 +1,11 @@
 apiVersion: promoter.argoproj.io/v1alpha1
-kind: DAGCommitStatus
+kind: DependentsSuccessfulCommitStatus
 metadata:
   labels:
     app.kubernetes.io/name: promoter
     app.kubernetes.io/managed-by: kustomize
-  name: dagcommitstatus-sample
+  name: dependentssuccessfulcommitstatus-sample
 spec:
-  key: promoter-dag
+  key: dependents-successful
   promotionStrategyRef:
     name: promotionstrategy-sample

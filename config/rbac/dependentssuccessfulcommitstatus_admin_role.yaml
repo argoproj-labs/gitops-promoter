@@ -11,17 +11,17 @@ metadata:
   labels:
     app.kubernetes.io/name: promoter
     app.kubernetes.io/managed-by: kustomize
-  name: dagcommitstatus-admin-role
+  name: dependentssuccessfulcommitstatus-admin-role
 rules:
 - apiGroups:
   - promoter.argoproj.io
   resources:
-  - dagcommitstatuses
+  - dependentssuccessfulcommitstatuses
   verbs:
   - '*'
 - apiGroups:
   - promoter.argoproj.io
   resources:
-  - dagcommitstatuses/status
+  - dependentssuccessfulcommitstatuses/status
   verbs:
   - get

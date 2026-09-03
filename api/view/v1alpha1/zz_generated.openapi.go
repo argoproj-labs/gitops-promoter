@@ -72,12 +72,12 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.ControllerConfigurationSpec{}.OpenAPIModelName():                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSpec(ref),
 		apiv1alpha1.ControllerConfigurationStatus{}.OpenAPIModelName():                        schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationStatus(ref),
 		apiv1alpha1.CronWindow{}.OpenAPIModelName():                                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_CronWindow(ref),
-		apiv1alpha1.DAGCommitStatus{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatus(ref),
-		apiv1alpha1.DAGCommitStatusConfiguration{}.OpenAPIModelName():                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatusConfiguration(ref),
-		apiv1alpha1.DAGCommitStatusList{}.OpenAPIModelName():                                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatusList(ref),
-		apiv1alpha1.DAGCommitStatusSpec{}.OpenAPIModelName():                                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatusSpec(ref),
-		apiv1alpha1.DAGCommitStatusStatus{}.OpenAPIModelName():                                schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatusStatus(ref),
-		apiv1alpha1.DAGEnvironment{}.OpenAPIModelName():                                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGEnvironment(ref),
+		apiv1alpha1.DependentEnvironment{}.OpenAPIModelName():                                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentEnvironment(ref),
+		apiv1alpha1.DependentsSuccessfulCommitStatus{}.OpenAPIModelName():                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatus(ref),
+		apiv1alpha1.DependentsSuccessfulCommitStatusConfiguration{}.OpenAPIModelName():        schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusConfiguration(ref),
+		apiv1alpha1.DependentsSuccessfulCommitStatusList{}.OpenAPIModelName():                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusList(ref),
+		apiv1alpha1.DependentsSuccessfulCommitStatusSpec{}.OpenAPIModelName():                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusSpec(ref),
+		apiv1alpha1.DependentsSuccessfulCommitStatusStatus{}.OpenAPIModelName():               schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusStatus(ref),
 		apiv1alpha1.Environment{}.OpenAPIModelName():                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_Environment(ref),
 		apiv1alpha1.EnvironmentStatus{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_EnvironmentStatus(ref),
 		apiv1alpha1.ExponentialFailure{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_ExponentialFailure(ref),
@@ -2096,11 +2096,11 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSp
 							Ref:         ref(apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName()),
 						},
 					},
-					"dagCommitStatus": {
+					"dependentsSuccessfulCommitStatus": {
 						SchemaProps: spec.SchemaProps{
-							Description: "DAGCommitStatus contains the configuration for the DAGCommitStatus controller, including WorkQueue settings that control reconciliation behavior.",
+							Description: "DependentsSuccessfulCommitStatus contains the configuration for the DependentsSuccessfulCommitStatus controller, including WorkQueue settings that control reconciliation behavior.",
 							Default:     map[string]interface{}{},
-							Ref:         ref(apiv1alpha1.DAGCommitStatusConfiguration{}.OpenAPIModelName()),
+							Ref:         ref(apiv1alpha1.DependentsSuccessfulCommitStatusConfiguration{}.OpenAPIModelName()),
 						},
 					},
 					"scheduledCommitStatus": {
@@ -2111,11 +2111,11 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfigurationSp
 						},
 					},
 				},
-				Required: []string{"promotionStrategy", "changeTransferPolicy", "pullRequest", "commitStatus", "argocdCommitStatus", "timedCommitStatus", "gitCommitStatus", "webRequestCommitStatus", "dagCommitStatus", "scheduledCommitStatus"},
+				Required: []string{"promotionStrategy", "changeTransferPolicy", "pullRequest", "commitStatus", "argocdCommitStatus", "timedCommitStatus", "gitCommitStatus", "webRequestCommitStatus", "dependentsSuccessfulCommitStatus", "scheduledCommitStatus"},
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.ArgoCDCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyConfiguration{}.OpenAPIModelName(), apiv1alpha1.CommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.DAGCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategyConfiguration{}.OpenAPIModelName(), apiv1alpha1.PullRequestConfiguration{}.OpenAPIModelName(), apiv1alpha1.ScheduledCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName()},
+			apiv1alpha1.ArgoCDCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicyConfiguration{}.OpenAPIModelName(), apiv1alpha1.CommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.DependentsSuccessfulCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategyConfiguration{}.OpenAPIModelName(), apiv1alpha1.PullRequestConfiguration{}.OpenAPIModelName(), apiv1alpha1.ScheduledCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatusConfiguration{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatusConfiguration{}.OpenAPIModelName()},
 	}
 }
 
@@ -2215,11 +2215,47 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CronWindow(ref common.Ref
 	}
 }
 
-func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentEnvironment(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "DAGCommitStatus is the Schema for the dagcommitstatuses API",
+				Description: "DependentEnvironment declares one environment branch and the other branches it depends on.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"branch": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Branch is the name of the active branch for the environment. It must match a branch declared in the referenced PromotionStrategy's environments. Must not start with '-', contain ':', or contain '..'.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"dependsOn": {
+						SchemaProps: spec.SchemaProps{
+							Description: "DependsOn is the list of dependent environment branches this environment waits on. The environment is only eligible for promotion once every branch listed here is promoted and successful. An empty or omitted list makes this environment a root. Each item must not start with '-', contain ':', or contain '..'.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"branch"},
+			},
+		},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "DependentsSuccessfulCommitStatus is the Schema for the dependentssuccessfulcommitstatuses API",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
@@ -2245,16 +2281,16 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatus(ref commo
 					},
 					"spec": {
 						SchemaProps: spec.SchemaProps{
-							Description: "spec defines the desired state of DAGCommitStatus",
+							Description: "spec defines the desired state of DependentsSuccessfulCommitStatus",
 							Default:     map[string]interface{}{},
-							Ref:         ref(apiv1alpha1.DAGCommitStatusSpec{}.OpenAPIModelName()),
+							Ref:         ref(apiv1alpha1.DependentsSuccessfulCommitStatusSpec{}.OpenAPIModelName()),
 						},
 					},
 					"status": {
 						SchemaProps: spec.SchemaProps{
-							Description: "status defines the observed state of DAGCommitStatus",
+							Description: "status defines the observed state of DependentsSuccessfulCommitStatus",
 							Default:     map[string]interface{}{},
-							Ref:         ref(apiv1alpha1.DAGCommitStatusStatus{}.OpenAPIModelName()),
+							Ref:         ref(apiv1alpha1.DependentsSuccessfulCommitStatusStatus{}.OpenAPIModelName()),
 						},
 					},
 				},
@@ -2262,20 +2298,20 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatus(ref commo
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.DAGCommitStatusSpec{}.OpenAPIModelName(), apiv1alpha1.DAGCommitStatusStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
+			apiv1alpha1.DependentsSuccessfulCommitStatusSpec{}.OpenAPIModelName(), apiv1alpha1.DependentsSuccessfulCommitStatusStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
 	}
 }
 
-func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatusConfiguration(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusConfiguration(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "DAGCommitStatusConfiguration defines the configuration for the DAGCommitStatus controller.\n\nThis configuration controls how the DAGCommitStatus controller processes reconciliation requests, including requeue intervals, concurrency limits, and rate limiting behavior.",
+				Description: "DependentsSuccessfulCommitStatusConfiguration defines the configuration for the DependentsSuccessfulCommitStatus controller.\n\nThis configuration controls how the DependentsSuccessfulCommitStatus controller processes reconciliation requests, including requeue intervals, concurrency limits, and rate limiting behavior.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"workQueue": {
 						SchemaProps: spec.SchemaProps{
-							Description: "WorkQueue contains the work queue configuration for the DAGCommitStatus controller. This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.",
+							Description: "WorkQueue contains the work queue configuration for the DependentsSuccessfulCommitStatus controller. This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.",
 							Default:     map[string]interface{}{},
 							Ref:         ref(apiv1alpha1.WorkQueue{}.OpenAPIModelName()),
 						},
@@ -2289,11 +2325,11 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatusConfigurat
 	}
 }
 
-func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatusList(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusList(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "DAGCommitStatusList contains a list of DAGCommitStatus",
+				Description: "DependentsSuccessfulCommitStatusList contains a list of DependentsSuccessfulCommitStatus",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
@@ -2322,7 +2358,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatusList(ref c
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
-										Ref: ref(apiv1alpha1.DAGCommitStatus{}.OpenAPIModelName()),
+										Ref: ref(apiv1alpha1.DependentsSuccessfulCommitStatus{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -2333,20 +2369,20 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatusList(ref c
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.DAGCommitStatus{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
+			apiv1alpha1.DependentsSuccessfulCommitStatus{}.OpenAPIModelName(), metav1.ListMeta{}.OpenAPIModelName()},
 	}
 }
 
-func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatusSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "DAGCommitStatusSpec defines the desired state of DAGCommitStatus.",
+				Description: "DependentsSuccessfulCommitStatusSpec defines the desired state of DependentsSuccessfulCommitStatus.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"promotionStrategyRef": {
 						SchemaProps: spec.SchemaProps{
-							Description: "PromotionStrategyRef is a reference to the promotion strategy that this DAG commit status applies to. The controller watches this PromotionStrategy and, for each environment, reports whether the environment's upstream dependencies (as declared in Environments) are satisfied.",
+							Description: "PromotionStrategyRef is a reference to the promotion strategy that this dependents successful commit status applies to. The controller watches this PromotionStrategy and, for each environment, reports whether the environment's dependent environments (as declared in Environments) are promoted and successful.",
 							Default:     map[string]interface{}{},
 							Ref:         ref(apiv1alpha1.ObjectReference{}.OpenAPIModelName()),
 						},
@@ -2368,12 +2404,12 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatusSpec(ref c
 							},
 						},
 						SchemaProps: spec.SchemaProps{
-							Description: "Environments declares the promotion dependency graph. Each entry names an environment branch and the upstream branches it depends on. An environment becomes eligible for promotion once all of its dependsOn upstreams are satisfied. An entry with no dependsOn is a graph root. The graph must be acyclic; cycles and references to unknown branches are rejected.\n\nWhen omitted or empty, the controller infers a linear chain from the referenced PromotionStrategy's spec.environments order: the first environment is a root, and each subsequent environment dependsOn the one before it.",
+							Description: "Environments declares which environments each branch depends on. An environment becomes eligible for promotion once all of its dependsOn dependents are promoted and successful. An entry with no dependsOn is a root. The graph must be acyclic; cycles and references to unknown branches are rejected.\n\nWhen omitted or empty, the controller infers a linear chain from the referenced PromotionStrategy's spec.environments order: the first environment is a root, and each subsequent environment dependsOn the one before it.",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
-										Ref: ref(apiv1alpha1.DAGEnvironment{}.OpenAPIModelName()),
+										Ref: ref(apiv1alpha1.DependentEnvironment{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -2381,7 +2417,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatusSpec(ref c
 					},
 					"url": {
 						SchemaProps: spec.SchemaProps{
-							Description: "URL generates the URL to use on the per-environment CommitStatus (SCM details link), for example a link into the Promoter UI that highlights this environment's dependsOn upstreams. Optional; when empty, no URL is set on the child CommitStatus. The template receives .Environment, .DAGCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery (see controller docs).",
+							Description: "URL generates the URL to use on the per-environment CommitStatus (SCM details link), for example a link into the Promoter UI that highlights this environment's dependsOn upstreams. Optional; when empty, no URL is set on the child CommitStatus. The template receives .Environment, .DependentsSuccessfulCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery (see controller docs).",
 							Default:     map[string]interface{}{},
 							Ref:         ref(apiv1alpha1.URLConfig{}.OpenAPIModelName()),
 						},
@@ -2391,15 +2427,15 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatusSpec(ref c
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.DAGEnvironment{}.OpenAPIModelName(), apiv1alpha1.ObjectReference{}.OpenAPIModelName(), apiv1alpha1.URLConfig{}.OpenAPIModelName()},
+			apiv1alpha1.DependentEnvironment{}.OpenAPIModelName(), apiv1alpha1.ObjectReference{}.OpenAPIModelName(), apiv1alpha1.URLConfig{}.OpenAPIModelName()},
 	}
 }
 
-func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatusStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "DAGCommitStatusStatus defines the observed state of DAGCommitStatus.",
+				Description: "DependentsSuccessfulCommitStatusStatus defines the observed state of DependentsSuccessfulCommitStatus.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"observedGeneration": {
@@ -2442,42 +2478,6 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGCommitStatusStatus(ref
 		},
 		Dependencies: []string{
 			metav1.Condition{}.OpenAPIModelName()},
-	}
-}
-
-func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DAGEnvironment(ref common.ReferenceCallback) common.OpenAPIDefinition {
-	return common.OpenAPIDefinition{
-		Schema: spec.Schema{
-			SchemaProps: spec.SchemaProps{
-				Description: "DAGEnvironment is a single node in the promotion dependency graph.",
-				Type:        []string{"object"},
-				Properties: map[string]spec.Schema{
-					"branch": {
-						SchemaProps: spec.SchemaProps{
-							Description: "Branch is the name of the active branch for the environment. It must match a branch declared in the referenced PromotionStrategy's environments. Must not start with '-', contain ':', or contain '..'.",
-							Default:     "",
-							Type:        []string{"string"},
-							Format:      "",
-						},
-					},
-					"dependsOn": {
-						SchemaProps: spec.SchemaProps{
-							Description: "DependsOn is the list of upstream branches this environment depends on. The environment is only eligible for promotion once every branch listed here is satisfied. An empty or omitted list makes this environment a root of the graph. Each item must not start with '-', contain ':', or contain '..'.",
-							Type:        []string{"array"},
-							Items: &spec.SchemaOrArray{
-								Schema: &spec.Schema{
-									SchemaProps: spec.SchemaProps{
-										Type:   []string{"string"},
-										Format: "",
-									},
-								},
-							},
-						},
-					},
-				},
-				Required: []string{"branch"},
-			},
-		},
 	}
 }
 
@@ -5935,7 +5935,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_URLConfig(ref common.Refe
 				Properties: map[string]spec.Schema{
 					"template": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Template is a Go text template used to generate the CommitStatus URL. A function called urlQueryEscape is available to escape URL query parameters. The template can be configured with options (url.options) to control behavior when a variable is not present.\n\nAvailable template variables depend on the parent resource that embeds URLConfig (ArgoCDCommitStatus or DAGCommitStatus). See the corresponding gate documentation for the variable set and examples.",
+							Description: "Template is a Go text template used to generate the CommitStatus URL. A function called urlQueryEscape is available to escape URL query parameters. The template can be configured with options (url.options) to control behavior when a variable is not present.\n\nAvailable template variables depend on the parent resource that embeds URLConfig (ArgoCDCommitStatus or DependentsSuccessfulCommitStatus). See the corresponding gate documentation for the variable set and examples.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -6689,14 +6689,14 @@ func schema_gitops_promoter_api_view_v1alpha1_PromotionStrategyDetails(ref commo
 							},
 						},
 					},
-					"dagCommitStatuses": {
+					"dependentsSuccessfulCommitStatuses": {
 						SchemaProps: spec.SchemaProps{
-							Description: "DAGCommitStatuses are the DAGCommitStatus managers that reference the PromotionStrategy.",
+							Description: "DependentsSuccessfulCommitStatuses are the DependentsSuccessfulCommitStatus managers that reference the PromotionStrategy.",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
-										Ref: ref(apiv1alpha1.DAGCommitStatus{}.OpenAPIModelName()),
+										Ref: ref(apiv1alpha1.DependentsSuccessfulCommitStatus{}.OpenAPIModelName()),
 									},
 								},
 							},
@@ -6738,7 +6738,7 @@ func schema_gitops_promoter_api_view_v1alpha1_PromotionStrategyDetails(ref commo
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.ArgoCDCommitStatus{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicy{}.OpenAPIModelName(), apiv1alpha1.ClusterScmProvider{}.OpenAPIModelName(), apiv1alpha1.CommitStatus{}.OpenAPIModelName(), apiv1alpha1.DAGCommitStatus{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatus{}.OpenAPIModelName(), apiv1alpha1.GitRepository{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategy{}.OpenAPIModelName(), apiv1alpha1.PullRequest{}.OpenAPIModelName(), apiv1alpha1.ScheduledCommitStatus{}.OpenAPIModelName(), apiv1alpha1.ScmProvider{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatus{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
+			apiv1alpha1.ArgoCDCommitStatus{}.OpenAPIModelName(), apiv1alpha1.ChangeTransferPolicy{}.OpenAPIModelName(), apiv1alpha1.ClusterScmProvider{}.OpenAPIModelName(), apiv1alpha1.CommitStatus{}.OpenAPIModelName(), apiv1alpha1.DependentsSuccessfulCommitStatus{}.OpenAPIModelName(), apiv1alpha1.GitCommitStatus{}.OpenAPIModelName(), apiv1alpha1.GitRepository{}.OpenAPIModelName(), apiv1alpha1.PromotionStrategy{}.OpenAPIModelName(), apiv1alpha1.PullRequest{}.OpenAPIModelName(), apiv1alpha1.ScheduledCommitStatus{}.OpenAPIModelName(), apiv1alpha1.ScmProvider{}.OpenAPIModelName(), apiv1alpha1.TimedCommitStatus{}.OpenAPIModelName(), apiv1alpha1.WebRequestCommitStatus{}.OpenAPIModelName(), metav1.ObjectMeta{}.OpenAPIModelName()},
 	}
 }
 

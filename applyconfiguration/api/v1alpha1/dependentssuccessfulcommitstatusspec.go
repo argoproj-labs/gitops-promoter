@@ -17,48 +17,47 @@ limitations under the License.
 
 package v1alpha1
 
-// DAGCommitStatusSpecApplyConfiguration represents a declarative configuration of the DAGCommitStatusSpec type for use
+// DependentsSuccessfulCommitStatusSpecApplyConfiguration represents a declarative configuration of the DependentsSuccessfulCommitStatusSpec type for use
 // with apply.
 //
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-// DAGCommitStatusSpec defines the desired state of DAGCommitStatus.
-type DAGCommitStatusSpecApplyConfiguration struct {
-	// PromotionStrategyRef is a reference to the promotion strategy that this DAG commit status
-	// applies to. The controller watches this PromotionStrategy and, for each environment, reports
-	// whether the environment's upstream dependencies (as declared in Environments) are satisfied.
+// DependentsSuccessfulCommitStatusSpec defines the desired state of DependentsSuccessfulCommitStatus.
+type DependentsSuccessfulCommitStatusSpecApplyConfiguration struct {
+	// PromotionStrategyRef is a reference to the promotion strategy that this dependents successful commit status
+	// applies to. The controller watches this PromotionStrategy and, for each environment, reports whether the
+	// environment's dependent environments (as declared in Environments) are promoted and successful.
 	PromotionStrategyRef *ObjectReferenceApplyConfiguration `json:"promotionStrategyRef,omitempty"`
 	// Key is the commit status key referenced in the PromotionStrategy's proposedCommitStatuses.
 	// It must match a key declared there so the gate this controller produces is enforced.
 	// Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
 	Key *string `json:"key,omitempty"`
-	// Environments declares the promotion dependency graph. Each entry names an environment branch
-	// and the upstream branches it depends on. An environment becomes eligible for promotion once
-	// all of its dependsOn upstreams are satisfied. An entry with no dependsOn is a graph root.
-	// The graph must be acyclic; cycles and references to unknown branches are rejected.
+	// Environments declares which environments each branch depends on. An environment becomes eligible for
+	// promotion once all of its dependsOn dependents are promoted and successful. An entry with no dependsOn
+	// is a root. The graph must be acyclic; cycles and references to unknown branches are rejected.
 	//
 	// When omitted or empty, the controller infers a linear chain from the referenced
 	// PromotionStrategy's spec.environments order: the first environment is a root, and each
 	// subsequent environment dependsOn the one before it.
-	Environments []DAGEnvironmentApplyConfiguration `json:"environments,omitempty"`
+	Environments []DependentEnvironmentApplyConfiguration `json:"environments,omitempty"`
 	// URL generates the URL to use on the per-environment CommitStatus (SCM details link), for
 	// example a link into the Promoter UI that highlights this environment's dependsOn upstreams.
 	// Optional; when empty, no URL is set on the child CommitStatus. The template receives
-	// .Environment, .DAGCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery
+	// .Environment, .DependentsSuccessfulCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery
 	// (see controller docs).
 	URL *URLConfigApplyConfiguration `json:"url,omitempty"`
 }
 
-// DAGCommitStatusSpecApplyConfiguration constructs a declarative configuration of the DAGCommitStatusSpec type for use with
+// DependentsSuccessfulCommitStatusSpecApplyConfiguration constructs a declarative configuration of the DependentsSuccessfulCommitStatusSpec type for use with
 // apply.
-func DAGCommitStatusSpec() *DAGCommitStatusSpecApplyConfiguration {
-	return &DAGCommitStatusSpecApplyConfiguration{}
+func DependentsSuccessfulCommitStatusSpec() *DependentsSuccessfulCommitStatusSpecApplyConfiguration {
+	return &DependentsSuccessfulCommitStatusSpecApplyConfiguration{}
 }
 
 // WithPromotionStrategyRef sets the PromotionStrategyRef field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the PromotionStrategyRef field is set to the value of the last call.
-func (b *DAGCommitStatusSpecApplyConfiguration) WithPromotionStrategyRef(value *ObjectReferenceApplyConfiguration) *DAGCommitStatusSpecApplyConfiguration {
+func (b *DependentsSuccessfulCommitStatusSpecApplyConfiguration) WithPromotionStrategyRef(value *ObjectReferenceApplyConfiguration) *DependentsSuccessfulCommitStatusSpecApplyConfiguration {
 	b.PromotionStrategyRef = value
 	return b
 }
@@ -66,7 +65,7 @@ func (b *DAGCommitStatusSpecApplyConfiguration) WithPromotionStrategyRef(value *
 // WithKey sets the Key field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Key field is set to the value of the last call.
-func (b *DAGCommitStatusSpecApplyConfiguration) WithKey(value string) *DAGCommitStatusSpecApplyConfiguration {
+func (b *DependentsSuccessfulCommitStatusSpecApplyConfiguration) WithKey(value string) *DependentsSuccessfulCommitStatusSpecApplyConfiguration {
 	b.Key = &value
 	return b
 }
@@ -74,7 +73,7 @@ func (b *DAGCommitStatusSpecApplyConfiguration) WithKey(value string) *DAGCommit
 // WithEnvironments adds the given value to the Environments field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the Environments field.
-func (b *DAGCommitStatusSpecApplyConfiguration) WithEnvironments(values ...*DAGEnvironmentApplyConfiguration) *DAGCommitStatusSpecApplyConfiguration {
+func (b *DependentsSuccessfulCommitStatusSpecApplyConfiguration) WithEnvironments(values ...*DependentEnvironmentApplyConfiguration) *DependentsSuccessfulCommitStatusSpecApplyConfiguration {
 	for i := range values {
 		if values[i] == nil {
 			panic("nil value passed to WithEnvironments")
@@ -87,7 +86,7 @@ func (b *DAGCommitStatusSpecApplyConfiguration) WithEnvironments(values ...*DAGE
 // WithURL sets the URL field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the URL field is set to the value of the last call.
-func (b *DAGCommitStatusSpecApplyConfiguration) WithURL(value *URLConfigApplyConfiguration) *DAGCommitStatusSpecApplyConfiguration {
+func (b *DependentsSuccessfulCommitStatusSpecApplyConfiguration) WithURL(value *URLConfigApplyConfiguration) *DependentsSuccessfulCommitStatusSpecApplyConfiguration {
 	b.URL = value
 	return b
 }

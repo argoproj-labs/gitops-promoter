@@ -27,7 +27,7 @@ type URLConfigApplyConfiguration struct {
 	// with options (url.options) to control behavior when a variable is not present.
 	//
 	// Available template variables depend on the parent resource that embeds URLConfig
-	// (ArgoCDCommitStatus or DAGCommitStatus). See the
+	// (ArgoCDCommitStatus or DependentsSuccessfulCommitStatus). See the
 	// corresponding gate documentation for the variable set and examples.
 	Template *string `json:"template,omitempty"`
 	// Options sets options for the template. Options are described by

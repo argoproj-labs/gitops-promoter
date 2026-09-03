@@ -17,29 +17,29 @@ limitations under the License.
 
 package v1alpha1
 
-// DAGCommitStatusConfigurationApplyConfiguration represents a declarative configuration of the DAGCommitStatusConfiguration type for use
+// DependentsSuccessfulCommitStatusConfigurationApplyConfiguration represents a declarative configuration of the DependentsSuccessfulCommitStatusConfiguration type for use
 // with apply.
 //
-// DAGCommitStatusConfiguration defines the configuration for the DAGCommitStatus controller.
+// DependentsSuccessfulCommitStatusConfiguration defines the configuration for the DependentsSuccessfulCommitStatus controller.
 //
-// This configuration controls how the DAGCommitStatus controller processes reconciliation
+// This configuration controls how the DependentsSuccessfulCommitStatus controller processes reconciliation
 // requests, including requeue intervals, concurrency limits, and rate limiting behavior.
-type DAGCommitStatusConfigurationApplyConfiguration struct {
-	// WorkQueue contains the work queue configuration for the DAGCommitStatus controller.
+type DependentsSuccessfulCommitStatusConfigurationApplyConfiguration struct {
+	// WorkQueue contains the work queue configuration for the DependentsSuccessfulCommitStatus controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	WorkQueue *WorkQueueApplyConfiguration `json:"workQueue,omitempty"`
 }
 
-// DAGCommitStatusConfigurationApplyConfiguration constructs a declarative configuration of the DAGCommitStatusConfiguration type for use with
+// DependentsSuccessfulCommitStatusConfigurationApplyConfiguration constructs a declarative configuration of the DependentsSuccessfulCommitStatusConfiguration type for use with
 // apply.
-func DAGCommitStatusConfiguration() *DAGCommitStatusConfigurationApplyConfiguration {
-	return &DAGCommitStatusConfigurationApplyConfiguration{}
+func DependentsSuccessfulCommitStatusConfiguration() *DependentsSuccessfulCommitStatusConfigurationApplyConfiguration {
+	return &DependentsSuccessfulCommitStatusConfigurationApplyConfiguration{}
 }
 
 // WithWorkQueue sets the WorkQueue field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the WorkQueue field is set to the value of the last call.
-func (b *DAGCommitStatusConfigurationApplyConfiguration) WithWorkQueue(value *WorkQueueApplyConfiguration) *DAGCommitStatusConfigurationApplyConfiguration {
+func (b *DependentsSuccessfulCommitStatusConfigurationApplyConfiguration) WithWorkQueue(value *WorkQueueApplyConfiguration) *DependentsSuccessfulCommitStatusConfigurationApplyConfiguration {
 	b.WorkQueue = value
 	return b
 }

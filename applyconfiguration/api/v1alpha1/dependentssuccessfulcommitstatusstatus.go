@@ -21,11 +21,11 @@ import (
 	v1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
-// DAGCommitStatusStatusApplyConfiguration represents a declarative configuration of the DAGCommitStatusStatus type for use
+// DependentsSuccessfulCommitStatusStatusApplyConfiguration represents a declarative configuration of the DependentsSuccessfulCommitStatusStatus type for use
 // with apply.
 //
-// DAGCommitStatusStatus defines the observed state of DAGCommitStatus.
-type DAGCommitStatusStatusApplyConfiguration struct {
+// DependentsSuccessfulCommitStatusStatus defines the observed state of DependentsSuccessfulCommitStatus.
+type DependentsSuccessfulCommitStatusStatusApplyConfiguration struct {
 	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
 	// Because status is written via Server-Side Apply with ForceOwnership (which has no
 	// optimistic-concurrency check), this field is the canonical way to detect stale
@@ -39,16 +39,16 @@ type DAGCommitStatusStatusApplyConfiguration struct {
 	InstanceID *string `json:"instanceID,omitempty"`
 }
 
-// DAGCommitStatusStatusApplyConfiguration constructs a declarative configuration of the DAGCommitStatusStatus type for use with
+// DependentsSuccessfulCommitStatusStatusApplyConfiguration constructs a declarative configuration of the DependentsSuccessfulCommitStatusStatus type for use with
 // apply.
-func DAGCommitStatusStatus() *DAGCommitStatusStatusApplyConfiguration {
-	return &DAGCommitStatusStatusApplyConfiguration{}
+func DependentsSuccessfulCommitStatusStatus() *DependentsSuccessfulCommitStatusStatusApplyConfiguration {
+	return &DependentsSuccessfulCommitStatusStatusApplyConfiguration{}
 }
 
 // WithObservedGeneration sets the ObservedGeneration field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ObservedGeneration field is set to the value of the last call.
-func (b *DAGCommitStatusStatusApplyConfiguration) WithObservedGeneration(value int64) *DAGCommitStatusStatusApplyConfiguration {
+func (b *DependentsSuccessfulCommitStatusStatusApplyConfiguration) WithObservedGeneration(value int64) *DependentsSuccessfulCommitStatusStatusApplyConfiguration {
 	b.ObservedGeneration = &value
 	return b
 }
@@ -56,7 +56,7 @@ func (b *DAGCommitStatusStatusApplyConfiguration) WithObservedGeneration(value i
 // WithConditions adds the given value to the Conditions field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the Conditions field.
-func (b *DAGCommitStatusStatusApplyConfiguration) WithConditions(values ...*v1.ConditionApplyConfiguration) *DAGCommitStatusStatusApplyConfiguration {
+func (b *DependentsSuccessfulCommitStatusStatusApplyConfiguration) WithConditions(values ...*v1.ConditionApplyConfiguration) *DependentsSuccessfulCommitStatusStatusApplyConfiguration {
 	for i := range values {
 		if values[i] == nil {
 			panic("nil value passed to WithConditions")
@@ -69,7 +69,7 @@ func (b *DAGCommitStatusStatusApplyConfiguration) WithConditions(values ...*v1.C
 // WithInstanceID sets the InstanceID field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the InstanceID field is set to the value of the last call.
-func (b *DAGCommitStatusStatusApplyConfiguration) WithInstanceID(value string) *DAGCommitStatusStatusApplyConfiguration {
+func (b *DependentsSuccessfulCommitStatusStatusApplyConfiguration) WithInstanceID(value string) *DependentsSuccessfulCommitStatusStatusApplyConfiguration {
 	b.InstanceID = &value
 	return b
 }

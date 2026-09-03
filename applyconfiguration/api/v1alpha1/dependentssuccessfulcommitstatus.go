@@ -26,78 +26,78 @@ import (
 	v1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
-// DAGCommitStatusApplyConfiguration represents a declarative configuration of the DAGCommitStatus type for use
+// DependentsSuccessfulCommitStatusApplyConfiguration represents a declarative configuration of the DependentsSuccessfulCommitStatus type for use
 // with apply.
 //
-// DAGCommitStatus is the Schema for the dagcommitstatuses API
-type DAGCommitStatusApplyConfiguration struct {
+// DependentsSuccessfulCommitStatus is the Schema for the dependentssuccessfulcommitstatuses API
+type DependentsSuccessfulCommitStatusApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration `json:""`
 	// metadata is a standard object metadata
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
-	// spec defines the desired state of DAGCommitStatus
-	Spec *DAGCommitStatusSpecApplyConfiguration `json:"spec,omitempty"`
-	// status defines the observed state of DAGCommitStatus
-	Status *DAGCommitStatusStatusApplyConfiguration `json:"status,omitempty"`
+	// spec defines the desired state of DependentsSuccessfulCommitStatus
+	Spec *DependentsSuccessfulCommitStatusSpecApplyConfiguration `json:"spec,omitempty"`
+	// status defines the observed state of DependentsSuccessfulCommitStatus
+	Status *DependentsSuccessfulCommitStatusStatusApplyConfiguration `json:"status,omitempty"`
 }
 
-// DAGCommitStatus constructs a declarative configuration of the DAGCommitStatus type for use with
+// DependentsSuccessfulCommitStatus constructs a declarative configuration of the DependentsSuccessfulCommitStatus type for use with
 // apply.
-func DAGCommitStatus(name, namespace string) *DAGCommitStatusApplyConfiguration {
-	b := &DAGCommitStatusApplyConfiguration{}
+func DependentsSuccessfulCommitStatus(name, namespace string) *DependentsSuccessfulCommitStatusApplyConfiguration {
+	b := &DependentsSuccessfulCommitStatusApplyConfiguration{}
 	b.WithName(name)
 	b.WithNamespace(namespace)
-	b.WithKind("DAGCommitStatus")
+	b.WithKind("DependentsSuccessfulCommitStatus")
 	b.WithAPIVersion("promoter.argoproj.io/v1alpha1")
 	return b
 }
 
-// ExtractDAGCommitStatusFrom extracts the applied configuration owned by fieldManager from
-// dAGCommitStatus for the specified subresource. Pass an empty string for subresource to extract
+// ExtractDependentsSuccessfulCommitStatusFrom extracts the applied configuration owned by fieldManager from
+// dependentsSuccessfulCommitStatus for the specified subresource. Pass an empty string for subresource to extract
 // the main resource. Common subresources include "status", "scale", etc.
-// dAGCommitStatus must be a unmodified DAGCommitStatus API object that was retrieved from the Kubernetes API.
-// ExtractDAGCommitStatusFrom provides a way to perform a extract/modify-in-place/apply workflow.
+// dependentsSuccessfulCommitStatus must be a unmodified DependentsSuccessfulCommitStatus API object that was retrieved from the Kubernetes API.
+// ExtractDependentsSuccessfulCommitStatusFrom provides a way to perform a extract/modify-in-place/apply workflow.
 // Note that an extracted apply configuration will contain fewer fields than what the fieldManager previously
 // applied if another fieldManager has updated or force applied any of the previously applied fields.
-func ExtractDAGCommitStatusFrom(dAGCommitStatus *apiv1alpha1.DAGCommitStatus, fieldManager string, subresource string) (*DAGCommitStatusApplyConfiguration, error) {
-	b := &DAGCommitStatusApplyConfiguration{}
-	err := managedfields.ExtractInto(dAGCommitStatus, internal.Parser().Type("com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DAGCommitStatus"), fieldManager, b, subresource)
+func ExtractDependentsSuccessfulCommitStatusFrom(dependentsSuccessfulCommitStatus *apiv1alpha1.DependentsSuccessfulCommitStatus, fieldManager string, subresource string) (*DependentsSuccessfulCommitStatusApplyConfiguration, error) {
+	b := &DependentsSuccessfulCommitStatusApplyConfiguration{}
+	err := managedfields.ExtractInto(dependentsSuccessfulCommitStatus, internal.Parser().Type("com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatus"), fieldManager, b, subresource)
 	if err != nil {
 		return nil, err
 	}
-	b.WithName(dAGCommitStatus.Name)
-	b.WithNamespace(dAGCommitStatus.Namespace)
+	b.WithName(dependentsSuccessfulCommitStatus.Name)
+	b.WithNamespace(dependentsSuccessfulCommitStatus.Namespace)
 
-	b.WithKind("DAGCommitStatus")
+	b.WithKind("DependentsSuccessfulCommitStatus")
 	b.WithAPIVersion("promoter.argoproj.io/v1alpha1")
 	return b, nil
 }
 
-// ExtractDAGCommitStatus extracts the applied configuration owned by fieldManager from
-// dAGCommitStatus. If no managedFields are found in dAGCommitStatus for fieldManager, a
-// DAGCommitStatusApplyConfiguration is returned with only the Name, Namespace (if applicable),
+// ExtractDependentsSuccessfulCommitStatus extracts the applied configuration owned by fieldManager from
+// dependentsSuccessfulCommitStatus. If no managedFields are found in dependentsSuccessfulCommitStatus for fieldManager, a
+// DependentsSuccessfulCommitStatusApplyConfiguration is returned with only the Name, Namespace (if applicable),
 // APIVersion and Kind populated. It is possible that no managed fields were found for because other
 // field managers have taken ownership of all the fields previously owned by fieldManager, or because
 // the fieldManager never owned fields any fields.
-// dAGCommitStatus must be a unmodified DAGCommitStatus API object that was retrieved from the Kubernetes API.
-// ExtractDAGCommitStatus provides a way to perform a extract/modify-in-place/apply workflow.
+// dependentsSuccessfulCommitStatus must be a unmodified DependentsSuccessfulCommitStatus API object that was retrieved from the Kubernetes API.
+// ExtractDependentsSuccessfulCommitStatus provides a way to perform a extract/modify-in-place/apply workflow.
 // Note that an extracted apply configuration will contain fewer fields than what the fieldManager previously
 // applied if another fieldManager has updated or force applied any of the previously applied fields.
-func ExtractDAGCommitStatus(dAGCommitStatus *apiv1alpha1.DAGCommitStatus, fieldManager string) (*DAGCommitStatusApplyConfiguration, error) {
-	return ExtractDAGCommitStatusFrom(dAGCommitStatus, fieldManager, "")
+func ExtractDependentsSuccessfulCommitStatus(dependentsSuccessfulCommitStatus *apiv1alpha1.DependentsSuccessfulCommitStatus, fieldManager string) (*DependentsSuccessfulCommitStatusApplyConfiguration, error) {
+	return ExtractDependentsSuccessfulCommitStatusFrom(dependentsSuccessfulCommitStatus, fieldManager, "")
 }
 
-// ExtractDAGCommitStatusStatus extracts the applied configuration owned by fieldManager from
-// dAGCommitStatus for the status subresource.
-func ExtractDAGCommitStatusStatus(dAGCommitStatus *apiv1alpha1.DAGCommitStatus, fieldManager string) (*DAGCommitStatusApplyConfiguration, error) {
-	return ExtractDAGCommitStatusFrom(dAGCommitStatus, fieldManager, "status")
+// ExtractDependentsSuccessfulCommitStatusStatus extracts the applied configuration owned by fieldManager from
+// dependentsSuccessfulCommitStatus for the status subresource.
+func ExtractDependentsSuccessfulCommitStatusStatus(dependentsSuccessfulCommitStatus *apiv1alpha1.DependentsSuccessfulCommitStatus, fieldManager string) (*DependentsSuccessfulCommitStatusApplyConfiguration, error) {
+	return ExtractDependentsSuccessfulCommitStatusFrom(dependentsSuccessfulCommitStatus, fieldManager, "status")
 }
 
-func (b DAGCommitStatusApplyConfiguration) IsApplyConfiguration() {}
+func (b DependentsSuccessfulCommitStatusApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Kind field is set to the value of the last call.
-func (b *DAGCommitStatusApplyConfiguration) WithKind(value string) *DAGCommitStatusApplyConfiguration {
+func (b *DependentsSuccessfulCommitStatusApplyConfiguration) WithKind(value string) *DependentsSuccessfulCommitStatusApplyConfiguration {
 	b.TypeMetaApplyConfiguration.Kind = &value
 	return b
 }
@@ -105,7 +105,7 @@ func (b *DAGCommitStatusApplyConfiguration) WithKind(value string) *DAGCommitSta
 // WithAPIVersion sets the APIVersion field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the APIVersion field is set to the value of the last call.
-func (b *DAGCommitStatusApplyConfiguration) WithAPIVersion(value string) *DAGCommitStatusApplyConfiguration {
+func (b *DependentsSuccessfulCommitStatusApplyConfiguration) WithAPIVersion(value string) *DependentsSuccessfulCommitStatusApplyConfiguration {
 	b.TypeMetaApplyConfiguration.APIVersion = &value
 	return b
 }
@@ -113,7 +113,7 @@ func (b *DAGCommitStatusApplyConfiguration) WithAPIVersion(value string) *DAGCom
 // WithName sets the Name field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Name field is set to the value of the last call.
-func (b *DAGCommitStatusApplyConfiguration) WithName(value string) *DAGCommitStatusApplyConfiguration {
+func (b *DependentsSuccessfulCommitStatusApplyConfiguration) WithName(value string) *DependentsSuccessfulCommitStatusApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.Name = &value
 	return b
@@ -122,7 +122,7 @@ func (b *DAGCommitStatusApplyConfiguration) WithName(value string) *DAGCommitSta
 // WithGenerateName sets the GenerateName field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the GenerateName field is set to the value of the last call.
-func (b *DAGCommitStatusApplyConfiguration) WithGenerateName(value string) *DAGCommitStatusApplyConfiguration {
+func (b *DependentsSuccessfulCommitStatusApplyConfiguration) WithGenerateName(value string) *DependentsSuccessfulCommitStatusApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.GenerateName = &value
 	return b
@@ -131,7 +131,7 @@ func (b *DAGCommitStatusApplyConfiguration) WithGenerateName(value string) *DAGC
 // WithNamespace sets the Namespace field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Namespace field is set to the value of the last call.
-func (b *DAGCommitStatusApplyConfiguration) WithNamespace(value string) *DAGCommitStatusApplyConfiguration {
+func (b *DependentsSuccessfulCommitStatusApplyConfiguration) WithNamespace(value string) *DependentsSuccessfulCommitStatusApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.Namespace = &value
 	return b
@@ -140,7 +140,7 @@ func (b *DAGCommitStatusApplyConfiguration) WithNamespace(value string) *DAGComm
 // WithUID sets the UID field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the UID field is set to the value of the last call.
-func (b *DAGCommitStatusApplyConfiguration) WithUID(value types.UID) *DAGCommitStatusApplyConfiguration {
+func (b *DependentsSuccessfulCommitStatusApplyConfiguration) WithUID(value types.UID) *DependentsSuccessfulCommitStatusApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.UID = &value
 	return b
@@ -149,7 +149,7 @@ func (b *DAGCommitStatusApplyConfiguration) WithUID(value types.UID) *DAGCommitS
 // WithResourceVersion sets the ResourceVersion field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the ResourceVersion field is set to the value of the last call.
-func (b *DAGCommitStatusApplyConfiguration) WithResourceVersion(value string) *DAGCommitStatusApplyConfiguration {
+func (b *DependentsSuccessfulCommitStatusApplyConfiguration) WithResourceVersion(value string) *DependentsSuccessfulCommitStatusApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.ResourceVersion = &value
 	return b
@@ -158,7 +158,7 @@ func (b *DAGCommitStatusApplyConfiguration) WithResourceVersion(value string) *D
 // WithGeneration sets the Generation field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Generation field is set to the value of the last call.
-func (b *DAGCommitStatusApplyConfiguration) WithGeneration(value int64) *DAGCommitStatusApplyConfiguration {
+func (b *DependentsSuccessfulCommitStatusApplyConfiguration) WithGeneration(value int64) *DependentsSuccessfulCommitStatusApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.Generation = &value
 	return b
@@ -167,7 +167,7 @@ func (b *DAGCommitStatusApplyConfiguration) WithGeneration(value int64) *DAGComm
 // WithCreationTimestamp sets the CreationTimestamp field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the CreationTimestamp field is set to the value of the last call.
-func (b *DAGCommitStatusApplyConfiguration) WithCreationTimestamp(value metav1.Time) *DAGCommitStatusApplyConfiguration {
+func (b *DependentsSuccessfulCommitStatusApplyConfiguration) WithCreationTimestamp(value metav1.Time) *DependentsSuccessfulCommitStatusApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.CreationTimestamp = &value
 	return b
@@ -176,7 +176,7 @@ func (b *DAGCommitStatusApplyConfiguration) WithCreationTimestamp(value metav1.T
 // WithDeletionTimestamp sets the DeletionTimestamp field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the DeletionTimestamp field is set to the value of the last call.
-func (b *DAGCommitStatusApplyConfiguration) WithDeletionTimestamp(value metav1.Time) *DAGCommitStatusApplyConfiguration {
+func (b *DependentsSuccessfulCommitStatusApplyConfiguration) WithDeletionTimestamp(value metav1.Time) *DependentsSuccessfulCommitStatusApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.DeletionTimestamp = &value
 	return b
@@ -185,7 +185,7 @@ func (b *DAGCommitStatusApplyConfiguration) WithDeletionTimestamp(value metav1.T
 // WithDeletionGracePeriodSeconds sets the DeletionGracePeriodSeconds field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the DeletionGracePeriodSeconds field is set to the value of the last call.
-func (b *DAGCommitStatusApplyConfiguration) WithDeletionGracePeriodSeconds(value int64) *DAGCommitStatusApplyConfiguration {
+func (b *DependentsSuccessfulCommitStatusApplyConfiguration) WithDeletionGracePeriodSeconds(value int64) *DependentsSuccessfulCommitStatusApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	b.ObjectMetaApplyConfiguration.DeletionGracePeriodSeconds = &value
 	return b
@@ -195,7 +195,7 @@ func (b *DAGCommitStatusApplyConfiguration) WithDeletionGracePeriodSeconds(value
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, the entries provided by each call will be put on the Labels field,
 // overwriting an existing map entries in Labels field with the same key.
-func (b *DAGCommitStatusApplyConfiguration) WithLabels(entries map[string]string) *DAGCommitStatusApplyConfiguration {
+func (b *DependentsSuccessfulCommitStatusApplyConfiguration) WithLabels(entries map[string]string) *DependentsSuccessfulCommitStatusApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	if b.ObjectMetaApplyConfiguration.Labels == nil && len(entries) > 0 {
 		b.ObjectMetaApplyConfiguration.Labels = make(map[string]string, len(entries))
@@ -210,7 +210,7 @@ func (b *DAGCommitStatusApplyConfiguration) WithLabels(entries map[string]string
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, the entries provided by each call will be put on the Annotations field,
 // overwriting an existing map entries in Annotations field with the same key.
-func (b *DAGCommitStatusApplyConfiguration) WithAnnotations(entries map[string]string) *DAGCommitStatusApplyConfiguration {
+func (b *DependentsSuccessfulCommitStatusApplyConfiguration) WithAnnotations(entries map[string]string) *DependentsSuccessfulCommitStatusApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	if b.ObjectMetaApplyConfiguration.Annotations == nil && len(entries) > 0 {
 		b.ObjectMetaApplyConfiguration.Annotations = make(map[string]string, len(entries))
@@ -224,7 +224,7 @@ func (b *DAGCommitStatusApplyConfiguration) WithAnnotations(entries map[string]s
 // WithOwnerReferences adds the given value to the OwnerReferences field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the OwnerReferences field.
-func (b *DAGCommitStatusApplyConfiguration) WithOwnerReferences(values ...*v1.OwnerReferenceApplyConfiguration) *DAGCommitStatusApplyConfiguration {
+func (b *DependentsSuccessfulCommitStatusApplyConfiguration) WithOwnerReferences(values ...*v1.OwnerReferenceApplyConfiguration) *DependentsSuccessfulCommitStatusApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	for i := range values {
 		if values[i] == nil {
@@ -238,7 +238,7 @@ func (b *DAGCommitStatusApplyConfiguration) WithOwnerReferences(values ...*v1.Ow
 // WithFinalizers adds the given value to the Finalizers field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the Finalizers field.
-func (b *DAGCommitStatusApplyConfiguration) WithFinalizers(values ...string) *DAGCommitStatusApplyConfiguration {
+func (b *DependentsSuccessfulCommitStatusApplyConfiguration) WithFinalizers(values ...string) *DependentsSuccessfulCommitStatusApplyConfiguration {
 	b.ensureObjectMetaApplyConfigurationExists()
 	for i := range values {
 		b.ObjectMetaApplyConfiguration.Finalizers = append(b.ObjectMetaApplyConfiguration.Finalizers, values[i])
@@ -246,7 +246,7 @@ func (b *DAGCommitStatusApplyConfiguration) WithFinalizers(values ...string) *DA
 	return b
 }
 
-func (b *DAGCommitStatusApplyConfiguration) ensureObjectMetaApplyConfigurationExists() {
+func (b *DependentsSuccessfulCommitStatusApplyConfiguration) ensureObjectMetaApplyConfigurationExists() {
 	if b.ObjectMetaApplyConfiguration == nil {
 		b.ObjectMetaApplyConfiguration = &v1.ObjectMetaApplyConfiguration{}
 	}
@@ -255,7 +255,7 @@ func (b *DAGCommitStatusApplyConfiguration) ensureObjectMetaApplyConfigurationEx
 // WithSpec sets the Spec field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Spec field is set to the value of the last call.
-func (b *DAGCommitStatusApplyConfiguration) WithSpec(value *DAGCommitStatusSpecApplyConfiguration) *DAGCommitStatusApplyConfiguration {
+func (b *DependentsSuccessfulCommitStatusApplyConfiguration) WithSpec(value *DependentsSuccessfulCommitStatusSpecApplyConfiguration) *DependentsSuccessfulCommitStatusApplyConfiguration {
 	b.Spec = value
 	return b
 }
@@ -263,29 +263,29 @@ func (b *DAGCommitStatusApplyConfiguration) WithSpec(value *DAGCommitStatusSpecA
 // WithStatus sets the Status field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Status field is set to the value of the last call.
-func (b *DAGCommitStatusApplyConfiguration) WithStatus(value *DAGCommitStatusStatusApplyConfiguration) *DAGCommitStatusApplyConfiguration {
+func (b *DependentsSuccessfulCommitStatusApplyConfiguration) WithStatus(value *DependentsSuccessfulCommitStatusStatusApplyConfiguration) *DependentsSuccessfulCommitStatusApplyConfiguration {
 	b.Status = value
 	return b
 }
 
 // GetKind retrieves the value of the Kind field in the declarative configuration.
-func (b *DAGCommitStatusApplyConfiguration) GetKind() *string {
+func (b *DependentsSuccessfulCommitStatusApplyConfiguration) GetKind() *string {
 	return b.TypeMetaApplyConfiguration.Kind
 }
 
 // GetAPIVersion retrieves the value of the APIVersion field in the declarative configuration.
-func (b *DAGCommitStatusApplyConfiguration) GetAPIVersion() *string {
+func (b *DependentsSuccessfulCommitStatusApplyConfiguration) GetAPIVersion() *string {
 	return b.TypeMetaApplyConfiguration.APIVersion
 }
 
 // GetName retrieves the value of the Name field in the declarative configuration.
-func (b *DAGCommitStatusApplyConfiguration) GetName() *string {
+func (b *DependentsSuccessfulCommitStatusApplyConfiguration) GetName() *string {
 	b.ensureObjectMetaApplyConfigurationExists()
 	return b.ObjectMetaApplyConfiguration.Name
 }
 
 // GetNamespace retrieves the value of the Namespace field in the declarative configuration.
-func (b *DAGCommitStatusApplyConfiguration) GetNamespace() *string {
+func (b *DependentsSuccessfulCommitStatusApplyConfiguration) GetNamespace() *string {
 	b.ensureObjectMetaApplyConfigurationExists()
 	return b.ObjectMetaApplyConfiguration.Namespace
 }

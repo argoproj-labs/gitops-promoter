@@ -306,9 +306,9 @@ var _ = Describe("PromotionStrategy pullRequest propagation", func() {
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-		declareDAGGate(promotionStrategy)
+		declareDependentsSuccessfulGate(promotionStrategy)
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-		createDAGCommitStatus(ctx, promotionStrategy)
+		createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 		Eventually(func(g Gomega) {
 			var ctpList promoterv1alpha1.ChangeTransferPolicyList

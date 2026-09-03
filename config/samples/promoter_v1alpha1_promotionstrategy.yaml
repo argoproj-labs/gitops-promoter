@@ -14,7 +14,7 @@ spec:
     - key: argocd-health  # ArgoCDCommitStatus.spec.key
     - key: timer          # TimedCommitStatus.spec.key
   proposedCommitStatuses:
-    - key: promoter-dag # DAGCommitStatus.spec.key
+    - key: dependents-successful # DependentsSuccessfulCommitStatus.spec.key
     - key: revert-check          # GitCommitStatus (active target)
     - key: commit-format-check   # GitCommitStatus (proposed target)
 #    - key: healthy-lint

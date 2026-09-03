@@ -17,32 +17,32 @@ limitations under the License.
 
 package v1alpha1
 
-// DAGEnvironmentApplyConfiguration represents a declarative configuration of the DAGEnvironment type for use
+// DependentEnvironmentApplyConfiguration represents a declarative configuration of the DependentEnvironment type for use
 // with apply.
 //
-// DAGEnvironment is a single node in the promotion dependency graph.
-type DAGEnvironmentApplyConfiguration struct {
+// DependentEnvironment declares one environment branch and the other branches it depends on.
+type DependentEnvironmentApplyConfiguration struct {
 	// Branch is the name of the active branch for the environment. It must match a branch declared
 	// in the referenced PromotionStrategy's environments.
 	// Must not start with '-', contain ':', or contain '..'.
 	Branch *string `json:"branch,omitempty"`
-	// DependsOn is the list of upstream branches this environment depends on. The environment is
-	// only eligible for promotion once every branch listed here is satisfied. An empty or omitted
-	// list makes this environment a root of the graph.
+	// DependsOn is the list of dependent environment branches this environment waits on. The environment is
+	// only eligible for promotion once every branch listed here is promoted and successful. An empty or
+	// omitted list makes this environment a root.
 	// Each item must not start with '-', contain ':', or contain '..'.
 	DependsOn []string `json:"dependsOn,omitempty"`
 }
 
-// DAGEnvironmentApplyConfiguration constructs a declarative configuration of the DAGEnvironment type for use with
+// DependentEnvironmentApplyConfiguration constructs a declarative configuration of the DependentEnvironment type for use with
 // apply.
-func DAGEnvironment() *DAGEnvironmentApplyConfiguration {
-	return &DAGEnvironmentApplyConfiguration{}
+func DependentEnvironment() *DependentEnvironmentApplyConfiguration {
+	return &DependentEnvironmentApplyConfiguration{}
 }
 
 // WithBranch sets the Branch field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Branch field is set to the value of the last call.
-func (b *DAGEnvironmentApplyConfiguration) WithBranch(value string) *DAGEnvironmentApplyConfiguration {
+func (b *DependentEnvironmentApplyConfiguration) WithBranch(value string) *DependentEnvironmentApplyConfiguration {
 	b.Branch = &value
 	return b
 }
@@ -50,7 +50,7 @@ func (b *DAGEnvironmentApplyConfiguration) WithBranch(value string) *DAGEnvironm
 // WithDependsOn adds the given value to the DependsOn field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the DependsOn field.
-func (b *DAGEnvironmentApplyConfiguration) WithDependsOn(values ...string) *DAGEnvironmentApplyConfiguration {
+func (b *DependentEnvironmentApplyConfiguration) WithDependsOn(values ...string) *DependentEnvironmentApplyConfiguration {
 	for i := range values {
 		b.DependsOn = append(b.DependsOn, values[i])
 	}

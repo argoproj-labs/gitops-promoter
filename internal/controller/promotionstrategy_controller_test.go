@@ -81,9 +81,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-				declareDAGGate(promotionStrategy)
+				declareDependentsSuccessfulGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-				createDAGCommitStatus(ctx, promotionStrategy)
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 			})
 
 			AfterEach(func() {
@@ -132,9 +132,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-				declareDAGGate(promotionStrategy)
+				declareDependentsSuccessfulGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-				createDAGCommitStatus(ctx, promotionStrategy)
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 				// Initialize empty structs for use in tests
 				ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
@@ -231,7 +231,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses).To(Equal(
 						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 							{
-								Key:         promoterv1alpha1.DAGCommitStatusKey,
+								Key:         promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
 								Phase:       string(promoterv1alpha1.CommitPhasePending),
 								Description: "Waiting for status to be reported",
 							},
@@ -252,7 +252,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses).To(Equal(
 						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 							{
-								Key:         promoterv1alpha1.DAGCommitStatusKey,
+								Key:         promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
 								Phase:       string(promoterv1alpha1.CommitPhasePending),
 								Description: "Waiting for status to be reported",
 							},
@@ -273,7 +273,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses).To(Equal(
 						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 							{
-								Key:         promoterv1alpha1.DAGCommitStatusKey,
+								Key:         promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
 								Phase:       string(promoterv1alpha1.CommitPhasePending),
 								Description: "Waiting for status to be reported",
 							},
@@ -438,9 +438,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, clusterScmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-				declareDAGGate(promotionStrategy)
+				declareDependentsSuccessfulGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-				createDAGCommitStatus(ctx, promotionStrategy)
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 				// Initialize empty structs for use in tests
 				ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
@@ -537,7 +537,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses).To(Equal(
 						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 							{
-								Key:         promoterv1alpha1.DAGCommitStatusKey,
+								Key:         promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
 								Phase:       string(promoterv1alpha1.CommitPhasePending),
 								Description: "Waiting for status to be reported",
 							},
@@ -558,7 +558,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses).To(Equal(
 						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 							{
-								Key:         promoterv1alpha1.DAGCommitStatusKey,
+								Key:         promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
 								Phase:       string(promoterv1alpha1.CommitPhasePending),
 								Description: "Waiting for status to be reported",
 							},
@@ -579,7 +579,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses).To(Equal(
 						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 							{
-								Key:         promoterv1alpha1.DAGCommitStatusKey,
+								Key:         promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
 								Phase:       string(promoterv1alpha1.CommitPhasePending),
 								Description: "Waiting for status to be reported",
 							},
@@ -649,9 +649,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-				declareDAGGate(promotionStrategy)
+				declareDependentsSuccessfulGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-				createDAGCommitStatus(ctx, promotionStrategy)
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 				// Initialize empty structs for use in tests
 				ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
@@ -752,9 +752,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses).To(Equal(
 						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 							{
-								Key:         promoterv1alpha1.DAGCommitStatusKey,
+								Key:         promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
 								Phase:       string(promoterv1alpha1.CommitPhaseSuccess),
-								Description: "environment/development - all upstream environments promoted and healthy",
+								Description: "environment/development - all dependent environments promoted and successful",
 							},
 						},
 					))
@@ -774,9 +774,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses).To(Equal(
 						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 							{
-								Key:         promoterv1alpha1.DAGCommitStatusKey,
+								Key:         promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
 								Phase:       string(promoterv1alpha1.CommitPhaseSuccess),
-								Description: "environment/staging - all upstream environments promoted and healthy",
+								Description: "environment/staging - all dependent environments promoted and successful",
 							},
 						},
 					))
@@ -796,9 +796,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses).To(Equal(
 						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 							{
-								Key:         promoterv1alpha1.DAGCommitStatusKey,
+								Key:         promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
 								Phase:       string(promoterv1alpha1.CommitPhaseSuccess),
-								Description: "environment/production - all upstream environments promoted and healthy",
+								Description: "environment/production - all dependent environments promoted and successful",
 							},
 						},
 					))
@@ -888,9 +888,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-				declareDAGGate(promotionStrategy)
+				declareDependentsSuccessfulGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-				createDAGCommitStatus(ctx, promotionStrategy)
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 				// Initialize empty structs for use in tests
 				ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
@@ -987,7 +987,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses).To(Equal(
 						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 							{
-								Key:         promoterv1alpha1.DAGCommitStatusKey,
+								Key:         promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
 								Phase:       string(promoterv1alpha1.CommitPhasePending),
 								Description: "Waiting for status to be reported",
 							},
@@ -1008,7 +1008,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses).To(Equal(
 						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 							{
-								Key:         promoterv1alpha1.DAGCommitStatusKey,
+								Key:         promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
 								Phase:       string(promoterv1alpha1.CommitPhasePending),
 								Description: "Waiting for status to be reported",
 							},
@@ -1029,7 +1029,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses).To(Equal(
 						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 							{
-								Key:         promoterv1alpha1.DAGCommitStatusKey,
+								Key:         promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
 								Phase:       string(promoterv1alpha1.CommitPhasePending),
 								Description: "Waiting for status to be reported",
 							},
@@ -1088,7 +1088,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				// List all DAG ordering commit statuses and filter by ownership
 				csList := promoterv1alpha1.CommitStatusList{}
 				err = k8sClient.List(ctx, &csList, client.MatchingLabels{
-					promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.DAGCommitStatusKey,
+					promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
 				})
 				Expect(err).NotTo(HaveOccurred())
 
@@ -1246,9 +1246,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			declareDAGGate(promotionStrategy)
+			declareDependentsSuccessfulGate(promotionStrategy)
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-			createDAGCommitStatus(ctx, promotionStrategy)
+			createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 		})
 
 		AfterEach(func() {
@@ -1314,9 +1314,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			declareDAGGate(promotionStrategy)
+			declareDependentsSuccessfulGate(promotionStrategy)
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-			createDAGCommitStatus(ctx, promotionStrategy)
+			createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 		})
 
 		AfterEach(func() {
@@ -1395,9 +1395,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				ps.Spec.Environments = []promoterv1alpha1.Environment{
 					{Branch: testBranchDevelopment, AutoMerge: new(true)},
 				}
-				declareDAGGate(ps)
+				declareDependentsSuccessfulGate(ps)
 				Expect(k8sClient.Create(ctx, ps)).To(Succeed())
-				createDAGCommitStatus(ctx, ps)
+				createDependentsSuccessfulCommitStatus(ctx, ps)
 				promotionStrategies = append(promotionStrategies, *ps)
 			}
 		})
@@ -1578,9 +1578,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				// by toggling AutoMerge (an unrealistic operator step).
 				{Branch: testBranchDevelopment, AutoMerge: new(true)},
 			}
-			declareDAGGate(psOne)
+			declareDependentsSuccessfulGate(psOne)
 			Expect(k8sClient.Create(ctx, psOne)).To(Succeed())
-			createDAGCommitStatus(ctx, psOne)
+			createDependentsSuccessfulCommitStatus(ctx, psOne)
 			promotionStrategyOne = *psOne
 
 			psTwo := baseStrategy.DeepCopy()
@@ -1589,9 +1589,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			psTwo.Spec.Environments = []promoterv1alpha1.Environment{
 				{Branch: testBranchDevelopment, AutoMerge: new(true)},
 			}
-			declareDAGGate(psTwo)
+			declareDependentsSuccessfulGate(psTwo)
 			Expect(k8sClient.Create(ctx, psTwo)).To(Succeed())
-			createDAGCommitStatus(ctx, psTwo)
+			createDependentsSuccessfulCommitStatus(ctx, psTwo)
 			promotionStrategyTwo = *psTwo
 
 			Eventually(func(g Gomega) {
@@ -1890,9 +1890,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-				declareDAGGate(promotionStrategy)
+				declareDependentsSuccessfulGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-				createDAGCommitStatus(ctx, promotionStrategy)
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 				// Initialize empty structs for use in tests
 				ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
@@ -2353,9 +2353,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-				declareDAGGate(promotionStrategy)
+				declareDependentsSuccessfulGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-				createDAGCommitStatus(ctx, promotionStrategy)
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 				// Initialize empty structs for use in tests
 				ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
@@ -2581,9 +2581,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				gitPath, err := os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
 				makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
-				declareDAGGate(promotionStrategy)
+				declareDependentsSuccessfulGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-				createDAGCommitStatus(ctx, promotionStrategy)
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 				// We should now get PRs created for the ProposedCommits
 				// Check that ChangeTransferPolicy are created
@@ -2826,9 +2826,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-				declareDAGGate(promotionStrategy)
+				declareDependentsSuccessfulGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-				createDAGCommitStatus(ctx, promotionStrategy)
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 				// Initialize empty structs for use in tests
 				ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
@@ -2981,7 +2981,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					},
 				}
 
-				declareDAGGate(promotionStrategy)
+				declareDependentsSuccessfulGate(promotionStrategy)
 
 				argocdCommitStatus = promoterv1alpha1.ArgoCDCommitStatus{
 					ObjectMeta: metav1.ObjectMeta{
@@ -3004,7 +3004,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-				createDAGCommitStatus(ctx, promotionStrategy)
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 				Expect(k8sClient.Create(ctx, &argocdCommitStatus)).To(Succeed())
 				Expect(k8sClient.Create(ctx, &argoCDAppDev)).To(Succeed())
 				Expect(k8sClient.Create(ctx, &argoCDAppStaging)).To(Succeed())
@@ -3238,7 +3238,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					},
 				}
 
-				declareDAGGate(promotionStrategy)
+				declareDependentsSuccessfulGate(promotionStrategy)
 
 				testArgoCDCommitStatus := promoterv1alpha1.ArgoCDCommitStatus{}
 				//nolint:musttag // Not bothering adding yaml tags since it's just for a test.
@@ -3269,7 +3269,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-				createDAGCommitStatus(ctx, promotionStrategy)
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 				Expect(k8sClient.Create(ctx, &argocdCommitStatus)).To(Succeed())
 				Expect(k8sClientDev.Create(ctx, &argoCDAppDev)).To(Succeed())
 				Expect(k8sClientStaging.Create(ctx, &argoCDAppStaging)).To(Succeed())
@@ -3534,9 +3534,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 				drySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 
-				declareDAGGate(promotionStrategy)
+				declareDependentsSuccessfulGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-				createDAGCommitStatus(ctx, promotionStrategy)
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 				By("Checking that all the ChangeTransferPolicies and PRs are created and in their proper state")
 				Eventually(func(g Gomega) {
@@ -3928,25 +3928,25 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 	return psName, scmSecret, scmProvider, gitRepo, commitStatusDevelopment, commitStatusStaging, promotionStrategy
 }
 
-// declareDAGGate appends the DAG ordering gate key to the PromotionStrategy's
+// declareDependentsSuccessfulGate appends the DAG ordering gate key to the PromotionStrategy's
 // proposedCommitStatuses. The PS controller no longer auto-injects linear ordering, so tests
 // that rely on sequential promotion must declare the gate explicitly. Call this before the
 // PromotionStrategy is created; it appends (rather than overwrites) so any test-specific
-// proposedCommitStatuses are preserved. Pair it with createDAGCommitStatus.
-func declareDAGGate(ps *promoterv1alpha1.PromotionStrategy) {
+// proposedCommitStatuses are preserved. Pair it with createDependentsSuccessfulCommitStatus.
+func declareDependentsSuccessfulGate(ps *promoterv1alpha1.PromotionStrategy) {
 	ps.Spec.ProposedCommitStatuses = append(ps.Spec.ProposedCommitStatuses,
-		promoterv1alpha1.CommitStatusSelector{Key: promoterv1alpha1.DAGCommitStatusKey})
+		promoterv1alpha1.CommitStatusSelector{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey})
 }
 
-// createDAGCommitStatus creates the DAGCommitStatus that backs the ordering gate for the given
+// createDependentsSuccessfulCommitStatus creates the DependentsSuccessfulCommitStatus that backs the ordering gate for the given
 // PromotionStrategy. With no spec.environments, the controller infers a linear chain from the
 // PromotionStrategy's environment order. Call this after the PromotionStrategy has been created.
-func createDAGCommitStatus(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy) {
-	dcs := &promoterv1alpha1.DAGCommitStatus{
+func createDependentsSuccessfulCommitStatus(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy) {
+	dcs := &promoterv1alpha1.DependentsSuccessfulCommitStatus{
 		ObjectMeta: metav1.ObjectMeta{Name: ps.Name, Namespace: ps.Namespace},
-		Spec: promoterv1alpha1.DAGCommitStatusSpec{
+		Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 			PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: ps.Name},
-			Key:                  promoterv1alpha1.DAGCommitStatusKey,
+			Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
 		},
 	}
 	Expect(k8sClient.Create(ctx, dcs)).To(Succeed())
@@ -3994,15 +3994,15 @@ func argocdApplications(namespace, appLabel, repoOwner, repoName string) (argocd
 	return apps[0], apps[1], apps[2]
 }
 
-var _ = Describe("PromotionStrategy DAGCommitStatus key safety check", func() {
+var _ = Describe("PromotionStrategy DependentsSuccessfulCommitStatus key safety check", func() {
 	var (
-		ctx               context.Context
-		name              string
-		scmSecret         *v1.Secret
-		scmProvider       *promoterv1alpha1.ScmProvider
-		gitRepo           *promoterv1alpha1.GitRepository
-		promotionStrategy *promoterv1alpha1.PromotionStrategy
-		dagCommitStatus   *promoterv1alpha1.DAGCommitStatus
+		ctx                              context.Context
+		name                             string
+		scmSecret                        *v1.Secret
+		scmProvider                      *promoterv1alpha1.ScmProvider
+		gitRepo                          *promoterv1alpha1.GitRepository
+		promotionStrategy                *promoterv1alpha1.PromotionStrategy
+		dependentsSuccessfulCommitStatus *promoterv1alpha1.DependentsSuccessfulCommitStatus
 	)
 
 	BeforeEach(func() {
@@ -4012,15 +4012,15 @@ var _ = Describe("PromotionStrategy DAGCommitStatus key safety check", func() {
 
 	AfterEach(func() {
 		By("Cleaning up resources")
-		if dagCommitStatus != nil {
-			_ = k8sClient.Delete(ctx, dagCommitStatus)
-			dagCommitStatus = nil
+		if dependentsSuccessfulCommitStatus != nil {
+			_ = k8sClient.Delete(ctx, dependentsSuccessfulCommitStatus)
+			dependentsSuccessfulCommitStatus = nil
 		}
 		_ = k8sClient.Delete(ctx, promotionStrategy)
 	})
 
-	It("hard-fails the reconcile when no DAGCommitStatus is configured", func() {
-		By("Creating a PromotionStrategy with no DAGCommitStatus")
+	It("hard-fails the reconcile when no DependentsSuccessfulCommitStatus is configured", func() {
+		By("Creating a PromotionStrategy with no DependentsSuccessfulCommitStatus")
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
@@ -4033,29 +4033,29 @@ var _ = Describe("PromotionStrategy DAGCommitStatus key safety check", func() {
 			g.Expect(cond).ToNot(BeNil())
 			g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
 			g.Expect(cond.Reason).To(Equal(string(promoterConditions.ReconciliationError)))
-			g.Expect(cond.Message).To(ContainSubstring("has no DAGCommitStatus"))
+			g.Expect(cond.Message).To(ContainSubstring("has no DependentsSuccessfulCommitStatus"))
 		}, constants.EventuallyTimeout).Should(Succeed())
 	})
 
-	It("hard-fails the reconcile when a DAGCommitStatus key is not declared in proposedCommitStatuses", func() {
+	It("hard-fails the reconcile when a DependentsSuccessfulCommitStatus key is not declared in proposedCommitStatuses", func() {
 		By("Creating a PromotionStrategy with no proposedCommitStatuses")
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
-		By("Creating a DAGCommitStatus that references the PS with a key it does not declare")
-		dagCommitStatus = &promoterv1alpha1.DAGCommitStatus{
+		By("Creating a DependentsSuccessfulCommitStatus that references the PS with a key it does not declare")
+		dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
 			ObjectMeta: metav1.ObjectMeta{Name: name + "-dag", Namespace: "default"},
-			Spec: promoterv1alpha1.DAGCommitStatusSpec{
+			Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
-				Key:                  promoterv1alpha1.DAGCommitStatusKey,
-				Environments: []promoterv1alpha1.DAGEnvironment{
+				Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+				Environments: []promoterv1alpha1.DependentEnvironment{
 					{Branch: testBranchDevelopment},
 				},
 			},
 		}
-		Expect(k8sClient.Create(ctx, dagCommitStatus)).To(Succeed())
+		Expect(k8sClient.Create(ctx, dependentsSuccessfulCommitStatus)).To(Succeed())
 
 		By("Checking that the PromotionStrategy's Ready condition reports the misconfiguration")
 		Eventually(func(g Gomega) {
@@ -4068,10 +4068,10 @@ var _ = Describe("PromotionStrategy DAGCommitStatus key safety check", func() {
 		}, constants.EventuallyTimeout).Should(Succeed())
 	})
 
-	It("does not fail the safety check when the DAGCommitStatus key is declared in proposedCommitStatuses", func() {
+	It("does not fail the safety check when the DependentsSuccessfulCommitStatus key is declared in proposedCommitStatuses", func() {
 		By("Creating a PromotionStrategy that declares the DAG gate key")
 		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-			{Key: promoterv1alpha1.DAGCommitStatusKey},
+			{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
 		}
 		setupInitialTestGitRepoOnServer(ctx, gitRepo)
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
@@ -4079,18 +4079,18 @@ var _ = Describe("PromotionStrategy DAGCommitStatus key safety check", func() {
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
-		By("Creating a DAGCommitStatus that references the PS with the declared key")
-		dagCommitStatus = &promoterv1alpha1.DAGCommitStatus{
+		By("Creating a DependentsSuccessfulCommitStatus that references the PS with the declared key")
+		dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
 			ObjectMeta: metav1.ObjectMeta{Name: name + "-dag", Namespace: "default"},
-			Spec: promoterv1alpha1.DAGCommitStatusSpec{
+			Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
-				Key:                  promoterv1alpha1.DAGCommitStatusKey,
-				Environments: []promoterv1alpha1.DAGEnvironment{
+				Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+				Environments: []promoterv1alpha1.DependentEnvironment{
 					{Branch: testBranchDevelopment},
 				},
 			},
 		}
-		Expect(k8sClient.Create(ctx, dagCommitStatus)).To(Succeed())
+		Expect(k8sClient.Create(ctx, dependentsSuccessfulCommitStatus)).To(Succeed())
 
 		By("Checking that the Ready condition never fails the safety check")
 		Consistently(func(g Gomega) {
@@ -4143,9 +4143,9 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-				declareDAGGate(promotionStrategy)
+				declareDependentsSuccessfulGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-				createDAGCommitStatus(ctx, promotionStrategy)
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 				// Initialize empty structs for use in tests
 				ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
@@ -4229,8 +4229,8 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				}, time.Second*5, time.Millisecond*500).Should(Succeed())
 
 				By("Capturing baseline: DAG ordering commit status should be at success")
-				// The gate CommitStatus is produced by the DAGCommitStatus that the
-				// DAGCommitStatus controller generates. Look it up by its gate-key
+				// The gate CommitStatus is produced by the DependentsSuccessfulCommitStatus that the
+				// DependentsSuccessfulCommitStatus controller generates. Look it up by its gate-key
 				// and environment labels rather than reconstructing the resource name, so the test
 				// does not depend on the naming scheme.
 				commitStatus := &promoterv1alpha1.CommitStatus{}
@@ -4238,10 +4238,10 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				var commitStatusOriginalPhase promoterv1alpha1.CommitStatusPhase
 
 				gateLabels := client.MatchingLabels{
-					promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.DAGCommitStatusKey,
+					promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
 					promoterv1alpha1.EnvironmentLabel:  utils.KubeSafeLabel(ctpStaging.Spec.ActiveBranch),
 				}
-				// The gate is owned by the generated DAGCommitStatus (named after this test's
+				// The gate is owned by the generated DependentsSuccessfulCommitStatus (named after this test's
 				// resources), so filter by owner name to isolate this test's gate from other tests
 				// that may have a gate on the same environment branch.
 				getDAGOrderingGate := func(g Gomega) promoterv1alpha1.CommitStatus {
@@ -4383,9 +4383,9 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-				declareDAGGate(promotionStrategy)
+				declareDependentsSuccessfulGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-				createDAGCommitStatus(ctx, promotionStrategy)
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 			})
 
 			AfterEach(func() {
@@ -4578,9 +4578,9 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = os.RemoveAll(gitPath) }()
 			makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
-			declareDAGGate(promotionStrategy)
+			declareDependentsSuccessfulGate(promotionStrategy)
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-			createDAGCommitStatus(ctx, promotionStrategy)
+			createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 			var ctpDev, ctpStaging, ctpProd promoterv1alpha1.ChangeTransferPolicy
 			var pullRequestDev, pullRequestStaging, pullRequestProd promoterv1alpha1.PullRequest
@@ -4702,13 +4702,13 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		var ctpDev, ctpStaging promoterv1alpha1.ChangeTransferPolicy
 
 		// getDAGOrderingGate returns the DAG ordering gate CommitStatus for the given
-		// environment branch. The gate is produced by the DAGCommitStatus that the
-		// DAGCommitStatus controller generates (named after this test's resources),
+		// environment branch. The gate is produced by the DependentsSuccessfulCommitStatus that the
+		// DependentsSuccessfulCommitStatus controller generates (named after this test's resources),
 		// so filter by owner name to isolate this test's gate from any other test's.
 		getDAGOrderingGate := func(g Gomega, branch string) promoterv1alpha1.CommitStatus {
 			csList := promoterv1alpha1.CommitStatusList{}
 			g.Expect(k8sClient.List(ctx, &csList, client.MatchingLabels{
-				promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.DAGCommitStatusKey,
+				promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
 				promoterv1alpha1.EnvironmentLabel:  utils.KubeSafeLabel(branch),
 			})).To(Succeed())
 			var matches []promoterv1alpha1.CommitStatus
@@ -4742,7 +4742,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 					Key: healthCheckCSKey,
 				},
 			}
-			declareDAGGate(promotionStrategy)
+			declareDependentsSuccessfulGate(promotionStrategy)
 			activeCommitStatusDevelopment.Spec.Name = healthCheckCSKey
 			activeCommitStatusDevelopment.Labels = map[string]string{
 				promoterv1alpha1.CommitStatusLabel: healthCheckCSKey,
@@ -4756,7 +4756,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-			createDAGCommitStatus(ctx, promotionStrategy)
+			createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 			ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
 			ctpStaging = promoterv1alpha1.ChangeTransferPolicy{}
@@ -5417,13 +5417,13 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		})
 	})
 
-	// Changing DAGCommitStatusKey is a breaking change for users who reference it
+	// Changing DependentsSuccessfulCommitStatusKey is a breaking change for users who reference it
 	// in branch protection rules, rulesets, or automation. If this test fails after your change,
 	// update documentation and migration guides before merging.
-	Context("DAGCommitStatusKey", func() {
+	Context("DependentsSuccessfulCommitStatusKey", func() {
 		It("should remain a stable public API value", func() {
-			Expect(promoterv1alpha1.DAGCommitStatusKey).To(Equal("promoter-dag"),
-				"DAGCommitStatusKey is a public API used as the SCM commit status context (e.g. GitHub check run name). "+
+			Expect(promoterv1alpha1.DependentsSuccessfulCommitStatusKey).To(Equal("dependents-successful"),
+				"DependentsSuccessfulCommitStatusKey is a public API used as the SCM commit status context (e.g. GitHub check run name). "+
 					"Users may reference this value in branch protection rules. Update documentation and migration guides before merging.")
 		})
 	})
@@ -6288,19 +6288,19 @@ func linearUpstreamsPending(precedingEnvs []promoterv1alpha1.EnvironmentStatus, 
 	currentBranch := "linear-env-current"
 
 	// Build the chain: env[0] -> env[1] -> ... -> current.
-	envs := make([]promoterv1alpha1.DAGEnvironment, 0, len(precedingEnvs)+1)
+	envs := make([]promoterv1alpha1.DependentEnvironment, 0, len(precedingEnvs)+1)
 	for i, branch := range branchNames {
 		var dependsOn []string
 		if i > 0 {
 			dependsOn = []string{branchNames[i-1]}
 		}
-		envs = append(envs, promoterv1alpha1.DAGEnvironment{Branch: branch, DependsOn: dependsOn})
+		envs = append(envs, promoterv1alpha1.DependentEnvironment{Branch: branch, DependsOn: dependsOn})
 	}
 	var currentDependsOn []string
 	if len(branchNames) > 0 {
 		currentDependsOn = []string{branchNames[len(branchNames)-1]}
 	}
-	envs = append(envs, promoterv1alpha1.DAGEnvironment{Branch: currentBranch, DependsOn: currentDependsOn})
+	envs = append(envs, promoterv1alpha1.DependentEnvironment{Branch: currentBranch, DependsOn: currentDependsOn})
 
 	g, err := buildDAG(envs)
 	if err != nil {
@@ -6342,7 +6342,7 @@ var _ = Describe("Child creation instance-id label propagation", func() {
 				"%s must call utils.StampInstanceIDLabel %d times for instance-id label propagation", file, expectedCalls)
 		},
 		// One call stamps instance-id onto owned ChangeTransferPolicies. The former second call
-		// lived on auto-injected DAGCommitStatus creation, which was removed when
+		// lived on auto-injected DependentsSuccessfulCommitStatus creation, which was removed when
 		// ordering gates became explicit CRDs.
 		Entry("promotionstrategy_controller.go", "promotionstrategy_controller.go", 1),
 		Entry("changetransferpolicy_controller.go", "changetransferpolicy_controller.go", 1),

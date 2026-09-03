@@ -92,22 +92,22 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 |------------|-----------------|---------------------------------------------------|
 | Normal     | CommitStatusSet | The CommitStatus was successfully set in the SCM. |
 
-## DAGCommitStatus
+## DependentsSuccessfulCommitStatus
 
-[DAGCommitStatuses](../crd-specs.md#dagcommitstatus) may produce the following events:
+[DependentsSuccessfulCommitStatuses](../crd-specs.md#dependentssuccessfulcommitstatus) may produce the following events:
 
 | Event Type | Event Reason                | Description                                                                                                              |
 |------------|-----------------------------|--------------------------------------------------------------------------------------------------------------------------|
-| Warning    | CommitStatusesNotReady      | One or more of the [CommitStatus](../crd-specs.md#commitstatus) resources managed by this DAGCommitStatus is not Ready. |
+| Warning    | CommitStatusesNotReady      | One or more of the [CommitStatus](../crd-specs.md#commitstatus) resources managed by this DependentsSuccessfulCommitStatus is not Ready. |
 | Normal     | OrphanedCommitStatusDeleted | An orphaned [CommitStatus](../crd-specs.md#commitstatus) was deleted after it no longer applied (e.g., branch removed). |
 
-## DAGCommitStatus
+## DependentsSuccessfulCommitStatus
 
-[DAGCommitStatuses](../crd-specs.md#dagcommitstatus) may produce the following events:
+[DependentsSuccessfulCommitStatuses](../crd-specs.md#dependentssuccessfulcommitstatus) may produce the following events:
 
 | Event Type | Event Reason            | Description                                                                                                                              |
 |------------|-------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
-| Warning    | DAGCommitStatusNotReady | The [DAGCommitStatus](../crd-specs.md#dagcommitstatus) owned by this DAGCommitStatus is not Ready.                      |
+| Warning    | DependentsSuccessfulCommitStatusNotReady | The [DependentsSuccessfulCommitStatus](../crd-specs.md#dependentssuccessfulcommitstatus) owned by this DependentsSuccessfulCommitStatus is not Ready.                      |
 
 ## PromotionStrategy
 
@@ -118,8 +118,8 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 | Normal     | OrphanedChangeTransferPolicyDeleted     | An orphaned [ChangeTransferPolicy](../crd-specs.md#changetransferpolicy) was deleted after environment changes (e.g., branch rename).     |
 | Warning    | ChangeTransferPolicyNotReady            | One or more of the [ChangeTransferPolicy](../crd-specs.md#changetransferpolicy) resources managed by this PromotionStrategy is not Ready. |
 
-Missing or undeclared promotion ordering (no [DAGCommitStatus](../crd-specs.md#dagcommitstatus) /
-[DAGCommitStatus](../crd-specs.md#dagcommitstatus), or a gate `key` not listed in
+Missing or undeclared promotion ordering (no [DependentsSuccessfulCommitStatus](../crd-specs.md#dependentssuccessfulcommitstatus) /
+[DependentsSuccessfulCommitStatus](../crd-specs.md#dependentssuccessfulcommitstatus), or a gate `key` not listed in
 `proposedCommitStatuses`) surfaces as a `ReconciliationError` on the PromotionStrategy `Ready` condition rather than a
 dedicated event reason.
 

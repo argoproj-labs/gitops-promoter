@@ -168,18 +168,18 @@ func setupInstanceIDDriftPromotionStrategy(ctx context.Context) (utils.PromoterR
 				{Branch: testBranchDevelopment},
 			},
 			// Ordering gate must be declared so reconcile reaches ensureControllerInstanceIDStable
-			// instead of hard-failing earlier on a missing DAGCommitStatus.
+			// instead of hard-failing earlier on a missing DependentsSuccessfulCommitStatus.
 			ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{
-				{Key: promoterv1alpha1.DAGCommitStatusKey},
+				{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
 			},
 		},
 	}
 	Expect(k8sClient.Create(ctx, ps)).To(Succeed())
-	dcs := &promoterv1alpha1.DAGCommitStatus{
+	dcs := &promoterv1alpha1.DependentsSuccessfulCommitStatus{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
-		Spec: promoterv1alpha1.DAGCommitStatusSpec{
+		Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 			PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
-			Key:                  promoterv1alpha1.DAGCommitStatusKey,
+			Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
 		},
 	}
 	Expect(k8sClient.Create(ctx, dcs)).To(Succeed())

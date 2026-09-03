@@ -41,7 +41,7 @@ rules:
   - promoter.argoproj.io
   resources:
   - argocdcommitstatuses
-  - dagcommitstatuses
+  - dependentssuccessfulcommitstatuses
   - gitcommitstatuses
   - promotionstrategies
   - revertcommits
@@ -58,7 +58,7 @@ rules:
   - argocdcommitstatuses/finalizers
   - changetransferpolicies/finalizers
   - clusterscmproviders/finalizers
-  - dagcommitstatuses/finalizers
+  - dependentssuccessfulcommitstatuses/finalizers
   - gitcommitstatuses/finalizers
   - gitrepositories/finalizers
   - promotionstrategies/finalizers
@@ -76,7 +76,7 @@ rules:
   - changetransferpolicies/status
   - clusterscmproviders/status
   - commitstatuses/status
-  - dagcommitstatuses/status
+  - dependentssuccessfulcommitstatuses/status
   - gitcommitstatuses/status
   - gitrepositories/status
   - promotionstrategies/status

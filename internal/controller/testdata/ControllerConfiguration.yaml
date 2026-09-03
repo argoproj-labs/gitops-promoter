@@ -118,8 +118,8 @@ spec:
           qps: 20
           bucket: 50
 
-  # DAGCommitStatus controller infers linear ordering when spec.environments is omitted
-  dagCommitStatus:
+  # DependentsSuccessfulCommitStatus controller infers linear ordering when spec.environments is omitted
+  dependentsSuccessfulCommitStatus:
     workQueue:
       requeueDuration: "5m"
       maxConcurrentReconciles: 5

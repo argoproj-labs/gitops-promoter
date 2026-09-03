@@ -80,9 +80,9 @@ func (in *PromotionStrategyDetails) DeepCopyInto(out *PromotionStrategyDetails) 
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
-	if in.DAGCommitStatuses != nil {
-		in, out := &in.DAGCommitStatuses, &out.DAGCommitStatuses
-		*out = make([]apiv1alpha1.DAGCommitStatus, len(*in))
+	if in.DependentsSuccessfulCommitStatuses != nil {
+		in, out := &in.DependentsSuccessfulCommitStatuses, &out.DependentsSuccessfulCommitStatuses
+		*out = make([]apiv1alpha1.DependentsSuccessfulCommitStatus, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}

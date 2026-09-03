@@ -26,9 +26,9 @@ const ArgoCDCommitStatusDefaultKey = "argocd-health"
 // TimedCommitStatusDefaultKey is the default commit status key for TimedCommitStatus when spec.key is omitted.
 const TimedCommitStatusDefaultKey = "timer"
 
-// DAGCommitStatusKey is the commit status key name used to indicate that an environment's
-// DAG dependencies are satisfied.
-const DAGCommitStatusKey = "promoter-dag"
+// DependentsSuccessfulCommitStatusKey is the commit status key name used to indicate that an environment's
+// dependent environments are promoted and successful.
+const DependentsSuccessfulCommitStatusKey = "dependents-successful"
 
 // CommitStatusPreviousEnvironmentStatusesAnnotation is the label used to identify commit statuses that make up the aggregated active commit status
 const CommitStatusPreviousEnvironmentStatusesAnnotation = "promoter.argoproj.io/previous-environment-statuses"

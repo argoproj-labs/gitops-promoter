@@ -275,7 +275,7 @@ EOF
 ## Create the promotion strategy
 
 Create the PromotionStrategy and a
-[DAGCommitStatus](../gating-promotions/built-in-gates/dag-commit-status.md)
+[DependentsSuccessfulCommitStatus](../gating-promotions/built-in-gates/dependents-successful-commit-status.md)
 so promotions are ordered (development → staging → prod). Ordering is not injected automatically; without this gate the
 PromotionStrategy controller fails its reconcile.
 
@@ -287,8 +287,8 @@ metadata:
   name: demo-github
 spec:
   proposedCommitStatuses:
-  # The DAGCommitStatus CR will maintain this ordering gate.
-  - key: promoter-dag
+  # The DependentsSuccessfulCommitStatus CR will maintain this ordering gate.
+  - key: dependents-successful
   activeCommitStatuses:
   # The ArgoCDCommitStatus CR will maintain this commit status based on the application health.
   - key: argocd-health
@@ -303,11 +303,11 @@ spec:
     name: github-argocd-example-apps
 ---
 apiVersion: promoter.argoproj.io/v1alpha1
-kind: DAGCommitStatus
+kind: DependentsSuccessfulCommitStatus
 metadata:
   name: demo-github
 spec:
-  key: promoter-dag
+  key: dependents-successful
   promotionStrategyRef:
     name: demo-github
 EOF

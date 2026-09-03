@@ -140,11 +140,11 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 		Recorder:           localMgr.GetEventRecorder("ArgoCDCommitStatus"),
 	}).SetupWithManager(mgrCtx, mcMgr)).To(Succeed())
 
-	// Ordering gate: DAGCommitStatus; PS hard-fails without one.
-	Expect((&DAGCommitStatusReconciler{
+	// Ordering gate: DependentsSuccessfulCommitStatus; PS hard-fails without one.
+	Expect((&DependentsSuccessfulCommitStatusReconciler{
 		Client:      localMgr.GetClient(),
 		Scheme:      localMgr.GetScheme(),
-		Recorder:    localMgr.GetEventRecorder("DAGCommitStatus"),
+		Recorder:    localMgr.GetEventRecorder("DependentsSuccessfulCommitStatus"),
 		SettingsMgr: settingsMgr,
 	}).SetupWithManager(mgrCtx, localMgr)).To(Succeed())
 

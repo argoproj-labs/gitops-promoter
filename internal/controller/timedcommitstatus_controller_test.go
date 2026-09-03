@@ -37,13 +37,13 @@ import (
 
 var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 	var (
-		ctx               context.Context
-		name              string
-		scmSecret         *v1.Secret
-		scmProvider       *promoterv1alpha1.ScmProvider
-		gitRepo           *promoterv1alpha1.GitRepository
-		promotionStrategy *promoterv1alpha1.PromotionStrategy
-		dagCommitStatus   *promoterv1alpha1.DAGCommitStatus
+		ctx                              context.Context
+		name                             string
+		scmSecret                        *v1.Secret
+		scmProvider                      *promoterv1alpha1.ScmProvider
+		gitRepo                          *promoterv1alpha1.GitRepository
+		promotionStrategy                *promoterv1alpha1.PromotionStrategy
+		dependentsSuccessfulCommitStatus *promoterv1alpha1.DependentsSuccessfulCommitStatus
 	)
 
 	BeforeAll(func() {
@@ -61,7 +61,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 		// without waiting for the previous environment, so the "Open PR" spec that expects a
 		// pending promotion to sit in staging would race against an immediate merge.
 		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-			{Key: promoterv1alpha1.DAGCommitStatusKey},
+			{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
 		}
 
 		setupInitialTestGitRepoOnServer(ctx, gitRepo)
@@ -71,26 +71,26 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
-		// The DAGCommitStatus produces the ordering gate CommitStatus declared above.
-		dagCommitStatus = &promoterv1alpha1.DAGCommitStatus{
+		// The DependentsSuccessfulCommitStatus produces the ordering gate CommitStatus declared above.
+		dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,
 				Namespace: "default",
 			},
-			Spec: promoterv1alpha1.DAGCommitStatusSpec{
+			Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 					Name: name,
 				},
-				Key: promoterv1alpha1.DAGCommitStatusKey,
+				Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
 			},
 		}
-		Expect(k8sClient.Create(ctx, dagCommitStatus)).To(Succeed())
+		Expect(k8sClient.Create(ctx, dependentsSuccessfulCommitStatus)).To(Succeed())
 	})
 
 	AfterAll(func() {
 		By("Cleaning up test resources")
-		if dagCommitStatus != nil {
-			_ = k8sClient.Delete(ctx, dagCommitStatus)
+		if dependentsSuccessfulCommitStatus != nil {
+			_ = k8sClient.Delete(ctx, dependentsSuccessfulCommitStatus)
 		}
 		if promotionStrategy != nil {
 			_ = k8sClient.Delete(ctx, promotionStrategy)
@@ -639,9 +639,9 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 			Expect(k8sClient.Create(keyCtx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(keyCtx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(keyCtx, gitRepo)).To(Succeed())
-			declareDAGGate(keyPS)
+			declareDependentsSuccessfulGate(keyPS)
 			Expect(k8sClient.Create(keyCtx, keyPS)).To(Succeed())
-			createDAGCommitStatus(keyCtx, keyPS)
+			createDependentsSuccessfulCommitStatus(keyCtx, keyPS)
 
 			tcs := &promoterv1alpha1.TimedCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{

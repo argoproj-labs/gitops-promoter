@@ -47,22 +47,22 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
-// DAGURLTemplateData is the data passed to DAGCommitStatus.spec.url.template.
+// DAGURLTemplateData is the data passed to DependentsSuccessfulCommitStatus.spec.url.template.
 type DAGURLTemplateData struct {
-	DAGCommitStatus   promoterv1alpha1.DAGCommitStatus
-	PromotionStrategy *promoterv1alpha1.PromotionStrategy
-	Environment       string
+	DependentsSuccessfulCommitStatus promoterv1alpha1.DependentsSuccessfulCommitStatus
+	PromotionStrategy                *promoterv1alpha1.PromotionStrategy
+	Environment                      string
 	// DependsOnQuery is DependsOn encoded as repeated env= query parameters
 	// (e.g. "env=e2e&env=perf"), ready to append after "?". Empty when DependsOn is empty.
 	DependsOnQuery string
 	// DependsOn is the current environment's immediate upstream branches (one edge away),
-	// copied from DAGCommitStatus.spec.environments for the Environment being rendered.
+	// copied from DependentsSuccessfulCommitStatus.spec.environments for the Environment being rendered.
 	DependsOn []string
 }
 
 // dependsOnForBranch returns the dependsOn list for branch from the DAG spec, or nil if the
 // branch is not declared.
-func dependsOnForBranch(dcs *promoterv1alpha1.DAGCommitStatus, branch string) []string {
+func dependsOnForBranch(dcs *promoterv1alpha1.DependentsSuccessfulCommitStatus, branch string) []string {
 	for i := range dcs.Spec.Environments {
 		if dcs.Spec.Environments[i].Branch == branch {
 			return dcs.Spec.Environments[i].DependsOn
@@ -84,44 +84,44 @@ func buildDependsOnQuery(dependsOn []string) string {
 	return strings.Join(parts, "&")
 }
 
-// DAGCommitStatusReconciler reconciles a DAGCommitStatus object
-type DAGCommitStatusReconciler struct {
+// DependentsSuccessfulCommitStatusReconciler reconciles a DependentsSuccessfulCommitStatus object
+type DependentsSuccessfulCommitStatusReconciler struct {
 	client.Client
 	Scheme      *runtime.Scheme
 	Recorder    events.EventRecorder
 	SettingsMgr *settings.Manager
 }
 
-// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=dagcommitstatuses,verbs=get;list;watch
-// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=dagcommitstatuses/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=dagcommitstatuses/finalizers,verbs=update
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=dependentssuccessfulcommitstatuses,verbs=get;list;watch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=dependentssuccessfulcommitstatuses/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=dependentssuccessfulcommitstatuses/finalizers,verbs=update
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
 
 // Reconcile reads the referenced PromotionStrategy and, using the dependency graph declared
-// in the DAGCommitStatus, determines which environments are eligible for promotion (all of
+// in the DependentsSuccessfulCommitStatus, determines which environments are eligible for promotion (all of
 // their dependsOn upstreams are satisfied) and reports that as a per-environment commit
 // status.
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/reconcile
-func (r *DAGCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
+func (r *DependentsSuccessfulCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := logf.FromContext(ctx)
-	logger.Info("Reconciling DAGCommitStatus")
+	logger.Info("Reconciling DependentsSuccessfulCommitStatus")
 	startTime := time.Now()
 
-	var dcs promoterv1alpha1.DAGCommitStatus
+	var dcs promoterv1alpha1.DependentsSuccessfulCommitStatus
 	// This applies the resource status via Server-Side Apply at the end of reconciliation. Don't write status manually.
 	var previousReady *metav1.Condition
-	defer utils.HandleReconciliationResult(ctx, startTime, &dcs, r.Client, r.Recorder, constants.DAGCommitStatusControllerFieldOwner, &result, &err, &previousReady)
+	defer utils.HandleReconciliationResult(ctx, startTime, &dcs, r.Client, r.Recorder, constants.DependentsSuccessfulCommitStatusControllerFieldOwner, &result, &err, &previousReady)
 
-	// 1. Fetch the DAGCommitStatus instance.
+	// 1. Fetch the DependentsSuccessfulCommitStatus instance.
 	if err = r.Get(ctx, req.NamespacedName, &dcs); err != nil {
 		if k8serrors.IsNotFound(err) {
-			logger.Info("DAGCommitStatus not found")
+			logger.Info("DependentsSuccessfulCommitStatus not found")
 			return ctrl.Result{}, nil
 		}
-		return ctrl.Result{}, fmt.Errorf("failed to get DAGCommitStatus %q: %w", req.Name, err)
+		return ctrl.Result{}, fmt.Errorf("failed to get DependentsSuccessfulCommitStatus %q: %w", req.Name, err)
 	}
 
 	// Start fresh on the Ready condition each reconcile.
@@ -138,33 +138,33 @@ func (r *DAGCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	// 3. Evaluate the dependency graph against the PromotionStrategy state and write statuses.
-	if err = r.updateDAGCommitStatus(ctx, &dcs, &ps); err != nil {
+	if err = r.updateDependentsSuccessfulCommitStatus(ctx, &dcs, &ps); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update DAG commit statuses: %w", err)
 	}
 
 	// 4. Requeue using the configured requeue duration.
-	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.DAGCommitStatusConfiguration](ctx, r.SettingsMgr)
+	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.DependentsSuccessfulCommitStatusConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get requeue duration for DAGCommitStatus %q: %w", dcs.Name, err)
+		return ctrl.Result{}, fmt.Errorf("failed to get requeue duration for DependentsSuccessfulCommitStatus %q: %w", dcs.Name, err)
 	}
 
 	return ctrl.Result{Requeue: true, RequeueAfter: requeueDuration}, nil
 }
 
-// resolveDAGEnvironments returns the effective dependency graph for a DAGCommitStatus. When
+// resolveDependentEnvironments returns the effective dependency graph for a DependentsSuccessfulCommitStatus. When
 // spec.environments is empty, a linear chain is inferred from the PromotionStrategy's
 // spec.environments order (each environment dependsOn the one before it; the first is a root).
-func resolveDAGEnvironments(dcs *promoterv1alpha1.DAGCommitStatus, ps *promoterv1alpha1.PromotionStrategy) ([]promoterv1alpha1.DAGEnvironment, error) {
+func resolveDependentEnvironments(dcs *promoterv1alpha1.DependentsSuccessfulCommitStatus, ps *promoterv1alpha1.PromotionStrategy) ([]promoterv1alpha1.DependentEnvironment, error) {
 	if len(dcs.Spec.Environments) > 0 {
 		return dcs.Spec.Environments, nil
 	}
 	if len(ps.Spec.Environments) == 0 {
-		return nil, fmt.Errorf("DAGCommitStatus %q has no spec.environments and PromotionStrategy %q has no environments to infer a linear chain from",
+		return nil, fmt.Errorf("DependentsSuccessfulCommitStatus %q has no spec.environments and PromotionStrategy %q has no environments to infer a linear chain from",
 			dcs.Name, ps.Name)
 	}
-	environments := make([]promoterv1alpha1.DAGEnvironment, 0, len(ps.Spec.Environments))
+	environments := make([]promoterv1alpha1.DependentEnvironment, 0, len(ps.Spec.Environments))
 	for i, env := range ps.Spec.Environments {
-		dagEnv := promoterv1alpha1.DAGEnvironment{Branch: env.Branch}
+		dagEnv := promoterv1alpha1.DependentEnvironment{Branch: env.Branch}
 		if i > 0 {
 			dagEnv.DependsOn = []string{ps.Spec.Environments[i-1].Branch}
 		}
@@ -173,13 +173,13 @@ func resolveDAGEnvironments(dcs *promoterv1alpha1.DAGCommitStatus, ps *promoterv
 	return environments, nil
 }
 
-// updateDAGCommitStatus builds the dependency graph from the spec, validates it (unknown
+// updateDependentsSuccessfulCommitStatus builds the dependency graph from the spec, validates it (unknown
 // references, cycles, exact match against the PromotionStrategy environments), derives which
 // environments are satisfied (synced and healthy) from the PromotionStrategy state, and writes a
 // per-environment CommitStatus: success once all of an environment's dependsOn upstreams are
 // satisfied, pending otherwise.
-func (r *DAGCommitStatusReconciler) updateDAGCommitStatus(ctx context.Context, dcs *promoterv1alpha1.DAGCommitStatus, ps *promoterv1alpha1.PromotionStrategy) error {
-	environments, err := resolveDAGEnvironments(dcs, ps)
+func (r *DependentsSuccessfulCommitStatusReconciler) updateDependentsSuccessfulCommitStatus(ctx context.Context, dcs *promoterv1alpha1.DependentsSuccessfulCommitStatus, ps *promoterv1alpha1.PromotionStrategy) error {
+	environments, err := resolveDependentEnvironments(dcs, ps)
 	if err != nil {
 		return err
 	}
@@ -255,7 +255,7 @@ func (r *DAGCommitStatusReconciler) updateDAGCommitStatus(ctx context.Context, d
 		// ChangeTransferPolicy inspects when gating the promotion PR. Binding to the dry SHA
 		// instead leaves the gate undetectable, so the promotion never advances.
 		proposedHydratedSha := envStatus.Proposed.Hydrated.Sha
-		cs, err := r.createOrUpdateDAGCommitStatus(ctx, dcs, ps, branch, proposedHydratedSha, phase, reason)
+		cs, err := r.createOrUpdateDependentsSuccessfulCommitStatus(ctx, dcs, ps, branch, proposedHydratedSha, phase, reason)
 		if err != nil {
 			return fmt.Errorf("failed to set DAG commit status for branch %q: %w", branch, err)
 		}
@@ -342,11 +342,11 @@ func checkCommitStatusesPassing(commitStatuses []promoterv1alpha1.ChangeRequestP
 	return true, fmt.Sprintf("Waiting for %s commit statuses to be successful", envDesc)
 }
 
-// createOrUpdateDAGCommitStatus upserts, via Server-Side Apply, the CommitStatus that reports
+// createOrUpdateDependentsSuccessfulCommitStatus upserts, via Server-Side Apply, the CommitStatus that reports
 // whether the given environment's DAG dependencies are satisfied.
-func (r *DAGCommitStatusReconciler) createOrUpdateDAGCommitStatus(
+func (r *DependentsSuccessfulCommitStatusReconciler) createOrUpdateDependentsSuccessfulCommitStatus(
 	ctx context.Context,
-	dcs *promoterv1alpha1.DAGCommitStatus,
+	dcs *promoterv1alpha1.DependentsSuccessfulCommitStatus,
 	ps *promoterv1alpha1.PromotionStrategy,
 	branch string,
 	hydratedSha string,
@@ -356,13 +356,13 @@ func (r *DAGCommitStatusReconciler) createOrUpdateDAGCommitStatus(
 	key := dcs.Spec.Key
 	commitStatusName := utils.CommitStatusResourceName(ctx, dcs, branch)
 
-	kind := reflect.TypeOf(promoterv1alpha1.DAGCommitStatus{}).Name()
+	kind := reflect.TypeOf(promoterv1alpha1.DependentsSuccessfulCommitStatus{}).Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
 	// Describe what the gate aggregates. When pending, surface the specific reason (e.g. which
 	// upstream is being waited on) so users can see what is blocking the promotion; fall back to a
 	// generic message if none was provided.
-	description := branch + " - all upstream environments promoted and healthy"
+	description := branch + " - all dependent environments promoted and successful"
 	if phase == promoterv1alpha1.CommitPhasePending {
 		description = branch + " - waiting for upstream environments"
 		if pendingReason != "" {
@@ -388,11 +388,11 @@ func (r *DAGCommitStatusReconciler) createOrUpdateDAGCommitStatus(
 	if dcs.Spec.URL.Template != "" {
 		dependsOn := dependsOnForBranch(dcs, branch)
 		data := DAGURLTemplateData{
-			Environment:       branch,
-			DAGCommitStatus:   *dcs,
-			PromotionStrategy: ps,
-			DependsOn:         dependsOn,
-			DependsOnQuery:    buildDependsOnQuery(dependsOn),
+			Environment:                      branch,
+			DependentsSuccessfulCommitStatus: *dcs,
+			PromotionStrategy:                ps,
+			DependsOn:                        dependsOn,
+			DependsOnQuery:                   buildDependsOnQuery(dependsOn),
 		}
 		renderedURL, err := utils.RenderStringTemplate(dcs.Spec.URL.Template, data, dcs.Spec.URL.Options...)
 		if err != nil {
@@ -427,7 +427,7 @@ func (r *DAGCommitStatusReconciler) createOrUpdateDAGCommitStatus(
 	commitStatus := &promoterv1alpha1.CommitStatus{}
 	commitStatus.Name = commitStatusName
 	commitStatus.Namespace = dcs.Namespace
-	if err := r.Patch(ctx, commitStatus, utils.ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(constants.DAGCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
+	if err := r.Patch(ctx, commitStatus, utils.ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(constants.DependentsSuccessfulCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
 		return nil, fmt.Errorf("failed to apply DAG CommitStatus: %w", err)
 	}
 
@@ -435,24 +435,24 @@ func (r *DAGCommitStatusReconciler) createOrUpdateDAGCommitStatus(
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *DAGCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
+func (r *DependentsSuccessfulCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	// Use Direct methods to read configuration from the API server without cache during setup.
 	// The cache is not started during SetupWithManager, so we must use the non-cached API reader.
-	rateLimiter, err := settings.GetRateLimiterDirect[promoterv1alpha1.DAGCommitStatusConfiguration, ctrl.Request](ctx, r.SettingsMgr)
+	rateLimiter, err := settings.GetRateLimiterDirect[promoterv1alpha1.DependentsSuccessfulCommitStatusConfiguration, ctrl.Request](ctx, r.SettingsMgr)
 	if err != nil {
-		return fmt.Errorf("failed to get DAGCommitStatus rate limiter: %w", err)
+		return fmt.Errorf("failed to get DependentsSuccessfulCommitStatus rate limiter: %w", err)
 	}
 
-	maxConcurrentReconciles, err := settings.GetMaxConcurrentReconcilesDirect[promoterv1alpha1.DAGCommitStatusConfiguration](ctx, r.SettingsMgr)
+	maxConcurrentReconciles, err := settings.GetMaxConcurrentReconcilesDirect[promoterv1alpha1.DependentsSuccessfulCommitStatusConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
-		return fmt.Errorf("failed to get DAGCommitStatus max concurrent reconciles: %w", err)
+		return fmt.Errorf("failed to get DependentsSuccessfulCommitStatus max concurrent reconciles: %w", err)
 	}
 
 	err = ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.DAGCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueDAGCommitStatusForPromotionStrategy()).
+		For(&promoterv1alpha1.DependentsSuccessfulCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueDependentsSuccessfulCommitStatusForPromotionStrategy()).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
-		Named("dagcommitstatus").
+		Named("dependentssuccessfulcommitstatus").
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
@@ -460,18 +460,18 @@ func (r *DAGCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ct
 	return nil
 }
 
-// enqueueDAGCommitStatusForPromotionStrategy returns a handler that enqueues all
-// DAGCommitStatus resources that reference a PromotionStrategy when that PromotionStrategy changes.
-func (r *DAGCommitStatusReconciler) enqueueDAGCommitStatusForPromotionStrategy() handler.EventHandler {
+// enqueueDependentsSuccessfulCommitStatusForPromotionStrategy returns a handler that enqueues all
+// DependentsSuccessfulCommitStatus resources that reference a PromotionStrategy when that PromotionStrategy changes.
+func (r *DependentsSuccessfulCommitStatusReconciler) enqueueDependentsSuccessfulCommitStatusForPromotionStrategy() handler.EventHandler {
 	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []ctrl.Request {
 		ps, ok := obj.(*promoterv1alpha1.PromotionStrategy)
 		if !ok {
 			return nil
 		}
 
-		var dcsList promoterv1alpha1.DAGCommitStatusList
+		var dcsList promoterv1alpha1.DependentsSuccessfulCommitStatusList
 		if err := r.List(ctx, &dcsList, client.InNamespace(ps.Namespace)); err != nil {
-			logf.FromContext(ctx).Error(err, "failed to list DAGCommitStatus resources")
+			logf.FromContext(ctx).Error(err, "failed to list DependentsSuccessfulCommitStatus resources")
 			return nil
 		}
 
@@ -488,7 +488,7 @@ func (r *DAGCommitStatusReconciler) enqueueDAGCommitStatusForPromotionStrategy()
 	})
 }
 
-// dag is the in-memory dependency graph built from a DAGCommitStatus's environments.
+// dag is the in-memory dependency graph built from a DependentsSuccessfulCommitStatus's environments.
 // Nodes are environment branches; "v depends on u" means u must be satisfied before v
 // becomes eligible. The graph is keyed by branch name so lookups during reconciliation
 // are O(1).
@@ -501,11 +501,11 @@ type dag struct {
 	branches []string
 }
 
-// buildDAG constructs a dag from a DAGCommitStatus's environments. It rejects a duplicate
+// buildDAG constructs a dag from a DependentsSuccessfulCommitStatus's environments. It rejects a duplicate
 // branch (the same branch declared more than once), which would otherwise make the
 // dependency relationships ambiguous. Validation that dependsOn references resolve to real
 // branches is done separately in validateDAG.
-func buildDAG(environments []promoterv1alpha1.DAGEnvironment) (*dag, error) {
+func buildDAG(environments []promoterv1alpha1.DependentEnvironment) (*dag, error) {
 	g := &dag{
 		branches:  make([]string, 0, len(environments)),
 		dependsOn: make(map[string][]string, len(environments)),
@@ -532,7 +532,7 @@ func (g *dag) validateEnvironmentsMatchPS(dcsName string, ps *promoterv1alpha1.P
 	}
 	for _, branch := range g.branches {
 		if !psBranches[branch] {
-			return fmt.Errorf("DAGCommitStatus %q declares branch %q, but PromotionStrategy %q has no such environment",
+			return fmt.Errorf("DependentsSuccessfulCommitStatus %q declares branch %q, but PromotionStrategy %q has no such environment",
 				dcsName, branch, ps.Name)
 		}
 		delete(psBranches, branch)
@@ -543,7 +543,7 @@ func (g *dag) validateEnvironmentsMatchPS(dcsName string, ps *promoterv1alpha1.P
 			missing = append(missing, branch)
 		}
 		slices.Sort(missing)
-		return fmt.Errorf("DAGCommitStatus %q is missing PromotionStrategy %q environment branches: %s",
+		return fmt.Errorf("DependentsSuccessfulCommitStatus %q is missing PromotionStrategy %q environment branches: %s",
 			dcsName, ps.Name, strings.Join(missing, ", "))
 	}
 	return nil

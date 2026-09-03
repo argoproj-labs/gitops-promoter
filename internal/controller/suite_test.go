@@ -230,10 +230,10 @@ var _ = BeforeSuite(func() {
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
-	err = (&DAGCommitStatusReconciler{
+	err = (&DependentsSuccessfulCommitStatusReconciler{
 		Client:      k8sManager.GetClient(),
 		Scheme:      k8sManager.GetScheme(),
-		Recorder:    k8sManager.GetEventRecorder("DAGCommitStatus"),
+		Recorder:    k8sManager.GetEventRecorder("DependentsSuccessfulCommitStatus"),
 		SettingsMgr: settingsMgr,
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())

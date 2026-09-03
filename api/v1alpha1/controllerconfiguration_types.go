@@ -83,10 +83,10 @@ type ControllerConfigurationSpec struct {
 	// +required
 	WebRequestCommitStatus WebRequestCommitStatusConfiguration `json:"webRequestCommitStatus"`
 
-	// DAGCommitStatus contains the configuration for the DAGCommitStatus controller,
+	// DependentsSuccessfulCommitStatus contains the configuration for the DependentsSuccessfulCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	// +required
-	DAGCommitStatus DAGCommitStatusConfiguration `json:"dagCommitStatus"`
+	DependentsSuccessfulCommitStatus DependentsSuccessfulCommitStatusConfiguration `json:"dependentsSuccessfulCommitStatus"`
 
 	// ScheduledCommitStatus contains the configuration for the ScheduledCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
@@ -173,12 +173,12 @@ type TimedCommitStatusConfiguration struct {
 	WorkQueue WorkQueue `json:"workQueue"`
 }
 
-// DAGCommitStatusConfiguration defines the configuration for the DAGCommitStatus controller.
+// DependentsSuccessfulCommitStatusConfiguration defines the configuration for the DependentsSuccessfulCommitStatus controller.
 //
-// This configuration controls how the DAGCommitStatus controller processes reconciliation
+// This configuration controls how the DependentsSuccessfulCommitStatus controller processes reconciliation
 // requests, including requeue intervals, concurrency limits, and rate limiting behavior.
-type DAGCommitStatusConfiguration struct {
-	// WorkQueue contains the work queue configuration for the DAGCommitStatus controller.
+type DependentsSuccessfulCommitStatusConfiguration struct {
+	// WorkQueue contains the work queue configuration for the DependentsSuccessfulCommitStatus controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
 	WorkQueue WorkQueue `json:"workQueue"`

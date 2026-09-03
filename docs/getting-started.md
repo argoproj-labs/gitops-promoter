@@ -491,10 +491,10 @@ The PromotionStrategy resource is the main resource that you will use to configu
 
 Promotion ordering is **not** injected automatically. For the common linear
 dev → staging → production pipeline, create a
-[DAGCommitStatus](gating-promotions/built-in-gates/dag-commit-status.md)
+[DependentsSuccessfulCommitStatus](gating-promotions/built-in-gates/dependents-successful-commit-status.md)
 and declare its `key` on the PromotionStrategy. Without an ordering gate
-(DAGCommitStatus or
-[DAGCommitStatus](gating-promotions/built-in-gates/dag-commit-status.md)), the
+(DependentsSuccessfulCommitStatus or
+[DependentsSuccessfulCommitStatus](gating-promotions/built-in-gates/dependents-successful-commit-status.md)), the
 PromotionStrategy controller fails its reconcile so environments cannot promote
 out of order by accident.
 
@@ -507,7 +507,7 @@ metadata:
   name: demo
 spec:
   proposedCommitStatuses:
-  - key: promoter-dag # must match DAGCommitStatus.spec.key
+  - key: dependents-successful # must match DependentsSuccessfulCommitStatus.spec.key
   environments:
   - autoMerge: false
     branch: environment/development
@@ -519,11 +519,11 @@ spec:
     name: <git-repository-ref-name> # The name of the GitRepository resource
 ---
 apiVersion: promoter.argoproj.io/v1alpha1
-kind: DAGCommitStatus
+kind: DependentsSuccessfulCommitStatus
 metadata:
   name: demo
 spec:
-  key: promoter-dag
+  key: dependents-successful
   promotionStrategyRef:
     name: demo
 ```
@@ -538,8 +538,8 @@ spec:
 
 > [!TIP]
 > For non-linear promotion graphs, use a
-> [DAGCommitStatus](gating-promotions/built-in-gates/dag-commit-status.md) instead of
-> DAGCommitStatus.
+> [DependentsSuccessfulCommitStatus](gating-promotions/built-in-gates/dependents-successful-commit-status.md) instead of
+> DependentsSuccessfulCommitStatus.
 
 > [!TIP]
 > For monorepos, you can share a single active branch across multiple PromotionStrategies by setting

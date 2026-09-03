@@ -129,11 +129,11 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 	}
 	bundle.WebRequestCommitStatuses = nilIfEmpty(webReqCSList.Items)
 
-	dagCSList := &promoterv1alpha1.DAGCommitStatusList{}
+	dagCSList := &promoterv1alpha1.DependentsSuccessfulCommitStatusList{}
 	if err := reader.List(ctx, dagCSList, client.InNamespace(namespace), client.MatchingFields{controller.PromotionStrategyRefField: name}); err != nil {
-		return nil, fmt.Errorf("failed to list DAGCommitStatuses: %w", err)
+		return nil, fmt.Errorf("failed to list DependentsSuccessfulCommitStatuses: %w", err)
 	}
-	bundle.DAGCommitStatuses = nilIfEmpty(dagCSList.Items)
+	bundle.DependentsSuccessfulCommitStatuses = nilIfEmpty(dagCSList.Items)
 
 	scheduledCSList := &promoterv1alpha1.ScheduledCommitStatusList{}
 	if err := reader.List(ctx, scheduledCSList, client.InNamespace(namespace), client.MatchingFields{controller.PromotionStrategyRefField: name}); err != nil {

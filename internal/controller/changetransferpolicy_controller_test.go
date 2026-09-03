@@ -1444,7 +1444,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 		// Regression guard: when the proposed branch advances to a new hydrated
 		// commit that has no git note yet, setCommitMetadata must clear
 		// Status.Proposed.Note so it does not retain the previous reconcile's
-		// drySha. PromotionStrategy.updateDAGCommitStatus uses
+		// drySha. PromotionStrategy.updateDependentsSuccessfulCommitStatus uses
 		// getEffectiveHydratedDrySha (note-first) to compute targetDrySha for
 		// the DAG ordering gate; a stale Proposed.Note pointing at the
 		// previous dry SHA causes the gate to compare against the wrong target
@@ -2118,9 +2118,9 @@ var _ = Describe("emitPromotionLifecycleEvents", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-				declareDAGGate(promotionStrategy)
+				declareDependentsSuccessfulGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-				createDAGCommitStatus(ctx, promotionStrategy)
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 				ctpNamespacedName = types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, testBranchDevelopment)),
@@ -2455,9 +2455,9 @@ var _ = Describe("emitPromotionLifecycleEvents", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-				declareDAGGate(promotionStrategy)
+				declareDependentsSuccessfulGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-				createDAGCommitStatus(ctx, promotionStrategy)
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 				ctpNamespacedName = types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, testBranchDevelopment)),

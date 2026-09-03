@@ -515,9 +515,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: commitStatus
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusConfiguration
-    - name: dagCommitStatus
+    - name: dependentsSuccessfulCommitStatus
       type:
-        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DAGCommitStatusConfiguration
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusConfiguration
     - name: gitCommitStatus
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.GitCommitStatusConfiguration
@@ -571,7 +571,19 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: timezone
       type:
         scalar: string
-- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DAGCommitStatus
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentEnvironment
+  map:
+    fields:
+    - name: branch
+      type:
+        scalar: string
+    - name: dependsOn
+      type:
+        list:
+          elementType:
+            scalar: string
+          elementRelationship: associative
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatus
   map:
     fields:
     - name: apiVersion
@@ -585,24 +597,24 @@ var schemaYAML = typed.YAMLObject(`types:
         namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
     - name: spec
       type:
-        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DAGCommitStatusSpec
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusSpec
     - name: status
       type:
-        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DAGCommitStatusStatus
-- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DAGCommitStatusConfiguration
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusStatus
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusConfiguration
   map:
     fields:
     - name: workQueue
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WorkQueue
-- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DAGCommitStatusSpec
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusSpec
   map:
     fields:
     - name: environments
       type:
         list:
           elementType:
-            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DAGEnvironment
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentEnvironment
           elementRelationship: associative
           keys:
           - branch
@@ -615,7 +627,7 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: url
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.URLConfig
-- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DAGCommitStatusStatus
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusStatus
   map:
     fields:
     - name: conditions
@@ -632,18 +644,6 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: observedGeneration
       type:
         scalar: numeric
-- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DAGEnvironment
-  map:
-    fields:
-    - name: branch
-      type:
-        scalar: string
-    - name: dependsOn
-      type:
-        list:
-          elementType:
-            scalar: string
-          elementRelationship: associative
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.Environment
   map:
     fields:
