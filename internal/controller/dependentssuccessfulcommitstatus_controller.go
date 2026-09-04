@@ -278,7 +278,10 @@ func upstreamsPending(g *dag, branch, targetDrySha string, currentActiveCommitTi
 // isUpstreamPending checks a single upstream (and, for no-op upstreams, its own upstreams) against
 // targetDrySha.
 func isUpstreamPending(g *dag, branch, targetDrySha string, currentActiveCommitTime metav1.Time, statusByBranch map[string]promoterv1alpha1.EnvironmentStatus) (isPending bool, reason string) {
-	envStatus := statusByBranch[branch]
+	envStatus, ok := statusByBranch[branch]
+	if !ok {
+		return true, fmt.Sprintf("Waiting for %q environment status to be reported", branch)
+	}
 	envHydratedForDrySha := getEffectiveHydratedDrySha(envStatus)
 	envProposedDrySha := envStatus.Proposed.Dry.Sha
 

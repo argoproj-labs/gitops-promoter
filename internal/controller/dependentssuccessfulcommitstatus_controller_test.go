@@ -692,6 +692,12 @@ var _ = Describe("DAG graph logic", func() {
 			Expect(pending).To(BeTrue())
 		})
 
+		It("holds pending when upstream status is missing from statusByBranch", func() {
+			pending, reason := upstreamsPending(linear(), "prd", newDry, metav1.NewTime(newer), map[string]promoterv1alpha1.EnvironmentStatus{})
+			Expect(pending).To(BeTrue())
+			Expect(reason).To(Equal(`Waiting for "stg" environment status to be reported`))
+		})
+
 		// Case 4 (hydrated, not no-op, merged, healthy): the ALLOW row.
 		It("is ready when the upstream merged the target dry and is healthy", func() {
 			status := map[string]promoterv1alpha1.EnvironmentStatus{
