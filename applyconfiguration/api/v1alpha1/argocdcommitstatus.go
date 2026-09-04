@@ -31,8 +31,8 @@ import (
 //
 // ArgoCDCommitStatus aggregates the status of Argo CD Applications used in a promotion strategy. It selects
 // Applications via a label selector and a reference to a PromotionStrategy, then creates CommitStatus resources
-// (with key "argocd-health") so that promotion gates reflect whether the selected applications are synced and
-// healthy. Optional URL config can generate links (e.g. to the Argo CD UI) for each status.
+// using the configured key (which defaults to argocd-health) so that promotion gates reflect whether the selected
+// applications are synced and healthy. Optional URL config can generate links (e.g. to the Argo CD UI) for each status.
 type ArgoCDCommitStatusApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:""`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`

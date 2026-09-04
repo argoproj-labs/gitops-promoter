@@ -301,8 +301,9 @@ spec:
                   to the SCM via provider.Update on an open pull request.
                 type: string
               state:
-                description: State is the state of the pull request (closed, merged,
-                  open, merged-or-closed, or unknown).
+                description: State is the state of the pull request. Empty before
+                  the controller observes an SCM state; otherwise closed, merged,
+                  open, merged-or-closed, or unknown.
                 enum:
                 - ""
                 - closed

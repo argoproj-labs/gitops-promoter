@@ -17,8 +17,8 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: RevertCommit requests that the controller create a revert commit
-          on a branch.
+        description: RevertCommit is reserved for future revert-commit support and
+          is not implemented yet.
         properties:
           apiVersion:
             description: |-

@@ -29,7 +29,7 @@ import (
 // RevertCommitApplyConfiguration represents a declarative configuration of the RevertCommit type for use
 // with apply.
 //
-// RevertCommit requests that the controller create a revert commit on a branch.
+// RevertCommit is reserved for future revert-commit support and is not implemented yet.
 type RevertCommitApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:""`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`

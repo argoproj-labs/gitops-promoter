@@ -35,7 +35,7 @@ type PullRequestStatusApplyConfiguration struct {
 	ObservedGeneration *int64 `json:"observedGeneration,omitempty"`
 	// ID is the unique identifier of the pull request, set by the SCM.
 	ID *string `json:"id,omitempty"`
-	// State is the state of the pull request (closed, merged, open, merged-or-closed, or unknown).
+	// State is the state of the pull request. Empty before the controller observes an SCM state; otherwise closed, merged, open, merged-or-closed, or unknown.
 	State *apiv1alpha1.PullRequestState `json:"state,omitempty"`
 	// PRCreationTime is the time when the pull request was created.
 	PRCreationTime *v1.Time `json:"prCreationTime,omitempty"`
