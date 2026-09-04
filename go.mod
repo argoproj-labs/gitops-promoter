@@ -1,6 +1,6 @@
 module github.com/argoproj-labs/gitops-promoter
 
-go 1.26.6
+go 1.27
 
 require (
 	code.gitea.io/sdk/gitea v0.25.1
@@ -45,6 +45,7 @@ require (
 	sigs.k8s.io/controller-runtime v0.24.1
 	sigs.k8s.io/multicluster-runtime v0.24.1
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2
+	sigs.k8s.io/structured-merge-diff/v7 v7.0.0
 	sigs.k8s.io/yaml v1.6.0
 )
 

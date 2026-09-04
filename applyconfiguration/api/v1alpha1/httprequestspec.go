@@ -114,6 +114,7 @@ type HTTPRequestSpecApplyConfiguration struct {
 	// # SCM Provider Credentials
 	// authentication:
 	// scm: {}
+	//
 	Authentication *HTTPAuthenticationApplyConfiguration `json:"authentication,omitempty"`
 }
 
