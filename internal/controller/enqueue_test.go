@@ -18,12 +18,14 @@ package controller
 
 import (
 	"context"
+	"errors"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -137,5 +139,18 @@ var _ = Describe("EnqueueCommitStatusGatesForPromotionStrategy", func() {
 		c := newClient(gateA, gateB)
 		reqs := EnqueueCommitStatusGatesForPromotionStrategy[promoterv1alpha1.GitCommitStatusList](ctx, c, ps)
 		Expect(requestNames(reqs)).To(ConsistOf(ns+"/gate-a", ns+"/gate-b"))
+	})
+
+	It("returns nil when listing gates fails", func() {
+		c := fake.NewClientBuilder().
+			WithScheme(utils.GetScheme()).
+			WithInterceptorFuncs(interceptor.Funcs{
+				List: func(_ context.Context, _ client.WithWatch, _ client.ObjectList, _ ...client.ListOption) error {
+					return errors.New("simulated list failure")
+				},
+			}).
+			Build()
+		reqs := EnqueueCommitStatusGatesForPromotionStrategy[promoterv1alpha1.GitCommitStatusList](ctx, c, ps)
+		Expect(reqs).To(BeNil())
 	})
 })
