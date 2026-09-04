@@ -49,7 +49,7 @@
     // Ownership split with Dependabot
     // ----------------------------------------------------------------------
     {
-      description: 'Let Dependabot own GitHub Action SHAs (avoid duplicate PRs)',
+      description: 'Let Dependabot own GitHub Action SHAs (weekly grouped PR; avoid duplicate PRs)',
       matchManagers: [
         'github-actions',
       ],

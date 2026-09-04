@@ -161,7 +161,7 @@ Key configuration options:
 
 Dependabot continues to handle:
 - ✅ Go module dependencies (via `gomod` package ecosystem)
-- ✅ GitHub Actions updates (via `github-actions` package ecosystem)
+- ✅ GitHub Actions updates (via `github-actions` package ecosystem), batched into one weekly grouped PR
 
 Dependabot does NOT handle:
 - ❌ Go version updates (handled by Renovate)
