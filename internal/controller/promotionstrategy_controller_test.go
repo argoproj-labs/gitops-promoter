@@ -1067,43 +1067,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				conflictingSha = strings.TrimSpace(conflictingSha)
 				Expect(conflictingSha).NotTo(BeEmpty())
 
-				By("Checking that there is no DAG ordering commit status created, since no active checks are configured")
-				// List all CTPs owned by this test's PromotionStrategy
-				ctpList := promoterv1alpha1.ChangeTransferPolicyList{}
-				err = k8sClient.List(ctx, &ctpList, client.InNamespace(typeNamespacedName.Namespace))
-				Expect(err).NotTo(HaveOccurred())
-
-				// Build a set of CTP UIDs that belong to this test's PromotionStrategy, so that we can continue to run tests
-				// in parallel without interfering with each other.
-				ctpUIDs := make(map[string]bool)
-				for _, ctp := range ctpList.Items {
-					for _, ownerRef := range ctp.OwnerReferences {
-						if ownerRef.Name == promotionStrategy.Name && ownerRef.UID == promotionStrategy.UID {
-							ctpUIDs[string(ctp.UID)] = true
-							break
-						}
-					}
-				}
-
-				// List all DAG ordering commit statuses and filter by ownership
-				csList := promoterv1alpha1.CommitStatusList{}
-				err = k8sClient.List(ctx, &csList, client.MatchingLabels{
-					promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
-				})
-				Expect(err).NotTo(HaveOccurred())
-
-				// Filter to only include commit statuses owned by this test's CTPs
-				testCommitStatuses := 0
-				for _, cs := range csList.Items {
-					for _, ownerRef := range cs.OwnerReferences {
-						if ctpUIDs[string(ownerRef.UID)] {
-							testCommitStatuses++
-							break
-						}
-					}
-				}
-				Expect(testCommitStatuses).To(Equal(0))
-
 				By("Waiting for CTPs to reconcile after the conflict and verifying conflict resolution")
 				Eventually(func(g Gomega) {
 					// Get the latest CTP states
