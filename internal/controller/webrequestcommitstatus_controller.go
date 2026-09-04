@@ -38,7 +38,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -240,7 +239,7 @@ func (r *WebRequestCommitStatusReconciler) SetupWithManager(ctx context.Context,
 
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.WebRequestCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueWebRequestCommitStatusForPromotionStrategy()).
+		Watches(&promoterv1alpha1.PromotionStrategy{}, CommitStatusGatePromotionStrategyWatchHandler[promoterv1alpha1.WebRequestCommitStatusList](r.Client)).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Named("webrequestcommitstatus").
 		Complete(r)
@@ -523,36 +522,6 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 	}
 
 	return commitStatus, nil
-}
-
-// enqueueWebRequestCommitStatusForPromotionStrategy returns the watch handler for PromotionStrategy. When a
-// PromotionStrategy is created/updated (e.g. environment SHAs or status change), it enqueues every
-// WebRequestCommitStatus in the same namespace that references that strategy, so they reconcile with fresh data.
-func (r *WebRequestCommitStatusReconciler) enqueueWebRequestCommitStatusForPromotionStrategy() handler.EventHandler {
-	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []ctrl.Request {
-		ps, ok := obj.(*promoterv1alpha1.PromotionStrategy)
-		if !ok {
-			return nil
-		}
-
-		var wrcsList promoterv1alpha1.WebRequestCommitStatusList
-		if err := r.List(ctx, &wrcsList,
-			client.InNamespace(ps.Namespace),
-			client.MatchingFields{PromotionStrategyRefField: ps.Name},
-		); err != nil {
-			log.FromContext(ctx).Error(err, "failed to list WebRequestCommitStatus resources")
-			return nil
-		}
-
-		requests := make([]ctrl.Request, 0, len(wrcsList.Items))
-		for i := range wrcsList.Items {
-			requests = append(requests, ctrl.Request{
-				NamespacedName: client.ObjectKeyFromObject(&wrcsList.Items[i]),
-			})
-		}
-
-		return requests
-	})
 }
 
 // getNamespaceMetadata fetches the namespace's labels and annotations for use in templateData, so URL, header,

@@ -297,7 +297,25 @@ Only listed environments are gated; unlisted environments default to success (24
 
 Gate CRDs reference a `PromotionStrategy` via `spec.promotionStrategyRef`. When that strategy changes (for example environments or commit-status keys are updated), every gate that references it should reconcile so it can refresh owned `CommitStatus` resources.
 
-Built-in controllers watch `PromotionStrategy` and enqueue reconcile requests for matching gates. List with `client.MatchingFields{controller.PromotionStrategyRefField: ps.Name}` (do not namespace-list and filter in memory). **In this repository**, registering the type on the promoter scheme is enough for that field index. **Outside this repo**, register the index in `SetupWithManager` before the watch:
+Built-in controllers watch `PromotionStrategy` and enqueue reconcile requests for matching gates in the same namespace. The list uses `client.MatchingFields{controller.PromotionStrategyRefField: ps.Name}` — do not namespace-list and filter in memory.
+
+**In this repository**, registering the type on the promoter scheme is enough for that field index (`GateCommitStatusKinds()` discovers gates with `spec.promotionStrategyRef`). Wire the watch with the shared helper in [`internal/controller/enqueue.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/controller/enqueue.go):
+
+```go
+ctrl.NewControllerManagedBy(mgr).
+    For(&promoterv1alpha1.MyCommitStatus{}).
+    Watches(
+        &promoterv1alpha1.PromotionStrategy{},
+        CommitStatusGatePromotionStrategyWatchHandler[promoterv1alpha1.MyCommitStatusList](r.Client),
+    ).
+    Complete(r)
+```
+
+`CommitStatusGatePromotionStrategyWatchHandler` lists gates of the given kind that reference the changed `PromotionStrategy` and returns reconcile requests for each match. Most in-tree gate controllers only need this one-liner in `SetupWithManager`.
+
+Use `EnqueueCommitStatusGatesForPromotionStrategy` directly when you need the request slice without the watch wrapper (for example ArgoCDCommitStatus wraps it for multi-cluster reconcile requests).
+
+**Outside this repo**, you cannot import `internal/controller`. Register the field index in `SetupWithManager` before the watch, then duplicate the list-and-enqueue logic from `enqueue.go` (or call your own helper with the same `MatchingFields` query):
 
 ```go
 const promotionStrategyRefField = ".spec.promotionStrategyRef.name"
@@ -311,15 +329,13 @@ func (r *MyCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ctr
     ); err != nil {
         return fmt.Errorf("failed to set field index %s: %w", promotionStrategyRefField, err)
     }
-    // …
+
+    return ctrl.NewControllerManagedBy(mgr).
+        For(&promoterv1alpha1.MyCommitStatus{}).
+        Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueMyCommitStatusForPromotionStrategy()).
+        Complete(r)
 }
-```
 
-### Watch handler
-
-Watch `PromotionStrategy` and list gates with `MatchingFields` instead of scanning the namespace:
-
-```go
 func (r *MyCommitStatusReconciler) enqueueMyCommitStatusForPromotionStrategy() handler.EventHandler {
     return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []ctrl.Request {
         ps, ok := obj.(*promoterv1alpha1.PromotionStrategy)
@@ -332,7 +348,7 @@ func (r *MyCommitStatusReconciler) enqueueMyCommitStatusForPromotionStrategy() h
             client.InNamespace(ps.Namespace),
             client.MatchingFields{promotionStrategyRefField: ps.Name},
         ); err != nil {
-            log.FromContext(ctx).Error(err, "failed to list MyCommitStatus resources")
+            log.FromContext(ctx).Error(err, fmt.Sprintf("failed to list %T resources for PromotionStrategy watch", &list))
             return nil
         }
 
@@ -346,17 +362,6 @@ func (r *MyCommitStatusReconciler) enqueueMyCommitStatusForPromotionStrategy() h
     })
 }
 ```
-
-Wire the watch in `SetupWithManager`:
-
-```go
-ctrl.NewControllerManagedBy(mgr).
-    For(&promoterv1alpha1.MyCommitStatus{}).
-    Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueMyCommitStatusForPromotionStrategy()).
-    Complete(r)
-```
-
-Built-in gate controllers follow this pattern; see [`timedcommitstatus_controller.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/controller/timedcommitstatus_controller.go) for a reference implementation.
 
 ## Dashboard view bundle
 
