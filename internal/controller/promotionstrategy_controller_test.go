@@ -4064,7 +4064,7 @@ var _ = Describe("PromotionStrategy DependentsSuccessfulCommitStatus key safety 
 			g.Expect(cond).ToNot(BeNil())
 			g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
 			g.Expect(cond.Reason).To(Equal(string(promoterConditions.ReconciliationError)))
-			g.Expect(cond.Message).To(ContainSubstring("is not in the PromotionStrategy's proposedCommitStatuses"))
+			g.Expect(cond.Message).To(ContainSubstring("is not declared in proposedCommitStatuses for environment branch"))
 		}, constants.EventuallyTimeout).Should(Succeed())
 	})
 
@@ -4097,9 +4097,99 @@ var _ = Describe("PromotionStrategy DependentsSuccessfulCommitStatus key safety 
 			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, promotionStrategy)).To(Succeed())
 			cond := meta.FindStatusCondition(promotionStrategy.Status.Conditions, string(promoterConditions.Ready))
 			if cond != nil && cond.Message != "" {
-				g.Expect(cond.Message).ToNot(ContainSubstring("is not in the PromotionStrategy's proposedCommitStatuses"))
+				g.Expect(cond.Message).ToNot(ContainSubstring("is not declared in proposedCommitStatuses for environment branch"))
 			}
 		}, "5s", "1s").Should(Succeed())
+	})
+
+	It("does not fail the safety check when the key is declared on each environment's proposedCommitStatuses", func() {
+		By("Creating a PromotionStrategy that declares the ordering gate per environment")
+		for i := range promotionStrategy.Spec.Environments {
+			promotionStrategy.Spec.Environments[i].ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
+			}
+		}
+		setupInitialTestGitRepoOnServer(ctx, gitRepo)
+		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+		By("Creating a DependentsSuccessfulCommitStatus that references the PS with the declared key")
+		dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
+			ObjectMeta: metav1.ObjectMeta{Name: name + "-dag-per-env", Namespace: "default"},
+			Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+				Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+			},
+		}
+		Expect(k8sClient.Create(ctx, dependentsSuccessfulCommitStatus)).To(Succeed())
+
+		By("Checking that the Ready condition never fails the safety check")
+		Consistently(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, promotionStrategy)).To(Succeed())
+			cond := meta.FindStatusCondition(promotionStrategy.Status.Conditions, string(promoterConditions.Ready))
+			if cond != nil && cond.Message != "" {
+				g.Expect(cond.Message).ToNot(ContainSubstring("is not declared in proposedCommitStatuses for environment branch"))
+			}
+		}, "5s", "1s").Should(Succeed())
+	})
+})
+
+var _ = Describe("proposedCommitStatusKeyDeclared", func() {
+	It("accepts a globally declared key", func() {
+		ps := &promoterv1alpha1.PromotionStrategy{
+			Spec: promoterv1alpha1.PromotionStrategySpec{
+				ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{
+					{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
+				},
+				Environments: []promoterv1alpha1.Environment{
+					{Branch: testBranchDevelopment},
+					{Branch: testBranchStaging},
+				},
+			},
+		}
+		Expect(branchesMissingProposedCommitStatusKey(ps, promoterv1alpha1.DependentsSuccessfulCommitStatusKey)).To(BeEmpty())
+	})
+
+	It("accepts a key declared on every environment", func() {
+		ps := &promoterv1alpha1.PromotionStrategy{
+			Spec: promoterv1alpha1.PromotionStrategySpec{
+				Environments: []promoterv1alpha1.Environment{
+					{
+						Branch: testBranchDevelopment,
+						ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{
+							{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
+						},
+					},
+					{
+						Branch: testBranchStaging,
+						ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{
+							{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
+						},
+					},
+				},
+			},
+		}
+		Expect(branchesMissingProposedCommitStatusKey(ps, promoterv1alpha1.DependentsSuccessfulCommitStatusKey)).To(BeEmpty())
+	})
+
+	It("reports branches missing a per-environment key", func() {
+		ps := &promoterv1alpha1.PromotionStrategy{
+			Spec: promoterv1alpha1.PromotionStrategySpec{
+				Environments: []promoterv1alpha1.Environment{
+					{
+						Branch: testBranchDevelopment,
+						ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{
+							{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
+						},
+					},
+					{Branch: testBranchStaging},
+				},
+			},
+		}
+		Expect(branchesMissingProposedCommitStatusKey(ps, promoterv1alpha1.DependentsSuccessfulCommitStatusKey)).
+			To(Equal([]string{testBranchStaging}))
 	})
 })
 

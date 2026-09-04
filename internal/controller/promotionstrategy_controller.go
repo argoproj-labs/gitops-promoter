@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"path"
 	"reflect"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -268,9 +270,10 @@ func (r *PromotionStrategyReconciler) SetupWithManager(ctx context.Context, mgr 
 // silently promoting environments out of order) in two cases:
 //
 //   - No DependentsSuccessfulCommitStatus targets the PromotionStrategy, so no ordering applies at all.
-//   - A DependentsSuccessfulCommitStatus targets the PromotionStrategy but its key is not declared in the PS's
-//     global proposedCommitStatuses, so the gate it produces is never consumed and the intended
-//     ordering silently does not apply.
+//   - A DependentsSuccessfulCommitStatus targets the PromotionStrategy but its key is not declared in the
+//     proposed commit statuses that each environment's ChangeTransferPolicy would enforce (global
+//     proposedCommitStatuses plus per-environment proposedCommitStatuses), so the gate it produces is
+//     never consumed and the intended ordering silently does not apply.
 //
 // TODO: remove this safety check in 1.0.
 func (r *PromotionStrategyReconciler) checkDependentsSuccessfulCommitStatusKeysDeclared(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy) error {
@@ -285,21 +288,54 @@ func (r *PromotionStrategyReconciler) checkDependentsSuccessfulCommitStatusKeysD
 		return fmt.Errorf("PromotionStrategy %q has no DependentsSuccessfulCommitStatus; configure one so promotion ordering is enforced", ps.Name)
 	}
 
-	declared := make(map[string]bool, len(ps.Spec.ProposedCommitStatuses))
-	for _, sel := range ps.Spec.ProposedCommitStatuses {
-		declared[sel.Key] = true
-	}
-
 	for i := range dcsList.Items {
 		key := dcsList.Items[i].Spec.Key
-		if !declared[key] {
+		if missing := branchesMissingProposedCommitStatusKey(ps, key); len(missing) > 0 {
 			return fmt.Errorf("DependentsSuccessfulCommitStatus %q references PromotionStrategy %q with key %q, "+
-				"but that key is not in the PromotionStrategy's proposedCommitStatuses; add it so the gate is enforced",
-				dcsList.Items[i].Name, ps.Name, key)
+				"but that key is not declared in proposedCommitStatuses for environment branch(es) %s; "+
+				"declare it globally or on each environment so the gate is enforced",
+				dcsList.Items[i].Name, ps.Name, key, strings.Join(missing, ", "))
 		}
 	}
 
 	return nil
+}
+
+// branchesMissingProposedCommitStatusKey returns environment branches whose effective proposed
+// commit status selectors (global plus per-environment, matching upsertChangeTransferPolicy) do
+// not include key.
+func branchesMissingProposedCommitStatusKey(ps *promoterv1alpha1.PromotionStrategy, key string) []string {
+	if len(ps.Spec.Environments) == 0 {
+		if proposedCommitStatusKeyDeclared(ps, promoterv1alpha1.Environment{}, key) {
+			return nil
+		}
+		return []string{"(no environments configured)"}
+	}
+
+	missing := make([]string, 0)
+	for _, env := range ps.Spec.Environments {
+		if !proposedCommitStatusKeyDeclared(ps, env, key) {
+			missing = append(missing, env.Branch)
+		}
+	}
+	slices.Sort(missing)
+	return missing
+}
+
+// proposedCommitStatusKeyDeclared reports whether key appears in the proposed commit status
+// selectors upsertChangeTransferPolicy would apply for env (global selectors plus env-specific).
+func proposedCommitStatusKeyDeclared(ps *promoterv1alpha1.PromotionStrategy, env promoterv1alpha1.Environment, key string) bool {
+	for _, sel := range ps.Spec.ProposedCommitStatuses {
+		if sel.Key == key {
+			return true
+		}
+	}
+	for _, sel := range env.ProposedCommitStatuses {
+		if sel.Key == key {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, environment promoterv1alpha1.Environment) (*promoterv1alpha1.ChangeTransferPolicy, error) {
