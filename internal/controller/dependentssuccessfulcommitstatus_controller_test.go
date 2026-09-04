@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	_ "embed"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -245,6 +246,9 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+					URL: promoterv1alpha1.URLConfig{
+						Template: "https://example.com/ui?env={{ .Environment }}{{ if .DependsOnQuery }}&{{ .DependsOnQuery }}{{ end }}",
+					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, dependentsSuccessfulCommitStatus)).To(Succeed())
@@ -273,6 +277,21 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 					g.Expect(cs.Labels[promoterv1alpha1.CommitStatusLabel]).To(Equal(promoterv1alpha1.DependentsSuccessfulCommitStatusKey))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			}
+
+			By("Checking URL template DependsOn/DependsOnQuery use the inferred graph, not empty spec.environments")
+			Eventually(func(g Gomega) {
+				devCS := &promoterv1alpha1.CommitStatus{}
+				devName := utils.CommitStatusResourceName(ctx, dependentsSuccessfulCommitStatus, testBranchDevelopment)
+				g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: devName}, devCS)).To(Succeed())
+				g.Expect(devCS.Spec.Url).To(Equal("https://example.com/ui?env=" + testBranchDevelopment))
+
+				stgCS := &promoterv1alpha1.CommitStatus{}
+				stgName := utils.CommitStatusResourceName(ctx, dependentsSuccessfulCommitStatus, testBranchStaging)
+				g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: stgName}, stgCS)).To(Succeed())
+				g.Expect(stgCS.Spec.Url).To(Equal(
+					"https://example.com/ui?env=" + testBranchStaging + "&env=" + url.QueryEscape(testBranchDevelopment),
+				))
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Checking the root environment gate succeeds with no upstream dependencies")
 			Eventually(func(g Gomega) {
@@ -434,27 +453,6 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 })
 
 var _ = Describe("DAG URL template helpers", func() {
-	Describe("dependsOnForBranch", func() {
-		It("returns the dependsOn list for a declared branch", func() {
-			dcs := &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
-					Environments: dagEnvs("dev", "", "e2e", "dev", "prod", "e2e,perf"),
-				},
-			}
-			Expect(dependsOnForBranch(dcs, "prod")).To(Equal([]string{"e2e", "perf"}))
-			Expect(dependsOnForBranch(dcs, "dev")).To(BeEmpty())
-		})
-
-		It("returns nil for an unknown branch", func() {
-			dcs := &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
-					Environments: dagEnvs("dev", ""),
-				},
-			}
-			Expect(dependsOnForBranch(dcs, "missing")).To(BeNil())
-		})
-	})
-
 	Describe("buildDependsOnQuery", func() {
 		It("returns empty for a root with no dependsOn", func() {
 			Expect(buildDependsOnQuery(nil)).To(Equal(""))

@@ -56,19 +56,9 @@ type DAGURLTemplateData struct {
 	// (e.g. "env=e2e&env=perf"), ready to append after "?". Empty when DependsOn is empty.
 	DependsOnQuery string
 	// DependsOn is the current environment's immediate upstream branches (one edge away),
-	// copied from DependentsSuccessfulCommitStatus.spec.environments for the Environment being rendered.
+	// from the resolved dependency graph (explicit spec.environments or the linear chain inferred
+	// from PromotionStrategy.spec.environments when spec.environments is omitted).
 	DependsOn []string
-}
-
-// dependsOnForBranch returns the dependsOn list for branch from the DAG spec, or nil if the
-// branch is not declared.
-func dependsOnForBranch(dcs *promoterv1alpha1.DependentsSuccessfulCommitStatus, branch string) []string {
-	for i := range dcs.Spec.Environments {
-		if dcs.Spec.Environments[i].Branch == branch {
-			return dcs.Spec.Environments[i].DependsOn
-		}
-	}
-	return nil
 }
 
 // buildDependsOnQuery encodes upstream branches as repeated env= query parameters for Promoter UI
@@ -255,7 +245,7 @@ func (r *DependentsSuccessfulCommitStatusReconciler) updateDependentsSuccessfulC
 		// ChangeTransferPolicy inspects when gating the promotion PR. Binding to the dry SHA
 		// instead leaves the gate undetectable, so the promotion never advances.
 		proposedHydratedSha := envStatus.Proposed.Hydrated.Sha
-		cs, err := r.createOrUpdateDependentsSuccessfulCommitStatus(ctx, dcs, ps, branch, proposedHydratedSha, phase, reason)
+		cs, err := r.createOrUpdateDependentsSuccessfulCommitStatus(ctx, dcs, ps, branch, graph.dependsOn[branch], proposedHydratedSha, phase, reason)
 		if err != nil {
 			return fmt.Errorf("failed to set DAG commit status for branch %q: %w", branch, err)
 		}
@@ -349,6 +339,7 @@ func (r *DependentsSuccessfulCommitStatusReconciler) createOrUpdateDependentsSuc
 	dcs *promoterv1alpha1.DependentsSuccessfulCommitStatus,
 	ps *promoterv1alpha1.PromotionStrategy,
 	branch string,
+	dependsOn []string,
 	hydratedSha string,
 	phase promoterv1alpha1.CommitStatusPhase,
 	pendingReason string,
@@ -386,7 +377,6 @@ func (r *DependentsSuccessfulCommitStatusReconciler) createOrUpdateDependentsSuc
 
 	// Render URL from template if configured; when empty, leave CommitStatus.spec.url unset
 	if dcs.Spec.URL.Template != "" {
-		dependsOn := dependsOnForBranch(dcs, branch)
 		data := DAGURLTemplateData{
 			Environment:                      branch,
 			DependentsSuccessfulCommitStatus: *dcs,
