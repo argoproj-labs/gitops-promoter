@@ -1,25 +1,38 @@
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import js from '@eslint/js';
 import tsPlugin from '@typescript-eslint/eslint-plugin';
 import tsParser from '@typescript-eslint/parser';
 import reactPlugin from 'eslint-plugin-react';
 import reactHooksPlugin from 'eslint-plugin-react-hooks';
 import reactRefreshPlugin from 'eslint-plugin-react-refresh';
+import prettierConfig from 'eslint-config-prettier';
+
+const tsconfigRootDir = dirname(fileURLToPath(import.meta.url));
 
 export default [
   // Ignore patterns
   {
-    ignores: ['dist/', 'node_modules/', '*.min.js', '*.d.ts'],
+    ignores: [
+      'dist/',
+      'coverage/',
+      'node_modules/',
+      '*.min.js',
+      '*.d.ts',
+      '../shared/src/types/generated/',
+    ],
   },
-  
+
   // Base config for all files
   {
-    files: ['**/*.{ts,tsx,js,jsx}'],
-
+    files: ['**/*.{ts,tsx}'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
       parser: tsParser,
       parserOptions: {
+        project: ['./tsconfig.eslint.json'],
+        tsconfigRootDir,
         ecmaFeatures: {
           jsx: true,
         },
@@ -35,8 +48,11 @@ export default [
         setInterval: 'readonly',
         clearInterval: 'readonly',
         fetch: 'readonly',
+        URL: 'readonly',
+        URLSearchParams: 'readonly',
         EventSource: 'readonly',
         MessageEvent: 'readonly',
+        HTMLDivElement: 'readonly',
         // Node globals
         process: 'readonly',
         __dirname: 'readonly',
@@ -47,7 +63,7 @@ export default [
     },
     plugins: {
       '@typescript-eslint': tsPlugin,
-      'react': reactPlugin,
+      react: reactPlugin,
       'react-hooks': reactHooksPlugin,
       'react-refresh': reactRefreshPlugin,
     },
@@ -59,28 +75,26 @@ export default [
     rules: {
       // ESLint recommended rules
       ...js.configs.recommended.rules,
-      
+
       // Disable base no-unused-vars in favor of TypeScript version
       'no-unused-vars': 'off',
-      
+
       // TypeScript rules
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/no-explicit-any': 'warn',
-      
+      '@typescript-eslint/no-unnecessary-condition': 'error',
+
       // React rules
       'react/prop-types': 'off',
       'react/react-in-jsx-scope': 'off',
-      
+
       // React Hooks rules
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
-      
+
       // React Refresh rules
-      'react-refresh/only-export-components': [
-        'warn',
-        { allowConstantExport: true },
-      ],
-      
+      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+
       // General rules
       'no-console': 'warn',
       'no-debugger': 'error',
@@ -91,7 +105,7 @@ export default [
 
   // Test files override
   {
-    files: ['test/**/*.{ts,tsx,js,jsx}'],
+    files: ['test/**/*.{ts,tsx}', '**/*.test.{ts,tsx}'],
     languageOptions: {
       globals: {
         // Mocha globals
@@ -105,11 +119,17 @@ export default [
         require: 'readonly',
         // DOM globals used in tests
         HTMLDivElement: 'readonly',
+        MouseEvent: 'readonly',
+        Response: 'readonly',
       },
     },
     rules: {
       'no-console': 'off',
       '@typescript-eslint/no-var-requires': 'off',
+      '@typescript-eslint/no-unnecessary-condition': 'off',
     },
   },
+
+  // Prettier config - must be last to override formatting rules
+  prettierConfig,
 ];

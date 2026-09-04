@@ -33,4 +33,36 @@ const (
 	// WebRequestCommitStatusControllerFieldOwner is the field owner for Server-Side Apply operations
 	// performed by the WebRequestCommitStatus controller.
 	WebRequestCommitStatusControllerFieldOwner = "promoter.argoproj.io/webrequestcommitstatus-controller"
+
+	// ScmProviderControllerFieldOwner is the field owner for Server-Side Apply operations
+	// performed by the ScmProvider controller.
+	ScmProviderControllerFieldOwner = "promoter.argoproj.io/scmprovider-controller"
+
+	// ClusterScmProviderControllerFieldOwner is the field owner for Server-Side Apply operations
+	// performed by the ClusterScmProvider controller.
+	ClusterScmProviderControllerFieldOwner = "promoter.argoproj.io/clusterscmprovider-controller"
+
+	// GitRepositoryControllerFieldOwner is the field owner for Server-Side Apply operations
+	// performed by the GitRepository controller.
+	GitRepositoryControllerFieldOwner = "promoter.argoproj.io/gitrepository-controller"
+
+	// PullRequestControllerFieldOwner is the field owner for Server-Side Apply operations
+	// performed by the PullRequest controller.
+	PullRequestControllerFieldOwner = "promoter.argoproj.io/pullrequest-controller"
+
+	// GitCommitStatusControllerFieldOwner is the field owner for Server-Side Apply operations
+	// performed by the GitCommitStatus controller.
+	GitCommitStatusControllerFieldOwner = "promoter.argoproj.io/gitcommitstatus-controller"
+
+	// ScheduledCommitStatusControllerFieldOwner is the field owner for Server-Side Apply operations
+	// performed by the ScheduledCommitStatus controller.
+	ScheduledCommitStatusControllerFieldOwner = "promoter.argoproj.io/scheduledcommitstatus-controller"
+
+	// CommitStatusControllerFieldOwner is the field owner for Server-Side Apply operations
+	// performed by the CommitStatus controller.
+	CommitStatusControllerFieldOwner = "promoter.argoproj.io/commitstatus-controller"
+
+	// ControllerConfigurationControllerFieldOwner is the field owner for Server-Side Apply operations
+	// performed by the ControllerConfiguration controller.
+	ControllerConfigurationControllerFieldOwner = "promoter.argoproj.io/controllerconfiguration-controller"
 )

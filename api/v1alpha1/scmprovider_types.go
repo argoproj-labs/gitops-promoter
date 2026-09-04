@@ -28,7 +28,7 @@ import (
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // ScmProviderKind is the kind of the ScmProvider resource.
-var ScmProviderKind = reflect.TypeOf(ScmProvider{}).Name()
+var ScmProviderKind = reflect.TypeFor[ScmProvider]().Name()
 
 // ScmProviderSpec defines the desired state of ScmProvider
 // +kubebuilder:validation:ExactlyOneOf=github;gitlab;forgejo;gitea;bitbucketCloud;azureDevOps;fake
@@ -66,15 +66,32 @@ type ScmProviderStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
+	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
+	// Because status is written via Server-Side Apply with ForceOwnership (which has no
+	// optimistic-concurrency check), this field is the canonical way to detect stale
+	// status writes: compare status.observedGeneration with metadata.generation.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// Conditions Represents the observations of the current state.
 	// +patchMergeKey=type
 	// +patchStrategy=merge
 	// +listType=map
 	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+
+	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+	// reconcile attempt by this install's controller, including when Ready=False; omitted
+	// when the resource has no instance-id label (default install).
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$`
+	InstanceID *string `json:"instanceID,omitempty"`
 }
 
 // +kubebuilder:ac:generate=true
+// +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#scmprovider",description="CRD reference (examples and behavior)"
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
@@ -93,6 +110,16 @@ func (s *ScmProvider) GetConditions() *[]metav1.Condition {
 	return &s.Status.Conditions
 }
 
+// SetObservedGeneration records the object generation that produced the current status.
+func (s *ScmProvider) SetObservedGeneration(generation int64) {
+	s.Status.ObservedGeneration = generation
+}
+
+// SetStatusInstanceID records the instance-id label mirrored into status on each reconcile attempt.
+func (s *ScmProvider) SetStatusInstanceID(v *string) {
+	s.Status.InstanceID = v
+}
+
 //+kubebuilder:object:root=true
 
 // ScmProviderList contains a list of ScmProvider
@@ -103,7 +130,10 @@ type ScmProviderList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&ScmProvider{}, &ScmProviderList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &ScmProvider{}, &ScmProviderList{})
+		return nil
+	})
 }
 
 // +kubebuilder:object:root=false

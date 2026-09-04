@@ -1,5 +1,5 @@
 import path from 'path';
-import {codecovWebpackPlugin} from "@codecov/webpack-plugin";
+import { codecovWebpackPlugin } from '@codecov/webpack-plugin';
 
 export default {
   entry: './index.tsx',
@@ -28,17 +28,31 @@ export default {
       },
       {
         test: /\.s?css$/,
-        use: ['style-loader', 'css-loader', 'sass-loader'],
+        use: [
+          'style-loader',
+          'css-loader',
+          {
+            loader: 'sass-loader',
+            options: {
+              sassOptions: {
+                // style-loader injects this CSS into a <style> tag, so a leading
+                // @charset (emitted by Sass when the source has non-ASCII chars) is
+                // an invalid at-rule the browser drops — taking the next rule with it.
+                charset: false,
+              },
+            },
+          },
+        ],
         exclude: /node_modules/,
       },
     ],
   },
   plugins: [
     codecovWebpackPlugin({
-        enableBundleAnalysis: process.env.CODECOV_TOKEN !== undefined,
-        bundleName: "argocd-ui-extension",
-        uploadToken: process.env.CODECOV_TOKEN,
+      enableBundleAnalysis: process.env.CODECOV_TOKEN !== undefined,
+      bundleName: 'argocd-ui-extension',
+      uploadToken: process.env.CODECOV_TOKEN,
     }),
   ],
   mode: 'production',
-}; 
+};

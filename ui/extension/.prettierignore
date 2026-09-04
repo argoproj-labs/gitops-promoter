@@ -1,0 +1,8 @@
+node_modules/
+dist/
+build/
+out/
+coverage/
+*.min.js
+*.d.ts
+tsconfig.eslint.json

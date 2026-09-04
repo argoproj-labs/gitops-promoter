@@ -18,17 +18,21 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98 # pin@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up Go
-        uses: actions/setup-go@4aaadf42668403795cdfdb15b1c4250e9fed12b9 # pin@v5
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.25"
+          go-version: "1.26.6"
       - name: Setup Node.js
-        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '24'
+          node-version: '24.20.0'
           cache: 'npm'
-          cache-dependency-path: ui/dashboard/package-lock.json
+          cache-dependency-path: |
+            ui/shared/package-lock.json
+            ui/dashboard/package-lock.json
+            ui/extension/package-lock.json
+            ui/components-lib/package-lock.json
       - name: Install UI dependencies and build
         run: |
           make build-dashboard
@@ -39,21 +43,21 @@ jobs:
       - name: UI Checks
         run: make lint-ui
       - name: Set up Python and venv for docs
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: '3.13'
+          python-version: '3.14'
       - name: Create venv and install MkDocs requirements
         run: |
           python3 -m venv .venv
           . .venv/bin/activate
-          pip install -r docs/requirements.txt
+          pip install -r docs/requirements-hashed.txt --require-hashes
       - name: Lint Docs
         run: . .venv/bin/activate && make lint-docs
       - name: Get dependencies
         run: go mod download
       - name: Restore build output from cache
         id: cache-build
-        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: bin/manager
           key: ${{ runner.os }}-go-build-${{ hashFiles('**/*.go', 'go.sum') }}
@@ -65,13 +69,6 @@ jobs:
             exit 1
           fi
           echo "ui/web/static directory exists ✓"
-      - name: Lint
-        uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0
-        with:
-          version: v2.11.1
-          args: --timeout=5m
-          skip-cache: false
-          cache-invalidation-interval: 1 # day, default 7
       - name: Build
         if: steps.cache-build.outputs.cache-hit != 'true'
         run: make
@@ -81,49 +78,105 @@ jobs:
         run: make test-ui-test-dashboard
       - name: Run Integration Tests
         run: make test-parallel
+      - name: Fuzz replay (seeds f.Add + testdata/fuzz corpus; no exploratory fuzz)
+        run: make fuzz-replay
       - name: Generate code coverage artifacts
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: code-coverage
-          path: cover.out
+          path: |
+            cover.out
+            ui/dashboard/coverage/lcov.info
+            ui/extension/coverage/lcov.info
       - name: Upload code coverage information to codecov.io
         if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
-          files: cover.out
+          # cover.out: Ginkgo (after make test-parallel). UI: Vitest lcov (repo-root SF: via lcov projectRoot).
+          files: cover.out,ui/dashboard/coverage/lcov.info,ui/extension/coverage/lcov.info
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       - name: Upload test results to codecov.io
         if: ${{ !cancelled() }}
-        uses: codecov/test-results-action@0fa95f0e1eeaafde2c782583b36b28ad0d8c77d3 # v1.2.1
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
+          report_type: test_results
           token: ${{ secrets.CODECOV_TOKEN }}
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.6"
+      - name: Lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.12.2
+          args: --timeout=5m
+          skip-cache: false
+          cache-invalidation-interval: 1 # day, default 7
   codegen:
     name: Check Codegen
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98 # pin@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up Go
-        uses: actions/setup-go@4aaadf42668403795cdfdb15b1c4250e9fed12b9 # pin@v5
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.25"
+          go-version: "1.26.6"
       - name: go mod tidy
         run: |
           go mod tidy
-          if ! diff=$(git diff --exit-code --unified=0 -- go.sum); then
-            line=$(echo "$diff" | sed -nr 's/@@ -([0-9]+),.*/\1/p' | head -n 1 | tr -d '\n')
-            echo "::error file=go.sum,line=$line::go.sum is out of date. Run 'go mod tidy' and commit the changes."
+          for file in go.mod go.sum; do
+            if ! diff=$(git diff --exit-code --unified=0 -- "$file"); then
+              line=$(echo "$diff" | sed -nr 's/^@@ -([0-9]+).*/\1/p' | head -n 1 | tr -d '\n')
+              echo "::error file=$file,line=$line::$file is out of date. Run 'go mod tidy' and commit the changes."
+              exit 1
+            fi
+          done
+      - name: make mockery-gen
+        run: |
+          make mockery-gen
+          if ! git diff --exit-code -- internal/scms/mock/; then
+            echo "::error ::Mocks are out of date. Run 'make mockery-gen' and commit the changes."
             exit 1
           fi
       - name: make build-installer
         run: |
           make build-installer
           if ! git diff --exit-code; then
-            echo "::error ::Manifests are out of date. Run 'make build-installer' and commit the changes."
+            echo "::error ::Generated files are out of date. Run 'make build-installer' and commit the changes (CRDs, applyconfiguration, deepcopy, extension icon styles, hack/celcost/report.md, dist/ install bundles)."
+            exit 1
+          fi
+      - name: make generate-apiserver
+        run: |
+          make generate-apiserver
+          if ! git diff --exit-code -- api/view/v1alpha1/zz_generated.openapi.go api/view/v1alpha1/zz_generated.deepcopy.go api/view/v1alpha1/zz_generated.model_name.go; then
+            echo "::error ::View APIService codegen is out of date. Run 'make generate-apiserver' and commit api/view/v1alpha1/zz_generated.*.go."
+            exit 1
+          fi
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: |
+            ui/codegen/package-lock.json
+            ui/shared/package-lock.json
+      - name: make generate-ui-types
+        run: |
+          make generate-ui-types
+          if ! git diff --exit-code -- ui/shared/src/types/generated/view.gen.ts; then
+            echo "::error ::UI view API types are out of date. Run 'make generate-apiserver && make generate-ui-types' and commit ui/shared/src/types/generated/view.gen.ts."
             exit 1
           fi
   nilaway:
@@ -132,10 +185,23 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98 # pin@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up Go
-        uses: actions/setup-go@4aaadf42668403795cdfdb15b1c4250e9fed12b9 # pin@v5
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.25"
+          go-version: "1.26.6"
       - name: Run Nilaway
         run: make nilaway-no-test
+  deadcode:
+    name: Dead Code Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.6"
+      - name: Run deadcode
+        run: make deadcode

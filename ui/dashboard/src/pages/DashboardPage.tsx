@@ -10,9 +10,7 @@ interface NamespaceStore {
 
 const DashboardPage: React.FC = () => {
   const namespace = namespaceStore((s: NamespaceStore) => s.namespace);
-  
-  
-  
+
   return (
     <>
       <div className="dashboard-main">
@@ -29,4 +27,4 @@ const DashboardPage: React.FC = () => {
   );
 };
 
-export default DashboardPage; 
+export default DashboardPage;

@@ -1,5 +1,6 @@
-import type { PromotionStrategy } from "./promotion";
+import type { PromotionStrategy } from './promotion';
 
+// Extension API types
 export interface ResourceExtensionProps {
   application: {
     metadata: {
@@ -24,6 +25,8 @@ export interface Application {
   metadata: {
     name: string;
     namespace: string;
+    labels?: Record<string, string>;
+    annotations?: Record<string, string>;
   };
   status?: {
     resources?: ApplicationResource[];
@@ -39,7 +42,7 @@ export interface TreeNode {
 }
 
 export interface Tree {
-  nodes: TreeNode[];
+  nodes?: TreeNode[];
 }
 
 export interface AppViewComponentProps {
@@ -48,26 +51,11 @@ export interface AppViewComponentProps {
 }
 
 export interface ApplicationsService {
-  getResource: (
-    name: string,
-    namespace: string,
-    node: TreeNode
-  ) => Promise<PromotionStrategy>;
+  getResource: (name: string, namespace: string, node: TreeNode) => Promise<PromotionStrategy>;
 }
 
 export interface Services {
   applications: ApplicationsService;
-}
-
-// Extension API types
-export interface ResourceExtensionProps {
-  application: {
-    metadata: {
-      name: string;
-      namespace: string;
-    };
-  };
-  resource: PromotionStrategy;
 }
 
 export interface StatusPanelProps {
@@ -88,21 +76,21 @@ export interface ExtensionsAPI {
     group: string,
     kind: string,
     title: string,
-    options?: { icon: string }
+    options?: { icon: string },
   ) => void;
 
   registerStatusPanelExtension: (
     component: React.ComponentType<StatusPanelProps>,
     title: string,
     id: string,
-    flyout?: React.ComponentType<StatusPanelProps>
+    flyout?: React.ComponentType<StatusPanelProps>,
   ) => void;
 
   registerAppViewExtension: (
     component: React.ComponentType<AppViewComponentProps>,
     title: string,
     icon: string,
-    shouldDisplay?: (application: Application) => boolean
+    shouldDisplay?: (application: Application) => boolean,
   ) => void;
 }
 

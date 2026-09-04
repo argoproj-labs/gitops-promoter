@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/google/go-github/v71/github"
+	"github.com/google/go-github/v91/github"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -99,8 +99,8 @@ func buildCheckRunOutput(ctx context.Context, name, description string) *github.
 		return nil
 	}
 	return &github.CheckRunOutput{
-		Title:   github.Ptr(name),
-		Summary: github.Ptr(description),
+		Title:   new(name),
+		Summary: new(description),
 	}
 }
 
@@ -110,7 +110,7 @@ func buildDetailsURL(url string) *string {
 	if url == "" {
 		return nil
 	}
-	return github.Ptr(url)
+	return new(url)
 }
 
 // createCheckRun creates a new GitHub check run
@@ -126,7 +126,7 @@ func (cs *CommitStatus) createCheckRun(ctx context.Context, commitStatus *promot
 	checkRunOpts := github.CreateCheckRunOptions{
 		Name:       commitStatus.Spec.Name,
 		HeadSHA:    commitStatus.Spec.Sha,
-		Status:     github.Ptr(status),
+		Status:     new(status),
 		DetailsURL: buildDetailsURL(commitStatus.Spec.Url),
 		Output:     buildCheckRunOutput(ctx, commitStatus.Spec.Name, commitStatus.Spec.Description),
 	}
@@ -137,7 +137,7 @@ func (cs *CommitStatus) createCheckRun(ctx context.Context, commitStatus *promot
 	// The conclusion is the final result: "success" or "failure"
 	// This maps directly from the CommitStatus phase (success/failure)
 	if status == checkRunStatusCompleted {
-		checkRunOpts.Conclusion = github.Ptr(string(commitStatus.Spec.Phase)) // "success" or "failure"
+		checkRunOpts.Conclusion = new(string(commitStatus.Spec.Phase)) // "success" or "failure"
 		checkRunOpts.StartedAt = &now
 		checkRunOpts.CompletedAt = &now
 	}
@@ -173,7 +173,7 @@ func (cs *CommitStatus) updateCheckRun(ctx context.Context, commitStatus *promot
 	// Build update-specific options
 	updateOpts := github.UpdateCheckRunOptions{
 		Name:       commitStatus.Spec.Name,
-		Status:     github.Ptr(status),
+		Status:     new(status),
 		DetailsURL: buildDetailsURL(commitStatus.Spec.Url),
 		Output:     buildCheckRunOutput(ctx, commitStatus.Spec.Name, commitStatus.Spec.Description),
 	}
@@ -182,7 +182,7 @@ func (cs *CommitStatus) updateCheckRun(ctx context.Context, commitStatus *promot
 	// The conclusion is the final result: "success" or "failure"
 	// This maps directly from the CommitStatus phase (success/failure)
 	if status == checkRunStatusCompleted {
-		updateOpts.Conclusion = github.Ptr(string(commitStatus.Spec.Phase)) // "success" or "failure"
+		updateOpts.Conclusion = new(string(commitStatus.Spec.Phase)) // "success" or "failure"
 		now := github.Timestamp{Time: time.Now()}
 		updateOpts.CompletedAt = &now
 	}
@@ -193,8 +193,7 @@ func (cs *CommitStatus) updateCheckRun(ctx context.Context, commitStatus *promot
 		// Check if the error is a 404 (check run not found)
 		// This can happen when a CommitStatus was created using the legacy Commit Status API
 		// instead of the Checks API, resulting in an invalid check run ID
-		var ghErr *github.ErrorResponse
-		if errors.As(err, &ghErr) && ghErr.Response != nil && ghErr.Response.StatusCode == http.StatusNotFound {
+		if ghErr, ok := errors.AsType[*github.ErrorResponse](err); ok && ghErr.Response != nil && ghErr.Response.StatusCode == http.StatusNotFound {
 			logger := log.FromContext(ctx)
 			logger.Info("Check run not found (404), falling back to create operation", "checkRunId", commitStatus.Status.Id)
 			// Fall back to creating a new check run
@@ -221,7 +220,7 @@ func (cs *CommitStatus) handleCheckRunResponse(
 	// Record metrics and log rate limit info if response is available
 	if response != nil {
 		duration := time.Since(startTime)
-		metrics.RecordSCMCall(gitRepo, metrics.SCMAPICommitStatus, operation, response.StatusCode, duration, getRateLimitMetrics(response.Rate))
+		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPICommitStatus, operation, response.StatusCode, duration, getRateLimitMetrics(response.Rate))
 
 		logger.Info("github rate limit",
 			"limit", response.Rate.Limit,

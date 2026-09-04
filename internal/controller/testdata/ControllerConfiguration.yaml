@@ -40,15 +40,51 @@ spec:
 
   # PullRequest controller manages pull request lifecycle
   pullRequest:
-    # Template configuration for generating PR titles and descriptions
+    # Template data: .ChangeTransferPolicy, .PromotionStrategy. Sprig helpers (e.g. trimSuffix) are available.
     template:
       title: "Promote {{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }} to `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`"
       description: |
-        This PR is promoting the environment branch `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`.
-        
-        **Changes:**
-        - Current SHA: {{ .ChangeTransferPolicy.Status.Active.Dry.Sha }}
-        - Proposed SHA: {{ .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}
+        This PR promotes changes to **`{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`**{{ if .PromotionStrategy }} (PromotionStrategy `{{ .PromotionStrategy.Name }}`){{ end }}.
+
+        ### Deployment commit
+        | | Active (deployed) | Proposed |
+        |---|---|---|
+        | SHA | {{ with .ChangeTransferPolicy.Status.Active.Dry }}{{ if and .RepoURL .Sha }}[{{ trunc 7 .Sha }}]({{ trimSuffix "/" .RepoURL }}/commit/{{ .Sha }}){{ else }}{{ trunc 7 .Sha }}{{ end }}{{ end }} | {{ with .ChangeTransferPolicy.Status.Proposed.Dry }}{{ if and .RepoURL .Sha }}[{{ trunc 7 .Sha }}]({{ trimSuffix "/" .RepoURL }}/commit/{{ .Sha }}){{ else }}{{ trunc 7 .Sha }}{{ end }}{{ end }} |
+        | Subject | {{ replace "|" "\\|" .ChangeTransferPolicy.Status.Active.Dry.Subject }} | {{ replace "|" "\\|" .ChangeTransferPolicy.Status.Proposed.Dry.Subject }} |
+
+        {{- $repo := "" -}}
+        {{- $base := "" -}}
+        {{- $head := "" -}}
+        {{- $activeSubject := "" -}}
+        {{- $proposedSubject := "" -}}
+        {{- with .ChangeTransferPolicy.Status.Active.Dry.References }}{{- with index . 0 }}{{- with .Commit -}}
+        {{- $base = .Sha -}}{{- $activeSubject = .Subject -}}{{- if .RepoURL -}}{{- $repo = .RepoURL -}}{{- end -}}
+        {{- end -}}{{- end -}}{{- end -}}
+        {{- with .ChangeTransferPolicy.Status.Proposed.Dry.References }}{{- with index . 0 }}{{- with .Commit -}}
+        {{- $head = .Sha -}}{{- $proposedSubject = .Subject -}}{{- if and (not $repo) .RepoURL -}}{{- $repo = .RepoURL -}}{{- end -}}
+        {{- end -}}{{- end -}}{{- end -}}
+        {{- if or $base $head }}
+
+        ### Code reference
+        {{- if $base }}
+        **Active:** {{ if and $repo $base }}[{{ trunc 7 $base }}]({{ trimSuffix "/" $repo }}/commit/{{ $base }}){{ else }}{{ trunc 7 $base }}{{ end }} — {{ $activeSubject }}
+        {{- end }}
+        {{- if $head }}
+        **Proposed:** {{ if and $repo $head }}[{{ trunc 7 $head }}]({{ trimSuffix "/" $repo }}/commit/{{ $head }}){{ else }}{{ trunc 7 $head }}{{ end }} — {{ $proposedSubject }}
+        {{- end }}
+        {{- if and $repo $base $head }}
+        **Diff:** [{{ trunc 7 $base }}...{{ trunc 7 $head }}]({{ trimSuffix "/" $repo }}/compare/{{ $base }}...{{ $head }})
+        {{- end }}
+        {{- end }}
+
+        {{- with .PromotionStrategy }}
+        {{- if .Status.Environments }}
+        ### Promotion pipeline
+        {{- range .Status.Environments }}
+        - `{{ .Branch }}`{{ if eq .Branch $.ChangeTransferPolicy.Spec.ActiveBranch }} **(this PR)**{{ end }}{{ with .PullRequest }}{{ if .Url }} — [PR #{{ .ID }}]({{ .Url }}){{ end }}{{ end }}
+        {{- end }}
+        {{- end }}
+        {{- end }}
     workQueue:
       requeueDuration: "5m"
       maxConcurrentReconciles: 3
@@ -82,10 +118,40 @@ spec:
           qps: 20
           bucket: 50
 
+  # TimedCommitStatus controller enforces soak-time gates via CommitStatus resources
+  timedCommitStatus:
+    workQueue:
+      requeueDuration: "1m"
+      maxConcurrentReconciles: 5
+      rateLimiter:
+        exponentialFailure:
+          baseDelay: "500ms"
+          maxDelay: "1m"
+
+  # GitCommitStatus controller evaluates commit expressions and creates CommitStatus resources
+  gitCommitStatus:
+    workQueue:
+      requeueDuration: "2m"
+      maxConcurrentReconciles: 5
+      rateLimiter:
+        exponentialFailure:
+          baseDelay: "500ms"
+          maxDelay: "1m"
+
   # WebRequestCommitStatus controller runs HTTP requests and reports commit status from response
   webRequestCommitStatus:
     workQueue:
       requeueDuration: "2m"
+      maxConcurrentReconciles: 5
+      rateLimiter:
+        exponentialFailure:
+          baseDelay: "500ms"
+          maxDelay: "1m"
+
+  # ScheduledCommitStatus controller gates promotions on cron-based time windows
+  scheduledCommitStatus:
+    workQueue:
+      requeueDuration: "5m"
       maxConcurrentReconciles: 5
       rateLimiter:
         exponentialFailure:

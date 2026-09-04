@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Dev fallback: skip TLS verification between the aggregator and the apiserver.
+# NOT production-safe. The aggregator will not verify the apiserver's serving
+# certificate, so no caBundle is required. The apiserver still needs a serving
+# cert Secret (promoter-apiserver-serving-cert) to start; create one quickly with
+# `make apiserver-certs` (the patched APIService ignores its CA).
+#
+#   kubectl apply -k config/apiserver/dev-insecure
+
+resources:
+  - ../base
+
+patches:
+  - path: apiservice_insecure_patch.yaml
+    target:
+      group: apiregistration.k8s.io
+      version: v1
+      kind: APIService
+      name: v1alpha1.view.promoter.argoproj.io

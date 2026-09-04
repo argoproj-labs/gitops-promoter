@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.1
+    controller-gen.kubebuilder.io/version: v0.22.0
   name: changetransferpolicies.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -35,6 +35,9 @@ spec:
       openAPIV3Schema:
         description: ChangeTransferPolicy is the Schema for the changetransferpolicies
           API
+        externalDocs:
+          description: CRD reference (examples and behavior)
+          url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#changetransferpolicy
         properties:
           apiVersion:
             description: |-
@@ -57,9 +60,19 @@ spec:
             description: ChangeTransferPolicySpec defines the desired state of ChangeTransferPolicy
             properties:
               activeBranch:
-                description: ActiveBranch staging hydrated branch
+                description: |-
+                  ActiveBranch staging hydrated branch
+                  Must not start with '-', contain ':', or contain '..'.
+                maxLength: 100
                 minLength: 1
                 type: string
+                x-kubernetes-validations:
+                - message: branch must not start with '-'
+                  rule: '!self.startsWith(''-'')'
+                - message: branch must not contain ':'
+                  rule: '!self.contains('':'')'
+                - message: branch must not contain '..'
+                  rule: '!self.contains(''..'')'
               activeCommitStatuses:
                 description: ActiveCommitStatuses lists the statuses to be monitored
                   on the active branch
@@ -79,6 +92,12 @@ spec:
                 x-kubernetes-list-map-keys:
                 - key
                 x-kubernetes-list-type: map
+              activePath:
+                description: |-
+                  ActivePath is an optional repository subpath for this policy's active state.
+                  When set, hydrator metadata is read from <activePath>/hydrator.metadata.
+                minLength: 1
+                type: string
               autoMerge:
                 default: true
                 type: boolean
@@ -89,15 +108,25 @@ spec:
                     description: Name is the name of the object to refer to.
                     maxLength: 253
                     minLength: 1
-                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
                     type: string
                 required:
                 - name
                 type: object
               proposedBranch:
-                description: ProposedBranch staging hydrated branch
+                description: |-
+                  ProposedBranch staging hydrated branch
+                  Must not start with '-', contain ':', or contain '..'.
+                maxLength: 100
                 minLength: 1
                 type: string
+                x-kubernetes-validations:
+                - message: branch must not start with '-'
+                  rule: '!self.startsWith(''-'')'
+                - message: branch must not contain ':'
+                  rule: '!self.contains('':'')'
+                - message: branch must not contain '..'
+                  rule: '!self.contains(''..'')'
               proposedCommitStatuses:
                 description: ProposedCommitStatuses lists the statuses to be monitored
                   on the proposed branch
@@ -117,6 +146,34 @@ spec:
                 x-kubernetes-list-map-keys:
                 - key
                 x-kubernetes-list-type: map
+              pullRequest:
+                description: |-
+                  PullRequest configures SCM pull request behavior for this change transfer policy.
+                  Copied from the owning PromotionStrategy by the PromotionStrategy controller.
+                properties:
+                  labels:
+                    description: Labels configures dynamic SCM labels applied to promotion
+                      pull requests.
+                    properties:
+                      expression:
+                        description: |-
+                          Expression is evaluated using the expr library (github.com/expr-lang/expr) against
+                          ChangeTransferPolicy status and spec. It must return a list of SCM label name strings.
+
+                          Available variables:
+                            - Status: ChangeTransferPolicy status (Proposed/Active commit statuses, branch SHAs, etc.)
+                            - Spec: ChangeTransferPolicy spec (ActiveBranch, ProposedBranch, etc.)
+                            - PromotionStrategy: owning PromotionStrategy spec and status when available
+
+                          Each returned label name must satisfy the same validation as PullRequest.spec.labels
+                          (non-empty, max 50 characters, no newlines, max 10 labels, unique).
+                        maxLength: 8192
+                        minLength: 1
+                        type: string
+                    required:
+                    - expression
+                    type: object
+                type: object
             required:
             - activeBranch
             - gitRepositoryRef
@@ -171,6 +228,7 @@ spec:
                   dry:
                     description: Dry is the dry state of the branch, which is the
                       commit that is being proposed.
+                    nullable: true
                     properties:
                       author:
                         description: Author is the author of the commit
@@ -481,8 +539,11 @@ spec:
                     by the ChangeTransferPolicy.
                   properties:
                     active:
-                      description: Active is the state of the active branch at the
-                        time the PR was merged.
+                      description: |-
+                        Active is the state of the active branch at the time the PR was merged. Its dry state is read back from
+                        <activePath>/hydrator.metadata on the merge commit and its hydrated state from that commit itself, so both
+                        describe what actually merged regardless of merge style. Its commitStatuses, by contrast, come from the
+                        snapshot trailers and may be stale when mergeCommitSnapshotMismatch is true.
                       properties:
                         commitStatuses:
                           description: CommitStatuses is a list of commit statuses
@@ -526,6 +587,7 @@ spec:
                         dry:
                           description: Dry is the dry state of the branch, which is
                             the commit that is being proposed.
+                          nullable: true
                           properties:
                             author:
                               description: Author is the author of the commit
@@ -771,6 +833,15 @@ spec:
                               type: string
                           type: object
                       type: object
+                    mergeCommitSnapshotMismatch:
+                      description: |-
+                        MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with
+                        the promoter's last snapshot (typically an external merge after the proposed branch advanced). When true,
+                        the fields this entry rebuilds from the snapshot trailers — proposed.commitStatuses and
+                        active.commitStatuses, plus proposed.hydrated when the merge was a squash (a single-parent squash commit
+                        gives the controller nothing to reconstruct the hydrated sha from) — may describe the earlier proposed
+                        revision rather than what actually merged.
+                      type: boolean
                     proposed:
                       description: Proposed is the state of the proposed branch at
                         the time the PR was merged.
@@ -778,7 +849,9 @@ spec:
                         commitStatuses:
                           description: |-
                             CommitStatuses is a list of commit statuses that were being monitored for this branch.
-                            This contains the state frozen at the moment the PR was merged.
+                            This contains the state frozen at the moment the PR was merged. When the entry's
+                            mergeCommitSnapshotMismatch is true, these phases come from snapshot trailers describing the proposed
+                            revision the promoter last saw, which is not necessarily the revision that merged.
                           items:
                             description: ChangeRequestPolicyCommitStatusPhase defines
                               the phase of a commit status in a ChangeTransferPolicy.
@@ -813,8 +886,11 @@ spec:
                             type: object
                           type: array
                         hydrated:
-                          description: Hydrated is the hydrated state of the branch,
-                            which is the commit that is currently being worked on.
+                          description: |-
+                            Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on.
+                            Read from the snapshot trailers. On a regular merge it is corrected to the merge commit's second parent,
+                            but a squash commit has only one parent, so when the entry's mergeCommitSnapshotMismatch is true and the
+                            merge was a squash the stale snapshot value is kept.
                           properties:
                             author:
                               description: Author is the author of the commit
@@ -902,15 +978,27 @@ spec:
                       properties:
                         externallyMergedOrClosed:
                           description: |-
-                            ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
-                            This is set to true when the pull request has an ID but is no longer found on the SCM provider.
-                            When true, the State field will be empty ("") since we cannot determine if it was merged or closed.
-                            This status is preserved even after the PullRequest resource is deleted, maintaining a historical
-                            record of the external action until a new pull request is created for this environment.
+                            ExternallyMergedOrClosed indicated that the pull request was no longer open on the SCM while
+                            promotion still desired it open. The PullRequest controller no longer sets this field.
+
+                            Deprecated: Use status.state merged-or-closed or unknown instead. Existing values may still
+                            appear when mirrored from older PullRequest status. This field may be removed in a future API
+                            revision.
                           type: boolean
                         id:
                           description: ID is the unique identifier of the pull request,
                             set by the SCM.
+                          type: string
+                        mergedTargetSha:
+                          description: |-
+                            MergedTargetSha is the SHA that the target branch points at after the merge. It is a merge commit
+                            only when the SCM created one; squash and fast-forward merges report the resulting commit on the
+                            target branch instead. In the live pull request status it is mirrored from the PullRequest resource
+                            and is empty until the merge is observed; in a History entry it is the active-branch commit the
+                            entry describes.
+                          maxLength: 64
+                          minLength: 40
+                          pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
                           type: string
                         prCreationTime:
                           description: PRCreationTime is the time when the pull request
@@ -931,6 +1019,8 @@ spec:
                           - closed
                           - merged
                           - open
+                          - merged-or-closed
+                          - unknown
                           type: string
                         url:
                           description: Url is the URL of the pull request.
@@ -942,6 +1032,23 @@ spec:
                       type: object
                   type: object
                 type: array
+              instanceID:
+                description: |-
+                  InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+                  reconcile attempt by this install's controller, including when Ready=False; omitted
+                  when the resource has no instance-id label (default install).
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
+                type: string
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the .metadata.generation that this status was reconciled from.
+                  Because status is written via Server-Side Apply with ForceOwnership (which has no
+                  optimistic-concurrency check), this field is the canonical way to detect stale
+                  status writes: compare status.observedGeneration with metadata.generation.
+                format: int64
+                type: integer
               proposed:
                 description: Proposed is the state of the proposed branch.
                 properties:
@@ -987,6 +1094,7 @@ spec:
                   dry:
                     description: Dry is the dry state of the branch, which is the
                       commit that is being proposed.
+                    nullable: true
                     properties:
                       author:
                         description: Author is the author of the commit
@@ -1230,15 +1338,27 @@ spec:
                 properties:
                   externallyMergedOrClosed:
                     description: |-
-                      ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
-                      This is set to true when the pull request has an ID but is no longer found on the SCM provider.
-                      When true, the State field will be empty ("") since we cannot determine if it was merged or closed.
-                      This status is preserved even after the PullRequest resource is deleted, maintaining a historical
-                      record of the external action until a new pull request is created for this environment.
+                      ExternallyMergedOrClosed indicated that the pull request was no longer open on the SCM while
+                      promotion still desired it open. The PullRequest controller no longer sets this field.
+
+                      Deprecated: Use status.state merged-or-closed or unknown instead. Existing values may still
+                      appear when mirrored from older PullRequest status. This field may be removed in a future API
+                      revision.
                     type: boolean
                   id:
                     description: ID is the unique identifier of the pull request,
                       set by the SCM.
+                    type: string
+                  mergedTargetSha:
+                    description: |-
+                      MergedTargetSha is the SHA that the target branch points at after the merge. It is a merge commit
+                      only when the SCM created one; squash and fast-forward merges report the resulting commit on the
+                      target branch instead. In the live pull request status it is mirrored from the PullRequest resource
+                      and is empty until the merge is observed; in a History entry it is the active-branch commit the
+                      entry describes.
+                    maxLength: 64
+                    minLength: 40
+                    pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
                     type: string
                   prCreationTime:
                     description: PRCreationTime is the time when the pull request
@@ -1259,6 +1379,8 @@ spec:
                     - closed
                     - merged
                     - open
+                    - merged-or-closed
+                    - unknown
                     type: string
                   url:
                     description: Url is the URL of the pull request.

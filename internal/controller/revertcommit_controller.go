@@ -39,9 +39,7 @@ type RevertCommitReconciler struct {
 	Recorder events.EventRecorder
 }
 
-//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=revertcommits,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=revertcommits/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=revertcommits/finalizers,verbs=update
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=revertcommits,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.

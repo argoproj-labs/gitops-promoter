@@ -1,0 +1,35 @@
+rules:
+  anonymous-definition:
+    disable: true
+  archived-uses:
+    disable: true
+  artipacked:
+    disable: true
+  bot-conditions:
+    disable: true
+  cache-poisoning:
+    disable: true
+  concurrency-limits:
+    disable: true
+  dependabot-cooldown:
+    disable: true
+  dependabot-execution:
+    disable: true
+  forbidden-uses:
+    disable: true
+  impostor-commit:
+    disable: true
+  known-vulnerable-actions:
+    disable: true
+  ref-confusion:
+    disable: true
+  secrets-outside-env:
+    disable: true
+  self-hosted-runner:
+    disable: true
+  stale-action-refs:
+    disable: true
+  superfluous-actions:
+    disable: true
+  undocumented-permissions:
+    disable: true

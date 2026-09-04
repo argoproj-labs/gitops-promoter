@@ -24,13 +24,11 @@ import (
 	"net/url"
 	"reflect"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"k8s.io/client-go/tools/events"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/multicluster-runtime/pkg/controller"
 
@@ -38,8 +36,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-
-	"github.com/cespare/xxhash/v2"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
@@ -52,11 +48,11 @@ import (
 	mcbuilder "sigs.k8s.io/multicluster-runtime/pkg/builder"
 	mchandler "sigs.k8s.io/multicluster-runtime/pkg/handler"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
+	"sigs.k8s.io/multicluster-runtime/pkg/multicluster"
 	mcreconcile "sigs.k8s.io/multicluster-runtime/pkg/reconcile"
 	"sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
 
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
@@ -84,8 +80,8 @@ type ArgoCDCommitStatusReconciler struct {
 
 // URLTemplateData is the data passed to the URLTemplate in the ArgoCDCommitStatus.
 type URLTemplateData struct {
-	Environment        string
 	ArgoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
+	Environment        string
 }
 
 // ApplicationsInEnvironment is a list of applications in an environment.
@@ -94,10 +90,16 @@ type ApplicationsInEnvironment struct {
 	argocd.ApplicationList
 }
 
-// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=argocdcommitstatuses,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=argocdcommitstatuses,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=argocdcommitstatuses/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=argocdcommitstatuses/finalizers,verbs=update
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch;patch;create;delete
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
 // +kubebuilder:rbac:groups=argoproj.io,resources=applications,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=gitrepositories,verbs=get;list;watch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=scmproviders,verbs=get;list;watch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=clusterscmproviders,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -114,8 +116,9 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	startTime := time.Now()
 
 	var argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
-	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &argoCDCommitStatus, r.localClient, r.Recorder, &result, &err)
+	// This function applies the resource status via Server-Side Apply at the end of the reconciliation. Don't write status manually.
+	var previousReady *metav1.Condition
+	defer utils.HandleReconciliationResult(ctx, startTime, &argoCDCommitStatus, r.localClient, r.Recorder, constants.ArgoCDCommitStatusControllerFieldOwner, &result, &err, &previousReady)
 
 	err = r.localClient.Get(ctx, req.NamespacedName, &argoCDCommitStatus, &client.GetOptions{})
 	if err != nil {
@@ -129,7 +132,11 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	}
 
 	// Remove any existing Ready condition. We want to start fresh.
-	meta.RemoveStatusCondition(argoCDCommitStatus.GetConditions(), string(promoterConditions.Ready))
+	previousReady = utils.RemoveReadyCondition(&argoCDCommitStatus)
+
+	if err := ensureControllerInstanceIDStable(ctx, r.SettingsMgr); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	ls, err := metav1.LabelSelectorAsSelector(argoCDCommitStatus.Spec.ApplicationSelector)
 	if err != nil {
@@ -159,14 +166,14 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		if err != nil {
 			clusterNameMsg := "on the local cluster"
 			if clusterName != "" {
-				clusterNameMsg = "on cluster " + clusterName
+				clusterNameMsg = "on cluster " + clusterName.String()
 			}
 			return ctrl.Result{}, fmt.Errorf("failed to list ArgoCDApplications %s: %w", clusterNameMsg, err)
 		}
 
 		apps = append(apps, ApplicationsInEnvironment{
 			ApplicationList: clusterArgoCDApps,
-			ClusterName:     clusterName,
+			ClusterName:     clusterName.String(),
 		})
 	}
 
@@ -213,6 +220,19 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		}
 		commitStatuses[i] = cs
 		i++
+	}
+
+	// TODO(v1.0, #1460): remove this method and rely on CleanupOrphanedCommitStatuses instead.
+	err = r.cleanupLegacyOrphanedCommitStatusesWithoutParentLabel(ctx, &argoCDCommitStatus, commitStatuses)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to cleanup legacy orphaned CommitStatus resources: %w", err)
+	}
+
+	// This should be a no-op while cleanupLegacyOrphanedCommitStatusesWithoutParentLabel is present (#1460).
+	// Keeping it so that we're certain removing that method is very safe.
+	err = utils.CleanupOrphanedCommitStatuses(ctx, r.localClient, r.Recorder, &argoCDCommitStatus, commitStatuses)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to cleanup orphaned CommitStatus resources: %w", err)
 	}
 
 	utils.InheritNotReadyConditionFromObjects(&argoCDCommitStatus, promoterConditions.CommitStatusesNotReady, commitStatuses...)
@@ -420,23 +440,46 @@ func getMostRecentLastTransitionTime(apps []*argocd.Application) *metav1.Time {
 	return mostRecentLastTransitionTime
 }
 
+// enqueueArgoCDCommitStatusForPromotionStrategy maps PromotionStrategy events to every ArgoCDCommitStatus in
+// the same namespace that references that strategy. It is combined with promotionStrategyCreatePredicate so
+// only creates are observed: ArgoCDCommitStatus does not consume PromotionStrategy data on reconcile (it only
+// needs the object to exist for ordering of status fields and repository reference for git operations).
+// Without this watch, installing an ArgoCDCommitStatus before its PromotionStrategy exists leaves the controller
+// stuck after the first failed reconcile until something else (e.g. an Application event) triggers a new reconcile.
+func enqueueArgoCDCommitStatusForPromotionStrategy(mcMgr mcmanager.Manager) mchandler.TypedEventHandlerFunc[client.Object, mcreconcile.Request] {
+	return mchandler.TypedEnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []mcreconcile.Request {
+		ps, ok := obj.(*promoterv1alpha1.PromotionStrategy)
+		if !ok {
+			return nil
+		}
+		logger := log.FromContext(ctx)
+		var list promoterv1alpha1.ArgoCDCommitStatusList
+		if err := mcMgr.GetLocalManager().GetClient().List(ctx, &list,
+			client.InNamespace(ps.Namespace),
+			client.MatchingFields{PromotionStrategyRefField: ps.Name},
+		); err != nil {
+			logger.Error(err, "failed to list ArgoCDCommitStatus resources for PromotionStrategy watch")
+			return nil
+		}
+		reqs := make([]mcreconcile.Request, 0, len(list.Items))
+		for i := range list.Items {
+			reqs = append(reqs, mcreconcile.Request{
+				Request: reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])},
+			})
+		}
+		return reqs
+	})
+}
+
 func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchandler.TypedEventHandlerFunc[client.Object, mcreconcile.Request] {
-	return func(clusterName string, cl cluster.Cluster) handler.TypedEventHandler[client.Object, mcreconcile.Request] {
+	return func(clusterName multicluster.ClusterName, cl cluster.Cluster) handler.TypedEventHandler[client.Object, mcreconcile.Request] {
 		return handler.TypedEnqueueRequestsFromMapFunc(func(ctx context.Context, argoCDApplication client.Object) []mcreconcile.Request {
 			metrics.ApplicationWatchEventsHandled.Inc()
 
 			logger := log.FromContext(ctx)
 
-			application := &argocd.Application{}
-
-			// fetch the ArgoCDApplication from the cluster
-			if err := cl.GetClient().Get(ctx, client.ObjectKeyFromObject(argoCDApplication), application, &client.GetOptions{}); err != nil {
-				if k8s_errors.IsNotFound(err) {
-					return nil
-				}
-				logger.Error(err, "failed to get ArgoCDApplication")
-				return nil
-			}
+			// Use labels from the watch event object so Application deletions still enqueue reconciliation.
+			appLabels := labels.Set(argoCDApplication.GetLabels())
 
 			// lookup the ArgoCDCommitStatus objects in the local cluster
 			var argoCDCommitStatusList promoterv1alpha1.ArgoCDCommitStatusList
@@ -452,7 +495,7 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchand
 				if err != nil {
 					logger.Error(err, "failed to parse label selector")
 				}
-				if err == nil && selector.Matches(labels.Set(application.GetLabels())) {
+				if err == nil && selector.Matches(appLabels) {
 					logger.Info("ArgoCD application caused ArgoCDCommitStatus to reconcile",
 						"app-namespace", argoCDApplication.GetNamespace(), "application", argoCDApplication.GetName(),
 						"argocdcommitstatus", argoCDCommitStatus.Namespace+"/"+argoCDCommitStatus.Name)
@@ -498,27 +541,54 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 
 	r.watchLocalApplications = watchLocalApplications
 
+	controllerOpts := controller.Options{
+		MaxConcurrentReconciles: maxConcurrentReconciles,
+		RateLimiter:             rateLimiter,
+		UsePriorityQueue:        new(true),
+	}
+	if skip := mcMgr.GetLocalManager().GetControllerOptions().SkipNameValidation; skip != nil {
+		controllerOpts.SkipNameValidation = skip
+	}
+
 	err = mcbuilder.ControllerManagedBy(mcMgr).
 		For(&promoterv1alpha1.ArgoCDCommitStatus{},
 			mcbuilder.WithEngageWithLocalCluster(true),
 			mcbuilder.WithEngageWithProviderClusters(false),
 			mcbuilder.WithPredicates(predicate.GenerationChangedPredicate{}),
 		).
-		WithOptions(controller.Options{
-			MaxConcurrentReconciles: maxConcurrentReconciles,
-			RateLimiter:             rateLimiter,
-			UsePriorityQueue:        ptr.To(true),
-		}).
+		WithOptions(controllerOpts).
 		Watches(&argocd.Application{}, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
 			mcbuilder.WithEngageWithLocalCluster(watchLocalApplications),
 			mcbuilder.WithEngageWithProviderClusters(true),
 			mcbuilder.WithPredicates(applicationPredicate)).
+		Watches(&promoterv1alpha1.PromotionStrategy{}, enqueueArgoCDCommitStatusForPromotionStrategy(mcMgr),
+			mcbuilder.WithEngageWithLocalCluster(true),
+			mcbuilder.WithEngageWithProviderClusters(false),
+			mcbuilder.WithPredicates(promotionStrategyCreatePredicate)).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
 	}
 
 	return nil
+}
+
+// promotionStrategyCreatePredicate limits the PromotionStrategy watch to Create events only. Updates to the
+// strategy (status, environment SHAs, etc.) do not affect ArgoCDCommitStatus reconciliation logic beyond the
+// object needing to exist so Get succeeds and sortApplicationsSelected can run.
+var promotionStrategyCreatePredicate = predicate.Funcs{
+	CreateFunc: func(e event.CreateEvent) bool {
+		return true
+	},
+	UpdateFunc: func(e event.UpdateEvent) bool {
+		return false
+	},
+	DeleteFunc: func(e event.DeleteEvent) bool {
+		return false
+	},
+	GenericFunc: func(e event.GenericEvent) bool {
+		return false
+	},
 }
 
 // applicationPredicate returns a predicate that filters Argo CD Application events.
@@ -555,15 +625,76 @@ var applicationPredicate predicate.Predicate = predicate.Funcs{
 	},
 }
 
+// Deprecated: cleanupLegacyOrphanedCommitStatusesWithoutParentLabel deletes CommitStatus resources owned by
+// this ArgoCDCommitStatus that are not in validCommitStatuses, without requiring the
+// promoter.argoproj.io/argocd-commit-status parent-gate label. Lists only resources with the legacy
+// promoter.argoproj.io/commit-status=argocd-health label (set before parent-gate labels were enforced).
+// Pre-upgrade ArgoCD gates did not set the parent-gate label or use the current resource naming convention.
+//
+// TODO(v1.0, #1460): Remove once clusters are upgraded past the ArgoCD CommitStatus naming and label migration.
+//
+//nolint:dupl // Intentionally mirrors utils.CleanupOrphanedCommitStatuses but lists by owner reference only.
+func (r *ArgoCDCommitStatusReconciler) cleanupLegacyOrphanedCommitStatusesWithoutParentLabel(
+	ctx context.Context,
+	argoCDCommitStatus *promoterv1alpha1.ArgoCDCommitStatus,
+	validCommitStatuses []*promoterv1alpha1.CommitStatus,
+) error {
+	logger := log.FromContext(ctx)
+
+	validCommitStatusNames := make(map[string]bool, len(validCommitStatuses))
+	for _, cs := range validCommitStatuses {
+		if cs != nil {
+			validCommitStatusNames[cs.Name] = true
+		}
+	}
+
+	var commitStatusList promoterv1alpha1.CommitStatusList
+	err := r.localClient.List(ctx, &commitStatusList,
+		client.InNamespace(argoCDCommitStatus.Namespace),
+		// This label was present before we applied the other standard labels. It helps us avoid listing irrelevant CommitStatuses.
+		client.MatchingLabels{promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.ArgoCDCommitStatusDefaultKey},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to list CommitStatus resources: %w", err)
+	}
+
+	for i := range commitStatusList.Items {
+		cs := &commitStatusList.Items[i]
+		if validCommitStatusNames[cs.Name] {
+			continue
+		}
+		if !metav1.IsControlledBy(cs, argoCDCommitStatus) {
+			continue
+		}
+
+		logger.Info("Deleting legacy orphaned CommitStatus",
+			"commitStatusName", cs.Name,
+			"argoCDCommitStatus", argoCDCommitStatus.Name,
+			"namespace", argoCDCommitStatus.Namespace)
+
+		if err := r.localClient.Delete(ctx, cs); err != nil {
+			if k8s_errors.IsNotFound(err) {
+				logger.V(4).Info("CommitStatus already deleted", "commitStatusName", cs.Name)
+				continue
+			}
+			return fmt.Errorf("failed to delete legacy orphaned CommitStatus %q: %w", cs.Name, err)
+		}
+
+		r.Recorder.Eventf(argoCDCommitStatus, nil, "Normal", constants.OrphanedCommitStatusDeletedReason, "CleaningOrphanedResources", constants.OrphanedCommitStatusDeletedMessage, cs.Name)
+	}
+
+	return nil
+}
+
 // updateAggregatedCommitStatus creates or updates a CommitStatus object for the given target branch and sha.
 // If err is nil, the returned CommitStatus is guaranteed to be non-nil.
 func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.Context, promotionStrategy *promoterv1alpha1.PromotionStrategy, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, targetBranch string, sha string, phase promoterv1alpha1.CommitStatusPhase, desc string) (*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
+	key := argoCDCommitStatus.Spec.CommitStatusKey() //nolint:staticcheck // SA1019: #1465 use spec.Key directly in v1.0
+	commitStatusName := key + "/" + targetBranch
 
-	commitStatusName := targetBranch + "/health"
-	resourceName := strings.ReplaceAll(commitStatusName, "/", "-") + "-" + hash([]byte(argoCDCommitStatus.Name))
-
-	kind := reflect.TypeOf(promoterv1alpha1.ArgoCDCommitStatus{}).Name()
+	resourceName := utils.CommitStatusResourceName(ctx, &argoCDCommitStatus, targetBranch)
+	kind := reflect.TypeFor[promoterv1alpha1.ArgoCDCommitStatus]().Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
 	// Build the spec
@@ -603,11 +734,9 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 	}
 
 	// Build the apply configuration
+	commitStatusLabels := utils.CommitStatusStandardLabels(&argoCDCommitStatus, targetBranch, key)
 	commitStatusApply := acv1alpha1.CommitStatus(resourceName, argoCDCommitStatus.Namespace).
-		WithLabels(map[string]string{
-			promoterv1alpha1.CommitStatusLabel: "argocd-health",
-			promoterv1alpha1.EnvironmentLabel:  utils.KubeSafeLabel(targetBranch),
-		}).
+		WithLabels(commitStatusLabels).
 		WithOwnerReferences(acmetav1.OwnerReference().
 			WithAPIVersion(gvk.GroupVersion().String()).
 			WithKind(gvk.Kind).
@@ -617,6 +746,19 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 			WithBlockOwnerDeletion(true)).
 		WithSpec(commitStatusSpec)
 
+	// Read the previously persisted phase from the child CommitStatus (cache read; NotFound means
+	// the gate is reporting for this branch for the first time) so the phase-change event below
+	// stays transition-only. The aggregated phase is not stored on the ArgoCDCommitStatus itself,
+	// only on the child. Since the post-hysteresis phase is compared, the anti-flap window in
+	// getRequeueTimeAndPhase also debounces events.
+	previousPhase := ""
+	existingCommitStatus := &promoterv1alpha1.CommitStatus{}
+	if err := r.localClient.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: resourceName}, existingCommitStatus); err == nil {
+		previousPhase = string(existingCommitStatus.Spec.Phase)
+	} else if !k8s_errors.IsNotFound(err) {
+		return nil, fmt.Errorf("failed to get existing CommitStatus %q: %w", resourceName, err)
+	}
+
 	// Apply using Server-Side Apply with Patch to get the result directly
 	commitStatus := &promoterv1alpha1.CommitStatus{}
 	commitStatus.Name = resourceName
@@ -624,6 +766,8 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 	if err := r.localClient.Patch(ctx, commitStatus, utils.ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(constants.ArgoCDCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
 		return nil, fmt.Errorf("failed to apply CommitStatus object: %w", err)
 	}
+
+	emitCommitStatusPhaseChangedEvent(r.Recorder, &argoCDCommitStatus, key, targetBranch, previousPhase, string(phase))
 
 	logger.Info("Applied CommitStatus", "name", resourceName, "targetBranch", targetBranch, "sha", sha, "phase", phase, "description", desc)
 
@@ -648,10 +792,6 @@ func (r *ArgoCDCommitStatusReconciler) getGitAuthProvider(ctx context.Context, a
 	}
 
 	return provider, ps.Spec.RepositoryReference, nil
-}
-
-func hash(data []byte) string {
-	return strconv.FormatUint(xxhash.Sum64(data), 8)
 }
 
 // calculateApplicationPhase determines the commit status phase for an Argo CD Application

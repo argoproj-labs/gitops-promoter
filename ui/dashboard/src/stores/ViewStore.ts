@@ -10,4 +10,4 @@ interface ViewStore {
 export const viewStore = create<ViewStore>((set) => ({
   currentView: 'cards',
   setView: (viewMode) => set({ currentView: viewMode }),
-})); 
+}));

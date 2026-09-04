@@ -1,17 +1,17 @@
-import AppViewExtension from "./AppViewExtension";
-import type { Application } from "@shared/types/extension";
+import AppViewExtension from './AppViewExtension';
+import { injectIconStyles } from './injectIconStyles';
+import { showExtension } from './showExtension';
 
-const hasOnePromotionStrategy = (application: Application) => {
-  const promotionStrategyResources = application.status?.resources?.filter(
-    (resource) => resource.kind === "PromotionStrategy"
-  );
-  return (promotionStrategyResources?.length || 0) === 1;
-};
+// Argo CD only supports FontAwesome icon class names for app view extensions.
+// We use a custom class and inject our icon styles into the document so the tab
+// shows the GitOps Promoter logo without requiring operator-configured CSS.
+const APP_VIEW_ICON_CLASS = 'gitops-promoter-app-view-icon';
 
-// Register app view extension
+injectIconStyles();
+
 window.extensionsAPI?.registerAppViewExtension(
   AppViewExtension,
-  "PromotionStrategy",
-  "fa-code-branch",
-  hasOnePromotionStrategy
+  'GitOps Promoter',
+  APP_VIEW_ICON_CLASS,
+  showExtension,
 );

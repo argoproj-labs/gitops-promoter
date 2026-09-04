@@ -25,15 +25,17 @@ const NamespaceDropdown: React.FC = () => {
   // Fetching namespace from API
   useEffect(() => {
     fetch('/list?kind=namespace')
-      .then(res => res.json())
-      .then(data => setNamespaces(Array.isArray(data) ? data : []))
+      .then((res) => res.json())
+      .then((data) => setNamespaces(Array.isArray(data) ? data : []))
       .catch(() => setNamespace('default'));
   }, [setNamespaces, setNamespace]);
 
-  const options = Array.isArray(namespaces) ? namespaces.map((ns: string) => ({
-    value: ns,
-    label: ns
-  })) : [];
+  const options = Array.isArray(namespaces)
+    ? namespaces.map((ns: string) => ({
+        value: ns,
+        label: ns,
+      }))
+    : [];
 
   //Rendering
   const Option = (props: OptionProps<SelectOption>) => (
@@ -56,4 +58,4 @@ const NamespaceDropdown: React.FC = () => {
   );
 };
 
-export { NamespaceDropdown }; 
+export { NamespaceDropdown };

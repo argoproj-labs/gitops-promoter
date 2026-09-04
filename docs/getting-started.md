@@ -7,27 +7,68 @@ GitHub, GitHub Enterprise, GitLab, Forgejo (including Codeberg), Gitea, Bitbucke
 
 * kubectl CLI
 * kubernetes cluster
-* GitHub or GitHub Enterprise Application
-  * Will take PRs to add support for other SCM providers
+* Credential or app on your SCM (see [SCM provider configuration](#scm-provider-configuration) below)
 
 ## Installation
 
-To install GitOps Promoter, you can use the following command:
+GitOps Promoter publishes several install bundles per release. The **preferred** method
+installs the controller together with the dashboard aggregation API and uses
+[cert-manager](https://cert-manager.io/) to issue and rotate the apiserver serving cert
+automatically — a single apply with nothing else to set up.
+
+/// tab | cert-manager (recommended)
+
+Requires [cert-manager](https://cert-manager.io/) in the cluster. Installs the controller and
+the dashboard API in one apply; cert-manager issues and rotates the serving cert (and keeps the
+`caBundle` injected) automatically:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.22.7/install.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.37.1/install-with-dashboard-cert-manager.yaml
 ```
+
+///
+
+/// tab | Bring your own cert
+
+Installs the controller and the dashboard API without a cert-manager dependency. After applying,
+supply the `promoter-apiserver-serving-cert` Secret and patch the `APIService` `caBundle` yourself
+(see [Dashboard Aggregation API](advanced-usage/dashboard-apiserver.md#serving-certs)):
+
+```bash
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.37.1/install-with-dashboard-byo-cert.yaml
+```
+
+///
+
+/// tab | Without the UI
+
+Installs only the controller, without the dashboard aggregation API. Choose this if you don't
+need the web UI:
+
+```bash
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.37.1/install-without-ui.yaml
+```
+
+///
 
 Alternatively, you can install GitOps Promoter using Helm. See the [ArtifactHub page](https://artifacthub.io/packages/helm/gitops-promoter/gitops-promoter) for instructions.
 
-## GitHub App Configuration
+## SCM provider configuration
+
+Choose your provider:
+
+<!-- Intentionally no ### headings inside the tab bodies below: the tab strip is the only
+     navigation for each SCM—nested headings would flood the page TOC, clash with pymdownx
+     tab anchor IDs, and deep links would target content inside inactive/hidden panels. -->
+
+/// tab | GitHub
 
 You will need to [create a GitHub App](https://docs.github.com/en/developers/apps/creating-a-github-app) and configure
 it to allow the GitOps Promoter to interact with your GitHub repository.
 
 During the creation the GitHub App, you will need to configure the following settings:
 
-### Permissions
+**Permissions**
 
 | Action         | Permission     |
 | -------------- | -------------- |
@@ -35,7 +76,7 @@ During the creation the GitHub App, you will need to configure the following set
 | `Contents`     | Read and write |
 | `Pull requests`| Read and write |
 
-### Webhooks (Optional - but highly recommended)
+**Webhooks (Optional - but highly recommended)**
 
 > [!NOTE]
 > We do support configuration of a GitHub App webhook that triggers PR creation upon Push. However, we do not configure
@@ -72,7 +113,7 @@ spec:
               number: 3333
 ```
 
-### Usage
+**Usage**
 
 The GitHub App will generate a private key that you will need to save. You will also need to get the App ID and the
 installation ID in a secret as follows:
@@ -127,7 +168,9 @@ spec:
 > The GitRepository and ScmProvider also need to be installed to the same namespace that you plan on creating PromotionStrategy
 > resources in, and it also needs to be in the same namespace of the secret it references.
 
-## GitLab Configuration
+///
+
+/// tab | GitLab
 
 To configure the GitOps Promoter with GitLab, you will need to create a GitLab Access Token under the "Developer" role with `api` and `write_repository` scopes and configure the necessary resources to allow the promoter to interact with your repository. This Access Token should be used in a secret as follows:
 
@@ -167,7 +210,13 @@ spec:
     name: <your-scmprovider-name> # The secret that contains the GitLab Access Token
 ```
 
-## Gitea Configuration
+> [!WARNING]
+> GitLab does not support updating existing commit statuses without transitioning the state. So a pending CommitStatus's
+> description or URL may go stale if updated after creation.
+
+///
+
+/// tab | Gitea
 
 To configure GitOps Promoter with Gitea, you will need to create an access token. See the [official Gitea documentation](https://docs.gitea.com/development/api-usage#generating-and-listing-api-tokens) for creating access tokens. The token needs `read and write` repository permissions.
 
@@ -224,7 +273,9 @@ spec:
     name: <your-scmprovider-name>
 ```
 
-## Forgejo Configuration
+///
+
+/// tab | Forgejo
 
 To configure Gitops Promoter with Forgejo, you will need to configure an App. The process is very similar to Codeberg. Here is the [official Codeberg documentation](https://docs.codeberg.org/advanced/access-token/) (note: Codeberg is powered by Forgejo under the hood). Give the `read and write` Token the permissions on the repository.
 
@@ -275,14 +326,16 @@ spec:
     owner: <organization-or-user-name>
     name: <repo-name>
   scmProviderRef:
-    name: <your-scmprovider-name> # The secret that contains the GitLab Access Token
+    name: <your-scmprovider-name> # The secret that contains the Forgejo access token
 ```
 
-## Bitbucket Cloud Configuration
+///
+
+/// tab | Bitbucket Cloud
 
 To configure the GitOps Promoter with Bitbucket Cloud, you will need to create a repository access token with the appropriate permissions and configure the necessary resources to allow the promoter to interact with your repository.
 
-### Creating a Bitbucket Cloud Repository Access Token
+**Creating a Bitbucket Cloud Repository Access Token**
 
 1. Navigate to your repository URL
 2. Click on "Repository settings" in the sidebar
@@ -293,51 +346,7 @@ To configure the GitOps Promoter with Bitbucket Cloud, you will need to create a
    * **Repositories**: Read and Write
    * **Pull requests**: Read and Write
 
-## Azure DevOps Configuration
-
-To configure Gitops Promoter with Azure Devops, you will need to create a Personal Access Token (PAT).
-### ScmProvider
-#### PAT
-Create an PAT in Azure Devops, that has 'Read & Write' on scope 'Code'.
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: <your-secret-name>
-type: Opaque
-stringData:
-  token: <your-access-token>
----
-apiVersion: promoter.argoproj.io/v1alpha1
-kind: ScmProvider
-metadata:
-  name: <your-scmprovider-name>
-spec:
-  secretRef:
-    name: <your-secret-name>
-  azureDevOps:
-    organization: <your-azdo-organization>
-```
-
-### GitRepository
-
-We also need a GitRepository referencing the ScmProvider
-
-```yaml
-apiVersion: promoter.argoproj.io/v1alpha1
-kind: GitRepository
-metadata:
-  name: <git-repository-ref-name>
-spec:
-  azureDevOps:
-    project: <project-name>
-    name: <repo-name>
-  scmProviderRef:
-    name: <your-scmprovider-name>
- ```
-
-### Webhooks (Optional - but highly recommended)
+**Webhooks (Optional - but highly recommended)**
 
 > [!NOTE]
 > We do support configuration of a Bitbucket Cloud webhook that triggers PR creation upon Push. However, we do not configure
@@ -383,7 +392,7 @@ spec:
               number: 3333
 ```
 
-### Configuration
+**Configuration**
 
 This access token should be used in a secret as follows:
 
@@ -425,6 +434,57 @@ spec:
 > [!NOTE]
 > The GitRepository and ScmProvider also need to be installed to the same namespace that you plan on creating PromotionStrategy resources in, and it also needs to be in the same namespace of the secret it references.
 
+///
+
+/// tab | Azure DevOps
+
+To configure Gitops Promoter with Azure Devops, you will need to create a Personal Access Token (PAT).
+
+**ScmProvider**
+
+**PAT**
+
+Create an PAT in Azure Devops, that has 'Read & Write' on scope 'Code'.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: <your-secret-name>
+type: Opaque
+stringData:
+  token: <your-access-token>
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ScmProvider
+metadata:
+  name: <your-scmprovider-name>
+spec:
+  secretRef:
+    name: <your-secret-name>
+  azureDevOps:
+    organization: <your-azdo-organization>
+```
+
+**GitRepository**
+
+We also need a GitRepository referencing the ScmProvider:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: GitRepository
+metadata:
+  name: <git-repository-ref-name>
+spec:
+  azureDevOps:
+    project: <project-name>
+    name: <repo-name>
+  scmProviderRef:
+    name: <your-scmprovider-name>
+```
+
+///
+
 ## Promotion Strategy
 
 The PromotionStrategy resource is the main resource that you will use to configure the promotion of your application to different environments.
@@ -452,8 +512,14 @@ spec:
 > configuration must hydrate to these branch names, but **suffixed with `-next`**. This convention is hard-coded in
 > GitOps Promoter.
 >
-> For an example of how to configure the Argo CD Source Hydrator, see the [Argo CD tutorial](tutorial-argocd-apps.md#deploy-an-application-for-3-environments).
+> For an example of how to configure the Argo CD Source Hydrator, see the [Argo CD tutorial](integrating-with-argocd/tutorial.md#deploy-an-application-for-3-environments).
 > (Note the difference between the `syncSource` and the `hydrateTo` fields.)
+
+> [!TIP]
+> For monorepos, you can share a single active branch across multiple PromotionStrategies by setting
+> `spec.activePath` (for example `apps/payments`). In that mode, proposed branches are created as
+> `<environment-branch>-next/<activePath>`, and the hydrator metadata is read from `<activePath>/hydrator.metadata`.
+> This lets each app promote independently while keeping one active branch per environment.
 
 > [!NOTE]
 > Notice that the branches are prefixed with `environment/`. This is a convention that we recommend you follow.
@@ -462,9 +528,59 @@ spec:
 > The `autoMerge` field is optional and defaults to `true`. We set it to `false` here because we do not have any
 > CommitStatus checks configured. With these all set to `false` we will have to manually merge the PRs.
 
-## Launching the UI
+## Dashboard
 
 GitOps Promoter comes with a web UI that you can use to visualize the state of your PromotionStrategy resources.
+
+The UI is backed by the `PromotionStrategyDetails` resource. This resource is backed by a Kubernetes APIService and requires a certificate to be set up. This step is safe to skip if you are not going to use the dashboard.
+
+### Install the dashboard API
+
+If you installed one of the `install-with-dashboard-*` bundles above, the
+`PromotionStrategyDetails` APIService is already present — skip to [Launch the UI](#launch-the-ui).
+
+If you installed the `install-without-ui.yaml` bundle, the APIService is not included. Use one of
+the following bundles to set it up for your environment.
+
+/// tab | cert-manager
+
+If [cert-manager](https://cert-manager.io/) is installed in the cluster, this bundle lets it
+issue and rotate the serving cert (and keep the `caBundle` injected) automatically — a single
+apply with nothing else to do:
+
+```bash
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.37.1/install-with-dashboard-cert-manager.yaml
+```
+
+///
+
+/// tab | Bring your own cert
+
+This bundle has no cert-manager dependency. Apply it, then supply the
+`promoter-apiserver-serving-cert` Secret and patch the `APIService` `caBundle` yourself:
+
+```bash
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.37.1/install-with-dashboard-byo-cert.yaml
+```
+
+See the [Dashboard Aggregation API](advanced-usage/dashboard-apiserver.md#serving-certs) page for the
+scripted/manual cert steps and cert rotation.
+
+///
+
+Confirm the API registered and is healthy before launching the UI:
+
+```bash
+kubectl get apiservice v1alpha1.view.promoter.argoproj.io   # AVAILABLE should be True
+kubectl get promotionstrategydetails -A
+```
+
+> [!NOTE]
+> If the `APIService` reports `Available=False` with an `x509`/TLS error, the `caBundle`
+> does not match the apiserver's serving cert. See the
+> [Dashboard Aggregation API](advanced-usage/dashboard-apiserver.md#verifying-the-install) page.
+
+### Launch the UI
 
 To launch the UI, first download the gitops-promoter CLI from the [releases page](https://github.com/argoproj-labs/gitops-promoter/releases).
 

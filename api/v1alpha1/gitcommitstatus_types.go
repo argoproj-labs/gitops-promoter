@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -100,6 +101,13 @@ type GitCommitStatusSpec struct {
 
 // GitCommitStatusStatus defines the observed state of GitCommitStatus.
 type GitCommitStatusStatus struct {
+	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
+	// Because status is written via Server-Side Apply with ForceOwnership (which has no
+	// optimistic-concurrency check), this field is the canonical way to detect stale
+	// status writes: compare status.observedGeneration with metadata.generation.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// Environments holds the validation results for each environment where this validation applies.
 	// Each entry corresponds to an environment from the PromotionStrategy where the Key matches
 	// either global or environment-specific proposedCommitStatuses.
@@ -119,6 +127,15 @@ type GitCommitStatusStatus struct {
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+	// reconcile attempt by this install's controller, including when Ready=False; omitted
+	// when the resource has no instance-id label (default install).
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$`
+	InstanceID *string `json:"instanceID,omitempty"`
 }
 
 // GitCommitStatusEnvironmentStatus defines the observed validation status for a specific environment.
@@ -176,6 +193,7 @@ type GitCommitStatusEnvironmentStatus struct {
 }
 
 // +kubebuilder:ac:generate=true
+// +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#gitcommitstatus",description="CRD reference (examples and behavior)"
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Key",type=string,JSONPath=`.spec.key`
@@ -235,6 +253,19 @@ func (g *GitCommitStatus) GetConditions() *[]metav1.Condition {
 	return &g.Status.Conditions
 }
 
+// SetObservedGeneration records the object generation that produced the current status.
+func (g *GitCommitStatus) SetObservedGeneration(generation int64) {
+	g.Status.ObservedGeneration = generation
+}
+
+// SetStatusInstanceID records the instance-id label mirrored into status on each reconcile attempt.
+func (g *GitCommitStatus) SetStatusInstanceID(v *string) {
+	g.Status.InstanceID = v
+}
+
 func init() {
-	SchemeBuilder.Register(&GitCommitStatus{}, &GitCommitStatusList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &GitCommitStatus{}, &GitCommitStatusList{})
+		return nil
+	})
 }

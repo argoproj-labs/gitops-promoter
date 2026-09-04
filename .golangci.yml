@@ -19,6 +19,7 @@ linters:
     - goconst
     - gocritic
     - gocyclo
+    - ginkgolinter
     - govet
     - lll
     - loggercheck
@@ -47,6 +48,8 @@ linters:
   settings:
     copyloopvar:
       check-alias: true
+    goconst:
+      ignore-tests: true
     gocritic:
       disabled-checks:
         - assignOp
@@ -76,6 +79,7 @@ linters:
         - name: max-public-structs
           exclude:
             - "**/*_types.go" # For CRD types.
+            - "**/webrequestsimulator/simulatortypes/*.go" # Simulate Input/Result and related value types.
         - name: redundant-import-alias
           disabled: true
         - name: struct-tag
@@ -153,10 +157,16 @@ linters:
       - linters:
           - govet
         path: api/.*
+      # Kubebuilder scaffold: wiring every reconciler in one place is intentionally high-complexity.
+      - linters:
+          - gocyclo
+        path: cmd/main\.go
+        text: "func `runController`"
     paths:
       - third_party$
       - builtin$
       - examples$
+      - node_modules
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
@@ -170,3 +180,4 @@ formatters:
       - third_party$
       - builtin$
       - examples$
+      - node_modules

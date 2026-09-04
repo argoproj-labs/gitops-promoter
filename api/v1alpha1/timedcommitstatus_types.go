@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -34,8 +35,31 @@ type TimedCommitStatusSpec struct {
 	// +required
 	PromotionStrategyRef ObjectReference `json:"promotionStrategyRef"`
 
+	// Key is the gate name referenced in the PromotionStrategy's activeCommitStatuses or
+	// proposedCommitStatuses. When omitted, the CRD default is timer. Set Key explicitly, even if you use the CRD default.
+	// Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
+	// +optional
+	// +kubebuilder:default=timer
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+	Key string `json:"key,omitempty"`
+
 	// +required
 	Environments []TimedCommitStatusEnvironments `json:"environments"`
+}
+
+// CommitStatusKey returns spec.key, or the default when Key is empty.
+//
+// Deprecated: CommitStatusKey exists only for clusters running a CRD without spec.key defaulting
+// (for example resources created before the key field existed). The API server applies the CRD
+// default when key is omitted on create/update, so controllers should use spec.Key directly.
+// TODO(v1.0, #1465): remove when spec.key becomes required.
+func (s *TimedCommitStatusSpec) CommitStatusKey() string {
+	if s.Key != "" {
+		return s.Key
+	}
+	return TimedCommitStatusDefaultKey
 }
 
 // TimedCommitStatusEnvironments defines the branch/environment and duration to wait before reporting the gate as success.
@@ -55,6 +79,13 @@ type TimedCommitStatusStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
+	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
+	// Because status is written via Server-Side Apply with ForceOwnership (which has no
+	// optimistic-concurrency check), this field is the canonical way to detect stale
+	// status writes: compare status.observedGeneration with metadata.generation.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// Environments holds the status of each environment being tracked.
 	// +listType=map
 	// +listMapKey=branch
@@ -66,6 +97,15 @@ type TimedCommitStatusStatus struct {
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+	// reconcile attempt by this install's controller, including when Ready=False; omitted
+	// when the resource has no instance-id label (default install).
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$`
+	InstanceID *string `json:"instanceID,omitempty"`
 }
 
 // TimedCommitStatusEnvironmentsStatus defines the observed timing status for a specific environment.
@@ -104,6 +144,7 @@ type TimedCommitStatusEnvironmentsStatus struct {
 }
 
 // +kubebuilder:ac:generate=true
+// +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#timedcommitstatus",description="CRD reference (examples and behavior)"
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
@@ -140,6 +181,19 @@ func (tcs *TimedCommitStatus) GetConditions() *[]metav1.Condition {
 	return &tcs.Status.Conditions
 }
 
+// SetObservedGeneration records the object generation that produced the current status.
+func (tcs *TimedCommitStatus) SetObservedGeneration(generation int64) {
+	tcs.Status.ObservedGeneration = generation
+}
+
+// SetStatusInstanceID records the instance-id label mirrored into status on each reconcile attempt.
+func (tcs *TimedCommitStatus) SetStatusInstanceID(v *string) {
+	tcs.Status.InstanceID = v
+}
+
 func init() {
-	SchemeBuilder.Register(&TimedCommitStatus{}, &TimedCommitStatusList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &TimedCommitStatus{}, &TimedCommitStatusList{})
+		return nil
+	})
 }

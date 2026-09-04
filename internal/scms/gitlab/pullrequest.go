@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -52,10 +54,10 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, desc strin
 	}
 
 	options := &gitlab.CreateMergeRequestOptions{
-		Title:        gitlab.Ptr(title),
-		SourceBranch: gitlab.Ptr(head),
-		TargetBranch: gitlab.Ptr(base),
-		Description:  gitlab.Ptr(desc),
+		Title:        new(title),
+		SourceBranch: new(head),
+		TargetBranch: new(base),
+		Description:  new(desc),
 	}
 
 	start := time.Now()
@@ -64,7 +66,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, desc strin
 		options,
 	)
 	if resp != nil {
-		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
+		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
 		return "", err //nolint:wrapcheck // Error wrapping handled at top level
@@ -99,8 +101,8 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 	}
 
 	options := &gitlab.UpdateMergeRequestOptions{
-		Title:       gitlab.Ptr(title),
-		Description: gitlab.Ptr(description),
+		Title:       new(title),
+		Description: new(description),
 	}
 
 	start := time.Now()
@@ -111,7 +113,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 		gitlab.WithContext(ctx),
 	)
 	if resp != nil {
-		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationUpdate, resp.StatusCode, time.Since(start), nil)
+		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationUpdate, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
 		return fmt.Errorf("failed to update merge request: %w", err)
@@ -146,7 +148,7 @@ func (pr *PullRequest) Close(ctx context.Context, prObj v1alpha1.PullRequest) er
 	}
 
 	options := &gitlab.UpdateMergeRequestOptions{
-		StateEvent: gitlab.Ptr("close"),
+		StateEvent: new("close"),
 	}
 
 	start := time.Now()
@@ -157,7 +159,7 @@ func (pr *PullRequest) Close(ctx context.Context, prObj v1alpha1.PullRequest) er
 		gitlab.WithContext(ctx),
 	)
 	if resp != nil {
-		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationClose, resp.StatusCode, time.Since(start), nil)
+		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationClose, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
 		return fmt.Errorf("failed to close merge request: %w", err)
@@ -175,12 +177,12 @@ func (pr *PullRequest) Close(ctx context.Context, prObj v1alpha1.PullRequest) er
 }
 
 // Merge merges an existing pull request with the specified commit message.
-func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) error {
+func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) (scms.MergeResult, error) {
 	logger := log.FromContext(ctx)
 
 	mrIID, err := strconv.ParseInt(prObj.Status.ID, 10, 64)
 	if err != nil {
-		return fmt.Errorf("failed to convert MR number to int64: %w", err)
+		return scms.MergeResult{}, fmt.Errorf("failed to convert MR number to int64: %w", err)
 	}
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
@@ -188,32 +190,32 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) er
 		Name:      prObj.Spec.RepositoryReference.Name,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to get repo: %w", err)
+		return scms.MergeResult{}, fmt.Errorf("failed to get repo: %w", err)
 	}
 
 	options := &gitlab.AcceptMergeRequestOptions{
-		AutoMerge:                gitlab.Ptr(false),
-		ShouldRemoveSourceBranch: gitlab.Ptr(false),
-		Squash:                   gitlab.Ptr(false),
-		SHA:                      gitlab.Ptr(prObj.Spec.MergeSha),
+		AutoMerge:                new(false),
+		ShouldRemoveSourceBranch: new(false),
+		Squash:                   new(false),
+		SHA:                      new(prObj.Spec.MergeSha),
 	}
 	// Gitlab throws a 422 if you send it an empty commit message. So leave it as nil unless we have a message.
 	if prObj.Spec.Commit.Message != "" {
-		options.MergeCommitMessage = gitlab.Ptr(prObj.Spec.Commit.Message)
+		options.MergeCommitMessage = new(prObj.Spec.Commit.Message)
 	}
 
 	start := time.Now()
-	_, resp, err := pr.client.MergeRequests.AcceptMergeRequest(
+	mr, resp, err := pr.client.MergeRequests.AcceptMergeRequest(
 		repo.Spec.GitLab.ProjectID,
 		mrIID,
 		options,
 		gitlab.WithContext(ctx),
 	)
 	if resp != nil {
-		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, resp.StatusCode, time.Since(start), nil)
+		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
-		return err //nolint:wrapcheck // Error wrapping handled at top level
+		return scms.MergeResult{}, err //nolint:wrapcheck // Error wrapping handled at top level
 	}
 
 	logGitLabRateLimitsIfAvailable(
@@ -224,11 +226,11 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) er
 	logger.V(4).Info("gitlab response status",
 		"status", resp.Status)
 
-	return nil
+	return scms.MergeResult{CommitSHA: mergedTargetSHA(mr)}, nil
 }
 
 // FindOpen checks if a pull request is open and returns its status.
-func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string, time.Time, error) {
+func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.FindOpenResult, error) {
 	logger := log.FromContext(ctx)
 	logger.V(4).Info("Finding Open Pull Request")
 
@@ -237,26 +239,26 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 		Name:      pullRequest.Spec.RepositoryReference.Name,
 	})
 	if err != nil {
-		return false, "", time.Time{}, fmt.Errorf("failed to get repo: %w", err)
+		return scms.FindOpenResult{}, fmt.Errorf("failed to get repo: %w", err)
 	}
 
-	options := &gitlab.ListMergeRequestsOptions{
-		SourceBranch: gitlab.Ptr(pullRequest.Spec.SourceBranch),
-		TargetBranch: gitlab.Ptr(pullRequest.Spec.TargetBranch),
-		State:        gitlab.Ptr("opened"),
+	options := &gitlab.ListProjectMergeRequestsOptions{
+		SourceBranch: new(pullRequest.Spec.SourceBranch),
+		TargetBranch: new(pullRequest.Spec.TargetBranch),
+		State:        new("opened"),
 	}
 
 	start := time.Now()
-	mrs, resp, err := pr.client.MergeRequests.ListMergeRequests(options)
+	mrs, resp, err := pr.client.MergeRequests.ListProjectMergeRequests(repo.Spec.GitLab.ProjectID, options)
 	if resp == nil {
 		statusCode := -1
-		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
+		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
 		logger.V(4).Info("gitlab response status", "status", "nil response")
-		return false, "", time.Time{}, errors.New("received nil response from GitLab API")
+		return scms.FindOpenResult{}, errors.New("received nil response from GitLab API")
 	}
-	metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, resp.StatusCode, time.Since(start), nil)
+	metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, resp.StatusCode, time.Since(start), nil)
 	if err != nil {
-		return false, "", time.Time{}, fmt.Errorf("failed to list pull requests: %w", err)
+		return scms.FindOpenResult{}, fmt.Errorf("failed to list pull requests: %w", err)
 	}
 
 	logGitLabRateLimitsIfAvailable(
@@ -268,10 +270,77 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 		"status", resp.Status)
 
 	if len(mrs) > 0 {
-		return true, strconv.FormatInt(mrs[0].IID, 10), *mrs[0].CreatedAt, nil
+		return scms.FindOpenResult{
+			Found:          true,
+			ID:             strconv.FormatInt(mrs[0].IID, 10),
+			CreationTime:   *mrs[0].CreatedAt,
+			SCMLabels:      slices.Clone(mrs[0].Labels),
+			LabelsReported: true,
+		}, nil
 	}
 
-	return false, "", time.Time{}, nil
+	return scms.FindOpenResult{}, nil
+}
+
+// mergedTargetSHA returns the commit the merge produced on the target branch. A squashed merge
+// reports its commit under squash_commit_sha and leaves merge_commit_sha empty.
+func mergedTargetSHA(mr *gitlab.MergeRequest) string {
+	if mr == nil {
+		return ""
+	}
+	if mr.SquashCommitSHA != "" {
+		return mr.SquashCommitSHA
+	}
+	return mr.MergeCommitSHA
+}
+
+// Get fetches a pull request by status.id.
+func (pr *PullRequest) Get(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.GetPullRequestResult, error) {
+	logger := log.FromContext(ctx)
+	logger.V(4).Info("Getting merge request by ID")
+
+	mrIID, err := strconv.ParseInt(pullRequest.Status.ID, 10, 64)
+	if err != nil {
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to convert MR number to int64: %w", err)
+	}
+
+	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
+		Namespace: pullRequest.Namespace,
+		Name:      pullRequest.Spec.RepositoryReference.Name,
+	})
+	if err != nil {
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to get repo: %w", err)
+	}
+
+	start := time.Now()
+	mr, resp, err := pr.client.MergeRequests.GetMergeRequest(repo.Spec.GitLab.ProjectID, mrIID, nil, gitlab.WithContext(ctx))
+	if resp != nil {
+		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationGet, resp.StatusCode, time.Since(start), nil)
+	}
+	if err != nil {
+		if resp != nil && resp.StatusCode == http.StatusNotFound {
+			return scms.GetPullRequestResult{}, nil
+		}
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to get merge request: %w", err)
+	}
+	if mr == nil {
+		return scms.GetPullRequestResult{}, nil
+	}
+
+	result := scms.GetPullRequestResult{Found: true}
+	switch mr.State {
+	case "merged":
+		result.State = v1alpha1.PullRequestMerged
+		result.MergedTargetSHA = mergedTargetSHA(mr)
+		if mr.MergedAt != nil {
+			result.MergedAt = *mr.MergedAt
+		}
+	case "closed":
+		result.State = v1alpha1.PullRequestClosed
+	default:
+		result.State = v1alpha1.PullRequestOpen
+	}
+	return result, nil
 }
 
 // GetUrl retrieves the URL of the pull request.
@@ -286,6 +355,123 @@ func (pr *PullRequest) GetUrl(ctx context.Context, prObj v1alpha1.PullRequest) (
 	}
 
 	return FormatMergeRequestUrl(pr.client, repo.Spec.GitLab, prObj.Status.ID), nil
+}
+
+// AddLabels adds labels to a merge request on GitLab, creating missing project labels first.
+func (pr *PullRequest) AddLabels(ctx context.Context, prObj v1alpha1.PullRequest, labelNames []string) error {
+	if len(labelNames) == 0 {
+		return nil
+	}
+
+	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
+		Namespace: prObj.Namespace,
+		Name:      prObj.Spec.RepositoryReference.Name,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get repo: %w", err)
+	}
+
+	if err := pr.ensureProjectLabels(ctx, repo, labelNames); err != nil {
+		return err
+	}
+
+	return pr.updateMergeRequestLabels(ctx, prObj, labelNames, true)
+}
+
+// RemoveLabels removes labels from a merge request on GitLab.
+func (pr *PullRequest) RemoveLabels(ctx context.Context, prObj v1alpha1.PullRequest, labelNames []string) error {
+	return pr.updateMergeRequestLabels(ctx, prObj, labelNames, false)
+}
+
+func (pr *PullRequest) updateMergeRequestLabels(ctx context.Context, prObj v1alpha1.PullRequest, labelNames []string, add bool) error {
+	if len(labelNames) == 0 {
+		return nil
+	}
+
+	mrIID, err := strconv.ParseInt(prObj.Status.ID, 10, 64)
+	if err != nil {
+		return fmt.Errorf("failed to convert MR ID %q to int64: %w", prObj.Status.ID, err)
+	}
+
+	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
+		Namespace: prObj.Namespace,
+		Name:      prObj.Spec.RepositoryReference.Name,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get repo: %w", err)
+	}
+
+	labelOpts := gitlab.LabelOptions(labelNames)
+	options := &gitlab.UpdateMergeRequestOptions{}
+	operation := metrics.SCMOperationRemoveLabels
+	failVerb := "remove labels from"
+	if add {
+		options.AddLabels = &labelOpts
+		operation = metrics.SCMOperationAddLabels
+		failVerb = "add labels to"
+	} else {
+		options.RemoveLabels = &labelOpts
+	}
+
+	start := time.Now()
+	_, resp, err := pr.client.MergeRequests.UpdateMergeRequest(
+		repo.Spec.GitLab.ProjectID,
+		mrIID,
+		options,
+		gitlab.WithContext(ctx),
+	)
+	if resp != nil {
+		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, operation, resp.StatusCode, time.Since(start), nil)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to %s merge request: %w", failVerb, err)
+	}
+
+	return nil
+}
+
+func (pr *PullRequest) ensureProjectLabels(ctx context.Context, repo *v1alpha1.GitRepository, labelNames []string) error {
+	existing := make(map[string]struct{}, len(labelNames))
+	page := int64(1)
+	for {
+		labels, resp, err := pr.client.Labels.ListLabels(repo.Spec.GitLab.ProjectID, &gitlab.ListLabelsOptions{
+			ListOptions: gitlab.ListOptions{Page: page, PerPage: 100},
+		}, gitlab.WithContext(ctx))
+		if err != nil {
+			return fmt.Errorf("failed to list project labels: %w", err)
+		}
+		for _, label := range labels {
+			existing[label.Name] = struct{}{}
+		}
+		if resp == nil || resp.CurrentPage >= resp.TotalPages {
+			break
+		}
+		page = resp.NextPage
+	}
+
+	for _, name := range labelNames {
+		if _, ok := existing[name]; ok {
+			continue
+		}
+
+		start := time.Now()
+		_, resp, err := pr.client.Labels.CreateLabel(repo.Spec.GitLab.ProjectID, &gitlab.CreateLabelOptions{
+			Name:  new(name),
+			Color: gitlab.Ptr(scms.AutoCreatedLabelColorHex),
+		}, gitlab.WithContext(ctx))
+		if resp != nil {
+			metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreateLabel, resp.StatusCode, time.Since(start), nil)
+		}
+		if err != nil {
+			if resp != nil && resp.StatusCode == http.StatusConflict {
+				continue
+			}
+			return fmt.Errorf("failed to create project label %q: %w", name, err)
+		}
+		existing[name] = struct{}{}
+	}
+
+	return nil
 }
 
 // FormatMergeRequestUrl constructs a GitLab merge request URL from the client's base URL and repository details.

@@ -4,7 +4,7 @@ metadata:
   name: gitcommitstatus-active-mode
 spec:
   promotionStrategyRef:
-    name: promotion-strategy-sample
+    name: promotionstrategy-sample
   key: revert-check
   description: "Revert commit validation on active deployment"
   # Default: validates the ACTIVE (currently deployed) commit
@@ -24,7 +24,7 @@ metadata:
   name: gitcommitstatus-proposed-mode
 spec:
   promotionStrategyRef:
-    name: promotion-strategy-sample
+    name: promotionstrategy-sample
   key: commit-format-check
   description: "Commit message format validation"
   # NEW: validates the PROPOSED commit (what will be promoted)

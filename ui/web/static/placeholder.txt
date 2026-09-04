@@ -1,0 +1,2 @@
+Placeholder so `//go:embed static` in ui/web/embed.go compiles without a dashboard build.
+The real dashboard build (`make build-dashboard`) copies the compiled assets over this directory.

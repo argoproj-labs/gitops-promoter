@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -35,13 +36,31 @@ type PullRequestSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	Title string `json:"title"`
+	// Immutability is enforced via an explicit XValidation rule rather than the k8s immutable
+	// marker: controller-gen iterates markers of different names in random map order, so mixing
+	// the two makes the emitted x-kubernetes-validations rule order nondeterministic.
+
 	// TargetBranch is the head the git reference we are merging from Head ---> Base
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
+	// Must not start with '-', contain ':', or contain '..'.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=100
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="field is immutable"
+	// +kubebuilder:validation:XValidation:rule="!self.startsWith('-')",message="branch must not start with '-'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains(':')",message="branch must not contain ':'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains('..')",message="branch must not contain '..'"
 	TargetBranch string `json:"targetBranch"`
+	// Immutability via explicit XValidation rather than the k8s immutable marker — see TargetBranch.
+
 	// SourceBranch is the base the git reference that we are merging into Head ---> Base
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
+	// Must not start with '-', contain ':', or contain '..'.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=100
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="field is immutable"
+	// +kubebuilder:validation:XValidation:rule="!self.startsWith('-')",message="branch must not start with '-'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains(':')",message="branch must not contain ':'"
+	// +kubebuilder:validation:XValidation:rule="!self.contains('..')",message="branch must not contain '..'"
 	SourceBranch string `json:"sourceBranch"`
 	// Description is the description body of the pull/merge request
 	Description string `json:"description,omitempty"`
@@ -61,6 +80,16 @@ type PullRequestSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Enum=closed;merged;open
 	State PullRequestState `json:"state"`
+
+	// Labels is the desired set of SCM pull request labels (not Kubernetes metadata labels).
+	// Written by the ChangeTransferPolicy controller from pullRequest.labels.expression evaluation.
+	// +kubebuilder:validation:Optional
+	// +listType=set
+	// +kubebuilder:validation:MaxItems=10
+	// +kubebuilder:validation:items:MinLength=1
+	// +kubebuilder:validation:items:MaxLength=50
+	// +kubebuilder:validation:items:Pattern=`^[^\n\r\x00]+$`
+	Labels []string `json:"labels,omitempty"`
 }
 
 // CommitConfiguration defines the commit configuration for how we will merge/squash/etc the pull request.
@@ -74,10 +103,17 @@ type PullRequestStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
+	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
+	// Because status is written via Server-Side Apply with ForceOwnership (which has no
+	// optimistic-concurrency check), this field is the canonical way to detect stale
+	// status writes: compare status.observedGeneration with metadata.generation.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// ID the id of the pull request
 	ID string `json:"id,omitempty"`
 	// State of the merge request closed/merged/open
-	// +kubebuilder:validation:Enum="";closed;merged;open
+	// +kubebuilder:validation:Enum="";closed;merged;open;merged-or-closed;unknown
 	State PullRequestState `json:"state,omitempty"`
 	// PRCreationTime the time the PR was created
 	PRCreationTime metav1.Time `json:"prCreationTime,omitempty"`
@@ -85,12 +121,40 @@ type PullRequestStatus struct {
 	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"
 	// +kubebuilder:validation:Pattern="^(https?://.*)?$"
 	Url string `json:"url,omitempty"`
-	// ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
-	// This is set to true when the pull request has an ID but is no longer found on the SCM provider.
-	// When true, the State field will be empty ("") since we cannot determine if it was merged or closed.
-	// The PullRequest resource will be deleted after this flag is set, but the status is preserved in
-	// the owning ChangeTransferPolicy to maintain a record of the external action.
+	// MergedTargetSha is the SHA that spec.targetBranch points at after the merge, as reported by
+	// the SCM. It is a merge commit only when the SCM created one; squash and fast-forward merges
+	// report the resulting commit on the target branch instead.
+	// Set once by the PullRequest controller, either from the merge response for providers that
+	// report the SHA there, or from a Get-by-ID lookup when FindOpen no longer finds the PR
+	// (external merges, and providers whose merge response omits the SHA). The value is write-once:
+	// a resource merges at most once, so the controller never replaces a non-empty value, even if a
+	// provider later reports a different SHA.
+	// +optional
+	// +kubebuilder:validation:MinLength=40
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
+	MergedTargetSha string `json:"mergedTargetSha,omitempty"`
+	// ExternallyMergedOrClosed indicated that the pull request was no longer open on the SCM while the
+	// resource still desired it open. The PullRequest controller no longer sets this field.
+	//
+	// Deprecated: Use status.state merged-or-closed or unknown instead. Existing values are preserved
+	// when copied to ChangeTransferPolicy status. This field may be removed in a future API revision.
+	// +optional
 	ExternallyMergedOrClosed *bool `json:"externallyMergedOrClosed,omitempty"`
+
+	// SCMSyncedSpecDigest fingerprints title and description last successfully synced
+	// to the SCM via provider.Update on an open pull request.
+	// +optional
+	SCMSyncedSpecDigest string `json:"scmSyncedSpecDigest,omitempty"`
+
+	// AppliedLabels lists SCM labels successfully applied by gitops-promoter (for sync and retraction).
+	// +kubebuilder:validation:Optional
+	// +listType=set
+	// +kubebuilder:validation:MaxItems=10
+	// +kubebuilder:validation:items:MinLength=1
+	// +kubebuilder:validation:items:MaxLength=50
+	// +kubebuilder:validation:items:Pattern=`^[^\n\r\x00]+$`
+	AppliedLabels []string `json:"appliedLabels,omitempty"`
 
 	// Conditions Represents the observations of the current state.
 	// +patchMergeKey=type
@@ -98,6 +162,15 @@ type PullRequestStatus struct {
 	// +listType=map
 	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+
+	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
+	// reconcile attempt by this install's controller, including when Ready=False; omitted
+	// when the resource has no instance-id label (default install).
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$`
+	InstanceID *string `json:"instanceID,omitempty"`
 }
 
 // GetConditions returns the conditions of the PullRequest.
@@ -105,7 +178,18 @@ func (ps *PullRequest) GetConditions() *[]metav1.Condition {
 	return &ps.Status.Conditions
 }
 
+// SetObservedGeneration records the object generation that produced the current status.
+func (ps *PullRequest) SetObservedGeneration(generation int64) {
+	ps.Status.ObservedGeneration = generation
+}
+
+// SetStatusInstanceID records the instance-id label mirrored into status on each reconcile attempt.
+func (ps *PullRequest) SetStatusInstanceID(v *string) {
+	ps.Status.InstanceID = v
+}
+
 // +kubebuilder:ac:generate=true
+// +kubebuilder:externalDocs:url="https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#pullrequest",description="CRD reference (examples and behavior)"
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
@@ -117,6 +201,15 @@ func (ps *PullRequest) GetConditions() *[]metav1.Condition {
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="URL",type=string,JSONPath=`.status.url`,priority=1
 // +kubebuilder:validation:XValidation:rule=`self.spec.state == 'open' || has(self.status.id) && self.status.id != ""`,message="Cannot transition to 'closed' or 'merged' state when status.id is empty"
+// +kubebuilder:validation:XValidation:rule=`!has(self.status) || !has(self.status.mergedTargetSha) || (has(self.status.state) && self.status.state == 'merged')`,message="mergedTargetSha may only be set when status.state is merged"
+// +kubebuilder:validation:XValidation:rule=`!has(self.status) || !has(self.status.state) || self.status.state != 'merged-or-closed' && self.status.state != 'unknown' || !has(self.status.mergedTargetSha)`,message="mergedTargetSha may not be set when status.state is merged-or-closed or unknown"
+// Once recorded, the SHA can be neither replaced nor cleared: a resource merges at most once, so any
+// later disagreement is provider inconsistency or a status write built from a stale informer read, and
+// honoring it would strand the promotion history note already written against the original SHA. Such a
+// write is rejected rather than merged, which surfaces as a failed status apply and a retry.
+// +kubebuilder:validation:XValidation:rule=`!has(oldSelf.status) || !has(oldSelf.status.mergedTargetSha) || (has(self.status) && has(self.status.mergedTargetSha) && self.status.mergedTargetSha == oldSelf.status.mergedTargetSha)`,message="mergedTargetSha is immutable once set"
+// +kubebuilder:validation:XValidation:rule=`!has(oldSelf.status) || !has(oldSelf.status.state) || !(oldSelf.status.state in ['merged', 'closed', 'merged-or-closed']) || self.spec == oldSelf.spec`,message="spec is immutable once status.state is merged, closed, or merged-or-closed"
+// +kubebuilder:validation:XValidation:rule=`!has(oldSelf.status) || !has(oldSelf.status.state) || !(oldSelf.status.state in ['merged', 'closed', 'unknown']) || self.status.state == oldSelf.status.state`,message="status.state is immutable once merged, closed, or unknown"
 type PullRequest struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -135,7 +228,10 @@ type PullRequestList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&PullRequest{}, &PullRequestList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(SchemeGroupVersion, &PullRequest{}, &PullRequestList{})
+		return nil
+	})
 }
 
 // PullRequestState represents the state of a pull request.
@@ -148,4 +244,8 @@ const (
 	PullRequestOpen PullRequestState = "open"
 	// PullRequestMerged indicates that the pull request has been merged.
 	PullRequestMerged PullRequestState = "merged"
+	// PullRequestMergedOrClosed indicates FindOpen missed the PR while status.id is set; Get resolves merge vs close.
+	PullRequestMergedOrClosed PullRequestState = "merged-or-closed"
+	// PullRequestUnknown indicates the SCM no longer has a record for status.id.
+	PullRequestUnknown PullRequestState = "unknown"
 )

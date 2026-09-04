@@ -25,13 +25,19 @@ import (
 	"os"
 	"runtime/debug"
 	"syscall"
+	"time"
 
 	"go.uber.org/zap/zapcore"
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
 
+	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/cmd/demo"
+	"github.com/argoproj-labs/gitops-promoter/internal/apiserver"
+	promotercache "github.com/argoproj-labs/gitops-promoter/internal/cache"
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
+	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	"github.com/argoproj-labs/gitops-promoter/internal/version"
 	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
 
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -45,9 +51,13 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils/gitpaths"
 	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
 
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/discovery"
+
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 
@@ -103,6 +113,7 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	return cmd
 }
 
+//nolint:gocyclo // Linear controller-registration sequence; splitting would obscure the startup order.
 func runController(
 	metricsAddr string,
 	probeAddr string,
@@ -115,6 +126,11 @@ func runController(
 	controllerNamespace, _, err := clientConfig.Namespace()
 	if err != nil {
 		setupLog.Error(err, "failed to get namespace")
+		os.Exit(1)
+	}
+
+	if err := utils.ConfigureDefaultTransportFromEnv(); err != nil {
+		setupLog.Error(err, "failed to configure HTTP TLS roots from environment")
 		os.Exit(1)
 	}
 
@@ -162,12 +178,29 @@ func runController(
 	// Create the provider first, then the manager with the provider
 	provider := kubeconfigprovider.New(providerOpts)
 
-	mcMgr, err := mcmanager.New(ctrl.GetConfigOrDie(), provider, ctrl.Options{
+	restConfig := ctrl.GetConfigOrDie()
+	processSignalsCtx := ctrl.SetupSignalHandler()
+
+	if err := settings.BootstrapControllerInstanceID(processSignalsCtx, restConfig, controllerNamespace); err != nil {
+		return fmt.Errorf("bootstrap controller instance ID: %w", err)
+	}
+	instanceID := settings.ControllerInstanceID()
+	if instanceID != nil {
+		setupLog.Info("multi-instance-id mode: scoping informer cache to instanceID", "instanceID", *instanceID)
+	} else {
+		setupLog.Info("default instance-id mode: scoping informer cache to resources without instance-id label")
+	}
+
+	runCtx, shutdown := context.WithCancel(processSignalsCtx)
+
+	mcMgr, err := mcmanager.New(restConfig, provider, ctrl.Options{
 		Scheme: scheme,
+		Cache:  promotercache.OptionsForInstanceID(instanceID, controllerNamespace),
 		Metrics: metricsserver.Options{
-			BindAddress:   metricsAddr,
-			SecureServing: secureMetrics,
-			TLSOpts:       tlsOpts,
+			BindAddress:    metricsAddr,
+			SecureServing:  secureMetrics,
+			TLSOpts:        tlsOpts,
+			FilterProvider: metrics.ScrapeLogFilterProvider(),
 		},
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
@@ -195,25 +228,28 @@ func runController(
 
 	localManager := mcMgr.GetLocalManager()
 
+	if err := localManager.Add(metrics.NewResourceCountRunnable(localManager.GetCache())); err != nil {
+		panic(fmt.Errorf("unable to add resource count metrics runnable: %w", err))
+	}
+
 	settingsMgr := settings.NewManager(localManager.GetClient(), localManager.GetAPIReader(), settings.ManagerConfig{
 		ControllerNamespace: controllerNamespace,
 	})
 
-	processSignalsCtx := ctrl.SetupSignalHandler()
-
-	if err = (&controller.PullRequestReconciler{
+	prReconciler := &controller.PullRequestReconciler{
 		Client:      localManager.GetClient(),
 		Scheme:      localManager.GetScheme(),
 		Recorder:    localManager.GetEventRecorder("PullRequest"),
 		SettingsMgr: settingsMgr,
-	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+	}
+	if err = prReconciler.SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create PullRequest controller: %w", err))
 	}
 	if err = (&controller.RevertCommitReconciler{
 		Client:   localManager.GetClient(),
 		Scheme:   localManager.GetScheme(),
 		Recorder: localManager.GetEventRecorder("RevertCommit"),
-	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create RevertCommit controller: %w", err))
 	}
 
@@ -224,8 +260,9 @@ func runController(
 		Scheme:      localManager.GetScheme(),
 		Recorder:    localManager.GetEventRecorder("ChangeTransferPolicy"),
 		SettingsMgr: settingsMgr,
+		EnqueuePR:   prReconciler.GetEnqueueFunc(),
 	}
-	if err = ctpReconciler.SetupWithManager(processSignalsCtx, localManager); err != nil {
+	if err = ctpReconciler.SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ChangeTransferPolicy controller: %w", err))
 	}
 
@@ -235,7 +272,7 @@ func runController(
 		Recorder:    localManager.GetEventRecorder("CommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
-	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create CommitStatus controller: %w", err))
 	}
 
@@ -245,21 +282,23 @@ func runController(
 		Recorder:    localManager.GetEventRecorder("PromotionStrategy"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
-	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create PromotionStrategy controller: %w", err))
 	}
 	if err = (&controller.ScmProviderReconciler{
-		Client:   localManager.GetClient(),
-		Scheme:   localManager.GetScheme(),
-		Recorder: localManager.GetEventRecorder("ScmProvider"),
-	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorder("ScmProvider"),
+		SettingsMgr: settingsMgr,
+	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ScmProvider controller: %w", err))
 	}
 	if err = (&controller.GitRepositoryReconciler{
-		Client:   localManager.GetClient(),
-		Scheme:   localManager.GetScheme(),
-		Recorder: localManager.GetEventRecorder("GitRepository"),
-	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorder("GitRepository"),
+		SettingsMgr: settingsMgr,
+	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create GitRepository controller: %w", err))
 	}
 
@@ -268,13 +307,17 @@ func runController(
 		SettingsMgr:        settingsMgr,
 		KubeConfigProvider: provider,
 		Recorder:           localManager.GetEventRecorder("ArgoCDCommitStatus"),
-	}).SetupWithManager(processSignalsCtx, mcMgr); err != nil {
+	}).SetupWithManager(runCtx, mcMgr); err != nil {
 		panic(fmt.Errorf("unable to create ArgoCDCommitStatus controller: %w", err))
 	}
 	if err = (&controller.ControllerConfigurationReconciler{
-		Client: localManager.GetClient(),
-		Scheme: localManager.GetScheme(),
-	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+		Client:              localManager.GetClient(),
+		Scheme:              localManager.GetScheme(),
+		Recorder:            localManager.GetEventRecorder("ControllerConfiguration"),
+		ControllerNamespace: controllerNamespace,
+		StartupInstanceID:   instanceID,
+		Shutdown:            shutdown,
+	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ControllerConfiguration controller: %w", err))
 	}
 	if err = (&controller.ClusterScmProviderReconciler{
@@ -282,7 +325,7 @@ func runController(
 		Scheme:      localManager.GetScheme(),
 		Recorder:    localManager.GetEventRecorder("ClusterScmProvider"),
 		SettingsMgr: settingsMgr,
-	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ClusterScmProvider controller: %w", err))
 	}
 	if err := (&controller.TimedCommitStatusReconciler{
@@ -291,7 +334,7 @@ func runController(
 		Recorder:    localManager.GetEventRecorder("TimedCommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
-	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+	}).SetupWithManager(runCtx, localManager); err != nil {
 		panic("unable to create TimedCommitStatus controller")
 	}
 	if err := (&controller.GitCommitStatusReconciler{
@@ -300,7 +343,7 @@ func runController(
 		Recorder:    localManager.GetEventRecorder("GitCommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
-	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+	}).SetupWithManager(runCtx, localManager); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GitCommitStatus")
 		panic(fmt.Errorf("unable to create GitCommitStatus controller: %w", err))
 	}
@@ -310,9 +353,18 @@ func runController(
 		Recorder:    localManager.GetEventRecorder("WebRequestCommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
-	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+	}).SetupWithManager(runCtx, localManager); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "WebRequestCommitStatus")
 		panic(fmt.Errorf("unable to create WebRequestCommitStatus controller: %w", err))
+	}
+	if err := (&controller.ScheduledCommitStatusReconciler{
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorder("ScheduledCommitStatus"),
+		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+	}).SetupWithManager(runCtx, localManager); err != nil {
+		panic(fmt.Errorf("unable to create ScheduledCommitStatus controller: %w", err))
 	}
 	//+kubebuilder:scaffold:builder
 
@@ -325,7 +377,7 @@ func runController(
 
 	whr := webhookreceiver.NewWebhookReceiver(localManager, webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()))
 
-	g, ctx := errgroup.WithContext(processSignalsCtx)
+	g, ctx := errgroup.WithContext(runCtx)
 
 	// Initialize the provider controller with the manager
 	if err := provider.SetupWithManager(ctx, mcMgr); err != nil {
@@ -343,7 +395,7 @@ func runController(
 
 	g.Go(func() error {
 		//nolint:lll // long line due to function call with multiple parameters
-		if err := ignoreCanceled(whr.Start(processSignalsCtx, fmt.Sprintf(":%d", constants.WebhookReceiverPort))); err != nil {
+		if err := ignoreCanceled(whr.Start(ctx, fmt.Sprintf(":%d", constants.WebhookReceiverPort))); err != nil {
 			setupLog.Error(err, "unable to start webhook receiver")
 			return err
 		}
@@ -385,11 +437,18 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 			mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
 				Scheme: scheme,
 				Metrics: metricsserver.Options{
-					BindAddress: ":9082",
+					BindAddress:    ":9082",
+					FilterProvider: metrics.ScrapeLogFilterProvider(),
 				},
 			})
 			if err != nil {
 				return fmt.Errorf("failed to create manager: %w", err)
+			}
+
+			// Register the dashboard aggregation type so the manager cache can watch
+			// the server-computed PromotionStrategyDetails bundle.
+			if err := viewv1alpha1.AddToScheme(mgr.GetScheme()); err != nil {
+				return fmt.Errorf("failed to register dashboard scheme: %w", err)
 			}
 
 			// Create single signal handler
@@ -397,14 +456,28 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 
 			ws := webserver.NewWebServer(mgr)
 
+			// The dashboard watches the aggregated PromotionStrategyDetails bundle via
+			// the controller-runtime manager cache and forwards each bundle over SSE.
 			if err = ws.SetupWithManager(mgr); err != nil {
-				panic("unable to create WebServer controller")
+				return fmt.Errorf("failed to set up WebServer controller: %w", err)
+			}
+
+			// The aggregation apiserver that serves view.promoter.argoproj.io deploys
+			// independently, so on a cold start its APIService may not be Available yet.
+			// Wait for the group to be discoverable before starting the manager cache;
+			// otherwise the PromotionStrategyDetails informer's initial List fails with
+			// "no matches for kind" and the cache sync times out, crashing the process.
+			if err := waitForViewAPI(ctx, restConfig); err != nil {
+				return fmt.Errorf("dashboard aggregation API did not become available: %w", err)
 			}
 
 			// Start manager in background
 			go func() {
 				if err := mgr.Start(ctx); err != nil {
-					panic(err)
+					setupLog.Error(err, "dashboard manager exited")
+					if killErr := syscall.Kill(syscall.Getpid(), syscall.SIGTERM); killErr != nil {
+						setupLog.Error(killErr, "unable to kill process")
+					}
 				}
 			}()
 
@@ -420,17 +493,94 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	return cmd
 }
 
+// waitForViewAPI blocks until the view.promoter.argoproj.io/v1alpha1 group served by
+// the aggregation apiserver is discoverable, or the context is cancelled. This avoids
+// a startup race where the dashboard manager cache begins watching
+// PromotionStrategyDetails before the APIService is Available.
+func waitForViewAPI(ctx context.Context, restConfig *rest.Config) error {
+	discoveryClient, err := discovery.NewDiscoveryClientForConfig(restConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create discovery client: %w", err)
+	}
+
+	groupVersion := viewv1alpha1.GroupVersion.String()
+	err = wait.PollUntilContextCancel(ctx, 2*time.Second, true, func(_ context.Context) (bool, error) {
+		if _, err := discoveryClient.ServerResourcesForGroupVersion(groupVersion); err != nil {
+			setupLog.Info("Waiting for dashboard aggregation API to become available", "groupVersion", groupVersion)
+			return false, nil
+		}
+		return true, nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed waiting for group version %q: %w", groupVersion, err)
+	}
+	return nil
+}
+
+func newAPIServerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
+	opts := apiserver.NewOptions()
+
+	cmd := &cobra.Command{
+		Use:   "apiserver",
+		Short: "GitOps Promoter dashboard aggregation API server",
+		Long: "Runs the dashboard aggregation layer: an extension apiserver that serves a " +
+			"read-only, server-computed PromotionStrategyDetails bundle. Register it with the " +
+			"kube-aggregator via an APIService.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			restConfig, err := clientConfig.ClientConfig()
+			if err != nil {
+				return fmt.Errorf("failed to get client config: %w", err)
+			}
+
+			ctx := ctrl.SetupSignalHandler()
+
+			setupLog.Info("starting dashboard aggregation apiserver")
+			if err := apiserver.Run(ctx, restConfig, opts); err != nil {
+				return fmt.Errorf("apiserver exited with error: %w", err)
+			}
+			return nil
+		},
+	}
+
+	opts.AddFlags(cmd.Flags())
+	return cmd
+}
+
+func newVersionCommand() *cobra.Command {
+	var short bool
+
+	cmd := &cobra.Command{
+		Use:   "version",
+		Short: "Print version information",
+		Run: func(cmd *cobra.Command, args []string) {
+			v := version.Get()
+			if short {
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), v.Version)
+				return
+			}
+
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s: %s\n  BuildDate: %s\n  GoVersion: %s\n  Compiler: %s\n  Platform: %s\n",
+				version.CommandCLI, v.Version, v.BuildDate, v.GoVersion, v.Compiler, v.Platform)
+		},
+	}
+
+	cmd.Flags().BoolVar(&short, "short", false, "Print just the version number")
+	return cmd
+}
+
 func newCommand() *cobra.Command {
 	var clientConfig clientcmd.ClientConfig
 
 	opts := zap.Options{
 		Development: true,
+		Level:       zapcore.InfoLevel, // default to info; use --zap-log-level=debug or =5 for verbose
 		TimeEncoder: zapcore.RFC3339NanoTimeEncoder,
 	}
 
 	cmd := &cobra.Command{
-		Use:   "promoter",
-		Short: "GitOps Promoter",
+		Use:     "promoter",
+		Short:   "GitOps Promoter",
+		Version: version.Get().Version,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			// Create the zap logger
 			zapLogger := zap.New(zap.UseFlagOptions(&opts))
@@ -443,6 +593,7 @@ func newCommand() *cobra.Command {
 			klog.SetLogger(zapLogger)
 		},
 	}
+	cmd.SetVersionTemplate(version.CommandCLI + ": {{.Version}}\n")
 
 	// Zap only operates on go-type flags. Cobra doesn't give us direct access to those flags.
 	// So we apply the zap flags to a temp go flags set and then transfer them to the cobra flags.
@@ -456,7 +607,9 @@ func newCommand() *cobra.Command {
 	clientConfig = addKubectlFlags(cmd.PersistentFlags())
 	cmd.AddCommand(newControllerCommand(clientConfig))
 	cmd.AddCommand(newDashboardCommand(clientConfig))
+	cmd.AddCommand(newAPIServerCommand(clientConfig))
 	cmd.AddCommand(demo.NewDemoCommand())
+	cmd.AddCommand(newVersionCommand())
 	return cmd
 }
 

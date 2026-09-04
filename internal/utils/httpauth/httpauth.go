@@ -85,6 +85,14 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/azuredevops"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_cloud"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitea"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
 )
 
 const (
@@ -404,4 +412,73 @@ func getSecret(ctx context.Context, reader client.Reader, namespace, name string
 		return nil, fmt.Errorf("failed to get secret: %w", err)
 	}
 	return secret, nil
+}
+
+// -----------------------------------------------------------------------------
+// SCM provider authentication (uses PromotionStrategy's ScmProvider credentials)
+// -----------------------------------------------------------------------------
+
+// ApplySCMAuth applies authentication to the HTTP request using credentials from the given
+// SCM provider and secret. The controller resolves these from the PromotionStrategy's
+// RepositoryReference. For GitHub, gitRepo is used to resolve the installation ID from the
+// repo owner when InstallationID is not set on the ScmProvider.
+//
+// Returns a custom *http.Client for GitHub (App transport); for other providers the request
+// is mutated with provider-specific authentication headers (e.g. PRIVATE-TOKEN,
+// Authorization: token, or Basic) and (nil, nil) is returned.
+func ApplySCMAuth(ctx context.Context, scmProvider promoterv1alpha1.GenericScmProvider, secret corev1.Secret, req *http.Request, gitRepo *promoterv1alpha1.GitRepository) (*http.Client, error) {
+	logger := log.FromContext(ctx)
+	spec := scmProvider.GetSpec()
+
+	switch {
+	case spec.GitHub != nil:
+		transport, err := github.ApplyHTTPAuth(ctx, scmProvider, secret, gitRepo)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build GitHub auth transport: %w", err)
+		}
+		logger.V(4).Info("Applied SCM authentication", "provider", "GitHub", "scmProvider", scmProvider.GetName())
+		return &http.Client{Transport: transport}, nil
+
+	case spec.GitLab != nil:
+		if err := gitlab.ApplyHTTPAuth(secret, req); err != nil {
+			return nil, fmt.Errorf("failed to apply GitLab SCM auth: %w", err)
+		}
+		logger.V(4).Info("Applied SCM authentication", "provider", "GitLab", "scmProvider", scmProvider.GetName())
+		return nil, nil
+
+	case spec.Forgejo != nil:
+		if err := forgejo.ApplyHTTPAuth(secret, req); err != nil {
+			return nil, fmt.Errorf("failed to apply Forgejo SCM auth: %w", err)
+		}
+		logger.V(4).Info("Applied SCM authentication", "provider", "Forgejo", "scmProvider", scmProvider.GetName())
+		return nil, nil
+
+	case spec.Gitea != nil:
+		if err := gitea.ApplyHTTPAuth(secret, req); err != nil {
+			return nil, fmt.Errorf("failed to apply Gitea SCM auth: %w", err)
+		}
+		logger.V(4).Info("Applied SCM authentication", "provider", "Gitea", "scmProvider", scmProvider.GetName())
+		return nil, nil
+
+	case spec.BitbucketCloud != nil:
+		if err := bitbucket_cloud.ApplyHTTPAuth(secret, req); err != nil {
+			return nil, fmt.Errorf("failed to apply Bitbucket Cloud SCM auth: %w", err)
+		}
+		logger.V(4).Info("Applied SCM authentication", "provider", "BitbucketCloud", "scmProvider", scmProvider.GetName())
+		return nil, nil
+
+	case spec.AzureDevOps != nil:
+		if err := azuredevops.ApplyHTTPAuth(secret, req); err != nil {
+			return nil, fmt.Errorf("failed to apply Azure DevOps SCM auth: %w", err)
+		}
+		logger.V(4).Info("Applied SCM authentication", "provider", "AzureDevOps", "scmProvider", scmProvider.GetName())
+		return nil, nil
+
+	case spec.Fake != nil:
+		logger.V(4).Info("SCM provider is Fake, no authentication applied")
+		return nil, nil
+
+	default:
+		return nil, errors.New("unknown SCM provider type for scm")
+	}
 }

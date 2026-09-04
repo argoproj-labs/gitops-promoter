@@ -19,17 +19,22 @@ package controller
 import (
 	"context"
 	_ "embed"
-	"time"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sync/atomic"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/events"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 )
 
 //go:embed testdata/ControllerConfiguration.yaml
@@ -58,194 +63,8 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 			By("creating the custom resource for the Kind ControllerConfiguration")
 			err := k8sClient.Get(ctx, typeNamespacedName, controllerconfiguration)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &promoterv1alpha1.ControllerConfiguration{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
-					Spec: promoterv1alpha1.ControllerConfigurationSpec{
-						PromotionStrategy: promoterv1alpha1.PromotionStrategyConfiguration{
-							WorkQueue: promoterv1alpha1.WorkQueue{
-								RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-								MaxConcurrentReconciles: 10,
-								RateLimiter: promoterv1alpha1.RateLimiter{
-									MaxOf: []promoterv1alpha1.RateLimiterTypes{
-										{
-											Bucket: &promoterv1alpha1.Bucket{
-												Qps:    100,
-												Bucket: 1000,
-											},
-										},
-										{
-											ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-												BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-												MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-											},
-										},
-									},
-								},
-							},
-						},
-						ChangeTransferPolicy: promoterv1alpha1.ChangeTransferPolicyConfiguration{
-							WorkQueue: promoterv1alpha1.WorkQueue{
-								RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-								MaxConcurrentReconciles: 10,
-								RateLimiter: promoterv1alpha1.RateLimiter{
-									MaxOf: []promoterv1alpha1.RateLimiterTypes{
-										{
-											Bucket: &promoterv1alpha1.Bucket{
-												Qps:    100,
-												Bucket: 1000,
-											},
-										},
-										{
-											ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-												BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-												MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-											},
-										},
-									},
-								},
-							},
-						},
-						PullRequest: promoterv1alpha1.PullRequestConfiguration{
-							Template: promoterv1alpha1.PullRequestTemplate{
-								Title:       "Promote {{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }} to `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`",
-								Description: "This PR is promoting the environment branch `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}` which is currently on dry sha {{ .ChangeTransferPolicy.Status.Active.Dry.Sha }} to dry sha {{ .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}.",
-							},
-							WorkQueue: promoterv1alpha1.WorkQueue{
-								RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-								MaxConcurrentReconciles: 10,
-								RateLimiter: promoterv1alpha1.RateLimiter{
-									MaxOf: []promoterv1alpha1.RateLimiterTypes{
-										{
-											Bucket: &promoterv1alpha1.Bucket{
-												Qps:    100,
-												Bucket: 1000,
-											},
-										},
-										{
-											ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-												BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-												MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-											},
-										},
-									},
-								},
-							},
-						},
-						CommitStatus: promoterv1alpha1.CommitStatusConfiguration{
-							WorkQueue: promoterv1alpha1.WorkQueue{
-								RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-								MaxConcurrentReconciles: 10,
-								RateLimiter: promoterv1alpha1.RateLimiter{
-									MaxOf: []promoterv1alpha1.RateLimiterTypes{
-										{
-											Bucket: &promoterv1alpha1.Bucket{
-												Qps:    100,
-												Bucket: 1000,
-											},
-										},
-										{
-											ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-												BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-												MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-											},
-										},
-									},
-								},
-							},
-						},
-						ArgoCDCommitStatus: promoterv1alpha1.ArgoCDCommitStatusConfiguration{
-							WorkQueue: promoterv1alpha1.WorkQueue{
-								RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-								MaxConcurrentReconciles: 10,
-								RateLimiter: promoterv1alpha1.RateLimiter{
-									MaxOf: []promoterv1alpha1.RateLimiterTypes{
-										{
-											Bucket: &promoterv1alpha1.Bucket{
-												Qps:    100,
-												Bucket: 1000,
-											},
-										},
-										{
-											ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-												BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-												MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-											},
-										},
-									},
-								},
-							},
-						},
-						TimedCommitStatus: promoterv1alpha1.TimedCommitStatusConfiguration{
-							WorkQueue: promoterv1alpha1.WorkQueue{
-								RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-								MaxConcurrentReconciles: 10,
-								RateLimiter: promoterv1alpha1.RateLimiter{
-									MaxOf: []promoterv1alpha1.RateLimiterTypes{
-										{
-											Bucket: &promoterv1alpha1.Bucket{
-												Qps:    100,
-												Bucket: 1000,
-											},
-										},
-										{
-											ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-												BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-												MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-											},
-										},
-									},
-								},
-							},
-						},
-						GitCommitStatus: promoterv1alpha1.GitCommitStatusConfiguration{
-							WorkQueue: promoterv1alpha1.WorkQueue{
-								RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-								MaxConcurrentReconciles: 10,
-								RateLimiter: promoterv1alpha1.RateLimiter{
-									MaxOf: []promoterv1alpha1.RateLimiterTypes{
-										{
-											Bucket: &promoterv1alpha1.Bucket{
-												Qps:    100,
-												Bucket: 1000,
-											},
-										},
-										{
-											ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-												BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-												MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-											},
-										},
-									},
-								},
-							},
-						},
-						WebRequestCommitStatus: promoterv1alpha1.WebRequestCommitStatusConfiguration{
-							WorkQueue: promoterv1alpha1.WorkQueue{
-								RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-								MaxConcurrentReconciles: 10,
-								RateLimiter: promoterv1alpha1.RateLimiter{
-									MaxOf: []promoterv1alpha1.RateLimiterTypes{
-										{
-											Bucket: &promoterv1alpha1.Bucket{
-												Qps:    100,
-												Bucket: 1000,
-											},
-										},
-										{
-											ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-												BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-												MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				}
+				resource, loadErr := loadShippedControllerConfigurationForTests(resourceName)
+				Expect(loadErr).NotTo(HaveOccurred())
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
 		})
@@ -262,16 +81,219 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
 			controllerReconciler := &ControllerConfigurationReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				Client:              k8sClient,
+				Scheme:              k8sClient.Scheme(),
+				Recorder:            events.NewFakeRecorder(100),
+				ControllerNamespace: "default",
+				StartupInstanceID:   nil,
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
+		})
+	})
+
+	Context("When spec.instanceID drifts from startup", func() {
+		const resourceName = settings.ControllerConfigurationName
+
+		ctx := context.Background()
+		typeNamespacedName := types.NamespacedName{
+			Name:      resourceName,
+			Namespace: "default",
+		}
+
+		BeforeEach(func() {
+			cc := &promoterv1alpha1.ControllerConfiguration{}
+			err := k8sClient.Get(ctx, typeNamespacedName, cc)
+			if err != nil && errors.IsNotFound(err) {
+				resource, loadErr := loadShippedControllerConfigurationForTests(resourceName)
+				Expect(loadErr).NotTo(HaveOccurred())
+				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			}
+		})
+
+		AfterEach(func() {
+			cc := &promoterv1alpha1.ControllerConfiguration{}
+			err := k8sClient.Get(ctx, typeNamespacedName, cc)
+			if errors.IsNotFound(err) {
+				return
+			}
+			Expect(err).NotTo(HaveOccurred())
+			base := cc.DeepCopy()
+			cc.Spec.InstanceID = nil
+			Expect(k8sClient.Patch(ctx, cc, client.MergeFrom(base))).To(Succeed())
+		})
+
+		It("does not shut down when startup and spec instanceID match", func() {
+			var shutdowns atomic.Int32
+			reconciler := &ControllerConfigurationReconciler{
+				Client:              k8sClient,
+				Scheme:              k8sClient.Scheme(),
+				Recorder:            events.NewFakeRecorder(100),
+				ControllerNamespace: "default",
+				StartupInstanceID:   nil,
+				Shutdown: func() {
+					shutdowns.Add(1)
+				},
+			}
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(shutdowns.Load()).To(Equal(int32(0)))
+		})
+
+		It("shuts down when spec.instanceID changes from default install", func() {
+			var shutdowns atomic.Int32
+			wave0 := "wave-0"
+			reconciler := &ControllerConfigurationReconciler{
+				Client:              k8sClient,
+				Scheme:              k8sClient.Scheme(),
+				Recorder:            events.NewFakeRecorder(100),
+				ControllerNamespace: "default",
+				StartupInstanceID:   nil,
+				Shutdown: func() {
+					shutdowns.Add(1)
+				},
+			}
+
+			cc := &promoterv1alpha1.ControllerConfiguration{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, cc)).To(Succeed())
+			base := cc.DeepCopy()
+			cc.Spec.InstanceID = &wave0
+			Expect(k8sClient.Patch(ctx, cc, client.MergeFrom(base))).To(Succeed())
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(shutdowns.Load()).To(Equal(int32(1)))
+		})
+
+		It("does not shut down when startup and spec instanceID are the same non-empty value", func() {
+			var shutdowns atomic.Int32
+			wave0 := "wave-0"
+			reconciler := &ControllerConfigurationReconciler{
+				Client:              k8sClient,
+				Scheme:              k8sClient.Scheme(),
+				Recorder:            events.NewFakeRecorder(100),
+				ControllerNamespace: "default",
+				StartupInstanceID:   &wave0,
+				Shutdown: func() {
+					shutdowns.Add(1)
+				},
+			}
+
+			cc := &promoterv1alpha1.ControllerConfiguration{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, cc)).To(Succeed())
+			base := cc.DeepCopy()
+			cc.Spec.InstanceID = &wave0
+			Expect(k8sClient.Patch(ctx, cc, client.MergeFrom(base))).To(Succeed())
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(shutdowns.Load()).To(Equal(int32(0)))
+		})
+
+		It("shuts down when spec.instanceID changes between non-empty values", func() {
+			var shutdowns atomic.Int32
+			wave0 := "wave-0"
+			wave1 := "wave-1"
+			reconciler := &ControllerConfigurationReconciler{
+				Client:              k8sClient,
+				Scheme:              k8sClient.Scheme(),
+				Recorder:            events.NewFakeRecorder(100),
+				ControllerNamespace: "default",
+				StartupInstanceID:   &wave0,
+				Shutdown: func() {
+					shutdowns.Add(1)
+				},
+			}
+
+			cc := &promoterv1alpha1.ControllerConfiguration{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, cc)).To(Succeed())
+			base := cc.DeepCopy()
+			cc.Spec.InstanceID = &wave1
+			Expect(k8sClient.Patch(ctx, cc, client.MergeFrom(base))).To(Succeed())
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(shutdowns.Load()).To(Equal(int32(1)))
+		})
+
+		It("shuts down when spec.instanceID is cleared after multi-install startup", func() {
+			var shutdowns atomic.Int32
+			wave0 := "wave-0"
+			reconciler := &ControllerConfigurationReconciler{
+				Client:              k8sClient,
+				Scheme:              k8sClient.Scheme(),
+				Recorder:            events.NewFakeRecorder(100),
+				ControllerNamespace: "default",
+				StartupInstanceID:   &wave0,
+				Shutdown: func() {
+					shutdowns.Add(1)
+				},
+			}
+
+			cc := &promoterv1alpha1.ControllerConfiguration{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, cc)).To(Succeed())
+			base := cc.DeepCopy()
+			cc.Spec.InstanceID = nil
+			Expect(k8sClient.Patch(ctx, cc, client.MergeFrom(base))).To(Succeed())
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(shutdowns.Load()).To(Equal(int32(1)))
+		})
+
+		It("no-ops when the shipped ControllerConfiguration does not exist", func() {
+			var shutdowns atomic.Int32
+			wave0 := "wave-0"
+			reconciler := &ControllerConfigurationReconciler{
+				Client:              k8sClient,
+				Scheme:              k8sClient.Scheme(),
+				Recorder:            events.NewFakeRecorder(100),
+				ControllerNamespace: "default",
+				StartupInstanceID:   nil,
+				Shutdown: func() {
+					shutdowns.Add(1)
+				},
+			}
+
+			_, err := reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: "other-config", Namespace: "default"},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(shutdowns.Load()).To(Equal(int32(0)))
+
+			reconciler.StartupInstanceID = &wave0
+			_, err = reconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: resourceName, Namespace: "other-namespace"},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(shutdowns.Load()).To(Equal(int32(0)))
 		})
 	})
 })
+
+// loadShippedControllerConfigurationForTests loads config/config/controllerconfiguration.yaml
+// (the same manifest wired into kustomize) and applies test metadata. Tests run with the
+// working directory set to this package (standard `go test`), so the path is resolved from
+// internal/controller.
+func loadShippedControllerConfigurationForTests(name string) (*promoterv1alpha1.ControllerConfiguration, error) {
+	path := filepath.Join("..", "..", "config", "config", "controllerconfiguration.yaml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read shipped controller configuration %s: %w", path, err)
+	}
+	cc := &promoterv1alpha1.ControllerConfiguration{}
+	if err := unmarshalYamlStrict(string(data), cc); err != nil {
+		return nil, err
+	}
+	cc.ObjectMeta = metav1.ObjectMeta{
+		Namespace:   "default",
+		Name:        name,
+		Labels:      cc.Labels,
+		Annotations: cc.Annotations,
+	}
+	return cc, nil
+}

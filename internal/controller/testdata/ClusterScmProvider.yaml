@@ -28,4 +28,13 @@ spec:
     domain: dev.azure.com # Optional
 
   gitea:
-    domain: gitea.
+    domain: gitea.example.com
+status:
+  observedGeneration: 123 # compare with metadata.generation to detect stale status
+  conditions:
+    - type: Ready
+      lastTransitionTime: 2023-10-01T00:00:00Z
+      message: Reconciliation succeeded
+      reason: ReconciliationSuccess # ReconciliationSuccess or ReconciliationError
+      status: "True"
+      observedGeneration: 123
