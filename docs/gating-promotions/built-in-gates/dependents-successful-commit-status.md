@@ -13,8 +13,8 @@ relationships, and updates one CommitStatus per environment.
 
 > [!IMPORTANT]
 > The gate is not created or injected automatically. You must create a `DependentsSuccessfulCommitStatus` for each
-> PromotionStrategy you want to gate, and add its `key` to that PromotionStrategy's global `proposedCommitStatuses`.
-> See [Wiring the gate into the PromotionStrategy](#wiring-the-gate-into-the-promotionstrategy) below.
+> PromotionStrategy you want to gate, and add its `key` to that PromotionStrategy's effective `proposedCommitStatuses`
+> (globally or per environment). See [Wiring the gate into the PromotionStrategy](#wiring-the-gate-into-the-promotionstrategy) below.
 
 ## Linear default (no graph)
 
@@ -164,7 +164,8 @@ url:
 ## Wiring the gate into the PromotionStrategy
 
 The DependentsSuccessfulCommitStatus only *produces* the gate; the PromotionStrategy must *consume* it. Add the same
-`key` to the PromotionStrategy's global `proposedCommitStatuses` so every environment gates on it:
+`key` to the PromotionStrategy's `proposedCommitStatuses` so every environment gates on it. Declaring the key globally
+is the usual pattern; you may also add it per environment when only some branches should enforce ordering.
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
@@ -184,6 +185,8 @@ spec:
 ```
 
 > [!IMPORTANT]
-> As a safety check, the PromotionStrategy controller fails its reconcile if a DependentsSuccessfulCommitStatus
-> references the PromotionStrategy but its `key` is not present in the PromotionStrategy's `proposedCommitStatuses` —
-> otherwise the gate it produces would never be enforced. This safety check is intended to be removed in v1.0.
+> As a safety check, the PromotionStrategy controller fails its reconcile when no
+> `DependentsSuccessfulCommitStatus` targets the PromotionStrategy, or when a gate references the PromotionStrategy but
+> its `key` is missing from the effective `proposedCommitStatuses` for one or more environment branches (global plus
+> per-environment selectors, matching what each `ChangeTransferPolicy` enforces). This safety check is intended to be
+> removed in v1.0; see [Roadmap](../../roadmap.md).

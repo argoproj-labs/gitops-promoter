@@ -101,14 +101,6 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 | Warning    | CommitStatusesNotReady      | One or more of the [CommitStatus](../crd-specs.md#commitstatus) resources managed by this DependentsSuccessfulCommitStatus is not Ready. |
 | Normal     | OrphanedCommitStatusDeleted | An orphaned [CommitStatus](../crd-specs.md#commitstatus) was deleted after it no longer applied (e.g., branch removed). |
 
-## DependentsSuccessfulCommitStatus
-
-[DependentsSuccessfulCommitStatuses](../crd-specs.md#dependentssuccessfulcommitstatus) may produce the following events:
-
-| Event Type | Event Reason            | Description                                                                                                                              |
-|------------|-------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
-| Warning    | DependentsSuccessfulCommitStatusNotReady | The [DependentsSuccessfulCommitStatus](../crd-specs.md#dependentssuccessfulcommitstatus) owned by this DependentsSuccessfulCommitStatus is not Ready.                      |
-
 ## PromotionStrategy
 
 [PromotionStrategies](../crd-specs.md#promotionstrategy) may produce the following events:
@@ -118,10 +110,9 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 | Normal     | OrphanedChangeTransferPolicyDeleted     | An orphaned [ChangeTransferPolicy](../crd-specs.md#changetransferpolicy) was deleted after environment changes (e.g., branch rename).     |
 | Warning    | ChangeTransferPolicyNotReady            | One or more of the [ChangeTransferPolicy](../crd-specs.md#changetransferpolicy) resources managed by this PromotionStrategy is not Ready. |
 
-Missing or undeclared promotion ordering (no [DependentsSuccessfulCommitStatus](../crd-specs.md#dependentssuccessfulcommitstatus) /
-[DependentsSuccessfulCommitStatus](../crd-specs.md#dependentssuccessfulcommitstatus), or a gate `key` not listed in
-`proposedCommitStatuses`) surfaces as a `ReconciliationError` on the PromotionStrategy `Ready` condition rather than a
-dedicated event reason.
+Missing or undeclared promotion ordering (no [DependentsSuccessfulCommitStatus](../crd-specs.md#dependentssuccessfulcommitstatus),
+or a gate `key` not listed in the effective `proposedCommitStatuses` for an environment branch) surfaces as a
+`ReconciliationError` on the PromotionStrategy `Ready` condition rather than a dedicated event reason.
 
 ## GitRepository
 

@@ -492,11 +492,10 @@ The PromotionStrategy resource is the main resource that you will use to configu
 Promotion ordering is **not** injected automatically. For the common linear
 dev → staging → production pipeline, create a
 [DependentsSuccessfulCommitStatus](gating-promotions/built-in-gates/dependents-successful-commit-status.md)
-and declare its `key` on the PromotionStrategy. Without an ordering gate
-(DependentsSuccessfulCommitStatus or
-[DependentsSuccessfulCommitStatus](gating-promotions/built-in-gates/dependents-successful-commit-status.md)), the
-PromotionStrategy controller fails its reconcile so environments cannot promote
-out of order by accident.
+and declare its `key` on the PromotionStrategy (globally or per environment — see
+[gating docs](gating-promotions/built-in-gates/dependents-successful-commit-status.md#wiring-the-gate-into-the-promotionstrategy)).
+Without a matching gate CR, the PromotionStrategy controller fails its reconcile so environments cannot promote out of
+order by accident. Upgrading from releases before 0.38? See [Upgrading](upgrading.md#038-promotion-ordering-gate).
 
 Here is a minimal example:
 
@@ -537,9 +536,9 @@ spec:
 > (Note the difference between the `syncSource` and the `hydrateTo` fields.)
 
 > [!TIP]
-> For non-linear promotion graphs, use a
-> [DependentsSuccessfulCommitStatus](gating-promotions/built-in-gates/dependents-successful-commit-status.md) instead of
-> DependentsSuccessfulCommitStatus.
+> For non-linear promotion graphs, set `spec.environments` and `dependsOn` on the
+> [DependentsSuccessfulCommitStatus](gating-promotions/built-in-gates/dependents-successful-commit-status.md#custom-dependency-graph)
+> (not on the PromotionStrategy).
 
 > [!TIP]
 > For monorepos, you can share a single active branch across multiple PromotionStrategies by setting

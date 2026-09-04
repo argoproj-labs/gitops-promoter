@@ -23,11 +23,14 @@ phase for the commit deployed on that live branch. If any active gate is pending
 successful. This is an aggregate idea over the individual CommitStatuses you configure—not a separate CR. It helps explain
 what ordering gates are waiting on: a downstream promotion may stay blocked until upstream environments are successful.
 
+Upgrading from a release before 0.38? See [Upgrading](../upgrading.md#038-promotion-ordering-gate).
+
 Promotion ordering (which environments may promote relative to others) is also expressed as a proposed commit
 status. It is **not** injected automatically: you must create a
 [DependentsSuccessfulCommitStatus](built-in-gates/dependents-successful-commit-status.md) and declare its `key` in the
-PromotionStrategy's global `proposedCommitStatuses`. Without an ordering gate, the PromotionStrategy controller fails
-its reconcile so environments cannot promote out of order by accident.
+PromotionStrategy's effective `proposedCommitStatuses` for each environment that should gate on ordering (typically in
+global `proposedCommitStatuses`). Without a matching gate CR, the PromotionStrategy controller fails its reconcile so
+environments cannot promote out of order by accident.
 
 ## Example
 
@@ -190,8 +193,9 @@ GitOps Promoter ships built-in gate controllers that create and manage `CommitSt
 
 Promotion ordering is required for every PromotionStrategy. Use
 [DependentsSuccessfulCommitStatus](built-in-gates/dependents-successful-commit-status.md) — linear pipelines by default,
-or declare a custom dependency graph for fan-out and fan-in. Declare the gate `key` in the PromotionStrategy's global
-`proposedCommitStatuses`. See that page for wiring details.
+or declare a custom dependency graph for fan-out and fan-in. Declare the gate `key` in effective
+`proposedCommitStatuses` (global and/or per environment). See that page and [Upgrading](../upgrading.md) for wiring
+details.
 
 ### Argo CD Health Status
 

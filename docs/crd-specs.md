@@ -3,7 +3,8 @@
 The PromotionStrategy is the user's interface to controlling how changes are promoted through their environments. In 
 this CR, the user configures the list of live hydrated environment branches and the checks which must pass between
 promotion steps. Promotion ordering is not injected automatically: declare an ordering gate key in
-`proposedCommitStatuses` and create a matching [DependentsSuccessfulCommitStatus](#dependentssuccessfulcommitstatus).
+`proposedCommitStatuses` (globally and/or per environment) and create a matching
+[DependentsSuccessfulCommitStatus](#dependentssuccessfulcommitstatus).
 
 ```yaml
 {!internal/controller/testdata/PromotionStrategy.yaml!}
@@ -20,9 +21,10 @@ A PromotionStrategy will create a ChangeTransferPolicy for each configured envir
 
 Promotion ordering is configured separately: create a
 [DependentsSuccessfulCommitStatus](#dependentssuccessfulcommitstatus) (omit `spec.environments` for linear promotion, or declare a
-graph explicitly), and declare its `key` in the PromotionStrategy's global
-`proposedCommitStatuses`. Without an ordering gate, the PromotionStrategy controller fails its reconcile. See
-[Gating Promotions](gating-promotions/index.md) for details.
+graph explicitly), and declare its `key` in the PromotionStrategy's `proposedCommitStatuses` — globally, on specific
+environments, or both (using the same merge rules as other gates). Without an ordering gate, the PromotionStrategy
+controller fails its reconcile. See [Gating Promotions](gating-promotions/index.md) and
+[Upgrading](upgrading.md#038-promotion-ordering-gate) for details.
 
 The [Events](monitoring/events.md#changetransferpolicy) page documents the Kubernetes events produced by 
 ChangeTransferPolicies. PromotionStrategy and ChangeTransferPolicy controllers set standard labels on related resources; see [Labels](debugging/labels.md#promotion-and-change-transfer).
@@ -89,7 +91,8 @@ A DependentsSuccessfulCommitStatus gates promotions based on whether dependent e
 [successful](gating-promotions/index.md#environment-success). When `spec.environments` is omitted or empty, the
 controller infers a **linear** chain from the PromotionStrategy's `spec.environments` order (for example
 dev → staging → prod). When `spec.environments` is set, each environment declares `dependsOn` branches. Declare the
-same `spec.key` in the PromotionStrategy's global `proposedCommitStatuses`. See
+same `spec.key` in the PromotionStrategy's effective `proposedCommitStatuses` for each gated environment (typically in
+global `proposedCommitStatuses`). See
 [Dependents Successful Commit Status](gating-promotions/built-in-gates/dependents-successful-commit-status.md).
 
 ```yaml
@@ -190,7 +193,6 @@ The `ArgoCDCommitStatus` CRD may also have the following condition reasons:
 The `DependentsSuccessfulCommitStatus` CRD may also have the following condition reasons:
 
 * `CommitStatusesNotReady`
-* `DependentsSuccessfulCommitStatusNotReady`
 
 #### `ChangeTransferPolicy`
 
@@ -204,8 +206,8 @@ The `PromotionStrategy` CRD may also have the following condition reasons:
 
 * `ChangeTransferPolicyNotReady`
 
-Missing or undeclared promotion ordering (no `DependentsSuccessfulCommitStatus`, or a gate `key`
-not listed in `proposedCommitStatuses`) surfaces as `ReconciliationError`.
+Missing or undeclared promotion ordering (no `DependentsSuccessfulCommitStatus`, or a gate `key` not listed in the
+effective `proposedCommitStatuses` for an environment branch) surfaces as `ReconciliationError`.
 
 ## Finalizers
 
