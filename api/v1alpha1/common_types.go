@@ -33,6 +33,15 @@ type GitLab struct {
 // BitbucketCloud is a Bitbucket Cloud SCM provider configuration. It is used to configure the Bitbucket Cloud settings.
 type BitbucketCloud struct{}
 
+// BitbucketDataCenter is a Bitbucket DataCenter/Server SCM provider configuration.
+type BitbucketDataCenter struct {
+	// Domain is the Bitbucket DataCenter/Server domain, such as "bitbucket.mycompany.com".
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	Domain string `json:"domain"`
+}
+
 // Forgejo is a Forgejo SCM provider configuration. It is used to configure the Forgejo settings.
 type Forgejo struct {
 	// Domain is the Forgejo domain, such as "codeberg.org" or "forgejo.mycompany.com".
@@ -155,6 +164,20 @@ type BitbucketCloudRepo struct {
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=62
 	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9_.-]+$"
+	Name string `json:"name"`
+}
+
+// BitbucketDataCenterRepo is a repository in Bitbucket DataCenter/Server, identified by its project key and repository slug.
+type BitbucketDataCenterRepo struct {
+	// Project is the Bitbucket project key (e.g. "MYPROJ").
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=128
+	Project string `json:"project"`
+	// Name is the repository slug (e.g. "my-repo").
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=128
 	Name string `json:"name"`
 }
 
