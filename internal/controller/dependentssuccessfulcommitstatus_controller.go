@@ -463,18 +463,19 @@ func (r *DependentsSuccessfulCommitStatusReconciler) enqueueDependentsSuccessful
 		}
 
 		var dcsList promoterv1alpha1.DependentsSuccessfulCommitStatusList
-		if err := r.List(ctx, &dcsList, client.InNamespace(ps.Namespace)); err != nil {
+		if err := r.List(ctx, &dcsList,
+			client.InNamespace(ps.Namespace),
+			client.MatchingFields{PromotionStrategyRefField: ps.Name},
+		); err != nil {
 			logf.FromContext(ctx).Error(err, "failed to list DependentsSuccessfulCommitStatus resources")
 			return nil
 		}
 
-		var requests []ctrl.Request
+		requests := make([]ctrl.Request, 0, len(dcsList.Items))
 		for i := range dcsList.Items {
-			if dcsList.Items[i].Spec.PromotionStrategyRef.Name == ps.Name {
-				requests = append(requests, ctrl.Request{
-					NamespacedName: client.ObjectKeyFromObject(&dcsList.Items[i]),
-				})
-			}
+			requests = append(requests, ctrl.Request{
+				NamespacedName: client.ObjectKeyFromObject(&dcsList.Items[i]),
+			})
 		}
 
 		return requests
