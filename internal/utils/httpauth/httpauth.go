@@ -89,6 +89,7 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/azuredevops"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_cloud"
+	bitbucket_datacenter "github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_datacenter"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitea"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
@@ -465,6 +466,13 @@ func ApplySCMAuth(ctx context.Context, scmProvider promoterv1alpha1.GenericScmPr
 			return nil, fmt.Errorf("failed to apply Bitbucket Cloud SCM auth: %w", err)
 		}
 		logger.V(4).Info("Applied SCM authentication", "provider", "BitbucketCloud", "scmProvider", scmProvider.GetName())
+		return nil, nil
+
+	case spec.BitbucketDataCenter != nil:
+		if err := bitbucket_datacenter.ApplyHTTPAuth(secret, req); err != nil {
+			return nil, fmt.Errorf("failed to apply Bitbucket DataCenter SCM auth: %w", err)
+		}
+		logger.V(4).Info("Applied SCM authentication", "provider", "BitbucketDataCenter", "scmProvider", scmProvider.GetName())
 		return nil, nil
 
 	case spec.AzureDevOps != nil:

@@ -47,6 +47,8 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.BearerAuth{}.OpenAPIModelName():                                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_BearerAuth(ref),
 		apiv1alpha1.BitbucketCloud{}.OpenAPIModelName():                                       schema_argoproj_labs_gitops_promoter_api_v1alpha1_BitbucketCloud(ref),
 		apiv1alpha1.BitbucketCloudRepo{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_BitbucketCloudRepo(ref),
+		apiv1alpha1.BitbucketDataCenter{}.OpenAPIModelName():                                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_BitbucketDataCenter(ref),
+		apiv1alpha1.BitbucketDataCenterRepo{}.OpenAPIModelName():                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_BitbucketDataCenterRepo(ref),
 		apiv1alpha1.Bucket{}.OpenAPIModelName():                                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_Bucket(ref),
 		apiv1alpha1.ChangeRequestPolicyCommitStatusPhase{}.OpenAPIModelName():                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeRequestPolicyCommitStatusPhase(ref),
 		apiv1alpha1.ChangeTransferPolicy{}.OpenAPIModelName():                                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicy(ref),
@@ -940,6 +942,58 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_BitbucketCloudRepo(ref co
 					},
 				},
 				Required: []string{"owner", "name"},
+			},
+		},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_BitbucketDataCenter(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "BitbucketDataCenter is a Bitbucket DataCenter/Server SCM provider configuration.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"domain": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Domain is the Bitbucket DataCenter/Server domain, such as \"bitbucket.mycompany.com\".",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"domain"},
+			},
+		},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_BitbucketDataCenterRepo(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "BitbucketDataCenterRepo is a repository in Bitbucket DataCenter/Server, identified by its project key and repository slug.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"project": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Project is the Bitbucket project key (e.g. \"MYPROJ\").",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"name": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Name is the repository slug (e.g. \"my-repo\").",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"project", "name"},
 			},
 		},
 	}
@@ -3072,6 +3126,11 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitRepositorySpec(ref com
 							Ref: ref(apiv1alpha1.BitbucketCloudRepo{}.OpenAPIModelName()),
 						},
 					},
+					"bitbucketDataCenter": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref(apiv1alpha1.BitbucketDataCenterRepo{}.OpenAPIModelName()),
+						},
+					},
 					"azureDevOps": {
 						SchemaProps: spec.SchemaProps{
 							Ref: ref(apiv1alpha1.AzureDevOpsRepo{}.OpenAPIModelName()),
@@ -3093,7 +3152,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitRepositorySpec(ref com
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.AzureDevOpsRepo{}.OpenAPIModelName(), apiv1alpha1.BitbucketCloudRepo{}.OpenAPIModelName(), apiv1alpha1.FakeRepo{}.OpenAPIModelName(), apiv1alpha1.ForgejoRepo{}.OpenAPIModelName(), apiv1alpha1.GitHubRepo{}.OpenAPIModelName(), apiv1alpha1.GitLabRepo{}.OpenAPIModelName(), apiv1alpha1.GiteaRepo{}.OpenAPIModelName(), apiv1alpha1.ScmProviderObjectReference{}.OpenAPIModelName()},
+			apiv1alpha1.AzureDevOpsRepo{}.OpenAPIModelName(), apiv1alpha1.BitbucketCloudRepo{}.OpenAPIModelName(), apiv1alpha1.BitbucketDataCenterRepo{}.OpenAPIModelName(), apiv1alpha1.FakeRepo{}.OpenAPIModelName(), apiv1alpha1.ForgejoRepo{}.OpenAPIModelName(), apiv1alpha1.GitHubRepo{}.OpenAPIModelName(), apiv1alpha1.GitLabRepo{}.OpenAPIModelName(), apiv1alpha1.GiteaRepo{}.OpenAPIModelName(), apiv1alpha1.ScmProviderObjectReference{}.OpenAPIModelName()},
 	}
 }
 
@@ -5173,6 +5232,12 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderSpec(ref commo
 							Ref:         ref(apiv1alpha1.BitbucketCloud{}.OpenAPIModelName()),
 						},
 					},
+					"bitbucketDataCenter": {
+						SchemaProps: spec.SchemaProps{
+							Description: "BitbucketDataCenter required configuration for Bitbucket DataCenter/Server as the SCM provider",
+							Ref:         ref(apiv1alpha1.BitbucketDataCenter{}.OpenAPIModelName()),
+						},
+					},
 					"azureDevOps": {
 						SchemaProps: spec.SchemaProps{
 							Description: "AzureDevOps required configuration for Azure DevOps as the SCM provider",
@@ -5189,7 +5254,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderSpec(ref commo
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.AzureDevOps{}.OpenAPIModelName(), apiv1alpha1.BitbucketCloud{}.OpenAPIModelName(), apiv1alpha1.Fake{}.OpenAPIModelName(), apiv1alpha1.Forgejo{}.OpenAPIModelName(), apiv1alpha1.GitHub{}.OpenAPIModelName(), apiv1alpha1.GitLab{}.OpenAPIModelName(), apiv1alpha1.Gitea{}.OpenAPIModelName(), v1.LocalObjectReference{}.OpenAPIModelName()},
+			apiv1alpha1.AzureDevOps{}.OpenAPIModelName(), apiv1alpha1.BitbucketCloud{}.OpenAPIModelName(), apiv1alpha1.BitbucketDataCenter{}.OpenAPIModelName(), apiv1alpha1.Fake{}.OpenAPIModelName(), apiv1alpha1.Forgejo{}.OpenAPIModelName(), apiv1alpha1.GitHub{}.OpenAPIModelName(), apiv1alpha1.GitLab{}.OpenAPIModelName(), apiv1alpha1.Gitea{}.OpenAPIModelName(), v1.LocalObjectReference{}.OpenAPIModelName()},
 	}
 }
 
