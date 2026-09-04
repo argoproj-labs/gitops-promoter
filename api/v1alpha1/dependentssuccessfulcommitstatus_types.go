@@ -52,7 +52,7 @@ type DependentsSuccessfulCommitStatusSpec struct {
 	// +kubebuilder:validation:MaxItems:=1000
 	// +listType:=map
 	// +listMapKey=branch
-	Environments []DependentEnvironment `json:"environments"`
+	Environments []DependentEnvironment `json:"environments,omitempty"`
 
 	// URL generates the URL to use on the per-environment CommitStatus (SCM details link), for
 	// example a link into the Promoter UI that highlights this environment's dependsOn upstreams.
