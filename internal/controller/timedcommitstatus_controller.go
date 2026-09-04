@@ -34,7 +34,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
@@ -152,7 +151,7 @@ func (r *TimedCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr 
 
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.TimedCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueTimedCommitStatusForPromotionStrategy()).
+		Watches(&promoterv1alpha1.PromotionStrategy{}, CommitStatusGatePromotionStrategyWatchHandler[*promoterv1alpha1.TimedCommitStatusList](r.Client)).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Complete(r)
 	if err != nil {
@@ -327,18 +326,4 @@ func (r *TimedCommitStatusReconciler) calculateRequeueDuration(ctx context.Conte
 	}
 
 	return defaultDuration
-}
-
-// enqueueTimedCommitStatusForPromotionStrategy returns a handler that enqueues all TimedCommitStatus resources
-// that reference a PromotionStrategy when that PromotionStrategy changes
-func (r *TimedCommitStatusReconciler) enqueueTimedCommitStatusForPromotionStrategy() handler.EventHandler {
-	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []ctrl.Request {
-		ps, ok := obj.(*promoterv1alpha1.PromotionStrategy)
-		if !ok {
-			return nil
-		}
-
-		var tcsList promoterv1alpha1.TimedCommitStatusList
-		return EnqueueCommitStatusGatesForPromotionStrategy(ctx, r.Client, ps, &tcsList, "TimedCommitStatus")
-	})
 }

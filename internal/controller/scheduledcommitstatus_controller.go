@@ -37,7 +37,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
@@ -140,7 +139,7 @@ func (r *ScheduledCommitStatusReconciler) SetupWithManager(ctx context.Context, 
 
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.ScheduledCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueScheduledCommitStatusForPromotionStrategy()).
+		Watches(&promoterv1alpha1.PromotionStrategy{}, CommitStatusGatePromotionStrategyWatchHandler[*promoterv1alpha1.ScheduledCommitStatusList](r.Client)).
 		Named("scheduledcommitstatus").
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Complete(r)
@@ -307,19 +306,6 @@ func (r *ScheduledCommitStatusReconciler) calculateRequeueDuration(ctx context.C
 
 	return defaultDuration
 }
-
-func (r *ScheduledCommitStatusReconciler) enqueueScheduledCommitStatusForPromotionStrategy() handler.EventHandler {
-	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []ctrl.Request {
-		ps, ok := obj.(*promoterv1alpha1.PromotionStrategy)
-		if !ok {
-			return nil
-		}
-
-		var scsList promoterv1alpha1.ScheduledCommitStatusList
-		return EnqueueCommitStatusGatesForPromotionStrategy(ctx, r.Client, ps, &scsList, "ScheduledCommitStatus")
-	})
-}
-
 // windowEvalResult holds the result of evaluating scheduled windows for an environment.
 type windowEvalResult struct {
 	Active  *windowInfo
