@@ -35,7 +35,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Docker
-        uses: docker/setup-docker-action@994c3d50f9b4a990bfb91dced73607ccbc906a1c
+        uses: docker/setup-docker-action@77e84dbf09b47d1e29270283c22f16145aa85ca1 # v5.4.0
         with:
           version: type=image,tag=29.1.5
 
@@ -60,7 +60,7 @@ jobs:
           cosign-release: v3.1.3
 
       - name: Install syft
-        uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26
+        uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
