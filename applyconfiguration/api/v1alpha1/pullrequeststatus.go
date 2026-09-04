@@ -26,18 +26,18 @@ import (
 // PullRequestStatusApplyConfiguration represents a declarative configuration of the PullRequestStatus type for use
 // with apply.
 //
-// PullRequestStatus defines the observed state of PullRequest
+// PullRequestStatus defines the observed state of PullRequest.
 type PullRequestStatusApplyConfiguration struct {
 	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
 	// Because status is written via Server-Side Apply with ForceOwnership (which has no
 	// optimistic-concurrency check), this field is the canonical way to detect stale
 	// status writes: compare status.observedGeneration with metadata.generation.
 	ObservedGeneration *int64 `json:"observedGeneration,omitempty"`
-	// ID the id of the pull request
+	// ID is the unique identifier of the pull request, set by the SCM.
 	ID *string `json:"id,omitempty"`
-	// State of the merge request closed/merged/open
+	// State is the state of the pull request. Empty before the controller observes an SCM state; otherwise closed, merged, open, merged-or-closed, or unknown.
 	State *apiv1alpha1.PullRequestState `json:"state,omitempty"`
-	// PRCreationTime the time the PR was created
+	// PRCreationTime is the time when the pull request was created.
 	PRCreationTime *v1.Time `json:"prCreationTime,omitempty"`
 	// Url is the URL of the pull request.
 	Url *string `json:"url,omitempty"`
@@ -61,7 +61,7 @@ type PullRequestStatusApplyConfiguration struct {
 	SCMSyncedSpecDigest *string `json:"scmSyncedSpecDigest,omitempty"`
 	// AppliedLabels lists SCM labels successfully applied by gitops-promoter (for sync and retraction).
 	AppliedLabels []string `json:"appliedLabels,omitempty"`
-	// Conditions Represents the observations of the current state.
+	// Conditions represent the observations of the current state.
 	Conditions []metav1.ConditionApplyConfiguration `json:"conditions,omitempty"`
 	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
 	// reconcile attempt by this install's controller, including when Ready=False; omitted

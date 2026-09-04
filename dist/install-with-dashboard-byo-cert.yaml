@@ -38,8 +38,11 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ArgoCDCommitStatus is the Schema for the argocdcommitstatuses
-          API.
+        description: |-
+          ArgoCDCommitStatus aggregates the status of Argo CD Applications used in a promotion strategy. It selects
+          Applications via a label selector and a reference to a PromotionStrategy, then creates CommitStatus resources
+          using the configured key (which defaults to argocd-health) so that promotion gates reflect whether the selected
+          applications are synced and healthy. Optional URL config can generate links (e.g. to the Argo CD UI) for each status.
         externalDocs:
           description: CRD reference (examples and behavior)
           url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#argocdcommitstatus
@@ -364,8 +367,11 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ChangeTransferPolicy is the Schema for the changetransferpolicies
-          API
+        description: |-
+          ChangeTransferPolicy represents a pair of hydrated environment branches: the proposed branch and the active
+          branch. When a new commit appears in the proposed branch, the controller opens a PR against the active branch.
+          When all configured proposed commit status checks pass, the controller merges the PR. Active checks are
+          continuously monitored, and their states are saved to the ChangeTransferPolicy status.
         externalDocs:
           description: CRD reference (examples and behavior)
           url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#changetransferpolicy
@@ -1750,8 +1756,10 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ClusterScmProvider is the Schema for the clusterscmproviders
-          API.
+        description: |-
+          ClusterScmProvider is the cluster-scoped alternative to ScmProvider. It represents an SCM instance (e.g. GitHub)
+          and references a Secret in the namespace where the promoter runs. Any GitRepository in the cluster can reference
+          a ClusterScmProvider by name.
         externalDocs:
           description: CRD reference (examples and behavior)
           url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#clusterscmprovider
@@ -2023,7 +2031,9 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: CommitStatus is the Schema for the commitstatuses API
+        description: |-
+          CommitStatus is a thin wrapper for the SCM's commit status API. CommitStatuses are the primary source of truth
+          for promotion gates: the controller writes their state to the SCM so checkmarks/failures appear in the SCM UI.
         externalDocs:
           description: CRD reference (examples and behavior)
           url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#commitstatus
@@ -2231,8 +2241,11 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ControllerConfiguration is the Schema for the controllerconfigurations
-          API.
+        description: |-
+          ControllerConfiguration configures the behavior of the promoter controllers. A global instance is typically
+          deployed with the controller and applies to all promotions. Each controller has a required section (WorkQueue
+          settings, rate limiters, and controller-specific options such as PR templates or watchLocalApplications).
+          Optional fields such as InstanceID may be omitted; defaults are provided in the installation manifests.
         externalDocs:
           description: CRD reference (examples and behavior)
           url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#controllerconfiguration
@@ -2275,6 +2288,8 @@ spec:
                       in the local cluster. When false, the controller will only watch Applications in remote clusters
                       configured via kubeconfig secrets. This is useful when the Argo CD Application CRD is not installed
                       in the local cluster or when all Applications are deployed to remote clusters.
+
+                      This value is evaluated at startup and requires a restart to change.
                     type: boolean
                   workQueue:
                     description: |-
@@ -4317,9 +4332,7 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          GitCommitStatus is the Schema for the gitcommitstatuses API.
-
-          It validates commits from PromotionStrategy environments using configurable expressions
+          GitCommitStatus validates commits from PromotionStrategy environments using configurable expressions
           and creates CommitStatus resources with the validation results.
 
           Use the Target field to control which commit is validated:
@@ -4640,7 +4653,9 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: GitRepository is the Schema for the gitrepositories API
+        description: |-
+          GitRepository represents a single git repository. It references an ScmProvider (or ClusterScmProvider)
+          to enable access via some configured auth mechanism.
         externalDocs:
           description: CRD reference (examples and behavior)
           url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#gitrepository
@@ -4934,7 +4949,10 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: PromotionStrategy is the Schema for the promotionstrategies API
+        description: |-
+          PromotionStrategy is the user's interface to controlling how changes are promoted through environments.
+          In this resource you configure the list of live hydrated environment branches in promotion order and the
+          checks (active and proposed commit statuses) that must pass between promotion steps.
         externalDocs:
           description: CRD reference (examples and behavior)
           url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#promotionstrategy
@@ -6494,7 +6512,7 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          PullRequest is the Schema for the pullrequests API
+          PullRequest is a thin wrapper around the SCM's pull request API.
           Once recorded, the SHA can be neither replaced nor cleared: a resource merges at most once, so any
           later disagreement is provider inconsistency or a status write built from a stale informer read, and
           honoring it would strand the promotion history note already written against the original SHA. Such a
@@ -6627,7 +6645,7 @@ spec:
             - title
             type: object
           status:
-            description: PullRequestStatus defines the observed state of PullRequest
+            description: PullRequestStatus defines the observed state of PullRequest.
             properties:
               appliedLabels:
                 description: AppliedLabels lists SCM labels successfully applied by
@@ -6641,7 +6659,7 @@ spec:
                 type: array
                 x-kubernetes-list-type: set
               conditions:
-                description: Conditions Represents the observations of the current
+                description: Conditions represent the observations of the current
                   state.
                 items:
                   description: Condition contains details for one aspect of the current
@@ -6710,7 +6728,8 @@ spec:
                   when copied to ChangeTransferPolicy status. This field may be removed in a future API revision.
                 type: boolean
               id:
-                description: ID the id of the pull request
+                description: ID is the unique identifier of the pull request, set
+                  by the SCM.
                 type: string
               instanceID:
                 description: |-
@@ -6744,7 +6763,8 @@ spec:
                 format: int64
                 type: integer
               prCreationTime:
-                description: PRCreationTime the time the PR was created
+                description: PRCreationTime is the time when the pull request was
+                  created.
                 format: date-time
                 type: string
               scmSyncedSpecDigest:
@@ -6753,7 +6773,9 @@ spec:
                   to the SCM via provider.Update on an open pull request.
                 type: string
               state:
-                description: State of the merge request closed/merged/open
+                description: State is the state of the pull request. Empty before
+                  the controller observes an SCM state; otherwise closed, merged,
+                  open, merged-or-closed, or unknown.
                 enum:
                 - ""
                 - closed
@@ -6816,7 +6838,8 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: RevertCommit is the Schema for the revertcommits API
+        description: RevertCommit is reserved for future revert-commit support and
+          is not implemented yet.
         properties:
           apiVersion:
             description: |-
@@ -6877,8 +6900,9 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ScheduledCommitStatus is the Schema for the scheduledcommitstatuses
-          API.
+        description: |-
+          ScheduledCommitStatus provides calendar-based gating for environment promotions using cron expressions
+          with durations. It defines recurring allow and exclusion windows that control when promotions can happen.
         externalDocs:
           description: CRD reference (examples and behavior)
           url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#scheduledcommitstatus
@@ -7326,7 +7350,9 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ScmProvider is the Schema for the scmproviders API
+        description: |-
+          ScmProvider represents an SCM instance (e.g. GitHub, GitLab). It references a Secret in the same namespace
+          to supply credentials for API access.
         externalDocs:
           description: CRD reference (examples and behavior)
           url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#scmprovider
@@ -7587,7 +7613,12 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: TimedCommitStatus is the Schema for the timedcommitstatuses API
+        description: |-
+          TimedCommitStatus provides time-based gating for environment promotions. It monitors how long commits have been
+          running in specified environments and creates CommitStatus resources (as active commit statuses) based on
+          configured duration requirements. This enables "soak time" or "bake time" policies: changes must run successfully
+          in an environment for at least the configured duration before being promoted. Referenced in PromotionStrategy
+          via activeCommitStatuses using the configured key (which defaults to timer).
         externalDocs:
           description: CRD reference (examples and behavior)
           url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#timedcommitstatus
@@ -7833,8 +7864,10 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: WebRequestCommitStatus is the Schema for the webrequestcommitstatuses
-          API
+        description: |-
+          WebRequestCommitStatus gates promotions on external HTTP/HTTPS API validation. It makes HTTP requests to
+          configurable endpoints, evaluates a validation expression against the response, and creates or updates
+          CommitStatus resources.
         externalDocs:
           description: CRD reference (examples and behavior)
           url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#webrequestcommitstatus

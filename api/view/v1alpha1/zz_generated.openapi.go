@@ -572,7 +572,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatus(ref co
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "ArgoCDCommitStatus is the Schema for the argocdcommitstatuses API.",
+				Description: "ArgoCDCommitStatus aggregates the status of Argo CD Applications used in a promotion strategy. It selects Applications via a label selector and a reference to a PromotionStrategy, then creates CommitStatus resources using the configured key (which defaults to argocd-health) so that promotion gates reflect whether the selected applications are synced and healthy. Optional URL config can generate links (e.g. to the Argo CD UI) for each status.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
@@ -631,7 +631,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ArgoCDCommitStatusConfigu
 					},
 					"watchLocalApplications": {
 						SchemaProps: spec.SchemaProps{
-							Description: "WatchLocalApplications controls whether the controller monitors Argo CD Applications in the local cluster. When false, the controller will only watch Applications in remote clusters configured via kubeconfig secrets. This is useful when the Argo CD Application CRD is not installed in the local cluster or when all Applications are deployed to remote clusters.",
+							Description: "WatchLocalApplications controls whether the controller monitors Argo CD Applications in the local cluster. When false, the controller will only watch Applications in remote clusters configured via kubeconfig secrets. This is useful when the Argo CD Application CRD is not installed in the local cluster or when all Applications are deployed to remote clusters.\n\nThis value is evaluated at startup and requires a restart to change.",
 							Default:     false,
 							Type:        []string{"boolean"},
 							Format:      "",
@@ -1023,7 +1023,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicy(ref 
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "ChangeTransferPolicy is the Schema for the changetransferpolicies API",
+				Description: "ChangeTransferPolicy represents a pair of hydrated environment branches: the proposed branch and the active branch. When a new commit appears in the proposed branch, the controller opens a PR against the active branch. When all configured proposed commit status checks pass, the controller merges the PR. Active checks are continuously monitored, and their states are saved to the ChangeTransferPolicy status.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
@@ -1324,7 +1324,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ClusterScmProvider(ref co
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "ClusterScmProvider is the Schema for the clusterscmproviders API.",
+				Description: "ClusterScmProvider is the cluster-scoped alternative to ScmProvider. It represents an SCM instance (e.g. GitHub) and references a Secret in the namespace where the promoter runs. Any GitRepository in the cluster can reference a ClusterScmProvider by name.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
@@ -1656,7 +1656,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_CommitStatus(ref common.R
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "CommitStatus is the Schema for the commitstatuses API",
+				Description: "CommitStatus is a thin wrapper for the SCM's commit status API. CommitStatuses are the primary source of truth for promotion gates: the controller writes their state to the SCM so checkmarks/failures appear in the SCM UI.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
@@ -1929,7 +1929,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfiguration(r
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "ControllerConfiguration is the Schema for the controllerconfigurations API.",
+				Description: "ControllerConfiguration configures the behavior of the promoter controllers. A global instance is typically deployed with the controller and applies to all promotions. Each controller has a required section (WorkQueue settings, rate limiters, and controller-specific options such as PR templates or watchLocalApplications). Optional fields such as InstanceID may be omitted; defaults are provided in the installation manifests.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
@@ -2520,7 +2520,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatus(ref commo
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "GitCommitStatus is the Schema for the gitcommitstatuses API.\n\nIt validates commits from PromotionStrategy environments using configurable expressions and creates CommitStatus resources with the validation results.\n\nUse the Target field to control which commit is validated: - \"active\" (default): Validates the currently deployed commit - \"proposed\": Validates the incoming commit\n\nThe validation result is always reported on the PROPOSED commit to enable promotion gating, regardless of which commit was validated.\n\nWorkflow:\n 1. Controller reads PromotionStrategy to get ProposedHydratedSha and ActiveHydratedSha\n 2. Controller selects SHA to validate based on Target field\n 3. Controller fetches commit data (subject, body, author, trailers) for selected SHA\n 4. Controller evaluates expression against selected commit data\n 5. Controller creates/updates CommitStatus with result attached to PROPOSED SHA\n 6. PromotionStrategy checks CommitStatus on PROPOSED SHA before allowing promotion\n\nCommon use cases:\n  - \"Ensure active commit is not a revert before promoting\"",
+				Description: "GitCommitStatus validates commits from PromotionStrategy environments using configurable expressions and creates CommitStatus resources with the validation results.\n\nUse the Target field to control which commit is validated: - \"active\" (default): Validates the currently deployed commit - \"proposed\": Validates the incoming commit\n\nThe validation result is always reported on the PROPOSED commit to enable promotion gating, regardless of which commit was validated.\n\nWorkflow:\n 1. Controller reads PromotionStrategy to get ProposedHydratedSha and ActiveHydratedSha\n 2. Controller selects SHA to validate based on Target field\n 3. Controller fetches commit data (subject, body, author, trailers) for selected SHA\n 4. Controller evaluates expression against selected commit data\n 5. Controller creates/updates CommitStatus with result attached to PROPOSED SHA\n 6. PromotionStrategy checks CommitStatus on PROPOSED SHA before allowing promotion\n\nCommon use cases:\n  - \"Ensure active commit is not a revert before promoting\"",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
@@ -2949,7 +2949,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitRepository(ref common.
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "GitRepository is the Schema for the gitrepositories API",
+				Description: "GitRepository represents a single git repository. It references an ScmProvider (or ClusterScmProvider) to enable access via some configured auth mechanism.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
@@ -3606,7 +3606,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategy(ref com
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "PromotionStrategy is the Schema for the promotionstrategies API",
+				Description: "PromotionStrategy is the user's interface to controlling how changes are promoted through environments. In this resource you configure the list of live hydrated environment branches in promotion order and the checks (active and proposed commit statuses) that must pass between promotion steps.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
@@ -3894,7 +3894,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequest(ref common.Re
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "PullRequest is the Schema for the pullrequests API Once recorded, the SHA can be neither replaced nor cleared: a resource merges at most once, so any later disagreement is provider inconsistency or a status write built from a stale informer read, and honoring it would strand the promotion history note already written against the original SHA. Such a write is rejected rather than merged, which surfaces as a failed status apply and a retry.",
+				Description: "PullRequest is a thin wrapper around the SCM's pull request API. Once recorded, the SHA can be neither replaced nor cleared: a resource merges at most once, so any later disagreement is provider inconsistency or a status write built from a stale informer read, and honoring it would strand the promotion history note already written against the original SHA. Such a write is rejected rather than merged, which surfaces as a failed status apply and a retry.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
@@ -4198,7 +4198,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestStatus(ref com
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "PullRequestStatus defines the observed state of PullRequest",
+				Description: "PullRequestStatus defines the observed state of PullRequest.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"observedGeneration": {
@@ -4210,21 +4210,21 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestStatus(ref com
 					},
 					"id": {
 						SchemaProps: spec.SchemaProps{
-							Description: "ID the id of the pull request",
+							Description: "ID is the unique identifier of the pull request, set by the SCM.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
 					"state": {
 						SchemaProps: spec.SchemaProps{
-							Description: "State of the merge request closed/merged/open",
+							Description: "State is the state of the pull request. Empty before the controller observes an SCM state; otherwise closed, merged, open, merged-or-closed, or unknown.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
 					"prCreationTime": {
 						SchemaProps: spec.SchemaProps{
-							Description: "PRCreationTime the time the PR was created",
+							Description: "PRCreationTime is the time when the pull request was created.",
 							Ref:         ref(metav1.Time{}.OpenAPIModelName()),
 						},
 					},
@@ -4287,7 +4287,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestStatus(ref com
 							},
 						},
 						SchemaProps: spec.SchemaProps{
-							Description: "Conditions Represents the observations of the current state.",
+							Description: "Conditions represent the observations of the current state.",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
@@ -4449,7 +4449,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_RevertCommit(ref common.R
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "RevertCommit is the Schema for the revertcommits API",
+				Description: "RevertCommit is reserved for future revert-commit support and is not implemented yet.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
@@ -4596,7 +4596,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScheduledCommitStatus(ref
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "ScheduledCommitStatus is the Schema for the scheduledcommitstatuses API.",
+				Description: "ScheduledCommitStatus provides calendar-based gating for environment promotions using cron expressions with durations. It defines recurring allow and exclusion windows that control when promotions can happen.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
@@ -5009,7 +5009,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProvider(ref common.Re
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "ScmProvider is the Schema for the scmproviders API",
+				Description: "ScmProvider represents an SCM instance (e.g. GitHub, GitLab). It references a Secret in the same namespace to supply credentials for API access.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
@@ -5294,7 +5294,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatus(ref com
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "TimedCommitStatus is the Schema for the timedcommitstatuses API",
+				Description: "TimedCommitStatus provides time-based gating for environment promotions. It monitors how long commits have been running in specified environments and creates CommitStatus resources (as active commit statuses) based on configured duration requirements. This enables \"soak time\" or \"bake time\" policies: changes must run successfully in an environment for at least the configured duration before being promoted. Referenced in PromotionStrategy via activeCommitStatuses using the configured key (which defaults to timer).",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
@@ -5686,7 +5686,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_WebRequestCommitStatus(re
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "WebRequestCommitStatus is the Schema for the webrequestcommitstatuses API",
+				Description: "WebRequestCommitStatus gates promotions on external HTTP/HTTPS API validation. It makes HTTP requests to configurable endpoints, evaluates a validation expression against the response, and creates or updates CommitStatus resources.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {

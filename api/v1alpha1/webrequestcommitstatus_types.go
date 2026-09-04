@@ -587,7 +587,9 @@ type WebRequestCommitStatusEnvironmentStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
-// WebRequestCommitStatus is the Schema for the webrequestcommitstatuses API
+// WebRequestCommitStatus gates promotions on external HTTP/HTTPS API validation. It makes HTTP requests to
+// configurable endpoints, evaluates a validation expression against the response, and creates or updates
+// CommitStatus resources.
 // +kubebuilder:printcolumn:name="Key",type=string,JSONPath=`.spec.key`
 // +kubebuilder:printcolumn:name="PromotionStrategy",type=string,JSONPath=`.spec.promotionStrategyRef.name`
 // +kubebuilder:printcolumn:name="ReportOn",type=string,JSONPath=`.spec.reportOn`

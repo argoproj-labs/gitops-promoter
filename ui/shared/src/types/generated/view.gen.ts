@@ -44,7 +44,7 @@ export type components = {
              */
             sha: string;
         };
-        /** @description ArgoCDCommitStatus is the Schema for the argocdcommitstatuses API. */
+        /** @description ArgoCDCommitStatus aggregates the status of Argo CD Applications used in a promotion strategy. It selects Applications via a label selector and a reference to a PromotionStrategy, then creates CommitStatus resources using the configured key (which defaults to argocd-health) so that promotion gates reflect whether the selected applications are synced and healthy. Optional URL config can generate links (e.g. to the Argo CD UI) for each status. */
         ArgoCDCommitStatus: {
             /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
             apiVersion?: string;
@@ -175,7 +175,7 @@ export type components = {
             /** @description Url is the URL of the commit status */
             url?: string;
         };
-        /** @description ChangeTransferPolicy is the Schema for the changetransferpolicies API */
+        /** @description ChangeTransferPolicy represents a pair of hydrated environment branches: the proposed branch and the active branch. When a new commit appears in the proposed branch, the controller opens a PR against the active branch. When all configured proposed commit status checks pass, the controller merges the PR. Active checks are continuously monitored, and their states are saved to the ChangeTransferPolicy status. */
         ChangeTransferPolicy: {
             /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
             apiVersion?: string;
@@ -241,7 +241,7 @@ export type components = {
             /** @description PullRequest is the state of the pull request that was created for this ChangeTransferPolicy. */
             pullRequest?: components["schemas"]["PullRequestCommonStatus"];
         };
-        /** @description ClusterScmProvider is the Schema for the clusterscmproviders API. */
+        /** @description ClusterScmProvider is the cluster-scoped alternative to ScmProvider. It represents an SCM instance (e.g. GitHub) and references a Secret in the namespace where the promoter runs. Any GitRepository in the cluster can reference a ClusterScmProvider by name. */
         ClusterScmProvider: {
             /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
             apiVersion?: string;
@@ -321,7 +321,7 @@ export type components = {
             /** @description Subject is the subject line of the commit message */
             subject?: string;
         };
-        /** @description CommitStatus is the Schema for the commitstatuses API */
+        /** @description CommitStatus is a thin wrapper for the SCM's commit status API. CommitStatuses are the primary source of truth for promotion gates: the controller writes their state to the SCM so checkmarks/failures appear in the SCM UI. */
         CommitStatus: {
             /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
             apiVersion?: string;
@@ -526,9 +526,7 @@ export type components = {
             owner: string;
         };
         /**
-         * @description GitCommitStatus is the Schema for the gitcommitstatuses API.
-         *
-         *     It validates commits from PromotionStrategy environments using configurable expressions and creates CommitStatus resources with the validation results.
+         * @description GitCommitStatus validates commits from PromotionStrategy environments using configurable expressions and creates CommitStatus resources with the validation results.
          *
          *     Use the Target field to control which commit is validated: - "active" (default): Validates the currently deployed commit - "proposed": Validates the incoming commit
          *
@@ -715,7 +713,7 @@ export type components = {
              */
             projectId: number;
         };
-        /** @description GitRepository is the Schema for the gitrepositories API */
+        /** @description GitRepository represents a single git repository. It references an ScmProvider (or ClusterScmProvider) to enable access via some configured auth mechanism. */
         GitRepository: {
             /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
             apiVersion?: string;
@@ -1161,7 +1159,7 @@ export type components = {
             /** @description Interval controls how often to retry the HTTP request while in pending state. When reportOn is "proposed": stops polling after success for a given SHA. When reportOn is "active": always polls at this interval. */
             interval?: components["schemas"]["Duration"];
         };
-        /** @description PromotionStrategy is the Schema for the promotionstrategies API */
+        /** @description PromotionStrategy is the user's interface to controlling how changes are promoted through environments. In this resource you configure the list of live hydrated environment branches in promotion order and the checks (active and proposed commit statuses) that must pass between promotion steps. */
         PromotionStrategy: {
             /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
             apiVersion: string;
@@ -1264,7 +1262,7 @@ export type components = {
              */
             observedGeneration?: number;
         };
-        /** @description PullRequest is the Schema for the pullrequests API Once recorded, the SHA can be neither replaced nor cleared: a resource merges at most once, so any later disagreement is provider inconsistency or a status write built from a stale informer read, and honoring it would strand the promotion history note already written against the original SHA. Such a write is rejected rather than merged, which surfaces as a failed status apply and a retry. */
+        /** @description PullRequest is a thin wrapper around the SCM's pull request API. Once recorded, the SHA can be neither replaced nor cleared: a resource merges at most once, so any later disagreement is provider inconsistency or a status write built from a stale informer read, and honoring it would strand the promotion history note already written against the original SHA. Such a write is rejected rather than merged, which surfaces as a failed status apply and a retry. */
         PullRequest: {
             /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
             apiVersion?: string;
@@ -1345,11 +1343,11 @@ export type components = {
              */
             title: string;
         };
-        /** @description PullRequestStatus defines the observed state of PullRequest */
+        /** @description PullRequestStatus defines the observed state of PullRequest. */
         PullRequestStatus: {
             /** @description AppliedLabels lists SCM labels successfully applied by gitops-promoter (for sync and retraction). */
             appliedLabels?: string[];
-            /** @description Conditions Represents the observations of the current state. */
+            /** @description Conditions represent the observations of the current state. */
             conditions?: components["schemas"]["Condition"][];
             /**
              * @description ExternallyMergedOrClosed indicated that the pull request was no longer open on the SCM while the resource still desired it open. The PullRequest controller no longer sets this field.
@@ -1357,7 +1355,7 @@ export type components = {
              *     Deprecated: Use status.state merged-or-closed or unknown instead. Existing values are preserved when copied to ChangeTransferPolicy status. This field may be removed in a future API revision.
              */
             externallyMergedOrClosed?: boolean;
-            /** @description ID the id of the pull request */
+            /** @description ID is the unique identifier of the pull request, set by the SCM. */
             id?: string;
             /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
             instanceID?: string;
@@ -1368,11 +1366,11 @@ export type components = {
              * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
              */
             observedGeneration?: number;
-            /** @description PRCreationTime the time the PR was created */
+            /** @description PRCreationTime is the time when the pull request was created. */
             prCreationTime?: components["schemas"]["Time"];
             /** @description SCMSyncedSpecDigest fingerprints title and description last successfully synced to the SCM via provider.Update on an open pull request. */
             scmSyncedSpecDigest?: string;
-            /** @description State of the merge request closed/merged/open */
+            /** @description State is the state of the pull request. Empty before the controller observes an SCM state; otherwise closed, merged, open, merged-or-closed, or unknown. */
             state?: string;
             /** @description Url is the URL of the pull request. */
             url?: string;
@@ -1390,7 +1388,7 @@ export type components = {
             /** @description Commit contains metadata about the commit that is related in some way to another commit. */
             commit?: components["schemas"]["CommitMetadata"];
         };
-        /** @description ScheduledCommitStatus is the Schema for the scheduledcommitstatuses API. */
+        /** @description ScheduledCommitStatus provides calendar-based gating for environment promotions using cron expressions with durations. It defines recurring allow and exclusion windows that control when promotions can happen. */
         ScheduledCommitStatus: {
             /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
             apiVersion?: string;
@@ -1502,7 +1500,7 @@ export type components = {
              */
             expression: string;
         };
-        /** @description ScmProvider is the Schema for the scmproviders API */
+        /** @description ScmProvider represents an SCM instance (e.g. GitHub, GitLab). It references a Secret in the same namespace to supply credentials for API access. */
         ScmProvider: {
             /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
             apiVersion?: string;
@@ -1623,7 +1621,7 @@ export type components = {
          * @description Time is a wrapper around time.Time which supports correct marshaling to YAML and JSON.  Wrappers are provided for many of the factory methods that the time package offers.
          */
         Time: string;
-        /** @description TimedCommitStatus is the Schema for the timedcommitstatuses API */
+        /** @description TimedCommitStatus provides time-based gating for environment promotions. It monitors how long commits have been running in specified environments and creates CommitStatus resources (as active commit statuses) based on configured duration requirements. This enables "soak time" or "bake time" policies: changes must run successfully in an environment for at least the configured duration before being promoted. Referenced in PromotionStrategy via activeCommitStatuses using the configured key (which defaults to timer). */
         TimedCommitStatus: {
             /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
             apiVersion?: string;
@@ -1762,7 +1760,7 @@ export type components = {
              */
             template?: string;
         };
-        /** @description WebRequestCommitStatus is the Schema for the webrequestcommitstatuses API */
+        /** @description WebRequestCommitStatus gates promotions on external HTTP/HTTPS API validation. It makes HTTP requests to configurable endpoints, evaluates a validation expression against the response, and creates or updates CommitStatus resources. */
         WebRequestCommitStatus: {
             /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
             apiVersion?: string;

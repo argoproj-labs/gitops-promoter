@@ -129,7 +129,8 @@ func (cs *CommitStatus) SetStatusInstanceID(v *string) {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// CommitStatus is the Schema for the commitstatuses API
+// CommitStatus is a thin wrapper for the SCM's commit status API. CommitStatuses are the primary source of truth
+// for promotion gates: the controller writes their state to the SCM so checkmarks/failures appear in the SCM UI.
 // +kubebuilder:printcolumn:name="Key",type=string,JSONPath=`.metadata.labels['promoter\.argoproj\.io/commit-status']`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Sha",type=string,JSONPath=`.status.sha`
