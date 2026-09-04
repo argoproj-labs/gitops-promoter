@@ -1,5 +1,11 @@
 {
   "extends": "./tsconfig.json",
-  "include": ["src", "test", "vitest.config.ts", "../shared/src/**/*.ts"],
+  "include": [
+    "src",
+    "test",
+    "vitest.config.ts",
+    "../shared/src/**/*.ts",
+    "../shared/src/**/*.tsx"
+  ],
   "exclude": ["../shared/src/types/generated"]
 }

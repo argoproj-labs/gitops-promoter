@@ -3,6 +3,7 @@ import { StatusIcon, StatusType } from './StatusIcon';
 import React, { useState } from 'react';
 import { Tooltip } from './Tooltip';
 import { Check, HealthSummaryResult } from '@shared/types/promotion';
+import { commitStatusPlugins } from '@shared/components/plugins';
 import './HealthSummary.scss';
 
 export interface HealthSummaryProps {
@@ -50,27 +51,33 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({
     }
   };
 
-  const renderCheckItem = (check: Check, key: React.Key) => (
-    <Tooltip key={key} content={check.description}>
-      <div className="health-check-item">
-        <StatusIcon phase={check.status as StatusType} type="status" />
-        <div className="health-check-body">
-          {check.url ? (
-            <a
-              href={check.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="health-check-name-link"
-            >
-              {check.name}
-            </a>
-          ) : (
-            <span className="check-name-text">{check.name}</span>
-          )}
+  const renderCheckItem = (check: Check, key: React.Key) => {
+    const Plugin = check.kind ? commitStatusPlugins[check.kind] : undefined;
+
+    return (
+      <Tooltip key={key} content={check.description}>
+        <div className="health-check-item">
+          <StatusIcon phase={check.status as StatusType} type="status" />
+          <div className="health-check-body">
+            {Plugin && check.manager ? (
+              <Plugin check={check} manager={check.manager} />
+            ) : check.url ? (
+              <a
+                href={check.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="health-check-name-link"
+              >
+                {check.name}
+              </a>
+            ) : (
+              <span className="check-name-text">{check.name}</span>
+            )}
+          </div>
         </div>
-      </div>
-    </Tooltip>
-  );
+      </Tooltip>
+    );
+  };
 
   return (
     <div className="health-summary">
