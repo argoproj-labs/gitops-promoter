@@ -316,22 +316,7 @@ func (r *ScheduledCommitStatusReconciler) enqueueScheduledCommitStatusForPromoti
 		}
 
 		var scsList promoterv1alpha1.ScheduledCommitStatusList
-		if err := r.List(ctx, &scsList,
-			client.InNamespace(ps.Namespace),
-			client.MatchingFields{PromotionStrategyRefField: ps.Name},
-		); err != nil {
-			log.FromContext(ctx).Error(err, "failed to list ScheduledCommitStatus resources")
-			return nil
-		}
-
-		requests := make([]ctrl.Request, 0, len(scsList.Items))
-		for i := range scsList.Items {
-			requests = append(requests, ctrl.Request{
-				NamespacedName: client.ObjectKeyFromObject(&scsList.Items[i]),
-			})
-		}
-
-		return requests
+		return EnqueueCommitStatusGatesForPromotionStrategy(ctx, r.Client, ps, &scsList, "ScheduledCommitStatus")
 	})
 }
 
