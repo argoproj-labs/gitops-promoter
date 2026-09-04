@@ -300,6 +300,13 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 				g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: devName}, devCS)).To(Succeed())
 				g.Expect(devCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying a CommitStatusPhaseChanged event was emitted for the root environment transition")
+			Eventually(func(g Gomega) {
+				var eventList v1.EventList
+				g.Expect(k8sClient.List(ctx, &eventList, client.InNamespace("default"))).To(Succeed())
+				g.Expect(hasEventWithReasonAndMessage(eventList, dependentsSuccessfulCommitStatus.Name, constants.CommitStatusPhaseChangedReason, "to success")).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
 		It("should set Ready=False when declared branches do not match the PromotionStrategy", func() {

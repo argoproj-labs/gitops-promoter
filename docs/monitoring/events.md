@@ -98,6 +98,7 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 
 | Event Type | Event Reason                | Description                                                                                                              |
 |------------|-----------------------------|--------------------------------------------------------------------------------------------------------------------------|
+| Normal/Warning | CommitStatusPhaseChanged  | The ordering gate phase changed for an environment. Warning when the new phase is `failure`.                             |
 | Warning    | CommitStatusesNotReady      | One or more of the [CommitStatus](../crd-specs.md#commitstatus) resources managed by this DependentsSuccessfulCommitStatus is not Ready. |
 | Normal     | OrphanedCommitStatusDeleted | An orphaned [CommitStatus](../crd-specs.md#commitstatus) was deleted after it no longer applied (e.g., branch removed). |
 

@@ -417,12 +417,24 @@ func (r *DependentsSuccessfulCommitStatusReconciler) createOrUpdateDependentsSuc
 			WithBlockOwnerDeletion(true)).
 		WithSpec(commitStatusSpec)
 
+	// Read the previously persisted phase from the child CommitStatus (NotFound means this branch
+	// is being gated for the first time) so the phase-change event below stays transition-only.
+	previousPhase := ""
+	existingCommitStatus := &promoterv1alpha1.CommitStatus{}
+	if err := r.Get(ctx, client.ObjectKey{Namespace: dcs.Namespace, Name: commitStatusName}, existingCommitStatus); err == nil {
+		previousPhase = string(existingCommitStatus.Spec.Phase)
+	} else if !k8serrors.IsNotFound(err) {
+		return nil, fmt.Errorf("failed to get existing DAG CommitStatus %q: %w", commitStatusName, err)
+	}
+
 	commitStatus := &promoterv1alpha1.CommitStatus{}
 	commitStatus.Name = commitStatusName
 	commitStatus.Namespace = dcs.Namespace
 	if err := r.Patch(ctx, commitStatus, utils.ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(constants.DependentsSuccessfulCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
 		return nil, fmt.Errorf("failed to apply DAG CommitStatus: %w", err)
 	}
+
+	emitCommitStatusPhaseChangedEvent(r.Recorder, dcs, key, branch, previousPhase, string(phase))
 
 	return commitStatus, nil
 }
