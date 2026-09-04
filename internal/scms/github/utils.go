@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/google/go-github/v90/github"
+	"github.com/google/go-github/v91/github"
 	v1 "k8s.io/api/core/v1"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
