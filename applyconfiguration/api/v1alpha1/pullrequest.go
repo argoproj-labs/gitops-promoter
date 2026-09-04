@@ -29,7 +29,7 @@ import (
 // PullRequestApplyConfiguration represents a declarative configuration of the PullRequest type for use
 // with apply.
 //
-// PullRequest is the Schema for the pullrequests API
+// PullRequest is a thin wrapper around the SCM's pull request API.
 // Once recorded, the SHA can be neither replaced nor cleared: a resource merges at most once, so any
 // later disagreement is provider inconsistency or a status write built from a stale informer read, and
 // honoring it would strand the promotion history note already written against the original SHA. Such a

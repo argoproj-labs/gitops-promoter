@@ -13,6 +13,8 @@ Add or update `internal/controller/testdata/<Kind>.yaml` (PascalCase filename ma
 - Use valid values that pass kubebuilder validation markers on the Go types.
 - Keep names, namespaces, and references consistent with how controllers and envtest suites create related objects.
 
+**ExactlyOneOf provider fields:** Several specs use `+kubebuilder:validation:ExactlyOneOf` (for example `GitRepositorySpec` and `ScmProviderSpec`), where exactly one provider block must be set at apply time. Keep all provider options present in the example YAML so readers can see available fields, and add a comment that only one should be set when applying. Examples only need to pass strict JSON/YAML unmarshaling into the Go type; they are not required to satisfy CEL ExactlyOneOf rules at decode time.
+
 ### 2. Embed the example on the CRD Specs page
 
 Add or update a `### <Kind>` section in [`docs/crd-specs.md`](../crd-specs.md) with a short narrative, then include the example:

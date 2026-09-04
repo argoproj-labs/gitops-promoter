@@ -40,7 +40,7 @@ type RevertCommitStatus struct{}
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// RevertCommit is the Schema for the revertcommits API
+// RevertCommit requests that the controller create a revert commit on a branch.
 type RevertCommit struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

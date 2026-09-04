@@ -24,8 +24,9 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ScheduledCommitStatus is the Schema for the scheduledcommitstatuses
-          API.
+        description: |-
+          ScheduledCommitStatus provides calendar-based gating for environment promotions using cron expressions
+          with durations. It defines recurring allow and exclusion windows that control when promotions can happen.
         externalDocs:
           description: CRD reference (examples and behavior)
           url: https://gitops-promoter.readthedocs.io/en/stable/crd-specs/#scheduledcommitstatus
