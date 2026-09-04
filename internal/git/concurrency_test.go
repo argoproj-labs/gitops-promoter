@@ -11,8 +11,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 )
@@ -253,7 +251,7 @@ func buildConflictRepo() *sharedRepo {
 		active:   active,
 		proposed: proposed,
 		repo: &v1alpha1.GitRepository{
-			ObjectMeta: metav1.ObjectMeta{Name: "testrepo", Namespace: "default"},
+			Name: "testrepo", Namespace: "default",
 			Spec: v1alpha1.GitRepositorySpec{
 				GitHub: &v1alpha1.GitHubRepo{Owner: "test-owner", Name: "testrepo"},
 				ScmProviderRef: v1alpha1.ScmProviderObjectReference{

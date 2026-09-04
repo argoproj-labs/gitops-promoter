@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"regexp"
 	"strconv"
 	"strings"
@@ -193,9 +194,7 @@ func (g *EnvironmentOperations) fetchCommits(ctx context.Context, shas ...string
 	if err != nil {
 		return err
 	}
-	for sha, commit := range results {
-		g.commits[sha] = commit
-	}
+	maps.Copy(g.commits, results)
 	return nil
 }
 
@@ -235,9 +234,7 @@ func (g *EnvironmentOperations) fetchBlobs(ctx context.Context, requests ...stri
 	if err != nil {
 		return err
 	}
-	for req, blob := range results {
-		g.blobs[req] = blob
-	}
+	maps.Copy(g.blobs, results)
 	return nil
 }
 

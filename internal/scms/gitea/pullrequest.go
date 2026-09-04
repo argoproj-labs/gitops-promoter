@@ -456,7 +456,7 @@ func (pr *PullRequest) listAllRepoLabels(owner, repo string) ([]*gitea.Label, er
 	page := 1
 	for {
 		repoLabels, resp, err := pr.giteaClient.ListRepoLabels(owner, repo, gitea.ListLabelsOptions{
-			ListOptions: gitea.ListOptions{Page: page, PageSize: 50},
+			Page: page, PageSize: 50,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to list repository labels: %w", err)

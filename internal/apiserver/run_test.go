@@ -112,7 +112,7 @@ var _ = Describe("Run integration (envtest + in-process server)", func() {
 	BeforeEach(func() {
 		env, cfg, cl = startRunEnvtest()
 		Expect(cl.Create(context.Background(), &corev1.Namespace{
-			ObjectMeta: metav1.ObjectMeta{Name: testNamespace},
+			Name: testNamespace,
 		})).To(Succeed())
 	})
 
@@ -123,7 +123,7 @@ var _ = Describe("Run integration (envtest + in-process server)", func() {
 
 	It("serves promotionstrategydetails from the envtest-backed read cache", func() {
 		ps := &promoterv1alpha1.PromotionStrategy{
-			ObjectMeta: metav1.ObjectMeta{Name: testPSName, Namespace: testNamespace},
+			Name: testPSName, Namespace: testNamespace,
 			Spec: promoterv1alpha1.PromotionStrategySpec{
 				RepositoryReference: promoterv1alpha1.ObjectReference{Name: "my-repo"},
 				Environments:        []promoterv1alpha1.Environment{{Branch: "environment/dev"}},
@@ -173,7 +173,7 @@ var _ = Describe("Run integration (envtest + in-process server)", func() {
 
 	It("exits promptly when the context is cancelled with an active watch", func() {
 		ps := &promoterv1alpha1.PromotionStrategy{
-			ObjectMeta: metav1.ObjectMeta{Name: testPSName, Namespace: testNamespace},
+			Name: testPSName, Namespace: testNamespace,
 			Spec: promoterv1alpha1.PromotionStrategySpec{
 				RepositoryReference: promoterv1alpha1.ObjectReference{Name: "my-repo"},
 				Environments:        []promoterv1alpha1.Environment{{Branch: "environment/dev"}},

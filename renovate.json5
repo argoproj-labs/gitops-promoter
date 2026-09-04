@@ -101,7 +101,7 @@
       // (e.g. core/v1.PodStatusResult in 0.37) and Check Codegen fails.
       postUpgradeTasks: {
         commands: [
-          'install-tool golang 1.26.6',
+          'install-tool golang 1.27.1',
           'make build-installer',
           'make generate-apiserver',
           'make generate-ui-types',
@@ -143,7 +143,7 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
-          'install-tool golang 1.26.6',
+          'install-tool golang 1.27.1',
           'make build-installer',
           'make generate-apiserver',
           'make generate-ui-types',
@@ -288,7 +288,7 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
-          'install-tool golang 1.26.6',
+          'install-tool golang 1.27.1',
           // go fix applies stdlib fixers for the new toolchain (any, min/max, iterators, …).
           // Run before lint-fix so golangci-lint can clean up anything fix leaves behind.
           'make go-fix || true',
@@ -399,7 +399,7 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
-          'install-tool golang 1.26.6',
+          'install-tool golang 1.27.1',
           'make build-installer',
         ],
         fileFilters: [
@@ -419,7 +419,7 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
-          'install-tool golang 1.26.6',
+          'install-tool golang 1.27.1',
           'make build-installer',
         ],
         // build-installer also runs cel-cost-report and generate-extension-icon-styles;
@@ -447,7 +447,7 @@
       automerge: false,
       postUpgradeTasks: {
         commands: [
-          'install-tool golang 1.26.6',
+          'install-tool golang 1.27.1',
           'make manifests',
           'make build-installer',
         ],

@@ -10,7 +10,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
@@ -383,7 +382,7 @@ func newTestGitRepository() *v1alpha1.GitRepository {
 				Name: "testprovider",
 			},
 		},
-		ObjectMeta: metav1.ObjectMeta{Name: "testrepo", Namespace: "default"},
+		Name: "testrepo", Namespace: "default",
 	}
 }
 
