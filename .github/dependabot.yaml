@@ -57,11 +57,13 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "daily"
-    open-pull-requests-limit: 10
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    # One grouped PR per week; action bumps here have been low-risk.
+    open-pull-requests-limit: 1
     groups:
-      # init/analyze/upload-sarif must share the same release; partial bumps fail
-      # CodeQL with "Loaded a configuration file for version X, but running version Y".
-      codeql-action:
+      github-actions:
         patterns:
-          - "github/codeql-action/**"
+          - "*"
