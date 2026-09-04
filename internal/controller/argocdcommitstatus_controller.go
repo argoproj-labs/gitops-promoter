@@ -452,7 +452,7 @@ func enqueueArgoCDCommitStatusForPromotionStrategy(mcMgr mcmanager.Manager) mcha
 		if !ok {
 			return nil
 		}
-		reqs := EnqueueCommitStatusGatesForPromotionStrategy[*promoterv1alpha1.ArgoCDCommitStatusList](
+		reqs := EnqueueCommitStatusGatesForPromotionStrategy[promoterv1alpha1.ArgoCDCommitStatusList](
 			ctx, mcMgr.GetLocalManager().GetClient(), ps,
 		)
 		mcReqs := make([]mcreconcile.Request, len(reqs))

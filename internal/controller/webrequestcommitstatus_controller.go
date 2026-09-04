@@ -239,7 +239,7 @@ func (r *WebRequestCommitStatusReconciler) SetupWithManager(ctx context.Context,
 
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.WebRequestCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&promoterv1alpha1.PromotionStrategy{}, CommitStatusGatePromotionStrategyWatchHandler[*promoterv1alpha1.WebRequestCommitStatusList](r.Client)).
+		Watches(&promoterv1alpha1.PromotionStrategy{}, CommitStatusGatePromotionStrategyWatchHandler[promoterv1alpha1.WebRequestCommitStatusList](r.Client)).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Named("webrequestcommitstatus").
 		Complete(r)

@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"reflect"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -33,12 +32,18 @@ import (
 // EnqueueCommitStatusGatesForPromotionStrategy lists gate resources in the
 // PromotionStrategy namespace that reference ps via spec.promotionStrategyRef.name
 // and returns reconcile requests for each match.
-func EnqueueCommitStatusGatesForPromotionStrategy[L client.ObjectList](
+func EnqueueCommitStatusGatesForPromotionStrategy[
+	GateList any,
+	GateListPtr interface {
+		*GateList
+		client.ObjectList
+	},
+](
 	ctx context.Context,
 	c client.Client,
 	ps *promoterv1alpha1.PromotionStrategy,
 ) []reconcile.Request {
-	list := newObjectList[L]()
+	list := GateListPtr(new(GateList))
 	if err := c.List(ctx, list,
 		client.InNamespace(ps.Namespace),
 		client.MatchingFields{PromotionStrategyRefField: ps.Name},
@@ -68,22 +73,19 @@ func EnqueueCommitStatusGatesForPromotionStrategy[L client.ObjectList](
 }
 
 // CommitStatusGatePromotionStrategyWatchHandler returns a watch handler that enqueues
-// every gate of type L in the PromotionStrategy namespace that references that strategy.
-func CommitStatusGatePromotionStrategyWatchHandler[L client.ObjectList](c client.Client) handler.EventHandler {
+// every gate of type GateList in the PromotionStrategy namespace that references that strategy.
+func CommitStatusGatePromotionStrategyWatchHandler[
+	GateList any,
+	GateListPtr interface {
+		*GateList
+		client.ObjectList
+	},
+](c client.Client) handler.EventHandler {
 	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
 		ps, ok := obj.(*promoterv1alpha1.PromotionStrategy)
 		if !ok {
 			return nil
 		}
-		return EnqueueCommitStatusGatesForPromotionStrategy[L](ctx, c, ps)
+		return EnqueueCommitStatusGatesForPromotionStrategy[GateList, GateListPtr](ctx, c, ps)
 	})
-}
-
-func newObjectList[L client.ObjectList]() L {
-	var list L
-	v := reflect.ValueOf(&list).Elem()
-	if v.Kind() == reflect.Pointer && v.IsNil() {
-		v.Set(reflect.New(v.Type().Elem()))
-	}
-	return list
 }

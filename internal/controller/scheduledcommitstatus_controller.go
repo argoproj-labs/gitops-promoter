@@ -139,7 +139,7 @@ func (r *ScheduledCommitStatusReconciler) SetupWithManager(ctx context.Context, 
 
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.ScheduledCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&promoterv1alpha1.PromotionStrategy{}, CommitStatusGatePromotionStrategyWatchHandler[*promoterv1alpha1.ScheduledCommitStatusList](r.Client)).
+		Watches(&promoterv1alpha1.PromotionStrategy{}, CommitStatusGatePromotionStrategyWatchHandler[promoterv1alpha1.ScheduledCommitStatusList](r.Client)).
 		Named("scheduledcommitstatus").
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Complete(r)
@@ -306,6 +306,7 @@ func (r *ScheduledCommitStatusReconciler) calculateRequeueDuration(ctx context.C
 
 	return defaultDuration
 }
+
 // windowEvalResult holds the result of evaluating scheduled windows for an environment.
 type windowEvalResult struct {
 	Active  *windowInfo

@@ -78,7 +78,7 @@ var _ = Describe("EnqueueCommitStatusGatesForPromotionStrategy", func() {
 				Spec:       promoterv1alpha1.GitCommitStatusSpec{PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName}},
 			},
 			func(c client.Client) []reconcile.Request {
-				return EnqueueCommitStatusGatesForPromotionStrategy[*promoterv1alpha1.GitCommitStatusList](ctx, c, ps)
+				return EnqueueCommitStatusGatesForPromotionStrategy[promoterv1alpha1.GitCommitStatusList](ctx, c, ps)
 			},
 		),
 		Entry("TimedCommitStatus",
@@ -87,7 +87,7 @@ var _ = Describe("EnqueueCommitStatusGatesForPromotionStrategy", func() {
 				Spec:       promoterv1alpha1.TimedCommitStatusSpec{PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName}},
 			},
 			func(c client.Client) []reconcile.Request {
-				return EnqueueCommitStatusGatesForPromotionStrategy[*promoterv1alpha1.TimedCommitStatusList](ctx, c, ps)
+				return EnqueueCommitStatusGatesForPromotionStrategy[promoterv1alpha1.TimedCommitStatusList](ctx, c, ps)
 			},
 		),
 		Entry("WebRequestCommitStatus",
@@ -96,7 +96,7 @@ var _ = Describe("EnqueueCommitStatusGatesForPromotionStrategy", func() {
 				Spec:       promoterv1alpha1.WebRequestCommitStatusSpec{PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName}},
 			},
 			func(c client.Client) []reconcile.Request {
-				return EnqueueCommitStatusGatesForPromotionStrategy[*promoterv1alpha1.WebRequestCommitStatusList](ctx, c, ps)
+				return EnqueueCommitStatusGatesForPromotionStrategy[promoterv1alpha1.WebRequestCommitStatusList](ctx, c, ps)
 			},
 		),
 	)
@@ -107,7 +107,7 @@ var _ = Describe("EnqueueCommitStatusGatesForPromotionStrategy", func() {
 			Spec:       promoterv1alpha1.GitCommitStatusSpec{PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: otherPS}},
 		}
 		c := newClient(gate)
-		reqs := EnqueueCommitStatusGatesForPromotionStrategy[*promoterv1alpha1.GitCommitStatusList](ctx, c, ps)
+		reqs := EnqueueCommitStatusGatesForPromotionStrategy[promoterv1alpha1.GitCommitStatusList](ctx, c, ps)
 		Expect(reqs).To(BeEmpty())
 	})
 
@@ -121,7 +121,7 @@ var _ = Describe("EnqueueCommitStatusGatesForPromotionStrategy", func() {
 			Spec:       promoterv1alpha1.GitCommitStatusSpec{PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName}},
 		}
 		c := newClient(localGate, otherGate)
-		reqs := EnqueueCommitStatusGatesForPromotionStrategy[*promoterv1alpha1.GitCommitStatusList](ctx, c, ps)
+		reqs := EnqueueCommitStatusGatesForPromotionStrategy[promoterv1alpha1.GitCommitStatusList](ctx, c, ps)
 		Expect(requestNames(reqs)).To(Equal([]string{ns + "/local"}))
 	})
 
@@ -135,7 +135,7 @@ var _ = Describe("EnqueueCommitStatusGatesForPromotionStrategy", func() {
 			Spec:       promoterv1alpha1.GitCommitStatusSpec{PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName}},
 		}
 		c := newClient(gateA, gateB)
-		reqs := EnqueueCommitStatusGatesForPromotionStrategy[*promoterv1alpha1.GitCommitStatusList](ctx, c, ps)
+		reqs := EnqueueCommitStatusGatesForPromotionStrategy[promoterv1alpha1.GitCommitStatusList](ctx, c, ps)
 		Expect(requestNames(reqs)).To(ConsistOf(ns+"/gate-a", ns+"/gate-b"))
 	})
 })

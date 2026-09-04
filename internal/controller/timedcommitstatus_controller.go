@@ -151,7 +151,7 @@ func (r *TimedCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr 
 
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.TimedCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&promoterv1alpha1.PromotionStrategy{}, CommitStatusGatePromotionStrategyWatchHandler[*promoterv1alpha1.TimedCommitStatusList](r.Client)).
+		Watches(&promoterv1alpha1.PromotionStrategy{}, CommitStatusGatePromotionStrategyWatchHandler[promoterv1alpha1.TimedCommitStatusList](r.Client)).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Complete(r)
 	if err != nil {
