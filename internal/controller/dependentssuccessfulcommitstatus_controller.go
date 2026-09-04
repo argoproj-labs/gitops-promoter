@@ -307,7 +307,7 @@ func isUpstreamPending(g *dag, branch, targetDrySha string, currentActiveCommitT
 	envIsNoOp := envHydratedForDrySha != envProposedDrySha
 	envHasPendingChanges := envStatus.Active.Dry.Sha != envProposedDrySha
 	if !envIsNoOp || envHasPendingChanges {
-		return true, "Waiting for previous environment to be promoted"
+		return true, fmt.Sprintf(`Waiting for %q to be promoted`, branch)
 	}
 
 	// Even a clean no-op must be healthy before we look past it.

@@ -745,8 +745,7 @@ var _ = Describe("DAG graph logic", func() {
 			Expect(pending).To(BeFalse())
 		})
 
-		// Fan-in pending reason comes from the first unsatisfied upstream. The
-		// "not promoted" path still uses the legacy generic message (no branch name).
+		// Fan-in pending reason comes from the first unsatisfied upstream and names the branch.
 		It("fan-in: returns the blocking upstream's pending reason", func() {
 			status := map[string]promoterv1alpha1.EnvironmentStatus{
 				"e2e":  dagEnvStatus("e2e", newDry, newDry, true, newer),
@@ -754,7 +753,7 @@ var _ = Describe("DAG graph logic", func() {
 			}
 			pending, reason := upstreamsPending(diamond(), "prd", newDry, metav1.NewTime(newer), status)
 			Expect(pending).To(BeTrue())
-			Expect(reason).To(Equal("Waiting for previous environment to be promoted"))
+			Expect(reason).To(Equal(`Waiting for "perf" to be promoted`))
 		})
 
 		// Case 7 (hydrated, no-op, no pending changes, healthy → RECURSE): a clean, healthy no-op
@@ -813,7 +812,7 @@ var _ = Describe("DAG graph logic", func() {
 			}
 			pending, reason := upstreamsPending(linear(), "prd", newDry, metav1.NewTime(newer), status)
 			Expect(pending).To(BeTrue())
-			Expect(reason).To(ContainSubstring("Waiting for previous environment to be promoted"))
+			Expect(reason).To(Equal(`Waiting for "stg" to be promoted`))
 		})
 
 		// Case 4, commit-time sub-check: an upstream that has merged the target dry but whose commit

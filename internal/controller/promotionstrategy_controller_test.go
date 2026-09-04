@@ -5560,7 +5560,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Entry("blocks when hydrated but not merged (has real changes)",
 				"OLD", "ABC", "ABC", // prev: hydrated (note=ABC) but not merged (active=OLD)
 				"OLD", "ABC", "ABC", // curr
-				true, "Waiting for previous environment to be promoted"),
+				true, `Waiting for "linear-env-0" to be promoted`),
 
 			// Case 3: Hydrated, NOT no-op, merged, NOT healthy → BLOCK "commit status"
 			// (tested separately below since DescribeTable helper sets healthy)
@@ -5651,7 +5651,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 					true, "Waiting for the hydrator to finish processing the proposed dry commit"),
 				Entry("blocks when hydrated but not merged",
 					"OLD", "ABC", "OLD", "ABC",
-					true, "Waiting for previous environment to be promoted"),
+					true, `Waiting for "linear-env-0" to be promoted`),
 				Entry("allows when merged",
 					"ABC", "ABC", "OLD", "ABC",
 					false, ""),
@@ -5702,7 +5702,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				isPending, reason := linearUpstreamsPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
 
 				Expect(isPending).To(BeTrue())
-				Expect(reason).To(Equal("Waiting for previous environment to be promoted"))
+				Expect(reason).To(Equal(`Waiting for "env1" to be promoted`))
 			})
 
 			It("blocks on unhealthy env after recursing through no-ops", func() {
@@ -5837,7 +5837,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				// Should block because env1 has pending changes (active=OLD != proposed=COMMIT1)
 				// even though commit 2 is a no-op for env1
 				Expect(isPending).To(BeTrue())
-				Expect(reason).To(Equal("Waiting for previous environment to be promoted"))
+				Expect(reason).To(Equal(`Waiting for "env1" to be promoted`))
 			})
 
 			// Same scenario but env1's PR has been merged - should allow
@@ -5902,7 +5902,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				isPending, reason := linearUpstreamsPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
 
 				Expect(isPending).To(BeTrue())
-				Expect(reason).To(Equal("Waiting for previous environment to be promoted"))
+				Expect(reason).To(Equal(`Waiting for "env2" to be promoted`))
 			})
 
 			It("blocks when immediate predecessor merged but unhealthy", func() {

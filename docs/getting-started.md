@@ -536,9 +536,9 @@ spec:
 > (Note the difference between the `syncSource` and the `hydrateTo` fields.)
 
 > [!TIP]
-> For non-linear promotion graphs, set `spec.environments` and `dependsOn` on the
-> [DependentsSuccessfulCommitStatus](gating-promotions/built-in-gates/dependents-successful-commit-status.md#custom-dependency-graph)
-> (not on the PromotionStrategy).
+> For non-linear promotion graphs, set `spec.environments` with explicit `dependsOn` edges on the
+> [DependentsSuccessfulCommitStatus](gating-promotions/built-in-gates/dependents-successful-commit-status.md#custom-dependency-graph).
+> Omit `spec.environments` to infer the linear default from the PromotionStrategy's environment order.
 
 > [!TIP]
 > For monorepos, you can share a single active branch across multiple PromotionStrategies by setting

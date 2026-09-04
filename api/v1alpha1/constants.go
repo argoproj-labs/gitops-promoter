@@ -30,9 +30,6 @@ const TimedCommitStatusDefaultKey = "timer"
 // dependent environments are promoted and successful.
 const DependentsSuccessfulCommitStatusKey = "dependents-successful"
 
-// CommitStatusPreviousEnvironmentStatusesAnnotation is the label used to identify commit statuses that make up the aggregated active commit status
-const CommitStatusPreviousEnvironmentStatusesAnnotation = "promoter.argoproj.io/previous-environment-statuses"
-
 // Finalizer constants for preventing premature resource deletion
 
 // PullRequestFinalizer prevents deletion of PullRequest until the PR is closed in the SCM
