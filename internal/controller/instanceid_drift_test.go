@@ -167,18 +167,26 @@ func setupInstanceIDDriftPromotionStrategy(ctx context.Context) (utils.PromoterR
 			Environments: []promoterv1alpha1.Environment{
 				{Branch: testBranchDevelopment},
 			},
-		},
-		Status: promoterv1alpha1.PromotionStrategyStatus{
-			Environments: []promoterv1alpha1.EnvironmentStatus{
-				{Branch: testBranchDevelopment},
+			// Ordering gate must be declared so reconcile reaches ensureControllerInstanceIDStable
+			// instead of hard-failing earlier on a missing DependentsSuccessfulCommitStatus.
+			ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{
+				{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
 			},
 		},
 	}
 	Expect(k8sClient.Create(ctx, ps)).To(Succeed())
-	Expect(k8sClient.Get(ctx, key, ps)).To(Succeed())
-	ps.Status.Environments = []promoterv1alpha1.EnvironmentStatus{{Branch: testBranchDevelopment}}
-	Expect(k8sClient.Status().Update(ctx, ps)).To(Succeed())
-	return ps, key, func() { deleteIgnoringNotFound(ctx, ps) }
+	dcs := &promoterv1alpha1.DependentsSuccessfulCommitStatus{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+		Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
+			PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+			Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+		},
+	}
+	Expect(k8sClient.Create(ctx, dcs)).To(Succeed())
+	return ps, key, func() {
+		deleteIgnoringNotFound(ctx, dcs)
+		deleteIgnoringNotFound(ctx, ps)
+	}
 }
 
 func setupInstanceIDDriftChangeTransferPolicy(ctx context.Context) (utils.PromoterResource, types.NamespacedName, func()) {

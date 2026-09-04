@@ -62,9 +62,9 @@ Multi-install resources must carry the matching label. Controllers propagate `pr
 
 | Parent | Children that inherit the label |
 | ------ | -------------------------------- |
-| `PromotionStrategy` | `ChangeTransferPolicy`, previous-environment `CommitStatus` |
+| `PromotionStrategy` | `ChangeTransferPolicy` |
 | `ChangeTransferPolicy` | `PullRequest` |
-| Gate CRs (`ArgoCDCommitStatus`, `TimedCommitStatus`, etc.) | `CommitStatus` |
+| Gate CRs (`DependentsSuccessfulCommitStatus`, `ArgoCDCommitStatus`, `TimedCommitStatus`, etc.) | `CommitStatus` |
 
 Label a root `PromotionStrategy` (or gate CR created alongside it) with the install's instance ID before the controller will reconcile it:
 

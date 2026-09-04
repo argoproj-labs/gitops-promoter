@@ -42,6 +42,7 @@ spec:
   activeCommitStatuses:
     - key: argocd-app-health
   proposedCommitStatuses:
+    - key: dependents-successful # ordering gate; see DependentsSuccessfulCommitStatus
     - key: security-scan
   environments:
     - branch: environment/dev
@@ -52,6 +53,15 @@ spec:
       - key: performance-test
       proposedCommitStatuses:
       - key: deployment-freeze
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: DependentsSuccessfulCommitStatus
+metadata:
+  name: example-promotion-strategy
+spec:
+  key: dependents-successful
+  promotionStrategyRef:
+    name: example-promotion-strategy
 ```
 
 ## Getting Started

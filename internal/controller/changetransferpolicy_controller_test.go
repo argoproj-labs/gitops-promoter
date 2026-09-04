@@ -1444,9 +1444,9 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 		// Regression guard: when the proposed branch advances to a new hydrated
 		// commit that has no git note yet, setCommitMetadata must clear
 		// Status.Proposed.Note so it does not retain the previous reconcile's
-		// drySha. PromotionStrategy.updatePreviousEnvironmentCommitStatus uses
+		// drySha. PromotionStrategy.updateDependentsSuccessfulCommitStatus uses
 		// getEffectiveHydratedDrySha (note-first) to compute targetDrySha for
-		// the previous-environment gate; a stale Proposed.Note pointing at the
+		// the DAG ordering gate; a stale Proposed.Note pointing at the
 		// previous dry SHA causes the gate to compare against the wrong target
 		// and mark success against an older dry, allowing e.g. production to
 		// merge ahead of dev/staging before their hydrators have caught up.
@@ -2118,7 +2118,9 @@ var _ = Describe("emitPromotionLifecycleEvents", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				declareDependentsSuccessfulGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 				ctpNamespacedName = types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, testBranchDevelopment)),
@@ -2453,7 +2455,9 @@ var _ = Describe("emitPromotionLifecycleEvents", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				declareDependentsSuccessfulGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 				ctpNamespacedName = types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, testBranchDevelopment)),

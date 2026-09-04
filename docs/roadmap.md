@@ -4,7 +4,6 @@
 
 ### Promotion strategy and pipelines
 
-- **DAG-style promotion strategies** — Model promotion flows beyond a linear environment chain, including environment dependencies and parallel branch targets within a step ([#1364](https://github.com/argoproj-labs/gitops-promoter/issues/1364)).
 - **[Configurable promotion merge commit message template](https://github.com/argoproj-labs/gitops-promoter/issues/1562)** — Customize the commit message when Promoter merges a `-next` branch into an environment branch.
 
 ### Commit status and gating
@@ -73,6 +72,13 @@ spec:
 Use the same key in `PromotionStrategy` `activeCommitStatuses` for ArgoCDCommitStatus, or in `activeCommitStatuses` / `proposedCommitStatuses` for TimedCommitStatus as appropriate.
 
 See also: [Argo CD Commit Status](gating-promotions/built-in-gates/argocd-commit-status.md), [Timed Commit Status](gating-promotions/built-in-gates/timed-commit-status.md), and [Developing a CommitStatus](contributing/developing-a-commitstatus.md).
+
+### Promotion ordering safety check (planned for v1.0)
+
+The PromotionStrategy controller currently hard-fails reconcile when no `DependentsSuccessfulCommitStatus` targets a
+strategy, or when a gate's `key` is undeclared in the effective `proposedCommitStatuses` for an environment branch.
+This guard may be relaxed in v1.0 so misconfiguration surfaces differently. See [Upgrading](upgrading.md#038-promotion-ordering-gate) for the 0.38
+migration that introduced the gate CR.
 
 ### ArgoCDCommitStatus legacy CommitStatus cleanup (planned for v1.0)
 

@@ -66,7 +66,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 		})
 	})
 
-	Context("When reconciling a resource with no commit statuses", func() {
+	Context("When reconciling a resource with only the ordering gate configured", func() {
 		Context("When git repo is not initialized", func() {
 			var name string
 			var promotionStrategy *promoterv1alpha1.PromotionStrategy
@@ -81,7 +81,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				declareDependentsSuccessfulGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 			})
 
 			AfterEach(func() {
@@ -130,7 +132,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				declareDependentsSuccessfulGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 				// Initialize empty structs for use in tests
 				ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
@@ -221,8 +225,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Active.CommitStatuses)).To(BeTrue())
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Sha).To(Equal(ctpDev.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Sha).To(Equal(ctpDev.Status.Proposed.Hydrated.Sha))
-					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses)).To(BeTrue())
+					// The proposed environment has no in-flight change (active and proposed dry SHAs match),
+					// so the DAG ordering gate was never evaluated by the DAG controller; the
+					// ChangeTransferPolicy reports the placeholder pending status for the unreported CommitStatus.
+					g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses).To(Equal(
+						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+							{
+								Key:         promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+								Phase:       string(promoterv1alpha1.CommitPhasePending),
+								Description: "Waiting for status to be reported",
+							},
+						},
+					))
 
 					// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
 					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testBranchStaging))
@@ -232,8 +246,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Active.CommitStatuses)).To(BeTrue())
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.Dry.Sha).To(Equal(ctpStaging.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.Hydrated.Sha).To(Equal(ctpStaging.Status.Proposed.Hydrated.Sha))
-					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses)).To(BeTrue())
+					// The proposed environment has no in-flight change (active and proposed dry SHAs match),
+					// so the DAG ordering gate was never evaluated by the DAG controller; the
+					// ChangeTransferPolicy reports the placeholder pending status for the unreported CommitStatus.
+					g.Expect(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses).To(Equal(
+						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+							{
+								Key:         promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+								Phase:       string(promoterv1alpha1.CommitPhasePending),
+								Description: "Waiting for status to be reported",
+							},
+						},
+					))
 
 					// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
 					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testBranchProduction))
@@ -243,8 +267,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[2].Active.CommitStatuses)).To(BeTrue())
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.Dry.Sha).To(Equal(ctpProd.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.Hydrated.Sha).To(Equal(ctpProd.Status.Proposed.Hydrated.Sha))
-					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses)).To(BeTrue())
+					// The proposed environment has no in-flight change (active and proposed dry SHAs match),
+					// so the DAG ordering gate was never evaluated by the DAG controller; the
+					// ChangeTransferPolicy reports the placeholder pending status for the unreported CommitStatus.
+					g.Expect(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses).To(Equal(
+						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+							{
+								Key:         promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+								Phase:       string(promoterv1alpha1.CommitPhasePending),
+								Description: "Waiting for status to be reported",
+							},
+						},
+					))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Adding a pending commit")
@@ -404,7 +438,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, clusterScmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				declareDependentsSuccessfulGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 				// Initialize empty structs for use in tests
 				ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
@@ -495,8 +531,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Active.CommitStatuses)).To(BeTrue())
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Sha).To(Equal(ctpDev.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Sha).To(Equal(ctpDev.Status.Proposed.Hydrated.Sha))
-					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses)).To(BeTrue())
+					// The proposed environment has no in-flight change (active and proposed dry SHAs match),
+					// so the DAG ordering gate was never evaluated by the DAG controller; the
+					// ChangeTransferPolicy reports the placeholder pending status for the unreported CommitStatus.
+					g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses).To(Equal(
+						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+							{
+								Key:         promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+								Phase:       string(promoterv1alpha1.CommitPhasePending),
+								Description: "Waiting for status to be reported",
+							},
+						},
+					))
 
 					// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
 					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testBranchStaging))
@@ -506,8 +552,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Active.CommitStatuses)).To(BeTrue())
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.Dry.Sha).To(Equal(ctpStaging.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.Hydrated.Sha).To(Equal(ctpStaging.Status.Proposed.Hydrated.Sha))
-					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses)).To(BeTrue())
+					// The proposed environment has no in-flight change (active and proposed dry SHAs match),
+					// so the DAG ordering gate was never evaluated by the DAG controller; the
+					// ChangeTransferPolicy reports the placeholder pending status for the unreported CommitStatus.
+					g.Expect(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses).To(Equal(
+						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+							{
+								Key:         promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+								Phase:       string(promoterv1alpha1.CommitPhasePending),
+								Description: "Waiting for status to be reported",
+							},
+						},
+					))
 
 					// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
 					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testBranchProduction))
@@ -517,8 +573,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[2].Active.CommitStatuses)).To(BeTrue())
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.Dry.Sha).To(Equal(ctpProd.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.Hydrated.Sha).To(Equal(ctpProd.Status.Proposed.Hydrated.Sha))
-					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses)).To(BeTrue())
+					// The proposed environment has no in-flight change (active and proposed dry SHAs match),
+					// so the DAG ordering gate was never evaluated by the DAG controller; the
+					// ChangeTransferPolicy reports the placeholder pending status for the unreported CommitStatus.
+					g.Expect(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses).To(Equal(
+						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+							{
+								Key:         promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+								Phase:       string(promoterv1alpha1.CommitPhasePending),
+								Description: "Waiting for status to be reported",
+							},
+						},
+					))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Adding a pending commit")
@@ -583,7 +649,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				declareDependentsSuccessfulGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 				// Initialize empty structs for use in tests
 				ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
@@ -677,8 +745,19 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Active.CommitStatuses)).To(BeTrue())
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Sha).To(Equal(ctpDev.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Sha).To(Equal(ctpDev.Status.Proposed.Hydrated.Sha))
-					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses)).To(BeTrue())
+					// The DAG ordering gate reflects the last time it was evaluated: environment/development once had an
+					// in-flight change, and the DAG controller recorded success for all upstreams before active caught
+					// up to proposed. The controller no longer re-evaluates a no-op environment, so this stale-but-real
+					// success record is what the ChangeTransferPolicy reports.
+					g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses).To(Equal(
+						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+							{
+								Key:         promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+								Phase:       string(promoterv1alpha1.CommitPhaseSuccess),
+								Description: "environment/development - all dependent environments promoted and successful",
+							},
+						},
+					))
 
 					// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
 					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testBranchStaging))
@@ -688,8 +767,19 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Active.CommitStatuses)).To(BeTrue())
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.Dry.Sha).To(Equal(ctpStaging.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.Hydrated.Sha).To(Equal(ctpStaging.Status.Proposed.Hydrated.Sha))
-					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses)).To(BeTrue())
+					// The DAG ordering gate reflects the last time it was evaluated: environment/staging once had an
+					// in-flight change, and the DAG controller recorded success for all upstreams before active caught
+					// up to proposed. The controller no longer re-evaluates a no-op environment, so this stale-but-real
+					// success record is what the ChangeTransferPolicy reports.
+					g.Expect(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses).To(Equal(
+						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+							{
+								Key:         promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+								Phase:       string(promoterv1alpha1.CommitPhaseSuccess),
+								Description: "environment/staging - all dependent environments promoted and successful",
+							},
+						},
+					))
 
 					// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
 					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testBranchProduction))
@@ -699,8 +789,19 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[2].Active.CommitStatuses)).To(BeTrue())
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.Dry.Sha).To(Equal(ctpProd.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.Hydrated.Sha).To(Equal(ctpProd.Status.Proposed.Hydrated.Sha))
-					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses)).To(BeTrue())
+					// The DAG ordering gate reflects the last time it was evaluated: environment/production once had an
+					// in-flight change, and the DAG controller recorded success for all upstreams before active caught
+					// up to proposed. The controller no longer re-evaluates a no-op environment, so this stale-but-real
+					// success record is what the ChangeTransferPolicy reports.
+					g.Expect(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses).To(Equal(
+						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+							{
+								Key:         promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+								Phase:       string(promoterv1alpha1.CommitPhaseSuccess),
+								Description: "environment/production - all dependent environments promoted and successful",
+							},
+						},
+					))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Adding a pending commit")
@@ -787,7 +888,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				declareDependentsSuccessfulGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 				// Initialize empty structs for use in tests
 				ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
@@ -878,8 +981,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Active.CommitStatuses)).To(BeTrue())
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Sha).To(Equal(ctpDev.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Sha).To(Equal(ctpDev.Status.Proposed.Hydrated.Sha))
-					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses)).To(BeTrue())
+					// The proposed environment has no in-flight change (active and proposed dry SHAs match),
+					// so the DAG ordering gate was never evaluated by the DAG controller; the
+					// ChangeTransferPolicy reports the placeholder pending status for the unreported CommitStatus.
+					g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses).To(Equal(
+						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+							{
+								Key:         promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+								Phase:       string(promoterv1alpha1.CommitPhasePending),
+								Description: "Waiting for status to be reported",
+							},
+						},
+					))
 
 					// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
 					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testBranchStaging))
@@ -889,8 +1002,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Active.CommitStatuses)).To(BeTrue())
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.Dry.Sha).To(Equal(ctpStaging.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[1].Proposed.Hydrated.Sha).To(Equal(ctpStaging.Status.Proposed.Hydrated.Sha))
-					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses)).To(BeTrue())
+					// The proposed environment has no in-flight change (active and proposed dry SHAs match),
+					// so the DAG ordering gate was never evaluated by the DAG controller; the
+					// ChangeTransferPolicy reports the placeholder pending status for the unreported CommitStatus.
+					g.Expect(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses).To(Equal(
+						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+							{
+								Key:         promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+								Phase:       string(promoterv1alpha1.CommitPhasePending),
+								Description: "Waiting for status to be reported",
+							},
+						},
+					))
 
 					// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
 					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testBranchProduction))
@@ -900,8 +1023,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[2].Active.CommitStatuses)).To(BeTrue())
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.Dry.Sha).To(Equal(ctpProd.Status.Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[2].Proposed.Hydrated.Sha).To(Equal(ctpProd.Status.Proposed.Hydrated.Sha))
-					// Success due to PromotionStrategy not having any CommitStatuses configured
-					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses)).To(BeTrue())
+					// The proposed environment has no in-flight change (active and proposed dry SHAs match),
+					// so the DAG ordering gate was never evaluated by the DAG controller; the
+					// ChangeTransferPolicy reports the placeholder pending status for the unreported CommitStatus.
+					g.Expect(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses).To(Equal(
+						[]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+							{
+								Key:         promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+								Phase:       string(promoterv1alpha1.CommitPhasePending),
+								Description: "Waiting for status to be reported",
+							},
+						},
+					))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Adding a pending commit")
@@ -933,43 +1066,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 				conflictingSha = strings.TrimSpace(conflictingSha)
 				Expect(conflictingSha).NotTo(BeEmpty())
-
-				By("Checking that there is no previous-environment commit status created, since no active checks are configured")
-				// List all CTPs owned by this test's PromotionStrategy
-				ctpList := promoterv1alpha1.ChangeTransferPolicyList{}
-				err = k8sClient.List(ctx, &ctpList, client.InNamespace(typeNamespacedName.Namespace))
-				Expect(err).NotTo(HaveOccurred())
-
-				// Build a set of CTP UIDs that belong to this test's PromotionStrategy, so that we can continue to run tests
-				// in parallel without interfering with each other.
-				ctpUIDs := make(map[string]bool)
-				for _, ctp := range ctpList.Items {
-					for _, ownerRef := range ctp.OwnerReferences {
-						if ownerRef.Name == promotionStrategy.Name && ownerRef.UID == promotionStrategy.UID {
-							ctpUIDs[string(ctp.UID)] = true
-							break
-						}
-					}
-				}
-
-				// List all previous-environment commit statuses and filter by ownership
-				csList := promoterv1alpha1.CommitStatusList{}
-				err = k8sClient.List(ctx, &csList, client.MatchingLabels{
-					promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
-				})
-				Expect(err).NotTo(HaveOccurred())
-
-				// Filter to only include commit statuses owned by this test's CTPs
-				testCommitStatuses := 0
-				for _, cs := range csList.Items {
-					for _, ownerRef := range cs.OwnerReferences {
-						if ctpUIDs[string(ownerRef.UID)] {
-							testCommitStatuses++
-							break
-						}
-					}
-				}
-				Expect(testCommitStatuses).To(Equal(0))
 
 				By("Waiting for CTPs to reconcile after the conflict and verifying conflict resolution")
 				Eventually(func(g Gomega) {
@@ -1113,7 +1209,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			declareDependentsSuccessfulGate(promotionStrategy)
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+			createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 		})
 
 		AfterEach(func() {
@@ -1179,7 +1277,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			declareDependentsSuccessfulGate(promotionStrategy)
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+			createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 		})
 
 		AfterEach(func() {
@@ -1258,7 +1358,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				ps.Spec.Environments = []promoterv1alpha1.Environment{
 					{Branch: testBranchDevelopment, AutoMerge: new(true)},
 				}
+				declareDependentsSuccessfulGate(ps)
 				Expect(k8sClient.Create(ctx, ps)).To(Succeed())
+				createDependentsSuccessfulCommitStatus(ctx, ps)
 				promotionStrategies = append(promotionStrategies, *ps)
 			}
 		})
@@ -1439,7 +1541,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				// by toggling AutoMerge (an unrealistic operator step).
 				{Branch: testBranchDevelopment, AutoMerge: new(true)},
 			}
+			declareDependentsSuccessfulGate(psOne)
 			Expect(k8sClient.Create(ctx, psOne)).To(Succeed())
+			createDependentsSuccessfulCommitStatus(ctx, psOne)
 			promotionStrategyOne = *psOne
 
 			psTwo := baseStrategy.DeepCopy()
@@ -1448,7 +1552,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			psTwo.Spec.Environments = []promoterv1alpha1.Environment{
 				{Branch: testBranchDevelopment, AutoMerge: new(true)},
 			}
+			declareDependentsSuccessfulGate(psTwo)
 			Expect(k8sClient.Create(ctx, psTwo)).To(Succeed())
+			createDependentsSuccessfulCommitStatus(ctx, psTwo)
 			promotionStrategyTwo = *psTwo
 
 			Eventually(func(g Gomega) {
@@ -1747,7 +1853,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				declareDependentsSuccessfulGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 				// Initialize empty structs for use in tests
 				ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
@@ -1788,7 +1896,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					}, &ctpProd)
 					g.Expect(err).To(Succeed())
 					g.Expect(ctpProd.Name).To(Equal(utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch))))
-				}).Should(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Adding a pending commit")
 				gitPath, err := os.MkdirTemp("", "*")
@@ -1955,7 +2063,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Namespace: typeNamespacedName.Namespace,
 					}, &ctpProd)
 					g.Expect(err).To(Succeed())
-				}).Should(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
 
 				const promotionIterations = 2
 				for iter := 1; iter <= promotionIterations; iter++ {
@@ -1972,7 +2080,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					// PR #1428 fix targets: every CTP gets a webhook for the new
 					// hydrated branch while its Status.Proposed.Note is still pointing
 					// at iter 1's drySha, and the controller has 5s to evaluate the
-					// previous-environment gate against that stale Note.DrySha before
+					// DAG ordering gate against that stale Note.DrySha before
 					// the new notes land.
 					noteDelay := time.Duration(0)
 					if iter == 2 {
@@ -2195,6 +2303,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Key: healthCheckCSKey,
 					},
 				}
+
 				activeCommitStatusDevelopment.Spec.Name = healthCheckCSKey
 				activeCommitStatusDevelopment.Labels = map[string]string{
 					promoterv1alpha1.CommitStatusLabel: healthCheckCSKey,
@@ -2207,7 +2316,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				declareDependentsSuccessfulGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 				// Initialize empty structs for use in tests
 				ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
@@ -2247,7 +2358,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					}, &ctpProd)
 					g.Expect(err).To(Succeed())
 					g.Expect(ctpProd.Name).To(Equal(utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch))))
-				}).Should(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Adding a pending commit")
 				gitPath, err := os.MkdirTemp("", "*")
@@ -2433,7 +2544,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				gitPath, err := os.MkdirTemp("", "*")
 				Expect(err).NotTo(HaveOccurred())
 				makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+				declareDependentsSuccessfulGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 				// We should now get PRs created for the ProposedCommits
 				// Check that ChangeTransferPolicy are created
@@ -2676,7 +2789,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				declareDependentsSuccessfulGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 				// Initialize empty structs for use in tests
 				ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
@@ -2829,6 +2944,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					},
 				}
 
+				declareDependentsSuccessfulGate(promotionStrategy)
+
 				argocdCommitStatus = promoterv1alpha1.ArgoCDCommitStatus{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      name,
@@ -2850,6 +2967,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 				Expect(k8sClient.Create(ctx, &argocdCommitStatus)).To(Succeed())
 				Expect(k8sClient.Create(ctx, &argoCDAppDev)).To(Succeed())
 				Expect(k8sClient.Create(ctx, &argoCDAppStaging)).To(Succeed())
@@ -3083,6 +3201,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					},
 				}
 
+				declareDependentsSuccessfulGate(promotionStrategy)
+
 				testArgoCDCommitStatus := promoterv1alpha1.ArgoCDCommitStatus{}
 				//nolint:musttag // Not bothering adding yaml tags since it's just for a test.
 				err := yaml.Unmarshal([]byte(testArgoCDCommitStatusYAML), &testArgoCDCommitStatus)
@@ -3112,6 +3232,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 				Expect(k8sClient.Create(ctx, &argocdCommitStatus)).To(Succeed())
 				Expect(k8sClientDev.Create(ctx, &argoCDAppDev)).To(Succeed())
 				Expect(k8sClientStaging.Create(ctx, &argoCDAppStaging)).To(Succeed())
@@ -3376,7 +3497,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 				drySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
 
+				declareDependentsSuccessfulGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 				By("Checking that all the ChangeTransferPolicies and PRs are created and in their proper state")
 				Eventually(func(g Gomega) {
@@ -3768,6 +3891,30 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 	return psName, scmSecret, scmProvider, gitRepo, commitStatusDevelopment, commitStatusStaging, promotionStrategy
 }
 
+// declareDependentsSuccessfulGate appends the DAG ordering gate key to the PromotionStrategy's
+// proposedCommitStatuses. The PS controller no longer auto-injects linear ordering, so tests
+// that rely on sequential promotion must declare the gate explicitly. Call this before the
+// PromotionStrategy is created; it appends (rather than overwrites) so any test-specific
+// proposedCommitStatuses are preserved. Pair it with createDependentsSuccessfulCommitStatus.
+func declareDependentsSuccessfulGate(ps *promoterv1alpha1.PromotionStrategy) {
+	ps.Spec.ProposedCommitStatuses = append(ps.Spec.ProposedCommitStatuses,
+		promoterv1alpha1.CommitStatusSelector{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey})
+}
+
+// createDependentsSuccessfulCommitStatus creates the DependentsSuccessfulCommitStatus that backs the ordering gate for the given
+// PromotionStrategy. With no spec.environments, the controller infers a linear chain from the
+// PromotionStrategy's environment order. Call this after the PromotionStrategy has been created.
+func createDependentsSuccessfulCommitStatus(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy) {
+	dcs := &promoterv1alpha1.DependentsSuccessfulCommitStatus{
+		ObjectMeta: metav1.ObjectMeta{Name: ps.Name, Namespace: ps.Namespace},
+		Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
+			PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: ps.Name},
+			Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+		},
+	}
+	Expect(k8sClient.Create(ctx, dcs)).To(Succeed())
+}
+
 func argocdApplications(namespace, appLabel, repoOwner, repoName string) (argocd.Application, argocd.Application, argocd.Application) {
 	environments := []string{"development", "staging", "production"}
 	apps := make([]argocd.Application, len(environments))
@@ -3810,6 +3957,205 @@ func argocdApplications(namespace, appLabel, repoOwner, repoName string) (argocd
 	return apps[0], apps[1], apps[2]
 }
 
+var _ = Describe("PromotionStrategy DependentsSuccessfulCommitStatus key safety check", func() {
+	var (
+		ctx                              context.Context
+		name                             string
+		scmSecret                        *v1.Secret
+		scmProvider                      *promoterv1alpha1.ScmProvider
+		gitRepo                          *promoterv1alpha1.GitRepository
+		promotionStrategy                *promoterv1alpha1.PromotionStrategy
+		dependentsSuccessfulCommitStatus *promoterv1alpha1.DependentsSuccessfulCommitStatus
+	)
+
+	BeforeEach(func() {
+		ctx = context.Background()
+		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "ps-dag-safety-check", "default")
+	})
+
+	AfterEach(func() {
+		By("Cleaning up resources")
+		if dependentsSuccessfulCommitStatus != nil {
+			_ = k8sClient.Delete(ctx, dependentsSuccessfulCommitStatus)
+			dependentsSuccessfulCommitStatus = nil
+		}
+		_ = k8sClient.Delete(ctx, promotionStrategy)
+	})
+
+	It("hard-fails the reconcile when no DependentsSuccessfulCommitStatus is configured", func() {
+		By("Creating a PromotionStrategy with no DependentsSuccessfulCommitStatus")
+		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+		By("Checking that the Ready condition reports the missing ordering configuration")
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, promotionStrategy)).To(Succeed())
+			cond := meta.FindStatusCondition(promotionStrategy.Status.Conditions, string(promoterConditions.Ready))
+			g.Expect(cond).ToNot(BeNil())
+			g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+			g.Expect(cond.Reason).To(Equal(string(promoterConditions.ReconciliationError)))
+			g.Expect(cond.Message).To(ContainSubstring("has no DependentsSuccessfulCommitStatus"))
+		}, constants.EventuallyTimeout).Should(Succeed())
+	})
+
+	It("hard-fails the reconcile when a DependentsSuccessfulCommitStatus key is not declared in proposedCommitStatuses", func() {
+		By("Creating a PromotionStrategy with no proposedCommitStatuses")
+		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+		By("Creating a DependentsSuccessfulCommitStatus that references the PS with a key it does not declare")
+		dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
+			ObjectMeta: metav1.ObjectMeta{Name: name + "-dag", Namespace: "default"},
+			Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+				Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+				Environments: []promoterv1alpha1.DependentEnvironment{
+					{Branch: testBranchDevelopment},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, dependentsSuccessfulCommitStatus)).To(Succeed())
+
+		By("Checking that the PromotionStrategy's Ready condition reports the misconfiguration")
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, promotionStrategy)).To(Succeed())
+			cond := meta.FindStatusCondition(promotionStrategy.Status.Conditions, string(promoterConditions.Ready))
+			g.Expect(cond).ToNot(BeNil())
+			g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+			g.Expect(cond.Reason).To(Equal(string(promoterConditions.ReconciliationError)))
+			g.Expect(cond.Message).To(ContainSubstring("is not declared in proposedCommitStatuses for environment branch"))
+		}, constants.EventuallyTimeout).Should(Succeed())
+	})
+
+	It("does not fail the safety check when the DependentsSuccessfulCommitStatus key is declared in proposedCommitStatuses", func() {
+		By("Creating a PromotionStrategy that declares the DAG gate key")
+		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+			{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
+		}
+		setupInitialTestGitRepoOnServer(ctx, gitRepo)
+		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+		By("Creating a DependentsSuccessfulCommitStatus that references the PS with the declared key")
+		dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
+			ObjectMeta: metav1.ObjectMeta{Name: name + "-dag", Namespace: "default"},
+			Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+				Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+				Environments: []promoterv1alpha1.DependentEnvironment{
+					{Branch: testBranchDevelopment},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, dependentsSuccessfulCommitStatus)).To(Succeed())
+
+		By("Checking that the Ready condition never fails the safety check")
+		Consistently(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, promotionStrategy)).To(Succeed())
+			cond := meta.FindStatusCondition(promotionStrategy.Status.Conditions, string(promoterConditions.Ready))
+			if cond != nil && cond.Message != "" {
+				g.Expect(cond.Message).ToNot(ContainSubstring("is not declared in proposedCommitStatuses for environment branch"))
+			}
+		}, "5s", "1s").Should(Succeed())
+	})
+
+	It("does not fail the safety check when the key is declared on each environment's proposedCommitStatuses", func() {
+		By("Creating a PromotionStrategy that declares the ordering gate per environment")
+		for i := range promotionStrategy.Spec.Environments {
+			promotionStrategy.Spec.Environments[i].ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
+			}
+		}
+		setupInitialTestGitRepoOnServer(ctx, gitRepo)
+		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+		By("Creating a DependentsSuccessfulCommitStatus that references the PS with the declared key")
+		dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
+			ObjectMeta: metav1.ObjectMeta{Name: name + "-dag-per-env", Namespace: "default"},
+			Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+				Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+			},
+		}
+		Expect(k8sClient.Create(ctx, dependentsSuccessfulCommitStatus)).To(Succeed())
+
+		By("Checking that the Ready condition never fails the safety check")
+		Consistently(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, promotionStrategy)).To(Succeed())
+			cond := meta.FindStatusCondition(promotionStrategy.Status.Conditions, string(promoterConditions.Ready))
+			if cond != nil && cond.Message != "" {
+				g.Expect(cond.Message).ToNot(ContainSubstring("is not declared in proposedCommitStatuses for environment branch"))
+			}
+		}, "5s", "1s").Should(Succeed())
+	})
+})
+
+var _ = Describe("proposedCommitStatusKeyDeclared", func() {
+	It("accepts a globally declared key", func() {
+		ps := &promoterv1alpha1.PromotionStrategy{
+			Spec: promoterv1alpha1.PromotionStrategySpec{
+				ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{
+					{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
+				},
+				Environments: []promoterv1alpha1.Environment{
+					{Branch: testBranchDevelopment},
+					{Branch: testBranchStaging},
+				},
+			},
+		}
+		Expect(branchesMissingProposedCommitStatusKey(ps, promoterv1alpha1.DependentsSuccessfulCommitStatusKey)).To(BeEmpty())
+	})
+
+	It("accepts a key declared on every environment", func() {
+		ps := &promoterv1alpha1.PromotionStrategy{
+			Spec: promoterv1alpha1.PromotionStrategySpec{
+				Environments: []promoterv1alpha1.Environment{
+					{
+						Branch: testBranchDevelopment,
+						ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{
+							{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
+						},
+					},
+					{
+						Branch: testBranchStaging,
+						ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{
+							{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
+						},
+					},
+				},
+			},
+		}
+		Expect(branchesMissingProposedCommitStatusKey(ps, promoterv1alpha1.DependentsSuccessfulCommitStatusKey)).To(BeEmpty())
+	})
+
+	It("reports branches missing a per-environment key", func() {
+		ps := &promoterv1alpha1.PromotionStrategy{
+			Spec: promoterv1alpha1.PromotionStrategySpec{
+				Environments: []promoterv1alpha1.Environment{
+					{
+						Branch: testBranchDevelopment,
+						ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{
+							{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
+						},
+					},
+					{Branch: testBranchStaging},
+				},
+			},
+		}
+		Expect(branchesMissingProposedCommitStatusKey(ps, promoterv1alpha1.DependentsSuccessfulCommitStatusKey)).
+			To(Equal([]string{testBranchStaging}))
+	})
+})
+
 var _ = Describe("PromotionStrategy Bug Tests", func() {
 	Context("When PR merges while previous environment has non-passing checks", func() {
 		Context("When PR is merged before checks pass", func() {
@@ -3837,6 +4183,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 						Key: healthCheckCSKey,
 					},
 				}
+
 				activeCommitStatusDevelopment.Spec.Name = healthCheckCSKey
 				activeCommitStatusDevelopment.Labels = map[string]string{
 					promoterv1alpha1.CommitStatusLabel: healthCheckCSKey,
@@ -3849,7 +4196,9 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				declareDependentsSuccessfulGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 				// Initialize empty structs for use in tests
 				ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
@@ -3932,18 +4281,39 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 					g.Expect(ctpStaging.Status.Proposed.Dry.Sha).To(Equal(firstDrySha))
 				}, time.Second*5, time.Millisecond*500).Should(Succeed())
 
-				By("Capturing baseline: previous-environment commit status should be at success")
-				csName := utils.KubeSafeUniqueName(promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel + ctpStaging.Name)
+				By("Capturing baseline: DAG ordering commit status should be at success")
+				// The gate CommitStatus is produced by the DependentsSuccessfulCommitStatus that the
+				// DependentsSuccessfulCommitStatus controller generates. Look it up by its gate-key
+				// and environment labels rather than reconstructing the resource name, so the test
+				// does not depend on the naming scheme.
 				commitStatus := &promoterv1alpha1.CommitStatus{}
 				var commitStatusOriginalSha string
 				var commitStatusOriginalPhase promoterv1alpha1.CommitStatusPhase
 
+				gateLabels := client.MatchingLabels{
+					promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+					promoterv1alpha1.EnvironmentLabel:  utils.KubeSafeLabel(ctpStaging.Spec.ActiveBranch),
+				}
+				// The gate is owned by the generated DependentsSuccessfulCommitStatus (named after this test's
+				// resources), so filter by owner name to isolate this test's gate from other tests
+				// that may have a gate on the same environment branch.
+				getDAGOrderingGate := func(g Gomega) promoterv1alpha1.CommitStatus {
+					csList := promoterv1alpha1.CommitStatusList{}
+					g.Expect(k8sClient.List(ctx, &csList, gateLabels)).To(Succeed())
+					var matches []promoterv1alpha1.CommitStatus
+					for _, cs := range csList.Items {
+						for _, owner := range cs.OwnerReferences {
+							if owner.Name == name {
+								matches = append(matches, cs)
+								break
+							}
+						}
+					}
+					g.Expect(matches).To(HaveLen(1))
+					return matches[0]
+				}
 				Eventually(func(g Gomega) {
-					err := k8sClient.Get(ctx, types.NamespacedName{
-						Name:      csName,
-						Namespace: ctpStaging.Namespace,
-					}, commitStatus)
-					g.Expect(err).To(Succeed())
+					*commitStatus = getDAGOrderingGate(g)
 					g.Expect(commitStatus.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -3989,11 +4359,8 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				// Prevent this by skipping the update when active == proposed
 				// Use Consistently (not Eventually) since we're checking that something DOESN'T change
 				Consistently(func(g Gomega) {
-					err := k8sClient.Get(ctx, types.NamespacedName{
-						Name:      csName,
-						Namespace: ctpStaging.Namespace,
-					}, commitStatus)
-					g.Expect(err).To(Succeed())
+					gate := getDAGOrderingGate(g)
+					commitStatus := &gate
 
 					// Phase should stay at success
 					g.Expect(commitStatus.Spec.Phase).To(Equal(commitStatusOriginalPhase),
@@ -4069,7 +4436,9 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				declareDependentsSuccessfulGate(promotionStrategy)
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 			})
 
 			AfterEach(func() {
@@ -4262,7 +4631,9 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(err).NotTo(HaveOccurred())
 			defer func() { _ = os.RemoveAll(gitPath) }()
 			makeChangeAndHydrateRepo(gitPath, gitRepo, "", "")
+			declareDependentsSuccessfulGate(promotionStrategy)
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+			createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 			var ctpDev, ctpStaging, ctpProd promoterv1alpha1.ChangeTransferPolicy
 			var pullRequestDev, pullRequestStaging, pullRequestProd promoterv1alpha1.PullRequest
@@ -4383,6 +4754,29 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		var typeNamespacedName types.NamespacedName
 		var ctpDev, ctpStaging promoterv1alpha1.ChangeTransferPolicy
 
+		// getDAGOrderingGate returns the DAG ordering gate CommitStatus for the given
+		// environment branch. The gate is produced by the DependentsSuccessfulCommitStatus that the
+		// DependentsSuccessfulCommitStatus controller generates (named after this test's resources),
+		// so filter by owner name to isolate this test's gate from any other test's.
+		getDAGOrderingGate := func(g Gomega, branch string) promoterv1alpha1.CommitStatus {
+			csList := promoterv1alpha1.CommitStatusList{}
+			g.Expect(k8sClient.List(ctx, &csList, client.MatchingLabels{
+				promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+				promoterv1alpha1.EnvironmentLabel:  utils.KubeSafeLabel(branch),
+			})).To(Succeed())
+			var matches []promoterv1alpha1.CommitStatus
+			for _, cs := range csList.Items {
+				for _, owner := range cs.OwnerReferences {
+					if owner.Name == name {
+						matches = append(matches, cs)
+						break
+					}
+				}
+			}
+			g.Expect(matches).To(HaveLen(1))
+			return matches[0]
+		}
+
 		BeforeEach(func() {
 			By("Creating the resources with active commit statuses to enable previous environment checks")
 			var scmSecret *v1.Secret
@@ -4401,6 +4795,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 					Key: healthCheckCSKey,
 				},
 			}
+			declareDependentsSuccessfulGate(promotionStrategy)
 			activeCommitStatusDevelopment.Spec.Name = healthCheckCSKey
 			activeCommitStatusDevelopment.Labels = map[string]string{
 				promoterv1alpha1.CommitStatusLabel: healthCheckCSKey,
@@ -4414,6 +4809,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+			createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 			ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
 			ctpStaging = promoterv1alpha1.ChangeTransferPolicy{}
@@ -4537,13 +4933,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				g.Expect(stagingEnv.Proposed.Dry.Sha).To(Equal(secondDrySha))
 
 				// The previous environment commit status should exist and be pending
-				var prevEnvCS promoterv1alpha1.CommitStatus
-				csName := utils.KubeSafeUniqueName(promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel + ctpStaging.Name)
-				err = k8sClient.Get(ctx, types.NamespacedName{
-					Name:      csName,
-					Namespace: "default",
-				}, &prevEnvCS)
-				g.Expect(err).To(Succeed())
+				prevEnvCS := getDAGOrderingGate(g, ctpStaging.Spec.ActiveBranch)
 				g.Expect(prevEnvCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
 				g.Expect(prevEnvCS.Spec.Description).To(ContainSubstring("hydrator to finish processing"))
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -4588,13 +4978,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 			By("Verifying staging can now be promoted (previous environment check passes)")
 			Eventually(func(g Gomega) {
-				var prevEnvCS promoterv1alpha1.CommitStatus
-				csName := utils.KubeSafeUniqueName(promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel + ctpStaging.Name)
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      csName,
-					Namespace: "default",
-				}, &prevEnvCS)
-				g.Expect(err).To(Succeed())
+				prevEnvCS := getDAGOrderingGate(g, ctpStaging.Spec.ActiveBranch)
 				g.Expect(prevEnvCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -4702,13 +5086,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 			By("Verifying the previous environment commit status is pending (blocking staging)")
 			Eventually(func(g Gomega) {
-				var prevEnvCS promoterv1alpha1.CommitStatus
-				csName := utils.KubeSafeUniqueName(promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel + ctpStaging.Name)
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      csName,
-					Namespace: "default",
-				}, &prevEnvCS)
-				g.Expect(err).To(Succeed())
+				prevEnvCS := getDAGOrderingGate(g, ctpStaging.Spec.ActiveBranch)
 				g.Expect(prevEnvCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
 				g.Expect(prevEnvCS.Spec.Description).To(ContainSubstring("hydrator to finish processing"))
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -4734,13 +5112,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 			By("Verifying staging is now unblocked (previous env check passes due to git note)")
 			Eventually(func(g Gomega) {
-				var prevEnvCS promoterv1alpha1.CommitStatus
-				csName := utils.KubeSafeUniqueName(promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel + ctpStaging.Name)
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      csName,
-					Namespace: "default",
-				}, &prevEnvCS)
-				g.Expect(err).To(Succeed())
+				prevEnvCS := getDAGOrderingGate(g, ctpStaging.Spec.ActiveBranch)
 				g.Expect(prevEnvCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -4924,13 +5296,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 			By("Verifying production's previous environment check passes (staging is ahead with matching Note.DrySha)")
 			Eventually(func(g Gomega) {
-				var prevEnvCS promoterv1alpha1.CommitStatus
-				csName := utils.KubeSafeUniqueName(promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel + ctpProd.Name)
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      csName,
-					Namespace: "default",
-				}, &prevEnvCS)
-				g.Expect(err).To(Succeed())
+				prevEnvCS := getDAGOrderingGate(g, ctpProd.Spec.ActiveBranch)
 				g.Expect(prevEnvCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -5042,13 +5408,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			By("Verifying production's previous environment check is PENDING (waiting for dev)")
 			// At this point, dev hasn't merged yet, so prod should be blocked
 			Eventually(func(g Gomega) {
-				var prevEnvCS promoterv1alpha1.CommitStatus
-				csName := utils.KubeSafeUniqueName(promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel + ctpProd.Name)
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      csName,
-					Namespace: "default",
-				}, &prevEnvCS)
-				g.Expect(err).To(Succeed())
+				prevEnvCS := getDAGOrderingGate(g, ctpProd.Spec.ActiveBranch)
 				g.Expect(prevEnvCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending), "prod should be blocked while dev hasn't merged")
 			}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -5088,13 +5448,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 			By("Verifying production's previous environment check is now SUCCESS")
 			Eventually(func(g Gomega) {
-				var prevEnvCS promoterv1alpha1.CommitStatus
-				csName := utils.KubeSafeUniqueName(promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel + ctpProd.Name)
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      csName,
-					Namespace: "default",
-				}, &prevEnvCS)
-				g.Expect(err).To(Succeed())
+				prevEnvCS := getDAGOrderingGate(g, ctpProd.Spec.ActiveBranch)
 				g.Expect(prevEnvCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess), "prod should be unblocked after dev is healthy")
 			}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -5116,18 +5470,23 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		})
 	})
 
-	// Changing PreviousEnvironmentCommitStatusKey is a breaking change for users who reference it
+	// Changing DependentsSuccessfulCommitStatusKey is a breaking change for users who reference it
 	// in branch protection rules, rulesets, or automation. If this test fails after your change,
 	// update documentation and migration guides before merging.
-	Context("PreviousEnvironmentCommitStatusKey", func() {
+	Context("DependentsSuccessfulCommitStatusKey", func() {
 		It("should remain a stable public API value", func() {
-			Expect(promoterv1alpha1.PreviousEnvironmentCommitStatusKey).To(Equal("promoter-previous-environment"),
-				"PreviousEnvironmentCommitStatusKey is a public API used as the SCM commit status context (e.g. GitHub check run name). "+
+			Expect(promoterv1alpha1.DependentsSuccessfulCommitStatusKey).To(Equal("dependents-successful"),
+				"DependentsSuccessfulCommitStatusKey is a public API used as the SCM commit status context (e.g. GitHub check run name). "+
 					"Users may reference this value in branch protection rules. Update documentation and migration guides before merging.")
 		})
 	})
 
-	Context("isPreviousEnvironmentPending", func() {
+	// Linear regression guard: upstreamsPending (legacy linear) moved into the DAG controller as
+	// upstreamsPending. These tests are kept as an explicit, readable guard against
+	// reintroducing the out-of-order promotion bugs we hit before. They drive the linear cases
+	// through linearUpstreamsPending, which adapts the old ordered-preceding-list call shape onto
+	// the DAG's chain-shaped dependsOn edges.
+	Context("upstreamsPending (linear regression guard)", func() {
 		// Use fixed times for tests to ensure consistent time comparisons
 		olderTime := metav1.NewTime(time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC))
 		newerTime := metav1.NewTime(time.Date(2024, 1, 15, 11, 0, 0, 0, time.UTC))
@@ -5167,7 +5526,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			return makeEnvStatusWithTime(activeDrySha, proposedDrySha, noteSha, olderTime)
 		}
 
-		// Truth table for isPreviousEnvironmentPending (per environment):
+		// Truth table for isUpstreamPending, exercised through a linear chain (per environment):
 		// | Hydrated | NoOp | Pending | Merged | Healthy | Result |
 		// |----------|------|---------|--------|---------|--------|
 		// | N        | -    | -       | -      | -       | BLOCK (hydrator) |
@@ -5184,7 +5543,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				prevEnvStatus := makeEnvStatus(prevActiveDry, prevProposedDry, prevNoteDry)
 				currEnvStatus := makeEnvStatus(currActiveDry, currProposedDry, currNoteSha)
 
-				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{prevEnvStatus}, getEffectiveHydratedDrySha(currEnvStatus), currEnvStatus.Active.Dry.CommitTime)
+				isPending, reason := linearUpstreamsPending([]promoterv1alpha1.EnvironmentStatus{prevEnvStatus}, getEffectiveHydratedDrySha(currEnvStatus), currEnvStatus.Active.Dry.CommitTime)
 
 				Expect(isPending).To(Equal(expectPending), "isPending mismatch")
 				if expectReasonContains != "" {
@@ -5201,7 +5560,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Entry("blocks when hydrated but not merged (has real changes)",
 				"OLD", "ABC", "ABC", // prev: hydrated (note=ABC) but not merged (active=OLD)
 				"OLD", "ABC", "ABC", // curr
-				true, "Waiting for previous environment to be promoted"),
+				true, `Waiting for "linear-env-0" to be promoted`),
 
 			// Case 3: Hydrated, NOT no-op, merged, NOT healthy → BLOCK "commit status"
 			// (tested separately below since DescribeTable helper sets healthy)
@@ -5241,13 +5600,14 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			}
 			currEnvStatus := makeEnvStatus("OLD", "COMMIT1", "COMMIT2")
 
-			isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{prevEnvStatus}, getEffectiveHydratedDrySha(currEnvStatus), currEnvStatus.Active.Dry.CommitTime)
+			isPending, reason := linearUpstreamsPending([]promoterv1alpha1.EnvironmentStatus{prevEnvStatus}, getEffectiveHydratedDrySha(currEnvStatus), currEnvStatus.Active.Dry.CommitTime)
 
 			Expect(isPending).To(BeTrue())
 			Expect(reason).To(Equal(`Waiting for "environments/staging" environment's "argocd-health" commit status to be successful`))
 		})
 
-		// Case 3 needs unhealthy status - separate test since DescribeTable helper sets healthy
+		// Case 3 needs unhealthy status - separate test since DescribeTable helper sets healthy.
+		// The preceding env has no Branch, so the adapter synthesizes "linear-env-0" for it.
 		It("blocks when merged but commit statuses not passing", func() {
 			prevEnvStatus := promoterv1alpha1.EnvironmentStatus{
 				Active: promoterv1alpha1.CommitBranchState{
@@ -5266,10 +5626,10 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			}
 			currEnvStatus := makeEnvStatus("OLD", "ABC", "ABC")
 
-			isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{prevEnvStatus}, getEffectiveHydratedDrySha(currEnvStatus), currEnvStatus.Active.Dry.CommitTime)
+			isPending, reason := linearUpstreamsPending([]promoterv1alpha1.EnvironmentStatus{prevEnvStatus}, getEffectiveHydratedDrySha(currEnvStatus), currEnvStatus.Active.Dry.CommitTime)
 
 			Expect(isPending).To(BeTrue())
-			Expect(reason).To(Equal(`Waiting for previous environment's "health" commit status to be successful`))
+			Expect(reason).To(Equal(`Waiting for "linear-env-0" environment's "health" commit status to be successful`))
 		})
 
 		// Legacy hydrator tests (no git notes - uses Proposed.Dry.Sha as effective hydrated SHA)
@@ -5279,7 +5639,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 					prevEnvStatus := makeEnvStatus(prevActiveDry, prevProposedDry, "") // empty note
 					currEnvStatus := makeEnvStatus(currActiveDry, currProposedDry, "") // empty note
 
-					isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{prevEnvStatus}, getEffectiveHydratedDrySha(currEnvStatus), currEnvStatus.Active.Dry.CommitTime)
+					isPending, reason := linearUpstreamsPending([]promoterv1alpha1.EnvironmentStatus{prevEnvStatus}, getEffectiveHydratedDrySha(currEnvStatus), currEnvStatus.Active.Dry.CommitTime)
 
 					Expect(isPending).To(Equal(expectPending))
 					if expectReasonContains != "" {
@@ -5291,7 +5651,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 					true, "Waiting for the hydrator to finish processing the proposed dry commit"),
 				Entry("blocks when hydrated but not merged",
 					"OLD", "ABC", "OLD", "ABC",
-					true, "Waiting for previous environment to be promoted"),
+					true, `Waiting for "linear-env-0" to be promoted`),
 				Entry("allows when merged",
 					"ABC", "ABC", "OLD", "ABC",
 					false, ""),
@@ -5328,7 +5688,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				env2 := makeEnv("env2", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess)) // no-op
 				env3 := makeEnv("env3", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
 
-				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
+				isPending, reason := linearUpstreamsPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
 
 				Expect(isPending).To(BeTrue())
 				Expect(reason).To(Equal("Waiting for the hydrator to finish processing the proposed dry commit"))
@@ -5339,10 +5699,10 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				env2 := makeEnv("env2", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess)) // no-op
 				env3 := makeEnv("env3", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
 
-				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
+				isPending, reason := linearUpstreamsPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
 
 				Expect(isPending).To(BeTrue())
-				Expect(reason).To(Equal("Waiting for previous environment to be promoted"))
+				Expect(reason).To(Equal(`Waiting for "env1" to be promoted`))
 			})
 
 			It("blocks on unhealthy env after recursing through no-ops", func() {
@@ -5350,7 +5710,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				env2 := makeEnv("env2", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess)) // no-op
 				env3 := makeEnv("env3", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
 
-				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
+				isPending, reason := linearUpstreamsPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
 
 				Expect(isPending).To(BeTrue())
 				Expect(reason).To(Equal(`Waiting for "env1" environment's "health" commit status to be successful`))
@@ -5361,7 +5721,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				env2 := makeEnv("env2", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess)) // no-op
 				env3 := makeEnv("env3", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
 
-				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
+				isPending, reason := linearUpstreamsPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
 
 				Expect(isPending).To(BeFalse())
 				Expect(reason).To(BeEmpty())
@@ -5372,7 +5732,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				env2 := makeEnv("env2", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess)) // no-op
 				env3 := makeEnv("env3", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
 
-				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
+				isPending, reason := linearUpstreamsPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
 
 				Expect(isPending).To(BeFalse())
 				Expect(reason).To(BeEmpty())
@@ -5411,7 +5771,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 					olderTime,
 					string(promoterv1alpha1.CommitPhaseSuccess))
 
-				isPending, reason := isPreviousEnvironmentPending(
+				isPending, reason := linearUpstreamsPending(
 					[]promoterv1alpha1.EnvironmentStatus{dev, staging},
 					getEffectiveHydratedDrySha(prod),
 					prod.Active.Dry.CommitTime)
@@ -5434,7 +5794,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 					"OLD", "COMMIT1", "COMMIT2",
 					olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
 
-				isPending, reason := isPreviousEnvironmentPending(
+				isPending, reason := linearUpstreamsPending(
 					[]promoterv1alpha1.EnvironmentStatus{dev, staging},
 					getEffectiveHydratedDrySha(prod),
 					prod.Active.Dry.CommitTime)
@@ -5469,7 +5829,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 					olderTime,
 					string(promoterv1alpha1.CommitPhaseSuccess))
 
-				isPending, reason := isPreviousEnvironmentPending(
+				isPending, reason := linearUpstreamsPending(
 					[]promoterv1alpha1.EnvironmentStatus{env1},
 					getEffectiveHydratedDrySha(env2),
 					env2.Active.Dry.CommitTime)
@@ -5477,7 +5837,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				// Should block because env1 has pending changes (active=OLD != proposed=COMMIT1)
 				// even though commit 2 is a no-op for env1
 				Expect(isPending).To(BeTrue())
-				Expect(reason).To(Equal("Waiting for previous environment to be promoted"))
+				Expect(reason).To(Equal(`Waiting for "env1" to be promoted`))
 			})
 
 			// Same scenario but env1's PR has been merged - should allow
@@ -5498,7 +5858,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 					olderTime,
 					string(promoterv1alpha1.CommitPhaseSuccess))
 
-				isPending, reason := isPreviousEnvironmentPending(
+				isPending, reason := linearUpstreamsPending(
 					[]promoterv1alpha1.EnvironmentStatus{env1},
 					getEffectiveHydratedDrySha(env2),
 					env2.Active.Dry.CommitTime)
@@ -5539,10 +5899,10 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				env2 := makeEnv("env2", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess)) // NOT merged (has real changes)
 				env3 := makeEnv("env3", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
 
-				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
+				isPending, reason := linearUpstreamsPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
 
 				Expect(isPending).To(BeTrue())
-				Expect(reason).To(Equal("Waiting for previous environment to be promoted"))
+				Expect(reason).To(Equal(`Waiting for "env2" to be promoted`))
 			})
 
 			It("blocks when immediate predecessor merged but unhealthy", func() {
@@ -5550,7 +5910,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				env2 := makeEnv("env2", "ABC", "ABC", "ABC", newerTime, string(promoterv1alpha1.CommitPhasePending)) // merged, unhealthy
 				env3 := makeEnv("env3", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
 
-				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
+				isPending, reason := linearUpstreamsPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
 
 				Expect(isPending).To(BeTrue())
 				Expect(reason).To(Equal(`Waiting for "env2" environment's "health" commit status to be successful`))
@@ -5561,7 +5921,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				env2 := makeEnv("env2", "ABC", "ABC", "ABC", newerTime, string(promoterv1alpha1.CommitPhaseSuccess)) // merged, healthy
 				env3 := makeEnv("env3", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
 
-				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
+				isPending, reason := linearUpstreamsPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
 
 				Expect(isPending).To(BeFalse())
 				Expect(reason).To(BeEmpty())
@@ -5602,7 +5962,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				},
 			}
 
-			isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{prevEnvStatus}, getEffectiveHydratedDrySha(currEnvStatus), currEnvStatus.Active.Dry.CommitTime)
+			isPending, reason := linearUpstreamsPending([]promoterv1alpha1.EnvironmentStatus{prevEnvStatus}, getEffectiveHydratedDrySha(currEnvStatus), currEnvStatus.Active.Dry.CommitTime)
 
 			Expect(isPending).To(BeFalse())
 			Expect(reason).To(BeEmpty())
@@ -5640,7 +6000,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				},
 			}
 
-			isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{prevEnvStatus}, getEffectiveHydratedDrySha(currEnvStatus), currEnvStatus.Active.Dry.CommitTime)
+			isPending, reason := linearUpstreamsPending([]promoterv1alpha1.EnvironmentStatus{prevEnvStatus}, getEffectiveHydratedDrySha(currEnvStatus), currEnvStatus.Active.Dry.CommitTime)
 
 			Expect(isPending).To(BeTrue())
 			Expect(reason).To(Equal(`Waiting for "environment/staging" environment's "health" commit status to be successful`))
@@ -5949,6 +6309,60 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 	})
 })
 
+// linearUpstreamsPending adapts the old upstreamsPending (legacy linear) call shape — an ordered list
+// of preceding environments plus the current environment's target dry SHA and commit time — onto
+// the DAG controller's upstreamsPending. It builds a chain-shaped DAG (current dependsOn the last
+// preceding env, each preceding env dependsOn the one before it) so the linear regression tests
+// exercise the same logic through the DAG code.
+//
+// Every environment needs a unique branch name because upstreamsPending keys everything by branch
+// (both the statusByBranch map and the dependsOn edges); two empty branch names would collide in
+// the map. Preceding envs that already carry a Branch keep it (so reason messages that assert a
+// specific branch name still match); envs without one get a synthetic, unique name.
+func linearUpstreamsPending(precedingEnvs []promoterv1alpha1.EnvironmentStatus, targetDrySha string, currentActiveCommitTime metav1.Time) (bool, string) {
+	statusByBranch := make(map[string]promoterv1alpha1.EnvironmentStatus, len(precedingEnvs)+1)
+
+	// Assign a unique branch to each preceding env, preserving any name it already has.
+	branchNames := make([]string, len(precedingEnvs))
+	for i := range precedingEnvs {
+		env := precedingEnvs[i]
+		branch := env.Branch
+		if branch == "" {
+			branch = fmt.Sprintf("linear-env-%d", i)
+		}
+		env.Branch = branch
+		branchNames[i] = branch
+		statusByBranch[branch] = env
+	}
+
+	// The current environment sits at the tail of the chain. It only needs enough state for
+	// upstreamsPending to read its dependsOn edges; its own status is not inspected (the function
+	// evaluates the current branch's upstreams, not the current branch itself).
+	currentBranch := "linear-env-current"
+
+	// Build the chain: env[0] -> env[1] -> ... -> current.
+	envs := make([]promoterv1alpha1.DependentEnvironment, 0, len(precedingEnvs)+1)
+	for i, branch := range branchNames {
+		var dependsOn []string
+		if i > 0 {
+			dependsOn = []string{branchNames[i-1]}
+		}
+		envs = append(envs, promoterv1alpha1.DependentEnvironment{Branch: branch, DependsOn: dependsOn})
+	}
+	var currentDependsOn []string
+	if len(branchNames) > 0 {
+		currentDependsOn = []string{branchNames[len(branchNames)-1]}
+	}
+	envs = append(envs, promoterv1alpha1.DependentEnvironment{Branch: currentBranch, DependsOn: currentDependsOn})
+
+	g, err := buildDAG(envs)
+	if err != nil {
+		return true, fmt.Sprintf("failed to build linear DAG: %v", err)
+	}
+
+	return upstreamsPending(g, currentBranch, targetDrySha, currentActiveCommitTime, statusByBranch)
+}
+
 var _ = Describe("Child creation instance-id label propagation", func() {
 	// Controller files must call StampInstanceIDLabel at child-creation sites for multi-install
 	// label propagation (not gate CommitStatus paths, which use CommitStatusStandardLabels).
@@ -5980,7 +6394,10 @@ var _ = Describe("Child creation instance-id label propagation", func() {
 			Expect(count).To(Equal(expectedCalls),
 				"%s must call utils.StampInstanceIDLabel %d times for instance-id label propagation", file, expectedCalls)
 		},
-		Entry("promotionstrategy_controller.go", "promotionstrategy_controller.go", 2),
+		// One call stamps instance-id onto owned ChangeTransferPolicies. The former second call
+		// lived on auto-injected DependentsSuccessfulCommitStatus creation, which was removed when
+		// ordering gates became explicit CRDs.
+		Entry("promotionstrategy_controller.go", "promotionstrategy_controller.go", 1),
 		Entry("changetransferpolicy_controller.go", "changetransferpolicy_controller.go", 1),
 	)
 })

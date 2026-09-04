@@ -230,6 +230,14 @@ var _ = BeforeSuite(func() {
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
+	err = (&DependentsSuccessfulCommitStatusReconciler{
+		Client:      k8sManager.GetClient(),
+		Scheme:      k8sManager.GetScheme(),
+		Recorder:    k8sManager.GetEventRecorder("DependentsSuccessfulCommitStatus"),
+		SettingsMgr: settingsMgr,
+	}).SetupWithManager(ctx, k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
 	err = (&PromotionStrategyReconciler{
 		Client:      k8sManager.GetClient(),
 		Scheme:      k8sManager.GetScheme(),

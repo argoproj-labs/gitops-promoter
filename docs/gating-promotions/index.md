@@ -15,6 +15,23 @@ An "active commit status" is a check which must be passing on an active (already
 merged for the next environment. To set a CommitStatus to be used as an active commit status, set the `spec.sha` field 
 to the commit hash of the active change in the live environment branch.
 
+### Environment success
+
+**Environment success** is whether an environment is in a good state for what is **currently live** on its active branch.
+An environment is **successful** when every active commit status configured for that environment is in the `success`
+phase for the commit deployed on that live branch. If any active gate is pending or failing, the environment is not
+successful. This is an aggregate idea over the individual CommitStatuses you configure—not a separate CR. It helps explain
+what ordering gates are waiting on: a downstream promotion may stay blocked until upstream environments are successful.
+
+Upgrading from a release before 0.38? See [Upgrading](../upgrading.md#038-promotion-ordering-gate).
+
+Promotion ordering (which environments may promote relative to others) is also expressed as a proposed commit
+status. It is **not** injected automatically: you must create a
+[DependentsSuccessfulCommitStatus](built-in-gates/dependents-successful-commit-status.md) and declare its `key` in the
+PromotionStrategy's effective `proposedCommitStatuses` for each environment that should gate on ordering (typically in
+global `proposedCommitStatuses`). Without a matching gate CR, the PromotionStrategy controller fails its reconcile so
+environments cannot promote out of order by accident.
+
 ## Example
 
 The following example demonstrates how to configure a PromotionStrategy to use CommitStatuses for both a proposed and
@@ -22,7 +39,11 @@ an active commit status check.
 
 ```yaml
 kind: PromotionStrategy
+metadata:
+  name: demo
 spec:
+  proposedCommitStatuses:
+    - key: dependents-successful # ordering gate; must match DependentsSuccessfulCommitStatus.spec.key
   activeCommitStatuses:
     - key: healthy
   environments:
@@ -31,10 +52,19 @@ spec:
     - branch: environment/prod
       proposedCommitStatuses:
         - key: deployment-freeze
+---
+kind: DependentsSuccessfulCommitStatus
+metadata:
+  name: demo
+spec:
+  key: dependents-successful
+  promotionStrategyRef:
+    name: demo
 ```
 
-In this example, the PromotionStrategy has three environments: `environment/dev`, `environment/test`, and `environment/prod`. All environments
-have a `healthy` active commit status check. The `environment/prod` environment has an additional `deployment-freeze` proposed
+In this example, the PromotionStrategy has three environments: `environment/dev`, `environment/test`, and `environment/prod`.
+All environments have a `healthy` active commit status check and the linear ordering gate
+`dependents-successful`. The `environment/prod` environment has an additional `deployment-freeze` proposed
 commit status check.
 
 Suppose the environment branches have been hydrated from the `main` branch and that the branches have the following
@@ -80,6 +110,22 @@ spec:
 kind: CommitStatus
 metadata:
   labels:
+    promoter.argoproj.io/commit-status: dependents-successful
+spec:
+  sha: d0e1f2  # environment/test-next
+  phase: success
+---
+kind: CommitStatus
+metadata:
+  labels:
+    promoter.argoproj.io/commit-status: dependents-successful
+spec:
+  sha: d6e7f8  # environment/prod-next
+  phase: success
+---
+kind: CommitStatus
+metadata:
+  labels:
     promoter.argoproj.io/commit-status: deployment-freeze
 spec:
   sha: d6e7f8  # environment/prod-next
@@ -87,7 +133,7 @@ spec:
 ```
 
 Note that all the active commit statuses have SHAs corresponding to the active environment branches, and the proposed
-commit status has a SHA corresponding to the proposed (`-next`) environment branch.
+commit statuses (including the ordering gate) have SHAs corresponding to the proposed (`-next`) environment branches.
 
 Any tool wanting to gate an active commit status must create and update CommitStatuses with the appropriate SHAs for 
 the respective environments' live environment branches.
@@ -95,15 +141,22 @@ the respective environments' live environment branches.
 Any tool wanting to gate a proposed commit status must create and update CommitStatuses with the appropriate SHAs for
 the respective environments' proposed (`-next`) environment branches.
 
-### How Active Commit Statuses Work (Implementation Details)
+### How Environment Ordering Works
 
-The PromotionStrategy controller will create a ChangeTransferPolicy for each environment. The ChangeTransferPolicy 
-controller does not actually "look back" at previous environments to enforce active commit status checks. Instead, the
-PromotionStrategy controller will inject a `proposedCommitStatus` to represent the active status of the previous
-environment. The PromotionStrategy controller will also create and maintain a `CommitStatus` for each non-zero-index
-environment, based on the aggregate active commit status check of the previous environment.
+The PromotionStrategy controller creates a ChangeTransferPolicy for each environment and copies the PromotionStrategy's
+declared `activeCommitStatuses` / `proposedCommitStatuses` (global plus per-environment) onto that CTP. It does **not**
+inject an ordering key or create ordering CommitStatuses itself.
 
-So for the above example, the stg environment's ChangeTransferPolicy CR will look like this:
+The ChangeTransferPolicy controller does not "look back" at previous environments. Ordering is enforced like any other
+proposed commit status: the CTP waits for a CommitStatus whose `promoter.argoproj.io/commit-status` label matches the
+ordering key and whose `spec.sha` matches the proposed hydrated SHA.
+
+Those ordering CommitStatuses are written by the
+[DependentsSuccessfulCommitStatus](built-in-gates/dependents-successful-commit-status.md) controller. For each
+environment, the gate's CommitStatus is `success` when every configured dependent environment has promoted the change
+being gated and is [successful](#environment-success); otherwise it stays `pending`.
+
+So for the above example, the `environment/test` ChangeTransferPolicy CR looks like this:
 
 ```yaml
 kind: ChangeTransferPolicy
@@ -111,43 +164,38 @@ spec:
   sourceBranch: environment/test-next
   targetBranch: environment/test
   activeCommitStatuses:
-    # The controller will monitor this CommitStatus for the active commit SHA, but it will not enforce it. The status 
-    # will be stored on the 
     - key: healthy
   proposedCommitStatuses:
-    - key: healthy
-    - key: promoter-previous-environment
+    - key: dependents-successful
 ```
 
-Assuming the `environment/dev` environment has a `healthy` active commit status check, the `promoter-previous-environment`
-CommitStatus will look like this:
+When the previous environment (`environment/dev`) has promoted the same dry commit and is successful, the ordering
+CommitStatus for test looks like this:
 
 ```yaml
 kind: CommitStatus
 metadata:
   labels:
-    promoter.argoproj.io/commit-status: promoter-previous-environment
+    promoter.argoproj.io/commit-status: dependents-successful
 spec:
   sha: d0e1f2  # environment/test-next
   phase: success
 ```
 
-Even though the CommitStatus is "about" the `environment/dev` branch, the SHA is the SHA of the `environment/test-next` branch. This is
-how the PromotionStrategy controller expresses its opinion of the proposed commit on the stg environment, i.e. that it
-is acceptable because the previous environment is healthy.
-
-#### Previous Environment CommitStatus URL
-
-Since the previous environment CommitStatus aggregates the active commit status checks of the previous environment, it
-is nontrivial to determine what URL to use for the aggregate CommitStatus.
-
-For now, the previous environment CommitStatus will only be set if there is only one active commit status. Its URL will
-be set to the URL of the previous environment's active commit status. If there are multiple active commit statuses, no
-URL will be set. This behavior may change in the future.
+The SHA is the proposed hydrated SHA of the environment being gated (`environment/test-next`). Phase is `success`
+when every dependent environment has promoted that change and is successful.
 
 ## Built-In Gates
 
 GitOps Promoter ships built-in gate controllers that create and manage `CommitStatus` resources automatically. Each gate has a matching CRD kind (for example `ArgoCDCommitStatus`); configure them in your cluster and reference their `spec.key` in `PromotionStrategy`.
+
+### Environment Ordering
+
+Promotion ordering is required for every PromotionStrategy. Use
+[DependentsSuccessfulCommitStatus](built-in-gates/dependents-successful-commit-status.md) — linear pipelines by default,
+or declare a custom dependency graph for fan-out and fan-in. Declare the gate `key` in effective
+`proposedCommitStatuses` (global and/or per environment). See that page and [Upgrading](../upgrading.md) for wiring
+details.
 
 ### Argo CD Health Status
 
