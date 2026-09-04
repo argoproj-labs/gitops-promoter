@@ -142,10 +142,8 @@ var _ = Describe("Instance ID migration", Ordered, func() {
 		}
 
 		timedCommitStatus := &promoterv1alpha1.TimedCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      psName + "-timer",
-				Namespace: "default",
-			},
+			Name:      psName + "-timer",
+			Namespace: "default",
 			Spec: promoterv1alpha1.TimedCommitStatusSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName},
 				Environments: []promoterv1alpha1.TimedCommitStatusEnvironments{
@@ -158,10 +156,8 @@ var _ = Describe("Instance ID migration", Ordered, func() {
 		}
 
 		gitCommitStatus := &promoterv1alpha1.GitCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      psName + "-git",
-				Namespace: "default",
-			},
+			Name:      psName + "-git",
+			Namespace: "default",
 			Spec: promoterv1alpha1.GitCommitStatusSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName},
 				Key:                  migrationGateGitKey,
@@ -177,10 +173,8 @@ var _ = Describe("Instance ID migration", Ordered, func() {
 		defer testServer.Close()
 
 		webRequestCommitStatus := &promoterv1alpha1.WebRequestCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      psName + "-web",
-				Namespace: "default",
-			},
+			Name:      psName + "-web",
+			Namespace: "default",
 			Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName},
 				Key:                  migrationGateWebKey,
@@ -204,10 +198,8 @@ var _ = Describe("Instance ID migration", Ordered, func() {
 		}
 
 		scheduledCommitStatus := &promoterv1alpha1.ScheduledCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      psName + "-scheduled",
-				Namespace: "default",
-			},
+			Name:      psName + "-scheduled",
+			Namespace: "default",
 			Spec: promoterv1alpha1.ScheduledCommitStatusSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName},
 				Key:                  migrationGateScheduledKey,
@@ -249,16 +241,12 @@ var _ = Describe("Instance ID migration", Ordered, func() {
 		sha = strings.TrimSpace(sha)
 
 		argoApplication := &argocd.Application{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "Application",
-				APIVersion: "argoproj.io/v1alpha1",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: "default",
-				Name:      psName + "-app",
-				Labels: map[string]string{
-					migrationAppLabelKey: psName,
-				},
+			Kind:       "Application",
+			APIVersion: "argoproj.io/v1alpha1",
+			Namespace:  "default",
+			Name:       psName + "-app",
+			Labels: map[string]string{
+				migrationAppLabelKey: psName,
 			},
 			Spec: argocd.ApplicationSpec{
 				Source: &argocd.Source{
@@ -277,10 +265,8 @@ var _ = Describe("Instance ID migration", Ordered, func() {
 		Expect(migClient.Create(ctx, argoApplication)).To(Succeed())
 
 		argoCDCommitStatus := &promoterv1alpha1.ArgoCDCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      psName + "-argocd",
-				Namespace: "default",
-			},
+			Name:      psName + "-argocd",
+			Namespace: "default",
 			Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName},
 				ApplicationSelector: &metav1.LabelSelector{

@@ -1457,12 +1457,10 @@ func createKubeconfigSecret(ctx context.Context, name string, namespace string, 
 	}
 
 	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-			Labels: map[string]string{
-				constants.KubeconfigSecretLabel: "true",
-			},
+		Name:      name,
+		Namespace: namespace,
+		Labels: map[string]string{
+			constants.KubeconfigSecretLabel: "true",
 		},
 	}
 	secret.Data = map[string][]byte{

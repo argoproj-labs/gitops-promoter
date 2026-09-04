@@ -42,7 +42,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
-	"k8s.io/utils/ptr"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -1010,7 +1009,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
 				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
 				// We set auto merge to false so the tests control when (and by whom) the PR is merged.
-				changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
+				changeTransferPolicy.Spec.AutoMerge = new(false)
 
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -1063,7 +1062,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				By("Enabling auto-merge so the controller merges the PR")
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
-					changeTransferPolicy.Spec.AutoMerge = ptr.To(true)
+					changeTransferPolicy.Spec.AutoMerge = new(true)
 					g.Expect(k8sClient.Update(ctx, changeTransferPolicy)).To(Succeed())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -1712,7 +1711,7 @@ var _ = Describe("TemplatePullRequest", func() {
 			}
 			psName := "my-promotion-strategy"
 			ps := &promoterv1alpha1.PromotionStrategy{
-				ObjectMeta: metav1.ObjectMeta{Name: psName, Namespace: "default"},
+				Name: psName, Namespace: "default",
 				Spec: promoterv1alpha1.PromotionStrategySpec{
 					RepositoryReference: promoterv1alpha1.ObjectReference{Name: "test-repo"},
 					Environments:        []promoterv1alpha1.Environment{{Branch: testBranchDevelopment}},
@@ -1791,7 +1790,7 @@ var _ = Describe("TemplatePullRequest", func() {
 				},
 			}
 			ps := &promoterv1alpha1.PromotionStrategy{
-				ObjectMeta: metav1.ObjectMeta{Name: psName, Namespace: "default"},
+				Name: psName, Namespace: "default",
 				Status: promoterv1alpha1.PromotionStrategyStatus{
 					Environments: []promoterv1alpha1.EnvironmentStatus{
 						{
@@ -1897,7 +1896,7 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 
 	It("ignores status-only URL updates", func() {
 		oldPR := &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{Generation: 1},
+			Generation: 1,
 			Status:     promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"},
 		}
 		newPR := oldPR.DeepCopy()
@@ -1906,7 +1905,7 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 	})
 
 	It("enqueues on spec generation change", func() {
-		oldPR := &promoterv1alpha1.PullRequest{ObjectMeta: metav1.ObjectMeta{Generation: 1}}
+		oldPR := &promoterv1alpha1.PullRequest{Generation: 1}
 		newPR := oldPR.DeepCopy()
 		newPR.Generation = 2
 		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
@@ -1914,7 +1913,7 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 
 	It("enqueues when the PR ID is first set", func() {
 		oldPR := &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{Generation: 1},
+			Generation: 1,
 			Status:     promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen},
 		}
 		newPR := oldPR.DeepCopy()
@@ -1924,7 +1923,7 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 
 	It("enqueues on terminal state change", func() {
 		oldPR := &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{Generation: 1},
+			Generation: 1,
 			Status:     promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"},
 		}
 		newPR := oldPR.DeepCopy()
@@ -1934,7 +1933,7 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 
 	It("enqueues when merged-or-closed status is set", func() {
 		oldPR := &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{Generation: 1},
+			Generation: 1,
 			Status:     promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"},
 		}
 		newPR := oldPR.DeepCopy()
@@ -1944,10 +1943,8 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 
 	It("enqueues when the CTP finalizer is removed even if another finalizer is added", func() {
 		oldPR := &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{
-				Generation: 1,
-				Finalizers: []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
-			},
+			Generation: 1,
+			Finalizers: []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
 		}
 		newPR := oldPR.DeepCopy()
 		newPR.Finalizers = []string{promoterv1alpha1.PullRequestFinalizer}
@@ -1956,11 +1953,9 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 
 	It("ignores unrelated finalizer changes when the CTP finalizer is unchanged", func() {
 		oldPR := &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{
-				Generation: 1,
-				Finalizers: []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
-			},
-			Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"},
+			Generation: 1,
+			Finalizers: []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
+			Status:     promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"},
 		}
 		newPR := oldPR.DeepCopy()
 		newPR.Finalizers = append(slices.Clone(newPR.Finalizers), promoterv1alpha1.PullRequestFinalizer)
@@ -1973,9 +1968,9 @@ var _ = Describe("tooManyPRsError", func() {
 		It("returns an error listing all PR names if 3 or fewer", func() {
 			prList := &promoterv1alpha1.PullRequestList{
 				Items: []promoterv1alpha1.PullRequest{
-					{ObjectMeta: metav1.ObjectMeta{Name: "pr-101"}, Status: promoterv1alpha1.PullRequestStatus{ID: "101"}},
-					{ObjectMeta: metav1.ObjectMeta{Name: "pr-102"}, Status: promoterv1alpha1.PullRequestStatus{ID: "102"}},
-					{ObjectMeta: metav1.ObjectMeta{Name: "pr-103"}, Status: promoterv1alpha1.PullRequestStatus{ID: "103"}},
+					{Name: "pr-101", Status: promoterv1alpha1.PullRequestStatus{ID: "101"}},
+					{Name: "pr-102", Status: promoterv1alpha1.PullRequestStatus{ID: "102"}},
+					{Name: "pr-103", Status: promoterv1alpha1.PullRequestStatus{ID: "103"}},
 				},
 			}
 			err := tooManyPRsError(prList)
@@ -1987,11 +1982,11 @@ var _ = Describe("tooManyPRsError", func() {
 		It("returns an error listing first 3 PR names and count of remaining if more than 3", func() {
 			prList := &promoterv1alpha1.PullRequestList{
 				Items: []promoterv1alpha1.PullRequest{
-					{ObjectMeta: metav1.ObjectMeta{Name: "pr-201"}, Status: promoterv1alpha1.PullRequestStatus{ID: "201"}},
-					{ObjectMeta: metav1.ObjectMeta{Name: "pr-202"}, Status: promoterv1alpha1.PullRequestStatus{ID: "202"}},
-					{ObjectMeta: metav1.ObjectMeta{Name: "pr-203"}, Status: promoterv1alpha1.PullRequestStatus{ID: "203"}},
-					{ObjectMeta: metav1.ObjectMeta{Name: "pr-204"}, Status: promoterv1alpha1.PullRequestStatus{ID: "204"}},
-					{ObjectMeta: metav1.ObjectMeta{Name: "pr-205"}, Status: promoterv1alpha1.PullRequestStatus{ID: "205"}},
+					{Name: "pr-201", Status: promoterv1alpha1.PullRequestStatus{ID: "201"}},
+					{Name: "pr-202", Status: promoterv1alpha1.PullRequestStatus{ID: "202"}},
+					{Name: "pr-203", Status: promoterv1alpha1.PullRequestStatus{ID: "203"}},
+					{Name: "pr-204", Status: promoterv1alpha1.PullRequestStatus{ID: "204"}},
+					{Name: "pr-205", Status: promoterv1alpha1.PullRequestStatus{ID: "205"}},
 				},
 			}
 			err := tooManyPRsError(prList)
@@ -2011,8 +2006,8 @@ var _ = Describe("emitPromotionLifecycleEvents", func() {
 		recorder = events.NewFakeRecorder(100)
 		reconciler = &ChangeTransferPolicyReconciler{Recorder: recorder}
 		ctp = &promoterv1alpha1.ChangeTransferPolicy{
-			ObjectMeta: metav1.ObjectMeta{Name: "test-ctp", Namespace: "default"},
-			Spec:       promoterv1alpha1.ChangeTransferPolicySpec{ActiveBranch: "environment/development"},
+			Name: "test-ctp", Namespace: "default",
+			Spec: promoterv1alpha1.ChangeTransferPolicySpec{ActiveBranch: "environment/development"},
 		}
 	})
 
@@ -2502,10 +2497,8 @@ func hasEventWithReasonAndMessage(eventList v1.EventList, involvedName, reason, 
 func changeTransferPolicyResources(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.ChangeTransferPolicy) {
 	name = name + "-" + utils.KubeSafeUniqueName(randomString(15))
 	gitRepo := &promoterv1alpha1.GitRepository{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
+		Name:      name,
+		Namespace: namespace,
 		Spec: promoterv1alpha1.GitRepositorySpec{
 			Fake: &promoterv1alpha1.FakeRepo{
 				Owner: name,
@@ -2520,20 +2513,16 @@ func changeTransferPolicyResources(ctx context.Context, name, namespace string) 
 	setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 	scmSecret := &v1.Secret{
-		TypeMeta: metav1.TypeMeta{},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
-		Data: nil,
+		TypeMeta:  metav1.TypeMeta{},
+		Name:      name,
+		Namespace: namespace,
+		Data:      nil,
 	}
 
 	scmProvider := &promoterv1alpha1.ScmProvider{
-		TypeMeta: metav1.TypeMeta{},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
+		TypeMeta:  metav1.TypeMeta{},
+		Name:      name,
+		Namespace: namespace,
 		Spec: promoterv1alpha1.ScmProviderSpec{
 			SecretRef: &v1.LocalObjectReference{Name: name},
 			Fake:      &promoterv1alpha1.Fake{},
@@ -2542,11 +2531,9 @@ func changeTransferPolicyResources(ctx context.Context, name, namespace string) 
 	}
 
 	commitStatus := &promoterv1alpha1.CommitStatus{
-		TypeMeta: metav1.TypeMeta{},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
+		TypeMeta:  metav1.TypeMeta{},
+		Name:      name,
+		Namespace: namespace,
 		Spec: promoterv1alpha1.CommitStatusSpec{
 			RepositoryReference: promoterv1alpha1.ObjectReference{
 				Name: name,
@@ -2560,10 +2547,8 @@ func changeTransferPolicyResources(ctx context.Context, name, namespace string) 
 	}
 
 	changeTransferPolicy := &promoterv1alpha1.ChangeTransferPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
+		Name:      name,
+		Namespace: namespace,
 		Spec: promoterv1alpha1.ChangeTransferPolicySpec{
 			RepositoryReference: promoterv1alpha1.ObjectReference{
 				Name: name,
@@ -2647,7 +2632,7 @@ var _ = Describe("buildHistoryEntry trailer sources", func() {
 		mustRunGit(workDir, "push", "-u", "origin", branch)
 
 		gitRepo := &promoterv1alpha1.GitRepository{
-			ObjectMeta: metav1.ObjectMeta{Name: "history-entry-repo", Namespace: "default"},
+			Name: "history-entry-repo", Namespace: "default",
 			Spec: promoterv1alpha1.GitRepositorySpec{
 				Fake: &promoterv1alpha1.FakeRepo{Owner: "test-owner", Name: "history-entry-repo"},
 			},
@@ -2778,7 +2763,7 @@ var _ = Describe("writePromotionHistoryNote merge commit snapshot mismatch", fun
 		mustRunGit(workDir, "push", "origin", activeBranch)
 
 		gitRepo := &promoterv1alpha1.GitRepository{
-			ObjectMeta: metav1.ObjectMeta{Name: "drift-repo", Namespace: "default"},
+			Name: "drift-repo", Namespace: "default",
 			Spec: promoterv1alpha1.GitRepositorySpec{
 				Fake: &promoterv1alpha1.FakeRepo{Owner: "test-owner", Name: "drift-repo"},
 			},
@@ -2884,17 +2869,15 @@ var _ = Describe("handlePRFinalizerRemoval early promotion history note", func()
 			constants.TrailerShaHydratedProposed + ": " + proposedSha + "\n" +
 			constants.TrailerShaDryProposed + ": " + drySha
 		return &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "early-note-pr",
-				Namespace: ctp.Namespace,
-				Labels: map[string]string{
-					promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
-					promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
-					promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(activeBranch),
-				},
-				Finalizers:        []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
-				DeletionTimestamp: &metav1.Time{Time: time.Now()},
+			Name:      "early-note-pr",
+			Namespace: ctp.Namespace,
+			Labels: map[string]string{
+				promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
+				promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
+				promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(activeBranch),
 			},
+			Finalizers:        []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
+			DeletionTimestamp: &metav1.Time{Time: time.Now()},
 			Spec: promoterv1alpha1.PullRequestSpec{
 				RepositoryReference: promoterv1alpha1.ObjectReference{Name: "early-note-repo"},
 				MergeSha:            proposedSha,
@@ -2948,11 +2931,9 @@ var _ = Describe("handlePRFinalizerRemoval early promotion history note", func()
 		mustRunGit(workDir, "push", "-u", "origin", proposedBranch)
 
 		ctp = &promoterv1alpha1.ChangeTransferPolicy{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "early-note-ctp",
-				Namespace: "default",
-				Labels:    map[string]string{promoterv1alpha1.PromotionStrategyLabel: "early-note-ps"},
-			},
+			Name:      "early-note-ctp",
+			Namespace: "default",
+			Labels:    map[string]string{promoterv1alpha1.PromotionStrategyLabel: "early-note-ps"},
 			Spec: promoterv1alpha1.ChangeTransferPolicySpec{
 				ActiveBranch:   activeBranch,
 				ProposedBranch: proposedBranch,
@@ -2967,7 +2948,7 @@ var _ = Describe("handlePRFinalizerRemoval early promotion history note", func()
 		// Clone for the controller BEFORE the external merge lands, so the merge commit is not in the local
 		// clone yet: handlePRFinalizerRemoval runs before calculateStatus fetches the active branch.
 		gitRepo := &promoterv1alpha1.GitRepository{
-			ObjectMeta: metav1.ObjectMeta{Name: "early-note-repo", Namespace: "default"},
+			Name: "early-note-repo", Namespace: "default",
 			Spec: promoterv1alpha1.GitRepositorySpec{
 				Fake: &promoterv1alpha1.FakeRepo{Owner: "test-owner", Name: "early-note-repo"},
 			},
@@ -3111,11 +3092,9 @@ var _ = Describe("createOrUpdatePullRequest with a merged or terminating PullReq
 		prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch))
 		prKey = types.NamespacedName{Name: prName, Namespace: "default"}
 		pr = &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:       prName,
-				Namespace:  "default",
-				Finalizers: []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
-			},
+			Name:       prName,
+			Namespace:  "default",
+			Finalizers: []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
 			Spec: promoterv1alpha1.PullRequestSpec{
 				RepositoryReference: promoterv1alpha1.ObjectReference{Name: name},
 				Title:               "previous promotion",
