@@ -152,7 +152,7 @@ type TimedCommitStatusEnvironmentsStatus struct {
 // running in specified environments and creates CommitStatus resources (as active commit statuses) based on
 // configured duration requirements. This enables "soak time" or "bake time" policies: changes must run successfully
 // in an environment for at least the configured duration before being promoted. Referenced in PromotionStrategy
-// via activeCommitStatuses with key "timer".
+// via activeCommitStatuses using the configured key (which defaults to timer).
 // +kubebuilder:printcolumn:name="PromotionStrategy",type=string,JSONPath=`.spec.promotionStrategyRef.name`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 type TimedCommitStatus struct {

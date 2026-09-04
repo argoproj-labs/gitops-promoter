@@ -1929,7 +1929,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ControllerConfiguration(r
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "ControllerConfiguration configures the behavior of the promoter controllers. A global instance is typically deployed with the controller and applies to all promotions. Each controller has a section (WorkQueue settings, rate limiters, and controller-specific options such as PR templates or watchLocalApplications). All fields are required; defaults are provided in the installation manifests.",
+				Description: "ControllerConfiguration configures the behavior of the promoter controllers. A global instance is typically deployed with the controller and applies to all promotions. Each controller has a required section (WorkQueue settings, rate limiters, and controller-specific options such as PR templates or watchLocalApplications). Optional fields such as InstanceID may be omitted; defaults are provided in the installation manifests.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
@@ -5294,7 +5294,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatus(ref com
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "TimedCommitStatus provides time-based gating for environment promotions. It monitors how long commits have been running in specified environments and creates CommitStatus resources (as active commit statuses) based on configured duration requirements. This enables \"soak time\" or \"bake time\" policies: changes must run successfully in an environment for at least the configured duration before being promoted. Referenced in PromotionStrategy via activeCommitStatuses with key \"timer\".",
+				Description: "TimedCommitStatus provides time-based gating for environment promotions. It monitors how long commits have been running in specified environments and creates CommitStatus resources (as active commit statuses) based on configured duration requirements. This enables \"soak time\" or \"bake time\" policies: changes must run successfully in an environment for at least the configured duration before being promoted. Referenced in PromotionStrategy via activeCommitStatuses using the configured key (which defaults to timer).",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {

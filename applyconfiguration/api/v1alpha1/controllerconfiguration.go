@@ -30,9 +30,9 @@ import (
 // with apply.
 //
 // ControllerConfiguration configures the behavior of the promoter controllers. A global instance is typically
-// deployed with the controller and applies to all promotions. Each controller has a section (WorkQueue settings,
-// rate limiters, and controller-specific options such as PR templates or watchLocalApplications). All fields are
-// required; defaults are provided in the installation manifests.
+// deployed with the controller and applies to all promotions. Each controller has a required section (WorkQueue
+// settings, rate limiters, and controller-specific options such as PR templates or watchLocalApplications).
+// Optional fields such as InstanceID may be omitted; defaults are provided in the installation manifests.
 type ControllerConfigurationApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:""`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
