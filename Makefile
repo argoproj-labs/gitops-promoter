@@ -439,7 +439,7 @@ GORELEASER ?= $(LOCALBIN)/goreleaser-$(GORELEASER_VERSION)
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.8.1
 CONTROLLER_TOOLS_VERSION ?= v0.22.0
-ENVTEST_VERSION ?= release-0.24
+ENVTEST_VERSION ?= release-0.25
 GOLANGCI_LINT_VERSION ?= v2.12.2
 DEADCODE_VERSION ?= v0.49.0
 DEADCODE_FILTER ?= github.com/argoproj-labs/gitops-promoter/internal
