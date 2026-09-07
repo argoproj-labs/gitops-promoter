@@ -5,7 +5,7 @@ import { describe, it, beforeEach, afterEach, expect, vi } from 'vitest';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import TimedCommitStatus from './TimedCommitStatus';
-import type { Check, CommitStatusManager } from '../../types/promotion';
+import type { Check, CommitStatusManager } from '../../../types/promotion';
 
 const makeManager = (): CommitStatusManager => ({
   spec: {
