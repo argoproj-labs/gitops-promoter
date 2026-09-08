@@ -481,3 +481,20 @@ func FormatMergeRequestUrl(client *gitlab.Client, gitlabRepo *v1alpha1.GitLabRep
 	baseURL := client.BaseURL()
 	return fmt.Sprintf("%s://%s/%s/%s/-/merge_requests/%s", baseURL.Scheme, baseURL.Host, gitlabRepo.Namespace, gitlabRepo.Name, prID)
 }
+
+// AddReviewers is not implemented for GitLab yet. Configuring reviewers on a GitLab
+// repository surfaces as a reconcile error rather than being silently ignored.
+func (pr *PullRequest) AddReviewers(_ context.Context, _ v1alpha1.PullRequest, reviewers []v1alpha1.PullRequestReviewer) error {
+	if len(reviewers) == 0 {
+		return nil
+	}
+	return errors.New("pull request reviewers are not yet supported for GitLab")
+}
+
+// RemoveReviewers is not implemented for Gitlab yet.
+func (pr *PullRequest) RemoveReviewers(_ context.Context, _ v1alpha1.PullRequest, reviewers []v1alpha1.PullRequestReviewer) error {
+	if len(reviewers) == 0 {
+		return nil
+	}
+	return errors.New("pull request reviewers are not yet supported for Gitlab")
+}

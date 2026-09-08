@@ -152,11 +152,36 @@ type ScmLabelsSpec struct {
 	Expression string `json:"expression"`
 }
 
+// ScmReviewersSpec configures dynamic SCM pull request reviewers via an expression.
+type ScmReviewersSpec struct {
+	// Expression is evaluated using the expr library (github.com/expr-lang/expr) against
+	// ChangeTransferPolicy status and spec. It must return a list of reviewers, where each item
+	// is either a username string or an object selecting a reviewer by a single supported
+	// identifier, currently `{user: <name>}` or `{group: <name>}`.
+	//
+	// Available variables:
+	//   - Status: ChangeTransferPolicy status (Proposed/Active commit statuses, branch SHAs, etc.)
+	//   - Spec: ChangeTransferPolicy spec (ActiveBranch, ProposedBranch, AutoMerge, etc.)
+	//   - PromotionStrategy: owning PromotionStrategy spec and status when available
+	//
+	// Use Spec.ActiveBranch to vary reviewers per environment, and Spec.AutoMerge to skip
+	// reviewers on auto-merged environments.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=8192
+	Expression string `json:"expression"`
+}
+
 // PullRequestPolicySpec configures SCM pull request behavior for a promotion policy.
 type PullRequestPolicySpec struct {
 	// Labels configures dynamic SCM labels applied to promotion pull requests.
 	// +kubebuilder:validation:Optional
 	Labels *ScmLabelsSpec `json:"labels,omitempty"`
+
+	// Reviewers configures dynamic SCM reviewers requested on promotion pull requests.
+	// +kubebuilder:validation:Optional
+	Reviewers *ScmReviewersSpec `json:"reviewers,omitempty"`
 }
 
 // PromotionStrategyStatus defines the observed state of PromotionStrategy

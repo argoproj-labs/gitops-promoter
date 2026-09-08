@@ -90,12 +90,40 @@ type PullRequestSpec struct {
 	// +kubebuilder:validation:items:MaxLength=50
 	// +kubebuilder:validation:items:Pattern=`^[^\n\r\x00]+$`
 	Labels []string `json:"labels,omitempty"`
+
+	// Reviewers is the desired set of SCM pull request reviewers.
+	// Written by the ChangeTransferPolicy controller from pullRequest.reviewers.expression evaluation.
+	// The controller adds missing reviewers and removes reviewers no longer in this desired set;
+	// see status.appliedReviewers.
+	// +kubebuilder:validation:Optional
+	// +listType=atomic
+	// +kubebuilder:validation:MaxItems=10
+	Reviewers []PullRequestReviewer `json:"reviewers,omitempty"`
 }
 
 // CommitConfiguration defines the commit configuration for how we will merge/squash/etc the pull request.
 type CommitConfiguration struct {
 	// Message is the commit message that will be written for the commit that's made when merging the PR.
 	Message string `json:"message"`
+}
+
+// PullRequestReviewer identifies a single reviewer to request a review from. Exactly one field
+// must be set. Additional identifier fields (numeric ID, email, UUID) may be added later for
+// providers that cannot resolve plain names.
+// +kubebuilder:validation:XValidation:rule="[has(self.user), has(self.group)].exists_one(x, x)",message="exactly one of user or group must be set"
+type PullRequestReviewer struct {
+	// User is an SCM username.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=100
+	// +kubebuilder:validation:Pattern=`^[^\s\x00]+$`
+	User string `json:"user,omitempty"`
+	// Group is an SCM group or team identifier. On GitHub this is an organization team slug.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=100
+	// +kubebuilder:validation:Pattern=`^[^\s\x00]+$`
+	Group string `json:"group,omitempty"`
 }
 
 // PullRequestStatus defines the observed state of PullRequest
@@ -155,6 +183,14 @@ type PullRequestStatus struct {
 	// +kubebuilder:validation:items:MaxLength=50
 	// +kubebuilder:validation:items:Pattern=`^[^\n\r\x00]+$`
 	AppliedLabels []string `json:"appliedLabels,omitempty"`
+
+	// AppliedReviewers lists reviewers gitops-promoter has requested a review from, so removing a
+	// reviewer from the expression retracts the request. Only reviewers listed here are candidates
+	// for removal; reviewers added out of band on the SCM are left alone.
+	// +kubebuilder:validation:Optional
+	// +listType=atomic
+	// +kubebuilder:validation:MaxItems=10
+	AppliedReviewers []PullRequestReviewer `json:"appliedReviewers,omitempty"`
 
 	// Conditions Represents the observations of the current state.
 	// +patchMergeKey=type

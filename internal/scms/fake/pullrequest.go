@@ -41,6 +41,8 @@ var (
 	mergeShaMismatchCount atomic.Uint64
 	// labelCallCount is incremented on AddLabels and RemoveLabels calls (for tests).
 	labelCallCount atomic.Uint64
+	// reviewerCallCount is incremented on AddReviewers calls (for tests).
+	reviewerCallCount atomic.Uint64
 )
 
 type pullRequestProviderState struct {
@@ -49,6 +51,7 @@ type pullRequestProviderState struct {
 	state            v1alpha1.PullRequestState
 	mergedTargetSha  string
 	labels           []string
+	reviewers        []v1alpha1.PullRequestReviewer
 	hideFromFindOpen bool
 }
 
@@ -129,6 +132,7 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullReque
 		state:     v1alpha1.PullRequestClosed,
 		createdAt: prev.createdAt,
 		labels:    prev.labels,
+		reviewers: prev.reviewers,
 	}
 	return nil
 }
@@ -238,6 +242,7 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 		state:           v1alpha1.PullRequestMerged,
 		createdAt:       prev.createdAt,
 		labels:          prev.labels,
+		reviewers:       prev.reviewers,
 		mergedTargetSha: mergedTargetSha,
 	}
 	return scms.MergeResult{CommitSHA: mergedTargetSha}, nil
@@ -438,6 +443,7 @@ func (pr *PullRequest) MarkMergedExternally(ctx context.Context, pullRequest v1a
 		state:           v1alpha1.PullRequestMerged,
 		createdAt:       prev.createdAt,
 		labels:          prev.labels,
+		reviewers:       prev.reviewers,
 		mergedTargetSha: mergedTargetSha,
 	}
 	return nil
@@ -671,4 +677,88 @@ func (pr *PullRequest) GetAppliedLabels(ctx context.Context, pullRequest v1alpha
 		return nil, nil
 	}
 	return slices.Clone(st.labels), nil
+}
+
+// AddReviewers records requested reviewers on a pull request in the fake provider.
+func (pr *PullRequest) AddReviewers(ctx context.Context, pullRequest v1alpha1.PullRequest, reviewers []v1alpha1.PullRequestReviewer) error {
+	reviewerCallCount.Add(1)
+	if len(reviewers) == 0 {
+		return nil
+	}
+
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	mutexPR.Lock()
+	defer mutexPR.Unlock()
+	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+	st, ok := pullRequests[prKey]
+	if !ok {
+		return errors.New("pull request not found")
+	}
+	for _, reviewer := range reviewers {
+		if !slices.Contains(st.reviewers, reviewer) {
+			st.reviewers = append(st.reviewers, reviewer)
+		}
+	}
+	pullRequests[prKey] = st
+	return nil
+}
+
+// GetAppliedReviewers returns reviewers stored on the fake provider for testing.
+func (pr *PullRequest) GetAppliedReviewers(ctx context.Context, pullRequest v1alpha1.PullRequest) ([]v1alpha1.PullRequestReviewer, error) {
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	mutexPR.RLock()
+	defer mutexPR.RUnlock()
+	st, ok := pullRequests[pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)]
+	if !ok {
+		return nil, errors.New("pull request not found")
+	}
+	return slices.Clone(st.reviewers), nil
+}
+
+// ResetReviewerCallCount resets the AddReviewers call counter (for tests).
+func ResetReviewerCallCount() {
+	reviewerCallCount.Store(0)
+}
+
+// ReviewerCallCount returns the number of AddReviewers calls (for tests).
+func ReviewerCallCount() uint64 {
+	return reviewerCallCount.Load()
+}
+
+// RemoveReviewers removes requested reviewers from a pull request in the fake provider.
+func (pr *PullRequest) RemoveReviewers(ctx context.Context, pullRequest v1alpha1.PullRequest, reviewers []v1alpha1.PullRequestReviewer) error {
+	reviewerCallCount.Add(1)
+	if len(reviewers) == 0 {
+		return nil
+	}
+
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	mutexPR.Lock()
+	defer mutexPR.Unlock()
+	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+	st, ok := pullRequests[prKey]
+	if !ok {
+		return errors.New("pull request not found")
+	}
+	filtered := st.reviewers[:0]
+	for _, existing := range st.reviewers {
+		if !slices.Contains(reviewers, existing) {
+			filtered = append(filtered, existing)
+		}
+	}
+	st.reviewers = filtered
+	pullRequests[prKey] = st
+	return nil
 }

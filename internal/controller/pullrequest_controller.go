@@ -34,6 +34,7 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/labels"
+	"github.com/argoproj-labs/gitops-promoter/internal/reviewers"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	bitbucket_cloud "github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_cloud"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
@@ -410,6 +411,12 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	}
 
+	if !reviewers.SetsEqual(pr.Spec.Reviewers, pr.Status.AppliedReviewers) {
+		if err := r.reconcileReviewers(ctx, &pr, provider); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
 	return r.pullRequestRequeueResult(ctx)
 }
 
@@ -518,6 +525,9 @@ func shouldSkipSCMSync(pr *promoterv1alpha1.PullRequest) bool {
 		return false
 	}
 	if !labels.SetsEqual(pr.Spec.Labels, pr.Status.AppliedLabels) {
+		return false
+	}
+	if !reviewers.SetsEqual(pr.Spec.Reviewers, pr.Status.AppliedReviewers) {
 		return false
 	}
 	return true
@@ -809,5 +819,26 @@ func (r *PullRequestReconciler) reconcileLabels(ctx context.Context, pr *promote
 	}
 
 	pr.Status.AppliedLabels = slices.Clone(pr.Spec.Labels)
+	return nil
+}
+
+// reconcileReviewers syncs spec.reviewers to the SCM provider and updates status.appliedReviewers.
+// The caller must ensure status.id is set and spec.reviewers differs from status.appliedReviewers.
+// Withdrawing a request only clears a pending one; a review already submitted is unaffected.
+func (r *PullRequestReconciler) reconcileReviewers(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
+	log.FromContext(ctx).Info("Reconciling PullRequest reviewers")
+	toAdd, toRemove := reviewers.Diff(pr.Spec.Reviewers, pr.Status.AppliedReviewers)
+	if len(toRemove) > 0 {
+		if err := provider.RemoveReviewers(ctx, *pr, toRemove); err != nil {
+			return fmt.Errorf("failed to remove pull request reviewers: %w", err)
+		}
+	}
+	if len(toAdd) > 0 {
+		if err := provider.AddReviewers(ctx, *pr, toAdd); err != nil {
+			return fmt.Errorf("failed to add pull request reviewers: %w", err)
+		}
+	}
+
+	pr.Status.AppliedReviewers = slices.Clone(pr.Spec.Reviewers)
 	return nil
 }

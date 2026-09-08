@@ -83,6 +83,10 @@ const (
 	SCMOperationCreateLabel SCMOperation = "create-label"
 	// SCMOperationRemoveLabels is used when removing labels from pull requests.
 	SCMOperationRemoveLabels SCMOperation = "remove-labels"
+	// SCMOperationAddReviewers is used when requesting reviews on pull requests.
+	SCMOperationAddReviewers SCMOperation = "add-reviewers"
+	// SCMOperationRemoveReviewers is used when withdrawing review requests on pull requests.
+	SCMOperationRemoveReviewers SCMOperation = "remove-reviewers"
 )
 
 // RateLimit represents the rate limit information for SCM API calls.

@@ -42,4 +42,12 @@ type PullRequestProvider interface {
 	// RemoveLabels removes SCM labels from a pull request.
 	// pullRequest.Status.ID is guaranteed to be set when this is called.
 	RemoveLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labels []string) error
+	// AddReviewers requests a review on an open pull request from each of the given reviewers.
+	// Providers must be idempotent for reviewers already requested.
+	// pullRequest.Status.ID is guaranteed to be set when this is called.
+	AddReviewers(ctx context.Context, pullRequest v1alpha1.PullRequest, reviewers []v1alpha1.PullRequestReviewer) error
+	// RemoveReviewers withdraws pending review requests from an open pull request. Reviews already
+	// submitted are unaffected. Providers must tolerate reviewers whose request is already gone.
+	// pullRequest.Status.ID is guaranteed to be set when this is called.
+	RemoveReviewers(ctx context.Context, pullRequest v1alpha1.PullRequest, reviewers []v1alpha1.PullRequestReviewer) error
 }
