@@ -68,71 +68,56 @@ function useTimedCommitStatusProgress(check: CommitStatusContext['check'], envir
   return { clampedRemaining, ratio };
 }
 
-const RADIAL_RADIUS = 7;
-const RADIAL_CIRCUMFERENCE = 2 * Math.PI * RADIAL_RADIUS;
-
-const TimedCommitStatusRadial: React.FC<CommitStatusContext> = ({ check, manager }) => {
+const TimedCommitStatusHeader: React.FC<CommitStatusContext> = ({ check, manager }) => {
   const environment = findEnvironment(check, manager);
-  const { ratio } = useTimedCommitStatusProgress(check, environment);
+  const { clampedRemaining, ratio } = useTimedCommitStatusProgress(check, environment);
 
   const hasRenderedRef = useRef(false);
   useEffect(() => {
     hasRenderedRef.current = true;
   }, []);
 
-  const dashoffset = RADIAL_CIRCUMFERENCE * (1 - ratio);
-
-  return (
-    <svg
-      className="timed-commit-status-radial"
-      width={18}
-      height={18}
-      viewBox="0 0 18 18"
-      style={{ flexShrink: 0 }}
-    >
-      <circle
-        cx={9}
-        cy={9}
-        r={RADIAL_RADIUS}
-        fill="none"
-        stroke="rgba(13, 173, 234, 0.15)"
-        strokeWidth={2}
-      />
-      <circle
-        cx={9}
-        cy={9}
-        r={RADIAL_RADIUS}
-        fill="none"
-        stroke="#0dadea"
-        strokeWidth={2}
-        strokeDasharray={RADIAL_CIRCUMFERENCE}
-        strokeDashoffset={dashoffset}
-        strokeLinecap="round"
-        transform="rotate(-90 9 9)"
-        style={{ transition: hasRenderedRef.current ? 'stroke-dashoffset 1s linear' : 'none' }}
-      />
-    </svg>
-  );
-};
-
-const TimedCommitStatusHeader: React.FC<CommitStatusContext> = ({ check, manager }) => {
-  const environment = findEnvironment(check, manager);
-  const { clampedRemaining } = useTimedCommitStatusProgress(check, environment);
-
   if (!environment || check.status === 'success') {
     return renderFallback(check.name, check.url);
   }
 
   return (
-    <span style={{ whiteSpace: 'nowrap' }}>
-      {renderFallback(check.name, check.url)} ({formatDuration(clampedRemaining)} remaining)
-    </span>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ whiteSpace: 'nowrap' }}>
+        {renderFallback(check.name, check.url)} ({formatDuration(clampedRemaining)} remaining)
+      </span>
+      <div
+        className="timed-commit-status-track"
+        style={{
+          position: 'relative',
+          width: 48,
+          flexShrink: 0,
+          height: 6,
+          borderRadius: 3,
+          backgroundColor: 'rgba(66, 133, 244, 0.15)',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          className="timed-commit-status-fill"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            bottom: 0,
+            width: `${ratio * 100}%`,
+            borderRadius: 3,
+            backgroundColor: 'rgb(66, 133, 244)',
+            transition: hasRenderedRef.current ? 'width 1s linear' : 'none',
+          }}
+        />
+      </div>
+    </div>
   );
 };
 
 const TimedCommitStatus: RowPlugin = {
   rowHeader: TimedCommitStatusHeader,
-  pendingSpinner: TimedCommitStatusRadial,
 };
 
 export default TimedCommitStatus;

@@ -5,7 +5,6 @@ describe('commitStatusPlugins', () => {
   it('has a plugin registered for TimedCommitStatus', () => {
     expect(commitStatusPlugins['TimedCommitStatus']).toBeDefined();
     expect(typeof commitStatusPlugins['TimedCommitStatus']?.rowHeader).toBe('function');
-    expect(typeof commitStatusPlugins['TimedCommitStatus']?.pendingSpinner).toBe('function');
   });
 
   it('has no plugin registered for ArgoCDCommitStatus', () => {

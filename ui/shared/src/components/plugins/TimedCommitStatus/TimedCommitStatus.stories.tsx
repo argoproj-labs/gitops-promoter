@@ -4,9 +4,19 @@ import { useEffect, useState } from 'react';
 import Card from '@lib/components/Card';
 import type { Environment, EnrichedBranchCommitStatus } from '../../../types/promotion';
 
-const meta: Meta<typeof Card> = {
+interface TimedCommitStatusArgs {
+  elapsedSeconds: number;
+  requiredDurationSeconds: number;
+  url?: string;
+}
+
+const meta: Meta<TimedCommitStatusArgs> = {
   title: 'Plugins/TimedCommitStatus',
-  component: Card,
+  argTypes: {
+    elapsedSeconds: { control: { type: 'number', min: 0, step: 1 } },
+    requiredDurationSeconds: { control: { type: 'number', min: 1, step: 1 } },
+    url: { control: 'text' },
+  },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const toggles = await canvas.findAllByText('Current status');
@@ -16,7 +26,7 @@ const meta: Meta<typeof Card> = {
 
 export default meta;
 
-type Story = StoryObj<typeof Card>;
+type Story = StoryObj<TimedCommitStatusArgs>;
 
 const commitTime = new Date(Date.now() - 4 * 60 * 1000).toISOString();
 
@@ -106,106 +116,91 @@ function timedCommitStatusManager(elapsedSeconds: number, requiredDurationSecond
   };
 }
 
-export const InProgress: Story = {
-  args: {
-    environments: [
-      buildEnvironment({
-        key: 'timer',
-        phase: 'pending',
-        description: 'Waiting for the soak period to elapse',
-        branch: 'environment/staging',
-        kind: 'TimedCommitStatus',
-        manager: timedCommitStatusManager(4 * 60, 10 * 60),
-      }),
-    ],
-  },
-};
-
-export const InProgressWithLink: Story = {
-  args: {
-    environments: [
-      buildEnvironment({
-        key: 'timer',
-        phase: 'pending',
-        description: 'Waiting for the soak period to elapse',
-        url: 'https://github.com/argoproj-labs/gitops-promoter/actions/runs/4444',
-        branch: 'environment/staging',
-        kind: 'TimedCommitStatus',
-        manager: timedCommitStatusManager(4 * 60, 10 * 60),
-      }),
-    ],
-  },
-};
-
-const nearCompleteElapsedSeconds = 9 * 60 + 45;
-const nearCompleteRequiredDurationSeconds = 10 * 60;
-
-function buildNearCompleteEnvironment(): Environment {
+function buildTransitioningEnvironment(
+  elapsedSeconds: number,
+  requiredDurationSeconds: number,
+  url?: string,
+): Environment {
   return buildEnvironment({
     key: 'timer',
     phase: 'pending',
     description: 'Waiting for the soak period to elapse',
+    url,
     branch: 'environment/staging',
     kind: 'TimedCommitStatus',
-    manager: timedCommitStatusManager(nearCompleteElapsedSeconds, nearCompleteRequiredDurationSeconds),
+    manager: timedCommitStatusManager(elapsedSeconds, requiredDurationSeconds),
   });
 }
 
-function buildNearCompleteSuccessEnvironment(): Environment {
+function buildTransitionedSuccessEnvironment(requiredDurationSeconds: number, url?: string): Environment {
   return buildEnvironment({
     key: 'timer',
     phase: 'success',
     description: 'Soak period elapsed',
-    url: 'https://github.com/argoproj-labs/gitops-promoter/actions/runs/3333',
+    url: url ?? 'https://github.com/argoproj-labs/gitops-promoter/actions/runs/3333',
     branch: 'environment/staging',
     kind: 'TimedCommitStatus',
-    manager: timedCommitStatusManager(nearCompleteRequiredDurationSeconds, nearCompleteRequiredDurationSeconds),
+    manager: timedCommitStatusManager(requiredDurationSeconds, requiredDurationSeconds),
   });
 }
 
-export const NearComplete: Story = {
-  render: () => {
-    const [environment, setEnvironment] = useState<Environment>(buildNearCompleteEnvironment);
+// Mirrors what the real controller does: once the required duration elapses since
+// commitTime, it flips the check to success. `args`-based stories never simulate
+// that transition, so the countdown would otherwise reach 0 and get stuck there.
+// Re-seeds from scratch whenever the inputs change (e.g. via Storybook Controls),
+// so editing elapsedSeconds/requiredDurationSeconds live restarts the timer.
+function useTransitioningEnvironment(
+  elapsedSeconds: number,
+  requiredDurationSeconds: number,
+  url?: string,
+): Environment {
+  const [environment, setEnvironment] = useState<Environment>(() =>
+    buildTransitioningEnvironment(elapsedSeconds, requiredDurationSeconds, url),
+  );
 
-    useEffect(() => {
-      const remainingSeconds = nearCompleteRequiredDurationSeconds - nearCompleteElapsedSeconds;
-      const timeout = setTimeout(() => {
-        setEnvironment(buildNearCompleteSuccessEnvironment());
-      }, remainingSeconds * 1000);
-      return () => clearTimeout(timeout);
-    }, []);
+  useEffect(() => {
+    setEnvironment(buildTransitioningEnvironment(elapsedSeconds, requiredDurationSeconds, url));
 
+    const remainingSeconds = requiredDurationSeconds - elapsedSeconds;
+    const timeout = setTimeout(() => {
+      setEnvironment(buildTransitionedSuccessEnvironment(requiredDurationSeconds, url));
+    }, remainingSeconds * 1000);
+    return () => clearTimeout(timeout);
+  }, [elapsedSeconds, requiredDurationSeconds, url]);
+
+  return environment;
+}
+
+export const InProgress: Story = {
+  args: {
+    elapsedSeconds: 4 * 60,
+    requiredDurationSeconds: 10 * 60,
+  },
+  render: ({ elapsedSeconds, requiredDurationSeconds, url }) => {
+    const environment = useTransitioningEnvironment(elapsedSeconds, requiredDurationSeconds, url);
     return <Card environments={[environment]} />;
   },
 };
 
 export const Success: Story = {
   args: {
-    environments: [
-      buildEnvironment({
-        key: 'timer',
-        phase: 'success',
-        description: 'Soak period elapsed',
-        url: 'https://github.com/argoproj-labs/gitops-promoter/actions/runs/3333',
-        branch: 'environment/staging',
-        kind: 'TimedCommitStatus',
-        manager: timedCommitStatusManager(10 * 60, 10 * 60),
-      }),
-    ],
+    elapsedSeconds: 10 * 60,
+    requiredDurationSeconds: 10 * 60,
+    url: 'https://github.com/argoproj-labs/gitops-promoter/actions/runs/3333',
   },
-};
-
-export const NoUrl: Story = {
-  args: {
-    environments: [
-      buildEnvironment({
-        key: 'timer',
-        phase: 'success',
-        description: 'Soak period elapsed',
-        branch: 'environment/staging',
-        kind: 'TimedCommitStatus',
-        manager: timedCommitStatusManager(10 * 60, 10 * 60),
-      }),
-    ],
-  },
+  render: ({ elapsedSeconds, requiredDurationSeconds, url }) => (
+    <Card
+      environments={[
+        buildEnvironment({
+          key: 'timer',
+          phase: 'success',
+          description: 'Soak period elapsed',
+          url,
+          branch: 'environment/staging',
+          kind: 'TimedCommitStatus',
+          manager: timedCommitStatusManager(elapsedSeconds, requiredDurationSeconds),
+        }),
+      ]}
+    />
+  ),
 };
