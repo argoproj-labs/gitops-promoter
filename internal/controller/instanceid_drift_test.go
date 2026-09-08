@@ -122,8 +122,8 @@ func setupInstanceIDDriftScmProvider(ctx context.Context) (utils.PromoterResourc
 	name := instanceIDDriftResourceName("ScmProvider")
 	key := types.NamespacedName{Name: name, Namespace: "default"}
 	sp := &promoterv1alpha1.ScmProvider{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
-		Spec:       promoterv1alpha1.ScmProviderSpec{Fake: &promoterv1alpha1.Fake{}},
+		Name: name, Namespace: "default",
+		Spec: promoterv1alpha1.ScmProviderSpec{Fake: &promoterv1alpha1.Fake{}},
 	}
 	Expect(k8sClient.Create(ctx, sp)).To(Succeed())
 	return sp, key, func() { deleteIgnoringNotFound(ctx, sp) }
@@ -133,8 +133,8 @@ func setupInstanceIDDriftClusterScmProvider(ctx context.Context) (utils.Promoter
 	name := instanceIDDriftResourceName("ClusterScmProvider")
 	key := types.NamespacedName{Name: name, Namespace: "default"}
 	csp := &promoterv1alpha1.ClusterScmProvider{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
-		Spec:       promoterv1alpha1.ScmProviderSpec{Fake: &promoterv1alpha1.Fake{}},
+		Name: name, Namespace: "default",
+		Spec: promoterv1alpha1.ScmProviderSpec{Fake: &promoterv1alpha1.Fake{}},
 	}
 	Expect(k8sClient.Create(ctx, csp)).To(Succeed())
 	return csp, key, func() { deleteIgnoringNotFound(ctx, csp) }
@@ -144,7 +144,7 @@ func setupInstanceIDDriftGitRepository(ctx context.Context) (utils.PromoterResou
 	name := instanceIDDriftResourceName("GitRepository")
 	key := types.NamespacedName{Name: name, Namespace: "default"}
 	gr := &promoterv1alpha1.GitRepository{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+		Name: name, Namespace: "default",
 		Spec: promoterv1alpha1.GitRepositorySpec{
 			Fake: &promoterv1alpha1.FakeRepo{Owner: name, Name: name},
 			ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
@@ -161,7 +161,7 @@ func setupInstanceIDDriftPromotionStrategy(ctx context.Context) (utils.PromoterR
 	name := instanceIDDriftResourceName("PromotionStrategy")
 	key := types.NamespacedName{Name: name, Namespace: "default"}
 	ps := &promoterv1alpha1.PromotionStrategy{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+		Name: name, Namespace: "default",
 		Spec: promoterv1alpha1.PromotionStrategySpec{
 			RepositoryReference: promoterv1alpha1.ObjectReference{Name: name + "-repo"},
 			Environments: []promoterv1alpha1.Environment{
@@ -185,7 +185,7 @@ func setupInstanceIDDriftChangeTransferPolicy(ctx context.Context) (utils.Promot
 	name := instanceIDDriftResourceName("ChangeTransferPolicy")
 	key := types.NamespacedName{Name: name, Namespace: "default"}
 	ctp := &promoterv1alpha1.ChangeTransferPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+		Name: name, Namespace: "default",
 		Spec: promoterv1alpha1.ChangeTransferPolicySpec{
 			RepositoryReference: promoterv1alpha1.ObjectReference{Name: name + "-repo"},
 			ProposedBranch:      testBranchDevelopmentNext,
@@ -200,7 +200,7 @@ func setupInstanceIDDriftPullRequest(ctx context.Context) (utils.PromoterResourc
 	name := instanceIDDriftResourceName("PullRequest")
 	key := types.NamespacedName{Name: name, Namespace: "default"}
 	pr := &promoterv1alpha1.PullRequest{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+		Name: name, Namespace: "default",
 		Spec: promoterv1alpha1.PullRequestSpec{
 			RepositoryReference: promoterv1alpha1.ObjectReference{Name: name + "-repo"},
 			Title:               "instance ID drift test",
@@ -218,7 +218,7 @@ func setupInstanceIDDriftCommitStatus(ctx context.Context) (utils.PromoterResour
 	name := instanceIDDriftResourceName("CommitStatus")
 	key := types.NamespacedName{Name: name, Namespace: "default"}
 	cs := &promoterv1alpha1.CommitStatus{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+		Name: name, Namespace: "default",
 		Spec: promoterv1alpha1.CommitStatusSpec{
 			Phase:               promoterv1alpha1.CommitPhasePending,
 			RepositoryReference: promoterv1alpha1.ObjectReference{Name: name + "-repo"},
@@ -235,7 +235,7 @@ func setupInstanceIDDriftTimedCommitStatus(ctx context.Context) (utils.PromoterR
 	name := instanceIDDriftResourceName("TimedCommitStatus")
 	key := types.NamespacedName{Name: name, Namespace: "default"}
 	tcs := &promoterv1alpha1.TimedCommitStatus{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+		Name: name, Namespace: "default",
 		Spec: promoterv1alpha1.TimedCommitStatusSpec{
 			PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name + "-ps"},
 			Environments: []promoterv1alpha1.TimedCommitStatusEnvironments{
@@ -254,7 +254,7 @@ func setupInstanceIDDriftScheduledCommitStatus(ctx context.Context) (utils.Promo
 	name := instanceIDDriftResourceName("ScheduledCommitStatus")
 	key := types.NamespacedName{Name: name, Namespace: "default"}
 	scs := &promoterv1alpha1.ScheduledCommitStatus{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+		Name: name, Namespace: "default",
 		Spec: promoterv1alpha1.ScheduledCommitStatusSpec{
 			PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name + "-ps"},
 			Key:                  "instance-id-drift",
@@ -280,7 +280,7 @@ func setupInstanceIDDriftGitCommitStatus(ctx context.Context) (utils.PromoterRes
 	name := instanceIDDriftResourceName("GitCommitStatus")
 	key := types.NamespacedName{Name: name, Namespace: "default"}
 	gcs := &promoterv1alpha1.GitCommitStatus{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+		Name: name, Namespace: "default",
 		Spec: promoterv1alpha1.GitCommitStatusSpec{
 			PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name + "-ps"},
 			Key:                  "instance-id-drift",
@@ -295,7 +295,7 @@ func setupInstanceIDDriftWebRequestCommitStatus(ctx context.Context) (utils.Prom
 	name := instanceIDDriftResourceName("WebRequestCommitStatus")
 	key := types.NamespacedName{Name: name, Namespace: "default"}
 	wrcs := &promoterv1alpha1.WebRequestCommitStatus{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+		Name: name, Namespace: "default",
 		Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 			PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name + "-ps"},
 			Key:                  "instance-id-drift",
@@ -323,7 +323,7 @@ func setupInstanceIDDriftArgoCDCommitStatus(ctx context.Context) (utils.Promoter
 	name := instanceIDDriftResourceName("ArgoCDCommitStatus")
 	key := types.NamespacedName{Name: name, Namespace: "default"}
 	acs := &promoterv1alpha1.ArgoCDCommitStatus{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+		Name: name, Namespace: "default",
 		Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
 			PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name + "-ps"},
 			ApplicationSelector: &metav1.LabelSelector{

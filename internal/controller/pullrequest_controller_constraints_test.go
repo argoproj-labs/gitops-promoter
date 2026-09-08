@@ -22,6 +22,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -121,12 +122,7 @@ func exprReferencesMicrosecond(expr ast.Expr) bool {
 		if sel, ok := e.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "Microsecond" {
 			return true
 		}
-		for _, arg := range e.Args {
-			if exprReferencesMicrosecond(arg) {
-				return true
-			}
-		}
-		return false
+		return slices.ContainsFunc(e.Args, exprReferencesMicrosecond)
 	default:
 		return false
 	}
@@ -141,11 +137,9 @@ func reconcileContainsMicroRequeue(fn *ast.FuncDecl) bool {
 			if !ok || sel.Sel.Name != "RequeueAfter" {
 				return true
 			}
-			for _, arg := range node.Args {
-				if exprReferencesMicrosecond(arg) {
-					found = true
-					return false
-				}
+			if slices.ContainsFunc(node.Args, exprReferencesMicrosecond) {
+				found = true
+				return false
 			}
 		case *ast.KeyValueExpr:
 			ident, ok := node.Key.(*ast.Ident)

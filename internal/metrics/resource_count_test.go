@@ -102,13 +102,13 @@ func buildStubInformerSourceWithCounts() *stubResourceCountInformerSource {
 			readyFalse := metav1.ConditionFalse
 			items = []runtime.Object{
 				&promoterv1alpha1.PromotionStrategy{
-					ObjectMeta: metav1.ObjectMeta{Name: "one", Namespace: "ns"},
+					Name: "one", Namespace: "ns",
 					Status: promoterv1alpha1.PromotionStrategyStatus{
 						Conditions: []metav1.Condition{{Type: "Ready", Status: readyTrue}},
 					},
 				},
 				&promoterv1alpha1.PromotionStrategy{
-					ObjectMeta: metav1.ObjectMeta{Name: "two", Namespace: "ns"},
+					Name: "two", Namespace: "ns",
 					Status: promoterv1alpha1.PromotionStrategyStatus{
 						Conditions: []metav1.Condition{{Type: "Ready", Status: readyFalse}},
 					},
@@ -116,7 +116,7 @@ func buildStubInformerSourceWithCounts() *stubResourceCountInformerSource {
 			}
 		case "GitRepository":
 			items = []runtime.Object{
-				&promoterv1alpha1.GitRepository{ObjectMeta: metav1.ObjectMeta{Name: "repo-a", Namespace: "ns"}},
+				&promoterv1alpha1.GitRepository{Name: "repo-a", Namespace: "ns"},
 			}
 		default:
 			items = nil
