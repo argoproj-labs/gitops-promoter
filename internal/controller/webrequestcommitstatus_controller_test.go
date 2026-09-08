@@ -1792,7 +1792,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.Header().Set("X-Rate-Limit-Remaining", "42")
-				w.Header().Set("X-Request-Id", "abc-123")
+				w.Header().Set("X-Request-ID", "abc-123")
 				w.WriteHeader(http.StatusOK)
 				_ = json.NewEncoder(w).Encode(map[string]any{
 					"approved": true,
