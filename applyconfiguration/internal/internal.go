@@ -1165,6 +1165,18 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: labels
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ScmLabelsSpec
+    - name: reviewers
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ScmReviewersSpec
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PullRequestReviewer
+  map:
+    fields:
+    - name: group
+      type:
+        scalar: string
+    - name: user
+      type:
+        scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PullRequestSpec
   map:
     fields:
@@ -1186,6 +1198,12 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: mergeSha
       type:
         scalar: string
+    - name: reviewers
+      type:
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PullRequestReviewer
+          elementRelationship: atomic
     - name: sourceBranch
       type:
         scalar: string
@@ -1210,6 +1228,12 @@ var schemaYAML = typed.YAMLObject(`types:
           elementType:
             scalar: string
           elementRelationship: associative
+    - name: appliedReviewers
+      type:
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PullRequestReviewer
+          elementRelationship: atomic
     - name: conditions
       type:
         list:
@@ -1540,6 +1564,12 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: observedGeneration
       type:
         scalar: numeric
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ScmReviewersSpec
+  map:
+    fields:
+    - name: expression
+      type:
+        scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.SuccessSpec
   map:
     fields:

@@ -1302,6 +1302,15 @@ export type components = {
         PullRequestPolicySpec: {
             /** @description Labels configures dynamic SCM labels applied to promotion pull requests. */
             labels?: components["schemas"]["ScmLabelsSpec"];
+            /** @description Reviewers configures dynamic SCM reviewers requested on promotion pull requests. */
+            reviewers?: components["schemas"]["ScmReviewersSpec"];
+        };
+        /** @description PullRequestReviewer identifies a single reviewer to request a review from. Exactly one field must be set. Additional identifier fields (numeric ID, email, UUID) may be added later for providers that cannot resolve plain names. */
+        PullRequestReviewer: {
+            /** @description Group is an SCM group or team identifier. On GitHub this is an organization team slug. */
+            group?: string;
+            /** @description User is an SCM username. */
+            user?: string;
         };
         /** @description PullRequestSpec defines the desired state of PullRequest */
         PullRequestSpec: {
@@ -1324,6 +1333,8 @@ export type components = {
              * @default
              */
             mergeSha: string;
+            /** @description Reviewers is the desired set of SCM pull request reviewers. Written by the ChangeTransferPolicy controller from pullRequest.reviewers.expression evaluation. The controller adds missing reviewers and removes reviewers no longer in this desired set; see status.appliedReviewers. */
+            reviewers?: components["schemas"]["PullRequestReviewer"][];
             /**
              * @description SourceBranch is the base the git reference that we are merging into Head ---> Base Must not start with '-', contain ':', or contain '..'.
              * @default
@@ -1349,6 +1360,8 @@ export type components = {
         PullRequestStatus: {
             /** @description AppliedLabels lists SCM labels successfully applied by gitops-promoter (for sync and retraction). */
             appliedLabels?: string[];
+            /** @description AppliedReviewers lists reviewers gitops-promoter has requested a review from, so removing a reviewer from the expression retracts the request. Only reviewers listed here are candidates for removal; reviewers added out of band on the SCM are left alone. */
+            appliedReviewers?: components["schemas"]["PullRequestReviewer"][];
             /** @description Conditions Represents the observations of the current state. */
             conditions?: components["schemas"]["Condition"][];
             /**
@@ -1558,6 +1571,21 @@ export type components = {
              * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
              */
             observedGeneration?: number;
+        };
+        /** @description ScmReviewersSpec configures dynamic SCM pull request reviewers via an expression. */
+        ScmReviewersSpec: {
+            /**
+             * @description Expression is evaluated using the expr library (github.com/expr-lang/expr) against ChangeTransferPolicy status and spec. It must return a list of reviewers, where each item is either a username string or an object selecting a reviewer by a single supported identifier, currently `{user: <name>}` or `{group: <name>}`.
+             *
+             *     Available variables:
+             *       - Status: ChangeTransferPolicy status (Proposed/Active commit statuses, branch SHAs, etc.)
+             *       - Spec: ChangeTransferPolicy spec (ActiveBranch, ProposedBranch, AutoMerge, etc.)
+             *       - PromotionStrategy: owning PromotionStrategy spec and status when available
+             *
+             *     Use Spec.ActiveBranch to vary reviewers per environment, and Spec.AutoMerge to skip reviewers on auto-merged environments.
+             * @default
+             */
+            expression: string;
         };
         /** @description ShardInfo describes the shard selector that was applied to produce a list response. Its presence on a list response indicates the list is a filtered subset. */
         ShardInfo: {

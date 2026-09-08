@@ -116,6 +116,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.PullRequestConfiguration{}.OpenAPIModelName():                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestConfiguration(ref),
 		apiv1alpha1.PullRequestList{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestList(ref),
 		apiv1alpha1.PullRequestPolicySpec{}.OpenAPIModelName():                                schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestPolicySpec(ref),
+		apiv1alpha1.PullRequestReviewer{}.OpenAPIModelName():                                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestReviewer(ref),
 		apiv1alpha1.PullRequestSpec{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestSpec(ref),
 		apiv1alpha1.PullRequestStatus{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestStatus(ref),
 		apiv1alpha1.PullRequestTemplate{}.OpenAPIModelName():                                  schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestTemplate(ref),
@@ -141,6 +142,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.ScmProviderObjectReference{}.OpenAPIModelName():                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderObjectReference(ref),
 		apiv1alpha1.ScmProviderSpec{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderSpec(ref),
 		apiv1alpha1.ScmProviderStatus{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderStatus(ref),
+		apiv1alpha1.ScmReviewersSpec{}.OpenAPIModelName():                                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmReviewersSpec(ref),
 		apiv1alpha1.SuccessSpec{}.OpenAPIModelName():                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_SuccessSpec(ref),
 		apiv1alpha1.TLSAuth{}.OpenAPIModelName():                                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_TLSAuth(ref),
 		apiv1alpha1.TimedCommitStatus{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_TimedCommitStatus(ref),
@@ -4090,11 +4092,44 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestPolicySpec(ref
 							Ref:         ref(apiv1alpha1.ScmLabelsSpec{}.OpenAPIModelName()),
 						},
 					},
+					"reviewers": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Reviewers configures dynamic SCM reviewers requested on promotion pull requests.",
+							Ref:         ref(apiv1alpha1.ScmReviewersSpec{}.OpenAPIModelName()),
+						},
+					},
 				},
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.ScmLabelsSpec{}.OpenAPIModelName()},
+			apiv1alpha1.ScmLabelsSpec{}.OpenAPIModelName(), apiv1alpha1.ScmReviewersSpec{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestReviewer(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "PullRequestReviewer identifies a single reviewer to request a review from. Exactly one field must be set. Additional identifier fields (numeric ID, email, UUID) may be added later for providers that cannot resolve plain names.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"user": {
+						SchemaProps: spec.SchemaProps{
+							Description: "User is an SCM username.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"group": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Group is an SCM group or team identifier. On GitHub this is an organization team slug.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -4185,12 +4220,30 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestSpec(ref commo
 							},
 						},
 					},
+					"reviewers": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "atomic",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "Reviewers is the desired set of SCM pull request reviewers. Written by the ChangeTransferPolicy controller from pullRequest.reviewers.expression evaluation. The controller adds missing reviewers and removes reviewers no longer in this desired set; see status.appliedReviewers.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.PullRequestReviewer{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
 				},
 				Required: []string{"gitRepositoryRef", "title", "targetBranch", "sourceBranch", "mergeSha", "state"},
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.CommitConfiguration{}.OpenAPIModelName(), apiv1alpha1.ObjectReference{}.OpenAPIModelName()},
+			apiv1alpha1.CommitConfiguration{}.OpenAPIModelName(), apiv1alpha1.ObjectReference{}.OpenAPIModelName(), apiv1alpha1.PullRequestReviewer{}.OpenAPIModelName()},
 	}
 }
 
@@ -4275,6 +4328,24 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestStatus(ref com
 							},
 						},
 					},
+					"appliedReviewers": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "atomic",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "AppliedReviewers lists reviewers gitops-promoter has requested a review from, so removing a reviewer from the expression retracts the request. Only reviewers listed here are candidates for removal; reviewers added out of band on the SCM are left alone.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.PullRequestReviewer{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
 					"conditions": {
 						VendorExtensible: spec.VendorExtensible{
 							Extensions: spec.Extensions{
@@ -4309,7 +4380,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PullRequestStatus(ref com
 			},
 		},
 		Dependencies: []string{
-			metav1.Condition{}.OpenAPIModelName(), metav1.Time{}.OpenAPIModelName()},
+			apiv1alpha1.PullRequestReviewer{}.OpenAPIModelName(), metav1.Condition{}.OpenAPIModelName(), metav1.Time{}.OpenAPIModelName()},
 	}
 }
 
@@ -5242,6 +5313,28 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmProviderStatus(ref com
 		},
 		Dependencies: []string{
 			metav1.Condition{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ScmReviewersSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ScmReviewersSpec configures dynamic SCM pull request reviewers via an expression.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"expression": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Expression is evaluated using the expr library (github.com/expr-lang/expr) against ChangeTransferPolicy status and spec. It must return a list of reviewers, where each item is either a username string or an object selecting a reviewer by a single supported identifier, currently `{user: <name>}` or `{group: <name>}`.\n\nAvailable variables:\n  - Status: ChangeTransferPolicy status (Proposed/Active commit statuses, branch SHAs, etc.)\n  - Spec: ChangeTransferPolicy spec (ActiveBranch, ProposedBranch, AutoMerge, etc.)\n  - PromotionStrategy: owning PromotionStrategy spec and status when available\n\nUse Spec.ActiveBranch to vary reviewers per environment, and Spec.AutoMerge to skip reviewers on auto-merged environments.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"expression"},
+			},
+		},
 	}
 }
 

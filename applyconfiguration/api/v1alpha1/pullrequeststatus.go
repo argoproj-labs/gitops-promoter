@@ -61,6 +61,10 @@ type PullRequestStatusApplyConfiguration struct {
 	SCMSyncedSpecDigest *string `json:"scmSyncedSpecDigest,omitempty"`
 	// AppliedLabels lists SCM labels successfully applied by gitops-promoter (for sync and retraction).
 	AppliedLabels []string `json:"appliedLabels,omitempty"`
+	// AppliedReviewers lists reviewers gitops-promoter has requested a review from, so removing a
+	// reviewer from the expression retracts the request. Only reviewers listed here are candidates
+	// for removal; reviewers added out of band on the SCM are left alone.
+	AppliedReviewers []PullRequestReviewerApplyConfiguration `json:"appliedReviewers,omitempty"`
 	// Conditions Represents the observations of the current state.
 	Conditions []metav1.ConditionApplyConfiguration `json:"conditions,omitempty"`
 	// InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each
@@ -145,6 +149,19 @@ func (b *PullRequestStatusApplyConfiguration) WithSCMSyncedSpecDigest(value stri
 func (b *PullRequestStatusApplyConfiguration) WithAppliedLabels(values ...string) *PullRequestStatusApplyConfiguration {
 	for i := range values {
 		b.AppliedLabels = append(b.AppliedLabels, values[i])
+	}
+	return b
+}
+
+// WithAppliedReviewers adds the given value to the AppliedReviewers field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the AppliedReviewers field.
+func (b *PullRequestStatusApplyConfiguration) WithAppliedReviewers(values ...*PullRequestReviewerApplyConfiguration) *PullRequestStatusApplyConfiguration {
+	for i := range values {
+		if values[i] == nil {
+			panic("nil value passed to WithAppliedReviewers")
+		}
+		b.AppliedReviewers = append(b.AppliedReviewers, *values[i])
 	}
 	return b
 }

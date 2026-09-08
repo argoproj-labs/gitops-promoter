@@ -17,7 +17,7 @@ Estimated static CEL costs versus kube-apiserver limits, computed from `k8s.io/a
 | GitCommitStatus | v1alpha1 | 0 | 0.00% |
 | GitRepository | v1alpha1 | 14 | 0.00% |
 | PromotionStrategy | v1alpha1 | 72,438,744 | 72.44% |
-| PullRequest | v1alpha1 | 394 | 0.00% |
+| PullRequest | v1alpha1 | 794 | 0.00% |
 | RevertCommit | v1alpha1 | 0 | 0.00% |
 | ScheduledCommitStatus | v1alpha1 | 106,003 | 0.11% |
 | ScmProvider | v1alpha1 | 21 | 0.00% |
@@ -198,6 +198,8 @@ Source: `promoter.argoproj.io_pullrequests.yaml`
 
 | Path | Cost | % of rule limit | Expression |
 |---|---:|---:|---|
+| `.spec.reviewers[]` | 200 | 0.00% | `[has(self.user), has(self.group)].exists_one(x, x)` |
+| `.status.appliedReviewers[]` | 200 | 0.00% | `[has(self.user), has(self.group)].exists_one(x, x)` |
 | `.spec.sourceBranch` | 42 | 0.00% | `self == oldSelf` |
 | `.spec.sourceBranch` | 42 | 0.00% | `!self.contains(':')` |
 | `.spec.sourceBranch` | 42 | 0.00% | `!self.contains('..')` |
@@ -213,7 +215,7 @@ Source: `promoter.argoproj.io_pullrequests.yaml`
 | `.spec.sourceBranch` | 3 | 0.00% | `!self.startsWith('-')` |
 | `.spec.targetBranch` | 3 | 0.00% | `!self.startsWith('-')` |
 | `.status.url` | 3 | 0.00% | `self == '' \|\| isURL(self)` |
-| **Total** | **394** | **0.00%** | |
+| **Total** | **794** | **0.00%** | |
 
 #### RevertCommit
 

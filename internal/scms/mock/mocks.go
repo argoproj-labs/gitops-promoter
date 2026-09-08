@@ -395,6 +395,69 @@ func (_c *MockPullRequestProvider_AddLabels_Call) RunAndReturn(run func(ctx cont
 	return _c
 }
 
+// AddReviewers provides a mock function for the type MockPullRequestProvider
+func (_mock *MockPullRequestProvider) AddReviewers(ctx context.Context, pullRequest v1alpha1.PullRequest, reviewers []v1alpha1.PullRequestReviewer) error {
+	ret := _mock.Called(ctx, pullRequest, reviewers)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AddReviewers")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, v1alpha1.PullRequest, []v1alpha1.PullRequestReviewer) error); ok {
+		r0 = returnFunc(ctx, pullRequest, reviewers)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockPullRequestProvider_AddReviewers_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AddReviewers'
+type MockPullRequestProvider_AddReviewers_Call struct {
+	*mock.Call
+}
+
+// AddReviewers is a helper method to define mock.On call
+//   - ctx context.Context
+//   - pullRequest v1alpha1.PullRequest
+//   - reviewers []v1alpha1.PullRequestReviewer
+func (_e *MockPullRequestProvider_Expecter) AddReviewers(ctx any, pullRequest any, reviewers any) *MockPullRequestProvider_AddReviewers_Call {
+	return &MockPullRequestProvider_AddReviewers_Call{Call: _e.mock.On("AddReviewers", ctx, pullRequest, reviewers)}
+}
+
+func (_c *MockPullRequestProvider_AddReviewers_Call) Run(run func(ctx context.Context, pullRequest v1alpha1.PullRequest, reviewers []v1alpha1.PullRequestReviewer)) *MockPullRequestProvider_AddReviewers_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 v1alpha1.PullRequest
+		if args[1] != nil {
+			arg1 = args[1].(v1alpha1.PullRequest)
+		}
+		var arg2 []v1alpha1.PullRequestReviewer
+		if args[2] != nil {
+			arg2 = args[2].([]v1alpha1.PullRequestReviewer)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockPullRequestProvider_AddReviewers_Call) Return(err error) *MockPullRequestProvider_AddReviewers_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockPullRequestProvider_AddReviewers_Call) RunAndReturn(run func(ctx context.Context, pullRequest v1alpha1.PullRequest, reviewers []v1alpha1.PullRequestReviewer) error) *MockPullRequestProvider_AddReviewers_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Close provides a mock function for the type MockPullRequestProvider
 func (_mock *MockPullRequestProvider) Close(ctx context.Context, pullRequest v1alpha1.PullRequest) error {
 	ret := _mock.Called(ctx, pullRequest)
@@ -865,6 +928,69 @@ func (_c *MockPullRequestProvider_RemoveLabels_Call) Return(err error) *MockPull
 }
 
 func (_c *MockPullRequestProvider_RemoveLabels_Call) RunAndReturn(run func(ctx context.Context, pullRequest v1alpha1.PullRequest, labels []string) error) *MockPullRequestProvider_RemoveLabels_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RemoveReviewers provides a mock function for the type MockPullRequestProvider
+func (_mock *MockPullRequestProvider) RemoveReviewers(ctx context.Context, pullRequest v1alpha1.PullRequest, reviewers []v1alpha1.PullRequestReviewer) error {
+	ret := _mock.Called(ctx, pullRequest, reviewers)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RemoveReviewers")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, v1alpha1.PullRequest, []v1alpha1.PullRequestReviewer) error); ok {
+		r0 = returnFunc(ctx, pullRequest, reviewers)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockPullRequestProvider_RemoveReviewers_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RemoveReviewers'
+type MockPullRequestProvider_RemoveReviewers_Call struct {
+	*mock.Call
+}
+
+// RemoveReviewers is a helper method to define mock.On call
+//   - ctx context.Context
+//   - pullRequest v1alpha1.PullRequest
+//   - reviewers []v1alpha1.PullRequestReviewer
+func (_e *MockPullRequestProvider_Expecter) RemoveReviewers(ctx any, pullRequest any, reviewers any) *MockPullRequestProvider_RemoveReviewers_Call {
+	return &MockPullRequestProvider_RemoveReviewers_Call{Call: _e.mock.On("RemoveReviewers", ctx, pullRequest, reviewers)}
+}
+
+func (_c *MockPullRequestProvider_RemoveReviewers_Call) Run(run func(ctx context.Context, pullRequest v1alpha1.PullRequest, reviewers []v1alpha1.PullRequestReviewer)) *MockPullRequestProvider_RemoveReviewers_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 v1alpha1.PullRequest
+		if args[1] != nil {
+			arg1 = args[1].(v1alpha1.PullRequest)
+		}
+		var arg2 []v1alpha1.PullRequestReviewer
+		if args[2] != nil {
+			arg2 = args[2].([]v1alpha1.PullRequestReviewer)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockPullRequestProvider_RemoveReviewers_Call) Return(err error) *MockPullRequestProvider_RemoveReviewers_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockPullRequestProvider_RemoveReviewers_Call) RunAndReturn(run func(ctx context.Context, pullRequest v1alpha1.PullRequest, reviewers []v1alpha1.PullRequestReviewer) error) *MockPullRequestProvider_RemoveReviewers_Call {
 	_c.Call.Return(run)
 	return _c
 }
