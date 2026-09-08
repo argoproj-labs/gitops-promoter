@@ -145,7 +145,7 @@ func changeManagementArgoconDemoPS() *promoterv1alpha1.PromotionStrategy {
 	}
 
 	return &promoterv1alpha1.PromotionStrategy{
-		ObjectMeta: metav1.ObjectMeta{Name: "argocon-demo", Namespace: "default"},
+		Name: "argocon-demo", Namespace: "default",
 		Spec: promoterv1alpha1.PromotionStrategySpec{
 			RepositoryReference: promoterv1alpha1.ObjectReference{Name: "my-app-repo"},
 			Environments: []promoterv1alpha1.Environment{
@@ -256,7 +256,7 @@ func jsonMap(m map[string]any) *apiextensionsv1.JSON {
 // "dev" and "prod" on testWRCSKey via per-env ProposedCommitStatuses.
 func twoEnvPromotionStrategy() *promoterv1alpha1.PromotionStrategy {
 	return &promoterv1alpha1.PromotionStrategy{
-		ObjectMeta: metav1.ObjectMeta{Name: "ps", Namespace: "default"},
+		Name: "ps", Namespace: "default",
 		Spec: promoterv1alpha1.PromotionStrategySpec{
 			RepositoryReference: promoterv1alpha1.ObjectReference{Name: "repo"},
 			Environments: []promoterv1alpha1.Environment{
@@ -293,7 +293,7 @@ func twoEnvPromotionStrategy() *promoterv1alpha1.PromotionStrategy {
 // with the supplied mode and success expression.
 func basicWRCS(mode promoterv1alpha1.ModeSpec, successExpr string) *promoterv1alpha1.WebRequestCommitStatus {
 	return &promoterv1alpha1.WebRequestCommitStatus{
-		ObjectMeta: metav1.ObjectMeta{Name: "wrcs", Namespace: "default"},
+		Name: "wrcs", Namespace: "default",
 		Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 			PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "ps"},
 			Key:                  testWRCSKey,
@@ -318,7 +318,7 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 	// newPS builds a minimal PromotionStrategy with two branches gated on key "k".
 	newPS := func() *promoterv1alpha1.PromotionStrategy {
 		return &promoterv1alpha1.PromotionStrategy{
-			ObjectMeta: metav1.ObjectMeta{Name: "ps", Namespace: "default"},
+			Name: "ps", Namespace: "default",
 			Spec: promoterv1alpha1.PromotionStrategySpec{
 				RepositoryReference: promoterv1alpha1.ObjectReference{Name: "repo"},
 				Environments: []promoterv1alpha1.Environment{
@@ -352,7 +352,7 @@ var _ = Describe("webrequestsimulator.Simulate", func() {
 		successExpr string,
 	) *promoterv1alpha1.WebRequestCommitStatus {
 		return &promoterv1alpha1.WebRequestCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{Name: "wrcs", Namespace: "default"},
+			Name: "wrcs", Namespace: "default",
 			Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "ps"},
 				Key:                  "k",
@@ -910,7 +910,7 @@ var _ = Describe("webrequestsimulator.Simulate scenarios", func() {
 			// Reconcile 1: no ResponseOutput yet -> methodTemplate renders GET (search).
 			// Reconcile 2: ResponseOutput.changeId set by prior response.output -> renders POST (close).
 			wrcs := &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{Name: "wrcs", Namespace: "default"},
+				Name: "wrcs", Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "ps"},
 					Key:                  testWRCSKey,
@@ -950,7 +950,7 @@ let priorChangeId = ResponseOutput != nil ? (ResponseOutput.changeId ?? "") : ""
 
 			// PS gates dev+prod on testWRCSKey via ActiveCommitStatuses so reportOn=active picks them up.
 			ps := &promoterv1alpha1.PromotionStrategy{
-				ObjectMeta: metav1.ObjectMeta{Name: "ps", Namespace: "default"},
+				Name: "ps", Namespace: "default",
 				Spec: promoterv1alpha1.PromotionStrategySpec{
 					RepositoryReference: promoterv1alpha1.ObjectReference{Name: "repo"},
 					Environments: []promoterv1alpha1.Environment{

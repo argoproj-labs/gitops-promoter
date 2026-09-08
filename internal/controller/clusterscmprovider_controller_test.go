@@ -26,8 +26,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 )
@@ -59,10 +57,8 @@ var _ = Describe("ClusterScmProvider Controller", func() {
 			err := k8sClient.Get(ctx, typeNamespacedName, clusterscmprovider)
 			if err != nil && errors.IsNotFound(err) {
 				resource := &promoterv1alpha1.ClusterScmProvider{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
+					Name:      resourceName,
+					Namespace: "default",
 					Spec: promoterv1alpha1.ScmProviderSpec{
 						Fake: &promoterv1alpha1.Fake{},
 					},

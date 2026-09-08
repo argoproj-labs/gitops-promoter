@@ -84,10 +84,8 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 		BeforeEach(func() {
 			By("Creating a ScheduledCommitStatus with a wide-open window")
 			scs = &promoterv1alpha1.ScheduledCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-allow",
-					Namespace: "default",
-				},
+				Name:      name + "-allow",
+				Namespace: "default",
 				Spec: promoterv1alpha1.ScheduledCommitStatusSpec{
 					Key: "promotion-window",
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
@@ -147,10 +145,8 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 		BeforeEach(func() {
 			By("Creating a ScheduledCommitStatus with only exclusions (none active)")
 			scs = &promoterv1alpha1.ScheduledCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-excl-only",
-					Namespace: "default",
-				},
+				Name:      name + "-excl-only",
+				Namespace: "default",
 				Spec: promoterv1alpha1.ScheduledCommitStatusSpec{
 					Key: "promotion-window",
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
@@ -208,10 +204,8 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 		BeforeEach(func() {
 			By("Creating a ScheduledCommitStatus with both window and active exclusion")
 			scs = &promoterv1alpha1.ScheduledCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-excl-override",
-					Namespace: "default",
-				},
+				Name:      name + "-excl-override",
+				Namespace: "default",
 				Spec: promoterv1alpha1.ScheduledCommitStatusSpec{
 					Key: "promotion-window",
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
@@ -275,10 +269,8 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 		BeforeEach(func() {
 			By("Creating a ScheduledCommitStatus tracking all three environments")
 			scs = &promoterv1alpha1.ScheduledCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-cleanup",
-					Namespace: "default",
-				},
+				Name:      name + "-cleanup",
+				Namespace: "default",
 				Spec: promoterv1alpha1.ScheduledCommitStatusSpec{
 					Key: "promotion-window",
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
@@ -407,10 +399,8 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 			Expect(k8sClient.Create(keyCtx, keyPS)).To(Succeed())
 
 			keyPwcs = &promoterv1alpha1.ScheduledCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      keyName + "-custom-key",
-					Namespace: "default",
-				},
+				Name:      keyName + "-custom-key",
+				Namespace: "default",
 				Spec: promoterv1alpha1.ScheduledCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: keyName,
@@ -470,10 +460,8 @@ var _ = Describe("ScheduledCommitStatus Controller - Missing PromotionStrategy",
 	BeforeEach(func() {
 		ctx = context.Background()
 		scs = &promoterv1alpha1.ScheduledCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "scs-missing-ps",
-				Namespace: "default",
-			},
+			Name:      "scs-missing-ps",
+			Namespace: "default",
 			Spec: promoterv1alpha1.ScheduledCommitStatusSpec{
 				Key: "promotion-window",
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{
@@ -559,10 +547,8 @@ var _ = Describe("ScheduledCommitStatus Controller - Branch Mismatch", Ordered, 
 
 	It("should set Ready=False when a branch does not exist in PromotionStrategy", func() {
 		scs = &promoterv1alpha1.ScheduledCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      name + "-branch-mismatch",
-				Namespace: "default",
-			},
+			Name:      name + "-branch-mismatch",
+			Namespace: "default",
 			Spec: promoterv1alpha1.ScheduledCommitStatusSpec{
 				Key: "promotion-window",
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{

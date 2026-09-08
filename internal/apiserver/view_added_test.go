@@ -29,7 +29,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	rbacv1 "k8s.io/api/rbac/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/yaml"
@@ -109,7 +108,7 @@ var _ = Describe("Gate commit-status managers stay in sync with the view aggrega
 		gates := controller.GateCommitStatusKinds()
 		objs := make([]client.Object, 0, 1+len(gates))
 		objs = append(objs, &promoterv1alpha1.PromotionStrategy{
-			ObjectMeta: metav1.ObjectMeta{Name: testPSName, Namespace: testNamespace, UID: testPSUID},
+			Name: testPSName, Namespace: testNamespace, UID: testPSUID,
 			Spec: promoterv1alpha1.PromotionStrategySpec{
 				Environments: []promoterv1alpha1.Environment{{Branch: "environment/dev"}},
 			},

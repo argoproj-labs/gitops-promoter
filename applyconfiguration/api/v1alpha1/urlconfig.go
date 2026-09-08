@@ -41,6 +41,7 @@ type URLConfigApplyConfiguration struct {
 	// {{- $labels = printf "%s%s=%s," $labels $key $value -}}
 	// {{- end -}}
 	// {{ printf "%s/applications?labels=%s" $baseURL (urlQueryEscape $labels) }}
+	//
 	Template *string `json:"template,omitempty"`
 	// Options sets options for the template. Options are described by
 	// strings, either a simple string or "key=value". There can be at
@@ -60,6 +61,7 @@ type URLConfigApplyConfiguration struct {
 	// The operation returns the zero value for the map type's element.
 	// "missingkey=error"
 	// Execution stops immediately with an error.
+	//
 	Options []string `json:"options,omitempty"`
 }
 
