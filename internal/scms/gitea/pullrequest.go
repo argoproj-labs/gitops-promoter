@@ -69,7 +69,9 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 		return "", err //nolint:wrapcheck // Error wrapping handled at top level
 	}
 
-	logger.V(4).Info("gitea response status", "status", resp.Status)
+	if resp != nil {
+		logger.V(4).Info("gitea response status", "status", resp.Status)
+	}
 	return strconv.FormatInt(pullRequest.Index, 10), nil
 }
 
@@ -104,7 +106,9 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 		return err //nolint:wrapcheck // Error wrapping handled at top level
 	}
 
-	logger.V(4).Info("gitea response status", "status", resp.Status)
+	if resp != nil {
+		logger.V(4).Info("gitea response status", "status", resp.Status)
+	}
 	return nil
 }
 
@@ -144,7 +148,9 @@ func (pr *PullRequest) Close(ctx context.Context, prObj promoterv1alpha1.PullReq
 		return err //nolint:wrapcheck // Error wrapping handled at top level
 	}
 
-	logger.V(4).Info("gitea response status", "status", resp.Status)
+	if resp != nil {
+		logger.V(4).Info("gitea response status", "status", resp.Status)
+	}
 	return nil
 }
 
@@ -184,7 +190,9 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj promoterv1alpha1.PullReq
 	if err != nil {
 		return scms.MergeResult{}, err //nolint:wrapcheck // Error wrapping handled at top level
 	}
-	logger.V(4).Info("gitea response status", "status", resp.Status)
+	if resp != nil {
+		logger.V(4).Info("gitea response status", "status", resp.Status)
+	}
 	// Gitea's merge endpoint returns no body, so the merge commit SHA is left to a Get-by-ID lookup.
 	return scms.MergeResult{}, nil
 }
@@ -213,7 +221,9 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest promoterv1alpha
 	if err != nil {
 		return scms.FindOpenResult{}, fmt.Errorf("failed to list pull requests: %w", err)
 	}
-	logger.V(4).Info("gitea response status", "status", resp.Status)
+	if resp != nil {
+		logger.V(4).Info("gitea response status", "status", resp.Status)
+	}
 
 	for _, prItem := range prs {
 		if prItem.Head.Name != pullRequest.Spec.SourceBranch ||
@@ -302,7 +312,9 @@ func checkOpenPR(ctx context.Context, pr PullRequest, repo *promoterv1alpha1.Git
 	if err != nil {
 		return true, fmt.Errorf("failed to get pull request: %w", err)
 	}
-	logger.V(4).Info("gitea response status", "status", resp.Status)
+	if resp != nil {
+		logger.V(4).Info("gitea response status", "status", resp.Status)
+	}
 
 	return existingPr.State != gitea.StateOpen, nil
 }

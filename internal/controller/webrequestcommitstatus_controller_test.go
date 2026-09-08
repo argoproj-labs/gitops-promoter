@@ -1125,8 +1125,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					Key:                  "external-approval",
 					ReportOn:             constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: triggerVarServer.URL + `/validate/{{ index .TriggerVariables "env" }}`,
-						Method:      "POST",
+						URLTemplate:    triggerVarServer.URL + `/validate/{{ index .TriggerVariables "env" }}`,
+						MethodTemplate: "POST",
 						HeaderTemplates: map[string]string{
 							"X-Env": `{{ index .TriggerVariables "env" }}`,
 						},

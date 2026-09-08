@@ -317,7 +317,7 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 
 	It("should clear result when panic occurs with a non-nil result", func() {
 		var err error
-		result := reconcile.Result{Requeue: true, RequeueAfter: 5 * time.Second}
+		result := reconcile.Result{RequeueAfter: 5 * time.Second}
 		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(obj).Build()
 
 		func() {
@@ -333,7 +333,7 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 
 	It("should clear result when status apply fails", func() {
 		var err error
-		result := reconcile.Result{Requeue: true, RequeueAfter: 5 * time.Second}
+		result := reconcile.Result{RequeueAfter: 5 * time.Second}
 		// Intercept all status patches to force them to fail. Mirrors an apiserver rejecting
 		// the SSA patch (e.g. schema validation, RBAC, or similar terminal failure).
 		fakeClient := fake.NewClientBuilder().
