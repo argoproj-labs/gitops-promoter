@@ -1,12 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import type { Check, CommitStatusManager } from '../../../types/promotion';
 import type { components } from '../../../types/generated/view.gen';
 import { formatDuration } from '../../../utils/util';
-
-export interface TimedCommitStatusProps {
-  check: Check;
-  manager: CommitStatusManager;
-}
+import type { CommitStatusContext } from '../types';
+import type { RowPlugin } from '../types';
 
 function parseGoDuration(duration: string): number {
   let totalMs = 0;
@@ -38,7 +34,7 @@ const renderFallback = (name: string, url?: string) =>
     <span className="check-name-text">{name}</span>
   );
 
-const TimedCommitStatus: React.FC<TimedCommitStatusProps> = ({ check, manager }) => {
+const TimedCommitStatusHeader: React.FC<CommitStatusContext> = ({ check, manager }) => {
   const timedManager = manager as components['schemas']['TimedCommitStatus'];
   const environment = timedManager.status?.environments?.find(
     (env) => env.branch === check.branch,
@@ -111,6 +107,10 @@ const TimedCommitStatus: React.FC<TimedCommitStatusProps> = ({ check, manager })
       </div>
     </div>
   );
+};
+
+const TimedCommitStatus: RowPlugin = {
+  rowHeader: TimedCommitStatusHeader,
 };
 
 export default TimedCommitStatus;

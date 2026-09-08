@@ -60,7 +60,7 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({
           <StatusIcon phase={check.status as StatusType} type="status" />
           <div className="health-check-body">
             {Plugin && check.manager ? (
-              <Plugin check={check} manager={check.manager} />
+              <Plugin.rowHeader check={check} manager={check.manager} />
             ) : check.url ? (
               <a
                 href={check.url}

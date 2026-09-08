@@ -52,7 +52,7 @@ describe('TimedCommitStatus', () => {
 
   const render = async (check: Check, manager: CommitStatusManager) => {
     root = createRoot(container);
-    root.render(React.createElement(TimedCommitStatus, { check, manager }));
+    root.render(React.createElement(TimedCommitStatus.rowHeader, { check, manager }));
     await vi.advanceTimersByTimeAsync(0);
   };
 
