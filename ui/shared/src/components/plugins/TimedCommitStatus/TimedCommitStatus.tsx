@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { Check, CommitStatusManager } from '../../../types/promotion';
 import type { components } from '../../../types/generated/view.gen';
 import { formatDuration } from '../../../utils/util';
@@ -29,18 +29,13 @@ function parseGoDuration(duration: string): number {
   return totalMs;
 }
 
-const renderFallback = (check: Check) =>
-  check.url ? (
-    <a
-      href={check.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="health-check-name-link"
-    >
-      {check.name}
+const renderFallback = (name: string, url?: string) =>
+  url ? (
+    <a href={url} target="_blank" rel="noopener noreferrer" className="health-check-name-link">
+      {name}
     </a>
   ) : (
-    <span className="check-name-text">{check.name}</span>
+    <span className="check-name-text">{name}</span>
   );
 
 const TimedCommitStatus: React.FC<TimedCommitStatusProps> = ({ check, manager }) => {
@@ -51,6 +46,11 @@ const TimedCommitStatus: React.FC<TimedCommitStatusProps> = ({ check, manager })
 
   const initialRemaining = environment ? parseGoDuration(environment.atMostDurationRemaining) : 0;
   const [remaining, setRemaining] = useState<number>(initialRemaining);
+
+  const hasRenderedRef = useRef(false);
+  useEffect(() => {
+    hasRenderedRef.current = true;
+  }, []);
 
   useEffect(() => {
     if (!environment || check.status === 'success') {
@@ -70,25 +70,26 @@ const TimedCommitStatus: React.FC<TimedCommitStatusProps> = ({ check, manager })
   }, [environment, check.status]);
 
   if (!environment || check.status === 'success') {
-    return renderFallback(check);
+    return renderFallback(check.name, check.url);
   }
 
   const requiredDurationMs = parseGoDuration(environment.requiredDuration);
   const clampedRemaining = Math.max(remaining, 0);
-  const ratio =
-    requiredDurationMs > 0 ? Math.min(Math.max(clampedRemaining / requiredDurationMs, 0), 1) : 0;
+  const elapsedMs = requiredDurationMs - clampedRemaining;
+  const ratio = requiredDurationMs > 0 ? Math.min(Math.max(elapsedMs / requiredDurationMs, 0), 1) : 0;
 
   return (
-    <div>
-      <span className="check-name-text">
-        {check.name} ({formatDuration(clampedRemaining)} remaining)
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ whiteSpace: 'nowrap' }}>
+        {renderFallback(check.name, check.url)} ({formatDuration(clampedRemaining)} remaining)
       </span>
       <div
         className="timed-commit-status-track"
         style={{
           position: 'relative',
+          width: 48,
+          flexShrink: 0,
           height: 6,
-          marginTop: 4,
           borderRadius: 3,
           backgroundColor: 'rgba(66, 133, 244, 0.15)',
           overflow: 'hidden',
@@ -104,7 +105,7 @@ const TimedCommitStatus: React.FC<TimedCommitStatusProps> = ({ check, manager })
             width: `${ratio * 100}%`,
             borderRadius: 3,
             backgroundColor: 'rgb(66, 133, 244)',
-            transition: 'width 1s linear',
+            transition: hasRenderedRef.current ? 'width 1s linear' : 'none',
           }}
         />
       </div>

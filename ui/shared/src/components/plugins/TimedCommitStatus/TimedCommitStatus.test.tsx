@@ -56,7 +56,7 @@ describe('TimedCommitStatus', () => {
     await vi.advanceTimersByTimeAsync(0);
   };
 
-  it('displays the initial remaining time and a draining progress bar', async () => {
+  it('displays the initial remaining time and a filling progress bar', async () => {
     const manager = makeManager();
     await render(makeCheck(), manager);
 
@@ -64,10 +64,10 @@ describe('TimedCommitStatus', () => {
     expect(container.textContent).toContain('4m');
 
     const fill = container.querySelector('.timed-commit-status-fill') as HTMLDivElement;
-    expect(fill.style.width).toBe('80%');
+    expect(fill.style.width).toBe('20%');
   });
 
-  it('decreases the remaining time and progress bar width as time advances', async () => {
+  it('decreases the remaining time and increases the progress bar width as time advances', async () => {
     const manager = makeManager();
     await render(makeCheck(), manager);
 
@@ -75,7 +75,7 @@ describe('TimedCommitStatus', () => {
 
     expect(container.textContent).toContain('3m');
     const fill = container.querySelector('.timed-commit-status-fill') as HTMLDivElement;
-    expect(fill.style.width).toBe('60%');
+    expect(fill.style.width).toBe('40%');
   });
 
   it('clears the interval and stops updating on unmount', async () => {
@@ -99,5 +99,28 @@ describe('TimedCommitStatus', () => {
 
     expect(container.querySelector('a')).not.toBeNull();
     expect(container.querySelector('a')?.getAttribute('href')).toBe('https://example.com/status');
+  });
+
+  it('renders the in-progress check name as a link when a url is set', async () => {
+    const manager = makeManager();
+    await render(makeCheck({ url: 'https://example.com/status' }), manager);
+
+    const link = container.querySelector('a');
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute('href')).toBe('https://example.com/status');
+    expect(link?.textContent).toBe('timer');
+  });
+
+  it('has no transition on the fill on first render, then applies it on subsequent updates', async () => {
+    const manager = makeManager();
+    await render(makeCheck(), manager);
+
+    const fillBefore = container.querySelector('.timed-commit-status-fill') as HTMLDivElement;
+    expect(fillBefore.style.transition).toBe('none');
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    const fillAfter = container.querySelector('.timed-commit-status-fill') as HTMLDivElement;
+    expect(fillAfter.style.transition).toBe('width 1s linear');
   });
 });
