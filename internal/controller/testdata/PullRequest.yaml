@@ -24,6 +24,9 @@ spec:
   labels:
     - lgtm
     - approved
+  reviewers:
+    - user: alice
+    - group: release-managers
 status:
   observedGeneration: 123 # compare with metadata.generation to detect stale status
   conditions:
@@ -46,3 +49,9 @@ status:
   # appliedLabels:
   #   - lgtm
   #   - approved
+  # Reviewers gitops-promoter has already requested a review from. The controller compares this
+  # with spec.reviewers, then requests missing reviewers and withdraws pending requests for
+  # applied reviewers that are no longer desired.
+  # appliedReviewers:
+  #   - user: alice
+  #   - group: release-managers
