@@ -34,7 +34,7 @@ const makeCheck = (overrides: Partial<Check> = {}): Check => ({
   ...overrides,
 });
 
-describe('TimedCommitStatus', () => {
+describe('TimedCommitStatus.rowHeader', () => {
   let container: HTMLDivElement;
   let root: ReturnType<typeof createRoot>;
 
@@ -56,26 +56,21 @@ describe('TimedCommitStatus', () => {
     await vi.advanceTimersByTimeAsync(0);
   };
 
-  it('displays the initial remaining time and a filling progress bar', async () => {
+  it('displays the initial remaining time', async () => {
     const manager = makeManager();
     await render(makeCheck(), manager);
 
     expect(container.textContent).toContain('timer');
     expect(container.textContent).toContain('4m');
-
-    const fill = container.querySelector('.timed-commit-status-fill') as HTMLDivElement;
-    expect(fill.style.width).toBe('20%');
   });
 
-  it('decreases the remaining time and increases the progress bar width as time advances', async () => {
+  it('decreases the remaining time as time passes', async () => {
     const manager = makeManager();
     await render(makeCheck(), manager);
 
     await vi.advanceTimersByTimeAsync(60_000);
 
     expect(container.textContent).toContain('3m');
-    const fill = container.querySelector('.timed-commit-status-fill') as HTMLDivElement;
-    expect(fill.style.width).toBe('40%');
   });
 
   it('clears the interval and stops updating on unmount', async () => {
@@ -111,16 +106,74 @@ describe('TimedCommitStatus', () => {
     expect(link?.textContent).toBe('timer');
   });
 
-  it('has no transition on the fill on first render, then applies it on subsequent updates', async () => {
+  it('does not render its own radial (that is pendingSpinner\'s job)', async () => {
     const manager = makeManager();
     await render(makeCheck(), manager);
 
-    const fillBefore = container.querySelector('.timed-commit-status-fill') as HTMLDivElement;
-    expect(fillBefore.style.transition).toBe('none');
+    expect(container.querySelector('.timed-commit-status-radial')).toBeNull();
+  });
+});
+
+describe('TimedCommitStatus.pendingSpinner', () => {
+  let container: HTMLDivElement;
+  let root: ReturnType<typeof createRoot>;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    root?.unmount();
+    container.remove();
+    vi.useRealTimers();
+  });
+
+  const render = async (check: Check, manager: CommitStatusManager) => {
+    root = createRoot(container);
+    root.render(React.createElement(TimedCommitStatus.pendingSpinner!, { check, manager }));
+    await vi.advanceTimersByTimeAsync(0);
+  };
+
+  it('displays the initial progress as a radial', async () => {
+    const manager = makeManager();
+    await render(makeCheck(), manager);
+
+    const radial = container.querySelector(
+      '.timed-commit-status-radial circle:last-of-type',
+    ) as SVGCircleElement;
+    // 20% elapsed of the 5m duration.
+    expect(radial.getAttribute('stroke-dashoffset')).toBe((2 * Math.PI * 7 * 0.8).toString());
+  });
+
+  it('advances the radial as time passes', async () => {
+    const manager = makeManager();
+    await render(makeCheck(), manager);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    const radial = container.querySelector(
+      '.timed-commit-status-radial circle:last-of-type',
+    ) as SVGCircleElement;
+    // 40% elapsed of the 5m duration.
+    expect(radial.getAttribute('stroke-dashoffset')).toBe((2 * Math.PI * 7 * 0.6).toString());
+  });
+
+  it('has no transition on first render, then applies it on subsequent updates', async () => {
+    const manager = makeManager();
+    await render(makeCheck(), manager);
+
+    const radialBefore = container.querySelector(
+      '.timed-commit-status-radial circle:last-of-type',
+    ) as SVGCircleElement;
+    expect(radialBefore.style.transition).toBe('none');
 
     await vi.advanceTimersByTimeAsync(1000);
 
-    const fillAfter = container.querySelector('.timed-commit-status-fill') as HTMLDivElement;
-    expect(fillAfter.style.transition).toBe('width 1s linear');
+    const radialAfter = container.querySelector(
+      '.timed-commit-status-radial circle:last-of-type',
+    ) as SVGCircleElement;
+    expect(radialAfter.style.transition).toBe('stroke-dashoffset 1s linear');
   });
 });

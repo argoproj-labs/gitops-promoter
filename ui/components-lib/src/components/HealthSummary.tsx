@@ -53,11 +53,18 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({
 
   const renderCheckItem = (check: Check, key: React.Key) => {
     const Plugin = check.kind ? commitStatusPlugins[check.kind] : undefined;
+    const PendingSpinner = Plugin?.pendingSpinner;
+    const showPendingSpinner = PendingSpinner && check.manager && check.status === 'pending';
+    const statusIcon = showPendingSpinner ? (
+      <PendingSpinner check={check} manager={check.manager!} />
+    ) : (
+      <StatusIcon phase={check.status as StatusType} type="status" />
+    );
 
     return (
       <Tooltip key={key} content={check.description}>
         <div className="health-check-item">
-          <StatusIcon phase={check.status as StatusType} type="status" />
+          {statusIcon}
           <div className="health-check-body">
             {Plugin && check.manager ? (
               <Plugin.rowHeader check={check} manager={check.manager} />

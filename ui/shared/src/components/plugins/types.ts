@@ -9,4 +9,5 @@ export interface CommitStatusContext {
 export interface RowPlugin {
   rowHeader: React.FC<CommitStatusContext>;
   rowContent?: React.FC<CommitStatusContext>;
+  pendingSpinner?: React.FC<CommitStatusContext>;
 }
