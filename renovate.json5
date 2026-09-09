@@ -199,6 +199,25 @@
         'gomodTidy',
       ],
     },
+    {
+      // Same as go-github: an indirect /vN major is a new module path. Bumping
+      // v6 to v7.0.0 without rewriting the path fails; gomodTidy follows the
+      // direct require rewrite instead.
+      description: 'Block indirect SMD majors; gomodTidy follows the direct /vN rewrite',
+      matchManagers: [
+        'gomod',
+      ],
+      matchPackageNames: [
+        'sigs.k8s.io/structured-merge-diff/**',
+      ],
+      matchDepTypes: [
+        'indirect',
+      ],
+      matchUpdateTypes: [
+        'major',
+      ],
+      enabled: false,
+    },
     // ----------------------------------------------------------------------
     // Group A2: GitHub API client (go-github major paths + ghinstallation)
     // go-github uses /vNN module paths; Renovate rewrites imports on major jumps.
