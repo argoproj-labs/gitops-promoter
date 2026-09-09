@@ -366,7 +366,7 @@ Gate CRs that write one child `CommitStatus` per PromotionStrategy environment s
 |-------|----------|-------|
 | `branch` | required | Matches `PromotionStrategy.spec.environments[].branch` |
 | `phase` | when gate active | Mirrors child `CommitStatus.spec.phase` |
-| `description` | when gate active | Mirrors child `CommitStatus.spec.description` (see [Description Guidelines](#description-guidelines)) |
+| `description` | when gate active | Mirrors child `CommitStatus.spec.description` (see [Designing Good Commit Status Descriptions](#designing-good-commit-status-descriptions)) |
 | `url` | when gate active | Mirrors child `CommitStatus.spec.url` |
 | `reportedSha` | when gate active | Hydrated SHA on child `CommitStatus.spec.sha`; semantics vary by gate (proposed vs active) |
 

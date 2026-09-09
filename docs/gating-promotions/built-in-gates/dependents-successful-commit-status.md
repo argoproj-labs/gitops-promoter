@@ -200,8 +200,8 @@ PromotionStrategy.
 | Field | Always present | Notes |
 |-------|----------------|-------|
 | `branch` | yes | Environment branch name |
-| `activeCommitStatuses` | yes | Verbatim copy of `PromotionStrategy.status.environments[].active.commitStatuses` (`key`, `phase`, `description`, `url`) |
-| `upstreams` | yes | Transitive ancestor closure: `[{branch, satisfied, reason}]`. Empty for roots. `reason` is set when `satisfied` is false. |
+| `activeCommitStatuses` | optional | Verbatim copy of `PromotionStrategy.status.environments[].active.commitStatuses` (`key`, `phase`, `description`, `url`). Omitted when empty. |
+| `upstreams` | optional | Transitive ancestor closure: `[{branch, satisfied, reason}]`. Omitted when empty (for example on roots). `reason` is set when `satisfied` is false. |
 
 When an environment has an in-flight promotion (`active.dry.sha != proposed.dry.sha`), the entry also includes gate
 report fields that mirror the child `CommitStatus` spec (`phase`, `description`, `url`, `reportedSha`). Skipped
@@ -229,7 +229,6 @@ status:
       activeCommitStatuses:
         - key: argocd-health
           phase: success
-      upstreams: []
     - branch: environment/prod
       activeCommitStatuses:
         - key: argocd-health

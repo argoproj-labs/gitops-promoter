@@ -227,17 +227,28 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 
 			By("Checking gated status.environments entries mirror child CommitStatus spec")
 			Eventually(func(g Gomega) {
-				updated := &promoterv1alpha1.DependentsSuccessfulCommitStatus{}
-				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dependentsSuccessfulCommitStatus), updated)).To(Succeed())
-				g.Expect(updated.Status.Environments).ToNot(BeEmpty())
+				updatedDSCS := &promoterv1alpha1.DependentsSuccessfulCommitStatus{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dependentsSuccessfulCommitStatus), updatedDSCS)).To(Succeed())
+				g.Expect(updatedDSCS.Status.Environments).ToNot(BeEmpty())
 
-				var gated int
-				for i := range updated.Status.Environments {
-					envStatus := updated.Status.Environments[i]
+				updatedPS := &promoterv1alpha1.PromotionStrategy{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(promotionStrategy), updatedPS)).To(Succeed())
+
+				psStatusByBranch := make(map[string]promoterv1alpha1.EnvironmentStatus, len(updatedPS.Status.Environments))
+				for _, envStatus := range updatedPS.Status.Environments {
+					psStatusByBranch[envStatus.Branch] = envStatus
+				}
+
+				var mirrored bool
+				for i := range updatedDSCS.Status.Environments {
+					envStatus := updatedDSCS.Status.Environments[i]
+					psEnv, ok := psStatusByBranch[envStatus.Branch]
+					if !ok || psEnv.Active.Dry.Sha == psEnv.Proposed.Dry.Sha {
+						continue
+					}
 					if envStatus.Phase == "" {
 						continue
 					}
-					gated++
 					cs := &promoterv1alpha1.CommitStatus{}
 					csName := utils.CommitStatusResourceName(ctx, dependentsSuccessfulCommitStatus, envStatus.Branch)
 					g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: csName}, cs)).To(Succeed())
@@ -245,8 +256,9 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 					g.Expect(envStatus.Description).To(Equal(cs.Spec.Description))
 					g.Expect(envStatus.Url).To(Equal(cs.Spec.Url))
 					g.Expect(envStatus.ReportedSha).To(Equal(cs.Spec.Sha))
+					mirrored = true
 				}
-				g.Expect(gated).To(BeNumerically(">=", 1), "expected at least one gated environment after proposed change")
+				g.Expect(mirrored).To(BeTrue(), "expected an in-flight environment with gate fields mirrored on status.environments")
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
@@ -794,8 +806,8 @@ var _ = Describe("DAG graph logic", func() {
 			g, _ := buildDAG(dagEnvs("dev", "", "e2e", "dev", "perf", "dev", "prd", "e2e,perf"))
 			return g
 		}
-		upstreamsPendingFor := func(g *dag, branch, targetDrySha string, commitTime metav1.Time, status map[string]promoterv1alpha1.EnvironmentStatus) (bool, string) {
-			snapshots := buildUpstreamSnapshots(g, branch, targetDrySha, commitTime, status)
+		upstreamsPendingFor := func(g *dag, branch string, commitTime metav1.Time, status map[string]promoterv1alpha1.EnvironmentStatus) (bool, string) {
+			snapshots := buildUpstreamSnapshots(g, branch, newDry, commitTime, status)
 			return upstreamsPending(snapshots, g.dependsOn[branch])
 		}
 
@@ -806,7 +818,7 @@ var _ = Describe("DAG graph logic", func() {
 			status := map[string]promoterv1alpha1.EnvironmentStatus{
 				"stg": dagEnvStatus("stg", oldDry, newDry, true, old),
 			}
-			pending, _ := upstreamsPendingFor(linear(), "prd", newDry, metav1.NewTime(newer), status)
+			pending, _ := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeTrue())
 		})
 
@@ -816,12 +828,12 @@ var _ = Describe("DAG graph logic", func() {
 			status := map[string]promoterv1alpha1.EnvironmentStatus{
 				"stg": dagEnvStatus("stg", oldDry, oldDry, true, old),
 			}
-			pending, _ := upstreamsPendingFor(linear(), "prd", newDry, metav1.NewTime(newer), status)
+			pending, _ := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeTrue())
 		})
 
 		It("holds pending when upstream status is missing from statusByBranch", func() {
-			pending, reason := upstreamsPendingFor(linear(), "prd", newDry, metav1.NewTime(newer), map[string]promoterv1alpha1.EnvironmentStatus{})
+			pending, reason := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), map[string]promoterv1alpha1.EnvironmentStatus{})
 			Expect(pending).To(BeTrue())
 			Expect(reason).To(Equal(`Waiting for "stg" environment status to be reported`))
 		})
@@ -831,7 +843,7 @@ var _ = Describe("DAG graph logic", func() {
 			status := map[string]promoterv1alpha1.EnvironmentStatus{
 				"stg": dagEnvStatus("stg", newDry, newDry, true, newer),
 			}
-			pending, _ := upstreamsPendingFor(linear(), "prd", newDry, metav1.NewTime(newer), status)
+			pending, _ := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeFalse())
 		})
 
@@ -840,14 +852,14 @@ var _ = Describe("DAG graph logic", func() {
 			status := map[string]promoterv1alpha1.EnvironmentStatus{
 				"stg": dagEnvStatus("stg", newDry, newDry, false, newer),
 			}
-			pending, _ := upstreamsPendingFor(linear(), "prd", newDry, metav1.NewTime(newer), status)
+			pending, _ := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeTrue())
 		})
 
 		// Case 7 base case (RECURSE bottoms out at a graph root): a node with no upstreams is
 		// always ready.
 		It("is ready for a root that has no upstreams", func() {
-			pending, _ := upstreamsPendingFor(linear(), "dev", newDry, metav1.NewTime(newer), map[string]promoterv1alpha1.EnvironmentStatus{})
+			pending, _ := upstreamsPendingFor(linear(), "dev", metav1.NewTime(newer), map[string]promoterv1alpha1.EnvironmentStatus{})
 			Expect(pending).To(BeFalse())
 		})
 
@@ -858,7 +870,7 @@ var _ = Describe("DAG graph logic", func() {
 				"e2e":  dagEnvStatus("e2e", newDry, newDry, true, newer),
 				"perf": dagEnvStatus("perf", oldDry, newDry, true, old),
 			}
-			pending, _ := upstreamsPendingFor(diamond(), "prd", newDry, metav1.NewTime(newer), status)
+			pending, _ := upstreamsPendingFor(diamond(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeTrue())
 		})
 
@@ -869,7 +881,7 @@ var _ = Describe("DAG graph logic", func() {
 				"e2e":  dagEnvStatus("e2e", newDry, newDry, true, newer),
 				"perf": dagEnvStatus("perf", newDry, newDry, true, newer),
 			}
-			pending, _ := upstreamsPendingFor(diamond(), "prd", newDry, metav1.NewTime(newer), status)
+			pending, _ := upstreamsPendingFor(diamond(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeFalse())
 		})
 
@@ -879,7 +891,7 @@ var _ = Describe("DAG graph logic", func() {
 				"e2e":  dagEnvStatus("e2e", newDry, newDry, true, newer),
 				"perf": dagEnvStatus("perf", oldDry, newDry, true, old),
 			}
-			pending, reason := upstreamsPendingFor(diamond(), "prd", newDry, metav1.NewTime(newer), status)
+			pending, reason := upstreamsPendingFor(diamond(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeTrue())
 			Expect(reason).To(Equal(`Waiting for "perf" to be promoted`))
 		})
@@ -894,7 +906,7 @@ var _ = Describe("DAG graph logic", func() {
 				"stg": dagEnvStatusWithNote("stg", oldDry, oldDry, newDry, true, old),
 				"dev": dagEnvStatus("dev", newDry, newDry, true, newer),
 			}
-			pending, _ := upstreamsPendingFor(linear(), "prd", newDry, metav1.NewTime(newer), status)
+			pending, _ := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeFalse())
 		})
 
@@ -906,7 +918,7 @@ var _ = Describe("DAG graph logic", func() {
 				"stg": dagEnvStatusWithNote("stg", oldDry, oldDry, newDry, true, old),
 				"dev": dagEnvStatus("dev", oldDry, newDry, true, old),
 			}
-			pending, _ := upstreamsPendingFor(linear(), "prd", newDry, metav1.NewTime(newer), status)
+			pending, _ := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeTrue())
 		})
 
@@ -919,7 +931,7 @@ var _ = Describe("DAG graph logic", func() {
 				"stg": dagEnvStatusWithNote("stg", oldDry, oldDry, newDry, false, old),
 				"dev": dagEnvStatus("dev", newDry, newDry, true, newer),
 			}
-			pending, reason := upstreamsPendingFor(linear(), "prd", newDry, metav1.NewTime(newer), status)
+			pending, reason := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeTrue())
 			Expect(reason).To(ContainSubstring("argocd-health"))
 		})
@@ -938,7 +950,7 @@ var _ = Describe("DAG graph logic", func() {
 				"stg": dagEnvStatusWithNote("stg", oldDry, midDry, newDry, true, old),
 				"dev": dagEnvStatus("dev", newDry, newDry, true, newer),
 			}
-			pending, reason := upstreamsPendingFor(linear(), "prd", newDry, metav1.NewTime(newer), status)
+			pending, reason := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeTrue())
 			Expect(reason).To(Equal(`Waiting for "stg" to be promoted`))
 		})
@@ -950,7 +962,7 @@ var _ = Describe("DAG graph logic", func() {
 			status := map[string]promoterv1alpha1.EnvironmentStatus{
 				"stg": dagEnvStatus("stg", newDry, newDry, true, old),
 			}
-			pending, reason := upstreamsPendingFor(linear(), "prd", newDry, metav1.NewTime(newer), status)
+			pending, reason := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeTrue())
 			Expect(reason).To(ContainSubstring("older"))
 		})
@@ -974,7 +986,7 @@ var _ = Describe("DAG graph logic", func() {
 				"fast": dagEnvStatus("fast", newDry, newDry, true, newer),
 				"soak": dagEnvStatus("soak", oldDry, newDry, true, old),
 			}
-			pending, _ := upstreamsPendingFor(unevenDiamond(), "prd", newDry, metav1.NewTime(newer), status)
+			pending, _ := upstreamsPendingFor(unevenDiamond(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeTrue())
 		})
 		It("uneven diamond: ready when both paths have promoted the target and are healthy", func() {
@@ -982,7 +994,7 @@ var _ = Describe("DAG graph logic", func() {
 				"fast": dagEnvStatus("fast", newDry, newDry, true, newer),
 				"soak": dagEnvStatus("soak", newDry, newDry, true, newer),
 			}
-			pending, _ := upstreamsPendingFor(unevenDiamond(), "prd", newDry, metav1.NewTime(newer), status)
+			pending, _ := upstreamsPendingFor(unevenDiamond(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeFalse())
 		})
 	})

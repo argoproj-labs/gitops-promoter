@@ -460,6 +460,26 @@ export type components = {
              */
             status?: components["schemas"]["DependentsSuccessfulCommitStatusStatus"];
         };
+        /** @description DependentsSuccessfulCommitStatusEnvironmentStatus defines observed state for one environment branch. */
+        DependentsSuccessfulCommitStatusEnvironmentStatus: {
+            /** @description ActiveCommitStatuses is a verbatim copy of the PromotionStrategy environment's active commit statuses. */
+            activeCommitStatuses?: components["schemas"]["ChangeRequestPolicyCommitStatusPhase"][];
+            /**
+             * @description Branch is the environment branch name.
+             * @default
+             */
+            branch: string;
+            /** @description Description mirrors child CommitStatus.spec.description. */
+            description?: string;
+            /** @description Phase mirrors child CommitStatus.spec.phase. */
+            phase?: string;
+            /** @description ReportedSha is the hydrated SHA the child CommitStatus is attached to (CommitStatus.spec.sha). Semantics depend on the parent gate (proposed vs active hydrated SHA). Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats. */
+            reportedSha?: string;
+            /** @description Upstreams lists all transitive ancestor branches and whether each is satisfied for this environment's promotion target. */
+            upstreams?: components["schemas"]["DependentsSuccessfulCommitStatusUpstreamStatus"][];
+            /** @description Url mirrors child CommitStatus.spec.url. */
+            url?: string;
+        };
         /** @description DependentsSuccessfulCommitStatusSpec defines the desired state of DependentsSuccessfulCommitStatus. */
         DependentsSuccessfulCommitStatusSpec: {
             /**
@@ -488,6 +508,8 @@ export type components = {
         DependentsSuccessfulCommitStatusStatus: {
             /** @description Conditions represent the latest available observations of an object's state */
             conditions?: components["schemas"]["Condition"][];
+            /** @description Environments reports observed gate and upstream state per dependency-graph branch. */
+            environments?: components["schemas"]["DependentsSuccessfulCommitStatusEnvironmentStatus"][];
             /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
             instanceID?: string;
             /**
@@ -495,6 +517,21 @@ export type components = {
              * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
              */
             observedGeneration?: number;
+        };
+        /** @description DependentsSuccessfulCommitStatusUpstreamStatus reports whether a transitive upstream branch is satisfied for this environment's promotion target. */
+        DependentsSuccessfulCommitStatusUpstreamStatus: {
+            /**
+             * @description Branch is the upstream environment branch name.
+             * @default
+             */
+            branch: string;
+            /** @description Reason explains why the upstream is not satisfied. Omitted when satisfied is true. */
+            reason?: string;
+            /**
+             * @description Satisfied is true when the upstream has promoted and is healthy for this environment's target dry SHA.
+             * @default false
+             */
+            satisfied: boolean;
         };
         /** @description Duration is a wrapper around time.Duration which supports correct marshaling to YAML and JSON. In particular, it marshals into strings, which can be used as map keys in json. */
         Duration: string;
