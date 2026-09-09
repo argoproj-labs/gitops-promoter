@@ -54,29 +54,23 @@ function findManager(
     }
   }
   for (const wrcs of managers.webRequestCommitStatuses ?? []) {
-    if (wrcs.spec.key === key) {
+    if (wrcs.spec.key === key && wrcs.status?.environments?.some((e) => e.branch === branch)) {
       return { kind: 'WebRequestCommitStatus', manager: wrcs };
     }
   }
   return undefined;
 }
 
-function getChecks(
-  commitStatuses: (BranchCommitStatus | EnrichedBranchCommitStatus)[],
-  branch: string,
-): Check[] {
-  return commitStatuses.map((cs: BranchCommitStatus | EnrichedBranchCommitStatus) => {
-    const enriched = cs as EnrichedBranchCommitStatus;
-    return {
-      name: cs.key,
-      status: cs.phase,
-      description: cs.description,
-      url: cs.url,
-      branch,
-      kind: enriched.kind,
-      manager: enriched.manager,
-    };
-  });
+function getChecks(commitStatuses: EnrichedBranchCommitStatus[], branch: string): Check[] {
+  return commitStatuses.map((cs: EnrichedBranchCommitStatus) => ({
+    name: cs.key,
+    status: cs.phase,
+    description: cs.description,
+    url: cs.url,
+    branch,
+    kind: cs.kind,
+    manager: cs.manager,
+  }));
 }
 
 /**
