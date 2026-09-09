@@ -339,6 +339,33 @@
   }
 }
 
+.hp-drawer__check-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hp-drawer__check-toggle {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.hp-drawer__check-panel {
+  font-size: 12px;
+  padding: 6px 8px 6px 28px;
+  color: $text-secondary;
+  background: $bg-softer;
+  border: 1px solid $stroke;
+  border-radius: $radius-sm;
+}
+
 .hp-drawer__check-icon {
   display: inline-flex;
 }
