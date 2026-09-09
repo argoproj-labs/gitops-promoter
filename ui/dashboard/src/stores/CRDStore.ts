@@ -61,7 +61,7 @@ function bundleToItem<T extends CRDItem>(bundle: PromotionStrategyDetails): T {
   sortStrategyCommitStatuses(psWithEnvironments);
   const merged = mergeCommitStatusManagers(psWithEnvironments, managersFromBundle(bundle));
   return {
-    ...psWithEnvironments,
+    ...merged,
     enriched: enrichFromCRD(merged),
   } as T;
 }

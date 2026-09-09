@@ -61,7 +61,7 @@ function findManager(
   return undefined;
 }
 
-function getChecks(commitStatuses: EnrichedBranchCommitStatus[], branch: string): Check[] {
+export function getChecks(commitStatuses: EnrichedBranchCommitStatus[], branch: string): Check[] {
   return commitStatuses.map((cs: EnrichedBranchCommitStatus) => ({
     name: cs.key,
     status: cs.phase,
