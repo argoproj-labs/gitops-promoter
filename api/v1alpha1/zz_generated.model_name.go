@@ -206,6 +206,36 @@ func (in CronWindow) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DependentEnvironment) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DependentEnvironment"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DependentsSuccessfulCommitStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DependentsSuccessfulCommitStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DependentsSuccessfulCommitStatusConfiguration) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DependentsSuccessfulCommitStatusConfiguration"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DependentsSuccessfulCommitStatusList) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DependentsSuccessfulCommitStatusList"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DependentsSuccessfulCommitStatusSpec) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DependentsSuccessfulCommitStatusSpec"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DependentsSuccessfulCommitStatusStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DependentsSuccessfulCommitStatusStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in Environment) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.Environment"
 }

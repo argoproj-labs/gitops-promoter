@@ -428,6 +428,74 @@ export type components = {
             /** @description Timezone overrides the spec-level default timezone for this specific window. If not set, the spec-level timezone (or UTC if that is also not set) is used. */
             timezone?: string;
         };
+        /** @description DependentEnvironment declares one environment branch and the other branches it depends on. */
+        DependentEnvironment: {
+            /**
+             * @description Branch is the name of the active branch for the environment. It must match a branch declared in the referenced PromotionStrategy's environments. Must not start with '-', contain ':', or contain '..'.
+             * @default
+             */
+            branch: string;
+            /** @description DependsOn is the list of dependent environment branches this environment waits on. The environment is only eligible for promotion once every branch listed here is promoted and successful. An empty or omitted list makes this environment a root. Each item must not start with '-', contain ':', or contain '..'. */
+            dependsOn?: string[];
+        };
+        /** @description DependentsSuccessfulCommitStatus is the Schema for the dependentssuccessfulcommitstatuses API */
+        DependentsSuccessfulCommitStatus: {
+            /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
+            apiVersion?: string;
+            /** @description Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds */
+            kind?: string;
+            /**
+             * @description metadata is a standard object metadata
+             * @default {}
+             */
+            metadata?: components["schemas"]["ObjectMeta"];
+            /**
+             * @description spec defines the desired state of DependentsSuccessfulCommitStatus
+             * @default {}
+             */
+            spec: components["schemas"]["DependentsSuccessfulCommitStatusSpec"];
+            /**
+             * @description status defines the observed state of DependentsSuccessfulCommitStatus
+             * @default {}
+             */
+            status?: components["schemas"]["DependentsSuccessfulCommitStatusStatus"];
+        };
+        /** @description DependentsSuccessfulCommitStatusSpec defines the desired state of DependentsSuccessfulCommitStatus. */
+        DependentsSuccessfulCommitStatusSpec: {
+            /**
+             * @description Environments declares which environments each branch depends on. An environment becomes eligible for promotion once all of its dependsOn dependents are promoted and successful. An entry with no dependsOn is a root. The graph must be acyclic; cycles and references to unknown branches are rejected.
+             *
+             *     When omitted or empty, the controller infers a linear chain from the referenced PromotionStrategy's spec.environments order: the first environment is a root, and each subsequent environment dependsOn the one before it.
+             */
+            environments?: components["schemas"]["DependentEnvironment"][];
+            /**
+             * @description Key is the commit status key referenced in the PromotionStrategy's proposedCommitStatuses. It must match a key declared there so the gate this controller produces is enforced. Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
+             * @default
+             */
+            key: string;
+            /**
+             * @description PromotionStrategyRef is a reference to the promotion strategy that this dependents successful commit status applies to. The controller watches this PromotionStrategy and, for each environment, reports whether the environment's dependent environments (as declared in Environments) are promoted and successful.
+             * @default {}
+             */
+            promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /**
+             * @description URL generates the URL to use on the per-environment CommitStatus (SCM details link), for example a link into the Promoter UI that highlights this environment's dependsOn upstreams. Optional; when empty, no URL is set on the child CommitStatus. The template receives .Environment, .DependentsSuccessfulCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery (see controller docs).
+             * @default {}
+             */
+            url?: components["schemas"]["URLConfig"];
+        };
+        /** @description DependentsSuccessfulCommitStatusStatus defines the observed state of DependentsSuccessfulCommitStatus. */
+        DependentsSuccessfulCommitStatusStatus: {
+            /** @description Conditions represent the latest available observations of an object's state */
+            conditions?: components["schemas"]["Condition"][];
+            /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
+            instanceID?: string;
+            /**
+             * Format: int64
+             * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
+             */
+            observedGeneration?: number;
+        };
         /** @description Duration is a wrapper around time.Duration which supports correct marshaling to YAML and JSON. In particular, it marshals into strings, which can be used as map keys in json. */
         Duration: string;
         /** @description Environment defines a single environment in the promotion sequence. */
@@ -1190,6 +1258,8 @@ export type components = {
             clusterScmProvider?: components["schemas"]["ClusterScmProvider"];
             /** @description CommitStatuses are the base CommitStatus resources associated with the PromotionStrategy (selected by the promoter.argoproj.io/promotion-strategy label). */
             commitStatuses?: components["schemas"]["CommitStatus"][];
+            /** @description DependentsSuccessfulCommitStatuses are the DependentsSuccessfulCommitStatus managers that reference the PromotionStrategy. */
+            dependentsSuccessfulCommitStatuses?: components["schemas"]["DependentsSuccessfulCommitStatus"][];
             /** @description GitCommitStatuses are the GitCommitStatus managers that reference the PromotionStrategy. */
             gitCommitStatuses?: components["schemas"]["GitCommitStatus"][];
             /** @description GitRepository is the GitRepository referenced by the PromotionStrategy, if resolvable. */
@@ -1255,7 +1325,7 @@ export type components = {
             /** @description Conditions Represents the observations of the current state. */
             conditions?: components["schemas"]["Condition"][];
             /** @description Environments holds the status of each environment in the promotion sequence. */
-            environments: components["schemas"]["EnvironmentStatus"][];
+            environments?: components["schemas"]["EnvironmentStatus"][];
             /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
             instanceID?: string;
             /**
@@ -1742,23 +1812,9 @@ export type components = {
              */
             options?: string[];
             /**
-             * @description Template is a go text template and receives .Environment and .ArgoCDCommitStatus variables. A function called urlQueryEscape is available to escape url query parameters. The template can be configured with options to control the behavior during execution if a variable is not present.
+             * @description Template is a Go text template used to generate the CommitStatus URL. A function called urlQueryEscape is available to escape URL query parameters. The template can be configured with options (url.options) to control behavior when a variable is not present.
              *
-             *     Example:
-             *
-             *       {{- $baseURL := "https://dev.argocd.local" -}}
-             *       {{- if eq .Environment "environment/development" -}}
-             *       {{- $baseURL = "https://dev.argocd.local" -}}
-             *       {{- else if eq .Environment "environment/staging" -}}
-             *       {{- $baseURL = "https://staging.argocd.local" -}}
-             *       {{- else if eq .Environment "environment/production" -}}
-             *       {{- $baseURL = "https://prod.argocd.local" -}}
-             *       {{- end -}}
-             *       {{- $labels := "" -}}
-             *       {{- range $key, $value := .ArgoCDCommitStatus.Spec.ApplicationSelector.MatchLabels -}}
-             *       {{- $labels = printf "%s%s=%s," $labels $key $value -}}
-             *       {{- end -}}
-             *       {{ printf "%s/applications?labels=%s" $baseURL (urlQueryEscape $labels) }}
+             *     Available template variables depend on the parent resource that embeds URLConfig (ArgoCDCommitStatus or DependentsSuccessfulCommitStatus). See the corresponding gate documentation for the variable set and examples.
              */
             template?: string;
         };

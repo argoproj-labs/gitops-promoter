@@ -274,7 +274,10 @@ EOF
 
 ## Create the promotion strategy
 
-Create the promotion strategy.
+Create the PromotionStrategy and a
+[DependentsSuccessfulCommitStatus](../gating-promotions/built-in-gates/dependents-successful-commit-status.md)
+so promotions are ordered (development → staging → prod). Ordering is not injected automatically; without this gate the
+PromotionStrategy controller fails its reconcile.
 
 ```bash
 cat << EOF | kubectl apply -f-
@@ -283,6 +286,9 @@ kind: PromotionStrategy
 metadata:
   name: demo-github
 spec:
+  proposedCommitStatuses:
+  # The DependentsSuccessfulCommitStatus CR will maintain this ordering gate.
+  - key: dependents-successful
   activeCommitStatuses:
   # The ArgoCDCommitStatus CR will maintain this commit status based on the application health.
   - key: argocd-health
@@ -295,6 +301,15 @@ spec:
       branch: environment/prod
   gitRepositoryRef:
     name: github-argocd-example-apps
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: DependentsSuccessfulCommitStatus
+metadata:
+  name: demo-github
+spec:
+  key: dependents-successful
+  promotionStrategyRef:
+    name: demo-github
 EOF
 ```
 

@@ -1,0 +1,8 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: DependentsSuccessfulCommitStatus
+metadata:
+  name: example-dag
+spec:
+  key: dependents-successful
+  promotionStrategyRef:
+    name: example-promotion-strategy

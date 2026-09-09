@@ -53,6 +53,8 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 			{Key: "promotion-window"},
 		}
+		// PS hard-fails without an ordering gate; declare and create PECS like other gate tests.
+		declareDependentsSuccessfulGate(promotionStrategy)
 
 		setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
@@ -60,11 +62,15 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+		createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 	})
 
 	AfterAll(func() {
 		By("Cleaning up test resources")
 		if promotionStrategy != nil {
+			_ = k8sClient.Delete(ctx, &promoterv1alpha1.DependentsSuccessfulCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{Name: promotionStrategy.Name, Namespace: promotionStrategy.Namespace},
+			})
 			_ = k8sClient.Delete(ctx, promotionStrategy)
 		}
 		if gitRepo != nil {
@@ -390,6 +396,7 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 			keyPS.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 				{Key: customKey},
 			}
+			declareDependentsSuccessfulGate(keyPS)
 
 			setupInitialTestGitRepoOnServer(keyCtx, keyGitRepo)
 
@@ -397,6 +404,7 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 			Expect(k8sClient.Create(keyCtx, keyScmProv)).To(Succeed())
 			Expect(k8sClient.Create(keyCtx, keyGitRepo)).To(Succeed())
 			Expect(k8sClient.Create(keyCtx, keyPS)).To(Succeed())
+			createDependentsSuccessfulCommitStatus(keyCtx, keyPS)
 
 			keyPwcs = &promoterv1alpha1.ScheduledCommitStatus{
 				Name:      keyName + "-custom-key",
@@ -421,6 +429,9 @@ var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
 
 		AfterEach(func() {
 			_ = k8sClient.Delete(keyCtx, keyPwcs)
+			_ = k8sClient.Delete(keyCtx, &promoterv1alpha1.DependentsSuccessfulCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{Name: keyPS.Name, Namespace: keyPS.Namespace},
+			})
 			_ = k8sClient.Delete(keyCtx, keyPS)
 			_ = k8sClient.Delete(keyCtx, keyGitRepo)
 			_ = k8sClient.Delete(keyCtx, keyScmProv)
@@ -518,6 +529,7 @@ var _ = Describe("ScheduledCommitStatus Controller - Branch Mismatch", Ordered, 
 		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 			{Key: "promotion-window"},
 		}
+		declareDependentsSuccessfulGate(promotionStrategy)
 
 		setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
@@ -525,6 +537,7 @@ var _ = Describe("ScheduledCommitStatus Controller - Branch Mismatch", Ordered, 
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+		createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 	})
 
 	AfterAll(func() {
@@ -532,6 +545,9 @@ var _ = Describe("ScheduledCommitStatus Controller - Branch Mismatch", Ordered, 
 			_ = k8sClient.Delete(ctx, scs)
 		}
 		if promotionStrategy != nil {
+			_ = k8sClient.Delete(ctx, &promoterv1alpha1.DependentsSuccessfulCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{Name: promotionStrategy.Name, Namespace: promotionStrategy.Namespace},
+			})
 			_ = k8sClient.Delete(ctx, promotionStrategy)
 		}
 		if gitRepo != nil {

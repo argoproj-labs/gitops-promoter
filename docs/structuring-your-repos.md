@@ -92,12 +92,23 @@ spec:
   gitRepositoryRef:
     name: platform-config
   activePath: apps/payments
+  proposedCommitStatuses:
+    - key: dependents-successful # required ordering gate; see DependentsSuccessfulCommitStatus
   activeCommitStatuses:
     - key: argocd-health-payments
   environments:
     - branch: environment/dev
     - branch: environment/test
     - branch: environment/prod
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: DependentsSuccessfulCommitStatus
+metadata:
+  name: payments
+spec:
+  key: dependents-successful
+  promotionStrategyRef:
+    name: payments
 ---
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: ArgoCDCommitStatus

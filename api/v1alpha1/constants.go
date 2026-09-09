@@ -26,13 +26,24 @@ const ArgoCDCommitStatusDefaultKey = "argocd-health"
 // TimedCommitStatusDefaultKey is the default commit status key for TimedCommitStatus when spec.key is omitted.
 const TimedCommitStatusDefaultKey = "timer"
 
-// PreviousEnvironmentCommitStatusKey is the commit status name used to indicate the previous environment health.
-// This value is used as the SCM commit status context (e.g. GitHub check run name) and is part of the public API.
-// Changing it will break branch protection rules and rulesets that reference this name.
-const PreviousEnvironmentCommitStatusKey = "promoter-previous-environment"
+// DependentsSuccessfulCommitStatusKey is the commit status key name used to indicate that an environment's
+// dependent environments are promoted and successful.
+const DependentsSuccessfulCommitStatusKey = "dependents-successful"
 
-// CommitStatusPreviousEnvironmentStatusesAnnotation is the label used to identify commit statuses that make up the aggregated active commit status
-const CommitStatusPreviousEnvironmentStatusesAnnotation = "promoter.argoproj.io/previous-environment-statuses"
+// LegacyPreviousEnvironmentCommitStatusKey is the commit status key used by PromotionStrategy ≤ 0.37 for
+// linear ordering. DependentsSuccessfulCommitStatus deletes orphaned CommitStatuses with this label once
+// the replacement gate is configured.
+//
+// TODO(v1.0): Remove with cleanupLegacyPreviousEnvironmentCommitStatuses.
+const LegacyPreviousEnvironmentCommitStatusKey = "promoter-previous-environment"
+
+// LegacyPreviousEnvironmentCleanupAnnotation is set on DependentsSuccessfulCommitStatus once legacy
+// promoter-previous-environment CommitStatuses for the referenced PromotionStrategy are gone, so
+// subsequent reconciles skip the migration cleanup. The legacy key was auto-injected by the
+// PromotionStrategy controller ≤ 0.37 and is not a reliable signal in the PS spec.
+//
+// TODO(v1.0): Remove with cleanupLegacyPreviousEnvironmentCommitStatuses.
+const LegacyPreviousEnvironmentCleanupAnnotation = "promoter.argoproj.io/legacy-previous-environment-cleaned"
 
 // Finalizer constants for preventing premature resource deletion
 

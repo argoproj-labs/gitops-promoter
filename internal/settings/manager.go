@@ -39,6 +39,7 @@ func (m *Manager) GetInstanceID(ctx context.Context) (*string, error) {
 //   - TimedCommitStatusConfiguration
 //   - GitCommitStatusConfiguration
 //   - WebRequestCommitStatusConfiguration
+//   - DependentsSuccessfulCommitStatusConfiguration
 //   - ScheduledCommitStatusConfiguration
 type ControllerConfigurationTypes interface {
 	promoterv1alpha1.PromotionStrategyConfiguration |
@@ -49,6 +50,7 @@ type ControllerConfigurationTypes interface {
 		promoterv1alpha1.TimedCommitStatusConfiguration |
 		promoterv1alpha1.GitCommitStatusConfiguration |
 		promoterv1alpha1.WebRequestCommitStatusConfiguration |
+		promoterv1alpha1.DependentsSuccessfulCommitStatusConfiguration |
 		promoterv1alpha1.ScheduledCommitStatusConfiguration
 }
 
@@ -296,6 +298,8 @@ func getWorkQueueForController[T ControllerConfigurationTypes](ctx context.Conte
 		return config.Spec.GitCommitStatus.WorkQueue, nil
 	case promoterv1alpha1.WebRequestCommitStatusConfiguration:
 		return config.Spec.WebRequestCommitStatus.WorkQueue, nil
+	case promoterv1alpha1.DependentsSuccessfulCommitStatusConfiguration:
+		return config.Spec.DependentsSuccessfulCommitStatus.WorkQueue, nil
 	case promoterv1alpha1.ScheduledCommitStatusConfiguration:
 		return config.Spec.ScheduledCommitStatus.WorkQueue, nil
 	default:
