@@ -35,6 +35,7 @@ For **each** `PromotionStrategy`:
 **Linear example** (before):
 
 ```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
 kind: PromotionStrategy
 metadata:
   name: demo
@@ -50,6 +51,7 @@ spec:
 **Linear example** (after):
 
 ```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
 kind: PromotionStrategy
 metadata:
   name: demo
@@ -61,6 +63,7 @@ spec:
     - branch: environment/test
     - branch: environment/prod
 ---
+apiVersion: promoter.argoproj.io/v1alpha1
 kind: DependentsSuccessfulCommitStatus
 metadata:
   name: demo
