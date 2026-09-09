@@ -126,3 +126,15 @@ func CleanupOrphanedCommitStatuses(
 
 	return nil
 }
+
+// GateEnvironmentCommitStatusDescription returns the CommitStatus description for a gate
+// environment report. When pending, pendingReason is used when non-empty.
+func GateEnvironmentCommitStatusDescription(branch string, phase promoterv1alpha1.CommitStatusPhase, pendingReason string) string {
+	if phase == promoterv1alpha1.CommitPhasePending {
+		if pendingReason != "" {
+			return pendingReason
+		}
+		return branch + " - waiting for upstream environments"
+	}
+	return branch + " - all dependent environments promoted and successful"
+}

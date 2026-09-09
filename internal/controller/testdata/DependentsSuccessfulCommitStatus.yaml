@@ -6,3 +6,45 @@ spec:
   key: dependents-successful
   promotionStrategyRef:
     name: example-promotion-strategy
+  environments:
+    - branch: environment/dev
+    - branch: environment/staging
+      dependsOn:
+        - environment/dev
+    - branch: environment/prod
+      dependsOn:
+        - environment/staging
+  url:
+    template: "https://promoter.example.com/promotion-strategies/{{ .PromotionStrategy.Name }}?env={{ urlQueryEscape .Environment }}"
+status:
+  observedGeneration: 1
+  environments:
+    - branch: environment/dev
+      activeCommitStatuses:
+        - key: argocd-health
+          phase: success
+          description: Application healthy
+      upstreams: []
+    - branch: environment/staging
+      activeCommitStatuses:
+        - key: argocd-health
+          phase: success
+          description: Application healthy
+      upstreams:
+        - branch: environment/dev
+          satisfied: true
+    - branch: environment/prod
+      activeCommitStatuses:
+        - key: argocd-health
+          phase: pending
+          description: Waiting for sync
+      upstreams:
+        - branch: environment/dev
+          satisfied: true
+        - branch: environment/staging
+          satisfied: false
+          reason: Waiting for "environment/staging" to be promoted
+      phase: pending
+      description: Waiting for "environment/staging" to be promoted
+      url: https://promoter.example.com/promotion-strategies/example-promotion-strategy?env=environment%2Fstaging
+      reportedSha: abc123def4567890abcdef1234567890abcdef12

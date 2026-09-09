@@ -14,7 +14,7 @@ Estimated static CEL costs versus kube-apiserver limits, computed from `k8s.io/a
 | ClusterScmProvider | v1alpha1 | 21 | 0.00% |
 | CommitStatus | v1alpha1 | 3 | 0.00% |
 | ControllerConfiguration | v1alpha1 | 320 | 0.00% |
-| DependentsSuccessfulCommitStatus | v1alpha1 | 13,392,000 | 13.39% |
+| DependentsSuccessfulCommitStatus | v1alpha1 | 19,683,456 | 19.68% |
 | GitCommitStatus | v1alpha1 | 0 | 0.00% |
 | GitRepository | v1alpha1 | 14 | 0.00% |
 | PromotionStrategy | v1alpha1 | 72,438,744 | 72.44% |
@@ -150,11 +150,13 @@ Source: `promoter.argoproj.io_dependentssuccessfulcommitstatuses.yaml`
 | `.spec.environments[]` | 4,605,000 | 46.05% | `!has(self.dependsOn) \|\| self.dependsOn.all(d, d != self.branch)` |
 | `.spec.environments[].dependsOn[]` | 4,200,000 | 42.00% | `!self.contains(':')` |
 | `.spec.environments[].dependsOn[]` | 4,200,000 | 42.00% | `!self.contains('..')` |
+| `.status.environments[].activeCommitStatuses[].url` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
+| `.status.environments[].url` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
 | `.spec.environments[].dependsOn[]` | 300,000 | 3.00% | `!self.startsWith('-')` |
 | `.spec.environments[].branch` | 42,000 | 0.42% | `!self.contains(':')` |
 | `.spec.environments[].branch` | 42,000 | 0.42% | `!self.contains('..')` |
 | `.spec.environments[].branch` | 3,000 | 0.03% | `!self.startsWith('-')` |
-| **Total** | **13,392,000** | **13.39%** | |
+| **Total** | **19,683,456** | **19.68%** | |
 
 #### GitCommitStatus
 

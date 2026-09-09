@@ -190,3 +190,58 @@ spec:
 > its `key` is missing from the effective `proposedCommitStatuses` for one or more environment branches (global plus
 > per-environment selectors, matching what each `ChangeTransferPolicy` enforces). This safety check is intended to be
 > removed in v1.0; see [Roadmap](../../roadmap.md).
+
+## Status (`status.environments`)
+
+Each environment branch in the dependency graph appears once under `status.environments[]` (`listMapKey=branch`). The
+controller populates this list on every reconcile so operators and UI can see upstream health without drilling into the
+PromotionStrategy.
+
+| Field | Always present | Notes |
+|-------|----------------|-------|
+| `branch` | yes | Environment branch name |
+| `activeCommitStatuses` | yes | Verbatim copy of `PromotionStrategy.status.environments[].active.commitStatuses` (`key`, `phase`, `description`, `url`) |
+| `upstreams` | yes | Transitive ancestor closure: `[{branch, satisfied, reason}]`. Empty for roots. `reason` is set when `satisfied` is false. |
+
+When an environment has an in-flight promotion (`active.dry.sha != proposed.dry.sha`), the entry also includes gate
+report fields that mirror the child `CommitStatus` spec (`phase`, `description`, `url`, `reportedSha`). Skipped
+environments (no proposed change) omit those fields but still report `activeCommitStatuses` and `upstreams`.
+
+`upstreams[].satisfied` is `true` when that ancestor has promoted and is healthy for this environment's target dry SHA
+(same evaluation as the gate). The gate's own pass/fail checks **direct** `spec.environments[].dependsOn` only; each
+direct upstream's `satisfied` value was computed with full no-op recursion.
+
+### Consumer workflow when pending
+
+1. Read the gated environment's `description` (matches the SCM commit status).
+2. Scan `upstreams` for `satisfied: false`.
+3. For each unsatisfied upstream, inspect that branch's `activeCommitStatuses` (per-gate `description` / `url`).
+4. For hydrator or promotion SHA detail, read `PromotionStrategy.status.environments`.
+
+Gate controller authors: see [Commit Status Controller Best Practices](../../contributing/developing-a-commitstatus.md#gate-statusenvironments-standard).
+
+### Example
+
+```yaml
+status:
+  environments:
+    - branch: environment/dev
+      activeCommitStatuses:
+        - key: argocd-health
+          phase: success
+      upstreams: []
+    - branch: environment/prod
+      activeCommitStatuses:
+        - key: argocd-health
+          phase: success
+      upstreams:
+        - branch: environment/dev
+          satisfied: true
+        - branch: environment/staging
+          satisfied: false
+          reason: Waiting for "environment/staging" to be promoted
+      phase: pending
+      description: Waiting for "environment/staging" to be promoted
+      url: https://promoter.example.com/ps/demo-dag?env=environment%2Fstaging
+      reportedSha: abc123def4567890abcdef1234567890abcdef12
+```

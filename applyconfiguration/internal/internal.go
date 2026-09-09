@@ -607,6 +607,38 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: workQueue
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WorkQueue
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusEnvironmentStatus
+  map:
+    fields:
+    - name: activeCommitStatuses
+      type:
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ChangeRequestPolicyCommitStatusPhase
+          elementRelationship: associative
+          keys:
+          - key
+    - name: branch
+      type:
+        scalar: string
+    - name: description
+      type:
+        scalar: string
+    - name: phase
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.CommitStatusPhase
+    - name: reportedSha
+      type:
+        scalar: string
+    - name: upstreams
+      type:
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusUpstreamStatus
+          elementRelationship: atomic
+    - name: url
+      type:
+        scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusSpec
   map:
     fields:
@@ -638,12 +670,32 @@ var schemaYAML = typed.YAMLObject(`types:
           elementRelationship: associative
           keys:
           - type
+    - name: environments
+      type:
+        list:
+          elementType:
+            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusEnvironmentStatus
+          elementRelationship: associative
+          keys:
+          - branch
     - name: instanceID
       type:
         scalar: string
     - name: observedGeneration
       type:
         scalar: numeric
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusUpstreamStatus
+  map:
+    fields:
+    - name: branch
+      type:
+        scalar: string
+    - name: reason
+      type:
+        scalar: string
+    - name: satisfied
+      type:
+        scalar: boolean
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.Environment
   map:
     fields:

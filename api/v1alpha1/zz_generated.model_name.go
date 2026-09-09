@@ -221,6 +221,11 @@ func (in DependentsSuccessfulCommitStatusConfiguration) OpenAPIModelName() strin
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DependentsSuccessfulCommitStatusEnvironmentStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DependentsSuccessfulCommitStatusEnvironmentStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in DependentsSuccessfulCommitStatusList) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.DependentsSuccessfulCommitStatusList"
 }
@@ -233,6 +238,11 @@ func (in DependentsSuccessfulCommitStatusSpec) OpenAPIModelName() string {
 // OpenAPIModelName returns the OpenAPI model name for this type.
 func (in DependentsSuccessfulCommitStatusStatus) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.DependentsSuccessfulCommitStatusStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in DependentsSuccessfulCommitStatusUpstreamStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.DependentsSuccessfulCommitStatusUpstreamStatus"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
@@ -273,6 +283,11 @@ func (in Forgejo) OpenAPIModelName() string {
 // OpenAPIModelName returns the OpenAPI model name for this type.
 func (in ForgejoRepo) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.ForgejoRepo"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in GateEnvironmentCommitStatus) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.GateEnvironmentCommitStatus"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.

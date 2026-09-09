@@ -358,6 +358,35 @@ ctrl.NewControllerManagedBy(mgr).
 
 Built-in gate controllers follow this pattern; see [`timedcommitstatus_controller.go`](https://github.com/argoproj-labs/gitops-promoter/blob/main/internal/controller/timedcommitstatus_controller.go) for a reference implementation.
 
+## Gate `status.environments[]` standard
+
+Gate CRs that write one child `CommitStatus` per PromotionStrategy environment should expose observed state under `status.environments[]` with `listMapKey=branch`.
+
+| Field | Standard | Notes |
+|-------|----------|-------|
+| `branch` | required | Matches `PromotionStrategy.spec.environments[].branch` |
+| `phase` | when gate active | Mirrors child `CommitStatus.spec.phase` |
+| `description` | when gate active | Mirrors child `CommitStatus.spec.description` (see [Description Guidelines](#description-guidelines)) |
+| `url` | when gate active | Mirrors child `CommitStatus.spec.url` |
+| `reportedSha` | when gate active | Hydrated SHA on child `CommitStatus.spec.sha`; semantics vary by gate (proposed vs active) |
+
+Upsert the child `CommitStatus`, then mirror `phase`, `description`, `url`, and `reportedSha` on `status.environments[]` from the same values written to the CommitStatus spec. Omit gate report fields on branches with no in-flight evaluation (for example when active and proposed dry SHAs match).
+
+**Gate-specific extensions** sit alongside the standard fields (for example DependentsSuccessfulCommitStatus `activeCommitStatuses` / `upstreams`, TimedCommitStatus timer fields, GitCommitStatus `targetedSha`).
+
+### Conformance (built-in gates)
+
+| Gate CR | `branch` | `phase` | `description` | `url` | `reportedSha` | Gate-specific |
+|---------|----------|---------|---------------|-------|---------------|---------------|
+| DependentsSuccessfulCommitStatus | yes | yes | yes | yes | yes (proposed hydrated) | `activeCommitStatuses`, `upstreams` (`reason` when unsatisfied) |
+| TimedCommitStatus | yes | yes | — | — | — (`sha`, active hydrated) | timer fields |
+| ScheduledCommitStatus | yes | yes | — | — | — (`sha`, proposed hydrated) | window fields |
+| WebRequestCommitStatus | yes | yes | — | — | — (`reportedSha`) | HTTP outputs |
+| GitCommitStatus | yes | yes | — | — | — (`proposedHydratedSha`) | `expressionResult`, `targetedSha` |
+| ArgoCDCommitStatus | — | — | — | — | — | `applicationsSelected` |
+
+DependentsSuccessfulCommitStatus is the first gate with the full `GateEnvironmentCommitStatus` embed; other gates may converge in follow-up work.
+
 ## Dashboard view bundle
 
 Built-in gate managers are included in the aggregated `PromotionStrategyDetails` resource served by the [dashboard APIService](../advanced-usage/dashboard-apiserver.md). For a new in-tree gate:
