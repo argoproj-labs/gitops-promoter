@@ -7,4 +7,3 @@ export const commitStatusPlugins: Partial<Record<CommitStatusManagerKind, RowPlu
 };
 
 export type { CommitStatusContext, RowPlugin } from './types';
-export { narrowCheck } from './narrowCheck';
