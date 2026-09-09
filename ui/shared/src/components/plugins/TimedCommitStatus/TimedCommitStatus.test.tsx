@@ -7,7 +7,7 @@ import { createRoot } from 'react-dom/client';
 import TimedCommitStatus from './TimedCommitStatus';
 import type { Check, CommitStatusManager } from '../../../types/promotion';
 
-const makeManager = (): CommitStatusManager => ({
+const makeManager = (env: { commitTime?: string; requiredDuration?: string } = {}): CommitStatusManager => ({
   spec: {
     promotionStrategyRef: { name: 'my-strategy' },
     environments: [{ branch: 'production', duration: '5m' }],
@@ -17,8 +17,8 @@ const makeManager = (): CommitStatusManager => ({
       {
         branch: 'production',
         sha: 'a'.repeat(40),
-        commitTime: new Date(Date.now() - 60_000).toISOString(),
-        requiredDuration: '5m',
+        commitTime: env.commitTime ?? new Date(Date.now() - 60_000).toISOString(),
+        requiredDuration: env.requiredDuration ?? '5m',
         phase: 'pending',
         atMostDurationRemaining: '4m',
       },
@@ -93,11 +93,11 @@ describe('TimedCommitStatus', () => {
     clearIntervalSpy.mockRestore();
   });
 
-  it('renders the plain fallback once the check succeeds', async () => {
+  it('renders the plain fallback as a link once the check succeeds', async () => {
     const manager = makeManager();
     await render(makeCheck({ status: 'success', url: 'https://example.com/status' }), manager);
 
-    expect(container.querySelector('a')).not.toBeNull();
+    expect(container.querySelector('.timed-commit-status-fill')).toBeNull();
     expect(container.querySelector('a')?.getAttribute('href')).toBe('https://example.com/status');
   });
 
@@ -111,16 +111,75 @@ describe('TimedCommitStatus', () => {
     expect(link?.textContent).toBe('timer');
   });
 
-  it('has no transition on the fill on first render, then applies it on subsequent updates', async () => {
+  it('seeds the fill width from commitTime so the first paint matches the first tick', async () => {
+    const manager = makeManager();
+    const widths: string[] = [];
+    const observed = new MutationObserver(() => {
+      const fill = container.querySelector('.timed-commit-status-fill') as HTMLDivElement | null;
+      if (fill) {
+        widths.push(fill.style.width);
+      }
+    });
+    observed.observe(container, { childList: true, subtree: true, attributes: true });
+
+    await render(makeCheck(), manager);
+    observed.disconnect();
+
+    expect(widths.length).toBeGreaterThan(0);
+    expect(new Set(widths)).toEqual(new Set(['20%']));
+  });
+
+  it('leaves only the data-driven width inline', async () => {
     const manager = makeManager();
     await render(makeCheck(), manager);
 
-    const fillBefore = container.querySelector('.timed-commit-status-fill') as HTMLDivElement;
-    expect(fillBefore.style.transition).toBe('none');
+    const fill = container.querySelector('.timed-commit-status-fill') as HTMLDivElement;
+    expect(fill.getAttribute('style')).toBe('width: 20%;');
 
-    await vi.advanceTimersByTimeAsync(1000);
+    const track = container.querySelector('.timed-commit-status-track') as HTMLDivElement;
+    expect(track.getAttribute('style')).toBeNull();
+  });
 
-    const fillAfter = container.querySelector('.timed-commit-status-fill') as HTMLDivElement;
-    expect(fillAfter.style.transition).toBe('width 1s linear');
+  it('seeds zero when commitTime is unparseable', async () => {
+    const manager = makeManager({ commitTime: 'not-a-date' });
+    await render(makeCheck(), manager);
+
+    const fill = container.querySelector('.timed-commit-status-fill') as HTMLDivElement;
+    expect(fill.style.width).toBe('100%');
+  });
+
+  it.each(['failure', 'unknown', 'success'])('renders the plain fallback for the %s phase', async (status) => {
+    const manager = makeManager();
+    await render(makeCheck({ status: status as Check['status'] }), manager);
+
+    expect(container.querySelector('.timed-commit-status-fill')).toBeNull();
+    expect(container.textContent).toBe('timer');
+  });
+
+  it('treats a sub-second requiredDuration as milliseconds, not minutes', async () => {
+    const manager = makeManager({
+      requiredDuration: '500ms',
+      commitTime: new Date(Date.now() - 250).toISOString(),
+    });
+    await render(makeCheck(), manager);
+
+    const fill = container.querySelector('.timed-commit-status-fill') as HTMLDivElement;
+    expect(fill.style.width).toBe('50%');
+  });
+
+  it('clamps the bar once the required duration has elapsed', async () => {
+    const manager = makeManager({ commitTime: new Date(Date.now() - 10 * 60_000).toISOString() });
+    await render(makeCheck(), manager);
+
+    const fill = container.querySelector('.timed-commit-status-fill') as HTMLDivElement;
+    expect(fill.style.width).toBe('100%');
+  });
+
+  it('parses a negative requiredDuration as negative, leaving the bar empty', async () => {
+    const manager = makeManager({ requiredDuration: '-30s', commitTime: new Date().toISOString() });
+    await render(makeCheck(), manager);
+
+    const fill = container.querySelector('.timed-commit-status-fill') as HTMLDivElement;
+    expect(fill.style.width).toBe('0%');
   });
 });

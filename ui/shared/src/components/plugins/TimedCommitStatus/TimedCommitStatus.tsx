@@ -1,12 +1,13 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { components } from '../../../types/generated/view.gen';
 import { formatDuration } from '../../../utils/util';
 import type { CommitStatusContext } from '../types';
 import type { RowPlugin } from '../types';
+import './TimedCommitStatus.scss';
 
 function parseGoDuration(duration: string): number {
   let totalMs = 0;
-  const re = /(\d+(?:\.\d+)?)(h|m|s)/g;
+  const re = /(\d+(?:\.\d+)?)(ns|us|µs|ms|h|m|s)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(duration)) !== null) {
     const value = parseFloat(m[1]);
@@ -20,9 +21,27 @@ function parseGoDuration(duration: string): number {
       case 's':
         totalMs += value * 1_000;
         break;
+      case 'ms':
+        totalMs += value;
+        break;
+      case 'us':
+      case 'µs':
+        totalMs += value / 1_000;
+        break;
+      case 'ns':
+        totalMs += value / 1_000_000;
+        break;
     }
   }
-  return totalMs;
+  return duration.trimStart().startsWith('-') ? -totalMs : totalMs;
+}
+
+function remainingFromCommitTime(environment: NonNullable<ReturnType<typeof findEnvironment>>): number {
+  const commitTimeMs = new Date(environment.commitTime).getTime();
+  if (Number.isNaN(commitTimeMs)) {
+    return 0;
+  }
+  return parseGoDuration(environment.requiredDuration) - (Date.now() - commitTimeMs);
 }
 
 const renderFallback = (name: string, url?: string) =>
@@ -40,19 +59,16 @@ function findEnvironment(check: CommitStatusContext['check'], manager: CommitSta
 }
 
 function useTimedCommitStatusProgress(check: CommitStatusContext['check'], environment: ReturnType<typeof findEnvironment>) {
-  const initialRemaining = environment ? parseGoDuration(environment.atMostDurationRemaining) : 0;
+  const initialRemaining = environment ? remainingFromCommitTime(environment) : 0;
   const [remaining, setRemaining] = useState<number>(initialRemaining);
 
   useEffect(() => {
-    if (!environment || check.status === 'success') {
+    if (!environment || check.status !== 'pending') {
       return;
     }
 
-    const commitTimeMs = new Date(environment.commitTime).getTime();
-    const requiredDurationMs = parseGoDuration(environment.requiredDuration);
-
     const tick = () => {
-      setRemaining(requiredDurationMs - (Date.now() - commitTimeMs));
+      setRemaining(remainingFromCommitTime(environment));
     };
 
     tick();
@@ -72,44 +88,17 @@ const TimedCommitStatusHeader: React.FC<CommitStatusContext> = ({ check, manager
   const environment = findEnvironment(check, manager);
   const { clampedRemaining, ratio } = useTimedCommitStatusProgress(check, environment);
 
-  const hasRenderedRef = useRef(false);
-  useEffect(() => {
-    hasRenderedRef.current = true;
-  }, []);
-
-  if (!environment || check.status === 'success') {
+  if (!environment || check.status !== 'pending') {
     return renderFallback(check.name, check.url);
   }
 
   return (
-    <div style={{ display: 'inline-flex', flexDirection: 'column', gap: 4 }}>
-      <span style={{ whiteSpace: 'nowrap' }}>
+    <div className="timed-commit-status">
+      <span className="timed-commit-status-label">
         {renderFallback(check.name, check.url)} ({formatDuration(clampedRemaining)} remaining)
       </span>
-      <div
-        className="timed-commit-status-track"
-        style={{
-          position: 'relative',
-          width: '100%',
-          height: 4,
-          borderRadius: 2,
-          backgroundColor: 'rgba(66, 133, 244, 0.15)',
-          overflow: 'hidden',
-        }}
-      >
-        <div
-          className="timed-commit-status-fill"
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            bottom: 0,
-            width: `${ratio * 100}%`,
-            borderRadius: 2,
-            backgroundColor: 'rgb(66, 133, 244)',
-            transition: hasRenderedRef.current ? 'width 1s linear' : 'none',
-          }}
-        />
+      <div className="timed-commit-status-track">
+        <div className="timed-commit-status-fill" style={{ width: `${ratio * 100}%` }} />
       </div>
     </div>
   );
