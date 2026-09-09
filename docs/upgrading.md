@@ -92,7 +92,12 @@ This safety check is intended to be removed in v1.0; see [Roadmap](roadmap.md).
 
 After migration, old `CommitStatus` objects labeled `promoter.argoproj.io/commit-status=promoter-previous-environment`
 are no longer consumed. The `DependentsSuccessfulCommitStatus` controller creates new statuses for the configured key.
-You may delete orphaned previous-environment CommitStatuses once promotions are healthy on the new gate.
+
+Once a `DependentsSuccessfulCommitStatus` reconciles successfully for a `PromotionStrategy`, the controller
+automatically deletes legacy previous-environment `CommitStatus` resources owned by that strategy's
+`ChangeTransferPolicy` objects. No manual cleanup is required after promotions are healthy on the new gate.
+
+This automatic cleanup is intended to be removed in v1.0; see [Roadmap](roadmap.md).
 
 ### Multi-install deployments
 

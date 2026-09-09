@@ -83,3 +83,7 @@ migration that introduced the gate CR.
 ### ArgoCDCommitStatus legacy CommitStatus cleanup (planned for v1.0)
 
 Remove `cleanupLegacyOrphanedCommitStatusesWithoutParentLabel` once clusters are past the Argo CD CommitStatus naming and parent-gate label migration ([#1460](https://github.com/argoproj-labs/gitops-promoter/issues/1460)).
+
+### DependentsSuccessfulCommitStatus legacy previous-environment cleanup (planned for v1.0)
+
+Remove `cleanupLegacyPreviousEnvironmentCommitStatuses` (and the related constants and annotation) once clusters are past the 0.38 promotion-ordering-gate migration. See [Upgrading](upgrading.md#038-promotion-ordering-gate).

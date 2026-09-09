@@ -30,6 +30,21 @@ const TimedCommitStatusDefaultKey = "timer"
 // dependent environments are promoted and successful.
 const DependentsSuccessfulCommitStatusKey = "dependents-successful"
 
+// LegacyPreviousEnvironmentCommitStatusKey is the commit status key used by PromotionStrategy ≤ 0.37 for
+// linear ordering. DependentsSuccessfulCommitStatus deletes orphaned CommitStatuses with this label once
+// the replacement gate is configured.
+//
+// TODO(v1.0): Remove with cleanupLegacyPreviousEnvironmentCommitStatuses.
+const LegacyPreviousEnvironmentCommitStatusKey = "promoter-previous-environment"
+
+// LegacyPreviousEnvironmentCleanupAnnotation is set on DependentsSuccessfulCommitStatus once legacy
+// promoter-previous-environment CommitStatuses for the referenced PromotionStrategy are gone, so
+// subsequent reconciles skip the migration cleanup. The legacy key was auto-injected by the
+// PromotionStrategy controller ≤ 0.37 and is not a reliable signal in the PS spec.
+//
+// TODO(v1.0): Remove with cleanupLegacyPreviousEnvironmentCommitStatuses.
+const LegacyPreviousEnvironmentCleanupAnnotation = "promoter.argoproj.io/legacy-previous-environment-cleaned"
+
 // Finalizer constants for preventing premature resource deletion
 
 // PullRequestFinalizer prevents deletion of PullRequest until the PR is closed in the SCM

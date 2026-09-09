@@ -456,6 +456,61 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 				g.Expect(k8serrors.IsNotFound(err)).To(BeTrue(), "production CommitStatus should be deleted")
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
+
+		It("should cleanup legacy promoter-previous-environment CommitStatuses once configured", func() {
+			legacyCommitStatusName := legacyPreviousEnvironmentCommitStatusName(name, testBranchStaging)
+			legacyCommitStatus := &promoterv1alpha1.CommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      legacyCommitStatusName,
+					Namespace: "default",
+					Labels: map[string]string{
+						promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.LegacyPreviousEnvironmentCommitStatusKey,
+					},
+				},
+				Spec: promoterv1alpha1.CommitStatusSpec{
+					RepositoryReference: promoterv1alpha1.ObjectReference{Name: gitRepo.Name},
+					Name:                promoterv1alpha1.LegacyPreviousEnvironmentCommitStatusKey,
+					Description:         "legacy previous-environment gate",
+					Phase:               promoterv1alpha1.CommitPhasePending,
+					Sha:                 "0123456789abcdef0123456789abcdef01234567",
+				},
+			}
+			Expect(k8sClient.Create(ctx, legacyCommitStatus)).To(Succeed())
+
+			By("Creating a DependentsSuccessfulCommitStatus for the PromotionStrategy")
+			dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-legacy-cleanup",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+				},
+			}
+			Expect(k8sClient.Create(ctx, dependentsSuccessfulCommitStatus)).To(Succeed())
+
+			By("Waiting for the DependentsSuccessfulCommitStatus to become Ready")
+			Eventually(func(g Gomega) {
+				updated := &promoterv1alpha1.DependentsSuccessfulCommitStatus{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dependentsSuccessfulCommitStatus), updated)).To(Succeed())
+				readyCondition := meta.FindStatusCondition(updated.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(readyCondition).ToNot(BeNil())
+				g.Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying the legacy CommitStatus is deleted and cleanup is marked complete")
+			Eventually(func(g Gomega) {
+				cs := &promoterv1alpha1.CommitStatus{}
+				err := k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: legacyCommitStatusName}, cs)
+				g.Expect(k8serrors.IsNotFound(err)).To(BeTrue(), "legacy previous-environment CommitStatus should be deleted")
+
+				updated := &promoterv1alpha1.DependentsSuccessfulCommitStatus{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dependentsSuccessfulCommitStatus), updated)).To(Succeed())
+				g.Expect(updated.Annotations).To(HaveKeyWithValue(
+					promoterv1alpha1.LegacyPreviousEnvironmentCleanupAnnotation, "true"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
 	})
 })
 
