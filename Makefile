@@ -164,6 +164,11 @@ apiserver-certs: ## Generate self-signed serving certs for the dashboard apiserv
 fmt: ## Run go fmt against code.
 	go fmt ./...
 
+.PHONY: mod-tidy
+mod-tidy: ## Tidy the root module and the celcost helper module.
+	go mod tidy
+	cd hack/celcost && go mod tidy
+
 .PHONY: go-fix
 go-fix: ## Apply stdlib go fix modernizations (e.g. after a Go version bump).
 	go fix ./...
