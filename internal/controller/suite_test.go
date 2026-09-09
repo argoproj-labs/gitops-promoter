@@ -48,6 +48,7 @@ import (
 	"k8s.io/client-go/util/retry"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
+	promotercache "github.com/argoproj-labs/gitops-promoter/internal/cache"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -168,6 +169,7 @@ var _ = BeforeSuite(func() {
 
 	multiClusterManager, err := mcmanager.New(cfg, kubeconfigProvider, ctrl.Options{
 		Scheme: scheme,
+		Client: promotercache.ClientOptions(),
 		Metrics: metricsserver.Options{
 			BindAddress: "0",
 		},
