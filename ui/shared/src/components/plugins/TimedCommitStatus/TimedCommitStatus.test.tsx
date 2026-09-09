@@ -140,7 +140,7 @@ describe('TimedCommitStatus', () => {
     expect(track.getAttribute('style')).toBeNull();
   });
 
-  it('seeds zero when commitTime is unparseable', async () => {
+  it('seeds zero when commitTime is unparsable', async () => {
     const manager = makeManager({ commitTime: 'not-a-date' });
     await render(makeCheck(), manager);
 
