@@ -138,7 +138,7 @@ func (r *DependentsSuccessfulCommitStatusReconciler) Reconcile(ctx context.Conte
 		return ctrl.Result{}, fmt.Errorf("failed to get requeue duration for DependentsSuccessfulCommitStatus %q: %w", dcs.Name, err)
 	}
 
-	return ctrl.Result{Requeue: true, RequeueAfter: requeueDuration}, nil
+	return ctrl.Result{RequeueAfter: requeueDuration}, nil
 }
 
 // resolveDependentEnvironments returns the effective dependency graph for a DependentsSuccessfulCommitStatus. When

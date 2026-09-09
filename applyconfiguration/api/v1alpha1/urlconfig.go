@@ -29,6 +29,7 @@ type URLConfigApplyConfiguration struct {
 	// Available template variables depend on the parent resource that embeds URLConfig
 	// (ArgoCDCommitStatus or DependentsSuccessfulCommitStatus). See the
 	// corresponding gate documentation for the variable set and examples.
+	//
 	Template *string `json:"template,omitempty"`
 	// Options sets options for the template. Options are described by
 	// strings, either a simple string or "key=value". There can be at
