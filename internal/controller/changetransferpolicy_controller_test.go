@@ -42,7 +42,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
-	"k8s.io/utils/ptr"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -1010,7 +1009,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
 				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
 				// We set auto merge to false so the tests control when (and by whom) the PR is merged.
-				changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
+				changeTransferPolicy.Spec.AutoMerge = new(false)
 
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -1063,7 +1062,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				By("Enabling auto-merge so the controller merges the PR")
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)).To(Succeed())
-					changeTransferPolicy.Spec.AutoMerge = ptr.To(true)
+					changeTransferPolicy.Spec.AutoMerge = new(true)
 					g.Expect(k8sClient.Update(ctx, changeTransferPolicy)).To(Succeed())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -1712,7 +1711,7 @@ var _ = Describe("TemplatePullRequest", func() {
 			}
 			psName := "my-promotion-strategy"
 			ps := &promoterv1alpha1.PromotionStrategy{
-				ObjectMeta: metav1.ObjectMeta{Name: psName, Namespace: "default"},
+				Name: psName, Namespace: "default",
 				Spec: promoterv1alpha1.PromotionStrategySpec{
 					RepositoryReference: promoterv1alpha1.ObjectReference{Name: "test-repo"},
 					Environments:        []promoterv1alpha1.Environment{{Branch: testBranchDevelopment}},
@@ -1791,7 +1790,7 @@ var _ = Describe("TemplatePullRequest", func() {
 				},
 			}
 			ps := &promoterv1alpha1.PromotionStrategy{
-				ObjectMeta: metav1.ObjectMeta{Name: psName, Namespace: "default"},
+				Name: psName, Namespace: "default",
 				Status: promoterv1alpha1.PromotionStrategyStatus{
 					Environments: []promoterv1alpha1.EnvironmentStatus{
 						{
@@ -1897,7 +1896,7 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 
 	It("ignores status-only URL updates", func() {
 		oldPR := &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{Generation: 1},
+			Generation: 1,
 			Status:     promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"},
 		}
 		newPR := oldPR.DeepCopy()
@@ -1906,7 +1905,7 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 	})
 
 	It("enqueues on spec generation change", func() {
-		oldPR := &promoterv1alpha1.PullRequest{ObjectMeta: metav1.ObjectMeta{Generation: 1}}
+		oldPR := &promoterv1alpha1.PullRequest{Generation: 1}
 		newPR := oldPR.DeepCopy()
 		newPR.Generation = 2
 		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPR, ObjectNew: newPR})).To(BeTrue())
@@ -1914,7 +1913,7 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 
 	It("enqueues when the PR ID is first set", func() {
 		oldPR := &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{Generation: 1},
+			Generation: 1,
 			Status:     promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen},
 		}
 		newPR := oldPR.DeepCopy()
@@ -1924,7 +1923,7 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 
 	It("enqueues on terminal state change", func() {
 		oldPR := &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{Generation: 1},
+			Generation: 1,
 			Status:     promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"},
 		}
 		newPR := oldPR.DeepCopy()
@@ -1934,7 +1933,7 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 
 	It("enqueues when merged-or-closed status is set", func() {
 		oldPR := &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{Generation: 1},
+			Generation: 1,
 			Status:     promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"},
 		}
 		newPR := oldPR.DeepCopy()
@@ -1944,10 +1943,8 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 
 	It("enqueues when the CTP finalizer is removed even if another finalizer is added", func() {
 		oldPR := &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{
-				Generation: 1,
-				Finalizers: []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
-			},
+			Generation: 1,
+			Finalizers: []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
 		}
 		newPR := oldPR.DeepCopy()
 		newPR.Finalizers = []string{promoterv1alpha1.PullRequestFinalizer}
@@ -1956,11 +1953,9 @@ var _ = Describe("pullRequestUpdateEnqueuesChangeTransferPolicyPredicate", func(
 
 	It("ignores unrelated finalizer changes when the CTP finalizer is unchanged", func() {
 		oldPR := &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{
-				Generation: 1,
-				Finalizers: []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
-			},
-			Status: promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"},
+			Generation: 1,
+			Finalizers: []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
+			Status:     promoterv1alpha1.PullRequestStatus{State: promoterv1alpha1.PullRequestOpen, ID: "1"},
 		}
 		newPR := oldPR.DeepCopy()
 		newPR.Finalizers = append(slices.Clone(newPR.Finalizers), promoterv1alpha1.PullRequestFinalizer)
@@ -1973,9 +1968,9 @@ var _ = Describe("tooManyPRsError", func() {
 		It("returns an error listing all PR names if 3 or fewer", func() {
 			prList := &promoterv1alpha1.PullRequestList{
 				Items: []promoterv1alpha1.PullRequest{
-					{ObjectMeta: metav1.ObjectMeta{Name: "pr-101"}, Status: promoterv1alpha1.PullRequestStatus{ID: "101"}},
-					{ObjectMeta: metav1.ObjectMeta{Name: "pr-102"}, Status: promoterv1alpha1.PullRequestStatus{ID: "102"}},
-					{ObjectMeta: metav1.ObjectMeta{Name: "pr-103"}, Status: promoterv1alpha1.PullRequestStatus{ID: "103"}},
+					{Name: "pr-101", Status: promoterv1alpha1.PullRequestStatus{ID: "101"}},
+					{Name: "pr-102", Status: promoterv1alpha1.PullRequestStatus{ID: "102"}},
+					{Name: "pr-103", Status: promoterv1alpha1.PullRequestStatus{ID: "103"}},
 				},
 			}
 			err := tooManyPRsError(prList)
@@ -1987,11 +1982,11 @@ var _ = Describe("tooManyPRsError", func() {
 		It("returns an error listing first 3 PR names and count of remaining if more than 3", func() {
 			prList := &promoterv1alpha1.PullRequestList{
 				Items: []promoterv1alpha1.PullRequest{
-					{ObjectMeta: metav1.ObjectMeta{Name: "pr-201"}, Status: promoterv1alpha1.PullRequestStatus{ID: "201"}},
-					{ObjectMeta: metav1.ObjectMeta{Name: "pr-202"}, Status: promoterv1alpha1.PullRequestStatus{ID: "202"}},
-					{ObjectMeta: metav1.ObjectMeta{Name: "pr-203"}, Status: promoterv1alpha1.PullRequestStatus{ID: "203"}},
-					{ObjectMeta: metav1.ObjectMeta{Name: "pr-204"}, Status: promoterv1alpha1.PullRequestStatus{ID: "204"}},
-					{ObjectMeta: metav1.ObjectMeta{Name: "pr-205"}, Status: promoterv1alpha1.PullRequestStatus{ID: "205"}},
+					{Name: "pr-201", Status: promoterv1alpha1.PullRequestStatus{ID: "201"}},
+					{Name: "pr-202", Status: promoterv1alpha1.PullRequestStatus{ID: "202"}},
+					{Name: "pr-203", Status: promoterv1alpha1.PullRequestStatus{ID: "203"}},
+					{Name: "pr-204", Status: promoterv1alpha1.PullRequestStatus{ID: "204"}},
+					{Name: "pr-205", Status: promoterv1alpha1.PullRequestStatus{ID: "205"}},
 				},
 			}
 			err := tooManyPRsError(prList)
@@ -2011,8 +2006,8 @@ var _ = Describe("emitPromotionLifecycleEvents", func() {
 		recorder = events.NewFakeRecorder(100)
 		reconciler = &ChangeTransferPolicyReconciler{Recorder: recorder}
 		ctp = &promoterv1alpha1.ChangeTransferPolicy{
-			ObjectMeta: metav1.ObjectMeta{Name: "test-ctp", Namespace: "default"},
-			Spec:       promoterv1alpha1.ChangeTransferPolicySpec{ActiveBranch: "environment/development"},
+			Name: "test-ctp", Namespace: "default",
+			Spec: promoterv1alpha1.ChangeTransferPolicySpec{ActiveBranch: "environment/development"},
 		}
 	})
 
@@ -2506,10 +2501,8 @@ func hasEventWithReasonAndMessage(eventList v1.EventList, involvedName, reason, 
 func changeTransferPolicyResources(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.ChangeTransferPolicy) {
 	name = name + "-" + utils.KubeSafeUniqueName(randomString(15))
 	gitRepo := &promoterv1alpha1.GitRepository{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
+		Name:      name,
+		Namespace: namespace,
 		Spec: promoterv1alpha1.GitRepositorySpec{
 			Fake: &promoterv1alpha1.FakeRepo{
 				Owner: name,
@@ -2524,20 +2517,16 @@ func changeTransferPolicyResources(ctx context.Context, name, namespace string) 
 	setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 	scmSecret := &v1.Secret{
-		TypeMeta: metav1.TypeMeta{},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
-		Data: nil,
+		TypeMeta:  metav1.TypeMeta{},
+		Name:      name,
+		Namespace: namespace,
+		Data:      nil,
 	}
 
 	scmProvider := &promoterv1alpha1.ScmProvider{
-		TypeMeta: metav1.TypeMeta{},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
+		TypeMeta:  metav1.TypeMeta{},
+		Name:      name,
+		Namespace: namespace,
 		Spec: promoterv1alpha1.ScmProviderSpec{
 			SecretRef: &v1.LocalObjectReference{Name: name},
 			Fake:      &promoterv1alpha1.Fake{},
@@ -2546,11 +2535,9 @@ func changeTransferPolicyResources(ctx context.Context, name, namespace string) 
 	}
 
 	commitStatus := &promoterv1alpha1.CommitStatus{
-		TypeMeta: metav1.TypeMeta{},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
+		TypeMeta:  metav1.TypeMeta{},
+		Name:      name,
+		Namespace: namespace,
 		Spec: promoterv1alpha1.CommitStatusSpec{
 			RepositoryReference: promoterv1alpha1.ObjectReference{
 				Name: name,
@@ -2564,10 +2551,8 @@ func changeTransferPolicyResources(ctx context.Context, name, namespace string) 
 	}
 
 	changeTransferPolicy := &promoterv1alpha1.ChangeTransferPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
+		Name:      name,
+		Namespace: namespace,
 		Spec: promoterv1alpha1.ChangeTransferPolicySpec{
 			RepositoryReference: promoterv1alpha1.ObjectReference{
 				Name: name,
@@ -2651,7 +2636,7 @@ var _ = Describe("buildHistoryEntry trailer sources", func() {
 		mustRunGit(workDir, "push", "-u", "origin", branch)
 
 		gitRepo := &promoterv1alpha1.GitRepository{
-			ObjectMeta: metav1.ObjectMeta{Name: "history-entry-repo", Namespace: "default"},
+			Name: "history-entry-repo", Namespace: "default",
 			Spec: promoterv1alpha1.GitRepositorySpec{
 				Fake: &promoterv1alpha1.FakeRepo{Owner: "test-owner", Name: "history-entry-repo"},
 			},
@@ -2782,7 +2767,7 @@ var _ = Describe("writePromotionHistoryNote merge commit snapshot mismatch", fun
 		mustRunGit(workDir, "push", "origin", activeBranch)
 
 		gitRepo := &promoterv1alpha1.GitRepository{
-			ObjectMeta: metav1.ObjectMeta{Name: "drift-repo", Namespace: "default"},
+			Name: "drift-repo", Namespace: "default",
 			Spec: promoterv1alpha1.GitRepositorySpec{
 				Fake: &promoterv1alpha1.FakeRepo{Owner: "test-owner", Name: "drift-repo"},
 			},
@@ -2811,9 +2796,8 @@ var _ = Describe("writePromotionHistoryNote merge commit snapshot mismatch", fun
 		recorder := events.NewFakeRecorder(100)
 		r := &ChangeTransferPolicyReconciler{Recorder: recorder}
 
-		written, err := r.writePromotionHistoryNote(ctx, ctp, gitOps, buildLivePR(dryOne))
+		err := r.writePromotionHistoryNote(ctx, ctp, gitOps, buildLivePR(dryOne))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(written).To(BeTrue())
 
 		By("Verifying the note on the merge commit uses the merged dry sha, not the stale snapshot")
 		note, err := fetchPromotionHistoryNote(workDir, mergeSha)
@@ -2839,9 +2823,8 @@ var _ = Describe("writePromotionHistoryNote merge commit snapshot mismatch", fun
 		r := &ChangeTransferPolicyReconciler{Recorder: recorder}
 
 		// Snapshot already records dry-2, i.e. exactly what merged: no mismatch.
-		written, err := r.writePromotionHistoryNote(ctx, ctp, gitOps, buildLivePR(dryTwo))
+		err := r.writePromotionHistoryNote(ctx, ctp, gitOps, buildLivePR(dryTwo))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(written).To(BeTrue())
 
 		note, err := fetchPromotionHistoryNote(workDir, mergeSha)
 		Expect(err).NotTo(HaveOccurred())
@@ -2888,17 +2871,15 @@ var _ = Describe("handlePRFinalizerRemoval early promotion history note", func()
 			constants.TrailerShaHydratedProposed + ": " + proposedSha + "\n" +
 			constants.TrailerShaDryProposed + ": " + drySha
 		return &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "early-note-pr",
-				Namespace: ctp.Namespace,
-				Labels: map[string]string{
-					promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
-					promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
-					promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(activeBranch),
-				},
-				Finalizers:        []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
-				DeletionTimestamp: &metav1.Time{Time: time.Now()},
+			Name:      "early-note-pr",
+			Namespace: ctp.Namespace,
+			Labels: map[string]string{
+				promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
+				promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
+				promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(activeBranch),
 			},
+			Finalizers:        []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
+			DeletionTimestamp: &metav1.Time{Time: time.Now()},
 			Spec: promoterv1alpha1.PullRequestSpec{
 				RepositoryReference: promoterv1alpha1.ObjectReference{Name: "early-note-repo"},
 				MergeSha:            proposedSha,
@@ -2952,11 +2933,9 @@ var _ = Describe("handlePRFinalizerRemoval early promotion history note", func()
 		mustRunGit(workDir, "push", "-u", "origin", proposedBranch)
 
 		ctp = &promoterv1alpha1.ChangeTransferPolicy{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "early-note-ctp",
-				Namespace: "default",
-				Labels:    map[string]string{promoterv1alpha1.PromotionStrategyLabel: "early-note-ps"},
-			},
+			Name:      "early-note-ctp",
+			Namespace: "default",
+			Labels:    map[string]string{promoterv1alpha1.PromotionStrategyLabel: "early-note-ps"},
 			Spec: promoterv1alpha1.ChangeTransferPolicySpec{
 				ActiveBranch:   activeBranch,
 				ProposedBranch: proposedBranch,
@@ -2971,7 +2950,7 @@ var _ = Describe("handlePRFinalizerRemoval early promotion history note", func()
 		// Clone for the controller BEFORE the external merge lands, so the merge commit is not in the local
 		// clone yet: handlePRFinalizerRemoval runs before calculateStatus fetches the active branch.
 		gitRepo := &promoterv1alpha1.GitRepository{
-			ObjectMeta: metav1.ObjectMeta{Name: "early-note-repo", Namespace: "default"},
+			Name: "early-note-repo", Namespace: "default",
 			Spec: promoterv1alpha1.GitRepositorySpec{
 				Fake: &promoterv1alpha1.FakeRepo{Owner: "test-owner", Name: "early-note-repo"},
 			},
@@ -3002,9 +2981,8 @@ var _ = Describe("handlePRFinalizerRemoval early promotion history note", func()
 		pr := newPR(promoterv1alpha1.PullRequestMerged, squashSha)
 		r := newReconciler(pr)
 
-		written, err := r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
+		err := r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(written).To(BeTrue(), "a note on the merge commit must force a history rebuild this reconcile")
 
 		By("Verifying the active branch was fetched so the merge commit could be read")
 		Expect(mustRunGit(gitOps.ClonePath(), "rev-parse", "origin/"+activeBranch)).To(Equal(squashSha))
@@ -3016,11 +2994,9 @@ var _ = Describe("handlePRFinalizerRemoval early promotion history note", func()
 		Expect(note[constants.TrailerShaHydratedProposed]).To(Equal([]string{proposedSha}))
 		Expect(note[constants.TrailerPullRequestMergeTime]).ToNot(BeEmpty())
 
-		By("Verifying the history entry built in this same reconcile already carries the PR metadata")
-		entry, include, err := r.buildHistoryEntry(ctx, squashSha, "", gitOps)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(include).To(BeTrue())
-		Expect(entry.PullRequest.ID).To(Equal(prID))
+		By("Verifying history was rebuilt from the note in this same reconcile")
+		Expect(ctp.Status.History).ToNot(BeEmpty())
+		Expect(ctp.Status.History[0].PullRequest.ID).To(Equal(prID))
 
 		By("Verifying the finalizer is still held because the CTP status has not caught up")
 		var livePR promoterv1alpha1.PullRequest
@@ -3031,23 +3007,51 @@ var _ = Describe("handlePRFinalizerRemoval early promotion history note", func()
 	It("reuses an existing note on later passes instead of rewriting it", func() {
 		r := newReconciler(newPR(promoterv1alpha1.PullRequestMerged, squashSha))
 
-		written, err := r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
+		err := r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(written).To(BeTrue())
 		firstNotesRef := notesRefSha()
 
-		written, err = r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
+		err = r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(written).To(BeTrue(), "an existing note must still force the history rebuild")
 		Expect(notesRefSha()).To(Equal(firstNotesRef), "the notes ref must not be pushed again for an unchanged note")
+	})
+
+	It("rebuilds trailer-derived history when writing the note for the first time", func() {
+		const sentinelURL = "https://example.com/sentinel-from-trailers"
+		const noteURL = "https://example.com/pr/" + prID
+
+		// A prior reconcile persisted a trailer-derived entry before the note existed: the SHAs and PR ID
+		// match the merge commit, so the skip guard would have suppressed the note-driven rebuild.
+		ctp.Status.History = []promoterv1alpha1.History{{
+			Active: promoterv1alpha1.CommitBranchState{
+				Hydrated: promoterv1alpha1.CommitShaState{Sha: squashSha},
+			},
+			PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
+				ID:              prID,
+				MergedTargetSha: squashSha,
+				Url:             sentinelURL,
+			},
+		}}
+
+		pr := newPR(promoterv1alpha1.PullRequestMerged, squashSha)
+		pr.Spec.Commit.Message += "\n" + constants.TrailerPullRequestUrl + ": " + noteURL
+		r := newReconciler(pr)
+
+		err := r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(ctp.Status.History).ToNot(BeEmpty())
+		Expect(ctp.Status.History[0].PullRequest.ID).To(Equal(prID))
+		Expect(ctp.Status.History[0].PullRequest.Url).To(Equal(noteURL))
+		Expect(ctp.Status.History[0].PullRequest.Url).ToNot(Equal(sentinelURL))
 	})
 
 	It("writes nothing while the SCM has not reported the merge commit", func() {
 		r := newReconciler(newPR(promoterv1alpha1.PullRequestMerged, ""))
 
-		written, err := r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
+		err := r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(written).To(BeFalse())
+		Expect(ctp.Status.History).To(BeEmpty())
 		_, err = fetchPromotionHistoryNote(workDir, squashSha)
 		Expect(err).To(HaveOccurred(), "no notes ref should exist yet")
 	})
@@ -3055,9 +3059,9 @@ var _ = Describe("handlePRFinalizerRemoval early promotion history note", func()
 	It("writes nothing for a PR closed without merging", func() {
 		r := newReconciler(newPR(promoterv1alpha1.PullRequestClosed, ""))
 
-		written, err := r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
+		err := r.handlePRFinalizerRemoval(ctx, ctp, gitOps)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(written).To(BeFalse())
+		Expect(ctp.Status.History).To(BeEmpty())
 		_, err = fetchPromotionHistoryNote(workDir, squashSha)
 		Expect(err).To(HaveOccurred(), "no notes ref should exist")
 	})
@@ -3115,11 +3119,9 @@ var _ = Describe("createOrUpdatePullRequest with a merged or terminating PullReq
 		prName := utils.KubeSafeUniqueName(utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch))
 		prKey = types.NamespacedName{Name: prName, Namespace: "default"}
 		pr = &promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:       prName,
-				Namespace:  "default",
-				Finalizers: []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
-			},
+			Name:       prName,
+			Namespace:  "default",
+			Finalizers: []string{promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer},
 			Spec: promoterv1alpha1.PullRequestSpec{
 				RepositoryReference: promoterv1alpha1.ObjectReference{Name: name},
 				Title:               "previous promotion",
@@ -3252,118 +3254,60 @@ var _ = Describe("commit status description trailers", func() {
 	})
 
 	DescribeTable("shouldSkipHistoryRecalculation",
-		func(prev, cur promoterv1alpha1.ChangeTransferPolicyStatus, historyNoteWritten bool, expected bool) {
-			Expect(shouldSkipHistoryRecalculation(&prev, &cur, historyNoteWritten)).To(Equal(expected))
+		func(history []promoterv1alpha1.History, activeSha string, expected bool) {
+			Expect(shouldSkipHistoryRecalculation(history, activeSha)).To(Equal(expected))
 		},
-		Entry("skips when active tip unchanged and newest history entry describes it",
-			promoterv1alpha1.ChangeTransferPolicyStatus{
+		Entry("skips when newest history entry describes the active tip",
+			[]promoterv1alpha1.History{{
 				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-				History: []promoterv1alpha1.History{{
-					Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-					PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
-						ID:              "5",
-						MergedTargetSha: "abc",
-					},
-				}},
-			},
-			promoterv1alpha1.ChangeTransferPolicyStatus{
-				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-			},
-			false,
+				PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
+					ID:              "5",
+					MergedTargetSha: "abc",
+				},
+			}},
+			"abc",
 			true,
-		),
-		Entry("recalculates when a promotion history note was written this reconcile",
-			promoterv1alpha1.ChangeTransferPolicyStatus{
-				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-				History: []promoterv1alpha1.History{{
-					Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-					PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
-						MergedTargetSha: "abc",
-					},
-				}},
-			},
-			promoterv1alpha1.ChangeTransferPolicyStatus{
-				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-			},
-			true,
-			false,
 		),
 		Entry("recalculates when newest history entry has no pull request ID",
 			// A stale cached read after the note-writing reconcile still holds the trailer-less entry whose
 			// SHAs match the tip; skipping there would re-apply it over the note-derived history.
-			promoterv1alpha1.ChangeTransferPolicyStatus{
+			[]promoterv1alpha1.History{{
 				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-				History: []promoterv1alpha1.History{{
-					Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-					PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
-						MergedTargetSha: "abc",
-					},
-				}},
-			},
-			promoterv1alpha1.ChangeTransferPolicyStatus{
-				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-			},
-			false,
+				PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
+					MergedTargetSha: "abc",
+				},
+			}},
+			"abc",
 			false,
 		),
 		Entry("recalculates when newest history entry targets a different commit than the active tip",
-			promoterv1alpha1.ChangeTransferPolicyStatus{
-				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-				History: []promoterv1alpha1.History{{
-					Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "def"}},
-					PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
-						MergedTargetSha: "def",
-					},
-				}},
-			},
-			promoterv1alpha1.ChangeTransferPolicyStatus{
-				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-			},
-			false,
+			[]promoterv1alpha1.History{{
+				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "def"}},
+				PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
+					ID:              "5",
+					MergedTargetSha: "def",
+				},
+			}},
+			"abc",
 			false,
 		),
 		Entry("recalculates when newest history entry is only partially populated",
-			promoterv1alpha1.ChangeTransferPolicyStatus{
-				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-				History: []promoterv1alpha1.History{{
-					PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
-						MergedTargetSha: "abc",
-					},
-				}},
-			},
-			promoterv1alpha1.ChangeTransferPolicyStatus{
-				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-			},
-			false,
-			false,
-		),
-		Entry("recalculates when active tip changes",
-			promoterv1alpha1.ChangeTransferPolicyStatus{
-				Active:  promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-				History: []promoterv1alpha1.History{{}},
-			},
-			promoterv1alpha1.ChangeTransferPolicyStatus{
-				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "def"}},
-			},
-			false,
+			[]promoterv1alpha1.History{{
+				PullRequest: &promoterv1alpha1.PullRequestCommonStatus{
+					MergedTargetSha: "abc",
+				},
+			}},
+			"abc",
 			false,
 		),
 		Entry("recalculates when history has never been populated",
-			promoterv1alpha1.ChangeTransferPolicyStatus{
-				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-			},
-			promoterv1alpha1.ChangeTransferPolicyStatus{
-				Active: promoterv1alpha1.CommitBranchState{Hydrated: promoterv1alpha1.CommitShaState{Sha: "abc"}},
-			},
-			false,
+			nil,
+			"abc",
 			false,
 		),
 		Entry("recalculates when active tip is not yet known",
-			promoterv1alpha1.ChangeTransferPolicyStatus{
-				History: []promoterv1alpha1.History{{}},
-			},
-			promoterv1alpha1.ChangeTransferPolicyStatus{},
-			false,
+			[]promoterv1alpha1.History{{}},
+			"",
 			false,
 		),
 	)

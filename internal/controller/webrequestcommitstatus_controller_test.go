@@ -207,10 +207,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 
 			By("Creating a WebRequestCommitStatus resource with polling mode")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-polling-success",
-					Namespace: "default",
-				},
+				Name:      name + "-polling-success",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -310,10 +308,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 
 			By("Creating a WebRequestCommitStatus resource pointing at the unreachable URL")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-unreachable-url",
-					Namespace: "default",
-				},
+				Name:      name + "-unreachable-url",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -370,10 +366,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 
 			By("Creating a WebRequestCommitStatus resource with polling mode")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-polling-failure",
-					Namespace: "default",
-				},
+				Name:      name + "-polling-failure",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -467,10 +461,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 
 			By("Creating WebRequestCommitStatus in polling mode")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-polling-lastsuccessfulsha",
-					Namespace: "default",
-				},
+				Name:      name + "-polling-lastsuccessfulsha",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: promotionStrategy.Name,
@@ -557,10 +549,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 
 			By("Creating a WebRequestCommitStatus whose success expression returns a { phase } object")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-polling-phase-failure",
-					Namespace: "default",
-				},
+				Name:      name + "-polling-phase-failure",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -657,10 +647,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 
 			By("Creating a WebRequestCommitStatus in polling mode with long interval")
 			shortCircuitWRCS = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-polling-interval-shortcircuit",
-					Namespace: "default",
-				},
+				Name:      name + "-polling-interval-shortcircuit",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -764,10 +752,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 
 			By("Creating a WebRequestCommitStatus resource with trigger mode")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-trigger-mode",
-					Namespace: "default",
-				},
+				Name:      name + "-trigger-mode",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -865,10 +851,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 			}))
 
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-trigger-when-variables",
-					Namespace: "default",
-				},
+				Name:      name + "-trigger-when-variables",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "external-approval",
@@ -1030,10 +1014,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 
 			By("Creating a WebRequestCommitStatus resource with templates")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-template-test",
-					Namespace: "default",
-				},
+				Name:      name + "-template-test",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -1138,17 +1120,15 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 			DeferCleanup(triggerVarServer.Close)
 
 			wrcs := &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-trigger-vars-http-test",
-					Namespace: "default",
-				},
+				Name:      name + "-trigger-vars-http-test",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "external-approval",
 					ReportOn:             constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URLTemplate: triggerVarServer.URL + `/validate/{{ index .TriggerVariables "env" }}`,
-						Method:      "POST",
+						URLTemplate:    triggerVarServer.URL + `/validate/{{ index .TriggerVariables "env" }}`,
+						MethodTemplate: "POST",
 						HeaderTemplates: map[string]string{
 							"X-Env": `{{ index .TriggerVariables "env" }}`,
 						},
@@ -1195,10 +1175,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 		It("should expose success.when.variables result as .SuccessVariables in description template", func() {
 			By("Creating a WRCS with success.when.variables and a description template referencing .SuccessVariables")
 			wrcsVars := &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-success-vars-test",
-					Namespace: "default",
-				},
+				Name:      name + "-success-vars-test",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "external-approval",
@@ -1238,10 +1216,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 		It("should expose trigger.when.variables result as .TriggerVariables in description template", func() {
 			By("Creating a WRCS in trigger mode with trigger.when.variables and a description template referencing .TriggerVariables")
 			wrcsTriggerVars := &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-trigger-vars-test",
-					Namespace: "default",
-				},
+				Name:      name + "-trigger-vars-test",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "external-approval",
@@ -1311,10 +1287,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-cleanup-test",
-					Namespace: "default",
-				},
+				Name:      name + "-cleanup-test",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -1427,10 +1401,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 
 			By("Creating a WebRequestCommitStatus resource")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-http-error",
-					Namespace: "default",
-				},
+				Name:      name + "-http-error",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -1581,10 +1553,8 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 
 			By("Creating a WebRequestCommitStatus in trigger mode WITHOUT response.output.expression")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
-					Namespace: "default",
-				},
+				Name:      name,
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -1656,10 +1626,8 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 
 			By("Creating WebRequestCommitStatus that only triggers once")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
-					Namespace: "default",
-				},
+				Name:      name,
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -1757,10 +1725,8 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 
 			By("Creating WebRequestCommitStatus that uses ResponseOutput in trigger")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
-					Namespace: "default",
-				},
+				Name:      name,
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -1830,7 +1796,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.Header().Set("X-Rate-Limit-Remaining", "42")
-				w.Header().Set("X-Request-Id", "abc-123")
+				w.Header().Set("X-Request-ID", "abc-123")
 				w.WriteHeader(http.StatusOK)
 				_ = json.NewEncoder(w).Encode(map[string]any{
 					"approved": true,
@@ -1848,10 +1814,8 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 
 			By("Creating WebRequestCommitStatus with response.output.expression")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
-					Namespace: "default",
-				},
+				Name:      name,
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -1947,10 +1911,8 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 
 			By("Creating a WebRequestCommitStatus in polling mode")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
-					Namespace: "default",
-				},
+				Name:      name,
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -2052,10 +2014,8 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 
 			By("Creating a WebRequestCommitStatus with authentication.scm (Fake provider = no auth applied)")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      scmAuthName + "-scmauth",
-					Namespace: "default",
-				},
+				Name:      scmAuthName + "-scmauth",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: scmAuthName,
@@ -2158,10 +2118,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Missing PromotionStrategy"
 		BeforeEach(func() {
 			By("Creating only a WebRequestCommitStatus resource without PromotionStrategy")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: "default",
-				},
+				Name:      resourceName,
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: "non-existent",
@@ -2286,10 +2244,8 @@ var _ = Describe("WebRequestCommitStatus Controller - SCM Host Validation", func
 		It("should make the HTTP request when the URL host matches the SCM provider domain", func() {
 			By("Creating a WebRequestCommitStatus with Scm")
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-host-match",
-					Namespace: "default",
-				},
+				Name:      name + "-host-match",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "scm-host-check",
@@ -2393,10 +2349,8 @@ var _ = Describe("WebRequestCommitStatus Controller - SCM Host Validation", func
 		It("should set Ready=False when the URL host does not match the SCM provider domain", func() {
 			By("Creating a WebRequestCommitStatus with Scm pointing at the test server")
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-host-mismatch",
-					Namespace: "default",
-				},
+				Name:      name + "-host-mismatch",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "scm-host-check",
@@ -2508,10 +2462,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-ctx-ps-bool-success",
-					Namespace: "default",
-				},
+				Name:      name + "-ctx-ps-bool-success",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "ps-context-check",
@@ -2592,10 +2544,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-ctx-ps-bool-pending",
-					Namespace: "default",
-				},
+				Name:      name + "-ctx-ps-bool-pending",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "ps-context-check",
@@ -2674,10 +2624,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-ctx-ps-perbranch",
-					Namespace: "default",
-				},
+				Name:      name + "-ctx-ps-perbranch",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "ps-context-check",
@@ -2768,10 +2716,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-ctx-ps-trigger",
-					Namespace: "default",
-				},
+				Name:      name + "-ctx-ps-trigger",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "ps-context-check",
@@ -2858,10 +2804,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-ctx-ps-response-output",
-					Namespace: "default",
-				},
+				Name:      name + "-ctx-ps-response-output",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "ps-context-check",
@@ -2950,10 +2894,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-ctx-ps-skip-opt",
-					Namespace: "default",
-				},
+				Name:      name + "-ctx-ps-skip-opt",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "ps-context-check",
@@ -3032,10 +2974,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy"
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-ctx-ps-http-error",
-					Namespace: "default",
-				},
+				Name:      name + "-ctx-ps-http-error",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "ps-context-check",
@@ -3162,10 +3102,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy 
 
 	It("should clear promotionstrategy context and skip HTTP when no environments match the WRCS key", func() {
 		wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      name + "-zero-app-env",
-				Namespace: "default",
-			},
+			Name:      name + "-zero-app-env",
+			Namespace: "default",
 			Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 				Key:                  "webrequest-key-not-on-promotionstrategy",
@@ -3288,10 +3226,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Context PromotionStrategy 
 		}, constants.EventuallyTimeout).Should(Succeed())
 
 		webRequestCS = &promoterv1alpha1.WebRequestCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      name + "-ctx-ps-active",
-				Namespace: "default",
-			},
+			Name:      name + "-ctx-ps-active",
+			Namespace: "default",
 			Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 				Key:                  "ps-active-ctx-check",
@@ -3397,10 +3333,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Context Switching", Ordere
 	It("should cleanly transition status when switching between environments and promotionstrategy contexts", func() {
 		By("Creating a WRCS with default (environments) context")
 		wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      name + "-ctx-switch",
-				Namespace: "default",
-			},
+			Name:      name + "-ctx-switch",
+			Namespace: "default",
 			Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 				Key:                  "ctx-switch-check",
@@ -3570,10 +3504,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 
 			By("Creating a WRCS that uses PromotionStrategy in success.when (no Response dependency)")
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-sw-enriched",
-					Namespace: "default",
-				},
+				Name:      name + "-sw-enriched",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "external-approval",
@@ -3662,10 +3594,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-sw-enriched-ps",
-					Namespace: "default",
-				},
+				Name:      name + "-sw-enriched-ps",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "external-approval",
@@ -3745,10 +3675,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-sw-guard",
-					Namespace: "default",
-				},
+				Name:      name + "-sw-guard",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "external-approval",
@@ -3846,10 +3774,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Success.when Every Reconci
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-sw-expiry",
-					Namespace: "default",
-				},
+				Name:      name + "-sw-expiry",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "external-approval",
@@ -4018,10 +3944,8 @@ var _ = Describe("WebRequestCommitStatus Controller - SuccessOutput", Ordered, f
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-env-success-out",
-					Namespace: "default",
-				},
+				Name:      name + "-env-success-out",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "success-output-test",
@@ -4093,10 +4017,8 @@ var _ = Describe("WebRequestCommitStatus Controller - SuccessOutput", Ordered, f
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-env-no-success-out",
-					Namespace: "default",
-				},
+				Name:      name + "-env-no-success-out",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "success-output-test",
@@ -4162,10 +4084,8 @@ var _ = Describe("WebRequestCommitStatus Controller - SuccessOutput", Ordered, f
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-ctx-ps-success-out",
-					Namespace: "default",
-				},
+				Name:      name + "-ctx-ps-success-out",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "success-output-test",
@@ -4239,10 +4159,8 @@ var _ = Describe("WebRequestCommitStatus Controller - SuccessOutput", Ordered, f
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-success-out-in-trigger",
-					Namespace: "default",
-				},
+				Name:      name + "-success-out-in-trigger",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "success-output-test",
@@ -4381,10 +4299,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard", Ordered, f
 			}))
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-dry-sha-guard",
-					Namespace: "default",
-				},
+				Name:      name + "-dry-sha-guard",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "dry-sha-guard",
@@ -4582,10 +4498,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Dry SHA Guard (PromotionSt
 				`})`
 
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-drysha-ps-guard",
-					Namespace: "default",
-				},
+				Name:      name + "-drysha-ps-guard",
+				Namespace: "default",
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  "dry-sha-ps-guard",
@@ -4706,10 +4620,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Stale Cache Guard", Ordere
 		// fully-wired strategy isn't needed. We still satisfy the CRD's required
 		// fields so Create() succeeds.
 		wrcs = &promoterv1alpha1.WebRequestCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "wrcs-stale-cache-guard",
-				Namespace: "default",
-			},
+			Name:      "wrcs-stale-cache-guard",
+			Namespace: "default",
 			Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "does-not-exist"},
 				Key:                  "stale-cache-guard",

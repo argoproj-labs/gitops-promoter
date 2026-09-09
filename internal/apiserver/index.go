@@ -192,12 +192,10 @@ func (p *BundleProvider) reconcileKey(ctx context.Context, key types.NamespacedN
 		p.mu.Unlock()
 		if wasKnown {
 			tombstone := &viewv1alpha1.PromotionStrategyDetails{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:            key.Name,
-					Namespace:       key.Namespace,
-					Labels:          lastLabels,
-					ResourceVersion: p.currentResourceVersion(),
-				},
+				Name:            key.Name,
+				Namespace:       key.Namespace,
+				Labels:          lastLabels,
+				ResourceVersion: p.currentResourceVersion(),
 			}
 			p.broadcast(watch.Event{Type: watch.Deleted, Object: tombstone}, key, lastLabels, nil)
 		}
@@ -332,7 +330,7 @@ func (p *BundleProvider) Get(ctx context.Context, namespace, name string) (*view
 func (p *BundleProvider) List(ctx context.Context, namespace, name string, labelSelector labels.Selector) (*viewv1alpha1.PromotionStrategyDetailsList, error) {
 	rv := p.currentResourceVersion()
 	out := &viewv1alpha1.PromotionStrategyDetailsList{
-		ListMeta: metav1.ListMeta{ResourceVersion: rv},
+		ResourceVersion: rv,
 	}
 
 	if name != "" {

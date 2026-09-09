@@ -415,11 +415,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 				clusterScmProvider = &promoterv1alpha1.ClusterScmProvider{
-					TypeMeta: metav1.TypeMeta{},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      name,
-						Namespace: "default",
-					},
+					TypeMeta:  metav1.TypeMeta{},
+					Name:      name,
+					Namespace: "default",
 					Spec: promoterv1alpha1.ScmProviderSpec{
 						SecretRef: &v1.LocalObjectReference{Name: scmSecret.Name},
 						Fake:      &promoterv1alpha1.Fake{},
@@ -2947,10 +2945,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				declareDependentsSuccessfulGate(promotionStrategy)
 
 				argocdCommitStatus = promoterv1alpha1.ArgoCDCommitStatus{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      name,
-						Namespace: namespace,
-					},
+					Name:      name,
+					Namespace: namespace,
 					Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
 						PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 							Name: promotionStrategy.Name,
@@ -3209,10 +3205,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(err).To(Succeed())
 
 				argocdCommitStatus = promoterv1alpha1.ArgoCDCommitStatus{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      name,
-						Namespace: namespace,
-					},
+					Name:      name,
+					Namespace: namespace,
 					Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
 						PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 							Name: promotionStrategy.Name,
@@ -3797,20 +3791,16 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 	psName := stem + "-ps"
 
 	scmSecret := &v1.Secret{
-		TypeMeta: metav1.TypeMeta{},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      secName,
-			Namespace: namespace,
-		},
-		Data: nil,
+		TypeMeta:  metav1.TypeMeta{},
+		Name:      secName,
+		Namespace: namespace,
+		Data:      nil,
 	}
 
 	scmProvider := &promoterv1alpha1.ScmProvider{
-		TypeMeta: metav1.TypeMeta{},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      scmName,
-			Namespace: namespace,
-		},
+		TypeMeta:  metav1.TypeMeta{},
+		Name:      scmName,
+		Namespace: namespace,
 		Spec: promoterv1alpha1.ScmProviderSpec{
 			SecretRef: &v1.LocalObjectReference{Name: secName},
 			Fake:      &promoterv1alpha1.Fake{},
@@ -3819,10 +3809,8 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 	}
 
 	gitRepo := &promoterv1alpha1.GitRepository{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      grName,
-			Namespace: namespace,
-		},
+		Name:      grName,
+		Namespace: namespace,
 		Spec: promoterv1alpha1.GitRepositorySpec{
 			Fake: &promoterv1alpha1.FakeRepo{
 				Owner: grName,
@@ -3836,11 +3824,9 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 	}
 
 	commitStatusDevelopment := &promoterv1alpha1.CommitStatus{
-		TypeMeta: metav1.TypeMeta{},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "development-" + grName,
-			Namespace: namespace,
-		},
+		TypeMeta:  metav1.TypeMeta{},
+		Name:      "development-" + grName,
+		Namespace: namespace,
 		Spec: promoterv1alpha1.CommitStatusSpec{
 			RepositoryReference: promoterv1alpha1.ObjectReference{
 				Name: grName,
@@ -3854,11 +3840,9 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 	}
 
 	commitStatusStaging := &promoterv1alpha1.CommitStatus{
-		TypeMeta: metav1.TypeMeta{},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "staging-" + grName,
-			Namespace: namespace,
-		},
+		TypeMeta:  metav1.TypeMeta{},
+		Name:      "staging-" + grName,
+		Namespace: namespace,
 		Spec: promoterv1alpha1.CommitStatusSpec{
 			RepositoryReference: promoterv1alpha1.ObjectReference{
 				Name: grName,
@@ -3872,10 +3856,8 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 	}
 
 	promotionStrategy := &promoterv1alpha1.PromotionStrategy{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      psName,
-			Namespace: namespace,
-		},
+		Name:      psName,
+		Namespace: namespace,
 		Spec: promoterv1alpha1.PromotionStrategySpec{
 			RepositoryReference: promoterv1alpha1.ObjectReference{
 				Name: grName,
@@ -3921,16 +3903,12 @@ func argocdApplications(namespace, appLabel, repoOwner, repoName string) (argocd
 	for i, environment := range environments {
 		envAppName := appLabel + "-" + environment
 		envApp := argocd.Application{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "Application",
-				APIVersion: "argoproj.io/v1alpha1",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      envAppName,
-				Namespace: namespace,
-				Labels: map[string]string{
-					"app": appLabel,
-				},
+			Kind:       "Application",
+			APIVersion: "argoproj.io/v1alpha1",
+			Name:       envAppName,
+			Namespace:  namespace,
+			Labels: map[string]string{
+				"app": appLabel,
 			},
 			Spec: argocd.ApplicationSpec{
 				SourceHydrator: &argocd.SourceHydrator{
@@ -6028,10 +6006,8 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		// which the periodic CTP requeue is the retry path until the disagreement changes.
 		makeCTPWithShas := func(name, proposedDrySha string, note *promoterv1alpha1.HydratorMetadata, commitTime metav1.Time) *promoterv1alpha1.ChangeTransferPolicy { //nolint:unparam // proposedDrySha is a fixture knob; the current specs all model note-vs-file divergence on the same file SHA
 			return &promoterv1alpha1.ChangeTransferPolicy{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
-					Namespace: "test-ns",
-				},
+				Name:      name,
+				Namespace: "test-ns",
 				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
 					Proposed: promoterv1alpha1.CommitBranchState{
 						Dry: promoterv1alpha1.CommitShaState{

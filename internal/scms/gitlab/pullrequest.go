@@ -435,7 +435,7 @@ func (pr *PullRequest) ensureProjectLabels(ctx context.Context, repo *v1alpha1.G
 	page := int64(1)
 	for {
 		labels, resp, err := pr.client.Labels.ListLabels(repo.Spec.GitLab.ProjectID, &gitlab.ListLabelsOptions{
-			ListOptions: gitlab.ListOptions{Page: page, PerPage: 100},
+			Page: page, PerPage: 100,
 		}, gitlab.WithContext(ctx))
 		if err != nil {
 			return fmt.Errorf("failed to list project labels: %w", err)

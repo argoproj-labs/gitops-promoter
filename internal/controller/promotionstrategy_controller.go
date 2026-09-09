@@ -223,7 +223,6 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	return ctrl.Result{
-		Requeue:      true,
 		RequeueAfter: requeueDuration,
 	}, nil
 }

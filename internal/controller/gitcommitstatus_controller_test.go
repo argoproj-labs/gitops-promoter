@@ -113,10 +113,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Creating a GitCommitStatus with a simple passing expression")
 			gitCommitStatus = &promoterv1alpha1.GitCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-simple",
-					Namespace: "default",
-				},
+				Name:      name + "-simple",
+				Namespace: "default",
 				Spec: promoterv1alpha1.GitCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -187,10 +185,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Creating a GitCommitStatus that checks commit subject")
 			gitCommitStatus = &promoterv1alpha1.GitCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-subject",
-					Namespace: "default",
-				},
+				Name:      name + "-subject",
+				Namespace: "default",
 				Spec: promoterv1alpha1.GitCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -235,10 +231,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Creating a GitCommitStatus with an expression that always fails")
 			gitCommitStatus = &promoterv1alpha1.GitCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-fail",
-					Namespace: "default",
-				},
+				Name:      name + "-fail",
+				Namespace: "default",
 				Spec: promoterv1alpha1.GitCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -294,10 +288,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Creating a GitCommitStatus with invalid expression syntax")
 			gitCommitStatus = &promoterv1alpha1.GitCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-invalid",
-					Namespace: "default",
-				},
+				Name:      name + "-invalid",
+				Namespace: "default",
 				Spec: promoterv1alpha1.GitCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -339,10 +331,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 		It("should handle missing PromotionStrategy gracefully", func() {
 			By("Creating a GitCommitStatus referencing non-existent PromotionStrategy")
 			gcs := &promoterv1alpha1.GitCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-missing-ps",
-					Namespace: "default",
-				},
+				Name:      name + "-missing-ps",
+				Namespace: "default",
 				Spec: promoterv1alpha1.GitCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: "non-existent",
@@ -376,10 +366,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Creating a GitCommitStatus")
 			gitCommitStatus = &promoterv1alpha1.GitCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-cleanup",
-					Namespace: "default",
-				},
+				Name:      name + "-cleanup",
+				Namespace: "default",
 				Spec: promoterv1alpha1.GitCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -468,10 +456,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Creating a GitCommitStatus that applies to all environments")
 			gcs := &promoterv1alpha1.GitCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-multi-env",
-					Namespace: "default",
-				},
+				Name:      name + "-multi-env",
+				Namespace: "default",
 				Spec: promoterv1alpha1.GitCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -523,10 +509,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Creating a GitCommitStatus without description")
 			gcs := &promoterv1alpha1.GitCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-no-desc",
-					Namespace: "default",
-				},
+				Name:      name + "-no-desc",
+				Namespace: "default",
 				Spec: promoterv1alpha1.GitCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -596,10 +580,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Creating GitCommitStatus that checks for 'feat:' prefix with active mode")
 			gcsActive := &promoterv1alpha1.GitCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-active-feat-check",
-					Namespace: "default",
-				},
+				Name:      name + "-active-feat-check",
+				Namespace: "default",
 				Spec: promoterv1alpha1.GitCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -655,10 +637,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Creating GitCommitStatus that checks for 'feat:' prefix with proposed mode")
 			gcsProposed := &promoterv1alpha1.GitCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-proposed-feat-check",
-					Namespace: "default",
-				},
+				Name:      name + "-proposed-feat-check",
+				Namespace: "default",
 				Spec: promoterv1alpha1.GitCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -715,10 +695,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Creating a GitCommitStatus that detects 'Revert' prefix on active commits")
 			gcsRevertCheck := &promoterv1alpha1.GitCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-revert-check",
-					Namespace: "default",
-				},
+				Name:      name + "-revert-check",
+				Namespace: "default",
 				Spec: promoterv1alpha1.GitCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
@@ -1021,10 +999,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Creating GitCommitStatus for development - PASSING (author exists)")
 			devGCS = &promoterv1alpha1.GitCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      gatingName + "-" + devGateKey,
-					Namespace: "default",
-				},
+				Name:      gatingName + "-" + devGateKey,
+				Namespace: "default",
 				Spec: promoterv1alpha1.GitCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: gatingName,
@@ -1038,10 +1014,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Creating GitCommitStatus for staging - PASSING (subject exists)")
 			stagingGCS = &promoterv1alpha1.GitCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      gatingName + "-" + stagingGateKey,
-					Namespace: "default",
-				},
+				Name:      gatingName + "-" + stagingGateKey,
+				Namespace: "default",
 				Spec: promoterv1alpha1.GitCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: gatingName,
@@ -1055,10 +1029,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Creating GitCommitStatus for production - FAILING (requires non-existent author)")
 			prodGCS = &promoterv1alpha1.GitCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      gatingName + "-" + prodGateKey,
-					Namespace: "default",
-				},
+				Name:      gatingName + "-" + prodGateKey,
+				Namespace: "default",
 				Spec: promoterv1alpha1.GitCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: gatingName,
