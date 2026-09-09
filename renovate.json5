@@ -75,9 +75,9 @@
     },
     // ----------------------------------------------------------------------
     // Group A: Kubernetes platform (gomod + Makefile + e2e workflow, lockstep)
-    // controller-runtime <-> multicluster-runtime <-> k8s.io/* <-> setup-envtest
-    // SMD uses /vN module paths (v6 vs v7 with k8s 1.37). Keep majors in this
-    // group (separateMajorMinor: false) so they land with the CR/k8s bump.
+    // Anchor: controller-runtime + tagged k8s.io/* (v0.N.x). See RENOVATE_SETUP.md.
+    // Followers (kube-openapi digests, structured-merge-diff /vN) are NOT listed
+    // here; make mod-tidy after a CR bump picks the versions from CR's go.mod.
     // ----------------------------------------------------------------------
     {
       description: 'Renovate owns the coupled Kubernetes platform gomod deps so they bump in lockstep',
@@ -88,7 +88,6 @@
         'k8s.io/**',
         'sigs.k8s.io/controller-runtime',
         'sigs.k8s.io/multicluster-runtime',
-        'sigs.k8s.io/structured-merge-diff/**',
         'sigs.k8s.io/json',
         'sigs.k8s.io/randfill',
       ],
@@ -102,8 +101,7 @@
       // k8s.io OpenAPI/types flow into committed view codegen and CRDs. Without this,
       // a platform bump leaves zz_generated.openapi.go referencing removed types
       // (e.g. core/v1.PodStatusResult in 0.37) and Check Codegen fails.
-      // gomodUpdateImportPaths adds SMD /vN+1 but leaves the old /vN require when
-      // nothing imports SMD; make mod-tidy drops the unused major before generate.
+      // make mod-tidy syncs follower deps (kube-openapi digest, SMD /vN) to CR.
       postUpgradeTasks: {
         commands: [
           'install-tool golang 1.27.1',
@@ -178,47 +176,27 @@
       },
     },
     {
-      // SMD majors are a new module path (/v6 -> /v7), not a semver bump of /v6.
-      // gomodUpdateImportPaths adds the new module path. With no SMD imports in
-      // this repo it does not drop the old require; platform make mod-tidy does.
-      description: 'SMD /vN majors: rewrite module path in the Kubernetes platform PR',
+      // kube-openapi has no v0.N semver tags; Renovate only sees digest bumps.
+      // A newer digest can jump structured-merge-diff major ahead of apimachinery
+      // on the same k8s minor (e.g. 0.37 stays on SMD v6 until 0.38).
+      description: 'kube-openapi follows controller-runtime; do not bump digests independently',
       matchManagers: [
         'gomod',
       ],
       matchPackageNames: [
-        'sigs.k8s.io/structured-merge-diff/**',
+        'k8s.io/kube-openapi',
       ],
-      matchDepTypes: [
-        'require',
-      ],
-      enabled: true,
-      groupName: 'Kubernetes platform',
-      separateMajorMinor: false,
-      semanticCommits: 'enabled',
-      semanticCommitType: 'chore',
-      semanticCommitScope: 'deps',
-      automerge: false,
-      postUpdateOptions: [
-        'gomodUpdateImportPaths',
-        'gomodTidy',
-      ],
+      enabled: false,
     },
     {
-      // Same as go-github: an indirect /vN major is a new module path. Bumping
-      // v6 to v7.0.0 without rewriting the path fails; gomodTidy follows the
-      // direct require rewrite instead.
-      description: 'Block indirect SMD majors; gomodTidy follows the direct /vN rewrite',
+      // /vN is a new module path, not a semver bump. It moves with the CR /
+      // controller-tools release for that k8s minor, not on its own schedule.
+      description: 'structured-merge-diff follows controller-runtime; do not bump independently',
       matchManagers: [
         'gomod',
       ],
       matchPackageNames: [
         'sigs.k8s.io/structured-merge-diff/**',
-      ],
-      matchDepTypes: [
-        'indirect',
-      ],
-      matchUpdateTypes: [
-        'major',
       ],
       enabled: false,
     },

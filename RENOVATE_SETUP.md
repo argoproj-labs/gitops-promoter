@@ -18,6 +18,8 @@ Renovate has been configured to:
 
 4. **Group Go and golangci-lint updates together** in a single PR when both have updates
 
+5. **Group Kubernetes platform updates** (`controller-runtime`, tagged `k8s.io/*`, envtest) in one PR, with follower dependencies resolved by `make mod-tidy` (see [Kubernetes platform alignment](#kubernetes-platform-alignment) below)
+
 ## Why Self-Hosted Renovate?
 
 We use self-hosted Renovate (via GitHub Workflows) instead of the hosted GitHub App because:
@@ -149,11 +151,12 @@ Key workflow features:
 
 Key configuration options:
 
-- **Schedule**: Updates are checked every weekend to minimize disruption
+- **Schedule**: Updates are checked on the workflow schedule (Sun/Wed/Sat); see workflow file
 - **Labels**: PRs are labeled with `dependencies`
-- **Concurrent Limit**: Maximum of 3 PRs at once
+- **Concurrent limit**: See `prConcurrentLimit` in `renovate.json5`
 - **Automerge**: Disabled (requires manual review)
-- **Post-upgrade tasks**: Runs `go mod tidy`, `make go-fix`, and `make lint-fix`
+- **Kubernetes platform group**: Anchor bumps (controller-runtime, tagged `k8s.io/*`); follower deps (`kube-openapi`, structured-merge-diff) disabled—see [Kubernetes platform alignment](#kubernetes-platform-alignment)
+- **Post-upgrade tasks**: Platform PRs run `make mod-tidy`, `make build-installer`, codegen; Go/linter group runs `go mod tidy`, `make go-fix`, `make lint-fix`
   - These only work because we're using self-hosted Renovate
   - Commands must be whitelisted in the workflow
 
@@ -168,6 +171,47 @@ Dependabot does NOT handle:
 - ❌ golangci-lint version updates (handled by Renovate)
 
 This avoids conflicts between the two tools.
+
+## Kubernetes platform alignment
+
+Renovate opens a **Kubernetes platform** PR when **`sigs.k8s.io/controller-runtime`** (and the matching tagged **`k8s.io/*`** modules at `v0.N.x`) move, together with Makefile **envtest** pins. That matches how the ecosystem versions itself:
+
+- [controller-runtime VERSIONING](https://github.com/kubernetes-sigs/controller-runtime/blob/main/VERSIONING.md): one controller-runtime **minor** per Kubernetes **minor**; the supported dependency set is whatever that release’s **`go.mod`** lists — not “latest” of every related module.
+- controller-runtime **does not** publish a compatibility matrix among Kubernetes Go libraries; mixing minors is unsupported.
+
+### Anchor vs follower dependencies
+
+| Role | Packages | How they update |
+|------|----------|-----------------|
+| **Anchor** (Renovate proposes bumps) | `sigs.k8s.io/controller-runtime`, `sigs.k8s.io/multicluster-runtime`, tagged `k8s.io/api`, `apimachinery`, `client-go`, … (`v0.N.x`), `sigs.k8s.io/json`, `sigs.k8s.io/randfill`, envtest Makefile/workflow pins | Grouped in one **Kubernetes platform** PR |
+| **Follower** (Renovate does **not** propose bumps) | `k8s.io/kube-openapi`, `sigs.k8s.io/structured-merge-diff/vN` | **`make mod-tidy`** in the platform post-upgrade task, after the anchor bump, picks the digest and `/vN` module path from controller-runtime’s resolved graph |
+
+### Why `kube-openapi` and structured-merge-diff are followers
+
+**`k8s.io/kube-openapi`** is not released as `v0.37.0`; it uses **pseudo-version digests**. Renovate can only offer **digest** updates. A newer digest may track **kubernetes/master** (e.g. structured-merge-diff **v7**) while **`k8s.io/apimachinery@v0.37.0`** on **release-1.37** still uses **v6**. That produces compile errors such as:
+
+```text
+cannot use typeSchema.Types ([]structured-merge-diff/v7/schema.TypeDef)
+as []structured-merge-diff/v6/schema.TypeDef
+```
+
+**`sigs.k8s.io/structured-merge-diff/vN`** uses a **new Go module path** per major (`/v6`, `/v7`, …), not a semver bump of `/v6`. It moves with the **controller-runtime / controller-tools** line for a Kubernetes minor (e.g. v6 for 1.37, v7 for 1.38), not on its own release cadence. Bumping it independently (or via `gomodUpdateImportPaths` without a matching apimachinery/controller-gen stack) broke platform PRs such as [#1980](https://github.com/argoproj-labs/gitops-promoter/pull/1980).
+
+### Post-upgrade flow for platform PRs
+
+After Renovate bumps the anchor deps, the platform **postUpgradeTasks** run:
+
+1. `install-tool golang …`
+2. **`make mod-tidy`** — root module and `hack/celcost`; syncs follower versions to the new controller-runtime graph
+3. **`make build-installer`** — CRDs, applyconfiguration (via **controller-tools**), dist bundles
+4. **`make generate-apiserver`** / **`make generate-ui-types`**
+
+**controller-tools** (`CONTROLLER_TOOLS_VERSION` in the Makefile) has its own Renovate rule but should stay on the **same Kubernetes minor** as controller-runtime; it determines which SMD `/vN` import appears in generated `applyconfiguration/`.
+
+### Reasonable expectation
+
+- On **Kubernetes 1.37 / controller-runtime 0.25**: stay on **structured-merge-diff v6** and the **kube-openapi digest** that CR 0.25’s `go.mod` pulls in—not the latest digest on main.
+- On **1.38 / controller-runtime 0.26** (when released): expect **v7** and a new openapi digest **together** in one platform PR, driven by the CR bump—not by separate Renovate updates to openapi or SMD.
 
 ## Troubleshooting
 
@@ -235,8 +279,10 @@ To test the workflow without making real changes:
 
 The workflow only allows specific commands in `RENOVATE_ALLOWED_POST_UPGRADE_COMMANDS`:
 - `go mod tidy` - Safe, only updates dependency checksums
+- `make mod-tidy` - Root and `hack/celcost` modules; syncs follower deps after Kubernetes platform bumps
 - `make go-fix` - Runs `go fix ./...` (stdlib modernizations for the new Go version)
 - `make lint-fix` - Runs golangci-lint with auto-fix
+- `make build-installer`, `make generate-apiserver`, `make generate-ui-types`, … - Platform/codegen post-upgrade tasks
 
 If you need to add more commands, update both:
 1. The workflow file (`.github/workflows/renovate.yaml`)
