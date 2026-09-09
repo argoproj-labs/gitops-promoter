@@ -188,6 +188,70 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 			}
 		})
 
+		It("should mirror gate fields on status.environments from child CommitStatuses", func() {
+			By("Creating a DependentsSuccessfulCommitStatus with a URL template")
+			dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-dag-status",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+					Environments: []promoterv1alpha1.DependentEnvironment{
+						{Branch: testBranchDevelopment},
+						{Branch: testBranchStaging, DependsOn: []string{testBranchDevelopment}},
+						{Branch: testBranchProduction, DependsOn: []string{testBranchStaging}},
+					},
+					URL: promoterv1alpha1.URLConfig{
+						Template: "https://example.com/ui?env={{ .Environment }}",
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, dependentsSuccessfulCommitStatus)).To(Succeed())
+
+			By("Waiting for the DependentsSuccessfulCommitStatus to become Ready")
+			Eventually(func(g Gomega) {
+				updated := &promoterv1alpha1.DependentsSuccessfulCommitStatus{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dependentsSuccessfulCommitStatus), updated)).To(Succeed())
+				readyCondition := meta.FindStatusCondition(updated.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(readyCondition).ToNot(BeNil())
+				g.Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Creating a proposed change so the DAG writes CommitStatuses and status.environments")
+			gitPath, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() { _ = os.RemoveAll(gitPath) })
+			makeChangeAndHydrateRepo(gitPath, gitRepo, "status environments test change", "")
+
+			By("Checking status.environments gate fields mirror child CommitStatus spec")
+			Eventually(func(g Gomega) {
+				updatedDSCS := &promoterv1alpha1.DependentsSuccessfulCommitStatus{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dependentsSuccessfulCommitStatus), updatedDSCS)).To(Succeed())
+				g.Expect(updatedDSCS.Status.Environments).ToNot(BeEmpty())
+
+				var eligible int
+				for i := range updatedDSCS.Status.Environments {
+					envStatus := updatedDSCS.Status.Environments[i]
+					cs := &promoterv1alpha1.CommitStatus{}
+					csName := utils.CommitStatusResourceName(ctx, dependentsSuccessfulCommitStatus, envStatus.Branch)
+					err := k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: csName}, cs)
+					if k8serrors.IsNotFound(err) {
+						continue
+					}
+					g.Expect(err).NotTo(HaveOccurred())
+					eligible++
+					g.Expect(envStatus.Phase).NotTo(BeEmpty(), "branch %s has a child CommitStatus but no gate fields on status.environments", envStatus.Branch)
+					g.Expect(envStatus.Phase).To(Equal(cs.Spec.Phase), "branch %s", envStatus.Branch)
+					g.Expect(envStatus.Description).To(Equal(cs.Spec.Description), "branch %s", envStatus.Branch)
+					g.Expect(envStatus.Url).To(Equal(cs.Spec.Url), "branch %s", envStatus.Branch)
+					g.Expect(envStatus.ReportedSha).To(Equal(cs.Spec.Sha), "branch %s", envStatus.Branch)
+				}
+				g.Expect(eligible).To(BeNumerically(">=", 1), "expected at least one child CommitStatus before checking status.environments mirrors")
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
 		It("should render url.template onto per-environment CommitStatuses", func() {
 			By("Creating a DependentsSuccessfulCommitStatus with a URL template that includes the environment")
 			dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
@@ -732,6 +796,10 @@ var _ = Describe("DAG graph logic", func() {
 			g, _ := buildDAG(dagEnvs("dev", "", "e2e", "dev", "perf", "dev", "prd", "e2e,perf"))
 			return g
 		}
+		upstreamsPendingFor := func(g *dag, branch string, commitTime metav1.Time, status map[string]promoterv1alpha1.EnvironmentStatus) (bool, string) {
+			snapshots := buildUpstreamSnapshots(g, branch, newDry, commitTime, status)
+			return upstreamsPending(snapshots, g.dependsOn[branch])
+		}
 
 		// Case 2 (hydrated, not no-op, not merged): prd is promoting newDry, but its upstream stg is
 		// still on oldDry (healthy from a prior round) and has NOT taken newDry. prd must stay
@@ -740,7 +808,7 @@ var _ = Describe("DAG graph logic", func() {
 			status := map[string]promoterv1alpha1.EnvironmentStatus{
 				"stg": dagEnvStatus("stg", oldDry, newDry, true, old),
 			}
-			pending, _ := upstreamsPending(linear(), "prd", newDry, metav1.NewTime(newer), status)
+			pending, _ := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeTrue())
 		})
 
@@ -750,12 +818,12 @@ var _ = Describe("DAG graph logic", func() {
 			status := map[string]promoterv1alpha1.EnvironmentStatus{
 				"stg": dagEnvStatus("stg", oldDry, oldDry, true, old),
 			}
-			pending, _ := upstreamsPending(linear(), "prd", newDry, metav1.NewTime(newer), status)
+			pending, _ := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeTrue())
 		})
 
 		It("holds pending when upstream status is missing from statusByBranch", func() {
-			pending, reason := upstreamsPending(linear(), "prd", newDry, metav1.NewTime(newer), map[string]promoterv1alpha1.EnvironmentStatus{})
+			pending, reason := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), map[string]promoterv1alpha1.EnvironmentStatus{})
 			Expect(pending).To(BeTrue())
 			Expect(reason).To(Equal(`Waiting for "stg" environment status to be reported`))
 		})
@@ -765,7 +833,7 @@ var _ = Describe("DAG graph logic", func() {
 			status := map[string]promoterv1alpha1.EnvironmentStatus{
 				"stg": dagEnvStatus("stg", newDry, newDry, true, newer),
 			}
-			pending, _ := upstreamsPending(linear(), "prd", newDry, metav1.NewTime(newer), status)
+			pending, _ := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeFalse())
 		})
 
@@ -774,14 +842,14 @@ var _ = Describe("DAG graph logic", func() {
 			status := map[string]promoterv1alpha1.EnvironmentStatus{
 				"stg": dagEnvStatus("stg", newDry, newDry, false, newer),
 			}
-			pending, _ := upstreamsPending(linear(), "prd", newDry, metav1.NewTime(newer), status)
+			pending, _ := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeTrue())
 		})
 
 		// Case 7 base case (RECURSE bottoms out at a graph root): a node with no upstreams is
 		// always ready.
 		It("is ready for a root that has no upstreams", func() {
-			pending, _ := upstreamsPending(linear(), "dev", newDry, metav1.NewTime(newer), map[string]promoterv1alpha1.EnvironmentStatus{})
+			pending, _ := upstreamsPendingFor(linear(), "dev", metav1.NewTime(newer), map[string]promoterv1alpha1.EnvironmentStatus{})
 			Expect(pending).To(BeFalse())
 		})
 
@@ -792,7 +860,7 @@ var _ = Describe("DAG graph logic", func() {
 				"e2e":  dagEnvStatus("e2e", newDry, newDry, true, newer),
 				"perf": dagEnvStatus("perf", oldDry, newDry, true, old),
 			}
-			pending, _ := upstreamsPending(diamond(), "prd", newDry, metav1.NewTime(newer), status)
+			pending, _ := upstreamsPendingFor(diamond(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeTrue())
 		})
 
@@ -803,7 +871,7 @@ var _ = Describe("DAG graph logic", func() {
 				"e2e":  dagEnvStatus("e2e", newDry, newDry, true, newer),
 				"perf": dagEnvStatus("perf", newDry, newDry, true, newer),
 			}
-			pending, _ := upstreamsPending(diamond(), "prd", newDry, metav1.NewTime(newer), status)
+			pending, _ := upstreamsPendingFor(diamond(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeFalse())
 		})
 
@@ -813,7 +881,7 @@ var _ = Describe("DAG graph logic", func() {
 				"e2e":  dagEnvStatus("e2e", newDry, newDry, true, newer),
 				"perf": dagEnvStatus("perf", oldDry, newDry, true, old),
 			}
-			pending, reason := upstreamsPending(diamond(), "prd", newDry, metav1.NewTime(newer), status)
+			pending, reason := upstreamsPendingFor(diamond(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeTrue())
 			Expect(reason).To(Equal(`Waiting for "perf" to be promoted`))
 		})
@@ -828,7 +896,7 @@ var _ = Describe("DAG graph logic", func() {
 				"stg": dagEnvStatusWithNote("stg", oldDry, oldDry, newDry, true, old),
 				"dev": dagEnvStatus("dev", newDry, newDry, true, newer),
 			}
-			pending, _ := upstreamsPending(linear(), "prd", newDry, metav1.NewTime(newer), status)
+			pending, _ := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeFalse())
 		})
 
@@ -840,7 +908,7 @@ var _ = Describe("DAG graph logic", func() {
 				"stg": dagEnvStatusWithNote("stg", oldDry, oldDry, newDry, true, old),
 				"dev": dagEnvStatus("dev", oldDry, newDry, true, old),
 			}
-			pending, _ := upstreamsPending(linear(), "prd", newDry, metav1.NewTime(newer), status)
+			pending, _ := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeTrue())
 		})
 
@@ -853,7 +921,7 @@ var _ = Describe("DAG graph logic", func() {
 				"stg": dagEnvStatusWithNote("stg", oldDry, oldDry, newDry, false, old),
 				"dev": dagEnvStatus("dev", newDry, newDry, true, newer),
 			}
-			pending, reason := upstreamsPending(linear(), "prd", newDry, metav1.NewTime(newer), status)
+			pending, reason := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeTrue())
 			Expect(reason).To(ContainSubstring("argocd-health"))
 		})
@@ -872,7 +940,7 @@ var _ = Describe("DAG graph logic", func() {
 				"stg": dagEnvStatusWithNote("stg", oldDry, midDry, newDry, true, old),
 				"dev": dagEnvStatus("dev", newDry, newDry, true, newer),
 			}
-			pending, reason := upstreamsPending(linear(), "prd", newDry, metav1.NewTime(newer), status)
+			pending, reason := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeTrue())
 			Expect(reason).To(Equal(`Waiting for "stg" to be promoted`))
 		})
@@ -884,7 +952,7 @@ var _ = Describe("DAG graph logic", func() {
 			status := map[string]promoterv1alpha1.EnvironmentStatus{
 				"stg": dagEnvStatus("stg", newDry, newDry, true, old),
 			}
-			pending, reason := upstreamsPending(linear(), "prd", newDry, metav1.NewTime(newer), status)
+			pending, reason := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeTrue())
 			Expect(reason).To(ContainSubstring("older"))
 		})
@@ -908,7 +976,7 @@ var _ = Describe("DAG graph logic", func() {
 				"fast": dagEnvStatus("fast", newDry, newDry, true, newer),
 				"soak": dagEnvStatus("soak", oldDry, newDry, true, old),
 			}
-			pending, _ := upstreamsPending(unevenDiamond(), "prd", newDry, metav1.NewTime(newer), status)
+			pending, _ := upstreamsPendingFor(unevenDiamond(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeTrue())
 		})
 		It("uneven diamond: ready when both paths have promoted the target and are healthy", func() {
@@ -916,8 +984,43 @@ var _ = Describe("DAG graph logic", func() {
 				"fast": dagEnvStatus("fast", newDry, newDry, true, newer),
 				"soak": dagEnvStatus("soak", newDry, newDry, true, newer),
 			}
-			pending, _ := upstreamsPending(unevenDiamond(), "prd", newDry, metav1.NewTime(newer), status)
+			pending, _ := upstreamsPendingFor(unevenDiamond(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeFalse())
+		})
+	})
+
+	Describe("buildUpstreamSnapshots", func() {
+		const (
+			oldDry = "old-dry-sha"
+			newDry = "new-dry-sha"
+		)
+		old := time.Date(2026, 6, 30, 10, 0, 0, 0, time.UTC)
+		newer := time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC)
+
+		diamond := func() *dag {
+			g, _ := buildDAG(dagEnvs("dev", "", "e2e", "dev", "perf", "dev", "prd", "e2e,perf"))
+			return g
+		}
+
+		It("returns transitive ancestor closure in topological order with satisfied flags", func() {
+			status := map[string]promoterv1alpha1.EnvironmentStatus{
+				"dev":  dagEnvStatus("dev", newDry, newDry, true, newer),
+				"e2e":  dagEnvStatus("e2e", newDry, newDry, true, newer),
+				"perf": dagEnvStatus("perf", oldDry, newDry, true, old),
+			}
+			snapshots := buildUpstreamSnapshots(diamond(), "prd", newDry, metav1.NewTime(newer), status)
+			Expect(snapshots).To(HaveLen(3))
+			Expect(snapshots[0].Branch).To(Equal("dev"))
+			Expect(snapshots[0].Satisfied).To(BeTrue())
+			Expect(snapshots[1].Branch).To(Equal("e2e"))
+			Expect(snapshots[1].Satisfied).To(BeTrue())
+			Expect(snapshots[2].Branch).To(Equal("perf"))
+			Expect(snapshots[2].Satisfied).To(BeFalse())
+			Expect(snapshots[2].Reason).To(Equal(`Waiting for "perf" to be promoted`))
+
+			pending, reason := upstreamsPending(snapshots, diamond().dependsOn["prd"])
+			Expect(pending).To(BeTrue())
+			Expect(reason).To(Equal(`Waiting for "perf" to be promoted`))
 		})
 	})
 })

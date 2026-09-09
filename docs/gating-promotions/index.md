@@ -32,6 +32,8 @@ PromotionStrategy's effective `proposedCommitStatuses` for each environment that
 global `proposedCommitStatuses`). Without a matching gate CR, the PromotionStrategy controller fails its reconcile so
 environments cannot promote out of order by accident.
 
+Gate controller authors: see [Commit Status Controller Best Practices](../contributing/developing-a-commitstatus.md#gate-statusenvironments-standard).
+
 ## Example
 
 The following example demonstrates how to configure a PromotionStrategy to use CommitStatuses for both a proposed and

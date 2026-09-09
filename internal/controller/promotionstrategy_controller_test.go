@@ -6336,7 +6336,10 @@ func linearUpstreamsPending(precedingEnvs []promoterv1alpha1.EnvironmentStatus, 
 		return true, fmt.Sprintf("failed to build linear DAG: %v", err)
 	}
 
-	return upstreamsPending(g, currentBranch, targetDrySha, currentActiveCommitTime, statusByBranch)
+	return upstreamsPending(
+		buildUpstreamSnapshots(g, currentBranch, targetDrySha, currentActiveCommitTime, statusByBranch),
+		g.dependsOn[currentBranch],
+	)
 }
 
 var _ = Describe("Child creation instance-id label propagation", func() {

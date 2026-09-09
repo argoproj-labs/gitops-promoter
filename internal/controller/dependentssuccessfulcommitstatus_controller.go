@@ -191,13 +191,28 @@ func (r *DependentsSuccessfulCommitStatusReconciler) updateDependentsSuccessfulC
 		statusByBranch[envStatus.Branch] = envStatus
 	}
 
-	// Write a CommitStatus for every environment: success once every one of its dependsOn
-	// upstreams has promoted and become healthy for the SAME dry SHA this environment is
+	// Write status and CommitStatus resources for every environment branch: success once every
+	// dependsOn upstream has promoted and become healthy for the SAME dry SHA this environment is
 	// promoting, pending otherwise.
 	logger := logf.FromContext(ctx)
 	commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0, len(graph.branches))
+	dcs.Status.Environments = make([]promoterv1alpha1.DependentsSuccessfulCommitStatusEnvironmentStatus, 0, len(graph.branches))
+
 	for _, branch := range graph.branches {
 		envStatus := statusByBranch[branch]
+		// The gate is keyed to the dry SHA this environment is promoting. An upstream counts as
+		// satisfied only when it has itself promoted and become healthy for that SAME dry SHA —
+		// not merely because it is in some healthy state from a previous round. Checking upstreams
+		// against the target dry SHA (rather than a target-less "is it healthy") is what prevents a
+		// downstream from merging a new change ahead of upstreams that have not yet taken it.
+		targetDrySha := getEffectiveHydratedDrySha(envStatus)
+		snapshots, isPending, reason := evaluateUpstreams(graph, branch, targetDrySha, envStatus.Active.Dry.CommitTime, statusByBranch)
+
+		entry := promoterv1alpha1.DependentsSuccessfulCommitStatusEnvironmentStatus{
+			Branch:               branch,
+			ActiveCommitStatuses: envStatus.Active.CommitStatuses,
+			Upstreams:            snapshots,
+		}
 
 		// Skip when there is no proposed change (active and proposed dry SHAs match):
 		// there is no in-flight PR to gate, so updating a CommitStatus would only cause
@@ -205,7 +220,8 @@ func (r *DependentsSuccessfulCommitStatusReconciler) updateDependentsSuccessfulC
 		// proposed hydrated SHA.
 		//
 		// Keep any existing CommitStatus in the valid set so orphan cleanup leaves the last
-		// evaluated (stale-but-real) gate status alone until a new proposed change appears.
+		// evaluated gate status alone until a new proposed change appears. Mirror that child
+		// onto status.environments[] so operators still see the last report after promotion completes.
 		if envStatus.Active.Dry.Sha == envStatus.Proposed.Dry.Sha {
 			logger.V(4).Info("Skipping environment with no proposed change", "branch", branch)
 			existing := &promoterv1alpha1.CommitStatus{}
@@ -216,17 +232,11 @@ func (r *DependentsSuccessfulCommitStatusReconciler) updateDependentsSuccessfulC
 				}
 			} else {
 				commitStatuses = append(commitStatuses, existing)
+				entry.GateEnvironmentCommitStatus = utils.GateEnvironmentCommitStatusFromCommitStatus(existing)
 			}
+			dcs.Status.Environments = append(dcs.Status.Environments, entry)
 			continue
 		}
-
-		// The gate is keyed to the dry SHA this environment is promoting. An upstream counts as
-		// satisfied only when it has itself promoted and become healthy for that SAME dry SHA —
-		// not merely because it is in some healthy state from a previous round. Checking upstreams
-		// against the target dry SHA (rather than a target-less "is it healthy") is what prevents a
-		// downstream from merging a new change ahead of upstreams that have not yet taken it.
-		targetDrySha := getEffectiveHydratedDrySha(envStatus)
-		isPending, reason := upstreamsPending(graph, branch, targetDrySha, envStatus.Active.Dry.CommitTime, statusByBranch)
 
 		phase := promoterv1alpha1.CommitPhaseSuccess
 		if isPending {
@@ -245,11 +255,13 @@ func (r *DependentsSuccessfulCommitStatusReconciler) updateDependentsSuccessfulC
 		// ChangeTransferPolicy inspects when gating the promotion PR. Binding to the dry SHA
 		// instead leaves the gate undetectable, so the promotion never advances.
 		proposedHydratedSha := envStatus.Proposed.Hydrated.Sha
-		cs, err := r.createOrUpdateDependentsSuccessfulCommitStatus(ctx, dcs, ps, branch, graph.dependsOn[branch], proposedHydratedSha, phase, reason)
+		cs, gate, err := r.createOrUpdateDependentsSuccessfulCommitStatus(ctx, dcs, ps, branch, graph.dependsOn[branch], proposedHydratedSha, phase, reason)
 		if err != nil {
 			return fmt.Errorf("failed to set DAG commit status for branch %q: %w", branch, err)
 		}
 		commitStatuses = append(commitStatuses, cs)
+		entry.GateEnvironmentCommitStatus = gate
+		dcs.Status.Environments = append(dcs.Status.Environments, entry)
 	}
 
 	if err := utils.CleanupOrphanedCommitStatuses(ctx, r.Client, r.Recorder, dcs, commitStatuses); err != nil {
@@ -356,15 +368,75 @@ func (r *DependentsSuccessfulCommitStatusReconciler) markLegacyPreviousEnvironme
 	return nil
 }
 
-// upstreamsPending reports whether any of branch's direct dependsOn upstreams is not yet
-// satisfied for targetDrySha. An upstream is satisfied when it has hydrated and merged the
-// target dry SHA (with a commit time no older than the current environment's) and is healthy.
-// No-op upstreams (git note advanced without a new commit) are skipped by recursing into
-// their own upstreams. All direct upstreams must be satisfied.
-func upstreamsPending(g *dag, branch, targetDrySha string, currentActiveCommitTime metav1.Time, statusByBranch map[string]promoterv1alpha1.EnvironmentStatus) (isPending bool, reason string) {
-	for _, upstream := range g.dependsOn[branch] {
-		if pending, r := isUpstreamPending(g, upstream, targetDrySha, currentActiveCommitTime, statusByBranch); pending {
-			return true, r
+// collectAncestorBranches returns the transitive closure of branch's upstream dependencies in
+// topological order (roots first).
+func collectAncestorBranches(g *dag, branch string) []string {
+	seen := make(map[string]bool)
+	order := make([]string, 0)
+	var visit func(string)
+	visit = func(u string) {
+		if seen[u] {
+			return
+		}
+		seen[u] = true
+		for _, upstream := range g.dependsOn[u] {
+			visit(upstream)
+		}
+		order = append(order, u)
+	}
+	for _, direct := range g.dependsOn[branch] {
+		visit(direct)
+	}
+	return order
+}
+
+// buildUpstreamSnapshots evaluates every transitive upstream of branch once via isUpstreamPending.
+func buildUpstreamSnapshots(
+	g *dag,
+	branch string,
+	targetDrySha string,
+	commitTime metav1.Time,
+	statusByBranch map[string]promoterv1alpha1.EnvironmentStatus,
+) []promoterv1alpha1.DependentsSuccessfulCommitStatusUpstreamStatus {
+	ancestors := collectAncestorBranches(g, branch)
+	snapshots := make([]promoterv1alpha1.DependentsSuccessfulCommitStatusUpstreamStatus, 0, len(ancestors))
+	for _, upstream := range ancestors {
+		pending, reason := isUpstreamPending(g, upstream, targetDrySha, commitTime, statusByBranch)
+		snapshots = append(snapshots, promoterv1alpha1.DependentsSuccessfulCommitStatusUpstreamStatus{
+			Branch:    upstream,
+			Satisfied: !pending,
+			Reason:    reason,
+		})
+	}
+	return snapshots
+}
+
+// evaluateUpstreams builds transitive upstream snapshots and reports whether any direct dependsOn
+// upstream is unsatisfied.
+func evaluateUpstreams(
+	g *dag,
+	branch string,
+	targetDrySha string,
+	commitTime metav1.Time,
+	statusByBranch map[string]promoterv1alpha1.EnvironmentStatus,
+) ([]promoterv1alpha1.DependentsSuccessfulCommitStatusUpstreamStatus, bool, string) {
+	snapshots := buildUpstreamSnapshots(g, branch, targetDrySha, commitTime, statusByBranch)
+	isPending, reason := upstreamsPending(snapshots, g.dependsOn[branch])
+	return snapshots, isPending, reason
+}
+
+// upstreamsPending reports whether any direct dependsOn upstream is unsatisfied in snapshots.
+// Each snapshot's Satisfied was computed by isUpstreamPending (hydrator, promotion, health,
+// no-op recursion). All direct upstreams must be satisfied.
+func upstreamsPending(snapshots []promoterv1alpha1.DependentsSuccessfulCommitStatusUpstreamStatus, directDependsOn []string) (isPending bool, reason string) {
+	byBranch := make(map[string]promoterv1alpha1.DependentsSuccessfulCommitStatusUpstreamStatus, len(snapshots))
+	for _, s := range snapshots {
+		byBranch[s.Branch] = s
+	}
+	for _, upstream := range directDependsOn {
+		s := byBranch[upstream]
+		if !s.Satisfied {
+			return true, s.Reason
 		}
 	}
 	return false, ""
@@ -411,7 +483,12 @@ func isUpstreamPending(g *dag, branch, targetDrySha string, currentActiveCommitT
 	}
 
 	// Clean, healthy no-op: recurse into this upstream's own upstreams.
-	return upstreamsPending(g, branch, targetDrySha, currentActiveCommitTime, statusByBranch)
+	for _, upstream := range g.dependsOn[branch] {
+		if pending, reason := isUpstreamPending(g, upstream, targetDrySha, currentActiveCommitTime, statusByBranch); pending {
+			return true, reason
+		}
+	}
+	return false, ""
 }
 
 // checkCommitStatusesPassing reports whether an environment's active commit statuses are all
@@ -438,42 +515,20 @@ func (r *DependentsSuccessfulCommitStatusReconciler) createOrUpdateDependentsSuc
 	ps *promoterv1alpha1.PromotionStrategy,
 	branch string,
 	dependsOn []string,
-	hydratedSha string,
+	reportedSha string,
 	phase promoterv1alpha1.CommitStatusPhase,
 	pendingReason string,
-) (*promoterv1alpha1.CommitStatus, error) {
+) (*promoterv1alpha1.CommitStatus, promoterv1alpha1.GateEnvironmentCommitStatus, error) {
 	key := dcs.Spec.Key
 	commitStatusName := utils.CommitStatusResourceName(ctx, dcs, branch)
 
 	kind := reflect.TypeOf(promoterv1alpha1.DependentsSuccessfulCommitStatus{}).Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
-	// Describe what the gate aggregates. When pending, surface the specific reason (e.g. which
-	// upstream is being waited on) so users can see what is blocking the promotion; fall back to a
-	// generic message if none was provided.
-	description := branch + " - all dependent environments promoted and successful"
-	if phase == promoterv1alpha1.CommitPhasePending {
-		description = branch + " - waiting for upstream environments"
-		if pendingReason != "" {
-			description = pendingReason
-		}
-	}
-
 	labels := utils.CommitStatusStandardLabels(dcs, branch, key)
+	description := utils.GateEnvironmentCommitStatusDescription(branch, phase, pendingReason)
 
-	// Use the stable gate key as the SCM commit status context (spec.Name) so users can
-	// reference a single predictable name in branch protection rules, regardless of which
-	// environment or phase produced the status. The human-readable, per-environment detail
-	// goes in the description instead.
-	commitStatusSpec := acv1alpha1.CommitStatusSpec().
-		WithRepositoryReference(acv1alpha1.ObjectReference().
-			WithName(ps.Spec.RepositoryReference.Name)).
-		WithSha(hydratedSha).
-		WithName(key).
-		WithDescription(description).
-		WithPhase(phase)
-
-	// Render URL from template if configured; when empty, leave CommitStatus.spec.url unset
+	var renderedURL string
 	if dcs.Spec.URL.Template != "" {
 		data := DAGURLTemplateData{
 			Environment:                      branch,
@@ -482,22 +537,38 @@ func (r *DependentsSuccessfulCommitStatusReconciler) createOrUpdateDependentsSuc
 			DependsOn:                        dependsOn,
 			DependsOnQuery:                   buildDependsOnQuery(dependsOn),
 		}
-		renderedURL, err := utils.RenderStringTemplate(dcs.Spec.URL.Template, data, dcs.Spec.URL.Options...)
+		var err error
+		renderedURL, err = utils.RenderStringTemplate(dcs.Spec.URL.Template, data, dcs.Spec.URL.Options...)
 		if err != nil {
-			return nil, fmt.Errorf("failed to render URL template: %w", err)
+			return nil, promoterv1alpha1.GateEnvironmentCommitStatus{}, fmt.Errorf("failed to render URL template: %w", err)
 		}
 		parsedURL, err := url.Parse(renderedURL)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse URL: %w", err)
+			return nil, promoterv1alpha1.GateEnvironmentCommitStatus{}, fmt.Errorf("failed to parse URL: %w", err)
 		}
 		if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-			return nil, fmt.Errorf("URL scheme is not http or https: %s", parsedURL.Scheme)
+			return nil, promoterv1alpha1.GateEnvironmentCommitStatus{}, fmt.Errorf("URL scheme is not http or https: %s", parsedURL.Scheme)
 		}
 		logf.FromContext(ctx).V(4).Info("Rendered URL template",
 			"url", renderedURL,
 			"environment", branch,
 			"commitStatus", commitStatusName,
 			"namespace", dcs.Namespace)
+	}
+
+	// Use the stable gate key as the SCM commit status context (spec.Name) so users can
+	// reference a single predictable name in branch protection rules, regardless of which
+	// environment or phase produced the status. The human-readable, per-environment detail
+	// goes in the description instead.
+	commitStatusSpec := acv1alpha1.CommitStatusSpec().
+		WithRepositoryReference(acv1alpha1.ObjectReference().
+			WithName(ps.Spec.RepositoryReference.Name)).
+		WithSha(reportedSha).
+		WithName(key).
+		WithDescription(description).
+		WithPhase(phase)
+
+	if renderedURL != "" {
 		commitStatusSpec = commitStatusSpec.WithUrl(renderedURL)
 	}
 
@@ -519,19 +590,24 @@ func (r *DependentsSuccessfulCommitStatusReconciler) createOrUpdateDependentsSuc
 	if err := r.Get(ctx, client.ObjectKey{Namespace: dcs.Namespace, Name: commitStatusName}, existingCommitStatus); err == nil {
 		previousPhase = string(existingCommitStatus.Spec.Phase)
 	} else if !k8serrors.IsNotFound(err) {
-		return nil, fmt.Errorf("failed to get existing DAG CommitStatus %q: %w", commitStatusName, err)
+		return nil, promoterv1alpha1.GateEnvironmentCommitStatus{}, fmt.Errorf("failed to get existing DAG CommitStatus %q: %w", commitStatusName, err)
 	}
 
 	commitStatus := &promoterv1alpha1.CommitStatus{}
 	commitStatus.Name = commitStatusName
 	commitStatus.Namespace = dcs.Namespace
 	if err := r.Patch(ctx, commitStatus, utils.ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(constants.DependentsSuccessfulCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
-		return nil, fmt.Errorf("failed to apply DAG CommitStatus: %w", err)
+		return nil, promoterv1alpha1.GateEnvironmentCommitStatus{}, fmt.Errorf("failed to apply DAG CommitStatus: %w", err)
 	}
 
 	emitCommitStatusPhaseChangedEvent(r.Recorder, dcs, key, branch, previousPhase, string(phase))
 
-	return commitStatus, nil
+	return commitStatus, promoterv1alpha1.GateEnvironmentCommitStatus{
+		Phase:       phase,
+		Description: description,
+		Url:         renderedURL,
+		ReportedSha: reportedSha,
+	}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

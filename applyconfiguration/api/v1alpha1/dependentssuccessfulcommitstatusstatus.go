@@ -37,6 +37,8 @@ type DependentsSuccessfulCommitStatusStatusApplyConfiguration struct {
 	// reconcile attempt by this install's controller, including when Ready=False; omitted
 	// when the resource has no instance-id label (default install).
 	InstanceID *string `json:"instanceID,omitempty"`
+	// Environments reports observed gate and upstream state per dependency-graph branch.
+	Environments []DependentsSuccessfulCommitStatusEnvironmentStatusApplyConfiguration `json:"environments,omitempty"`
 }
 
 // DependentsSuccessfulCommitStatusStatusApplyConfiguration constructs a declarative configuration of the DependentsSuccessfulCommitStatusStatus type for use with
@@ -71,5 +73,18 @@ func (b *DependentsSuccessfulCommitStatusStatusApplyConfiguration) WithCondition
 // If called multiple times, the InstanceID field is set to the value of the last call.
 func (b *DependentsSuccessfulCommitStatusStatusApplyConfiguration) WithInstanceID(value string) *DependentsSuccessfulCommitStatusStatusApplyConfiguration {
 	b.InstanceID = &value
+	return b
+}
+
+// WithEnvironments adds the given value to the Environments field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the Environments field.
+func (b *DependentsSuccessfulCommitStatusStatusApplyConfiguration) WithEnvironments(values ...*DependentsSuccessfulCommitStatusEnvironmentStatusApplyConfiguration) *DependentsSuccessfulCommitStatusStatusApplyConfiguration {
+	for i := range values {
+		if values[i] == nil {
+			panic("nil value passed to WithEnvironments")
+		}
+		b.Environments = append(b.Environments, *values[i])
+	}
 	return b
 }

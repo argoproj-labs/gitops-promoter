@@ -58,6 +58,21 @@ Controllers label CommitStatuses with three standard labels (gate `key`, environ
 {!internal/controller/testdata/CommitStatus.yaml!}
 ```
 
+#### GateEnvironmentCommitStatus
+
+Shared embed for gate CR `status.environments[]` entries (not part of `CommitStatus` spec). Fields mirror the child
+`CommitStatus` report (last-known copy when the gate is not re-evaluating):
+
+| Field | Maps to `CommitStatus.spec` | Notes |
+|-------|----------------------------|-------|
+| `phase` | `phase` | `pending`, `success`, or `failure` |
+| `description` | `description` | Human-readable gate message |
+| `url` | `url` | SCM details link when configured |
+| `reportedSha` | `sha` | Hydrated SHA the child CommitStatus is attached to |
+
+DependentsSuccessfulCommitStatus is the first built-in gate to populate the full embed. See
+[Commit Status Controller Best Practices](contributing/developing-a-commitstatus.md#gate-statusenvironments-standard).
+
 ### GitRepository
 
 A GitRepository represents a single git repository. It references an ScmProvider to enable access via some configured
@@ -94,6 +109,10 @@ dev → staging → prod). When `spec.environments` is set, each environment dec
 same `spec.key` in the PromotionStrategy's effective `proposedCommitStatuses` for each gated environment (typically in
 global `proposedCommitStatuses`). See
 [Dependents Successful Commit Status](gating-promotions/built-in-gates/dependents-successful-commit-status.md).
+
+`status.environments[]` reports per-branch upstream satisfaction, active commit statuses, and child CommitStatus mirror
+fields (`phase`, `description`, `url`, `reportedSha`) when a child exists. See
+[`GateEnvironmentCommitStatus`](#gateenvironmentcommitstatus) and the gate doc for semantics.
 
 ```yaml
 {!internal/controller/testdata/DependentsSuccessfulCommitStatus.yaml!}

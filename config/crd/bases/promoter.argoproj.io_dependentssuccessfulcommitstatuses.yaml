@@ -229,6 +229,117 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              environments:
+                description: Environments reports observed gate and upstream state
+                  per dependency-graph branch.
+                items:
+                  description: DependentsSuccessfulCommitStatusEnvironmentStatus defines
+                    observed state for one environment branch.
+                  properties:
+                    activeCommitStatuses:
+                      description: ActiveCommitStatuses is a verbatim copy of the
+                        PromotionStrategy environment's active commit statuses.
+                      items:
+                        description: ChangeRequestPolicyCommitStatusPhase defines
+                          the phase of a commit status in a ChangeTransferPolicy.
+                        properties:
+                          description:
+                            description: Description is the description of the commit
+                              status
+                            type: string
+                          key:
+                            description: Key staging hydrated branch
+                            maxLength: 63
+                            minLength: 1
+                            pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
+                            type: string
+                          phase:
+                            description: Phase what phase is the status in
+                            enum:
+                            - pending
+                            - success
+                            - failure
+                            type: string
+                          url:
+                            description: Url is the URL of the commit status
+                            pattern: ^(https?://.*)?$
+                            type: string
+                            x-kubernetes-validations:
+                            - message: must be a valid URL
+                              rule: self == '' || isURL(self)
+                        required:
+                        - key
+                        - phase
+                        type: object
+                      type: array
+                      x-kubernetes-list-map-keys:
+                      - key
+                      x-kubernetes-list-type: map
+                    branch:
+                      description: Branch is the environment branch name.
+                      minLength: 1
+                      type: string
+                    description:
+                      description: Description mirrors child CommitStatus.spec.description.
+                      type: string
+                    phase:
+                      description: Phase mirrors child CommitStatus.spec.phase.
+                      enum:
+                      - pending
+                      - success
+                      - failure
+                      - ""
+                      type: string
+                    reportedSha:
+                      description: |-
+                        ReportedSha is the hydrated SHA the child CommitStatus is attached to (CommitStatus.spec.sha).
+                        Semantics depend on the parent gate (proposed vs active hydrated SHA).
+                        Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                      maxLength: 64
+                      pattern: ^([a-f0-9]{40}|[a-f0-9]{64})?$
+                      type: string
+                    upstreams:
+                      description: Upstreams lists all transitive ancestor branches
+                        and whether each is satisfied for this environment's promotion
+                        target.
+                      items:
+                        description: |-
+                          DependentsSuccessfulCommitStatusUpstreamStatus reports whether a transitive upstream branch
+                          is satisfied for this environment's promotion target.
+                        properties:
+                          branch:
+                            description: Branch is the upstream environment branch
+                              name.
+                            minLength: 1
+                            type: string
+                          reason:
+                            description: Reason explains why the upstream is not satisfied.
+                              Omitted when satisfied is true.
+                            type: string
+                          satisfied:
+                            description: Satisfied is true when the upstream has promoted
+                              and is healthy for this environment's target dry SHA.
+                            type: boolean
+                        required:
+                        - branch
+                        - satisfied
+                        type: object
+                      type: array
+                      x-kubernetes-list-type: atomic
+                    url:
+                      description: Url mirrors child CommitStatus.spec.url.
+                      pattern: ^(https?://.*)?$
+                      type: string
+                      x-kubernetes-validations:
+                      - message: must be a valid URL
+                        rule: self == '' || isURL(self)
+                  required:
+                  - branch
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - branch
+                x-kubernetes-list-type: map
               instanceID:
                 description: |-
                   InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each

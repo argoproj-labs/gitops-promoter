@@ -75,9 +75,11 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.DependentEnvironment{}.OpenAPIModelName():                                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentEnvironment(ref),
 		apiv1alpha1.DependentsSuccessfulCommitStatus{}.OpenAPIModelName():                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatus(ref),
 		apiv1alpha1.DependentsSuccessfulCommitStatusConfiguration{}.OpenAPIModelName():        schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusConfiguration(ref),
+		apiv1alpha1.DependentsSuccessfulCommitStatusEnvironmentStatus{}.OpenAPIModelName():    schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusEnvironmentStatus(ref),
 		apiv1alpha1.DependentsSuccessfulCommitStatusList{}.OpenAPIModelName():                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusList(ref),
 		apiv1alpha1.DependentsSuccessfulCommitStatusSpec{}.OpenAPIModelName():                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusSpec(ref),
 		apiv1alpha1.DependentsSuccessfulCommitStatusStatus{}.OpenAPIModelName():               schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusStatus(ref),
+		apiv1alpha1.DependentsSuccessfulCommitStatusUpstreamStatus{}.OpenAPIModelName():       schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusUpstreamStatus(ref),
 		apiv1alpha1.Environment{}.OpenAPIModelName():                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_Environment(ref),
 		apiv1alpha1.EnvironmentStatus{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_EnvironmentStatus(ref),
 		apiv1alpha1.ExponentialFailure{}.OpenAPIModelName():                                   schema_argoproj_labs_gitops_promoter_api_v1alpha1_ExponentialFailure(ref),
@@ -86,6 +88,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.FastSlow{}.OpenAPIModelName():                                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_FastSlow(ref),
 		apiv1alpha1.Forgejo{}.OpenAPIModelName():                                              schema_argoproj_labs_gitops_promoter_api_v1alpha1_Forgejo(ref),
 		apiv1alpha1.ForgejoRepo{}.OpenAPIModelName():                                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_ForgejoRepo(ref),
+		apiv1alpha1.GateEnvironmentCommitStatus{}.OpenAPIModelName():                          schema_argoproj_labs_gitops_promoter_api_v1alpha1_GateEnvironmentCommitStatus(ref),
 		apiv1alpha1.GitCommitStatus{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatus(ref),
 		apiv1alpha1.GitCommitStatusConfiguration{}.OpenAPIModelName():                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusConfiguration(ref),
 		apiv1alpha1.GitCommitStatusEnvironmentStatus{}.OpenAPIModelName():                     schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitCommitStatusEnvironmentStatus(ref),
@@ -2325,6 +2328,97 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommi
 	}
 }
 
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusEnvironmentStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "DependentsSuccessfulCommitStatusEnvironmentStatus defines observed state for one environment branch.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"branch": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Branch is the environment branch name.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"phase": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Phase mirrors child CommitStatus.spec.phase.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"description": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Description mirrors child CommitStatus.spec.description.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"url": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Url mirrors child CommitStatus.spec.url.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"reportedSha": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ReportedSha is the hydrated SHA the child CommitStatus is attached to (CommitStatus.spec.sha). Semantics depend on the parent gate (proposed vs active hydrated SHA). Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"activeCommitStatuses": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-map-keys": []interface{}{
+									"key",
+								},
+								"x-kubernetes-list-type": "map",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "ActiveCommitStatuses is a verbatim copy of the PromotionStrategy environment's active commit statuses.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.ChangeRequestPolicyCommitStatusPhase{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+					"upstreams": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "atomic",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "Upstreams lists all transitive ancestor branches and whether each is satisfied for this environment's promotion target.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.DependentsSuccessfulCommitStatusUpstreamStatus{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"branch"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.ChangeRequestPolicyCommitStatusPhase{}.OpenAPIModelName(), apiv1alpha1.DependentsSuccessfulCommitStatusUpstreamStatus{}.OpenAPIModelName()},
+	}
+}
+
 func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusList(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -2473,11 +2567,69 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommi
 							Format:      "",
 						},
 					},
+					"environments": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-map-keys": []interface{}{
+									"branch",
+								},
+								"x-kubernetes-list-type": "map",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "Environments reports observed gate and upstream state per dependency-graph branch.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref(apiv1alpha1.DependentsSuccessfulCommitStatusEnvironmentStatus{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
 				},
 			},
 		},
 		Dependencies: []string{
-			metav1.Condition{}.OpenAPIModelName()},
+			apiv1alpha1.DependentsSuccessfulCommitStatusEnvironmentStatus{}.OpenAPIModelName(), metav1.Condition{}.OpenAPIModelName()},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommitStatusUpstreamStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "DependentsSuccessfulCommitStatusUpstreamStatus reports whether a transitive upstream branch is satisfied for this environment's promotion target.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"branch": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Branch is the upstream environment branch name.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"satisfied": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Satisfied is true when the upstream has promoted and is healthy for this environment's target dry SHA.",
+							Default:     false,
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
+					"reason": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Reason explains why the upstream is not satisfied. Omitted when satisfied is true.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"branch", "satisfied"},
+			},
+		},
 	}
 }
 
@@ -2790,6 +2942,47 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ForgejoRepo(ref common.Re
 					},
 				},
 				Required: []string{"owner", "name"},
+			},
+		},
+	}
+}
+
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GateEnvironmentCommitStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "GateEnvironmentCommitStatus mirrors per-environment child CommitStatus report fields (phase, description, url, reportedSha). Used on gate CR status.environments[] only — not embedded in CommitStatusSpec.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"phase": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Phase mirrors child CommitStatus.spec.phase.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"description": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Description mirrors child CommitStatus.spec.description.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"url": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Url mirrors child CommitStatus.spec.url.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"reportedSha": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ReportedSha is the hydrated SHA the child CommitStatus is attached to (CommitStatus.spec.sha). Semantics depend on the parent gate (proposed vs active hydrated SHA). Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
 			},
 		},
 	}

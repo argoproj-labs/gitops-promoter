@@ -92,6 +92,47 @@ type DependentEnvironment struct {
 	DependsOn []string `json:"dependsOn,omitempty"`
 }
 
+// DependentsSuccessfulCommitStatusUpstreamStatus reports whether a transitive upstream branch
+// is satisfied for this environment's promotion target.
+type DependentsSuccessfulCommitStatusUpstreamStatus struct {
+	// Branch is the upstream environment branch name.
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	Branch string `json:"branch"`
+
+	// Satisfied is true when the upstream has promoted and is healthy for this environment's target dry SHA.
+	// +required
+	Satisfied bool `json:"satisfied"`
+
+	// Reason explains why the upstream is not satisfied. Omitted when satisfied is true.
+	// +optional
+	Reason string `json:"reason,omitempty"`
+}
+
+// DependentsSuccessfulCommitStatusEnvironmentStatus defines observed state for one environment branch.
+type DependentsSuccessfulCommitStatusEnvironmentStatus struct {
+	// Branch is the environment branch name.
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	Branch string `json:"branch"`
+
+	// Gate report fields (phase, description, url, reportedSha) mirror the child CommitStatus spec.
+	// When there is no in-flight proposed change, the controller copies the last child CommitStatus
+	// report instead of re-evaluating the gate.
+	GateEnvironmentCommitStatus `json:",inline"`
+
+	// ActiveCommitStatuses is a verbatim copy of the PromotionStrategy environment's active commit statuses.
+	// +optional
+	// +listType=map
+	// +listMapKey=key
+	ActiveCommitStatuses []ChangeRequestPolicyCommitStatusPhase `json:"activeCommitStatuses,omitempty"`
+
+	// Upstreams lists all transitive ancestor branches and whether each is satisfied for this environment's promotion target.
+	// +optional
+	// +listType=atomic
+	Upstreams []DependentsSuccessfulCommitStatusUpstreamStatus `json:"upstreams,omitempty"`
+}
+
 // DependentsSuccessfulCommitStatusStatus defines the observed state of DependentsSuccessfulCommitStatus.
 type DependentsSuccessfulCommitStatusStatus struct {
 	// ObservedGeneration is the .metadata.generation that this status was reconciled from.
@@ -115,6 +156,12 @@ type DependentsSuccessfulCommitStatusStatus struct {
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$`
 	InstanceID *string `json:"instanceID,omitempty"`
+
+	// Environments reports observed gate and upstream state per dependency-graph branch.
+	// +optional
+	// +listType=map
+	// +listMapKey=branch
+	Environments []DependentsSuccessfulCommitStatusEnvironmentStatus `json:"environments,omitempty"`
 }
 
 // +kubebuilder:ac:generate=true
