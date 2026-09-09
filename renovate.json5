@@ -102,9 +102,12 @@
       // k8s.io OpenAPI/types flow into committed view codegen and CRDs. Without this,
       // a platform bump leaves zz_generated.openapi.go referencing removed types
       // (e.g. core/v1.PodStatusResult in 0.37) and Check Codegen fails.
+      // gomodUpdateImportPaths adds SMD /vN+1 but leaves the old /vN require when
+      // nothing imports SMD; make mod-tidy drops the unused major before generate.
       postUpgradeTasks: {
         commands: [
           'install-tool golang 1.27.1',
+          'make mod-tidy',
           'make build-installer',
           'make generate-apiserver',
           'make generate-ui-types',
@@ -148,6 +151,7 @@
       postUpgradeTasks: {
         commands: [
           'install-tool golang 1.27.1',
+          'make mod-tidy',
           'make build-installer',
           'make generate-apiserver',
           'make generate-ui-types',
@@ -175,8 +179,8 @@
     },
     {
       // SMD majors are a new module path (/v6 -> /v7), not a semver bump of /v6.
-      // gomodUpdateImportPaths rewrites the require (and any imports). Scoped to
-      // the direct require so an indirect /vN does not fight a leftover /v6.
+      // gomodUpdateImportPaths adds the new module path. With no SMD imports in
+      // this repo it does not drop the old require; platform make mod-tidy does.
       description: 'SMD /vN majors: rewrite module path in the Kubernetes platform PR',
       matchManagers: [
         'gomod',
