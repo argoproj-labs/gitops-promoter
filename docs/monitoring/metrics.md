@@ -36,13 +36,13 @@ A counter of SCM API calls.
 
 Labels:
 
-* `git_repository`: The name of the GitRepository resource associated with the operation.
+* `git_repository`: The name of the GitRepository resource associated with the operation. Empty when the call is scoped to the SCM provider only (for example GitHub App installation lookup).
 * `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
 * `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
 * `api`: The SCM API being called (CommitStatus, PullRequest)
 * `operation`: The type of SCM operation.
   * For CommitStatus, this is always create.
-  * For PullRequest, this is create, update, merge, close, list, get, create-label, add-labels, or remove-labels.
+  * For PullRequest, this is create, update, merge, close, list, get, create-label, add-labels, remove-labels, or list-installations.
 * `response_code`: The HTTP response code.
 
 ## scm_calls_duration_seconds
@@ -51,13 +51,13 @@ A histogram of the duration of SCM API calls.
 
 Labels:
 
-* `git_repository`: The name of the GitRepository resource associated with the operation.
+* `git_repository`: The name of the GitRepository resource associated with the operation. Empty when the call is scoped to the SCM provider only (for example GitHub App installation lookup).
 * `scm_provider`: The name of the referenced SCM provider resource (`spec.scmProviderRef.name`).
 * `scm_provider_kind`: The kind of that reference: `ScmProvider` or `ClusterScmProvider`.
 * `api`: The SCM API being called (CommitStatus, PullRequest)
 * `operation`: The type of SCM operation.
   * For CommitStatus, this is always create.
-  * For PullRequest, this is create, update, merge, close, list, get, create-label, add-labels, or remove-labels.
+  * For PullRequest, this is create, update, merge, close, list, get, create-label, add-labels, remove-labels, or list-installations.
 * `response_code`: The HTTP response code.
 
 ## webrequest_commit_status_http_requests_total
