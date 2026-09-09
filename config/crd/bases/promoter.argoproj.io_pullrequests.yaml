@@ -40,7 +40,7 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          PullRequest is the Schema for the pullrequests API
+          PullRequest is a thin wrapper around the SCM's pull request API.
           Once recorded, the SHA can be neither replaced nor cleared: a resource merges at most once, so any
           later disagreement is provider inconsistency or a status write built from a stale informer read, and
           honoring it would strand the promotion history note already written against the original SHA. Such a
@@ -173,7 +173,7 @@ spec:
             - title
             type: object
           status:
-            description: PullRequestStatus defines the observed state of PullRequest
+            description: PullRequestStatus defines the observed state of PullRequest.
             properties:
               appliedLabels:
                 description: AppliedLabels lists SCM labels successfully applied by
@@ -187,7 +187,7 @@ spec:
                 type: array
                 x-kubernetes-list-type: set
               conditions:
-                description: Conditions Represents the observations of the current
+                description: Conditions represent the observations of the current
                   state.
                 items:
                   description: Condition contains details for one aspect of the current
@@ -256,7 +256,8 @@ spec:
                   when copied to ChangeTransferPolicy status. This field may be removed in a future API revision.
                 type: boolean
               id:
-                description: ID the id of the pull request
+                description: ID is the unique identifier of the pull request, set
+                  by the SCM.
                 type: string
               instanceID:
                 description: |-
@@ -290,7 +291,8 @@ spec:
                 format: int64
                 type: integer
               prCreationTime:
-                description: PRCreationTime the time the PR was created
+                description: PRCreationTime is the time when the pull request was
+                  created.
                 format: date-time
                 type: string
               scmSyncedSpecDigest:
@@ -299,7 +301,9 @@ spec:
                   to the SCM via provider.Update on an open pull request.
                 type: string
               state:
-                description: State of the merge request closed/merged/open
+                description: State is the state of the pull request. Empty before
+                  the controller observes an SCM state; otherwise closed, merged,
+                  open, merged-or-closed, or unknown.
                 enum:
                 - ""
                 - closed
