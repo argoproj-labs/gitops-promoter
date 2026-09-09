@@ -195,6 +195,7 @@ func runController(
 
 	mcMgr, err := mcmanager.New(restConfig, provider, ctrl.Options{
 		Scheme: scheme,
+		Client: promotercache.ClientOptions(),
 		Cache:  promotercache.OptionsForInstanceID(instanceID, controllerNamespace),
 		Metrics: metricsserver.Options{
 			BindAddress:    metricsAddr,
@@ -445,6 +446,7 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 			// Add manager for the dashboard
 			mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
 				Scheme: scheme,
+				Client: promotercache.ClientOptions(),
 				Metrics: metricsserver.Options{
 					BindAddress:    ":9082",
 					FilterProvider: metrics.ScrapeLogFilterProvider(),

@@ -66,6 +66,7 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 
 	mcMgr, err := mcmanager.New(cfg, provider, ctrl.Options{
 		Scheme: scheme,
+		Client: promotercache.ClientOptions(),
 		Metrics: metricsserver.Options{
 			BindAddress: "0",
 		},
