@@ -116,8 +116,9 @@ type DependentsSuccessfulCommitStatusEnvironmentStatus struct {
 	// +kubebuilder:validation:MinLength=1
 	Branch string `json:"branch"`
 
-	// Gate report fields (phase, description, url, reportedSha) mirror the child CommitStatus spec when
-	// this environment has an in-flight proposed change.
+	// Gate report fields (phase, description, url, reportedSha) mirror the child CommitStatus spec.
+	// When there is no in-flight proposed change, the controller copies the last child CommitStatus
+	// report instead of re-evaluating the gate.
 	GateEnvironmentCommitStatus `json:",inline"`
 
 	// ActiveCommitStatuses is a verbatim copy of the PromotionStrategy environment's active commit statuses.

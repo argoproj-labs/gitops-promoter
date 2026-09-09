@@ -225,40 +225,30 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 			DeferCleanup(func() { _ = os.RemoveAll(gitPath) })
 			makeChangeAndHydrateRepo(gitPath, gitRepo, "status environments test change", "")
 
-			By("Checking gated status.environments entries mirror child CommitStatus spec")
+			By("Checking status.environments gate fields mirror child CommitStatus spec")
 			Eventually(func(g Gomega) {
 				updatedDSCS := &promoterv1alpha1.DependentsSuccessfulCommitStatus{}
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dependentsSuccessfulCommitStatus), updatedDSCS)).To(Succeed())
 				g.Expect(updatedDSCS.Status.Environments).ToNot(BeEmpty())
 
-				updatedPS := &promoterv1alpha1.PromotionStrategy{}
-				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(promotionStrategy), updatedPS)).To(Succeed())
-
-				psStatusByBranch := make(map[string]promoterv1alpha1.EnvironmentStatus, len(updatedPS.Status.Environments))
-				for _, envStatus := range updatedPS.Status.Environments {
-					psStatusByBranch[envStatus.Branch] = envStatus
-				}
-
-				var mirrored bool
+				var eligible int
 				for i := range updatedDSCS.Status.Environments {
 					envStatus := updatedDSCS.Status.Environments[i]
-					psEnv, ok := psStatusByBranch[envStatus.Branch]
-					if !ok || psEnv.Active.Dry.Sha == psEnv.Proposed.Dry.Sha {
-						continue
-					}
-					if envStatus.Phase == "" {
-						continue
-					}
 					cs := &promoterv1alpha1.CommitStatus{}
 					csName := utils.CommitStatusResourceName(ctx, dependentsSuccessfulCommitStatus, envStatus.Branch)
-					g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: csName}, cs)).To(Succeed())
-					g.Expect(envStatus.Phase).To(Equal(cs.Spec.Phase))
-					g.Expect(envStatus.Description).To(Equal(cs.Spec.Description))
-					g.Expect(envStatus.Url).To(Equal(cs.Spec.Url))
-					g.Expect(envStatus.ReportedSha).To(Equal(cs.Spec.Sha))
-					mirrored = true
+					err := k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: csName}, cs)
+					if k8serrors.IsNotFound(err) {
+						continue
+					}
+					g.Expect(err).NotTo(HaveOccurred())
+					eligible++
+					g.Expect(envStatus.Phase).NotTo(BeEmpty(), "branch %s has a child CommitStatus but no gate fields on status.environments", envStatus.Branch)
+					g.Expect(envStatus.Phase).To(Equal(cs.Spec.Phase), "branch %s", envStatus.Branch)
+					g.Expect(envStatus.Description).To(Equal(cs.Spec.Description), "branch %s", envStatus.Branch)
+					g.Expect(envStatus.Url).To(Equal(cs.Spec.Url), "branch %s", envStatus.Branch)
+					g.Expect(envStatus.ReportedSha).To(Equal(cs.Spec.Sha), "branch %s", envStatus.Branch)
 				}
-				g.Expect(mirrored).To(BeTrue(), "expected an in-flight environment with gate fields mirrored on status.environments")
+				g.Expect(eligible).To(BeNumerically(">=", 1), "expected at least one child CommitStatus before checking status.environments mirrors")
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 

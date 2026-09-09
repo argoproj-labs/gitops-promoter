@@ -203,9 +203,11 @@ PromotionStrategy.
 | `activeCommitStatuses` | optional | Verbatim copy of `PromotionStrategy.status.environments[].active.commitStatuses` (`key`, `phase`, `description`, `url`). Omitted when empty. |
 | `upstreams` | optional | Transitive ancestor closure: `[{branch, satisfied, reason}]`. Omitted when empty (for example on roots). `reason` is set when `satisfied` is false. |
 
-When an environment has an in-flight promotion (`active.dry.sha != proposed.dry.sha`), the entry also includes gate
-report fields that mirror the child `CommitStatus` spec (`phase`, `description`, `url`, `reportedSha`). Skipped
-environments (no proposed change) omit those fields but still report `activeCommitStatuses` and `upstreams`.
+Gate report fields (`phase`, `description`, `url`, `reportedSha`) mirror the child `CommitStatus` spec. While a
+promotion is in flight (`active.dry.sha != proposed.dry.sha`), the controller re-evaluates and updates both the child
+`CommitStatus` and the mirror fields. When there is no proposed change, the controller skips re-evaluation but still
+copies the last child `CommitStatus` onto `status.environments[]` when one exists. Branches that have never been gated
+omit those fields but still report `activeCommitStatuses` and `upstreams`.
 
 `upstreams[].satisfied` is `true` when that ancestor has promoted and is healthy for this environment's target dry SHA
 (same evaluation as the gate). The gate's own pass/fail checks **direct** `spec.environments[].dependsOn` only; each

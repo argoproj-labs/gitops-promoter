@@ -61,7 +61,7 @@ Controllers label CommitStatuses with three standard labels (gate `key`, environ
 #### GateEnvironmentCommitStatus
 
 Shared embed for gate CR `status.environments[]` entries (not part of `CommitStatus` spec). Fields mirror the child
-`CommitStatus` report when a gate is actively evaluating an in-flight promotion:
+`CommitStatus` report (last-known copy when the gate is not re-evaluating):
 
 | Field | Maps to `CommitStatus.spec` | Notes |
 |-------|----------------------------|-------|
@@ -110,8 +110,8 @@ same `spec.key` in the PromotionStrategy's effective `proposedCommitStatuses` fo
 global `proposedCommitStatuses`). See
 [Dependents Successful Commit Status](gating-promotions/built-in-gates/dependents-successful-commit-status.md).
 
-`status.environments[]` reports per-branch upstream satisfaction, active commit statuses, and (when gating is active)
-child CommitStatus mirror fields (`phase`, `description`, `url`, `reportedSha`). See
+`status.environments[]` reports per-branch upstream satisfaction, active commit statuses, and child CommitStatus mirror
+fields (`phase`, `description`, `url`, `reportedSha`) when a child exists. See
 [`GateEnvironmentCommitStatus`](#gateenvironmentcommitstatus) and the gate doc for semantics.
 
 ```yaml

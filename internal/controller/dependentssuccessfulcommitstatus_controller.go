@@ -220,7 +220,8 @@ func (r *DependentsSuccessfulCommitStatusReconciler) updateDependentsSuccessfulC
 		// proposed hydrated SHA.
 		//
 		// Keep any existing CommitStatus in the valid set so orphan cleanup leaves the last
-		// evaluated (stale-but-real) gate status alone until a new proposed change appears.
+		// evaluated gate status alone until a new proposed change appears. Mirror that child
+		// onto status.environments[] so operators still see the last report after promotion completes.
 		if envStatus.Active.Dry.Sha == envStatus.Proposed.Dry.Sha {
 			logger.V(4).Info("Skipping environment with no proposed change", "branch", branch)
 			existing := &promoterv1alpha1.CommitStatus{}
@@ -231,6 +232,7 @@ func (r *DependentsSuccessfulCommitStatusReconciler) updateDependentsSuccessfulC
 				}
 			} else {
 				commitStatuses = append(commitStatuses, existing)
+				entry.GateEnvironmentCommitStatus = utils.GateEnvironmentCommitStatusFromCommitStatus(existing)
 			}
 			dcs.Status.Environments = append(dcs.Status.Environments, entry)
 			continue

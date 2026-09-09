@@ -127,6 +127,17 @@ func CleanupOrphanedCommitStatuses(
 	return nil
 }
 
+// GateEnvironmentCommitStatusFromCommitStatus copies child CommitStatus spec fields onto the gate
+// status.environments[] embed.
+func GateEnvironmentCommitStatusFromCommitStatus(cs *promoterv1alpha1.CommitStatus) promoterv1alpha1.GateEnvironmentCommitStatus {
+	return promoterv1alpha1.GateEnvironmentCommitStatus{
+		Phase:       cs.Spec.Phase,
+		Description: cs.Spec.Description,
+		Url:         cs.Spec.Url,
+		ReportedSha: cs.Spec.Sha,
+	}
+}
+
 // GateEnvironmentCommitStatusDescription returns the CommitStatus description for a gate
 // environment report. When pending, pendingReason is used when non-empty.
 func GateEnvironmentCommitStatusDescription(branch string, phase promoterv1alpha1.CommitStatusPhase, pendingReason string) string {
