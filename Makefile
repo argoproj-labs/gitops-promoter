@@ -519,12 +519,12 @@ need_install() { \
   [ "$$(cat $$stamp)" != "$$(go env GOVERSION)" ] && return 0; \
   return 1; \
 }; \
-need_install && { \
+if need_install; then \
 set -e; \
 package=$(2)@$(3) ;\
 echo "Installing $${package} (built with $$(go env GOVERSION))" ;\
 GOBIN=$(LOCALBIN) go install $${package} ;\
 mv "$$(echo "$(1)" | sed "s/-$(3)$$//")" $(1) ;\
 go env GOVERSION > $$stamp ;\
-}
+fi
 endef
