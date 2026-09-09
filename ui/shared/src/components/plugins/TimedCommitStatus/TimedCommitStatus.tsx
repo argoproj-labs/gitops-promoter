@@ -82,7 +82,7 @@ const TimedCommitStatusHeader: React.FC<CommitStatusContext> = ({ check, manager
   }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div style={{ display: 'inline-flex', flexDirection: 'column', gap: 4 }}>
       <span style={{ whiteSpace: 'nowrap' }}>
         {renderFallback(check.name, check.url)} ({formatDuration(clampedRemaining)} remaining)
       </span>
@@ -90,10 +90,9 @@ const TimedCommitStatusHeader: React.FC<CommitStatusContext> = ({ check, manager
         className="timed-commit-status-track"
         style={{
           position: 'relative',
-          width: 48,
-          flexShrink: 0,
-          height: 6,
-          borderRadius: 3,
+          width: '100%',
+          height: 4,
+          borderRadius: 2,
           backgroundColor: 'rgba(66, 133, 244, 0.15)',
           overflow: 'hidden',
         }}
@@ -106,7 +105,7 @@ const TimedCommitStatusHeader: React.FC<CommitStatusContext> = ({ check, manager
             left: 0,
             bottom: 0,
             width: `${ratio * 100}%`,
-            borderRadius: 3,
+            borderRadius: 2,
             backgroundColor: 'rgb(66, 133, 244)',
             transition: hasRenderedRef.current ? 'width 1s linear' : 'none',
           }}

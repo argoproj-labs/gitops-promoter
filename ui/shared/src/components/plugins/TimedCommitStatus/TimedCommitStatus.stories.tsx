@@ -45,6 +45,13 @@ const siblingChecks: EnrichedBranchCommitStatus[] = [
   },
 ];
 
+const trailingCheck: EnrichedBranchCommitStatus = {
+  key: 'smoke-tests',
+  phase: 'pending',
+  description: 'Smoke tests are queued',
+  url: 'https://github.com/argoproj-labs/gitops-promoter/actions/runs/5555',
+};
+
 function buildEnvironment(timerCheck: EnrichedBranchCommitStatus): Environment {
   return {
     branch: 'environment/staging',
@@ -62,7 +69,7 @@ function buildEnvironment(timerCheck: EnrichedBranchCommitStatus): Environment {
         sha: 'b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3',
         commitTime,
       },
-      commitStatuses: [...siblingChecks, timerCheck],
+      commitStatuses: [...siblingChecks, timerCheck, trailingCheck],
     },
     proposed: {
       dry: {
