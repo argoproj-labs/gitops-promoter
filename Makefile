@@ -504,16 +504,27 @@ lint-docs:  ## Build docs and fail if there are warnings
 	  exit 1; \
 	fi
 
-# go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
+# go-install-tool will 'go install' any package with custom target and name of binary,
+# if it doesn't exist or was built with a different Go toolchain. controller-gen in
+# particular type-checks the stdlib of the toolchain that built it; a binary compiled
+# with Go 1.26 cannot parse Go 1.27 stdlib sources (e.g. generic methods in math/rand/v2).
 # $1 - target path with name of binary (ideally with version)
 # $2 - package url which can be installed
 # $3 - specific version of package
 define go-install-tool
-@[ -f $(1) ] || { \
+@stamp="$(1).goversion"; \
+need_install() { \
+  [ ! -f "$(1)" ] && return 0; \
+  [ ! -f "$$stamp" ] && return 0; \
+  [ "$$(cat $$stamp)" != "$$(go env GOVERSION)" ] && return 0; \
+  return 1; \
+}; \
+need_install && { \
 set -e; \
 package=$(2)@$(3) ;\
-echo "Downloading $${package}" ;\
+echo "Installing $${package} (built with $$(go env GOVERSION))" ;\
 GOBIN=$(LOCALBIN) go install $${package} ;\
 mv "$$(echo "$(1)" | sed "s/-$(3)$$//")" $(1) ;\
+go env GOVERSION > $$stamp ;\
 }
 endef
