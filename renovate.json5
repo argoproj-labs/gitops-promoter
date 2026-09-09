@@ -76,6 +76,8 @@
     // ----------------------------------------------------------------------
     // Group A: Kubernetes platform (gomod + Makefile + e2e workflow, lockstep)
     // controller-runtime <-> multicluster-runtime <-> k8s.io/* <-> setup-envtest
+    // SMD uses /vN module paths (v6 vs v7 with k8s 1.37). Keep majors in this
+    // group (separateMajorMinor: false) so they land with the CR/k8s bump.
     // ----------------------------------------------------------------------
     {
       description: 'Renovate owns the coupled Kubernetes platform gomod deps so they bump in lockstep',
@@ -92,6 +94,7 @@
       ],
       enabled: true,
       groupName: 'Kubernetes platform',
+      separateMajorMinor: false,
       semanticCommits: 'enabled',
       semanticCommitType: 'chore',
       semanticCommitScope: 'deps',
@@ -137,6 +140,7 @@
         'envtest-k8s',
       ],
       groupName: 'Kubernetes platform',
+      separateMajorMinor: false,
       semanticCommits: 'enabled',
       semanticCommitType: 'chore',
       semanticCommitScope: 'deps',
@@ -168,6 +172,51 @@
         ],
         executionMode: 'branch',
       },
+    },
+    {
+      // SMD majors are a new module path (/v6 -> /v7), not a semver bump of /v6.
+      // gomodUpdateImportPaths rewrites the require (and any imports). Scoped to
+      // the direct require so an indirect /vN does not fight a leftover /v6.
+      description: 'SMD /vN majors: rewrite module path in the Kubernetes platform PR',
+      matchManagers: [
+        'gomod',
+      ],
+      matchPackageNames: [
+        'sigs.k8s.io/structured-merge-diff/**',
+      ],
+      matchDepTypes: [
+        'require',
+      ],
+      enabled: true,
+      groupName: 'Kubernetes platform',
+      separateMajorMinor: false,
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      automerge: false,
+      postUpdateOptions: [
+        'gomodUpdateImportPaths',
+        'gomodTidy',
+      ],
+    },
+    {
+      // Same as go-github: an indirect /vN major is a new module path. Bumping
+      // v6 to v7.0.0 without rewriting the path fails; gomodTidy follows the
+      // direct require rewrite instead.
+      description: 'Block indirect SMD majors; gomodTidy follows the direct /vN rewrite',
+      matchManagers: [
+        'gomod',
+      ],
+      matchPackageNames: [
+        'sigs.k8s.io/structured-merge-diff/**',
+      ],
+      matchDepTypes: [
+        'indirect',
+      ],
+      matchUpdateTypes: [
+        'major',
+      ],
+      enabled: false,
     },
     // ----------------------------------------------------------------------
     // Group A2: GitHub API client (go-github major paths + ghinstallation)
