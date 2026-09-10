@@ -35,6 +35,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -577,6 +578,106 @@ func (r *DependentsSuccessfulCommitStatusReconciler) createOrUpdateDependentsSuc
 	}, nil
 }
 
+// promotionStrategyGateRelevantPredicate limits PromotionStrategy watch events to create/delete
+// and updates where fields that affect DependentsSuccessfulCommitStatus gate evaluation changed.
+func promotionStrategyGateRelevantPredicate() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc: func(event.CreateEvent) bool {
+			return true
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldPS, okOld := e.ObjectOld.(*promoterv1alpha1.PromotionStrategy)
+			newPS, okNew := e.ObjectNew.(*promoterv1alpha1.PromotionStrategy)
+			if !okOld || !okNew {
+				return true
+			}
+			return promotionStrategySpecEnvironmentsGateRelevantChange(oldPS.Spec.Environments, newPS.Spec.Environments) ||
+				promotionStrategyStatusEnvironmentsGateRelevantChange(oldPS.Status.Environments, newPS.Status.Environments)
+		},
+		DeleteFunc: func(event.DeleteEvent) bool {
+			return true
+		},
+		GenericFunc: func(event.GenericEvent) bool {
+			return false
+		},
+	}
+}
+
+// promotionStrategySpecEnvironmentsGateRelevantChange reports whether spec.environments changed
+// in a way that affects DependentsSuccessfulCommitStatus. Only branch names and their order
+// matter: when DSCS spec.environments is empty, the controller infers a linear DAG from this list.
+func promotionStrategySpecEnvironmentsGateRelevantChange(oldEnvs, newEnvs []promoterv1alpha1.Environment) bool {
+	if len(oldEnvs) != len(newEnvs) {
+		return true
+	}
+	for i := range oldEnvs {
+		if oldEnvs[i].Branch != newEnvs[i].Branch {
+			return true
+		}
+	}
+	return false
+}
+
+// promotionStrategyStatusEnvironmentsGateRelevantChange reports whether any environment status
+// changed in a way that affects DependentsSuccessfulCommitStatus gate evaluation.
+func promotionStrategyStatusEnvironmentsGateRelevantChange(oldEnvs, newEnvs []promoterv1alpha1.EnvironmentStatus) bool {
+	if len(oldEnvs) != len(newEnvs) {
+		return true
+	}
+	for i := range oldEnvs {
+		if oldEnvs[i].Branch != newEnvs[i].Branch {
+			return true
+		}
+		if promotionStrategyEnvironmentStatusGateRelevantChange(oldEnvs[i], newEnvs[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+// promotionStrategyEnvironmentStatusGateRelevantChange reports whether a single environment's
+// PromotionStrategy status changed in a way that affects DependentsSuccessfulCommitStatus.
+func promotionStrategyEnvironmentStatusGateRelevantChange(oldEnv, newEnv promoterv1alpha1.EnvironmentStatus) bool {
+	if oldEnv.Active.Dry.Sha != newEnv.Active.Dry.Sha {
+		// Active dry SHA drives the no-proposed-change short-circuit and whether an upstream has merged the target change.
+		return true
+	}
+	if oldEnv.Proposed.Dry.Sha != newEnv.Proposed.Dry.Sha {
+		// Proposed dry SHA drives the no-proposed-change short-circuit and pending-change detection.
+		return true
+	}
+	if oldEnv.Proposed.Hydrated.Sha != newEnv.Proposed.Hydrated.Sha {
+		// Child CommitStatus resources are keyed to the proposed hydrated SHA.
+		return true
+	}
+	if getNoteDrySha(oldEnv.Proposed.Note) != getNoteDrySha(newEnv.Proposed.Note) {
+		// getEffectiveHydratedDrySha prefers the hydrator note dry SHA over proposed.dry.sha.
+		return true
+	}
+	if !oldEnv.Active.Dry.CommitTime.Equal(&newEnv.Active.Dry.CommitTime) {
+		// When an upstream has merged the target dry SHA, commit-time ordering guards against stale promotions.
+		return true
+	}
+	return activeCommitStatusesGateRelevantChange(oldEnv.Active.CommitStatuses, newEnv.Active.CommitStatuses)
+}
+
+// activeCommitStatusesGateRelevantChange reports whether active commit status health changed.
+// isUpstreamPending consults only key and phase via checkCommitStatusesPassing.
+func activeCommitStatusesGateRelevantChange(oldStatuses, newStatuses []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) bool {
+	if len(oldStatuses) != len(newStatuses) {
+		return true
+	}
+	for i := range oldStatuses {
+		if oldStatuses[i].Key != newStatuses[i].Key {
+			return true
+		}
+		if oldStatuses[i].Phase != newStatuses[i].Phase {
+			return true
+		}
+	}
+	return false
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *DependentsSuccessfulCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	// Use Direct methods to read configuration from the API server without cache during setup.
@@ -593,7 +694,8 @@ func (r *DependentsSuccessfulCommitStatusReconciler) SetupWithManager(ctx contex
 
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.DependentsSuccessfulCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueDependentsSuccessfulCommitStatusForPromotionStrategy()).
+		Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueDependentsSuccessfulCommitStatusForPromotionStrategy(),
+			builder.WithPredicates(promotionStrategyGateRelevantPredicate())).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Named("dependentssuccessfulcommitstatus").
 		Complete(r)

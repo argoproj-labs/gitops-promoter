@@ -30,9 +30,12 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -573,8 +576,238 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 				g.Expect(k8serrors.IsNotFound(err)).To(BeTrue(), "legacy previous-environment CommitStatus should be deleted")
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
+
+		Context("When PromotionStrategy status churns", func() {
+			BeforeEach(func() {
+				setDependentsSuccessfulCommitStatusRequeueDuration(ctx, time.Hour)
+			})
+
+			It("should reconcile DSCS when upstream commit status health changes", func() {
+				dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      name + "-ps-predicate-health",
+						Namespace: "default",
+					},
+					Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
+						PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+						Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+						Environments: []promoterv1alpha1.DependentEnvironment{
+							{Branch: testBranchDevelopment},
+							{Branch: testBranchStaging, DependsOn: []string{testBranchDevelopment}},
+							{Branch: testBranchProduction, DependsOn: []string{testBranchStaging}},
+						},
+						URL: promoterv1alpha1.URLConfig{
+							Template: "https://example.com/ui?env={{ .Environment }}",
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, dependentsSuccessfulCommitStatus)).To(Succeed())
+
+				Eventually(func(g Gomega) {
+					updated := &promoterv1alpha1.DependentsSuccessfulCommitStatus{}
+					g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dependentsSuccessfulCommitStatus), updated)).To(Succeed())
+					readyCondition := meta.FindStatusCondition(updated.Status.Conditions, string(promoterConditions.Ready))
+					g.Expect(readyCondition).ToNot(BeNil())
+					g.Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				gitPath, err := os.MkdirTemp("", "*")
+				Expect(err).NotTo(HaveOccurred())
+				DeferCleanup(func() { _ = os.RemoveAll(gitPath) })
+				makeChangeAndHydrateRepo(gitPath, gitRepo, "ps predicate health flip", "")
+
+				stagingCSName := utils.CommitStatusResourceName(ctx, dependentsSuccessfulCommitStatus, testBranchStaging)
+				setPromotionStrategyCommitStatusPhase := func(branch, key string, phase promoterv1alpha1.CommitStatusPhase) {
+					Eventually(func(g Gomega) {
+						ps := &promoterv1alpha1.PromotionStrategy{}
+						g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(promotionStrategy), ps)).To(Succeed())
+						for i := range ps.Status.Environments {
+							if ps.Status.Environments[i].Branch != branch {
+								continue
+							}
+							found := false
+							for j := range ps.Status.Environments[i].Active.CommitStatuses {
+								if ps.Status.Environments[i].Active.CommitStatuses[j].Key != key {
+									continue
+								}
+								ps.Status.Environments[i].Active.CommitStatuses[j].Phase = string(phase)
+								found = true
+							}
+							if !found {
+								ps.Status.Environments[i].Active.CommitStatuses = append(
+									ps.Status.Environments[i].Active.CommitStatuses,
+									promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{Key: key, Phase: string(phase)},
+								)
+							}
+						}
+						g.Expect(k8sClient.Status().Update(ctx, ps)).To(Succeed())
+					}, constants.EventuallyTimeout).Should(Succeed())
+				}
+
+				Eventually(func(g Gomega) {
+					cs := &promoterv1alpha1.CommitStatus{}
+					g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: stagingCSName}, cs)).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				setPromotionStrategyCommitStatusPhase(testBranchDevelopment, "argocd-health", promoterv1alpha1.CommitPhasePending)
+
+				Eventually(func(g Gomega) {
+					cs := &promoterv1alpha1.CommitStatus{}
+					g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: stagingCSName}, cs)).To(Succeed())
+					g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				setPromotionStrategyCommitStatusPhase(testBranchDevelopment, "argocd-health", promoterv1alpha1.CommitPhaseSuccess)
+
+				Eventually(func(g Gomega) {
+					cs := &promoterv1alpha1.CommitStatus{}
+					g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: stagingCSName}, cs)).To(Succeed())
+					g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+		})
 	})
 })
+
+var _ = Describe("promotionStrategyGateRelevantPredicate", func() {
+	pred := promotionStrategyGateRelevantPredicate()
+
+	basePS := func() *promoterv1alpha1.PromotionStrategy {
+		return &promoterv1alpha1.PromotionStrategy{
+			ObjectMeta: metav1.ObjectMeta{Name: "demo-ps", Namespace: "default"},
+			Spec: promoterv1alpha1.PromotionStrategySpec{
+				Environments: []promoterv1alpha1.Environment{
+					{Branch: "dev"},
+					{Branch: "stg"},
+				},
+			},
+			Status: promoterv1alpha1.PromotionStrategyStatus{
+				Environments: []promoterv1alpha1.EnvironmentStatus{
+					{
+						Branch: "dev",
+						Active: promoterv1alpha1.CommitBranchState{
+							Dry: promoterv1alpha1.CommitShaState{
+								Sha:        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+								CommitTime: metav1.NewTime(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)),
+							},
+							CommitStatuses: []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+								{Key: "argocd-health", Phase: string(promoterv1alpha1.CommitPhaseSuccess)},
+							},
+						},
+						Proposed: promoterv1alpha1.CommitBranchState{
+							Dry:      promoterv1alpha1.CommitShaState{Sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+							Hydrated: promoterv1alpha1.CommitShaState{Sha: "cccccccccccccccccccccccccccccccccccccccc"},
+							Note:     &promoterv1alpha1.HydratorMetadata{DrySha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+						},
+					},
+				},
+			},
+		}
+	}
+
+	It("allows create and delete events", func() {
+		ps := basePS()
+		Expect(pred.Create(event.CreateEvent{Object: ps})).To(BeTrue())
+		Expect(pred.Delete(event.DeleteEvent{Object: ps})).To(BeTrue())
+	})
+
+	It("ignores metadata, generation, and unrelated spec changes", func() {
+		oldPS := basePS()
+		newPS := oldPS.DeepCopy()
+		newPS.Generation = 99
+		newPS.ResourceVersion = "999"
+		newPS.Labels = map[string]string{"extra": "label"}
+		newPS.Spec.RepositoryReference.Name = "other-repo"
+		newPS.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{{Key: "other-gate"}}
+		autoMerge := false
+		newPS.Spec.Environments[0].AutoMerge = &autoMerge
+		newPS.Spec.Environments[0].ActivePath = "apps/demo"
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeFalse())
+	})
+
+	It("ignores commit and hydrator metadata churn", func() {
+		oldPS := basePS()
+		newPS := oldPS.DeepCopy()
+		newPS.Status.Environments[0].Active.Dry.Author = "someone else"
+		newPS.Status.Environments[0].Proposed.Hydrated.Subject = "new subject"
+		newPS.Status.Environments[0].Proposed.Note.RepoURL = "https://example.com/other.git"
+		newPS.Status.Environments[0].Active.CommitStatuses[0].Url = "https://example.com/status"
+		newPS.Status.Environments[0].Active.CommitStatuses[0].Description = "cosmetic"
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeFalse())
+	})
+
+	It("ignores obvious status-only noise", func() {
+		oldPS := basePS()
+		newPS := oldPS.DeepCopy()
+		newPS.Status.ObservedGeneration = 42
+		instanceID := "new-instance"
+		newPS.Status.InstanceID = &instanceID
+		newPS.Status.Environments[0].History = []promoterv1alpha1.History{{
+			Active: promoterv1alpha1.CommitBranchState{
+				Dry: promoterv1alpha1.CommitShaState{Sha: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"},
+			},
+		}}
+		newPS.Status.Environments[0].LastHealthyDryShas = []promoterv1alpha1.HealthyDryShas{
+			{Sha: "ffffffffffffffffffffffffffffffffffffffff", Time: metav1.Now()},
+		}
+		newPS.Status.Environments[0].PullRequest = &promoterv1alpha1.PullRequestCommonStatus{
+			ID:    "99",
+			State: promoterv1alpha1.PullRequestOpen,
+			Url:   "https://example.com/pr/99",
+		}
+		meta.SetStatusCondition(&newPS.Status.Conditions, metav1.Condition{
+			Type:               string(promoterConditions.Ready),
+			Status:             metav1.ConditionFalse,
+			Reason:             "Test",
+			Message:            "not gate relevant",
+			ObservedGeneration: newPS.Generation,
+			LastTransitionTime: metav1.Now(),
+		})
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeFalse())
+	})
+
+	It("enqueues when spec.environments branches change", func() {
+		oldPS := basePS()
+		newPS := oldPS.DeepCopy()
+		newPS.Spec.Environments = []promoterv1alpha1.Environment{
+			{Branch: "dev"},
+			{Branch: "prd"},
+		}
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeTrue())
+	})
+
+	It("enqueues when proposed dry sha changes", func() {
+		oldPS := basePS()
+		newPS := oldPS.DeepCopy()
+		newPS.Status.Environments[0].Proposed.Dry.Sha = "dddddddddddddddddddddddddddddddddddddddd"
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeTrue())
+	})
+
+	It("enqueues when active commit status phase changes", func() {
+		oldPS := basePS()
+		newPS := oldPS.DeepCopy()
+		newPS.Status.Environments[0].Active.CommitStatuses[0].Phase = string(promoterv1alpha1.CommitPhasePending)
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeTrue())
+	})
+})
+
+// setDependentsSuccessfulCommitStatusRequeueDuration patches the singleton ControllerConfiguration's
+// dependentsSuccessfulCommitStatus.workQueue.requeueDuration for the current test.
+func setDependentsSuccessfulCommitStatusRequeueDuration(ctx context.Context, d time.Duration) {
+	var cc promoterv1alpha1.ControllerConfiguration
+	key := types.NamespacedName{Namespace: "default", Name: settings.ControllerConfigurationName}
+	Expect(k8sClient.Get(ctx, key, &cc)).To(Succeed())
+	original := cc.Spec.DependentsSuccessfulCommitStatus.WorkQueue.RequeueDuration
+	cc.Spec.DependentsSuccessfulCommitStatus.WorkQueue.RequeueDuration = metav1.Duration{Duration: d}
+	Expect(k8sClient.Update(ctx, &cc)).To(Succeed())
+
+	DeferCleanup(func() {
+		var cc promoterv1alpha1.ControllerConfiguration
+		Expect(k8sClient.Get(ctx, key, &cc)).To(Succeed())
+		cc.Spec.DependentsSuccessfulCommitStatus.WorkQueue.RequeueDuration = original
+		Expect(k8sClient.Update(ctx, &cc)).To(Succeed())
+	})
+}
 
 var _ = Describe("DAG URL template helpers", func() {
 	Describe("buildDependsOnQuery", func() {
