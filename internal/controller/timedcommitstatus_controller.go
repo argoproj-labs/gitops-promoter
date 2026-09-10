@@ -34,6 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -152,7 +153,8 @@ func (r *TimedCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr 
 
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.TimedCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueTimedCommitStatusForPromotionStrategy()).
+		Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueTimedCommitStatusForPromotionStrategy(),
+			builder.WithPredicates(promotionStrategyTimedCommitStatusGateRelevantPredicate())).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Complete(r)
 	if err != nil {
@@ -327,6 +329,70 @@ func (r *TimedCommitStatusReconciler) calculateRequeueDuration(ctx context.Conte
 	}
 
 	return defaultDuration
+}
+
+// promotionStrategyTimedCommitStatusGateRelevantPredicate limits PromotionStrategy watch events to create/delete
+// and updates where fields that affect TimedCommitStatus gate evaluation changed.
+func promotionStrategyTimedCommitStatusGateRelevantPredicate() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc: func(event.CreateEvent) bool {
+			return true
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldPS, okOld := e.ObjectOld.(*promoterv1alpha1.PromotionStrategy)
+			newPS, okNew := e.ObjectNew.(*promoterv1alpha1.PromotionStrategy)
+			if !okOld || !okNew {
+				return true
+			}
+			return promotionStrategyTimedCommitStatusSpecEnvironmentsGateRelevantChange(oldPS.Spec.Environments, newPS.Spec.Environments) ||
+				promotionStrategyTimedCommitStatusStatusEnvironmentsGateRelevantChange(oldPS.Status.Environments, newPS.Status.Environments)
+		},
+		DeleteFunc: func(event.DeleteEvent) bool {
+			return true
+		},
+		GenericFunc: func(event.GenericEvent) bool {
+			return false
+		},
+	}
+}
+
+func promotionStrategyTimedCommitStatusSpecEnvironmentsGateRelevantChange(oldEnvs, newEnvs []promoterv1alpha1.Environment) bool {
+	if len(oldEnvs) != len(newEnvs) {
+		return true
+	}
+	for i := range oldEnvs {
+		if oldEnvs[i].Branch != newEnvs[i].Branch {
+			return true
+		}
+	}
+	return false
+}
+
+func promotionStrategyTimedCommitStatusStatusEnvironmentsGateRelevantChange(oldEnvs, newEnvs []promoterv1alpha1.EnvironmentStatus) bool {
+	if len(oldEnvs) != len(newEnvs) {
+		return true
+	}
+	for i := range oldEnvs {
+		if oldEnvs[i].Branch != newEnvs[i].Branch {
+			return true
+		}
+		if promotionStrategyTimedCommitStatusEnvironmentStatusGateRelevantChange(oldEnvs[i], newEnvs[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+func promotionStrategyTimedCommitStatusEnvironmentStatusGateRelevantChange(oldEnv, newEnv promoterv1alpha1.EnvironmentStatus) bool {
+	if oldEnv.Active.Hydrated.Sha != newEnv.Active.Hydrated.Sha {
+		// Timer resets when the active hydrated SHA changes.
+		return true
+	}
+	if !oldEnv.Active.Hydrated.CommitTime.Equal(&newEnv.Active.Hydrated.CommitTime) {
+		// Elapsed time is measured from active hydrated commit time.
+		return true
+	}
+	return false
 }
 
 // enqueueTimedCommitStatusForPromotionStrategy returns a handler that enqueues all TimedCommitStatus resources

@@ -30,9 +30,12 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 )
 
 var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
@@ -719,5 +722,70 @@ var _ = Describe("TimedCommitStatus Controller - Missing PromotionStrategy", fun
 				g.Expect(tcs.Status.Environments).To(BeEmpty())
 			}, 2*time.Second, 500*time.Millisecond).Should(Succeed())
 		})
+	})
+})
+
+var _ = Describe("promotionStrategyTimedCommitStatusGateRelevantPredicate", func() {
+	pred := promotionStrategyTimedCommitStatusGateRelevantPredicate()
+
+	basePS := func() *promoterv1alpha1.PromotionStrategy {
+		return &promoterv1alpha1.PromotionStrategy{
+			ObjectMeta: metav1.ObjectMeta{Name: "demo-ps", Namespace: "default"},
+			Spec: promoterv1alpha1.PromotionStrategySpec{
+				Environments: []promoterv1alpha1.Environment{{Branch: "dev"}},
+			},
+			Status: promoterv1alpha1.PromotionStrategyStatus{
+				Environments: []promoterv1alpha1.EnvironmentStatus{{
+					Branch: "dev",
+					Active: promoterv1alpha1.CommitBranchState{
+						Hydrated: promoterv1alpha1.CommitShaState{
+							Sha:        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+							CommitTime: metav1.NewTime(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)),
+						},
+					},
+					Proposed: promoterv1alpha1.CommitBranchState{
+						Hydrated: promoterv1alpha1.CommitShaState{Sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+					},
+				}},
+			},
+		}
+	}
+
+	It("allows create and delete events", func() {
+		ps := basePS()
+		Expect(pred.Create(event.CreateEvent{Object: ps})).To(BeTrue())
+		Expect(pred.Delete(event.DeleteEvent{Object: ps})).To(BeTrue())
+	})
+
+	It("ignores metadata, proposed hydrated churn, and status noise", func() {
+		oldPS := basePS()
+		newPS := oldPS.DeepCopy()
+		newPS.Generation = 99
+		newPS.Status.ObservedGeneration = 42
+		meta.SetStatusCondition(&newPS.Status.Conditions, metav1.Condition{
+			Type:               string(promoterConditions.Ready),
+			Status:             metav1.ConditionFalse,
+			Reason:             "Test",
+			Message:            "not gate relevant",
+			ObservedGeneration: newPS.Generation,
+			LastTransitionTime: metav1.Now(),
+		})
+		newPS.Status.Environments[0].Proposed.Hydrated.Sha = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+		newPS.Status.Environments[0].Active.Hydrated.Author = "someone else"
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeFalse())
+	})
+
+	It("enqueues when active hydrated sha changes", func() {
+		oldPS := basePS()
+		newPS := oldPS.DeepCopy()
+		newPS.Status.Environments[0].Active.Hydrated.Sha = "ffffffffffffffffffffffffffffffffffffffff"
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeTrue())
+	})
+
+	It("enqueues when active hydrated commit time changes", func() {
+		oldPS := basePS()
+		newPS := oldPS.DeepCopy()
+		newPS.Status.Environments[0].Active.Hydrated.CommitTime = metav1.NewTime(time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeTrue())
 	})
 })

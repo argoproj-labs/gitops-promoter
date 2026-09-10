@@ -39,6 +39,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -153,7 +154,8 @@ func (r *GitCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ct
 
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.GitCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueGitCommitStatusForPromotionStrategy()).
+		Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueGitCommitStatusForPromotionStrategy(),
+			builder.WithPredicates(promotionStrategyGitCommitStatusGateRelevantPredicate())).
 		Named("gitcommitstatus").
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: maxConcurrentReconciles,
@@ -408,6 +410,91 @@ func (r *GitCommitStatusReconciler) evaluateExpression(expression string, commit
 		return promoterv1alpha1.CommitPhaseSuccess, new(true), nil
 	}
 	return promoterv1alpha1.CommitPhaseFailure, new(false), nil
+}
+
+// promotionStrategyGitCommitStatusGateRelevantPredicate limits PromotionStrategy watch events to create/delete
+// and updates where fields that affect GitCommitStatus validation changed.
+func promotionStrategyGitCommitStatusGateRelevantPredicate() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc: func(event.CreateEvent) bool {
+			return true
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldPS, okOld := e.ObjectOld.(*promoterv1alpha1.PromotionStrategy)
+			newPS, okNew := e.ObjectNew.(*promoterv1alpha1.PromotionStrategy)
+			if !okOld || !okNew {
+				return true
+			}
+			return promotionStrategyGitCommitStatusSpecEnvironmentsGateRelevantChange(oldPS.Spec.Environments, newPS.Spec.Environments) ||
+				promotionStrategyGitCommitStatusStatusEnvironmentsGateRelevantChange(oldPS.Status.Environments, newPS.Status.Environments)
+		},
+		DeleteFunc: func(event.DeleteEvent) bool {
+			return true
+		},
+		GenericFunc: func(event.GenericEvent) bool {
+			return false
+		},
+	}
+}
+
+// promotionStrategyGitCommitStatusSpecEnvironmentsGateRelevantChange reports whether spec.environments
+// changed in a way that affects GitCommitStatus. Only branch names and their order matter.
+func promotionStrategyGitCommitStatusSpecEnvironmentsGateRelevantChange(oldEnvs, newEnvs []promoterv1alpha1.Environment) bool {
+	if len(oldEnvs) != len(newEnvs) {
+		return true
+	}
+	for i := range oldEnvs {
+		if oldEnvs[i].Branch != newEnvs[i].Branch {
+			return true
+		}
+	}
+	return false
+}
+
+// promotionStrategyGitCommitStatusStatusEnvironmentsGateRelevantChange reports whether any environment
+// status changed in a way that affects GitCommitStatus validation.
+func promotionStrategyGitCommitStatusStatusEnvironmentsGateRelevantChange(oldEnvs, newEnvs []promoterv1alpha1.EnvironmentStatus) bool {
+	if len(oldEnvs) != len(newEnvs) {
+		return true
+	}
+	for i := range oldEnvs {
+		if oldEnvs[i].Branch != newEnvs[i].Branch {
+			return true
+		}
+		if promotionStrategyGitCommitStatusEnvironmentStatusGateRelevantChange(oldEnvs[i], newEnvs[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+// promotionStrategyGitCommitStatusEnvironmentStatusGateRelevantChange reports whether a single environment's
+// PromotionStrategy status changed in a way that affects GitCommitStatus validation.
+func promotionStrategyGitCommitStatusEnvironmentStatusGateRelevantChange(oldEnv, newEnv promoterv1alpha1.EnvironmentStatus) bool {
+	if gitCommitStatusHydratedCommitExpressionDataChanged(oldEnv.Active.Hydrated, newEnv.Active.Hydrated) {
+		return true
+	}
+	return gitCommitStatusHydratedCommitExpressionDataChanged(oldEnv.Proposed.Hydrated, newEnv.Proposed.Hydrated)
+}
+
+func gitCommitStatusHydratedCommitExpressionDataChanged(oldState, newState promoterv1alpha1.CommitShaState) bool {
+	if oldState.Sha != newState.Sha {
+		// Drives which commit is validated and the CommitStatus resource key.
+		return true
+	}
+	if oldState.Author != newState.Author {
+		// Exposed to expression evaluation as commit author.
+		return true
+	}
+	if oldState.Subject != newState.Subject {
+		// Exposed to expression evaluation as commit subject.
+		return true
+	}
+	if oldState.Body != newState.Body {
+		// Exposed to expression evaluation as commit body and parsed trailers.
+		return true
+	}
+	return false
 }
 
 // enqueueGitCommitStatusForPromotionStrategy returns a handler that enqueues all GitCommitStatus resources

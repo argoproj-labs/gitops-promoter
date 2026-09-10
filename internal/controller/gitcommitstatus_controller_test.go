@@ -30,8 +30,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
+	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -1342,5 +1344,100 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				"stagingProposedSha", stagingProposedSha,
 				"prodProposedSha", prodProposedSha)
 		})
+	})
+})
+
+var _ = Describe("promotionStrategyGitCommitStatusGateRelevantPredicate", func() {
+	pred := promotionStrategyGitCommitStatusGateRelevantPredicate()
+
+	basePS := func() *promoterv1alpha1.PromotionStrategy {
+		return &promoterv1alpha1.PromotionStrategy{
+			ObjectMeta: metav1.ObjectMeta{Name: "demo-ps", Namespace: "default"},
+			Spec: promoterv1alpha1.PromotionStrategySpec{
+				Environments: []promoterv1alpha1.Environment{
+					{Branch: "dev"},
+					{Branch: "stg"},
+				},
+			},
+			Status: promoterv1alpha1.PromotionStrategyStatus{
+				Environments: []promoterv1alpha1.EnvironmentStatus{
+					{
+						Branch: "dev",
+						Active: promoterv1alpha1.CommitBranchState{
+							Hydrated: promoterv1alpha1.CommitShaState{
+								Sha:     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+								Author:  "alice",
+								Subject: "active subject",
+								Body:    "active body",
+							},
+						},
+						Proposed: promoterv1alpha1.CommitBranchState{
+							Hydrated: promoterv1alpha1.CommitShaState{
+								Sha:     "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+								Author:  "bob",
+								Subject: "proposed subject",
+								Body:    "proposed body",
+							},
+						},
+					},
+				},
+			},
+		}
+	}
+
+	It("allows create and delete events", func() {
+		ps := basePS()
+		Expect(pred.Create(event.CreateEvent{Object: ps})).To(BeTrue())
+		Expect(pred.Delete(event.DeleteEvent{Object: ps})).To(BeTrue())
+	})
+
+	It("ignores metadata and obvious status noise", func() {
+		oldPS := basePS()
+		newPS := oldPS.DeepCopy()
+		newPS.Generation = 99
+		newPS.ResourceVersion = "999"
+		newPS.Status.ObservedGeneration = 42
+		instanceID := "new-instance"
+		newPS.Status.InstanceID = &instanceID
+		meta.SetStatusCondition(&newPS.Status.Conditions, metav1.Condition{
+			Type:               string(promoterConditions.Ready),
+			Status:             metav1.ConditionFalse,
+			Reason:             "Test",
+			Message:            "not gate relevant",
+			ObservedGeneration: newPS.Generation,
+			LastTransitionTime: metav1.Now(),
+		})
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeFalse())
+	})
+
+	It("ignores hydrated repo URL churn", func() {
+		oldPS := basePS()
+		newPS := oldPS.DeepCopy()
+		newPS.Status.Environments[0].Active.Hydrated.RepoURL = "https://example.com/other.git"
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeFalse())
+	})
+
+	It("enqueues when spec.environments branches change", func() {
+		oldPS := basePS()
+		newPS := oldPS.DeepCopy()
+		newPS.Spec.Environments = []promoterv1alpha1.Environment{
+			{Branch: "dev"},
+			{Branch: "prd"},
+		}
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeTrue())
+	})
+
+	It("enqueues when proposed hydrated commit body changes", func() {
+		oldPS := basePS()
+		newPS := oldPS.DeepCopy()
+		newPS.Status.Environments[0].Proposed.Hydrated.Body = "updated body"
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeTrue())
+	})
+
+	It("enqueues when active hydrated sha changes", func() {
+		oldPS := basePS()
+		newPS := oldPS.DeepCopy()
+		newPS.Status.Environments[0].Active.Hydrated.Sha = "dddddddddddddddddddddddddddddddddddddddd"
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeTrue())
 	})
 })

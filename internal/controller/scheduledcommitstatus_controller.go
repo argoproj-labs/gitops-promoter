@@ -37,6 +37,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -140,7 +141,8 @@ func (r *ScheduledCommitStatusReconciler) SetupWithManager(ctx context.Context, 
 
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.ScheduledCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueScheduledCommitStatusForPromotionStrategy()).
+		Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueScheduledCommitStatusForPromotionStrategy(),
+			builder.WithPredicates(promotionStrategyScheduledCommitStatusGateRelevantPredicate())).
 		Named("scheduledcommitstatus").
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Complete(r)
@@ -306,6 +308,66 @@ func (r *ScheduledCommitStatusReconciler) calculateRequeueDuration(ctx context.C
 	}
 
 	return defaultDuration
+}
+
+// promotionStrategyScheduledCommitStatusGateRelevantPredicate limits PromotionStrategy watch events to
+// create/delete and updates where fields that affect ScheduledCommitStatus gate evaluation changed.
+func promotionStrategyScheduledCommitStatusGateRelevantPredicate() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc: func(event.CreateEvent) bool {
+			return true
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldPS, okOld := e.ObjectOld.(*promoterv1alpha1.PromotionStrategy)
+			newPS, okNew := e.ObjectNew.(*promoterv1alpha1.PromotionStrategy)
+			if !okOld || !okNew {
+				return true
+			}
+			return promotionStrategyScheduledCommitStatusSpecEnvironmentsGateRelevantChange(oldPS.Spec.Environments, newPS.Spec.Environments) ||
+				promotionStrategyScheduledCommitStatusStatusEnvironmentsGateRelevantChange(oldPS.Status.Environments, newPS.Status.Environments)
+		},
+		DeleteFunc: func(event.DeleteEvent) bool {
+			return true
+		},
+		GenericFunc: func(event.GenericEvent) bool {
+			return false
+		},
+	}
+}
+
+func promotionStrategyScheduledCommitStatusSpecEnvironmentsGateRelevantChange(oldEnvs, newEnvs []promoterv1alpha1.Environment) bool {
+	if len(oldEnvs) != len(newEnvs) {
+		return true
+	}
+	for i := range oldEnvs {
+		if oldEnvs[i].Branch != newEnvs[i].Branch {
+			return true
+		}
+	}
+	return false
+}
+
+func promotionStrategyScheduledCommitStatusStatusEnvironmentsGateRelevantChange(oldEnvs, newEnvs []promoterv1alpha1.EnvironmentStatus) bool {
+	if len(oldEnvs) != len(newEnvs) {
+		return true
+	}
+	for i := range oldEnvs {
+		if oldEnvs[i].Branch != newEnvs[i].Branch {
+			return true
+		}
+		if promotionStrategyScheduledCommitStatusEnvironmentStatusGateRelevantChange(oldEnvs[i], newEnvs[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+func promotionStrategyScheduledCommitStatusEnvironmentStatusGateRelevantChange(oldEnv, newEnv promoterv1alpha1.EnvironmentStatus) bool {
+	if oldEnv.Proposed.Hydrated.Sha != newEnv.Proposed.Hydrated.Sha {
+		// CommitStatus is keyed to the proposed hydrated SHA being gated.
+		return true
+	}
+	return false
 }
 
 func (r *ScheduledCommitStatusReconciler) enqueueScheduledCommitStatusForPromotionStrategy() handler.EventHandler {
