@@ -617,6 +617,22 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 				makeChangeAndHydrateRepo(gitPath, gitRepo, "ps predicate health flip", "")
 
 				stagingCSName := utils.CommitStatusResourceName(ctx, dependentsSuccessfulCommitStatus, testBranchStaging)
+				waitForPromotionStrategyEnvironmentInFlight := func(branch string) {
+					Eventually(func(g Gomega) {
+						ps := &promoterv1alpha1.PromotionStrategy{}
+						g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(promotionStrategy), ps)).To(Succeed())
+						for _, env := range ps.Status.Environments {
+							if env.Branch != branch {
+								continue
+							}
+							g.Expect(env.Proposed.Dry.Sha).ToNot(BeEmpty())
+							g.Expect(env.Active.Dry.Sha).ToNot(Equal(env.Proposed.Dry.Sha),
+								"environment %s has no in-flight promotion", branch)
+							return
+						}
+						g.Expect(false).To(BeTrue(), "environment %s not found in PromotionStrategy status", branch)
+					}, constants.EventuallyTimeout).Should(Succeed())
+				}
 				setPromotionStrategyCommitStatusPhase := func(branch, key string, phase promoterv1alpha1.CommitStatusPhase) {
 					Eventually(func(g Gomega) {
 						ps := &promoterv1alpha1.PromotionStrategy{}
@@ -644,9 +660,12 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 					}, constants.EventuallyTimeout).Should(Succeed())
 				}
 
+				waitForPromotionStrategyEnvironmentInFlight(testBranchStaging)
+
 				Eventually(func(g Gomega) {
 					cs := &promoterv1alpha1.CommitStatus{}
 					g.Expect(k8sClient.Get(ctx, client.ObjectKey{Namespace: "default", Name: stagingCSName}, cs)).To(Succeed())
+					g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				setPromotionStrategyCommitStatusPhase(testBranchDevelopment, "argocd-health", promoterv1alpha1.CommitPhasePending)
@@ -709,6 +728,7 @@ var _ = Describe("promotionStrategyGateRelevantPredicate", func() {
 		ps := basePS()
 		Expect(pred.Create(event.CreateEvent{Object: ps})).To(BeTrue())
 		Expect(pred.Delete(event.DeleteEvent{Object: ps})).To(BeTrue())
+		Expect(pred.Generic(event.GenericEvent{Object: ps})).To(BeFalse())
 	})
 
 	It("ignores metadata, generation, and unrelated spec changes", func() {
@@ -776,6 +796,20 @@ var _ = Describe("promotionStrategyGateRelevantPredicate", func() {
 		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeTrue())
 	})
 
+	It("enqueues when spec.environments length changes", func() {
+		oldPS := basePS()
+		newPS := oldPS.DeepCopy()
+		newPS.Spec.Environments = append(newPS.Spec.Environments, promoterv1alpha1.Environment{Branch: "prd"})
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeTrue())
+	})
+
+	It("enqueues when active dry sha changes", func() {
+		oldPS := basePS()
+		newPS := oldPS.DeepCopy()
+		newPS.Status.Environments[0].Active.Dry.Sha = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeTrue())
+	})
+
 	It("enqueues when proposed dry sha changes", func() {
 		oldPS := basePS()
 		newPS := oldPS.DeepCopy()
@@ -783,10 +817,75 @@ var _ = Describe("promotionStrategyGateRelevantPredicate", func() {
 		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeTrue())
 	})
 
+	It("enqueues when proposed hydrated sha changes", func() {
+		oldPS := basePS()
+		newPS := oldPS.DeepCopy()
+		newPS.Status.Environments[0].Proposed.Hydrated.Sha = "ffffffffffffffffffffffffffffffffffffffff"
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeTrue())
+	})
+
+	It("enqueues when hydrator note dry sha changes", func() {
+		oldPS := basePS()
+		newPS := oldPS.DeepCopy()
+		newPS.Status.Environments[0].Proposed.Note.DrySha = "dddddddddddddddddddddddddddddddddddddddd"
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeTrue())
+	})
+
+	It("enqueues when hydrator note is removed", func() {
+		oldPS := basePS()
+		newPS := oldPS.DeepCopy()
+		newPS.Status.Environments[0].Proposed.Note = nil
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeTrue())
+	})
+
+	It("enqueues when active dry commit time changes", func() {
+		oldPS := basePS()
+		newPS := oldPS.DeepCopy()
+		newPS.Status.Environments[0].Active.Dry.CommitTime = metav1.NewTime(time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeTrue())
+	})
+
 	It("enqueues when active commit status phase changes", func() {
 		oldPS := basePS()
 		newPS := oldPS.DeepCopy()
 		newPS.Status.Environments[0].Active.CommitStatuses[0].Phase = string(promoterv1alpha1.CommitPhasePending)
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeTrue())
+	})
+
+	It("enqueues when status.environments length changes", func() {
+		oldPS := basePS()
+		newPS := oldPS.DeepCopy()
+		newPS.Status.Environments = append(newPS.Status.Environments, promoterv1alpha1.EnvironmentStatus{Branch: "prd"})
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeTrue())
+	})
+
+	It("enqueues when status.environments branch order changes", func() {
+		oldPS := basePS()
+		newPS := oldPS.DeepCopy()
+		newPS.Status.Environments = []promoterv1alpha1.EnvironmentStatus{
+			{Branch: "stg"},
+			{Branch: "dev"},
+		}
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeTrue())
+	})
+
+	It("enqueues when active commit status keys change", func() {
+		oldPS := basePS()
+		newPS := oldPS.DeepCopy()
+		newPS.Status.Environments[0].Active.CommitStatuses[0].Key = "other-gate"
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeTrue())
+	})
+
+	It("enqueues when active commit status count changes", func() {
+		oldPS := basePS()
+		newPS := oldPS.DeepCopy()
+		newPS.Status.Environments[0].Active.CommitStatuses = append(
+			newPS.Status.Environments[0].Active.CommitStatuses,
+			promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+				Key:   "smoke",
+				Phase: string(promoterv1alpha1.CommitPhaseSuccess),
+			},
+		)
 		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeTrue())
 	})
 })
