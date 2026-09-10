@@ -719,6 +719,23 @@ var _ = Describe("promotionStrategyGateRelevantPredicate", func() {
 							Note:     &promoterv1alpha1.HydratorMetadata{DrySha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
 						},
 					},
+					{
+						Branch: "stg",
+						Active: promoterv1alpha1.CommitBranchState{
+							Dry: promoterv1alpha1.CommitShaState{
+								Sha:        "dddddddddddddddddddddddddddddddddddddddd",
+								CommitTime: metav1.NewTime(time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)),
+							},
+							CommitStatuses: []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+								{Key: "argocd-health", Phase: string(promoterv1alpha1.CommitPhaseSuccess)},
+							},
+						},
+						Proposed: promoterv1alpha1.CommitBranchState{
+							Dry:      promoterv1alpha1.CommitShaState{Sha: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"},
+							Hydrated: promoterv1alpha1.CommitShaState{Sha: "ffffffffffffffffffffffffffffffffffffffff"},
+							Note:     &promoterv1alpha1.HydratorMetadata{DrySha: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"},
+						},
+					},
 				},
 			},
 		}
@@ -863,8 +880,8 @@ var _ = Describe("promotionStrategyGateRelevantPredicate", func() {
 		oldPS := basePS()
 		newPS := oldPS.DeepCopy()
 		newPS.Status.Environments = []promoterv1alpha1.EnvironmentStatus{
-			{Branch: "stg"},
-			{Branch: "dev"},
+			oldPS.Status.Environments[1],
+			oldPS.Status.Environments[0],
 		}
 		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeTrue())
 	})
