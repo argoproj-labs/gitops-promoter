@@ -368,6 +368,12 @@
 
 .hp-drawer__check-icon {
   display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+
+  .status-icon {
+    font-size: 1em;
+  }
 }
 .hp-drawer__check-key {
   font-weight: 600;

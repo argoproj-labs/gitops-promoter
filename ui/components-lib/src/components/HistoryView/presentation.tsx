@@ -1,5 +1,3 @@
-import React from 'react';
-import { FaCheckCircle, FaTimesCircle, FaSpinner, FaQuestionCircle } from 'react-icons/fa';
 import type { CommitStatus } from '@shared/types/promotion';
 import { formatDate } from '@shared/utils/util';
 import type { CellKind, CellState, HealthKey } from './types';
@@ -25,13 +23,6 @@ export const DRAWER_MIN_WIDTH = 320;
 export const DRAWER_MAX_WIDTH = 760;
 export const DRAWER_DEFAULT_WIDTH = 420;
 export const DRAWER_WIDTH_KEY = 'hp-drawer-width';
-
-export const healthIcon: Record<HealthKey, React.ReactNode> = {
-  success: <FaCheckCircle aria-hidden="true" />,
-  failure: <FaTimesCircle aria-hidden="true" />,
-  pending: <FaSpinner className="fa-spin" aria-hidden="true" />,
-  unknown: <FaQuestionCircle aria-hidden="true" />,
-};
 
 export function cellPillTooltip(cell: CellState, branch: string): string {
   switch (cell.kind) {

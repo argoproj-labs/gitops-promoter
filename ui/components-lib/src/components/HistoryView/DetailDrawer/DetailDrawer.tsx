@@ -14,9 +14,10 @@ import { getChecks } from '@shared/utils/PSData';
 import { commitStatusPlugins } from '@shared/components/plugins';
 import type { Check } from '@shared/types/promotion';
 import type { CellState, CommitRow, EnvColumn, HealthKey } from '../types';
-import { DRAWER_MIN_WIDTH, DRAWER_MAX_WIDTH, HEALTH_LABELS, healthIcon } from '../presentation';
+import { DRAWER_MIN_WIDTH, DRAWER_MAX_WIDTH, HEALTH_LABELS } from '../presentation';
 import { isEmptyCellKind } from '../helpers';
 import Tooltip from '../Tooltip/Tooltip';
+import { StatusIcon, StatusType } from '../../StatusIcon';
 
 const DrawerChecks: React.FC<{ checks: Check[] }> = ({ checks }) => {
   const [expanded, setExpanded] = React.useState<Record<string, boolean>>({});
@@ -29,12 +30,15 @@ const DrawerChecks: React.FC<{ checks: Check[] }> = ({ checks }) => {
         const RowContent = manager ? Plugin?.rowContent : undefined;
         const isExpanded = !!expanded[check.name];
         const panelId = `hp-drawer-check-panel-${check.name}`;
+        const phase: StatusType = HEALTH_LABELS[check.status as HealthKey]
+          ? (check.status as StatusType)
+          : 'unknown';
 
         return (
           <li key={check.name} className="hp-drawer__check-item">
             <div className={`hp-drawer__check hp-drawer__check--${check.status}`}>
               <span className="hp-drawer__check-icon" aria-hidden="true">
-                {healthIcon[check.status as HealthKey] ?? healthIcon.unknown}
+                <StatusIcon phase={phase} type="status" />
               </span>
               {RowContent && (
                 <button
