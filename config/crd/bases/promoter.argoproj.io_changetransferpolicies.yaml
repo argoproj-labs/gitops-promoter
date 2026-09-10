@@ -173,6 +173,30 @@ spec:
                     required:
                     - expression
                     type: object
+                  reviewers:
+                    description: Reviewers configures dynamic SCM reviewers requested
+                      on promotion pull requests.
+                    properties:
+                      expression:
+                        description: |-
+                          Expression is evaluated using the expr library (github.com/expr-lang/expr) against
+                          ChangeTransferPolicy status and spec. It must return a list of reviewers, where each item
+                          is either a username string or an object selecting a reviewer by a single supported
+                          identifier, currently `{user: <name>}` or `{group: <name>}`.
+
+                          Available variables:
+                            - Status: ChangeTransferPolicy status (Proposed/Active commit statuses, branch SHAs, etc.)
+                            - Spec: ChangeTransferPolicy spec (ActiveBranch, ProposedBranch, AutoMerge, etc.)
+                            - PromotionStrategy: owning PromotionStrategy spec and status when available
+
+                          Use Spec.ActiveBranch to vary reviewers per environment, and Spec.AutoMerge to skip
+                          reviewers on auto-merged environments.
+                        maxLength: 8192
+                        minLength: 1
+                        type: string
+                    required:
+                    - expression
+                    type: object
                 type: object
             required:
             - activeBranch

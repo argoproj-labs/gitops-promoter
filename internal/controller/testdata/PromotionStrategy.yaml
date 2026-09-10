@@ -24,6 +24,9 @@ spec:
     labels:
       expression: |
         all(Status.Proposed.CommitStatuses, {.Phase == 'success'}) ? ['lgtm'] : []
+    reviewers:
+      expression: |
+        (Spec.AutoMerge ?? true) ? [] : ['alice', {group: 'release-managers'}]
 status:
   observedGeneration: 123 # compare with metadata.generation to detect stale status
   conditions:

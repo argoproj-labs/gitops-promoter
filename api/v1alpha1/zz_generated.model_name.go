@@ -471,6 +471,11 @@ func (in PullRequestPolicySpec) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in PullRequestReviewer) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.PullRequestReviewer"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in PullRequestSpec) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.PullRequestSpec"
 }
@@ -593,6 +598,11 @@ func (in ScmProviderSpec) OpenAPIModelName() string {
 // OpenAPIModelName returns the OpenAPI model name for this type.
 func (in ScmProviderStatus) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.ScmProviderStatus"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
+func (in ScmReviewersSpec) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.ScmReviewersSpec"
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.

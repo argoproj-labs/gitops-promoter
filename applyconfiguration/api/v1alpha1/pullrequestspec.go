@@ -52,6 +52,11 @@ type PullRequestSpecApplyConfiguration struct {
 	// Labels is the desired set of SCM pull request labels (not Kubernetes metadata labels).
 	// Written by the ChangeTransferPolicy controller from pullRequest.labels.expression evaluation.
 	Labels []string `json:"labels,omitempty"`
+	// Reviewers is the desired set of SCM pull request reviewers.
+	// Written by the ChangeTransferPolicy controller from pullRequest.reviewers.expression evaluation.
+	// The controller adds missing reviewers and removes reviewers no longer in this desired set;
+	// see status.appliedReviewers.
+	Reviewers []PullRequestReviewerApplyConfiguration `json:"reviewers,omitempty"`
 }
 
 // PullRequestSpecApplyConfiguration constructs a declarative configuration of the PullRequestSpec type for use with
@@ -130,6 +135,19 @@ func (b *PullRequestSpecApplyConfiguration) WithState(value apiv1alpha1.PullRequ
 func (b *PullRequestSpecApplyConfiguration) WithLabels(values ...string) *PullRequestSpecApplyConfiguration {
 	for i := range values {
 		b.Labels = append(b.Labels, values[i])
+	}
+	return b
+}
+
+// WithReviewers adds the given value to the Reviewers field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the Reviewers field.
+func (b *PullRequestSpecApplyConfiguration) WithReviewers(values ...*PullRequestReviewerApplyConfiguration) *PullRequestSpecApplyConfiguration {
+	for i := range values {
+		if values[i] == nil {
+			panic("nil value passed to WithReviewers")
+		}
+		b.Reviewers = append(b.Reviewers, *values[i])
 	}
 	return b
 }

@@ -450,3 +450,20 @@ func (pr *PullRequest) AddLabels(_ context.Context, _ v1alpha1.PullRequest, _ []
 func (pr *PullRequest) RemoveLabels(_ context.Context, _ v1alpha1.PullRequest, _ []string) error {
 	return errors.New("bitbucket cloud does not support pull request labels")
 }
+
+// AddReviewers is not implemented for Bitbucket Cloud yet. Configuring reviewers on a Bitbucket
+// Cloud repository surfaces as a reconcile error rather than being silently ignored.
+func (pr *PullRequest) AddReviewers(_ context.Context, _ v1alpha1.PullRequest, reviewers []v1alpha1.PullRequestReviewer) error {
+	if len(reviewers) == 0 {
+		return nil
+	}
+	return errors.New("pull request reviewers are not yet supported for Bitbucket Cloud")
+}
+
+// RemoveReviewers is not implemented for Bitbucket Cloud yet.
+func (pr *PullRequest) RemoveReviewers(_ context.Context, _ v1alpha1.PullRequest, reviewers []v1alpha1.PullRequestReviewer) error {
+	if len(reviewers) == 0 {
+		return nil
+	}
+	return errors.New("pull request reviewers are not yet supported for Bitbucket Cloud")
+}

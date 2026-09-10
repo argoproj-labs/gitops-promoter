@@ -24,6 +24,8 @@ package v1alpha1
 type PullRequestPolicySpecApplyConfiguration struct {
 	// Labels configures dynamic SCM labels applied to promotion pull requests.
 	Labels *ScmLabelsSpecApplyConfiguration `json:"labels,omitempty"`
+	// Reviewers configures dynamic SCM reviewers requested on promotion pull requests.
+	Reviewers *ScmReviewersSpecApplyConfiguration `json:"reviewers,omitempty"`
 }
 
 // PullRequestPolicySpecApplyConfiguration constructs a declarative configuration of the PullRequestPolicySpec type for use with
@@ -37,5 +39,13 @@ func PullRequestPolicySpec() *PullRequestPolicySpecApplyConfiguration {
 // If called multiple times, the Labels field is set to the value of the last call.
 func (b *PullRequestPolicySpecApplyConfiguration) WithLabels(value *ScmLabelsSpecApplyConfiguration) *PullRequestPolicySpecApplyConfiguration {
 	b.Labels = value
+	return b
+}
+
+// WithReviewers sets the Reviewers field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Reviewers field is set to the value of the last call.
+func (b *PullRequestPolicySpecApplyConfiguration) WithReviewers(value *ScmReviewersSpecApplyConfiguration) *PullRequestPolicySpecApplyConfiguration {
+	b.Reviewers = value
 	return b
 }

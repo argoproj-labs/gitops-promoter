@@ -558,3 +558,20 @@ func getFormattedRefs(head, base string) (string, string, error) {
 
 	return sourceRef, targetRef, nil
 }
+
+// AddReviewers is not implemented for Azure DevOps yet. Configuring reviewers on an Azure DevOps
+// repository surfaces as a reconcile error rather than being silently ignored.
+func (pr *PullRequest) AddReviewers(_ context.Context, _ v1alpha1.PullRequest, reviewers []v1alpha1.PullRequestReviewer) error {
+	if len(reviewers) == 0 {
+		return nil
+	}
+	return errors.New("pull request reviewers are not yet supported for Azure DevOps")
+}
+
+// RemoveReviewers is not implemented for Azure DevOps yet.
+func (pr *PullRequest) RemoveReviewers(_ context.Context, _ v1alpha1.PullRequest, reviewers []v1alpha1.PullRequestReviewer) error {
+	if len(reviewers) == 0 {
+		return nil
+	}
+	return errors.New("pull request reviewers are not yet supported for Azure DevOps")
+}

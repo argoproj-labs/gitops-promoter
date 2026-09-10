@@ -2,6 +2,7 @@ package forgejo
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -480,4 +481,21 @@ func (pr *PullRequest) listAllRepoLabels(owner, repo string) ([]*forgejo.Label, 
 		page++
 	}
 	return allLabels, nil
+}
+
+// AddReviewers is not implemented for Forgejo yet. Configuring reviewers on a Forgejo
+// repository surfaces as a reconcile error rather than being silently ignored.
+func (pr *PullRequest) AddReviewers(_ context.Context, _ promoterv1alpha1.PullRequest, reviewers []promoterv1alpha1.PullRequestReviewer) error {
+	if len(reviewers) == 0 {
+		return nil
+	}
+	return errors.New("pull request reviewers are not yet supported for Forgejo")
+}
+
+// RemoveReviewers is not implemented for Forgejo yet.
+func (pr *PullRequest) RemoveReviewers(_ context.Context, _ promoterv1alpha1.PullRequest, reviewers []promoterv1alpha1.PullRequestReviewer) error {
+	if len(reviewers) == 0 {
+		return nil
+	}
+	return errors.New("pull request reviewers are not yet supported for Forgejo")
 }

@@ -58,6 +58,7 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 	prlabels "github.com/argoproj-labs/gitops-promoter/internal/labels"
+	prreviewers "github.com/argoproj-labs/gitops-promoter/internal/reviewers"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 )
 
@@ -80,7 +81,8 @@ type ChangeTransferPolicyReconciler struct {
 	// EnqueuePR wakes the PullRequest controller without patching the PR object.
 	EnqueuePR PREnqueueFunc
 
-	labelEvaluator prlabels.Evaluator
+	labelEvaluator    prlabels.Evaluator
+	reviewerEvaluator prreviewers.Evaluator
 }
 
 // GetEnqueueFunc returns a function that can be used to enqueue CTP reconcile requests.
@@ -1419,6 +1421,17 @@ func pullRequestApplyOwnedByChangeTransferPolicy(pr *promoterv1alpha1.PullReques
 		prSpec.Labels = []string{}
 	}
 
+	for _, reviewer := range pr.Spec.Reviewers {
+		reviewerApply := acv1alpha1.PullRequestReviewer()
+		if reviewer.User != "" {
+			reviewerApply = reviewerApply.WithUser(reviewer.User)
+		}
+		if reviewer.Group != "" {
+			reviewerApply = reviewerApply.WithGroup(reviewer.Group)
+		}
+		prSpec = prSpec.WithReviewers(reviewerApply)
+	}
+
 	prApply := acv1alpha1.PullRequest(pr.Name, pr.Namespace).
 		WithLabels(pr.Labels)
 
@@ -1652,6 +1665,11 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 		return nil, fmt.Errorf("failed to evaluate pull request labels: %w", err)
 	}
 
+	desiredReviewers, manageReviewers, err := r.evaluatePullRequestReviewers(ctp, ps)
+	if err != nil {
+		return nil, fmt.Errorf("failed to evaluate pull request reviewers: %w", err)
+	}
+
 	prLabels := utils.StampInstanceIDLabel(map[string]string{
 		promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
 		promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
@@ -1687,6 +1705,11 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 		draftPR.Spec.Labels = desiredLabels
 	} else if prExists {
 		draftPR.Spec.Labels = existingPR.Spec.Labels
+	}
+	if manageReviewers {
+		draftPR.Spec.Reviewers = desiredReviewers
+	} else if prExists {
+		draftPR.Spec.Reviewers = existingPR.Spec.Reviewers
 	}
 
 	prApply := pullRequestApplyOwnedByChangeTransferPolicy(draftPR, nil, true)
@@ -1750,6 +1773,25 @@ func (r *ChangeTransferPolicyReconciler) evaluatePullRequestLabels(ctp *promoter
 	}
 
 	return desiredLabels, true, nil
+}
+
+// evaluatePullRequestReviewers evaluates the CTP's reviewer expression, if any. The bool reports
+// whether reviewers are managed by configuration; when false the caller leaves spec.reviewers as-is.
+func (r *ChangeTransferPolicyReconciler) evaluatePullRequestReviewers(ctp *promoterv1alpha1.ChangeTransferPolicy, ps *promoterv1alpha1.PromotionStrategy) ([]promoterv1alpha1.PullRequestReviewer, bool, error) {
+	if ctp.Spec.PullRequest == nil || ctp.Spec.PullRequest.Reviewers == nil || ctp.Spec.PullRequest.Reviewers.Expression == "" {
+		return nil, false, nil
+	}
+
+	desiredReviewers, err := r.reviewerEvaluator.Evaluate(ctp.Spec.PullRequest.Reviewers.Expression, prreviewers.ExpressionContext{
+		Status:            ctp.Status,
+		Spec:              ctp.Spec,
+		PromotionStrategy: ps,
+	})
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to evaluate pull request reviewers expression: %w", err)
+	}
+
+	return desiredReviewers, true, nil
 }
 
 // mergePullRequests tries to merge the pull request if all the checks have passed and the environment is set to auto merge.

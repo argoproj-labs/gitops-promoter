@@ -189,6 +189,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.PullRequestConfigurationApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PullRequestPolicySpec"):
 		return &apiv1alpha1.PullRequestPolicySpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("PullRequestReviewer"):
+		return &apiv1alpha1.PullRequestReviewerApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PullRequestSpec"):
 		return &apiv1alpha1.PullRequestSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PullRequestStatus"):
@@ -229,6 +231,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ScmProviderSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ScmProviderStatus"):
 		return &apiv1alpha1.ScmProviderStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ScmReviewersSpec"):
+		return &apiv1alpha1.ScmReviewersSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("SuccessSpec"):
 		return &apiv1alpha1.SuccessSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("TimedCommitStatus"):

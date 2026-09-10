@@ -349,6 +349,94 @@ func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest v1alpha1.PullR
 	return nil
 }
 
+// AddReviewers requests reviews on a pull request from the given users and organization teams.
+// GitHub ignores reviewers whose review has already been requested, so this is safe to retry.
+func (pr *PullRequest) AddReviewers(ctx context.Context, pullRequest v1alpha1.PullRequest, reviewers []v1alpha1.PullRequestReviewer) error {
+	if len(reviewers) == 0 {
+		return nil
+	}
+
+	logger := log.FromContext(ctx)
+
+	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
+	if err != nil {
+		return fmt.Errorf("failed to convert PR number to int: %w", err)
+	}
+
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	request := reviewersRequest(reviewers)
+
+	start := time.Now()
+	_, response, err := pr.client.PullRequests.RequestReviewers(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, prNumber, request)
+	if response != nil {
+		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationAddReviewers, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
+	}
+	if err != nil {
+		return fmt.Errorf("failed to request reviewers on pull request: %w", err)
+	}
+	logger.V(4).Info("requested reviewers on github pull request", "users", request.Reviewers, "teams", request.TeamReviewers)
+
+	return nil
+}
+
+// reviewersRequest splits reviewers into GitHub's user and team reviewer lists.
+func reviewersRequest(reviewers []v1alpha1.PullRequestReviewer) github.ReviewersRequest {
+	request := github.ReviewersRequest{}
+	for _, reviewer := range reviewers {
+		switch {
+		case reviewer.User != "":
+			request.Reviewers = append(request.Reviewers, reviewer.User)
+		case reviewer.Group != "":
+			request.TeamReviewers = append(request.TeamReviewers, reviewer.Group)
+		default:
+			// Unreachable: CRD validation and internal/reviewers.Validate both require exactly
+			// one of user or group.
+			continue
+		}
+	}
+	return request
+}
+
+// RemoveReviewers withdraws pending review requests from a pull request. A review that has already
+// been submitted is unaffected; GitHub only clears the pending request.
+func (pr *PullRequest) RemoveReviewers(ctx context.Context, pullRequest v1alpha1.PullRequest, reviewers []v1alpha1.PullRequestReviewer) error {
+	if len(reviewers) == 0 {
+		return nil
+	}
+
+	logger := log.FromContext(ctx)
+
+	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
+	if err != nil {
+		return fmt.Errorf("failed to convert PR number to int: %w", err)
+	}
+
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	request := reviewersRequest(reviewers)
+
+	start := time.Now()
+	response, err := pr.client.PullRequests.RemoveReviewers(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, prNumber, request)
+	if response != nil {
+		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationRemoveReviewers, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to remove reviewers from pull request: %w", err)
+	}
+
+	logger.V(4).Info("removed reviewers from github pull request", "users", request.Reviewers, "teams", request.TeamReviewers)
+
+	return nil
+}
+
 func (pr *PullRequest) ensureRepositoryLabels(ctx context.Context, gitRepo *v1alpha1.GitRepository, labelNames []string) error {
 	owner := gitRepo.Spec.GitHub.Owner
 	repo := gitRepo.Spec.GitHub.Name

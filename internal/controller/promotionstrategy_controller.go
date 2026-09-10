@@ -396,6 +396,10 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 			prPolicy = prPolicy.WithLabels(
 				acv1alpha1.ScmLabelsSpec().WithExpression(ps.Spec.PullRequest.Labels.Expression))
 		}
+		if ps.Spec.PullRequest.Reviewers != nil {
+			prPolicy = prPolicy.WithReviewers(
+				acv1alpha1.ScmReviewersSpec().WithExpression(ps.Spec.PullRequest.Reviewers.Expression))
+		}
 		ctpSpec = ctpSpec.WithPullRequest(prPolicy)
 	}
 

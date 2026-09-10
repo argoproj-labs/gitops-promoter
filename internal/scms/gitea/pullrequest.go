@@ -2,6 +2,7 @@ package gitea
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -480,4 +481,21 @@ func (pr *PullRequest) listAllRepoLabels(owner, repo string) ([]*gitea.Label, er
 		page++
 	}
 	return allLabels, nil
+}
+
+// AddReviewers is not implemented for Gitea yet. Configuring reviewers on a Gitea
+// repository surfaces as a reconcile error rather than being silently ignored.
+func (pr *PullRequest) AddReviewers(_ context.Context, _ promoterv1alpha1.PullRequest, reviewers []promoterv1alpha1.PullRequestReviewer) error {
+	if len(reviewers) == 0 {
+		return nil
+	}
+	return errors.New("pull request reviewers are not yet supported for Gitea")
+}
+
+// RemoveReviewers is not implemented for Gitea yet.
+func (pr *PullRequest) RemoveReviewers(_ context.Context, _ promoterv1alpha1.PullRequest, reviewers []promoterv1alpha1.PullRequestReviewer) error {
+	if len(reviewers) == 0 {
+		return nil
+	}
+	return errors.New("pull request reviewers are not yet supported for Gitea")
 }

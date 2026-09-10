@@ -492,6 +492,30 @@ spec:
                     required:
                     - expression
                     type: object
+                  reviewers:
+                    description: Reviewers configures dynamic SCM reviewers requested
+                      on promotion pull requests.
+                    properties:
+                      expression:
+                        description: |-
+                          Expression is evaluated using the expr library (github.com/expr-lang/expr) against
+                          ChangeTransferPolicy status and spec. It must return a list of reviewers, where each item
+                          is either a username string or an object selecting a reviewer by a single supported
+                          identifier, currently `{user: <name>}` or `{group: <name>}`.
+
+                          Available variables:
+                            - Status: ChangeTransferPolicy status (Proposed/Active commit statuses, branch SHAs, etc.)
+                            - Spec: ChangeTransferPolicy spec (ActiveBranch, ProposedBranch, AutoMerge, etc.)
+                            - PromotionStrategy: owning PromotionStrategy spec and status when available
+
+                          Use Spec.ActiveBranch to vary reviewers per environment, and Spec.AutoMerge to skip
+                          reviewers on auto-merged environments.
+                        maxLength: 8192
+                        minLength: 1
+                        type: string
+                    required:
+                    - expression
+                    type: object
                 type: object
             required:
             - activeBranch
@@ -5706,6 +5730,30 @@ spec:
                     required:
                     - expression
                     type: object
+                  reviewers:
+                    description: Reviewers configures dynamic SCM reviewers requested
+                      on promotion pull requests.
+                    properties:
+                      expression:
+                        description: |-
+                          Expression is evaluated using the expr library (github.com/expr-lang/expr) against
+                          ChangeTransferPolicy status and spec. It must return a list of reviewers, where each item
+                          is either a username string or an object selecting a reviewer by a single supported
+                          identifier, currently `{user: <name>}` or `{group: <name>}`.
+
+                          Available variables:
+                            - Status: ChangeTransferPolicy status (Proposed/Active commit statuses, branch SHAs, etc.)
+                            - Spec: ChangeTransferPolicy spec (ActiveBranch, ProposedBranch, AutoMerge, etc.)
+                            - PromotionStrategy: owning PromotionStrategy spec and status when available
+
+                          Use Spec.ActiveBranch to vary reviewers per environment, and Spec.AutoMerge to skip
+                          reviewers on auto-merged environments.
+                        maxLength: 8192
+                        minLength: 1
+                        type: string
+                    required:
+                    - expression
+                    type: object
                 type: object
             required:
             - environments
@@ -7135,6 +7183,38 @@ spec:
                 minLength: 40
                 pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
                 type: string
+              reviewers:
+                description: |-
+                  Reviewers is the desired set of SCM pull request reviewers.
+                  Written by the ChangeTransferPolicy controller from pullRequest.reviewers.expression evaluation.
+                  The controller adds missing reviewers and removes reviewers no longer in this desired set;
+                  see status.appliedReviewers.
+                items:
+                  description: |-
+                    PullRequestReviewer identifies a single reviewer to request a review from. Exactly one field
+                    must be set. Additional identifier fields (numeric ID, email, UUID) may be added later for
+                    providers that cannot resolve plain names.
+                  properties:
+                    group:
+                      description: Group is an SCM group or team identifier. On GitHub
+                        this is an organization team slug.
+                      maxLength: 100
+                      minLength: 1
+                      pattern: ^[^\s\x00]+$
+                      type: string
+                    user:
+                      description: User is an SCM username.
+                      maxLength: 100
+                      minLength: 1
+                      pattern: ^[^\s\x00]+$
+                      type: string
+                  type: object
+                  x-kubernetes-validations:
+                  - message: exactly one of user or group must be set
+                    rule: '[has(self.user), has(self.group)].exists_one(x, x)'
+                maxItems: 10
+                type: array
+                x-kubernetes-list-type: atomic
               sourceBranch:
                 description: |-
                   SourceBranch is the base the git reference that we are merging into Head ---> Base
@@ -7203,6 +7283,37 @@ spec:
                 maxItems: 10
                 type: array
                 x-kubernetes-list-type: set
+              appliedReviewers:
+                description: |-
+                  AppliedReviewers lists reviewers gitops-promoter has requested a review from, so removing a
+                  reviewer from the expression retracts the request. Only reviewers listed here are candidates
+                  for removal; reviewers added out of band on the SCM are left alone.
+                items:
+                  description: |-
+                    PullRequestReviewer identifies a single reviewer to request a review from. Exactly one field
+                    must be set. Additional identifier fields (numeric ID, email, UUID) may be added later for
+                    providers that cannot resolve plain names.
+                  properties:
+                    group:
+                      description: Group is an SCM group or team identifier. On GitHub
+                        this is an organization team slug.
+                      maxLength: 100
+                      minLength: 1
+                      pattern: ^[^\s\x00]+$
+                      type: string
+                    user:
+                      description: User is an SCM username.
+                      maxLength: 100
+                      minLength: 1
+                      pattern: ^[^\s\x00]+$
+                      type: string
+                  type: object
+                  x-kubernetes-validations:
+                  - message: exactly one of user or group must be set
+                    rule: '[has(self.user), has(self.group)].exists_one(x, x)'
+                maxItems: 10
+                type: array
+                x-kubernetes-list-type: atomic
               conditions:
                 description: Conditions Represents the observations of the current
                   state.
