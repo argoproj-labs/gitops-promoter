@@ -39,6 +39,8 @@ type ScmProviderSpecApplyConfiguration struct {
 	Gitea *GiteaApplyConfiguration `json:"gitea,omitempty"`
 	// BitbucketCloud required configuration for Bitbucket Cloud as the SCM provider
 	BitbucketCloud *apiv1alpha1.BitbucketCloud `json:"bitbucketCloud,omitempty"`
+	// BitbucketDataCenter required configuration for Bitbucket DataCenter/Server as the SCM provider
+	BitbucketDataCenter *BitbucketDataCenterApplyConfiguration `json:"bitbucketDataCenter,omitempty"`
 	// AzureDevOps required configuration for Azure DevOps as the SCM provider
 	AzureDevOps *AzureDevOpsApplyConfiguration `json:"azureDevOps,omitempty"`
 	// Fake required configuration for Fake as the SCM provider
@@ -96,6 +98,14 @@ func (b *ScmProviderSpecApplyConfiguration) WithGitea(value *GiteaApplyConfigura
 // If called multiple times, the BitbucketCloud field is set to the value of the last call.
 func (b *ScmProviderSpecApplyConfiguration) WithBitbucketCloud(value apiv1alpha1.BitbucketCloud) *ScmProviderSpecApplyConfiguration {
 	b.BitbucketCloud = &value
+	return b
+}
+
+// WithBitbucketDataCenter sets the BitbucketDataCenter field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the BitbucketDataCenter field is set to the value of the last call.
+func (b *ScmProviderSpecApplyConfiguration) WithBitbucketDataCenter(value *BitbucketDataCenterApplyConfiguration) *ScmProviderSpecApplyConfiguration {
+	b.BitbucketDataCenter = value
 	return b
 }
 

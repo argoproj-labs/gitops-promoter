@@ -180,6 +180,21 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: owner
       type:
         scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.BitbucketDataCenter
+  map:
+    fields:
+    - name: domain
+      type:
+        scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.BitbucketDataCenterRepo
+  map:
+    fields:
+    - name: name
+      type:
+        scalar: string
+    - name: project
+      type:
+        scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.Bucket
   map:
     fields:
@@ -958,6 +973,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: bitbucketCloud
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.BitbucketCloudRepo
+    - name: bitbucketDataCenter
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.BitbucketDataCenterRepo
     - name: fake
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.FakeRepo
@@ -1633,6 +1651,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: bitbucketCloud
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.BitbucketCloud
+    - name: bitbucketDataCenter
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.BitbucketDataCenter
     - name: fake
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.Fake

@@ -1558,6 +1558,8 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 		prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	case gitRepo.Spec.BitbucketCloud != nil:
 		prName = utils.GetPullRequestName(gitRepo.Spec.BitbucketCloud.Owner, gitRepo.Spec.BitbucketCloud.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+	case gitRepo.Spec.BitbucketDataCenter != nil:
+		prName = utils.GetPullRequestName(gitRepo.Spec.BitbucketDataCenter.Project, gitRepo.Spec.BitbucketDataCenter.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	case gitRepo.Spec.AzureDevOps != nil:
 		prName = utils.GetPullRequestName(gitRepo.Spec.AzureDevOps.Project, gitRepo.Spec.AzureDevOps.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	default:

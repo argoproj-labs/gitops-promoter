@@ -28,13 +28,14 @@ var logger = ctrl.Log.WithName("webhookReceiver")
 
 // Provider type constants
 const (
-	ProviderGitHub         = "github"
-	ProviderGitLab         = "gitlab"
-	ProviderForgejo        = "forgejo"
-	ProviderGitea          = "gitea"
-	ProviderBitbucketCloud = "bitbucketCloud"
-	ProviderAzureDevops    = "azureDevOps"
-	ProviderUnknown        = ""
+	ProviderGitHub              = "github"
+	ProviderGitLab              = "gitlab"
+	ProviderForgejo             = "forgejo"
+	ProviderGitea               = "gitea"
+	ProviderBitbucketCloud      = "bitbucketCloud"
+	ProviderBitbucketDataCenter = "bitbucketDataCenter"
+	ProviderAzureDevops         = "azureDevOps"
+	ProviderUnknown             = ""
 )
 
 // Miss-retry defaults for async field-index lookups after an initial webhook miss.
@@ -116,7 +117,7 @@ func (wr *WebhookReceiver) Start(ctx context.Context, addr string) error {
 }
 
 // DetectProvider determines the SCM provider based on webhook headers.
-// Returns ProviderGitHub, ProviderGitLab, ProviderForgejo, ProviderGitea, ProviderBitbucketCloud, ProviderAzureDevops or ProviderUnknown.
+// Returns ProviderGitHub, ProviderGitLab, ProviderForgejo, ProviderGitea, ProviderBitbucketCloud, ProviderBitbucketDataCenter, ProviderAzureDevops or ProviderUnknown.
 func (wr *WebhookReceiver) DetectProvider(r *http.Request) string {
 	// Check for GitHub webhook headers
 	if r.Header.Get("X-Github-Event") != "" || r.Header.Get("X-Github-Delivery") != "" {
@@ -138,9 +139,14 @@ func (wr *WebhookReceiver) DetectProvider(r *http.Request) string {
 		return ProviderGitea
 	}
 
-	// Check for Bitbucket Cloud webhook headers
+	// Check for Bitbucket Cloud webhook headers (X-Hook-Uuid is Bitbucket Cloud-specific)
 	if r.Header.Get("X-Hook-Uuid") != "" {
 		return ProviderBitbucketCloud
+	}
+
+	// Check for Bitbucket DataCenter/Server webhook headers (X-Event-Key without X-Hook-Uuid)
+	if r.Header.Get("X-Event-Key") != "" {
+		return ProviderBitbucketDataCenter
 	}
 
 	if r.ContentLength > 0 {
@@ -389,6 +395,9 @@ func parseWebhookPush(provider string, jsonBytes []byte) (beforeSha, ref string)
 				}
 			}
 		}
+	case ProviderBitbucketDataCenter:
+		// Bitbucket DataCenter/Server webhook format (repo:refs_changed event)
+		beforeSha, ref = extractBitbucketDCPayload(jsonBytes)
 	case ProviderAzureDevops:
 		// Azure DevOps webhook format
 		if gjson.GetBytes(jsonBytes, "resource.refUpdates").Exists() {
@@ -478,5 +487,29 @@ func (wr *WebhookReceiver) extractDeliveryID(r *http.Request) string {
 	if id := r.Header.Get("X-Hook-Uuid"); id != "" {
 		return id
 	}
+	// Bitbucket DataCenter/Server
+	if id := r.Header.Get("X-Request-Id"); id != "" {
+		return id
+	}
 	return ""
+}
+
+// extractBitbucketDCPayload parses a Bitbucket DataCenter/Server repo:refs_changed webhook
+// payload and returns the fromHash (before-SHA) and ref from the first entry in the
+// "changes" array. Both values are empty strings when the payload does not match the
+// expected shape.
+func extractBitbucketDCPayload(jsonBytes []byte) (sha, ref string) {
+	if !gjson.GetBytes(jsonBytes, "eventKey").Exists() || !gjson.GetBytes(jsonBytes, "changes").Exists() {
+		return "", ""
+	}
+	changes := gjson.GetBytes(jsonBytes, "changes")
+	if !changes.IsArray() || len(changes.Array()) == 0 {
+		return "", ""
+	}
+	firstChange := changes.Array()[0]
+	sha = firstChange.Get("fromHash").String()
+	if refID := firstChange.Get("ref.id"); refID.Exists() {
+		ref = refID.String()
+	}
+	return sha, ref
 }
