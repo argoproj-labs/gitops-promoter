@@ -927,7 +927,8 @@ var _ = Describe("promotionStrategyScheduledCommitStatusGateRelevantPredicate", 
 		return &promoterv1alpha1.PromotionStrategy{
 			ObjectMeta: metav1.ObjectMeta{Name: "demo-ps", Namespace: "default"},
 			Spec: promoterv1alpha1.PromotionStrategySpec{
-				Environments: []promoterv1alpha1.Environment{{Branch: "dev"}},
+				RepositoryReference: promoterv1alpha1.ObjectReference{Name: "demo-repo"},
+				Environments:        []promoterv1alpha1.Environment{{Branch: "dev"}},
 			},
 			Status: promoterv1alpha1.PromotionStrategyStatus{
 				Environments: []promoterv1alpha1.EnvironmentStatus{{
@@ -965,6 +966,20 @@ var _ = Describe("promotionStrategyScheduledCommitStatusGateRelevantPredicate", 
 		newPS.Status.Environments[0].Active.Hydrated.Sha = "ffffffffffffffffffffffffffffffffffffffff"
 		newPS.Status.Environments[0].Proposed.Hydrated.Subject = "new subject"
 		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeFalse())
+	})
+
+	It("enqueues when spec.environments branches change", func() {
+		oldPS := basePS()
+		newPS := oldPS.DeepCopy()
+		newPS.Spec.Environments = []promoterv1alpha1.Environment{{Branch: "prd"}}
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeTrue())
+	})
+
+	It("enqueues when spec.repositoryReference changes", func() {
+		oldPS := basePS()
+		newPS := oldPS.DeepCopy()
+		newPS.Spec.RepositoryReference.Name = "other-repo"
+		Expect(pred.Update(event.UpdateEvent{ObjectOld: oldPS, ObjectNew: newPS})).To(BeTrue())
 	})
 
 	It("enqueues when proposed hydrated sha changes", func() {

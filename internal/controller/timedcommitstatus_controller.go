@@ -344,7 +344,8 @@ func promotionStrategyTimedCommitStatusGateRelevantPredicate() predicate.Predica
 			if !okOld || !okNew {
 				return true
 			}
-			return promotionStrategyTimedCommitStatusSpecEnvironmentsGateRelevantChange(oldPS.Spec.Environments, newPS.Spec.Environments) ||
+			return oldPS.Spec.RepositoryReference.Name != newPS.Spec.RepositoryReference.Name ||
+				promotionStrategyTimedCommitStatusSpecEnvironmentsGateRelevantChange(oldPS.Spec.Environments, newPS.Spec.Environments) ||
 				promotionStrategyTimedCommitStatusStatusEnvironmentsGateRelevantChange(oldPS.Status.Environments, newPS.Status.Environments)
 		},
 		DeleteFunc: func(event.DeleteEvent) bool {

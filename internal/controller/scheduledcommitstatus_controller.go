@@ -323,7 +323,8 @@ func promotionStrategyScheduledCommitStatusGateRelevantPredicate() predicate.Pre
 			if !okOld || !okNew {
 				return true
 			}
-			return promotionStrategyScheduledCommitStatusSpecEnvironmentsGateRelevantChange(oldPS.Spec.Environments, newPS.Spec.Environments) ||
+			return oldPS.Spec.RepositoryReference.Name != newPS.Spec.RepositoryReference.Name ||
+				promotionStrategyScheduledCommitStatusSpecEnvironmentsGateRelevantChange(oldPS.Spec.Environments, newPS.Spec.Environments) ||
 				promotionStrategyScheduledCommitStatusStatusEnvironmentsGateRelevantChange(oldPS.Status.Environments, newPS.Status.Environments)
 		},
 		DeleteFunc: func(event.DeleteEvent) bool {
