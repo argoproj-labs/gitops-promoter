@@ -6,7 +6,10 @@ import type { Environment, PromotionStrategy } from '@shared/types/promotion';
 
 // Minimal PromotionStrategy fixture wrapper used only to exercise mergeCommitStatusManagers,
 // which operates on ps.status.environments; the rest of the CRD shape is irrelevant here.
-function mergeEnvManagers(environment: Environment, managers: CommitStatusManagerBundle): Environment {
+function mergeEnvManagers(
+  environment: Environment,
+  managers: CommitStatusManagerBundle,
+): Environment {
   const ps = {
     status: { environments: [environment] },
   } as unknown as PromotionStrategy;

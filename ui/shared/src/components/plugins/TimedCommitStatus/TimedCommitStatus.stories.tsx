@@ -326,12 +326,14 @@ function renderDrawer(commitStatuses: EnrichedBranchCommitStatus[], args: TimedC
   );
 }
 
+function TransitioningOverviewCard({ elapsedSeconds, requiredDurationSeconds, url }: TimedCommitStatusArgs) {
+  const environment = useTransitioningEnvironment(elapsedSeconds, requiredDurationSeconds, url);
+  return <Card environments={[environment]} />;
+}
+
 export const OverviewCard: Story = {
   play: expandHealthSummary,
-  render: ({ elapsedSeconds, requiredDurationSeconds, url }) => {
-    const environment = useTransitioningEnvironment(elapsedSeconds, requiredDurationSeconds, url);
-    return <Card environments={[environment]} />;
-  },
+  render: (args) => <TransitioningOverviewCard {...args} />,
 };
 
 export const OverviewCardSuccess: Story = {

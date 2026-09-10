@@ -135,8 +135,7 @@ describe('DetailDrawer commit-status plugins', () => {
 
   it('renders a toggle that expands a plugin rowContent panel', () => {
     const stub = {
-      rowHeader: ({ check }: CommitStatusContext) =>
-        React.createElement('span', null, check.name),
+      rowHeader: ({ check }: CommitStatusContext) => React.createElement('span', null, check.name),
       rowContent: ({ check }: CommitStatusContext) =>
         React.createElement('span', null, `details for ${check.name}`),
     };

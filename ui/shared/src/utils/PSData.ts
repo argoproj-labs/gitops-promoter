@@ -98,15 +98,14 @@ export function mergeCommitStatusManagers(
   const environments: Environment[] = ps.status.environments.map((environment: Environment) => {
     const branch = environment.branch || '';
 
-    const active = environment.active
-      ? { ...environment.active, commitStatuses: enrichStatuses(environment.active.commitStatuses, branch) }
-      : environment.active;
-    const proposed = environment.proposed
-      ? {
-          ...environment.proposed,
-          commitStatuses: enrichStatuses(environment.proposed.commitStatuses, branch),
-        }
-      : environment.proposed;
+    const active = {
+      ...environment.active,
+      commitStatuses: enrichStatuses(environment.active.commitStatuses, branch),
+    };
+    const proposed = {
+      ...environment.proposed,
+      commitStatuses: enrichStatuses(environment.proposed.commitStatuses, branch),
+    };
 
     const history: History[] | undefined = environment.history?.map((entry: History) => ({
       ...entry,

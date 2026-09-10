@@ -82,7 +82,7 @@ describe('TimedCommitStatus', () => {
     const manager = makeManager();
     await render(makeCheck(), manager);
 
-    const clearIntervalSpy = vi.spyOn(global, 'clearInterval');
+    const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
     root.unmount();
     expect(clearIntervalSpy).toHaveBeenCalled();
 
