@@ -425,8 +425,7 @@ func promotionStrategyGitCommitStatusGateRelevantPredicate() predicate.Predicate
 			if !okOld || !okNew {
 				return true
 			}
-			return oldPS.Spec.RepositoryReference.Name != newPS.Spec.RepositoryReference.Name ||
-				promotionStrategyGitCommitStatusSpecEnvironmentsGateRelevantChange(oldPS.Spec.Environments, newPS.Spec.Environments) ||
+			return promotionStrategyGitCommitStatusSpecGateRelevantChange(oldPS.Spec, newPS.Spec) ||
 				promotionStrategyGitCommitStatusStatusEnvironmentsGateRelevantChange(oldPS.Status.Environments, newPS.Status.Environments)
 		},
 		DeleteFunc: func(event.DeleteEvent) bool {
@@ -438,14 +437,48 @@ func promotionStrategyGitCommitStatusGateRelevantPredicate() predicate.Predicate
 	}
 }
 
+// promotionStrategyGitCommitStatusSpecGateRelevantChange reports whether PromotionStrategy spec
+// changed in a way that affects which environments GitCommitStatus evaluates.
+func promotionStrategyGitCommitStatusSpecGateRelevantChange(oldSpec, newSpec promoterv1alpha1.PromotionStrategySpec) bool {
+	if oldSpec.RepositoryReference.Name != newSpec.RepositoryReference.Name {
+		return true
+	}
+	if commitStatusSelectorsGateRelevantChange(oldSpec.ProposedCommitStatuses, newSpec.ProposedCommitStatuses) {
+		return true
+	}
+	if commitStatusSelectorsGateRelevantChange(oldSpec.ActiveCommitStatuses, newSpec.ActiveCommitStatuses) {
+		return true
+	}
+	return promotionStrategyGitCommitStatusSpecEnvironmentsGateRelevantChange(oldSpec.Environments, newSpec.Environments)
+}
+
 // promotionStrategyGitCommitStatusSpecEnvironmentsGateRelevantChange reports whether spec.environments
-// changed in a way that affects GitCommitStatus. Only branch names and their order matter.
+// changed in a way that affects GitCommitStatus. Branch names, their order, and per-environment
+// commit-status selectors determine which environments are evaluated.
 func promotionStrategyGitCommitStatusSpecEnvironmentsGateRelevantChange(oldEnvs, newEnvs []promoterv1alpha1.Environment) bool {
 	if len(oldEnvs) != len(newEnvs) {
 		return true
 	}
 	for i := range oldEnvs {
 		if oldEnvs[i].Branch != newEnvs[i].Branch {
+			return true
+		}
+		if commitStatusSelectorsGateRelevantChange(oldEnvs[i].ProposedCommitStatuses, newEnvs[i].ProposedCommitStatuses) {
+			return true
+		}
+		if commitStatusSelectorsGateRelevantChange(oldEnvs[i].ActiveCommitStatuses, newEnvs[i].ActiveCommitStatuses) {
+			return true
+		}
+	}
+	return false
+}
+
+func commitStatusSelectorsGateRelevantChange(oldSelectors, newSelectors []promoterv1alpha1.CommitStatusSelector) bool {
+	if len(oldSelectors) != len(newSelectors) {
+		return true
+	}
+	for i := range oldSelectors {
+		if oldSelectors[i].Key != newSelectors[i].Key {
 			return true
 		}
 	}
