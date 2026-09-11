@@ -7,7 +7,9 @@ import { createRoot } from 'react-dom/client';
 import TimedCommitStatus from './TimedCommitStatus';
 import type { Check, CommitStatusManager } from '../../../types/promotion';
 
-const makeManager = (env: { commitTime?: string; requiredDuration?: string } = {}): CommitStatusManager => ({
+const makeManager = (
+  env: { commitTime?: string; requiredDuration?: string } = {},
+): CommitStatusManager => ({
   spec: {
     promotionStrategyRef: { name: 'my-strategy' },
     environments: [{ branch: 'production', duration: '5m' }],
@@ -148,13 +150,16 @@ describe('TimedCommitStatus', () => {
     expect(fill.style.width).toBe('100%');
   });
 
-  it.each(['failure', 'unknown', 'success'])('renders the plain fallback for the %s phase', async (status) => {
-    const manager = makeManager();
-    await render(makeCheck({ status: status as Check['status'] }), manager);
+  it.each(['failure', 'unknown', 'success'])(
+    'renders the plain fallback for the %s phase',
+    async (status) => {
+      const manager = makeManager();
+      await render(makeCheck({ status: status as Check['status'] }), manager);
 
-    expect(container.querySelector('.timed-commit-status-fill')).toBeNull();
-    expect(container.textContent).toBe('timer');
-  });
+      expect(container.querySelector('.timed-commit-status-fill')).toBeNull();
+      expect(container.textContent).toBe('timer');
+    },
+  );
 
   it('treats a sub-second requiredDuration as milliseconds, not minutes', async () => {
     const manager = makeManager({

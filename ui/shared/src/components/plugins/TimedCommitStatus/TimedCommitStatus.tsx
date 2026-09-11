@@ -36,7 +36,9 @@ function parseGoDuration(duration: string): number {
   return duration.trimStart().startsWith('-') ? -totalMs : totalMs;
 }
 
-function remainingFromCommitTime(environment: NonNullable<ReturnType<typeof findEnvironment>>): number {
+function remainingFromCommitTime(
+  environment: NonNullable<ReturnType<typeof findEnvironment>>,
+): number {
   const commitTimeMs = new Date(environment.commitTime).getTime();
   if (Number.isNaN(commitTimeMs)) {
     return 0;
@@ -53,12 +55,18 @@ const renderFallback = (name: string, url?: string) =>
     <span className="check-name-text">{name}</span>
   );
 
-function findEnvironment(check: CommitStatusContext['check'], manager: CommitStatusContext['manager']) {
+function findEnvironment(
+  check: CommitStatusContext['check'],
+  manager: CommitStatusContext['manager'],
+) {
   const timedManager = manager as components['schemas']['TimedCommitStatus'];
   return timedManager.status?.environments?.find((env) => env.branch === check.branch);
 }
 
-function useTimedCommitStatusProgress(check: CommitStatusContext['check'], environment: ReturnType<typeof findEnvironment>) {
+function useTimedCommitStatusProgress(
+  check: CommitStatusContext['check'],
+  environment: ReturnType<typeof findEnvironment>,
+) {
   const initialRemaining = environment ? remainingFromCommitTime(environment) : 0;
   const [remaining, setRemaining] = useState<number>(initialRemaining);
 
@@ -79,7 +87,8 @@ function useTimedCommitStatusProgress(check: CommitStatusContext['check'], envir
   const requiredDurationMs = environment ? parseGoDuration(environment.requiredDuration) : 0;
   const clampedRemaining = Math.max(remaining, 0);
   const elapsedMs = requiredDurationMs - clampedRemaining;
-  const ratio = requiredDurationMs > 0 ? Math.min(Math.max(elapsedMs / requiredDurationMs, 0), 1) : 0;
+  const ratio =
+    requiredDurationMs > 0 ? Math.min(Math.max(elapsedMs / requiredDurationMs, 0), 1) : 0;
 
   return { clampedRemaining, ratio };
 }

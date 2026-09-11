@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { mergeCommitStatusManagers } from './PSData';
 import type { CommitStatusManagerBundle } from './PSData';
-import type { Environment, EnrichedBranchCommitStatus, PromotionStrategy } from '../types/promotion';
+import type {
+  Environment,
+  EnrichedBranchCommitStatus,
+  PromotionStrategy,
+} from '../types/promotion';
 
 const BRANCH = 'environments/qal';
 const OTHER_BRANCH = 'environments/prd';
@@ -9,7 +13,11 @@ const OTHER_BRANCH = 'environments/prd';
 function envWithKeys(branch: string, keys: string[]): Environment {
   return {
     branch,
-    active: { dry: {}, hydrated: {}, commitStatuses: keys.map((key) => ({ key, phase: 'success' })) },
+    active: {
+      dry: {},
+      hydrated: {},
+      commitStatuses: keys.map((key) => ({ key, phase: 'success' })),
+    },
     proposed: { dry: {}, hydrated: {}, commitStatuses: [] },
     lastHealthyDryShas: [],
   } as unknown as Environment;
@@ -21,7 +29,8 @@ function mergeActive(
 ): EnrichedBranchCommitStatus[] {
   const ps = { status: { environments: [environment] } } as unknown as PromotionStrategy;
   const merged = mergeCommitStatusManagers(ps, managers);
-  return (merged.status!.environments[0].active.commitStatuses ?? []) as EnrichedBranchCommitStatus[];
+  return (merged.status!.environments[0].active.commitStatuses ??
+    []) as EnrichedBranchCommitStatus[];
 }
 
 function timed(key: string, branches: string[]) {
