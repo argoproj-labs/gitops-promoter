@@ -1,6 +1,7 @@
 package cache_test
 
 import (
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	promotercache "github.com/argoproj-labs/gitops-promoter/internal/cache"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils/httpauth"
@@ -16,10 +17,12 @@ var _ = Describe("secretDataTransform", func() {
 		secret := &corev1.Secret{
 			Name: "scm-creds",
 			Data: map[string][]byte{
-				httpauth.TokenKey:             []byte("pat"),
-				"unrelated-config":            []byte("large-payload"),
-				constants.KubeconfigSecretKey: []byte("kubeconfig-bytes"),
-				"githubAppPrivateKey":         []byte("private-key"),
+				httpauth.TokenKey:                                           []byte("pat"),
+				"unrelated-config":                                          []byte("large-payload"),
+				constants.KubeconfigSecretKey:                               []byte("kubeconfig-bytes"),
+				"githubAppPrivateKey":                                       []byte("private-key"),
+				promoterv1alpha1.ScmProviderSecretKeyWebhookSecret:          []byte("whsec"),
+				promoterv1alpha1.ScmProviderSecretKeyWebhookSignatureHeader: []byte("X-Hub-Signature-256"),
 			},
 			StringData: map[string]string{"ignored": "value"},
 		}
@@ -30,9 +33,11 @@ var _ = Describe("secretDataTransform", func() {
 		got, ok := out.(*corev1.Secret)
 		Expect(ok).To(BeTrue())
 		Expect(got.Data).To(Equal(map[string][]byte{
-			httpauth.TokenKey:             []byte("pat"),
-			constants.KubeconfigSecretKey: []byte("kubeconfig-bytes"),
-			"githubAppPrivateKey":         []byte("private-key"),
+			httpauth.TokenKey:                                           []byte("pat"),
+			constants.KubeconfigSecretKey:                               []byte("kubeconfig-bytes"),
+			"githubAppPrivateKey":                                       []byte("private-key"),
+			promoterv1alpha1.ScmProviderSecretKeyWebhookSecret:          []byte("whsec"),
+			promoterv1alpha1.ScmProviderSecretKeyWebhookSignatureHeader: []byte("X-Hub-Signature-256"),
 		}))
 		Expect(got.StringData).To(BeNil())
 		Expect(got.Name).To(Equal("scm-creds"))

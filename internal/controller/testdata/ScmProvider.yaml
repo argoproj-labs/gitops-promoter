@@ -3,6 +3,8 @@ kind: ScmProvider
 metadata:
   name: example-scm-provider
 spec:
+  # Default: NoVerification. Set RequireVerification on production providers.
+  # inboundWebhookVerification: RequireVerification
   secretRef:
     name: example-scm-provider-secret
 

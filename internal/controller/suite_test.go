@@ -19,6 +19,9 @@ package controller
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -297,13 +300,14 @@ var _ = BeforeSuite(func() {
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
-	err = (&WebRequestCommitStatusReconciler{
+	wrcsReconciler := &WebRequestCommitStatusReconciler{
 		Client:      k8sManager.GetClient(),
 		Scheme:      k8sManager.GetScheme(),
 		Recorder:    k8sManager.GetEventRecorder("WebRequestCommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
-	}).SetupWithManager(ctx, k8sManager)
+	}
+	err = wrcsReconciler.SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&ScheduledCommitStatusReconciler{
@@ -316,7 +320,12 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	webhookReceiverPort = constants.WebhookReceiverPort + GinkgoParallelProcess()
-	whr := webhookreceiver.NewWebhookReceiver(k8sManager, webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()))
+	whr := webhookreceiver.NewWebhookReceiver(
+		k8sManager,
+		webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()),
+		webhookreceiver.EnqueueFunc(wrcsReconciler.GetEnqueueFunc()),
+		"default",
+	)
 	go func() {
 		err = whr.Start(ctx, fmt.Sprintf(":%d", webhookReceiverPort))
 		Expect(err).ToNot(HaveOccurred(), "failed to start webhook receiver")
@@ -831,8 +840,9 @@ func randomString(length int) string {
 	return string(result)
 }
 
-// buildGitHubWebhookPayload constructs a GitHub webhook payload for push events
-func buildGitHubWebhookPayload(beforeSha, ref string) string {
+// buildGitHubWebhookPayload constructs a GitHub webhook payload for push events.
+// Optional owner/name add repository identity used by WRCS repo fan-out.
+func buildGitHubWebhookPayload(beforeSha, ref string, ownerName ...string) string {
 	payload := map[string]any{
 		"before": beforeSha,
 		"ref":    ref,
@@ -840,6 +850,16 @@ func buildGitHubWebhookPayload(beforeSha, ref string) string {
 			"name":  "test-user",
 			"email": "test@example.com",
 		},
+	}
+	if len(ownerName) >= 2 && ownerName[0] != "" && ownerName[1] != "" {
+		owner, name := ownerName[0], ownerName[1]
+		payload["repository"] = map[string]any{
+			"name":      name,
+			"full_name": owner + "/" + name,
+			"owner": map[string]any{
+				"login": owner,
+			},
+		}
 	}
 	payloadBytes, err := json.Marshal(payload)
 	Expect(err).NotTo(HaveOccurred())
@@ -880,6 +900,49 @@ func sendWebhookForPush(ctx context.Context, sha, branch string) {
 	if resp.StatusCode != http.StatusNoContent {
 		fmt.Printf("Webhook receiver returned unexpected status code: %d\n", resp.StatusCode)
 	}
+}
+
+// sendWebhookForRepoEvent sends a non-push GitHub webhook (e.g. PR label) carrying
+// repository identity so the WRCS repo fan-out path can be exercised without a before SHA.
+// When webhookSecret is non-empty, attaches a GitHub-style X-Hub-Signature-256 HMAC of the
+// raw body so RequireVerification ScmProviders accept the delivery.
+func sendWebhookForRepoEvent(ctx context.Context, owner, name string, webhookSecret []byte) {
+	payload := map[string]any{
+		"action": "labeled",
+		"repository": map[string]any{
+			"name":      name,
+			"full_name": owner + "/" + name,
+			"owner": map[string]any{
+				"login": owner,
+			},
+		},
+	}
+	payloadBytes, err := json.Marshal(payload)
+	Expect(err).NotTo(HaveOccurred())
+
+	webhookURL := fmt.Sprintf("http://localhost:%d/", webhookReceiverPort)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhookURL, bytes.NewBuffer(payloadBytes))
+	Expect(err).NotTo(HaveOccurred())
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Github-Event", "pull_request")
+	req.Header.Set("X-Github-Delivery", fmt.Sprintf("test-repo-event-%d", time.Now().UnixNano()))
+	if len(webhookSecret) > 0 {
+		req.Header.Set("X-Hub-Signature-256", githubWebhookHMAC(webhookSecret, payloadBytes))
+	}
+
+	httpClient := &http.Client{Timeout: 5 * time.Second}
+	resp, err := httpClient.Do(req)
+	Expect(err).NotTo(HaveOccurred())
+	defer func() {
+		Expect(resp.Body.Close()).To(Succeed())
+	}()
+	Expect(resp.StatusCode).To(Equal(http.StatusNoContent))
+}
+
+func githubWebhookHMAC(secret, body []byte) string {
+	mac := hmac.New(sha256.New, secret)
+	_, _ = mac.Write(body)
+	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
 }
 
 // cloneTestRepo clones the test repo for gitRepo.Spec.Fake and configures git user. Returns the temp directory path.
