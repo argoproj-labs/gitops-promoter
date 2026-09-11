@@ -4628,7 +4628,9 @@ var _ = Describe("WebRequestCommitStatus Controller - Webhook repo fan-out", fun
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		declareDependentsSuccessfulGate(promotionStrategy)
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+		createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 		By("Waiting for PromotionStrategy environments to populate")
 		Eventually(func(g Gomega) {
