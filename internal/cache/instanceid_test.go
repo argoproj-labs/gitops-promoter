@@ -50,6 +50,22 @@ var _ = Describe("OptionsForInstanceID", func() {
 		Expect(ok).To(BeTrue())
 	})
 
+	It("applies a data-trimming transform only to Secret informers", func() {
+		opts := promotercache.OptionsForInstanceID(nil, testControllerNamespace)
+		secretByObj, ok := opts.ByObject[promotercache.PartitionedSecretObject()]
+		Expect(ok).To(BeTrue())
+		Expect(secretByObj.Transform).NotTo(BeNil())
+
+		for _, obj := range promotercache.PartitionedObjects() {
+			if obj == promotercache.PartitionedSecretObject() {
+				continue
+			}
+			byObj, objOK := opts.ByObject[obj]
+			Expect(objOK).To(BeTrue(), "missing ByObject for %T", obj)
+			Expect(byObj.Transform).To(BeNil(), "unexpected transform on %T", obj)
+		}
+	})
+
 	It("scopes ControllerConfiguration to the install namespace and shipped name", func() {
 		opts := promotercache.OptionsForInstanceID(nil, testControllerNamespace)
 		byObj, ok := opts.ByObject[promotercache.PartitionedControllerConfigurationObject()]

@@ -6,7 +6,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var _ = Describe("PullRequest", func() {
@@ -51,11 +50,9 @@ var _ = Describe("PullRequest", func() {
 			It("should return correct URL for "+tc.name, func() {
 				// Create test secret
 				secret := &corev1.Secret{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-secret",
-						Namespace: "default",
-					},
-					Data: map[string][]byte{"token": []byte("fake-token")},
+					Name:      "test-secret",
+					Namespace: "default",
+					Data:      map[string][]byte{"token": []byte("fake-token")},
 				}
 
 				// Create GitLab client with the test domain

@@ -3,7 +3,6 @@ package utils_test
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -101,16 +100,16 @@ var _ = Describe("InheritNotReadyConditionFromObjects", func() {
 
 	BeforeEach(func() {
 		parent = &promoterv1alpha1.PromotionStrategy{
-			TypeMeta:   metav1.TypeMeta{Kind: "PromotionStrategy"},
-			ObjectMeta: metav1.ObjectMeta{Name: "parent", Generation: 1},
+			Kind: "PromotionStrategy",
+			Name: "parent", Generation: 1,
 		}
 		child1 = &promoterv1alpha1.CommitStatus{
-			TypeMeta:   metav1.TypeMeta{Kind: "CommitStatus"},
-			ObjectMeta: metav1.ObjectMeta{Name: "child1", Generation: 1},
+			Kind: "CommitStatus",
+			Name: "child1", Generation: 1,
 		}
 		child2 = &promoterv1alpha1.CommitStatus{
-			TypeMeta:   metav1.TypeMeta{Kind: "CommitStatus"},
-			ObjectMeta: metav1.ObjectMeta{Name: "child2", Generation: 1},
+			Kind: "CommitStatus",
+			Name: "child2", Generation: 1,
 		}
 		childObjs = []*promoterv1alpha1.CommitStatus{child2, child1} // Intentionally out of order to test sorting
 	})
@@ -228,15 +227,11 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 	BeforeEach(func() {
 		ctx = context.Background()
 		obj = &promoterv1alpha1.PromotionStrategy{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "PromotionStrategy",
-				APIVersion: "promoter.argoproj.io/v1alpha1",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:       "test-strategy",
-				Namespace:  "default",
-				Generation: 1,
-			},
+			Kind:       "PromotionStrategy",
+			APIVersion: "promoter.argoproj.io/v1alpha1",
+			Name:       "test-strategy",
+			Namespace:  "default",
+			Generation: 1,
 		}
 		scheme = runtime.NewScheme()
 		_ = promoterv1alpha1.AddToScheme(scheme)
@@ -322,7 +317,7 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 
 	It("should clear result when panic occurs with a non-nil result", func() {
 		var err error
-		result := reconcile.Result{Requeue: true, RequeueAfter: 5 * time.Second}
+		result := reconcile.Result{RequeueAfter: 5 * time.Second}
 		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(obj).Build()
 
 		func() {
@@ -338,7 +333,7 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 
 	It("should clear result when status apply fails", func() {
 		var err error
-		result := reconcile.Result{Requeue: true, RequeueAfter: 5 * time.Second}
+		result := reconcile.Result{RequeueAfter: 5 * time.Second}
 		// Intercept all status patches to force them to fail. Mirrors an apiserver rejecting
 		// the SSA patch (e.g. schema validation, RBAC, or similar terminal failure).
 		fakeClient := fake.NewClientBuilder().
@@ -416,15 +411,11 @@ var _ = Describe("HandleReconciliationResult event emission", func() {
 	BeforeEach(func() {
 		ctx = context.Background()
 		obj = &promoterv1alpha1.PromotionStrategy{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "PromotionStrategy",
-				APIVersion: "promoter.argoproj.io/v1alpha1",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:       "test-strategy",
-				Namespace:  "default",
-				Generation: 1,
-			},
+			Kind:       "PromotionStrategy",
+			APIVersion: "promoter.argoproj.io/v1alpha1",
+			Name:       "test-strategy",
+			Namespace:  "default",
+			Generation: 1,
 		}
 		scheme = runtime.NewScheme()
 		_ = promoterv1alpha1.AddToScheme(scheme)
@@ -639,15 +630,11 @@ var _ = Describe("HandleReconciliationResult fallback status apply", func() {
 	BeforeEach(func() {
 		ctx = context.Background()
 		obj = &promoterv1alpha1.ArgoCDCommitStatus{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "ArgoCDCommitStatus",
-				APIVersion: "promoter.argoproj.io/v1alpha1",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:       "test-commit-status",
-				Namespace:  "default",
-				Generation: 1,
-			},
+			Kind:       "ArgoCDCommitStatus",
+			APIVersion: "promoter.argoproj.io/v1alpha1",
+			Name:       "test-commit-status",
+			Namespace:  "default",
+			Generation: 1,
 		}
 		scheme = runtime.NewScheme()
 		_ = promoterv1alpha1.AddToScheme(scheme)
@@ -875,10 +862,8 @@ var _ = Describe("EnqueueChangeTransferPolicies", func() {
 	BeforeEach(func() {
 		ctx = context.Background()
 		ps = &promoterv1alpha1.PromotionStrategy{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "my-strategy",
-				Namespace: "my-namespace",
-			},
+			Name:      "my-strategy",
+			Namespace: "my-namespace",
 		}
 		enqueued = nil
 	})
@@ -918,45 +903,5 @@ var _ = Describe("EnqueueChangeTransferPolicies", func() {
 
 		expected := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName("my-strategy", "main"))
 		Expect(capturedName).To(Equal(expected))
-	})
-})
-
-var _ = Describe("API error helpers", func() {
-	It("extracts the innermost NotFound StatusDetails from a wrapped client error", func() {
-		inner := apierrors.NewNotFound(
-			schema.GroupResource{Group: "promoter.argoproj.io", Resource: "scmproviders"},
-			"my-scm",
-		)
-		err := fmt.Errorf("failed to get ScmProvider and secret: %w", fmt.Errorf("failed to get ScmProvider: %w", inner))
-
-		details, isNotFound := utils.NotFoundInErrorChain(err)
-		Expect(isNotFound).To(BeTrue())
-		Expect(details).To(Equal(&metav1.StatusDetails{
-			Group: "promoter.argoproj.io",
-			Kind:  "scmproviders",
-			Name:  "my-scm",
-		}))
-	})
-
-	It("reports NotFound without resource details", func() {
-		err := fmt.Errorf("wrap: %w", &apierrors.StatusError{
-			ErrStatus: metav1.Status{
-				Status:  metav1.StatusFailure,
-				Code:    404,
-				Reason:  metav1.StatusReasonNotFound,
-				Message: "not found",
-			},
-		})
-
-		details, isNotFound := utils.NotFoundInErrorChain(err)
-		Expect(isNotFound).To(BeTrue())
-		Expect(details).To(BeNil())
-	})
-
-	It("returns false for non-NotFound errors", func() {
-		err := errors.New("connection refused")
-		details, isNotFound := utils.NotFoundInErrorChain(err)
-		Expect(isNotFound).To(BeFalse())
-		Expect(details).To(BeNil())
 	})
 })

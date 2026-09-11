@@ -171,7 +171,7 @@ func (pr *PullRequest) Close(ctx context.Context, prObj v1alpha1.PullRequest) er
 }
 
 // Merge merges an existing pull request with the specified commit message.
-func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) error {
+func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) (scms.MergeResult, error) {
 	logger := log.FromContext(ctx)
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
@@ -179,7 +179,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) er
 		Name:      prObj.Spec.RepositoryReference.Name,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to get repo: %w", err)
+		return scms.MergeResult{}, fmt.Errorf("failed to get repo: %w", err)
 	}
 
 	options := &bitbucket.PullRequestsOptions{
@@ -190,21 +190,47 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) er
 	}
 
 	start := time.Now()
-	_, err = pr.client.Repositories.PullRequests.Merge(options)
+	result, err := pr.client.Repositories.PullRequests.Merge(options)
 	statusCode := parseErrorStatusCode(err, http.StatusOK)
 	metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, statusCode, time.Since(start), nil)
 
 	if err != nil {
 		if unexpectedErr, ok := errors.AsType[*bitbucket.UnexpectedResponseStatusError](err); ok {
-			return fmt.Errorf("failed to merge request: %w", unexpectedErr.ErrorWithBody())
+			return scms.MergeResult{}, fmt.Errorf("failed to merge request: %w", unexpectedErr.ErrorWithBody())
 		}
-		return fmt.Errorf("failed to merge request: %w", err)
+		return scms.MergeResult{}, fmt.Errorf("failed to merge request: %w", err)
 	}
 
 	logger.V(4).Info("bitbucket response status", "status", statusCode)
 	logger.V(4).Info("merged pull request", "id", prObj.Status.ID)
 
-	return nil
+	// The merge response echoes the pull request, including merge_commit. A missing or
+	// unresolvable hash is not fatal here: the controller falls back to a Get-by-ID lookup.
+	hash := mergeCommitHash(result)
+	if hash == "" {
+		return scms.MergeResult{}, nil
+	}
+	fullHash, err := pr.resolveCommitHash(ctx, repo, hash)
+	if err != nil {
+		logger.V(4).Info("could not resolve merge commit hash from merge response", "hash", hash, "error", err.Error())
+		return scms.MergeResult{}, nil
+	}
+	return scms.MergeResult{CommitSHA: fullHash}, nil
+}
+
+// mergeCommitHash extracts merge_commit.hash from a Bitbucket pull request payload. Bitbucket
+// returns the hash abbreviated, so callers must resolve it to a full SHA.
+func mergeCommitHash(payload any) string {
+	prMap, ok := payload.(map[string]any)
+	if !ok {
+		return ""
+	}
+	mergeCommit, ok := prMap["merge_commit"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	hash, _ := mergeCommit["hash"].(string)
+	return hash
 }
 
 // FindOpen checks if a pull request is open and returns its status.
@@ -298,6 +324,105 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 		ID:           strconv.Itoa(int(idFloat)),
 		CreationTime: createdAt,
 	}, nil
+}
+
+// Get fetches a pull request by status.id.
+func (pr *PullRequest) Get(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.GetPullRequestResult, error) {
+	logger := log.FromContext(ctx)
+	logger.V(4).Info("Getting pull request by ID")
+
+	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
+		Namespace: pullRequest.Namespace,
+		Name:      pullRequest.Spec.RepositoryReference.Name,
+	})
+	if err != nil {
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to get repo: %w", err)
+	}
+
+	options := &bitbucket.PullRequestsOptions{
+		Owner:    repo.Spec.BitbucketCloud.Owner,
+		RepoSlug: repo.Spec.BitbucketCloud.Name,
+		ID:       pullRequest.Status.ID,
+	}
+
+	start := time.Now()
+	result, err := pr.client.Repositories.PullRequests.Get(options)
+	statusCode := parseErrorStatusCode(err, http.StatusOK)
+	metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationGet, statusCode, time.Since(start), nil)
+
+	if err != nil {
+		if statusCode == http.StatusNotFound {
+			return scms.GetPullRequestResult{}, nil
+		}
+		if unexpectedErr, ok := errors.AsType[*bitbucket.UnexpectedResponseStatusError](err); ok {
+			return scms.GetPullRequestResult{}, fmt.Errorf("failed to get pull request: %w", unexpectedErr.ErrorWithBody())
+		}
+		return scms.GetPullRequestResult{}, fmt.Errorf("failed to get pull request: %w", err)
+	}
+
+	logger.V(4).Info("bitbucket response status", "status", statusCode)
+
+	prMap, ok := result.(map[string]any)
+	if !ok {
+		return scms.GetPullRequestResult{}, fmt.Errorf("unexpected response type from Bitbucket API: %T", result)
+	}
+
+	getResult := scms.GetPullRequestResult{Found: true}
+	state, _ := prMap["state"].(string)
+	switch state {
+	case "MERGED":
+		getResult.State = v1alpha1.PullRequestMerged
+		if hash := mergeCommitHash(prMap); hash != "" {
+			fullHash, err := pr.resolveCommitHash(ctx, repo, hash)
+			if err != nil {
+				return scms.GetPullRequestResult{}, fmt.Errorf("failed to resolve merge commit hash %q: %w", hash, err)
+			}
+			getResult.MergedTargetSHA = fullHash
+		}
+	case "DECLINED", "SUPERSEDED":
+		getResult.State = v1alpha1.PullRequestClosed
+	default:
+		getResult.State = v1alpha1.PullRequestOpen
+	}
+	return getResult, nil
+}
+
+func (pr *PullRequest) resolveCommitHash(ctx context.Context, repo *v1alpha1.GitRepository, hash string) (string, error) {
+	if isFullGitCommitHash(hash) {
+		return hash, nil
+	}
+
+	options := &bitbucket.CommitsOptions{
+		Owner:    repo.Spec.BitbucketCloud.Owner,
+		RepoSlug: repo.Spec.BitbucketCloud.Name,
+		Revision: hash,
+	}
+
+	start := time.Now()
+	result, err := pr.client.Repositories.Commits.GetCommit(options)
+	statusCode := parseErrorStatusCode(err, http.StatusOK)
+	metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationGet, statusCode, time.Since(start), nil)
+
+	if err != nil {
+		if statusCode == http.StatusNotFound {
+			return "", fmt.Errorf("commit %q not found", hash)
+		}
+		if unexpectedErr, ok := errors.AsType[*bitbucket.UnexpectedResponseStatusError](err); ok {
+			return "", fmt.Errorf("failed to get commit: %w", unexpectedErr.ErrorWithBody())
+		}
+		return "", fmt.Errorf("failed to get commit: %w", err)
+	}
+
+	commitMap, ok := result.(map[string]any)
+	if !ok {
+		return "", fmt.Errorf("unexpected response type from Bitbucket commit API: %T", result)
+	}
+
+	fullHash, _ := commitMap["hash"].(string)
+	if !isFullGitCommitHash(fullHash) {
+		return "", fmt.Errorf("commit lookup returned non-full hash %q", fullHash)
+	}
+	return fullHash, nil
 }
 
 // GetUrl retrieves the URL of the pull request.

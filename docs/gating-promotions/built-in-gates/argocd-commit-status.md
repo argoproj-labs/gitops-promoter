@@ -50,6 +50,8 @@ kind: PromotionStrategy
 metadata:
   name: argocon-demo
 spec:
+  proposedCommitStatuses:
+    - key: dependents-successful # required ordering gate; see DependentsSuccessfulCommitStatus
   activeCommitStatuses:
     - key: argocd-health  # same as ArgoCDCommitStatus.spec.key
   environments:

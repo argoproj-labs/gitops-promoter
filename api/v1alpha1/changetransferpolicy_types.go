@@ -107,6 +107,7 @@ type ChangeRequestPolicyCommitStatusPhase struct {
 // CommitBranchState defines the state of a branch in a ChangeTransferPolicy.
 type CommitBranchState struct {
 	// Dry is the dry state of the branch, which is the commit that is being proposed.
+	// +nullable
 	Dry CommitShaState `json:"dry,omitempty"`
 	// Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on.
 	Hydrated CommitShaState `json:"hydrated,omitempty"`
@@ -221,19 +222,34 @@ type ChangeTransferPolicyStatus struct {
 type History struct {
 	// Proposed is the state of the proposed branch at the time the PR was merged.
 	Proposed CommitBranchStateHistoryProposed `json:"proposed,omitempty"`
-	// Active is the state of the active branch at the time the PR was merged.
+	// Active is the state of the active branch at the time the PR was merged. Its dry state is read back from
+	// <activePath>/hydrator.metadata on the merge commit and its hydrated state from that commit itself, so both
+	// describe what actually merged regardless of merge style. Its commitStatuses, by contrast, come from the
+	// snapshot trailers and may be stale when mergeCommitSnapshotMismatch is true.
 	Active CommitBranchState `json:"active,omitempty"`
 	// PullRequest is the state of the pull request that was created for this ChangeTransferPolicy.
 	PullRequest *PullRequestCommonStatus `json:"pullRequest,omitempty"`
+	// MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with
+	// the promoter's last snapshot (typically an external merge after the proposed branch advanced). When true,
+	// the fields this entry rebuilds from the snapshot trailers — proposed.commitStatuses and
+	// active.commitStatuses, plus proposed.hydrated when the merge was a squash (a single-parent squash commit
+	// gives the controller nothing to reconstruct the hydrated sha from) — may describe the earlier proposed
+	// revision rather than what actually merged.
+	MergeCommitSnapshotMismatch bool `json:"mergeCommitSnapshotMismatch,omitempty"`
 }
 
 // CommitBranchStateHistoryProposed is identical to CommitBranchState minus the Dry state. In the context of History, the Dry state is not relevant as
 // the proposed dry side at merge becomes the Active.
 type CommitBranchStateHistoryProposed struct {
 	// Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on.
+	// Read from the snapshot trailers. On a regular merge it is corrected to the merge commit's second parent,
+	// but a squash commit has only one parent, so when the entry's mergeCommitSnapshotMismatch is true and the
+	// merge was a squash the stale snapshot value is kept.
 	Hydrated CommitShaState `json:"hydrated,omitempty"`
 	// CommitStatuses is a list of commit statuses that were being monitored for this branch.
-	// This contains the state frozen at the moment the PR was merged.
+	// This contains the state frozen at the moment the PR was merged. When the entry's
+	// mergeCommitSnapshotMismatch is true, these phases come from snapshot trailers describing the proposed
+	// revision the promoter last saw, which is not necessarily the revision that merged.
 	CommitStatuses []ChangeRequestPolicyCommitStatusPhase `json:"commitStatuses,omitempty"`
 }
 
@@ -242,7 +258,7 @@ type PullRequestCommonStatus struct {
 	// ID is the unique identifier of the pull request, set by the SCM.
 	ID string `json:"id,omitempty"`
 	// State is the state of the pull request.
-	// +kubebuilder:validation:Enum=closed;merged;open
+	// +kubebuilder:validation:Enum=closed;merged;open;merged-or-closed;unknown
 	State PullRequestState `json:"state,omitempty"`
 	// PRCreationTime is the time when the pull request was created.
 	PRCreationTime metav1.Time `json:"prCreationTime,omitempty"`
@@ -255,12 +271,23 @@ type PullRequestCommonStatus struct {
 	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"
 	// +kubebuilder:validation:Pattern="^(https?://.*)?$"
 	Url string `json:"url,omitempty"`
-	// ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the
-	// PullRequest still desired it open: merged or closed outside the controller, or closed on the SCM
-	// because the PullRequest resource was deleted (finalizer) before this status was reconciled.
-	// When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider.
-	// This status is preserved even after the PullRequest resource is deleted, maintaining a historical
-	// record until a new pull request is created for this environment.
+	// MergedTargetSha is the SHA that the target branch points at after the merge. It is a merge commit
+	// only when the SCM created one; squash and fast-forward merges report the resulting commit on the
+	// target branch instead. In the live pull request status it is mirrored from the PullRequest resource
+	// and is empty until the merge is observed; in a History entry it is the active-branch commit the
+	// entry describes.
+	// +optional
+	// +kubebuilder:validation:MinLength=40
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
+	MergedTargetSha string `json:"mergedTargetSha,omitempty"`
+	// ExternallyMergedOrClosed indicated that the pull request was no longer open on the SCM while
+	// promotion still desired it open. The PullRequest controller no longer sets this field.
+	//
+	// Deprecated: Use status.state merged-or-closed or unknown instead. Existing values may still
+	// appear when mirrored from older PullRequest status. This field may be removed in a future API
+	// revision.
+	// +optional
 	ExternallyMergedOrClosed *bool `json:"externallyMergedOrClosed,omitempty"`
 }
 

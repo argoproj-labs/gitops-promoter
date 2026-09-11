@@ -14,7 +14,7 @@ function mergeEnvManagers(
     status: { environments: [environment] },
   } as unknown as PromotionStrategy;
   const merged = mergeCommitStatusManagers(ps, managers);
-  return merged.status!.environments[0];
+  return merged.status!.environments![0];
 }
 
 const environmentWithReferenceCommit: Environment = {

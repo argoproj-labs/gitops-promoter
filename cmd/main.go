@@ -195,6 +195,7 @@ func runController(
 
 	mcMgr, err := mcmanager.New(restConfig, provider, ctrl.Options{
 		Scheme: scheme,
+		Client: promotercache.ClientOptions(),
 		Cache:  promotercache.OptionsForInstanceID(instanceID, controllerNamespace),
 		Metrics: metricsserver.Options{
 			BindAddress:    metricsAddr,
@@ -357,6 +358,15 @@ func runController(
 		setupLog.Error(err, "unable to create controller", "controller", "WebRequestCommitStatus")
 		panic(fmt.Errorf("unable to create WebRequestCommitStatus controller: %w", err))
 	}
+	if err := (&controller.DependentsSuccessfulCommitStatusReconciler{
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorder("DependentsSuccessfulCommitStatus"),
+		SettingsMgr: settingsMgr,
+	}).SetupWithManager(runCtx, localManager); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "DependentsSuccessfulCommitStatus")
+		panic(fmt.Errorf("unable to create DependentsSuccessfulCommitStatus controller: %w", err))
+	}
 	if err := (&controller.ScheduledCommitStatusReconciler{
 		Client:      localManager.GetClient(),
 		Scheme:      localManager.GetScheme(),
@@ -436,6 +446,7 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 			// Add manager for the dashboard
 			mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
 				Scheme: scheme,
+				Client: promotercache.ClientOptions(),
 				Metrics: metricsserver.Options{
 					BindAddress:    ":9082",
 					FilterProvider: metrics.ScrapeLogFilterProvider(),

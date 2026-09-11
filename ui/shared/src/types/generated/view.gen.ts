@@ -273,10 +273,10 @@ export type components = {
         };
         /** @description CommitBranchStateHistoryProposed is identical to CommitBranchState minus the Dry state. In the context of History, the Dry state is not relevant as the proposed dry side at merge becomes the Active. */
         CommitBranchStateHistoryProposed: {
-            /** @description CommitStatuses is a list of commit statuses that were being monitored for this branch. This contains the state frozen at the moment the PR was merged. */
+            /** @description CommitStatuses is a list of commit statuses that were being monitored for this branch. This contains the state frozen at the moment the PR was merged. When the entry's mergeCommitSnapshotMismatch is true, these phases come from snapshot trailers describing the proposed revision the promoter last saw, which is not necessarily the revision that merged. */
             commitStatuses?: components["schemas"]["ChangeRequestPolicyCommitStatusPhase"][];
             /**
-             * @description Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on.
+             * @description Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on. Read from the snapshot trailers. On a regular merge it is corrected to the merge commit's second parent, but a squash commit has only one parent, so when the entry's mergeCommitSnapshotMismatch is true and the merge was a squash the stale snapshot value is kept.
              * @default {}
              */
             hydrated?: components["schemas"]["CommitShaState"];
@@ -427,6 +427,111 @@ export type components = {
             duration: components["schemas"]["Duration"];
             /** @description Timezone overrides the spec-level default timezone for this specific window. If not set, the spec-level timezone (or UTC if that is also not set) is used. */
             timezone?: string;
+        };
+        /** @description DependentEnvironment declares one environment branch and the other branches it depends on. */
+        DependentEnvironment: {
+            /**
+             * @description Branch is the name of the active branch for the environment. It must match a branch declared in the referenced PromotionStrategy's environments. Must not start with '-', contain ':', or contain '..'.
+             * @default
+             */
+            branch: string;
+            /** @description DependsOn is the list of dependent environment branches this environment waits on. The environment is only eligible for promotion once every branch listed here is promoted and successful. An empty or omitted list makes this environment a root. Each item must not start with '-', contain ':', or contain '..'. */
+            dependsOn?: string[];
+        };
+        /** @description DependentsSuccessfulCommitStatus is the Schema for the dependentssuccessfulcommitstatuses API */
+        DependentsSuccessfulCommitStatus: {
+            /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
+            apiVersion?: string;
+            /** @description Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds */
+            kind?: string;
+            /**
+             * @description metadata is a standard object metadata
+             * @default {}
+             */
+            metadata?: components["schemas"]["ObjectMeta"];
+            /**
+             * @description spec defines the desired state of DependentsSuccessfulCommitStatus
+             * @default {}
+             */
+            spec: components["schemas"]["DependentsSuccessfulCommitStatusSpec"];
+            /**
+             * @description status defines the observed state of DependentsSuccessfulCommitStatus
+             * @default {}
+             */
+            status?: components["schemas"]["DependentsSuccessfulCommitStatusStatus"];
+        };
+        /** @description DependentsSuccessfulCommitStatusEnvironmentStatus defines observed state for one environment branch. */
+        DependentsSuccessfulCommitStatusEnvironmentStatus: {
+            /** @description ActiveCommitStatuses is a verbatim copy of the PromotionStrategy environment's active commit statuses. */
+            activeCommitStatuses?: components["schemas"]["ChangeRequestPolicyCommitStatusPhase"][];
+            /**
+             * @description Branch is the environment branch name.
+             * @default
+             */
+            branch: string;
+            /** @description Description mirrors child CommitStatus.spec.description. */
+            description?: string;
+            /** @description Phase mirrors child CommitStatus.spec.phase. */
+            phase?: string;
+            /** @description ReportedSha is the hydrated SHA the child CommitStatus is attached to (CommitStatus.spec.sha). Semantics depend on the parent gate (proposed vs active hydrated SHA). Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats. */
+            reportedSha?: string;
+            /** @description Upstreams lists all transitive ancestor branches and whether each is satisfied for this environment's promotion target. */
+            upstreams?: components["schemas"]["DependentsSuccessfulCommitStatusUpstreamStatus"][];
+            /** @description Url mirrors child CommitStatus.spec.url. */
+            url?: string;
+        };
+        /** @description DependentsSuccessfulCommitStatusSpec defines the desired state of DependentsSuccessfulCommitStatus. */
+        DependentsSuccessfulCommitStatusSpec: {
+            /**
+             * @description Environments declares which environments each branch depends on. An environment becomes eligible for promotion once all of its dependsOn dependents are promoted and successful. An entry with no dependsOn is a root. The graph must be acyclic; cycles and references to unknown branches are rejected.
+             *
+             *     When omitted or empty, the controller infers a linear chain from the referenced PromotionStrategy's spec.environments order: the first environment is a root, and each subsequent environment dependsOn the one before it.
+             */
+            environments?: components["schemas"]["DependentEnvironment"][];
+            /**
+             * @description Key is the commit status key referenced in the PromotionStrategy's proposedCommitStatuses. It must match a key declared there so the gate this controller produces is enforced. Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
+             * @default
+             */
+            key: string;
+            /**
+             * @description PromotionStrategyRef is a reference to the promotion strategy that this dependents successful commit status applies to. The controller watches this PromotionStrategy and, for each environment, reports whether the environment's dependent environments (as declared in Environments) are promoted and successful.
+             * @default {}
+             */
+            promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
+            /**
+             * @description URL generates the URL to use on the per-environment CommitStatus (SCM details link), for example a link into the Promoter UI that highlights this environment's dependsOn upstreams. Optional; when empty, no URL is set on the child CommitStatus. The template receives .Environment, .DependentsSuccessfulCommitStatus, .PromotionStrategy, .DependsOn, and .DependsOnQuery (see controller docs).
+             * @default {}
+             */
+            url?: components["schemas"]["URLConfig"];
+        };
+        /** @description DependentsSuccessfulCommitStatusStatus defines the observed state of DependentsSuccessfulCommitStatus. */
+        DependentsSuccessfulCommitStatusStatus: {
+            /** @description Conditions represent the latest available observations of an object's state */
+            conditions?: components["schemas"]["Condition"][];
+            /** @description Environments reports observed gate and upstream state per dependency-graph branch. */
+            environments?: components["schemas"]["DependentsSuccessfulCommitStatusEnvironmentStatus"][];
+            /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
+            instanceID?: string;
+            /**
+             * Format: int64
+             * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
+             */
+            observedGeneration?: number;
+        };
+        /** @description DependentsSuccessfulCommitStatusUpstreamStatus reports whether a transitive upstream branch is satisfied for this environment's promotion target. */
+        DependentsSuccessfulCommitStatusUpstreamStatus: {
+            /**
+             * @description Branch is the upstream environment branch name.
+             * @default
+             */
+            branch: string;
+            /** @description Reason explains why the upstream is not satisfied. Omitted when satisfied is true. */
+            reason?: string;
+            /**
+             * @description Satisfied is true when the upstream has promoted and is healthy for this environment's target dry SHA.
+             * @default false
+             */
+            satisfied: boolean;
         };
         /** @description Duration is a wrapper around time.Duration which supports correct marshaling to YAML and JSON. In particular, it marshals into strings, which can be used as map keys in json. */
         Duration: string;
@@ -901,10 +1006,12 @@ export type components = {
         /** @description History describes a particular change that was promoted by the ChangeTransferPolicy. */
         History: {
             /**
-             * @description Active is the state of the active branch at the time the PR was merged.
+             * @description Active is the state of the active branch at the time the PR was merged. Its dry state is read back from <activePath>/hydrator.metadata on the merge commit and its hydrated state from that commit itself, so both describe what actually merged regardless of merge style. Its commitStatuses, by contrast, come from the snapshot trailers and may be stale when mergeCommitSnapshotMismatch is true.
              * @default {}
              */
             active?: components["schemas"]["CommitBranchState"];
+            /** @description MergeCommitSnapshotMismatch indicates hydrator metadata on the SCM-reported merge commit disagreed with the promoter's last snapshot (typically an external merge after the proposed branch advanced). When true, the fields this entry rebuilds from the snapshot trailers — proposed.commitStatuses and active.commitStatuses, plus proposed.hydrated when the merge was a squash (a single-parent squash commit gives the controller nothing to reconstruct the hydrated sha from) — may describe the earlier proposed revision rather than what actually merged. */
+            mergeCommitSnapshotMismatch?: boolean;
             /**
              * @description Proposed is the state of the proposed branch at the time the PR was merged.
              * @default {}
@@ -1188,6 +1295,8 @@ export type components = {
             clusterScmProvider?: components["schemas"]["ClusterScmProvider"];
             /** @description CommitStatuses are the base CommitStatus resources associated with the PromotionStrategy (selected by the promoter.argoproj.io/promotion-strategy label). */
             commitStatuses?: components["schemas"]["CommitStatus"][];
+            /** @description DependentsSuccessfulCommitStatuses are the DependentsSuccessfulCommitStatus managers that reference the PromotionStrategy. */
+            dependentsSuccessfulCommitStatuses?: components["schemas"]["DependentsSuccessfulCommitStatus"][];
             /** @description GitCommitStatuses are the GitCommitStatus managers that reference the PromotionStrategy. */
             gitCommitStatuses?: components["schemas"]["GitCommitStatus"][];
             /** @description GitRepository is the GitRepository referenced by the PromotionStrategy, if resolvable. */
@@ -1253,7 +1362,7 @@ export type components = {
             /** @description Conditions Represents the observations of the current state. */
             conditions?: components["schemas"]["Condition"][];
             /** @description Environments holds the status of each environment in the promotion sequence. */
-            environments: components["schemas"]["EnvironmentStatus"][];
+            environments?: components["schemas"]["EnvironmentStatus"][];
             /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
             instanceID?: string;
             /**
@@ -1262,7 +1371,7 @@ export type components = {
              */
             observedGeneration?: number;
         };
-        /** @description PullRequest is the Schema for the pullrequests API */
+        /** @description PullRequest is the Schema for the pullrequests API Once recorded, the SHA can be neither replaced nor cleared: a resource merges at most once, so any later disagreement is provider inconsistency or a status write built from a stale informer read, and honoring it would strand the promotion history note already written against the original SHA. Such a write is rejected rather than merged, which surfaces as a failed status apply and a retry. */
         PullRequest: {
             /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
             apiVersion?: string;
@@ -1277,10 +1386,16 @@ export type components = {
         };
         /** @description PullRequestCommonStatus defines the common status fields for a pull request. */
         PullRequestCommonStatus: {
-            /** @description ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the PullRequest still desired it open: merged or closed outside the controller, or closed on the SCM because the PullRequest resource was deleted (finalizer) before this status was reconciled. When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider. This status is preserved even after the PullRequest resource is deleted, maintaining a historical record until a new pull request is created for this environment. */
+            /**
+             * @description ExternallyMergedOrClosed indicated that the pull request was no longer open on the SCM while promotion still desired it open. The PullRequest controller no longer sets this field.
+             *
+             *     Deprecated: Use status.state merged-or-closed or unknown instead. Existing values may still appear when mirrored from older PullRequest status. This field may be removed in a future API revision.
+             */
             externallyMergedOrClosed?: boolean;
             /** @description ID is the unique identifier of the pull request, set by the SCM. */
             id?: string;
+            /** @description MergedTargetSha is the SHA that the target branch points at after the merge. It is a merge commit only when the SCM created one; squash and fast-forward merges report the resulting commit on the target branch instead. In the live pull request status it is mirrored from the PullRequest resource and is empty until the merge is observed; in a History entry it is the active-branch commit the entry describes. */
+            mergedTargetSha?: string;
             /** @description PRCreationTime is the time when the pull request was created. */
             prCreationTime?: components["schemas"]["Time"];
             /** @description PRMergeTime is the time when the pull request was merged. This time can vary slightly from the actual merge time because it is the time when the ChangeTransferPolicy controller sets the pull requests spec to merge. In the future we plan on making this time more accurate by fetching the actual merge time from the SCM via the webhook this would then be updated in the git note for that commit. */
@@ -1343,12 +1458,18 @@ export type components = {
             appliedLabels?: string[];
             /** @description Conditions Represents the observations of the current state. */
             conditions?: components["schemas"]["Condition"][];
-            /** @description ExternallyMergedOrClosed indicates that the pull request is no longer open on the SCM while the resource still desired it open (spec.state is "open"): either it was merged or closed outside the controller, or it was closed on the SCM because the PullRequest resource was deleted (finalizer) and a subsequent sync observed it missing. The controller does not distinguish those cases here. When true, the State field will be empty ("") since we cannot tell merge vs. close from the provider. The PullRequest resource will be deleted after this flag is set when possible, but the status is preserved in the owning ChangeTransferPolicy to maintain a record. */
+            /**
+             * @description ExternallyMergedOrClosed indicated that the pull request was no longer open on the SCM while the resource still desired it open. The PullRequest controller no longer sets this field.
+             *
+             *     Deprecated: Use status.state merged-or-closed or unknown instead. Existing values are preserved when copied to ChangeTransferPolicy status. This field may be removed in a future API revision.
+             */
             externallyMergedOrClosed?: boolean;
             /** @description ID the id of the pull request */
             id?: string;
             /** @description InstanceID mirrors metadata.labels[promoter.argoproj.io/instance-id] stamped on each reconcile attempt by this install's controller, including when Ready=False; omitted when the resource has no instance-id label (default install). */
             instanceID?: string;
+            /** @description MergedTargetSha is the SHA that spec.targetBranch points at after the merge, as reported by the SCM. It is a merge commit only when the SCM created one; squash and fast-forward merges report the resulting commit on the target branch instead. Set once by the PullRequest controller, either from the merge response for providers that report the SHA there, or from a Get-by-ID lookup when FindOpen no longer finds the PR (external merges, and providers whose merge response omits the SHA). The value is write-once: a resource merges at most once, so the controller never replaces a non-empty value, even if a provider later reports a different SHA. */
+            mergedTargetSha?: string;
             /**
              * Format: int64
              * @description ObservedGeneration is the .metadata.generation that this status was reconciled from. Because status is written via Server-Side Apply with ForceOwnership (which has no optimistic-concurrency check), this field is the canonical way to detect stale status writes: compare status.observedGeneration with metadata.generation.
@@ -1728,23 +1849,9 @@ export type components = {
              */
             options?: string[];
             /**
-             * @description Template is a go text template and receives .Environment and .ArgoCDCommitStatus variables. A function called urlQueryEscape is available to escape url query parameters. The template can be configured with options to control the behavior during execution if a variable is not present.
+             * @description Template is a Go text template used to generate the CommitStatus URL. A function called urlQueryEscape is available to escape URL query parameters. The template can be configured with options (url.options) to control behavior when a variable is not present.
              *
-             *     Example:
-             *
-             *       {{- $baseURL := "https://dev.argocd.local" -}}
-             *       {{- if eq .Environment "environment/development" -}}
-             *       {{- $baseURL = "https://dev.argocd.local" -}}
-             *       {{- else if eq .Environment "environment/staging" -}}
-             *       {{- $baseURL = "https://staging.argocd.local" -}}
-             *       {{- else if eq .Environment "environment/production" -}}
-             *       {{- $baseURL = "https://prod.argocd.local" -}}
-             *       {{- end -}}
-             *       {{- $labels := "" -}}
-             *       {{- range $key, $value := .ArgoCDCommitStatus.Spec.ApplicationSelector.MatchLabels -}}
-             *       {{- $labels = printf "%s%s=%s," $labels $key $value -}}
-             *       {{- end -}}
-             *       {{ printf "%s/applications?labels=%s" $baseURL (urlQueryEscape $labels) }}
+             *     Available template variables depend on the parent resource that embeds URLConfig (ArgoCDCommitStatus or DependentsSuccessfulCommitStatus). See the corresponding gate documentation for the variable set and examples.
              */
             template?: string;
         };

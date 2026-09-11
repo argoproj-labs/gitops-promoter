@@ -23,7 +23,7 @@ the dashboard API in one apply; cert-manager issues and rotates the serving cert
 `caBundle` injected) automatically:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.36.0/install-with-dashboard-cert-manager.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.38.1/install-with-dashboard-cert-manager.yaml
 ```
 
 ///
@@ -35,7 +35,7 @@ supply the `promoter-apiserver-serving-cert` Secret and patch the `APIService` `
 (see [Dashboard Aggregation API](advanced-usage/dashboard-apiserver.md#serving-certs)):
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.36.0/install-with-dashboard-byo-cert.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.38.1/install-with-dashboard-byo-cert.yaml
 ```
 
 ///
@@ -46,7 +46,7 @@ Installs only the controller, without the dashboard aggregation API. Choose this
 need the web UI:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.36.0/install-without-ui.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.38.1/install-without-ui.yaml
 ```
 
 ///
@@ -488,7 +488,16 @@ spec:
 ## Promotion Strategy
 
 The PromotionStrategy resource is the main resource that you will use to configure the promotion of your application to different environments.
-Here is an example PromotionStrategy resource:
+
+Promotion ordering is **not** injected automatically. For the common linear
+dev → staging → production pipeline, create a
+[DependentsSuccessfulCommitStatus](gating-promotions/built-in-gates/dependents-successful-commit-status.md)
+and declare its `key` on the PromotionStrategy (globally or per environment — see
+[gating docs](gating-promotions/built-in-gates/dependents-successful-commit-status.md#wiring-the-gate-into-the-promotionstrategy)).
+Without a matching gate CR, the PromotionStrategy controller fails its reconcile so environments cannot promote out of
+order by accident. Upgrading from releases before 0.38? See [Upgrading](upgrading.md#038-promotion-ordering-gate).
+
+Here is a minimal example:
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
@@ -496,6 +505,8 @@ kind: PromotionStrategy
 metadata:
   name: demo
 spec:
+  proposedCommitStatuses:
+  - key: dependents-successful # must match DependentsSuccessfulCommitStatus.spec.key
   environments:
   - autoMerge: false
     branch: environment/development
@@ -505,6 +516,15 @@ spec:
     branch: environment/production
   gitRepositoryRef:
     name: <git-repository-ref-name> # The name of the GitRepository resource
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: DependentsSuccessfulCommitStatus
+metadata:
+  name: demo
+spec:
+  key: dependents-successful
+  promotionStrategyRef:
+    name: demo
 ```
 
 > [!IMPORTANT]
@@ -516,6 +536,11 @@ spec:
 > (Note the difference between the `syncSource` and the `hydrateTo` fields.)
 
 > [!TIP]
+> For non-linear promotion graphs, set `spec.environments` with explicit `dependsOn` edges on the
+> [DependentsSuccessfulCommitStatus](gating-promotions/built-in-gates/dependents-successful-commit-status.md#custom-dependency-graph).
+> Omit `spec.environments` to infer the linear default from the PromotionStrategy's environment order.
+
+> [!TIP]
 > For monorepos, you can share a single active branch across multiple PromotionStrategies by setting
 > `spec.activePath` (for example `apps/payments`). In that mode, proposed branches are created as
 > `<environment-branch>-next/<activePath>`, and the hydrator metadata is read from `<activePath>/hydrator.metadata`.
@@ -525,8 +550,8 @@ spec:
 > Notice that the branches are prefixed with `environment/`. This is a convention that we recommend you follow.
 
 > [!NOTE]
-> The `autoMerge` field is optional and defaults to `true`. We set it to `false` here because we do not have any
-> CommitStatus checks configured. With these all set to `false` we will have to manually merge the PRs.
+> The `autoMerge` field is optional and defaults to `true`. We set it to `false` here so you can
+> inspect and merge each promotion PR manually while getting started.
 
 ## Dashboard
 
@@ -549,7 +574,7 @@ issue and rotate the serving cert (and keep the `caBundle` injected) automatical
 apply with nothing else to do:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.36.0/install-with-dashboard-cert-manager.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.38.1/install-with-dashboard-cert-manager.yaml
 ```
 
 ///
@@ -560,7 +585,7 @@ This bundle has no cert-manager dependency. Apply it, then supply the
 `promoter-apiserver-serving-cert` Secret and patch the `APIService` `caBundle` yourself:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.36.0/install-with-dashboard-byo-cert.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.38.1/install-with-dashboard-byo-cert.yaml
 ```
 
 See the [Dashboard Aggregation API](advanced-usage/dashboard-apiserver.md#serving-certs) page for the

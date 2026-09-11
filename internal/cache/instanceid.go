@@ -22,12 +22,18 @@ var partitionedSecretObject client.Object = &corev1.Secret{}
 // set, only resources with promoter.argoproj.io/instance-id equal to *instanceID are cached.
 //
 // ControllerConfiguration is scoped to controllerNamespace only (not instance-id partitioned).
+// Secret informers additionally apply secretDataTransform so only promoter credential keys are
+// retained in cache (see secret_transform.go).
 func OptionsForInstanceID(instanceID *string, controllerNamespace string) cache.Options {
 	sel := instanceIDSelector(instanceID)
 	objs := PartitionedObjects()
 	byObject := make(map[client.Object]cache.ByObject, len(objs)+1)
 	for _, obj := range objs {
 		byObject[obj] = cache.ByObject{Label: sel}
+	}
+	byObject[partitionedSecretObject] = cache.ByObject{
+		Label:     sel,
+		Transform: secretDataTransform(),
 	}
 	byObject[PartitionedControllerConfigurationObject()] = cache.ByObject{
 		Namespaces: map[string]cache.Config{

@@ -38,6 +38,8 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 | Warning    | TooManyMatchingSha  | There is more than one CommitStatus for a given key and SHA. There must only be one CommitStatus per key/sha.    |
 | Warning    | MissingProposedHydratorMetadata | The proposed branch has hydration output but no dry SHA was found at `<activePath>/hydrator.metadata`. Check that the hydrator writes metadata under `activePath`. |
 | Warning    | PullRequestNotReady | One or more of the [PullRequest](../crd-specs.md#pullrequest) managed by this ChangeTransferPolicy is not Ready. |
+| Warning    | PromotionHistoryNoteFailed | Writing the promotion-history git note for a merged pull request failed. The PullRequest finalizer is kept so the write is retried. |
+| Warning    | PromotionHistoryNoteMergeCommitSnapshotMismatch | Hydrator metadata on the SCM-reported merge commit disagreed with the promotion-history snapshot (typically an external merge after the proposed branch advanced). Proposed SHAs were corrected from git; see [Promotion history git notes](../debugging/finalizers.md#promotion-history-git-notes). |
 
 ## PullRequest
 
@@ -90,6 +92,16 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 |------------|-----------------|---------------------------------------------------|
 | Normal     | CommitStatusSet | The CommitStatus was successfully set in the SCM. |
 
+## DependentsSuccessfulCommitStatus
+
+[DependentsSuccessfulCommitStatuses](../crd-specs.md#dependentssuccessfulcommitstatus) may produce the following events:
+
+| Event Type | Event Reason                | Description                                                                                                              |
+|------------|-----------------------------|--------------------------------------------------------------------------------------------------------------------------|
+| Normal/Warning | CommitStatusPhaseChanged  | The ordering gate phase changed for an environment. Warning when the new phase is `failure`.                             |
+| Warning    | CommitStatusesNotReady      | One or more of the [CommitStatus](../crd-specs.md#commitstatus) resources managed by this DependentsSuccessfulCommitStatus is not Ready. |
+| Normal     | OrphanedCommitStatusDeleted | An orphaned [CommitStatus](../crd-specs.md#commitstatus) was deleted after it no longer applied (e.g., branch removed). |
+
 ## PromotionStrategy
 
 [PromotionStrategies](../crd-specs.md#promotionstrategy) may produce the following events:
@@ -98,7 +110,10 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 |------------|-----------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
 | Normal     | OrphanedChangeTransferPolicyDeleted     | An orphaned [ChangeTransferPolicy](../crd-specs.md#changetransferpolicy) was deleted after environment changes (e.g., branch rename).     |
 | Warning    | ChangeTransferPolicyNotReady            | One or more of the [ChangeTransferPolicy](../crd-specs.md#changetransferpolicy) resources managed by this PromotionStrategy is not Ready. |
-| Warning    | PreviousEnvironmentCommitStatusNotReady | One or more of the active [CommitStatus](../crd-specs.md#commitstatus) resources for the previous environment is not Ready.               |
+
+Missing or undeclared promotion ordering (no [DependentsSuccessfulCommitStatus](../crd-specs.md#dependentssuccessfulcommitstatus),
+or a gate `key` not listed in the effective `proposedCommitStatuses` for an environment branch) surfaces as a
+`ReconciliationError` on the PromotionStrategy `Ready` condition rather than a dedicated event reason.
 
 ## GitRepository
 

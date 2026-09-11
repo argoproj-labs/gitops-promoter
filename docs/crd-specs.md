@@ -1,8 +1,10 @@
 ### PromotionStrategy
 
 The PromotionStrategy is the user's interface to controlling how changes are promoted through their environments. In 
-this CR, the user configures the list of live hydrated environment branches in their order of promotion. They'll also
-configure the checks which must pass between promotion steps.
+this CR, the user configures the list of live hydrated environment branches and the checks which must pass between
+promotion steps. Promotion ordering is not injected automatically: declare an ordering gate key in
+`proposedCommitStatuses` (globally and/or per environment) and create a matching
+[DependentsSuccessfulCommitStatus](#dependentssuccessfulcommitstatus).
 
 ```yaml
 {!internal/controller/testdata/PromotionStrategy.yaml!}
@@ -14,10 +16,15 @@ A ChangeTransferPolicy represents a pair hydrated environment branch pair: the p
 environment branch. When a new commit appears in the proposed branch, the ChangeTransferPolicy will open a PR against 
 the live branch. When all the configured checks pass, the ChangeTransferPolicy will merge the PR.
 
-A PromotionStrategy will create a ChangeTransferPolicy for each configured environment. For each environment besides the
-first one, the PromotionStrategy controller will inject a `proposedCommitStatus` to represent the active status of the
-previous environment. This is how the PromotionStrategy ensures that the environment PRs are merged in order, respecting
-the previous environments' active commit statuses.
+A PromotionStrategy will create a ChangeTransferPolicy for each configured environment and copy the declared
+`activeCommitStatuses` / `proposedCommitStatuses` onto that CTP. It does **not** inject an ordering gate.
+
+Promotion ordering is configured separately: create a
+[DependentsSuccessfulCommitStatus](#dependentssuccessfulcommitstatus) (omit `spec.environments` for linear promotion, or declare a
+graph explicitly), and declare its `key` in the PromotionStrategy's `proposedCommitStatuses` — globally, on specific
+environments, or both (using the same merge rules as other gates). Without an ordering gate, the PromotionStrategy
+controller fails its reconcile. See [Gating Promotions](gating-promotions/index.md) and
+[Upgrading](upgrading.md#038-promotion-ordering-gate) for details.
 
 The [Events](monitoring/events.md#changetransferpolicy) page documents the Kubernetes events produced by 
 ChangeTransferPolicies. PromotionStrategy and ChangeTransferPolicy controllers set standard labels on related resources; see [Labels](debugging/labels.md#promotion-and-change-transfer).
@@ -25,6 +32,8 @@ ChangeTransferPolicies. PromotionStrategy and ChangeTransferPolicy controllers s
 ```yaml
 {!internal/controller/testdata/ChangeTransferPolicy.yaml!}
 ```
+
+`status.history` lists recent promotions (newest first). Each entry includes active/proposed SHAs, pull request metadata, and commit statuses frozen at merge time. When `mergeCommitSnapshotMismatch` is `true` on an entry, hydrator metadata on the SCM-reported merge commit disagreed with the promoter's last snapshot (typically an external merge after the proposed branch advanced): proposed dry SHA was reconstructed from the merge commit (and proposed hydrated SHA too for regular merges); **recorded commit statuses may not reflect the revision that actually merged**. Squash merges get the squash commit SHA from SCM `Get` like other merges, but proposed hydrated SHA is usually not recoverable from git. See [Promotion history git notes](debugging/finalizers.md#promotion-history-git-notes) for causes and operator guidance.
 
 ### PullRequest
 
@@ -40,13 +49,29 @@ promotions. PullRequests carry promotion-strategy, change-transfer-policy, and e
 A CommitStatus is a thin wrapper for the SCM's commit status API. CommitStatuses are the primary source of truth for
 promotion gates. In the ideal case, the CommitStatus will write its state to the SCM's API so that the appropriate
 checkmarks/failures appear in the SCM's UI. But even if the SCM API calls fail, the ChangeTransferPolicy controller will
-use the contents of the CommitStatuses `spec` fields.
+use the contents of the CommitStatuses `spec` fields. Together, the active CommitStatuses for an environment express
+whether that environment is [successful](gating-promotions/index.md#environment-success).
 
 Controllers label CommitStatuses with three standard labels (gate `key`, environment branch, and parent gate). See [Labels](debugging/labels.md#commitstatus-gating) for label keys, derived parent-gate labels, and troubleshooting queries.
 
 ```yaml
 {!internal/controller/testdata/CommitStatus.yaml!}
 ```
+
+#### GateEnvironmentCommitStatus
+
+Shared embed for gate CR `status.environments[]` entries (not part of `CommitStatus` spec). Fields mirror the child
+`CommitStatus` report (last-known copy when the gate is not re-evaluating):
+
+| Field | Maps to `CommitStatus.spec` | Notes |
+|-------|----------------------------|-------|
+| `phase` | `phase` | `pending`, `success`, or `failure` |
+| `description` | `description` | Human-readable gate message |
+| `url` | `url` | SCM details link when configured |
+| `reportedSha` | `sha` | Hydrated SHA the child CommitStatus is attached to |
+
+DependentsSuccessfulCommitStatus is the first built-in gate to populate the full embed. See
+[Commit Status Controller Best Practices](contributing/developing-a-commitstatus.md#gate-statusenvironments-standard).
 
 ### GitRepository
 
@@ -73,6 +98,24 @@ auth mechanism. A ClusterScmProvider can be referenced by any GitRepository in t
 
 ```yaml
 {!internal/controller/testdata/ClusterScmProvider.yaml!}
+```
+
+### DependentsSuccessfulCommitStatus
+
+A DependentsSuccessfulCommitStatus gates promotions based on whether dependent environments are promoted and
+[successful](gating-promotions/index.md#environment-success). When `spec.environments` is omitted or empty, the
+controller infers a **linear** chain from the PromotionStrategy's `spec.environments` order (for example
+dev → staging → prod). When `spec.environments` is set, each environment declares `dependsOn` branches. Declare the
+same `spec.key` in the PromotionStrategy's effective `proposedCommitStatuses` for each gated environment (typically in
+global `proposedCommitStatuses`). See
+[Dependents Successful Commit Status](gating-promotions/built-in-gates/dependents-successful-commit-status.md).
+
+`status.environments[]` reports per-branch upstream satisfaction, active commit statuses, and child CommitStatus mirror
+fields (`phase`, `description`, `url`, `reportedSha`) when a child exists. See
+[`GateEnvironmentCommitStatus`](#gateenvironmentcommitstatus) and the gate doc for semantics.
+
+```yaml
+{!internal/controller/testdata/DependentsSuccessfulCommitStatus.yaml!}
 ```
 
 ### ArgoCDCommitStatus
@@ -164,6 +207,12 @@ The `ArgoCDCommitStatus` CRD may also have the following condition reasons:
 
 * `CommitStatusesNotReady`
 
+#### `DependentsSuccessfulCommitStatus`
+
+The `DependentsSuccessfulCommitStatus` CRD may also have the following condition reasons:
+
+* `CommitStatusesNotReady`
+
 #### `ChangeTransferPolicy`
 
 The `ChangeTransferPolicy` CRD may also have the following condition reasons:
@@ -174,8 +223,10 @@ The `ChangeTransferPolicy` CRD may also have the following condition reasons:
 
 The `PromotionStrategy` CRD may also have the following condition reasons:
 
-* `PreviousEnvironmentCommitStatusNotReady`
 * `ChangeTransferPolicyNotReady`
+
+Missing or undeclared promotion ordering (no `DependentsSuccessfulCommitStatus`, or a gate `key` not listed in the
+effective `proposedCommitStatuses` for an environment branch) surfaces as `ReconciliationError`.
 
 ## Finalizers
 

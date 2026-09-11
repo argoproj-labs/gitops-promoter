@@ -29,7 +29,7 @@ function mergeActive(
 ): EnrichedBranchCommitStatus[] {
   const ps = { status: { environments: [environment] } } as unknown as PromotionStrategy;
   const merged = mergeCommitStatusManagers(ps, managers);
-  return (merged.status!.environments[0].active.commitStatuses ??
+  return (merged.status!.environments![0].active.commitStatuses ??
     []) as EnrichedBranchCommitStatus[];
 }
 
@@ -213,7 +213,7 @@ describe('mergeCommitStatusManagers - branch-scoped manager matching', () => {
 
     const ps = { status: { environments: [environment] } } as unknown as PromotionStrategy;
     const merged = mergeCommitStatusManagers(ps, { timedCommitStatuses: [manager] });
-    const env = merged.status!.environments[0];
+    const env = merged.status!.environments![0];
 
     const enriched = [
       env.active.commitStatuses?.[0],

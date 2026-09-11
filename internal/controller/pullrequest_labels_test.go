@@ -154,12 +154,12 @@ var _ = Describe("PullRequest SCM labels", func() {
 		Eventually(func(g Gomega) {
 			g.Expect(k8sClient.Get(ctx, resourceName, pullRequest)).To(Succeed())
 			g.Expect(pullRequest.Status.AppliedLabels).To(ConsistOf("lgtm", "approved"))
-		}, constants.EventuallyTimeout).Should(Succeed())
 
-		provider := fake.NewFakePullRequestProvider(k8sClient)
-		applied, err := provider.GetAppliedLabels(ctx, *pullRequest)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(applied).To(ConsistOf("lgtm", "approved"))
+			provider := fake.NewFakePullRequestProvider(k8sClient)
+			applied, err := provider.GetAppliedLabels(ctx, *pullRequest)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(applied).To(ConsistOf("lgtm", "approved"))
+		}, constants.EventuallyTimeout).Should(Succeed())
 		Expect(fake.LabelCallCount()).To(BeNumerically(">", 0))
 	})
 
@@ -306,7 +306,9 @@ var _ = Describe("PromotionStrategy pullRequest propagation", func() {
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		declareDependentsSuccessfulGate(promotionStrategy)
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+		createDependentsSuccessfulCommitStatus(ctx, promotionStrategy)
 
 		Eventually(func(g Gomega) {
 			var ctpList promoterv1alpha1.ChangeTransferPolicyList
