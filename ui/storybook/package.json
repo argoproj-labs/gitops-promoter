@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "type-check": "tsc --noEmit"
   },
   "devDependencies": {
     "@storybook/react-vite": "^10.6.0",

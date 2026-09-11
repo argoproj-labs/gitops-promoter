@@ -5,7 +5,7 @@ import Card from '@lib/components/Card';
 import DetailDrawer from '@lib/components/HistoryView/DetailDrawer/DetailDrawer';
 import type { CellState, CommitRow, EnvColumn } from '@lib/components/HistoryView/types';
 import { DRAWER_DEFAULT_WIDTH } from '@lib/components/HistoryView/presentation';
-import type { Environment, EnrichedBranchCommitStatus } from '../../../types/promotion';
+import type { Environment, EnrichedBranchCommitStatus } from '@shared/types/promotion';
 import '@lib/components/HistoryView/index.scss';
 
 interface TimedCommitStatusArgs {
