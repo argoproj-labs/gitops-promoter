@@ -132,6 +132,26 @@ spec:
                         rule: '!self.contains('':'')'
                       - message: branch must not contain '..'
                         rule: '!self.contains(''..'')'
+                    dependsOn:
+                      description: |-
+                        DependsOn is the list of upstream environment branches this environment waits on before it becomes eligible
+                        for promotion. An empty or omitted list makes this environment a root when any environment declares dependsOn;
+                        when no environment declares dependsOn, a linear chain is inferred from spec.environments order.
+                        Each item must not start with '-', contain ':', or contain '..'.
+                      items:
+                        maxLength: 100
+                        minLength: 1
+                        type: string
+                        x-kubernetes-validations:
+                        - message: branch must not start with '-'
+                          rule: '!self.startsWith(''-'')'
+                        - message: branch must not contain ':'
+                          rule: '!self.contains('':'')'
+                        - message: branch must not contain '..'
+                          rule: '!self.contains(''..'')'
+                      maxItems: 100
+                      type: array
+                      x-kubernetes-list-type: set
                     proposedCommitStatuses:
                       description: |-
                         ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running
@@ -159,6 +179,9 @@ spec:
                   required:
                   - branch
                   type: object
+                  x-kubernetes-validations:
+                  - message: branch cannot depend on itself
+                    rule: '!has(self.dependsOn) || self.dependsOn.all(d, d != self.branch)'
                 maxItems: 1000
                 minItems: 1
                 type: array
@@ -178,6 +201,34 @@ spec:
                 required:
                 - name
                 type: object
+              orderCommitStatusRef:
+                description: |-
+                  OrderCommitStatusRef is a reference to the commit status gate that enforces promotion ordering across
+                  environments. The controller injects that gate's key onto every ChangeTransferPolicy's proposedCommitStatuses.
+                properties:
+                  group:
+                    default: promoter.argoproj.io
+                    description: Group is the API group of the referenced resource.
+                    enum:
+                    - promoter.argoproj.io
+                    type: string
+                  kind:
+                    default: DependentsSuccessfulCommitStatus
+                    description: Kind is the type of resource being referenced.
+                    enum:
+                    - DependentsSuccessfulCommitStatus
+                    type: string
+                  name:
+                    description: Name is the name of the resource being referenced.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
+                    type: string
+                required:
+                - group
+                - kind
+                - name
+                type: object
               proposedCommitStatuses:
                 description: |-
                   ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running
@@ -186,6 +237,9 @@ spec:
 
                   The commit statuses specified in this field apply to all environments in the promotion sequence. You can also
                   specify commit statuses for individual environments in the `environments` field.
+
+                  The ordering gate key from orderCommitStatusRef is injected onto each ChangeTransferPolicy automatically and
+                  does not need to be declared here.
                 items:
                   description: CommitStatusSelector is used to select commit statuses
                     by their key.
@@ -232,6 +286,7 @@ spec:
             required:
             - environments
             - gitRepositoryRef
+            - orderCommitStatusRef
             type: object
           status:
             description: PromotionStrategyStatus defines the observed state of PromotionStrategy

@@ -489,13 +489,11 @@ spec:
 
 The PromotionStrategy resource is the main resource that you will use to configure the promotion of your application to different environments.
 
-Promotion ordering is **not** injected automatically. For the common linear
-dev → staging → production pipeline, create a
-[DependentsSuccessfulCommitStatus](gating-promotions/built-in-gates/dependents-successful-commit-status.md)
-and declare its `key` on the PromotionStrategy (globally or per environment — see
-[gating docs](gating-promotions/built-in-gates/dependents-successful-commit-status.md#wiring-the-gate-into-the-promotionstrategy)).
-Without a matching gate CR, the PromotionStrategy controller fails its reconcile so environments cannot promote out of
-order by accident. Upgrading from releases before 0.38? See [Upgrading](upgrading.md#038-promotion-ordering-gate).
+Every PromotionStrategy requires `spec.orderCommitStatusRef`, naming a
+[DependentsSuccessfulCommitStatus](gating-promotions/built-in-gates/dependents-successful-commit-status.md).
+The controller injects that gate's `spec.key` onto every `ChangeTransferPolicy` so environments cannot promote out of
+order by accident. For the common linear dev → staging → production pipeline, omit `dependsOn` on every environment.
+Upgrading from 0.38? See [Upgrading](upgrading.md#039-promotion-order-on-promotionstrategy).
 
 Here is a minimal example:
 
@@ -505,8 +503,10 @@ kind: PromotionStrategy
 metadata:
   name: demo
 spec:
-  proposedCommitStatuses:
-  - key: dependents-successful # must match DependentsSuccessfulCommitStatus.spec.key
+  orderCommitStatusRef:
+    group: promoter.argoproj.io
+    kind: DependentsSuccessfulCommitStatus
+    name: demo
   environments:
   - autoMerge: false
     branch: environment/development
@@ -536,9 +536,9 @@ spec:
 > (Note the difference between the `syncSource` and the `hydrateTo` fields.)
 
 > [!TIP]
-> For non-linear promotion graphs, set `spec.environments` with explicit `dependsOn` edges on the
-> [DependentsSuccessfulCommitStatus](gating-promotions/built-in-gates/dependents-successful-commit-status.md#custom-dependency-graph).
-> Omit `spec.environments` to infer the linear default from the PromotionStrategy's environment order.
+> For non-linear promotion graphs, set `dependsOn` on `PromotionStrategy.spec.environments[]` (see
+> [Dependents Successful Commit Status](gating-promotions/built-in-gates/dependents-successful-commit-status.md#custom-dependency-graph)).
+> Omit `dependsOn` on every environment to infer the linear default from list order.
 
 > [!TIP]
 > For monorepos, you can share a single active branch across multiple PromotionStrategies by setting

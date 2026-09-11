@@ -22,7 +22,6 @@ import (
 	"path"
 	"reflect"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
@@ -122,6 +121,7 @@ type PromotionStrategyReconciler struct {
 	enqueueThreshold time.Duration
 }
 
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=dependentssuccessfulcommitstatuses,verbs=get
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies/finalizers,verbs=update
@@ -175,12 +175,10 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// Remove any existing Ready condition. We want to start fresh.
 	previousReady = utils.RemoveReadyCondition(&ps)
 
-	// Safety check: every DependentsSuccessfulCommitStatus that targets this PromotionStrategy must have its key
-	// declared in the PS's global proposedCommitStatuses. Otherwise the gate the DependentsSuccessfulCommitStatus
-	// produces is never consumed, and the user's intended ordering silently does not apply. We
-	// hard-fail the reconcile so the misconfiguration surfaces instead of being ignored.
-	// TODO: remove this safety check in 1.0.
-	if err = r.checkDependentsSuccessfulCommitStatusKeysDeclared(ctx, &ps); err != nil {
+	// Safety check: resolve the ordering gate referenced by orderCommitStatusRef and verify it
+	// points back at this PromotionStrategy.
+	orderGateKey, err := r.resolveOrderCommitStatusGate(ctx, &ps)
+	if err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -192,7 +190,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	ctps := make([]*promoterv1alpha1.ChangeTransferPolicy, len(ps.Spec.Environments))
 	for i, environment := range ps.Spec.Environments {
 		var ctp *promoterv1alpha1.ChangeTransferPolicy
-		ctp, err = r.upsertChangeTransferPolicy(ctx, &ps, environment)
+		ctp, err = r.upsertChangeTransferPolicy(ctx, &ps, environment, orderGateKey)
 		if err != nil {
 			logger.Error(err, "failed to upsert ChangeTransferPolicy")
 			return ctrl.Result{}, fmt.Errorf("failed to create ChangeTransferPolicy for branch %q: %w", environment.Branch, err)
@@ -264,80 +262,50 @@ func (r *PromotionStrategyReconciler) SetupWithManager(ctx context.Context, mgr 
 	return nil
 }
 
-// checkDependentsSuccessfulCommitStatusKeysDeclared verifies that this PromotionStrategy has valid promotion
-// ordering configured. It hard-fails the reconcile (surfacing the misconfiguration instead of
-// silently promoting environments out of order) in two cases:
-//
-//   - No DependentsSuccessfulCommitStatus targets the PromotionStrategy, so no ordering applies at all.
-//   - A DependentsSuccessfulCommitStatus targets the PromotionStrategy but its key is not declared in the
-//     proposed commit statuses that each environment's ChangeTransferPolicy would enforce (global
-//     proposedCommitStatuses plus per-environment proposedCommitStatuses), so the gate it produces is
-//     never consumed and the intended ordering silently does not apply.
-//
-// TODO: remove this safety check in 1.0.
-func (r *PromotionStrategyReconciler) checkDependentsSuccessfulCommitStatusKeysDeclared(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy) error {
-	var dcsList promoterv1alpha1.DependentsSuccessfulCommitStatusList
-	if err := r.List(ctx, &dcsList,
-		client.InNamespace(ps.Namespace),
-		client.MatchingFields{PromotionStrategyRefField: ps.Name}); err != nil {
-		return fmt.Errorf("failed to list DependentsSuccessfulCommitStatuses for PromotionStrategy %q: %w", ps.Name, err)
+// resolveOrderCommitStatusGate loads the DependentsSuccessfulCommitStatus referenced by the
+// PromotionStrategy's orderCommitStatusRef and returns its spec.key for injection onto CTPs.
+func (r *PromotionStrategyReconciler) resolveOrderCommitStatusGate(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy) (string, error) {
+	ref := ps.Spec.OrderCommitStatusRef
+	group := ref.Group
+	if group == "" {
+		group = promoterv1alpha1.SchemeGroupVersion.Group
+	}
+	kind := ref.Kind
+	if kind == "" {
+		kind = reflect.TypeFor[promoterv1alpha1.DependentsSuccessfulCommitStatus]().Name()
+	}
+	if group != promoterv1alpha1.SchemeGroupVersion.Group {
+		return "", fmt.Errorf("PromotionStrategy %q orderCommitStatusRef.group %q is not supported; use %q",
+			ps.Name, group, promoterv1alpha1.SchemeGroupVersion.Group)
+	}
+	if kind != reflect.TypeFor[promoterv1alpha1.DependentsSuccessfulCommitStatus]().Name() {
+		return "", fmt.Errorf("PromotionStrategy %q orderCommitStatusRef.kind %q is not supported; use DependentsSuccessfulCommitStatus",
+			ps.Name, kind)
+	}
+	if ref.Name == "" {
+		return "", fmt.Errorf("PromotionStrategy %q orderCommitStatusRef.name is required", ps.Name)
 	}
 
-	if len(dcsList.Items) < 1 {
-		return fmt.Errorf("PromotionStrategy %q has no DependentsSuccessfulCommitStatus; configure one so promotion ordering is enforced", ps.Name)
-	}
-
-	for i := range dcsList.Items {
-		key := dcsList.Items[i].Spec.Key
-		if missing := branchesMissingProposedCommitStatusKey(ps, key); len(missing) > 0 {
-			return fmt.Errorf("DependentsSuccessfulCommitStatus %q references PromotionStrategy %q with key %q, "+
-				"but that key is not declared in proposedCommitStatuses for environment branch(es) %s; "+
-				"declare it globally or on each environment so the gate is enforced",
-				dcsList.Items[i].Name, ps.Name, key, strings.Join(missing, ", "))
+	var dcs promoterv1alpha1.DependentsSuccessfulCommitStatus
+	if err := r.Get(ctx, client.ObjectKey{Namespace: ps.Namespace, Name: ref.Name}, &dcs); err != nil {
+		if k8serrors.IsNotFound(err) {
+			return "", fmt.Errorf("PromotionStrategy %q references DependentsSuccessfulCommitStatus %q via orderCommitStatusRef, but it was not found",
+				ps.Name, ref.Name)
 		}
+		return "", fmt.Errorf("failed to get DependentsSuccessfulCommitStatus %q for PromotionStrategy %q: %w", ref.Name, ps.Name, err)
 	}
-
-	return nil
+	if dcs.Spec.PromotionStrategyRef.Name != ps.Name {
+		return "", fmt.Errorf("PromotionStrategy %q orderCommitStatusRef.name %q points to DependentsSuccessfulCommitStatus whose promotionStrategyRef.name is %q",
+			ps.Name, ref.Name, dcs.Spec.PromotionStrategyRef.Name)
+	}
+	if dcs.Spec.Key == "" {
+		return "", fmt.Errorf("DependentsSuccessfulCommitStatus %q referenced by PromotionStrategy %q has an empty spec.key",
+			ref.Name, ps.Name)
+	}
+	return dcs.Spec.Key, nil
 }
 
-// branchesMissingProposedCommitStatusKey returns environment branches whose effective proposed
-// commit status selectors (global plus per-environment, matching upsertChangeTransferPolicy) do
-// not include key.
-func branchesMissingProposedCommitStatusKey(ps *promoterv1alpha1.PromotionStrategy, key string) []string {
-	if len(ps.Spec.Environments) == 0 {
-		if proposedCommitStatusKeyDeclared(ps, promoterv1alpha1.Environment{}, key) {
-			return nil
-		}
-		return []string{"(no environments configured)"}
-	}
-
-	missing := make([]string, 0)
-	for _, env := range ps.Spec.Environments {
-		if !proposedCommitStatusKeyDeclared(ps, env, key) {
-			missing = append(missing, env.Branch)
-		}
-	}
-	slices.Sort(missing)
-	return missing
-}
-
-// proposedCommitStatusKeyDeclared reports whether key appears in the proposed commit status
-// selectors upsertChangeTransferPolicy would apply for env (global selectors plus env-specific).
-func proposedCommitStatusKeyDeclared(ps *promoterv1alpha1.PromotionStrategy, env promoterv1alpha1.Environment, key string) bool {
-	for _, sel := range ps.Spec.ProposedCommitStatuses {
-		if sel.Key == key {
-			return true
-		}
-	}
-	for _, sel := range env.ProposedCommitStatuses {
-		if sel.Key == key {
-			return true
-		}
-	}
-	return false
-}
-
-func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, environment promoterv1alpha1.Environment) (*promoterv1alpha1.ChangeTransferPolicy, error) {
+func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, environment promoterv1alpha1.Environment, orderGateKey string) (*promoterv1alpha1.ChangeTransferPolicy, error) {
 	logger := log.FromContext(ctx)
 
 	ctpName := utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(ps.Name, environment.Branch))
@@ -362,6 +330,11 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 	}
 	for _, cs := range ps.Spec.ProposedCommitStatuses {
 		proposedCommitStatuses = append(proposedCommitStatuses, acv1alpha1.CommitStatusSelector().WithKey(cs.Key))
+	}
+	if orderGateKey != "" && !slices.ContainsFunc(proposedCommitStatuses, func(sel *acv1alpha1.CommitStatusSelectorApplyConfiguration) bool {
+		return sel.Key != nil && *sel.Key == orderGateKey
+	}) {
+		proposedCommitStatuses = append(proposedCommitStatuses, acv1alpha1.CommitStatusSelector().WithKey(orderGateKey))
 	}
 
 	activePath := ps.Spec.ActivePath

@@ -91,8 +91,11 @@ metadata:
 spec:
   gitRepositoryRef:
     name: webservice-tier-1
+  orderCommitStatusRef:
+    group: promoter.argoproj.io
+    kind: DependentsSuccessfulCommitStatus
+    name: webservice-tier-1
   proposedCommitStatuses:
-    - key: dependents-successful # required ordering gate; see DependentsSuccessfulCommitStatus
     - key: commit-format  # Must match GitCommitStatus.spec.key
   environments:
     - branch: environment/development
@@ -112,8 +115,10 @@ metadata:
 spec:
   gitRepositoryRef:
     name: webservice-tier-1
-  proposedCommitStatuses:
-    - key: dependents-successful # required ordering gate; see DependentsSuccessfulCommitStatus
+  orderCommitStatusRef:
+    group: promoter.argoproj.io
+    kind: DependentsSuccessfulCommitStatus
+    name: webservice-tier-1
   environments:
     - branch: environment/development
     - branch: environment/staging

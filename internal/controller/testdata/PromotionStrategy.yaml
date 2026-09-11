@@ -5,17 +5,23 @@ metadata:
 spec:
   gitRepositoryRef:
     name: example-git-repo
+  orderCommitStatusRef:
+    group: promoter.argoproj.io
+    kind: DependentsSuccessfulCommitStatus
+    name: example-dag
   activeCommitStatuses:
     - key: argocd-app-health
   proposedCommitStatuses:
-    # Ordering gate key; must match DependentsSuccessfulCommitStatus.spec.key
-    - key: dependents-successful
     - key: security-scan
   environments:
     - branch: environment/dev
     - branch: environment/test
+      dependsOn:
+        - environment/dev
     - branch: environment/prod
       autoMerge: false
+      dependsOn:
+        - environment/test
       activeCommitStatuses:
       - key: performance-test
       proposedCommitStatuses:

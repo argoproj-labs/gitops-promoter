@@ -44,6 +44,11 @@ type EnvironmentApplyConfiguration struct {
 	// ActivePath optionally overrides the strategy-level activePath for this environment.
 	// When set, this environment's CTP uses this path instead of spec.activePath.
 	ActivePath *string `json:"activePath,omitempty"`
+	// DependsOn is the list of upstream environment branches this environment waits on before it becomes eligible
+	// for promotion. An empty or omitted list makes this environment a root when any environment declares dependsOn;
+	// when no environment declares dependsOn, a linear chain is inferred from spec.environments order.
+	// Each item must not start with '-', contain ':', or contain '..'.
+	DependsOn []string `json:"dependsOn,omitempty"`
 }
 
 // EnvironmentApplyConfiguration constructs a declarative configuration of the Environment type for use with
@@ -99,5 +104,15 @@ func (b *EnvironmentApplyConfiguration) WithProposedCommitStatuses(values ...*Co
 // If called multiple times, the ActivePath field is set to the value of the last call.
 func (b *EnvironmentApplyConfiguration) WithActivePath(value string) *EnvironmentApplyConfiguration {
 	b.ActivePath = &value
+	return b
+}
+
+// WithDependsOn adds the given value to the DependsOn field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the DependsOn field.
+func (b *EnvironmentApplyConfiguration) WithDependsOn(values ...string) *EnvironmentApplyConfiguration {
+	for i := range values {
+		b.DependsOn = append(b.DependsOn, values[i])
+	}
 	return b
 }

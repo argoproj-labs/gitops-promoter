@@ -92,8 +92,10 @@ spec:
   gitRepositoryRef:
     name: platform-config
   activePath: apps/payments
-  proposedCommitStatuses:
-    - key: dependents-successful # required ordering gate; see DependentsSuccessfulCommitStatus
+  orderCommitStatusRef:
+    group: promoter.argoproj.io
+    kind: DependentsSuccessfulCommitStatus
+    name: payments
   activeCommitStatuses:
     - key: argocd-health-payments
   environments:

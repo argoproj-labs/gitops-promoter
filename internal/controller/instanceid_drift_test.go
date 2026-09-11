@@ -164,13 +164,13 @@ func setupInstanceIDDriftPromotionStrategy(ctx context.Context) (utils.PromoterR
 		Name: name, Namespace: "default",
 		Spec: promoterv1alpha1.PromotionStrategySpec{
 			RepositoryReference: promoterv1alpha1.ObjectReference{Name: name + "-repo"},
+			OrderCommitStatusRef: promoterv1alpha1.OrderCommitStatusRef{
+				Group: promoterv1alpha1.SchemeGroupVersion.Group,
+				Kind:  "DependentsSuccessfulCommitStatus",
+				Name:  name,
+			},
 			Environments: []promoterv1alpha1.Environment{
 				{Branch: testBranchDevelopment},
-			},
-			// Ordering gate must be declared so reconcile reaches ensureControllerInstanceIDStable
-			// instead of hard-failing earlier on a missing DependentsSuccessfulCommitStatus.
-			ProposedCommitStatuses: []promoterv1alpha1.CommitStatusSelector{
-				{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
 			},
 		},
 	}

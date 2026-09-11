@@ -12,17 +12,34 @@ The controller reads the referenced PromotionStrategy's environment status, eval
 relationships, and updates one CommitStatus per environment.
 
 > [!IMPORTANT]
-> The gate is not created or injected automatically. You must create a `DependentsSuccessfulCommitStatus` for each
-> PromotionStrategy you want to gate, and add its `key` to that PromotionStrategy's effective `proposedCommitStatuses`
-> (globally or per environment). See [Wiring the gate into the PromotionStrategy](#wiring-the-gate-into-the-promotionstrategy) below.
+> Create a `DependentsSuccessfulCommitStatus` for each PromotionStrategy you want to gate, and set required
+> `spec.orderCommitStatusRef` on that PromotionStrategy. The PromotionStrategy controller injects `spec.key` onto every
+> `ChangeTransferPolicy`; you do not declare the ordering key in `proposedCommitStatuses`. See
+> [Wiring the gate into the PromotionStrategy](#wiring-the-gate-into-the-promotionstrategy) below.
 
-## Linear default (no graph)
+## Linear default (no explicit graph)
 
-For a standard linear pipeline (dev → staging → prod), omit `spec.environments`. The controller infers a chain from the
-referenced PromotionStrategy's `spec.environments` order: the first environment is a root, and each subsequent
-environment `dependsOn` the one before it.
+For a standard linear pipeline (dev → staging → prod), omit `dependsOn` on every environment. The controller infers a
+chain from the referenced PromotionStrategy's `spec.environments` order: the first environment is a root, and each
+subsequent environment `dependsOn` the one before it.
 
 ```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PromotionStrategy
+metadata:
+  name: demo
+spec:
+  gitRepositoryRef:
+    name: demo
+  orderCommitStatusRef:
+    group: promoter.argoproj.io
+    kind: DependentsSuccessfulCommitStatus
+    name: demo
+  environments:
+    - branch: environment/dev
+    - branch: environment/staging
+    - branch: environment/prod
+---
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: DependentsSuccessfulCommitStatus
 metadata:
@@ -35,16 +52,20 @@ spec:
 
 ## Custom dependency graph
 
-A diamond graph — `dev` fans out to `e2e` and `perf`, which fan back in to `prod`:
+A diamond graph — `dev` fans out to `e2e` and `perf`, which fan back in to `prod`. Set `dependsOn` on the
+PromotionStrategy environments:
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
-kind: DependentsSuccessfulCommitStatus
+kind: PromotionStrategy
 metadata:
   name: demo-dag
 spec:
-  key: dependents-successful
-  promotionStrategyRef:
+  gitRepositoryRef:
+    name: demo
+  orderCommitStatusRef:
+    group: promoter.argoproj.io
+    kind: DependentsSuccessfulCommitStatus
     name: demo-dag
   environments:
     - branch: environment/dev
@@ -58,21 +79,28 @@ spec:
       dependsOn:
         - environment/e2e
         - environment/perf
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: DependentsSuccessfulCommitStatus
+metadata:
+  name: demo-dag
+spec:
+  key: dependents-successful
+  promotionStrategyRef:
+    name: demo-dag
 ```
 
-### `spec.environments`
+### `PromotionStrategy.spec.environments[].dependsOn`
 
-Declares which environments each branch depends on. **Optional** — when omitted or empty, the controller infers a
-linear chain from the PromotionStrategy's `spec.environments` order. When set, each entry names an environment `branch`
-and the upstream `dependsOn` branches it waits on. An entry with no `dependsOn` is a root (for example `dev` below).
-The set of `branch` values must exactly match the referenced PromotionStrategy's `environments`. The graph must be
-acyclic; cycles and references to unknown branches are rejected.
+Declares which upstream branches an environment waits on. **Optional** — when no environment declares `dependsOn`, the
+controller infers a linear chain from list order. When any environment declares `dependsOn`, omitted `dependsOn` on
+other entries means that environment is a root. The graph must be acyclic; cycles and references to unknown branches
+are rejected.
 
 ### `spec.key`
 
-`spec.key` is the gate name your PromotionStrategy checks in `proposedCommitStatuses`. It is required and must match a
-key declared in that PromotionStrategy's `proposedCommitStatuses`, so the gate this controller produces is actually
-enforced. A common value is `dependents-successful`.
+`spec.key` is the gate name the PromotionStrategy controller injects onto every `ChangeTransferPolicy`'s
+`proposedCommitStatuses`. A common value is `dependents-successful`.
 
 ### Commit Status URL Template
 
@@ -90,7 +118,8 @@ supported, plus [`urlQueryEscape`](https://pkg.go.dev/net/url#QueryEscape) for q
 - `.Environment` — the environment branch name the URL is being rendered for
 - `.DependentsSuccessfulCommitStatus` — the whole [DependentsSuccessfulCommitStatus](../../crd-specs.md#dependentssuccessfulcommitstatus) CR
 - `.PromotionStrategy` — the referenced [PromotionStrategy](../../crd-specs.md#promotionstrategy)
-- `.DependsOn` — the current environment's immediate upstream branches (one edge away), from `spec.environments[].dependsOn`
+- `.DependsOn` — the current environment's immediate upstream branches (one edge away), from
+  `PromotionStrategy.spec.environments[].dependsOn` (or the inferred linear chain)
 - `.DependsOnQuery` — `.DependsOn` encoded as repeated `env=` query parameters for Promoter UI deep links (for example
   `env=environment%2Fe2e&env=environment%2Fperf`). Empty for roots with no `dependsOn`. Append after `?` in the
   template; do not add a leading `?` yourself inside this field.
@@ -128,13 +157,19 @@ spec:
   key: dependents-successful
   promotionStrategyRef:
     name: demo-dag
+  url:
+    template: "https://promoter.example.com/promotion-strategies/{{ .PromotionStrategy.Name }}?env={{ urlQueryEscape .Environment }}"
+```
+
+With matching `dependsOn` on the PromotionStrategy:
+
+```yaml
+spec:
   environments:
     - branch: environment/dev
     - branch: environment/staging
       dependsOn:
         - environment/dev
-  url:
-    template: "https://promoter.example.com/promotion-strategies/{{ .PromotionStrategy.Name }}?env={{ urlQueryEscape .Environment }}"
 ```
 
 Highlight this environment's immediate `dependsOn` upstreams (useful for SCM "View details" deep links). Use
@@ -163,9 +198,9 @@ url:
 
 ## Wiring the gate into the PromotionStrategy
 
-The DependentsSuccessfulCommitStatus only *produces* the gate; the PromotionStrategy must *consume* it. Add the same
-`key` to the PromotionStrategy's `proposedCommitStatuses` so every environment gates on it. Declaring the key globally
-is the usual pattern; you may also add it per environment when only some branches should enforce ordering.
+The DependentsSuccessfulCommitStatus produces the gate; the PromotionStrategy consumes it through required
+`orderCommitStatusRef`. The PromotionStrategy controller injects `spec.key` onto every `ChangeTransferPolicy`'s
+`proposedCommitStatuses` — do not declare the ordering key yourself.
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
@@ -173,23 +208,30 @@ kind: PromotionStrategy
 metadata:
   name: demo-dag
 spec:
-  proposedCommitStatuses:
-    - key: dependents-successful  # same as DependentsSuccessfulCommitStatus.spec.key
+  gitRepositoryRef:
+    name: dag-example-apps
+  orderCommitStatusRef:
+    group: promoter.argoproj.io
+    kind: DependentsSuccessfulCommitStatus
+    name: demo-dag
   environments:
     - branch: environment/dev
     - branch: environment/e2e
+      dependsOn:
+        - environment/dev
     - branch: environment/perf
+      dependsOn:
+        - environment/dev
     - branch: environment/prod
-  gitRepositoryRef:
-    name: dag-example-apps
+      dependsOn:
+        - environment/e2e
+        - environment/perf
 ```
 
 > [!IMPORTANT]
-> As a safety check, the PromotionStrategy controller fails its reconcile when no
-> `DependentsSuccessfulCommitStatus` targets the PromotionStrategy, or when a gate references the PromotionStrategy but
-> its `key` is missing from the effective `proposedCommitStatuses` for one or more environment branches (global plus
-> per-environment selectors, matching what each `ChangeTransferPolicy` enforces). This safety check is intended to be
-> removed in v1.0; see [Roadmap](../../roadmap.md).
+> The PromotionStrategy controller fails its reconcile when `orderCommitStatusRef` points at a missing
+> `DependentsSuccessfulCommitStatus`, when the referenced kind/group is unsupported, or when
+> `promotionStrategyRef.name` on the DSCS does not match the owning PromotionStrategy.
 
 ## Status (`status.environments`)
 
@@ -210,8 +252,8 @@ copies the last child `CommitStatus` onto `status.environments[]` when one exist
 omit those fields but still report `activeCommitStatuses` and `upstreams`.
 
 `upstreams[].satisfied` is `true` when that ancestor has promoted and is healthy for this environment's target dry SHA
-(same evaluation as the gate). The gate's own pass/fail checks **direct** `spec.environments[].dependsOn` only; each
-direct upstream's `satisfied` value was computed with full no-op recursion.
+(same evaluation as the gate). The gate's own pass/fail checks **direct** `PromotionStrategy.spec.environments[].dependsOn`
+only; each direct upstream's `satisfied` value was computed with full no-op recursion.
 
 ### Consumer workflow when pending
 

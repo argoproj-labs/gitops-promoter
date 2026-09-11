@@ -87,65 +87,78 @@ Embedding the ordering information, while potentially a bit easier for the end u
 PromotionStrategy API to handle multiple concerns: defining environments, setting prerequisite keys, and describing the
 ordering strategy.
 
-So we extracted ordering logic from PromotionStrategy into a dedicated gate CR:
-`DependentsSuccessfulCommitStatus`. The user defines two cross-referencing resources:
+So we split promotion ordering across two resources: the **graph** lives on `PromotionStrategy`
+environments (`dependsOn`), while **evaluation** stays on `DependentsSuccessfulCommitStatus`. The
+PromotionStrategy controller injects the gate's `spec.key` onto every `ChangeTransferPolicy` via
+required `orderCommitStatusRef`:
 
 ```yaml
 kind: PromotionStrategy
 metadata:
   name: my-ps
 spec:
+  gitRepositoryRef:
+    name: my-repo
+  orderCommitStatusRef:
+    group: promoter.argoproj.io
+    kind: DependentsSuccessfulCommitStatus
+    name: my-dscs
   activeCommitStatuses:
     - key: argocd-health
-  proposedCommitStatuses:
-    - key: dependents-successful
-  # This list configures which environments exist, not how they are ordered for promotion.
   environments:
     - branch: environment/dev
     - branch: environment/e2e
+      dependsOn:
+        - environment/dev
     - branch: environment/prf
+      dependsOn:
+        - environment/dev
     - branch: environment/prd
+      dependsOn:
+        - environment/e2e
+        - environment/prf
 ---
 kind: DependentsSuccessfulCommitStatus
+metadata:
+  name: my-dscs
 spec:
   key: dependents-successful
   promotionStrategyRef:
     name: my-ps
-  # This list configures how environments are ordered for promotion.
-  environments:
-    - branch: environment/dev
-    - branch: environment/e2e
-      dependsOn: [environment/dev]
-    - branch: environment/prf
-      dependsOn: [environment/dev]
-    - branch: environment/prd
-      dependsOn: [environment/dev, environment/prf]
 ```
 
-For a standard linear pipeline (dev → test → prod), omit `spec.environments` on the
-`DependentsSuccessfulCommitStatus`. The controller infers a chain from the PromotionStrategy's `spec.environments`
-order:
+For a standard linear pipeline (dev → test → prod), omit `dependsOn` on every environment. The
+`DependentsSuccessfulCommitStatus` controller infers a chain from `spec.environments` order:
 
 ```yaml
 kind: PromotionStrategy
 metadata:
   name: my-ps
 spec:
+  gitRepositoryRef:
+    name: my-repo
+  orderCommitStatusRef:
+    group: promoter.argoproj.io
+    kind: DependentsSuccessfulCommitStatus
+    name: my-dscs
   activeCommitStatuses:
     - key: argocd-health
-  proposedCommitStatuses:
-    - key: dependents-successful
   environments:
     - branch: environment/dev
     - branch: environment/test
     - branch: environment/prod
 ---
 kind: DependentsSuccessfulCommitStatus
+metadata:
+  name: my-dscs
 spec:
   key: dependents-successful
   promotionStrategyRef:
     name: my-ps
 ```
+
+Release **0.38** briefly stored custom graphs on `DependentsSuccessfulCommitStatus.spec.environments`; that field is
+removed in favor of `dependsOn` on the PromotionStrategy. See [Upgrading](upgrading.md#039-promotion-order-on-promotionstrategy).
 
 Both setups are admittedly a bit more complicated to define than the unified PromotionStrategy. But the behavior of
 each piece is easier to understand and much easier to implement and maintain. See
@@ -159,8 +172,8 @@ mitigate the difficult UX in a few ways:
 
 1. Provide excellent examples in docs: most setups start with copy/paste
 2. Provide clear error messages: when there's a predictable misconfiguration, provide a message describing exactly how
-   to fix the problem (for example, when a `DependentsSuccessfulCommitStatus` exists but its key is not declared on the
-   PromotionStrategy)
+   to fix the problem (for example, when `orderCommitStatusRef` points at a missing
+   `DependentsSuccessfulCommitStatus`, or when `promotionStrategyRef` does not name the owning strategy)
 
 ## Future Improvements
 

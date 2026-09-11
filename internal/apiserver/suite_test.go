@@ -21,6 +21,8 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
 // TestAPIServer runs the dashboard aggregation apiserver unit specs with the
@@ -30,4 +32,12 @@ func TestAPIServer(t *testing.T) {
 	t.Parallel()
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Dashboard APIServer Suite")
+}
+
+func testOrderCommitStatusRef(name string) promoterv1alpha1.OrderCommitStatusRef {
+	return promoterv1alpha1.OrderCommitStatusRef{
+		Group: promoterv1alpha1.SchemeGroupVersion.Group,
+		Kind:  "DependentsSuccessfulCommitStatus",
+		Name:  name,
+	}
 }

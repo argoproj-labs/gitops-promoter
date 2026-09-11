@@ -14,10 +14,10 @@ Estimated static CEL costs versus kube-apiserver limits, computed from `k8s.io/a
 | ClusterScmProvider | v1alpha1 | 21 | 0.00% |
 | CommitStatus | v1alpha1 | 3 | 0.00% |
 | ControllerConfiguration | v1alpha1 | 320 | 0.00% |
-| DependentsSuccessfulCommitStatus | v1alpha1 | 19,683,456 | 19.68% |
+| DependentsSuccessfulCommitStatus | v1alpha1 | 6,291,456 | 6.29% |
 | GitCommitStatus | v1alpha1 | 0 | 0.00% |
 | GitRepository | v1alpha1 | 14 | 0.00% |
-| PromotionStrategy | v1alpha1 | 72,438,744 | 72.44% |
+| PromotionStrategy | v1alpha1 | 85,743,744 | 85.74% |
 | PullRequest | v1alpha1 | 394 | 0.00% |
 | RevertCommit | v1alpha1 | 0 | 0.00% |
 | ScheduledCommitStatus | v1alpha1 | 106,003 | 0.11% |
@@ -147,16 +147,9 @@ Source: `promoter.argoproj.io_dependentssuccessfulcommitstatuses.yaml`
 
 | Path | Cost | % of rule limit | Expression |
 |---|---:|---:|---|
-| `.spec.environments[]` | 4,605,000 | 46.05% | `!has(self.dependsOn) \|\| self.dependsOn.all(d, d != self.branch)` |
-| `.spec.environments[].dependsOn[]` | 4,200,000 | 42.00% | `!self.contains(':')` |
-| `.spec.environments[].dependsOn[]` | 4,200,000 | 42.00% | `!self.contains('..')` |
 | `.status.environments[].activeCommitStatuses[].url` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
 | `.status.environments[].url` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
-| `.spec.environments[].dependsOn[]` | 300,000 | 3.00% | `!self.startsWith('-')` |
-| `.spec.environments[].branch` | 42,000 | 0.42% | `!self.contains(':')` |
-| `.spec.environments[].branch` | 42,000 | 0.42% | `!self.contains('..')` |
-| `.spec.environments[].branch` | 3,000 | 0.03% | `!self.startsWith('-')` |
-| **Total** | **19,683,456** | **19.68%** | |
+| **Total** | **6,291,456** | **6.29%** | |
 
 #### GitCommitStatus
 
@@ -185,6 +178,9 @@ Source: `promoter.argoproj.io_promotionstrategies.yaml`
 
 | Path | Cost | % of rule limit | Expression |
 |---|---:|---:|---|
+| `.spec.environments[]` | 4,605,000 | 46.05% | `!has(self.dependsOn) \|\| self.dependsOn.all(d, d != self.branch)` |
+| `.spec.environments[].dependsOn[]` | 4,200,000 | 42.00% | `!self.contains(':')` |
+| `.spec.environments[].dependsOn[]` | 4,200,000 | 42.00% | `!self.contains('..')` |
 | `.status.environments[].active.commitStatuses[].url` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
 | `.status.environments[].active.dry.references[].commit.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
 | `.status.environments[].active.dry.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
@@ -208,10 +204,11 @@ Source: `promoter.argoproj.io_promotionstrategies.yaml`
 | `.status.environments[].proposed.hydrated.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
 | `.status.environments[].proposed.note.references[].commit.repoURL` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
 | `.status.environments[].pullRequest.url` | 3,145,728 | 31.46% | `self == '' \|\| isURL(self)` |
+| `.spec.environments[].dependsOn[]` | 300,000 | 3.00% | `!self.startsWith('-')` |
 | `.spec.environments[].branch` | 42,000 | 0.42% | `!self.contains(':')` |
 | `.spec.environments[].branch` | 42,000 | 0.42% | `!self.contains('..')` |
 | `.spec.environments[].branch` | 3,000 | 0.03% | `!self.startsWith('-')` |
-| **Total** | **72,438,744** | **72.44%** | |
+| **Total** | **85,743,744** | **85.74%** | |
 
 #### PullRequest
 

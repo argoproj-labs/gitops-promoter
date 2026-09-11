@@ -110,7 +110,8 @@ var _ = Describe("Gate commit-status managers stay in sync with the view aggrega
 		objs = append(objs, &promoterv1alpha1.PromotionStrategy{
 			Name: testPSName, Namespace: testNamespace, UID: testPSUID,
 			Spec: promoterv1alpha1.PromotionStrategySpec{
-				Environments: []promoterv1alpha1.Environment{{Branch: "environment/dev"}},
+				OrderCommitStatusRef: testOrderCommitStatusRef(testPSName),
+				Environments:         []promoterv1alpha1.Environment{{Branch: "environment/dev"}},
 			},
 		})
 		for _, gate := range gates {

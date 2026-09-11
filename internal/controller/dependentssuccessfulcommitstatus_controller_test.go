@@ -41,6 +41,20 @@ import (
 //go:embed testdata/DependentsSuccessfulCommitStatus.yaml
 var testDependentsSuccessfulCommitStatusYAML string
 
+// psEnvsWithLinearDependsOn returns a copy of environments wired as an explicit linear chain.
+func psEnvsWithLinearDependsOn(environments []promoterv1alpha1.Environment) []promoterv1alpha1.Environment {
+	out := make([]promoterv1alpha1.Environment, len(environments))
+	copy(out, environments)
+	for i := range out {
+		if i == 0 {
+			out[i].DependsOn = nil
+		} else {
+			out[i].DependsOn = []string{out[i-1].Branch}
+		}
+	}
+	return out
+}
+
 // dagEnvs builds a DependentEnvironment slice from alternating (branch, dependsOn) pairs so tests can
 // declare a graph compactly. dependsOn is a comma-joined string, empty for a graph root.
 func dagEnvs(pairs ...string) []promoterv1alpha1.DependentEnvironment {
@@ -117,9 +131,6 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "non-existent"},
 					Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
-					Environments: []promoterv1alpha1.DependentEnvironment{
-						{Branch: testBranchDevelopment},
-					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, dependentsSuccessfulCommitStatus)).To(Succeed())
@@ -158,9 +169,7 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 			By("Setting up test git repository and PromotionStrategy")
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "dependents-successful-commit-status-controller-test", "default")
 
-			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-				{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
-			}
+			promotionStrategy.Spec.ProposedCommitStatuses = nil
 			setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
@@ -189,20 +198,23 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 		})
 
 		It("should mirror gate fields on status.environments from child CommitStatuses", func() {
+			By("Wiring explicit dependsOn on the PromotionStrategy")
+			Eventually(func(g Gomega) {
+				ps := &promoterv1alpha1.PromotionStrategy{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(promotionStrategy), ps)).To(Succeed())
+				ps.Spec.Environments = psEnvsWithLinearDependsOn(ps.Spec.Environments)
+				g.Expect(k8sClient.Update(ctx, ps)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
 			By("Creating a DependentsSuccessfulCommitStatus with a URL template")
 			dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-dag-status",
+					Name:      name,
 					Namespace: "default",
 				},
 				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
-					Environments: []promoterv1alpha1.DependentEnvironment{
-						{Branch: testBranchDevelopment},
-						{Branch: testBranchStaging, DependsOn: []string{testBranchDevelopment}},
-						{Branch: testBranchProduction, DependsOn: []string{testBranchStaging}},
-					},
 					URL: promoterv1alpha1.URLConfig{
 						Template: "https://example.com/ui?env={{ .Environment }}",
 					},
@@ -253,20 +265,23 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 		})
 
 		It("should render url.template onto per-environment CommitStatuses", func() {
+			By("Wiring explicit dependsOn on the PromotionStrategy")
+			Eventually(func(g Gomega) {
+				ps := &promoterv1alpha1.PromotionStrategy{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(promotionStrategy), ps)).To(Succeed())
+				ps.Spec.Environments = psEnvsWithLinearDependsOn(ps.Spec.Environments)
+				g.Expect(k8sClient.Update(ctx, ps)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
 			By("Creating a DependentsSuccessfulCommitStatus with a URL template that includes the environment")
 			dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-dag-url",
+					Name:      name,
 					Namespace: "default",
 				},
 				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
-					Environments: []promoterv1alpha1.DependentEnvironment{
-						{Branch: testBranchDevelopment},
-						{Branch: testBranchStaging, DependsOn: []string{testBranchDevelopment}},
-						{Branch: testBranchProduction, DependsOn: []string{testBranchStaging}},
-					},
 					URL: promoterv1alpha1.URLConfig{
 						Template: "https://example.com/ui?env={{ .Environment }}",
 					},
@@ -301,10 +316,10 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 		})
 
 		It("should infer a linear dependency chain when spec.environments is empty", func() {
-			By("Creating a DependentsSuccessfulCommitStatus with no spec.environments")
+			By("Creating a DependentsSuccessfulCommitStatus with no PromotionStrategy dependsOn")
 			dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-linear-default",
+					Name:      name,
 					Namespace: "default",
 				},
 				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
@@ -373,52 +388,60 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
-		It("should set Ready=False when declared branches do not match the PromotionStrategy", func() {
-			By("Creating a DependentsSuccessfulCommitStatus that declares a branch not on the PromotionStrategy")
+		It("should set Ready=False when dependsOn references an unknown branch", func() {
+			By("Updating the PromotionStrategy so staging depends on an unknown branch")
+			Eventually(func(g Gomega) {
+				ps := &promoterv1alpha1.PromotionStrategy{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(promotionStrategy), ps)).To(Succeed())
+				ps.Spec.Environments = psEnvsWithLinearDependsOn(ps.Spec.Environments)
+				ps.Spec.Environments[1].DependsOn = []string{"environment/ghost"}
+				g.Expect(k8sClient.Update(ctx, ps)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Creating a DependentsSuccessfulCommitStatus for the PromotionStrategy")
 			dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-dag-mismatch",
+					Name:      name,
 					Namespace: "default",
 				},
 				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
-					Environments: []promoterv1alpha1.DependentEnvironment{
-						{Branch: testBranchDevelopment},
-						{Branch: testBranchStaging, DependsOn: []string{testBranchDevelopment}},
-						{Branch: "environment/ghost", DependsOn: []string{testBranchStaging}},
-					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, dependentsSuccessfulCommitStatus)).To(Succeed())
 
-			By("Waiting for Ready=False from environment validation")
+			By("Waiting for Ready=False from graph validation")
 			Eventually(func(g Gomega) {
 				updated := &promoterv1alpha1.DependentsSuccessfulCommitStatus{}
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dependentsSuccessfulCommitStatus), updated)).To(Succeed())
 				readyCondition := meta.FindStatusCondition(updated.Status.Conditions, string(promoterConditions.Ready))
 				g.Expect(readyCondition).ToNot(BeNil())
 				g.Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
-				g.Expect(readyCondition.Message).To(ContainSubstring(`declares branch "environment/ghost"`))
+				g.Expect(readyCondition.Message).To(ContainSubstring(`depends on unknown branch "environment/ghost"`))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
 		It("should set Ready=False when the dependency graph contains a cycle", func() {
-			By("Creating a DependentsSuccessfulCommitStatus whose environments form a dependency cycle")
+			By("Updating the PromotionStrategy so staging and production form a cycle")
+			Eventually(func(g Gomega) {
+				ps := &promoterv1alpha1.PromotionStrategy{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(promotionStrategy), ps)).To(Succeed())
+				ps.Spec.Environments = psEnvsWithLinearDependsOn(ps.Spec.Environments)
+				ps.Spec.Environments[1].DependsOn = []string{testBranchProduction}
+				ps.Spec.Environments[2].DependsOn = []string{testBranchStaging}
+				g.Expect(k8sClient.Update(ctx, ps)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Creating a DependentsSuccessfulCommitStatus for the PromotionStrategy")
 			dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-dag-cycle",
+					Name:      name,
 					Namespace: "default",
 				},
 				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
-					// Branches still match the PromotionStrategy, but staging⇄production cycle.
-					Environments: []promoterv1alpha1.DependentEnvironment{
-						{Branch: testBranchDevelopment},
-						{Branch: testBranchStaging, DependsOn: []string{testBranchProduction}},
-						{Branch: testBranchProduction, DependsOn: []string{testBranchStaging}},
-					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, dependentsSuccessfulCommitStatus)).To(Succeed())
@@ -434,20 +457,23 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 		})
 
 		It("should cleanup orphaned CommitStatus resources when environments are removed", func() {
+			By("Wiring explicit dependsOn on the PromotionStrategy")
+			Eventually(func(g Gomega) {
+				ps := &promoterv1alpha1.PromotionStrategy{}
+				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(promotionStrategy), ps)).To(Succeed())
+				ps.Spec.Environments = psEnvsWithLinearDependsOn(ps.Spec.Environments)
+				g.Expect(k8sClient.Update(ctx, ps)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
 			By("Creating a DependentsSuccessfulCommitStatus tracking all three environments")
 			dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-dag-cleanup",
+					Name:      name,
 					Namespace: "default",
 				},
 				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
 					Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
-					Environments: []promoterv1alpha1.DependentEnvironment{
-						{Branch: testBranchDevelopment},
-						{Branch: testBranchStaging, DependsOn: []string{testBranchDevelopment}},
-						{Branch: testBranchProduction, DependsOn: []string{testBranchStaging}},
-					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, dependentsSuccessfulCommitStatus)).To(Succeed())
@@ -484,25 +510,15 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 				}
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Shrinking PromotionStrategy and DependentsSuccessfulCommitStatus to development + staging together")
-			// DAG requires an exact environment match with the PromotionStrategy, so both must be
-			// updated together; otherwise reconcile fails before orphan cleanup runs.
+			By("Shrinking PromotionStrategy to development + staging")
 			Eventually(func(g Gomega) {
 				ps := &promoterv1alpha1.PromotionStrategy{}
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(promotionStrategy), ps)).To(Succeed())
 				ps.Spec.Environments = []promoterv1alpha1.Environment{
 					{Branch: testBranchDevelopment},
-					{Branch: testBranchStaging},
-				}
-				g.Expect(k8sClient.Update(ctx, ps)).To(Succeed())
-
-				dcs := &promoterv1alpha1.DependentsSuccessfulCommitStatus{}
-				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(dependentsSuccessfulCommitStatus), dcs)).To(Succeed())
-				dcs.Spec.Environments = []promoterv1alpha1.DependentEnvironment{
-					{Branch: testBranchDevelopment},
 					{Branch: testBranchStaging, DependsOn: []string{testBranchDevelopment}},
 				}
-				g.Expect(k8sClient.Update(ctx, dcs)).To(Succeed())
+				g.Expect(k8sClient.Update(ctx, ps)).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying development and staging CommitStatuses still exist")
@@ -547,7 +563,7 @@ var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
 			By("Creating a DependentsSuccessfulCommitStatus for the PromotionStrategy")
 			dependentsSuccessfulCommitStatus = &promoterv1alpha1.DependentsSuccessfulCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-legacy-cleanup",
+					Name:      name,
 					Namespace: "default",
 				},
 				Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
@@ -595,33 +611,27 @@ var _ = Describe("DAG URL template helpers", func() {
 })
 
 var _ = Describe("resolveDependentEnvironments", func() {
-	It("returns spec.environments when set", func() {
-		explicit := []promoterv1alpha1.DependentEnvironment{
-			{Branch: "dev"},
-			{Branch: "prd", DependsOn: []string{"dev"}},
-		}
-		dcs := &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-			Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{Environments: explicit},
-		}
+	It("uses explicit dependsOn from the PromotionStrategy when any environment declares it", func() {
 		ps := &promoterv1alpha1.PromotionStrategy{
+			ObjectMeta: metav1.ObjectMeta{Name: "demo-ps"},
 			Spec: promoterv1alpha1.PromotionStrategySpec{
 				Environments: []promoterv1alpha1.Environment{
 					{Branch: "dev"},
 					{Branch: "stg"},
-					{Branch: "prd"},
+					{Branch: "prd", DependsOn: []string{"dev"}},
 				},
 			},
 		}
-		envs, err := resolveDependentEnvironments(dcs, ps)
+		envs, err := resolveDependentEnvironments(ps)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(envs).To(Equal(explicit))
+		Expect(envs).To(Equal([]promoterv1alpha1.DependentEnvironment{
+			{Branch: "dev"},
+			{Branch: "stg"},
+			{Branch: "prd", DependsOn: []string{"dev"}},
+		}))
 	})
 
-	It("infers a linear chain when spec.environments is empty", func() {
-		dcs := &promoterv1alpha1.DependentsSuccessfulCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{Name: "demo"},
-			Spec:       promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{},
-		}
+	It("infers a linear chain when no environment declares dependsOn", func() {
 		ps := &promoterv1alpha1.PromotionStrategy{
 			ObjectMeta: metav1.ObjectMeta{Name: "demo-ps"},
 			Spec: promoterv1alpha1.PromotionStrategySpec{
@@ -632,7 +642,7 @@ var _ = Describe("resolveDependentEnvironments", func() {
 				},
 			},
 		}
-		envs, err := resolveDependentEnvironments(dcs, ps)
+		envs, err := resolveDependentEnvironments(ps)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(envs).To(Equal([]promoterv1alpha1.DependentEnvironment{
 			{Branch: "dev"},
@@ -641,11 +651,10 @@ var _ = Describe("resolveDependentEnvironments", func() {
 		}))
 	})
 
-	It("errors when both spec.environments and PromotionStrategy environments are empty", func() {
-		dcs := &promoterv1alpha1.DependentsSuccessfulCommitStatus{ObjectMeta: metav1.ObjectMeta{Name: "demo"}}
+	It("errors when PromotionStrategy environments are empty", func() {
 		ps := &promoterv1alpha1.PromotionStrategy{ObjectMeta: metav1.ObjectMeta{Name: "demo-ps"}}
-		_, err := resolveDependentEnvironments(dcs, ps)
-		Expect(err).To(MatchError(ContainSubstring("no environments to infer")))
+		_, err := resolveDependentEnvironments(ps)
+		Expect(err).To(MatchError(ContainSubstring("no environments to build a dependency graph")))
 	})
 })
 
@@ -728,36 +737,6 @@ var _ = Describe("DAG graph logic", func() {
 			}, "")
 			Expect(pending).To(BeTrue())
 			Expect(reason).To(Equal(`Waiting for previous environment's "health" commit status to be successful`))
-		})
-	})
-
-	Describe("validateEnvironmentsMatchPS", func() {
-		psWithBranches := func(name string, branches ...string) *promoterv1alpha1.PromotionStrategy {
-			ps := &promoterv1alpha1.PromotionStrategy{ObjectMeta: metav1.ObjectMeta{Name: name}}
-			for _, branch := range branches {
-				ps.Spec.Environments = append(ps.Spec.Environments, promoterv1alpha1.Environment{Branch: branch})
-			}
-			return ps
-		}
-
-		It("accepts when DAG branches exactly match the PromotionStrategy", func() {
-			g, err := buildDAG(dagEnvs("dev", "", "stg", "dev", "prd", "stg"))
-			Expect(err).NotTo(HaveOccurred())
-			Expect(g.validateEnvironmentsMatchPS("demo-dag", psWithBranches("demo-ps", "dev", "stg", "prd"))).To(Succeed())
-		})
-
-		It("rejects a DAG branch that is not in the PromotionStrategy", func() {
-			g, err := buildDAG(dagEnvs("dev", "", "ghost", "dev"))
-			Expect(err).NotTo(HaveOccurred())
-			Expect(g.validateEnvironmentsMatchPS("demo-dag", psWithBranches("demo-ps", "dev"))).To(MatchError(ContainSubstring(
-				`declares branch "ghost", but PromotionStrategy "demo-ps" has no such environment`)))
-		})
-
-		It("rejects when the DAG is missing PromotionStrategy environment branches", func() {
-			g, err := buildDAG(dagEnvs("dev", ""))
-			Expect(err).NotTo(HaveOccurred())
-			Expect(g.validateEnvironmentsMatchPS("demo-dag", psWithBranches("demo-ps", "dev", "prd", "stg"))).To(MatchError(ContainSubstring(
-				`missing PromotionStrategy "demo-ps" environment branches: prd, stg`)))
 		})
 	})
 

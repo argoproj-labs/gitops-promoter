@@ -8,13 +8,16 @@ metadata:
 spec:
   gitRepositoryRef:
     name: promoter-testing
+  orderCommitStatusRef:
+    group: promoter.argoproj.io
+    kind: DependentsSuccessfulCommitStatus
+    name: dependentssuccessfulcommitstatus-sample
   activeCommitStatuses:
     - key: healthy
     - key: healthy-load
     - key: argocd-health  # ArgoCDCommitStatus.spec.key
     - key: timer          # TimedCommitStatus.spec.key
   proposedCommitStatuses:
-    - key: dependents-successful # DependentsSuccessfulCommitStatus.spec.key
     - key: revert-check          # GitCommitStatus (active target)
     - key: commit-format-check   # GitCommitStatus (proposed target)
 #    - key: healthy-lint

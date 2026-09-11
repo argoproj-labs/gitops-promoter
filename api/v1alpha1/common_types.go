@@ -83,6 +83,26 @@ type ObjectReference struct {
 	Name string `json:"name"`
 }
 
+// OrderCommitStatusRef is a reference to a commit status gate CR that enforces promotion ordering.
+type OrderCommitStatusRef struct {
+	// Group is the API group of the referenced resource.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:default:=promoter.argoproj.io
+	// +kubebuilder:validation:Enum:=promoter.argoproj.io
+	Group string `json:"group"`
+	// Kind is the type of resource being referenced.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:default:=DependentsSuccessfulCommitStatus
+	// +kubebuilder:validation:Enum:=DependentsSuccessfulCommitStatus
+	Kind string `json:"kind"`
+	// Name is the name of the resource being referenced.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$`
+	Name string `json:"name"`
+}
+
 // GitHubRepo is a repository in GitHub, identified by its owner and name.
 type GitHubRepo struct {
 	// These validation rules are based on unofficial documentation and may need to be relaxed in the future.
