@@ -50,6 +50,8 @@ linters:
       check-alias: true
     goconst:
       ignore-tests: true
+      ignore-string-values:
+        - '^(true|false)$' # annotation and trailer boolean flags
     gocritic:
       disabled-checks:
         - assignOp

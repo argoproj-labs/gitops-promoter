@@ -35,7 +35,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
@@ -464,7 +463,7 @@ func enqueueArgoCDCommitStatusForPromotionStrategy(mcMgr mcmanager.Manager) mcha
 		reqs := make([]mcreconcile.Request, 0, len(list.Items))
 		for i := range list.Items {
 			reqs = append(reqs, mcreconcile.Request{
-				Request: reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])},
+				NamespacedName: client.ObjectKeyFromObject(&list.Items[i]),
 			})
 		}
 		return reqs
@@ -501,10 +500,8 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchand
 						"argocdcommitstatus", argoCDCommitStatus.Namespace+"/"+argoCDCommitStatus.Name)
 
 					return []mcreconcile.Request{{
-						Request: reconcile.Request{
-							NamespacedName: client.ObjectKeyFromObject(&argoCDCommitStatus),
-						},
-						ClusterName: clusterName,
+						NamespacedName: client.ObjectKeyFromObject(&argoCDCommitStatus),
+						ClusterName:    clusterName,
 					}}
 				}
 			}

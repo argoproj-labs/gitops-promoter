@@ -14,8 +14,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 )
@@ -113,10 +111,8 @@ var _ = Describe("GetBranchSha", func() {
 						Name: "testprovider",
 					},
 				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "testrepo",
-					Namespace: "default",
-				},
+				Name:      "testrepo",
+				Namespace: "default",
 			}
 			gap := &fakeGitProvider{tempDirPath: tempRepoDir}
 			g := git.NewEnvironmentOperations(repo, gap, "default/testrepo")
@@ -186,10 +182,8 @@ var _ = Describe("GetBranchSha skip-fetch behavior", func() {
 					Name: "testprovider",
 				},
 			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "testrepo",
-				Namespace: "default",
-			},
+			Name:      "testrepo",
+			Namespace: "default",
 		}
 		gap = &fakeGitProvider{tempDirPath: tempRepoDir}
 		g = git.NewEnvironmentOperations(repo, gap, "default/skip-fetch-test")
@@ -319,10 +313,8 @@ var _ = Describe("LsRemote", func() {
 						Name: "testprovider",
 					},
 				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "testrepo",
-					Namespace: "default",
-				},
+				Name:      "testrepo",
+				Namespace: "default",
 			}
 			gap := &fakeGitProvider{tempDirPath: tempRepoDir}
 
@@ -369,10 +361,8 @@ var _ = Describe("LsRemote", func() {
 						Name: "testprovider",
 					},
 				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "testrepo",
-					Namespace: "default",
-				},
+				Name:      "testrepo",
+				Namespace: "default",
 			}
 			gap := &fakeGitProvider{tempDirPath: tempRepoDir}
 
@@ -450,10 +440,8 @@ var _ = Describe("HasConflict", func() {
 					Name: "testprovider",
 				},
 			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "testrepo",
-				Namespace: "default",
-			},
+			Name:      "testrepo",
+			Namespace: "default",
 		}
 	})
 
@@ -627,7 +615,7 @@ var _ = Describe("ActivePath support", func() {
 					Name: "testprovider",
 				},
 			},
-			ObjectMeta: metav1.ObjectMeta{Name: "testrepo", Namespace: "default"},
+			Name: "testrepo", Namespace: "default",
 		}
 	})
 
@@ -1232,7 +1220,7 @@ var _ = Describe("FindMatchingHydratorNote", func() {
 		}
 
 		repo = &v1alpha1.GitRepository{
-			ObjectMeta: metav1.ObjectMeta{Name: "testrepo", Namespace: "default"},
+			Name: "testrepo", Namespace: "default",
 			Spec: v1alpha1.GitRepositorySpec{
 				GitHub:         &v1alpha1.GitHubRepo{Owner: "test-owner", Name: "testrepo"},
 				ScmProviderRef: v1alpha1.ScmProviderObjectReference{Kind: "ScmProvider", Name: "testprovider"},

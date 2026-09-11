@@ -47,10 +47,8 @@ var _ = Describe("CommitStatus Controller", func() {
 
 		It("should reject a CommitStatus with an empty sha", func() {
 			invalidCommitStatus := &promoterv1alpha1.CommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "invalid-commit-status",
-					Namespace: "default",
-				},
+				Name:      "invalid-commit-status",
+				Namespace: "default",
 				Spec: promoterv1alpha1.CommitStatusSpec{
 					Phase: promoterv1alpha1.CommitPhasePending,
 					RepositoryReference: promoterv1alpha1.ObjectReference{
@@ -68,10 +66,8 @@ var _ = Describe("CommitStatus Controller", func() {
 
 		It("should reject a CommitStatus with a sha that is too long", func() {
 			invalidCommitStatus := &promoterv1alpha1.CommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "invalid-commit-status-long",
-					Namespace: "default",
-				},
+				Name:      "invalid-commit-status-long",
+				Namespace: "default",
 				Spec: promoterv1alpha1.CommitStatusSpec{
 					Phase: promoterv1alpha1.CommitPhasePending,
 					RepositoryReference: promoterv1alpha1.ObjectReference{
@@ -89,10 +85,8 @@ var _ = Describe("CommitStatus Controller", func() {
 
 		It("should reject a CommitStatus with a sha that contains invalid characters", func() {
 			invalidCommitStatus := &promoterv1alpha1.CommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "invalid-commit-status-chars",
-					Namespace: "default",
-				},
+				Name:      "invalid-commit-status-chars",
+				Namespace: "default",
 				Spec: promoterv1alpha1.CommitStatusSpec{
 					Phase: promoterv1alpha1.CommitPhasePending,
 					RepositoryReference: promoterv1alpha1.ObjectReference{
@@ -110,10 +104,8 @@ var _ = Describe("CommitStatus Controller", func() {
 
 		It("should accept a CommitStatus with a valid sha", func() {
 			validCommitStatus := &promoterv1alpha1.CommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "valid-commit-status",
-					Namespace: "default",
-				},
+				Name:      "valid-commit-status",
+				Namespace: "default",
 				Spec: promoterv1alpha1.CommitStatusSpec{
 					Phase: promoterv1alpha1.CommitPhasePending,
 					RepositoryReference: promoterv1alpha1.ObjectReference{
@@ -150,20 +142,16 @@ var _ = Describe("CommitStatus Controller", func() {
 			By("creating the custom resource for the Kind CommitStatus")
 
 			scmSecret = &v1.Secret{
-				TypeMeta: metav1.TypeMeta{},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      typeNamespacedName.Name,
-					Namespace: typeNamespacedName.Namespace,
-				},
-				Data: nil,
+				TypeMeta:  metav1.TypeMeta{},
+				Name:      typeNamespacedName.Name,
+				Namespace: typeNamespacedName.Namespace,
+				Data:      nil,
 			}
 
 			scmProvider = &promoterv1alpha1.ScmProvider{
-				TypeMeta: metav1.TypeMeta{},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      typeNamespacedName.Name,
-					Namespace: typeNamespacedName.Namespace,
-				},
+				TypeMeta:  metav1.TypeMeta{},
+				Name:      typeNamespacedName.Name,
+				Namespace: typeNamespacedName.Namespace,
 				Spec: promoterv1alpha1.ScmProviderSpec{
 					SecretRef: &v1.LocalObjectReference{Name: resourceName},
 					Fake:      &promoterv1alpha1.Fake{},
@@ -172,10 +160,8 @@ var _ = Describe("CommitStatus Controller", func() {
 			}
 
 			gitRepo = &promoterv1alpha1.GitRepository{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      typeNamespacedName.Name,
-					Namespace: typeNamespacedName.Namespace,
-				},
+				Name:      typeNamespacedName.Name,
+				Namespace: typeNamespacedName.Namespace,
 				Spec: promoterv1alpha1.GitRepositorySpec{
 					Fake: &promoterv1alpha1.FakeRepo{
 						Owner: typeNamespacedName.Name,
@@ -189,10 +175,8 @@ var _ = Describe("CommitStatus Controller", func() {
 			}
 
 			commitStatus = &promoterv1alpha1.CommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      typeNamespacedName.Name,
-					Namespace: typeNamespacedName.Namespace,
-				},
+				Name:      typeNamespacedName.Name,
+				Namespace: typeNamespacedName.Namespace,
 				Spec: promoterv1alpha1.CommitStatusSpec{
 					Phase: promoterv1alpha1.CommitPhasePending,
 					RepositoryReference: promoterv1alpha1.ObjectReference{
@@ -376,18 +360,14 @@ func commitStatusResources(name string) (*v1.Secret, *promoterv1alpha1.ScmProvid
 	name = name + "-" + utils.KubeSafeUniqueName(randomString(15))
 
 	scmSecret := &v1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: "default",
-		},
-		Data: nil,
+		Name:      name,
+		Namespace: "default",
+		Data:      nil,
 	}
 
 	scmProvider := &promoterv1alpha1.ScmProvider{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: "default",
-		},
+		Name:      name,
+		Namespace: "default",
 		Spec: promoterv1alpha1.ScmProviderSpec{
 			SecretRef: &v1.LocalObjectReference{Name: name},
 			Fake:      &promoterv1alpha1.Fake{},
@@ -395,10 +375,8 @@ func commitStatusResources(name string) (*v1.Secret, *promoterv1alpha1.ScmProvid
 	}
 
 	gitRepo := &promoterv1alpha1.GitRepository{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: "default",
-		},
+		Name:      name,
+		Namespace: "default",
 		Spec: promoterv1alpha1.GitRepositorySpec{
 			Fake: &promoterv1alpha1.FakeRepo{
 				Owner: "test-owner",
@@ -412,10 +390,8 @@ func commitStatusResources(name string) (*v1.Secret, *promoterv1alpha1.ScmProvid
 	}
 
 	commitStatus := &promoterv1alpha1.CommitStatus{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: "default",
-		},
+		Name:      name,
+		Namespace: "default",
 		Spec: promoterv1alpha1.CommitStatusSpec{
 			RepositoryReference: promoterv1alpha1.ObjectReference{
 				Name: name,

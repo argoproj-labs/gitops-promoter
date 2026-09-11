@@ -40,9 +40,7 @@ var _ = Describe("CommitStatusStandardLabels", func() {
 
 	It("returns parent gate, environment, and commit-status key labels", func() {
 		parent := &promoterv1alpha1.TimedCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "my-timed",
-			},
+			Name: "my-timed",
 		}
 		labels := utils.CommitStatusStandardLabels(parent, "environment/development", "timer")
 		Expect(labels).To(Equal(map[string]string{
@@ -55,10 +53,8 @@ var _ = Describe("CommitStatusStandardLabels", func() {
 	It("stamps instance-id from settings.ControllerInstanceID when configured", func() {
 		settings.SetControllerInstanceIDForTest(new("wave-0"))
 		parent := &promoterv1alpha1.WebRequestCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "wrcs",
-				Namespace: "ns",
-			},
+			Name:      "wrcs",
+			Namespace: "ns",
 		}
 		labels := utils.CommitStatusStandardLabels(parent, "env/dev", "key")
 		Expect(labels[promoterv1alpha1.InstanceIDLabel]).To(Equal("wave-0"))
@@ -97,11 +93,9 @@ var _ = Describe("CleanupOrphanedCommitStatuses", func() {
 		Expect(promoterv1alpha1.AddToScheme(scheme)).To(Succeed())
 
 		owner = &promoterv1alpha1.TimedCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "my-timed",
-				Namespace: "default",
-				UID:       "owner-uid",
-			},
+			Name:      "my-timed",
+			Namespace: "default",
+			UID:       "owner-uid",
 		}
 		// Buffer must fit Eventf calls in this test; the fake recorder drops events when full.
 		recorder = events.NewFakeRecorder(100)
@@ -110,44 +104,38 @@ var _ = Describe("CleanupOrphanedCommitStatuses", func() {
 	It("deletes owned CommitStatuses not in the valid set", func() {
 		gateLabel := utils.CommitStatusGateLabelKeyForParent(owner)
 		valid := &promoterv1alpha1.CommitStatus{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "valid-cs",
-				Namespace: "default",
-				Labels: map[string]string{
-					gateLabel: utils.KubeSafeLabel(owner.Name),
-				},
-				OwnerReferences: []metav1.OwnerReference{{
-					APIVersion: promoterv1alpha1.GroupVersion.String(),
-					Kind:       "TimedCommitStatus",
-					Name:       owner.Name,
-					UID:        owner.UID,
-					Controller: new(true),
-				}},
+			Name:      "valid-cs",
+			Namespace: "default",
+			Labels: map[string]string{
+				gateLabel: utils.KubeSafeLabel(owner.Name),
 			},
+			OwnerReferences: []metav1.OwnerReference{{
+				APIVersion: promoterv1alpha1.GroupVersion.String(),
+				Kind:       "TimedCommitStatus",
+				Name:       owner.Name,
+				UID:        owner.UID,
+				Controller: new(true),
+			}},
 		}
 		orphan := &promoterv1alpha1.CommitStatus{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:            "orphan-cs",
-				Namespace:       "default",
-				Labels:          map[string]string{gateLabel: utils.KubeSafeLabel(owner.Name)},
-				OwnerReferences: valid.OwnerReferences,
-			},
+			Name:            "orphan-cs",
+			Namespace:       "default",
+			Labels:          map[string]string{gateLabel: utils.KubeSafeLabel(owner.Name)},
+			OwnerReferences: valid.OwnerReferences,
 		}
 		otherOwner := &promoterv1alpha1.CommitStatus{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "other-owner-cs",
-				Namespace: "default",
-				Labels: map[string]string{
-					gateLabel: utils.KubeSafeLabel(owner.Name),
-				},
-				OwnerReferences: []metav1.OwnerReference{{
-					APIVersion: promoterv1alpha1.GroupVersion.String(),
-					Kind:       "TimedCommitStatus",
-					Name:       "other",
-					UID:        "other-uid",
-					Controller: new(true),
-				}},
+			Name:      "other-owner-cs",
+			Namespace: "default",
+			Labels: map[string]string{
+				gateLabel: utils.KubeSafeLabel(owner.Name),
 			},
+			OwnerReferences: []metav1.OwnerReference{{
+				APIVersion: promoterv1alpha1.GroupVersion.String(),
+				Kind:       "TimedCommitStatus",
+				Name:       "other",
+				UID:        "other-uid",
+				Controller: new(true),
+			}},
 		}
 
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(valid, orphan, otherOwner).Build()

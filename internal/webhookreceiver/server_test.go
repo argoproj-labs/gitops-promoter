@@ -169,10 +169,8 @@ func githubLabelEventPayload(owner, repoName string) []byte {
 
 func newCTP(name string) *promoterv1alpha1.ChangeTransferPolicy {
 	return &promoterv1alpha1.ChangeTransferPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: testNamespace,
-		},
+		Name:      name,
+		Namespace: testNamespace,
 		Status: promoterv1alpha1.ChangeTransferPolicyStatus{
 			Proposed: promoterv1alpha1.CommitBranchState{
 				Hydrated: promoterv1alpha1.CommitShaState{Sha: testShaA},

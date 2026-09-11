@@ -118,6 +118,16 @@ spec:
           qps: 20
           bucket: 50
 
+  # DependentsSuccessfulCommitStatus controller infers linear ordering when spec.environments is omitted
+  dependentsSuccessfulCommitStatus:
+    workQueue:
+      requeueDuration: "5m"
+      maxConcurrentReconciles: 5
+      rateLimiter:
+        exponentialFailure:
+          baseDelay: "500ms"
+          maxDelay: "1m"
+
   # TimedCommitStatus controller enforces soak-time gates via CommitStatus resources
   timedCommitStatus:
     workQueue:

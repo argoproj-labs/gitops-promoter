@@ -66,6 +66,7 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 
 	mcMgr, err := mcmanager.New(cfg, provider, ctrl.Options{
 		Scheme: scheme,
+		Client: promotercache.ClientOptions(),
 		Metrics: metricsserver.Options{
 			BindAddress: "0",
 		},
@@ -139,6 +140,14 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 		KubeConfigProvider: provider,
 		Recorder:           localMgr.GetEventRecorder("ArgoCDCommitStatus"),
 	}).SetupWithManager(mgrCtx, mcMgr)).To(Succeed())
+
+	// Ordering gate: DependentsSuccessfulCommitStatus; PS hard-fails without one.
+	Expect((&DependentsSuccessfulCommitStatusReconciler{
+		Client:      localMgr.GetClient(),
+		Scheme:      localMgr.GetScheme(),
+		Recorder:    localMgr.GetEventRecorder("DependentsSuccessfulCommitStatus"),
+		SettingsMgr: settingsMgr,
+	}).SetupWithManager(mgrCtx, localMgr)).To(Succeed())
 
 	Expect((&PromotionStrategyReconciler{
 		Client:      localMgr.GetClient(),

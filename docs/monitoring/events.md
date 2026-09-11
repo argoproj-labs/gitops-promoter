@@ -92,6 +92,16 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 |------------|-----------------|---------------------------------------------------|
 | Normal     | CommitStatusSet | The CommitStatus was successfully set in the SCM. |
 
+## DependentsSuccessfulCommitStatus
+
+[DependentsSuccessfulCommitStatuses](../crd-specs.md#dependentssuccessfulcommitstatus) may produce the following events:
+
+| Event Type | Event Reason                | Description                                                                                                              |
+|------------|-----------------------------|--------------------------------------------------------------------------------------------------------------------------|
+| Normal/Warning | CommitStatusPhaseChanged  | The ordering gate phase changed for an environment. Warning when the new phase is `failure`.                             |
+| Warning    | CommitStatusesNotReady      | One or more of the [CommitStatus](../crd-specs.md#commitstatus) resources managed by this DependentsSuccessfulCommitStatus is not Ready. |
+| Normal     | OrphanedCommitStatusDeleted | An orphaned [CommitStatus](../crd-specs.md#commitstatus) was deleted after it no longer applied (e.g., branch removed). |
+
 ## PromotionStrategy
 
 [PromotionStrategies](../crd-specs.md#promotionstrategy) may produce the following events:
@@ -100,7 +110,10 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 |------------|-----------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
 | Normal     | OrphanedChangeTransferPolicyDeleted     | An orphaned [ChangeTransferPolicy](../crd-specs.md#changetransferpolicy) was deleted after environment changes (e.g., branch rename).     |
 | Warning    | ChangeTransferPolicyNotReady            | One or more of the [ChangeTransferPolicy](../crd-specs.md#changetransferpolicy) resources managed by this PromotionStrategy is not Ready. |
-| Warning    | PreviousEnvironmentCommitStatusNotReady | One or more of the active [CommitStatus](../crd-specs.md#commitstatus) resources for the previous environment is not Ready.               |
+
+Missing or undeclared promotion ordering (no [DependentsSuccessfulCommitStatus](../crd-specs.md#dependentssuccessfulcommitstatus),
+or a gate `key` not listed in the effective `proposedCommitStatuses` for an environment branch) surfaces as a
+`ReconciliationError` on the PromotionStrategy `Ready` condition rather than a dedicated event reason.
 
 ## GitRepository
 
