@@ -428,16 +428,6 @@ export type components = {
             /** @description Timezone overrides the spec-level default timezone for this specific window. If not set, the spec-level timezone (or UTC if that is also not set) is used. */
             timezone?: string;
         };
-        /** @description DependentEnvironment declares one environment branch and the other branches it depends on. */
-        DependentEnvironment: {
-            /**
-             * @description Branch is the name of the active branch for the environment. It must match a branch declared in the referenced PromotionStrategy's environments. Must not start with '-', contain ':', or contain '..'.
-             * @default
-             */
-            branch: string;
-            /** @description DependsOn is the list of dependent environment branches this environment waits on. The environment is only eligible for promotion once every branch listed here is promoted and successful. An empty or omitted list makes this environment a root. Each item must not start with '-', contain ':', or contain '..'. */
-            dependsOn?: string[];
-        };
         /** @description DependentsSuccessfulCommitStatus is the Schema for the dependentssuccessfulcommitstatuses API */
         DependentsSuccessfulCommitStatus: {
             /** @description APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources */
@@ -483,18 +473,12 @@ export type components = {
         /** @description DependentsSuccessfulCommitStatusSpec defines the desired state of DependentsSuccessfulCommitStatus. */
         DependentsSuccessfulCommitStatusSpec: {
             /**
-             * @description Environments declares which environments each branch depends on. An environment becomes eligible for promotion once all of its dependsOn dependents are promoted and successful. An entry with no dependsOn is a root. The graph must be acyclic; cycles and references to unknown branches are rejected.
-             *
-             *     When omitted or empty, the controller infers a linear chain from the referenced PromotionStrategy's spec.environments order: the first environment is a root, and each subsequent environment dependsOn the one before it.
-             */
-            environments?: components["schemas"]["DependentEnvironment"][];
-            /**
-             * @description Key is the commit status key referenced in the PromotionStrategy's proposedCommitStatuses. It must match a key declared there so the gate this controller produces is enforced. Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
+             * @description Key is the commit status key this controller writes on each environment's proposed hydrated SHA. The PromotionStrategy controller injects this key onto every ChangeTransferPolicy's proposedCommitStatuses. Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
              * @default
              */
             key: string;
             /**
-             * @description PromotionStrategyRef is a reference to the promotion strategy that this dependents successful commit status applies to. The controller watches this PromotionStrategy and, for each environment, reports whether the environment's dependent environments (as declared in Environments) are promoted and successful.
+             * @description PromotionStrategyRef is a reference to the promotion strategy that this dependents successful commit status applies to. The controller watches this PromotionStrategy and, for each environment, reports whether the environment's dependent environments (as declared on the PromotionStrategy) are promoted and successful.
              * @default {}
              */
             promotionStrategyRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
@@ -552,6 +536,8 @@ export type components = {
              * @default
              */
             branch: string;
+            /** @description DependsOn is the list of upstream environment branches this environment waits on before it becomes eligible for promotion. An empty or omitted list makes this environment a root when any environment declares dependsOn; when no environment declares dependsOn, a linear chain is inferred from spec.environments order. Each item must not start with '-', contain ':', or contain '..'. */
+            dependsOn?: string[];
             /**
              * @description ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running in a live environment. If a proposed commit status is failing for a given environment, the dry commit will not be promoted to that environment.
              *
@@ -1226,6 +1212,24 @@ export type components = {
              */
             uid?: string;
         };
+        /** @description OrderCommitStatusRef is a reference to a commit status gate CR that enforces promotion ordering. */
+        OrderCommitStatusRef: {
+            /**
+             * @description Group is the API group of the referenced resource. Built-in gates use promoter.argoproj.io; out-of-tree ordering gates may use any valid API group and are resolved via the generic gate contract.
+             * @default
+             */
+            group: string;
+            /**
+             * @description Kind is the type of resource being referenced. Must name a CommitStatus gate CR registered as an ordering gate. DependentsSuccessfulCommitStatus is supported today; additional kinds may be added later.
+             * @default
+             */
+            kind: string;
+            /**
+             * @description Name is the name of the resource being referenced.
+             * @default
+             */
+            name: string;
+        };
         /** @description OutputSpec holds an expression that returns a map/object to persist (e.g. TriggerOutput or ResponseOutput). */
         OutputSpec: {
             /**
@@ -1349,9 +1353,16 @@ export type components = {
              */
             gitRepositoryRef: components["schemas"]["io_argoproj_promoter_v1alpha1_ObjectReference"];
             /**
+             * @description OrderCommitStatusRef is a reference to the commit status gate that enforces promotion ordering across environments. The controller injects that gate's key onto every ChangeTransferPolicy's proposedCommitStatuses.
+             * @default {}
+             */
+            orderCommitStatusRef: components["schemas"]["OrderCommitStatusRef"];
+            /**
              * @description ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running in a live environment. If a proposed commit status is failing for a given environment, the dry commit will not be promoted to that environment.
              *
              *     The commit statuses specified in this field apply to all environments in the promotion sequence. You can also specify commit statuses for individual environments in the `environments` field.
+             *
+             *     The ordering gate key from orderCommitStatusRef is injected onto each ChangeTransferPolicy automatically and does not need to be declared here.
              */
             proposedCommitStatuses?: components["schemas"]["CommitStatusSelector"][];
             /** @description PullRequest configures SCM pull request behavior for all environments in this strategy. */
