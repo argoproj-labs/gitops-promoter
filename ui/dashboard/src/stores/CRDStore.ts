@@ -1,7 +1,7 @@
 import { create } from 'zustand';
-import { enrichFromCRD } from '@shared/utils/PSData';
+import { enrichFromCRD, mergeCommitStatusManagers } from '@shared/utils/PSData';
 import { sortStrategyCommitStatuses } from '@shared/utils/util';
-import type { PromotionStrategy } from '@shared/utils/PSData';
+import type { PromotionStrategy, CommitStatusManagerBundle } from '@shared/utils/PSData';
 import type { Environment } from '@shared/types/promotion';
 import type { ChangeTransferPolicy, PromotionStrategyDetails } from '@shared/types/view';
 
@@ -36,6 +36,16 @@ function environmentsFromCTPs(
   });
 }
 
+function managersFromBundle(bundle: PromotionStrategyDetails): CommitStatusManagerBundle {
+  return {
+    timedCommitStatuses: bundle.timedCommitStatuses,
+    gitCommitStatuses: bundle.gitCommitStatuses,
+    scheduledCommitStatuses: bundle.scheduledCommitStatuses,
+    argoCDCommitStatuses: bundle.argoCDCommitStatuses,
+    webRequestCommitStatuses: bundle.webRequestCommitStatuses,
+  };
+}
+
 function bundleToItem<T extends CRDItem>(bundle: PromotionStrategyDetails): T {
   const ps = bundle.promotionStrategy;
   const environments = environmentsFromCTPs(ps.spec, bundle.changeTransferPolicies ?? []);
@@ -49,9 +59,10 @@ function bundleToItem<T extends CRDItem>(bundle: PromotionStrategyDetails): T {
     status: { ...ps.status, environments },
   } as PromotionStrategy;
   sortStrategyCommitStatuses(psWithEnvironments);
+  const merged = mergeCommitStatusManagers(psWithEnvironments, managersFromBundle(bundle));
   return {
-    ...psWithEnvironments,
-    enriched: enrichFromCRD(psWithEnvironments),
+    ...merged,
+    enriched: enrichFromCRD(merged),
   } as T;
 }
 

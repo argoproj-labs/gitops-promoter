@@ -53,11 +53,34 @@ export type EnvironmentPullRequest = components['schemas']['PullRequestCommonSta
 /** @deprecated Use {@link EnvironmentPullRequest}. */
 export type PullRequest = EnvironmentPullRequest;
 
+export type CommitStatusManagerKind =
+  | 'TimedCommitStatus'
+  | 'GitCommitStatus'
+  | 'ScheduledCommitStatus'
+  | 'ArgoCDCommitStatus'
+  | 'WebRequestCommitStatus';
+
+export type CommitStatusManager =
+  | components['schemas']['TimedCommitStatus']
+  | components['schemas']['GitCommitStatus']
+  | components['schemas']['ScheduledCommitStatus']
+  | components['schemas']['ArgoCDCommitStatus']
+  | components['schemas']['WebRequestCommitStatus'];
+
+/** {@link BranchCommitStatus} stamped with the manager join computed by `mergeCommitStatusManagers`. */
+export interface EnrichedBranchCommitStatus extends BranchCommitStatus {
+  kind?: CommitStatusManagerKind;
+  manager?: CommitStatusManager;
+}
+
 export interface Check {
   name: string;
   status: string;
   description?: string;
   url?: string;
+  branch: string;
+  kind?: CommitStatusManagerKind;
+  manager?: CommitStatusManager;
 }
 
 export interface HealthSummaryResult {

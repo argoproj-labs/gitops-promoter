@@ -7,8 +7,8 @@ import { createRoot } from 'react-dom/client';
 
 const makeStrategy = (name: string, namespace = 'default') =>
   JSON.stringify({
-    kind: 'PromotionStrategy',
-    apiVersion: 'promoter.argoproj.io/v1alpha1',
+    kind: 'PromotionStrategyDetails',
+    apiVersion: 'view.promoter.argoproj.io/v1alpha1',
     metadata: {
       name,
       namespace,
@@ -17,15 +17,28 @@ const makeStrategy = (name: string, namespace = 'default') =>
       generation: 1,
       creationTimestamp: '',
     },
-    spec: { gitRepositoryRef: { name: 'my-repo' }, environments: [] },
-    status: { environments: [] },
+    promotionStrategy: {
+      kind: 'PromotionStrategy',
+      apiVersion: 'promoter.argoproj.io/v1alpha1',
+      metadata: {
+        name,
+        namespace,
+        uid: 'uid-' + name,
+        resourceVersion: '1',
+        generation: 1,
+        creationTimestamp: '',
+      },
+      spec: { gitRepositoryRef: { name: 'my-repo' }, environments: [] },
+      status: { environments: [] },
+    },
+    changeTransferPolicies: [],
   });
 
 const makeTreeNode = (name: string, namespace = 'default', version = 'v1alpha1') => ({
-  kind: 'PromotionStrategy',
+  kind: 'PromotionStrategyDetails',
   name,
   namespace,
-  group: 'promoter.argoproj.io',
+  group: 'view.promoter.argoproj.io',
   version,
 });
 

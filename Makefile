@@ -349,8 +349,16 @@ lint-components-lib: install-ui-deps ## Run components-lib type-check and format
 	cd ui/components-lib && npm run type-check && npm run format:check
 	cd ui/components-lib && npx prettier --check '../shared/**/*.{ts,tsx}' --ignore-path ../.prettierignore
 
+.PHONY: lint-shared
+lint-shared: install-ui-deps ## Run shared type-check
+	cd ui/shared && npm run type-check
+
+.PHONY: lint-storybook
+lint-storybook: install-ui-deps ## Run storybook type-check (covers the plugin stories)
+	cd ui/storybook && npm install && npm run type-check
+
 .PHONY: lint-ui
-lint-ui: lint-dashboard lint-extension lint-components-lib ## Run all UI checks
+lint-ui: lint-dashboard lint-extension lint-components-lib lint-shared lint-storybook ## Run all UI checks
 
 .PHONY: test-ui-test-dashboard
 test-ui-test-dashboard: ## Run dashboard unit tests (with coverage)
