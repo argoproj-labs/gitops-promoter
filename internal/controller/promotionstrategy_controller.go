@@ -37,7 +37,9 @@ import (
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils/ordercommitstatusgate"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
@@ -104,6 +106,7 @@ const (
 type PromotionStrategyReconciler struct {
 	client.Client
 	Scheme      *runtime.Scheme
+	RESTMapper  meta.RESTMapper
 	Recorder    events.EventRecorder
 	SettingsMgr *settings.Manager
 
@@ -177,9 +180,9 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	// Safety check: resolve the ordering gate referenced by orderCommitStatusRef and verify it
 	// points back at this PromotionStrategy.
-	orderGateKey, err := r.resolveOrderCommitStatusGate(ctx, &ps)
+	orderGateKey, err := ordercommitstatusgate.Resolve(ctx, r.Client, r.RESTMapper, &ps)
 	if err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to resolve orderCommitStatusRef: %w", err)
 	}
 
 	if err := ensureControllerInstanceIDStable(ctx, r.SettingsMgr); err != nil {
@@ -260,49 +263,6 @@ func (r *PromotionStrategyReconciler) SetupWithManager(ctx context.Context, mgr 
 		return fmt.Errorf("failed to create controller: %w", err)
 	}
 	return nil
-}
-
-// resolveOrderCommitStatusGate loads the DependentsSuccessfulCommitStatus referenced by the
-// PromotionStrategy's orderCommitStatusRef and returns its spec.key for injection onto CTPs.
-func (r *PromotionStrategyReconciler) resolveOrderCommitStatusGate(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy) (string, error) {
-	ref := ps.Spec.OrderCommitStatusRef
-	group := ref.Group
-	if group == "" {
-		group = promoterv1alpha1.SchemeGroupVersion.Group
-	}
-	kind := ref.Kind
-	if kind == "" {
-		kind = reflect.TypeFor[promoterv1alpha1.DependentsSuccessfulCommitStatus]().Name()
-	}
-	if group != promoterv1alpha1.SchemeGroupVersion.Group {
-		return "", fmt.Errorf("PromotionStrategy %q orderCommitStatusRef.group %q is not supported; use %q",
-			ps.Name, group, promoterv1alpha1.SchemeGroupVersion.Group)
-	}
-	if kind != reflect.TypeFor[promoterv1alpha1.DependentsSuccessfulCommitStatus]().Name() {
-		return "", fmt.Errorf("PromotionStrategy %q orderCommitStatusRef.kind %q is not supported; use DependentsSuccessfulCommitStatus",
-			ps.Name, kind)
-	}
-	if ref.Name == "" {
-		return "", fmt.Errorf("PromotionStrategy %q orderCommitStatusRef.name is required", ps.Name)
-	}
-
-	var dcs promoterv1alpha1.DependentsSuccessfulCommitStatus
-	if err := r.Get(ctx, client.ObjectKey{Namespace: ps.Namespace, Name: ref.Name}, &dcs); err != nil {
-		if k8serrors.IsNotFound(err) {
-			return "", fmt.Errorf("PromotionStrategy %q references DependentsSuccessfulCommitStatus %q via orderCommitStatusRef, but it was not found",
-				ps.Name, ref.Name)
-		}
-		return "", fmt.Errorf("failed to get DependentsSuccessfulCommitStatus %q for PromotionStrategy %q: %w", ref.Name, ps.Name, err)
-	}
-	if dcs.Spec.PromotionStrategyRef.Name != ps.Name {
-		return "", fmt.Errorf("PromotionStrategy %q orderCommitStatusRef.name %q points to DependentsSuccessfulCommitStatus whose promotionStrategyRef.name is %q",
-			ps.Name, ref.Name, dcs.Spec.PromotionStrategyRef.Name)
-	}
-	if dcs.Spec.Key == "" {
-		return "", fmt.Errorf("DependentsSuccessfulCommitStatus %q referenced by PromotionStrategy %q has an empty spec.key",
-			ref.Name, ps.Name)
-	}
-	return dcs.Spec.Key, nil
 }
 
 func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, environment promoterv1alpha1.Environment, orderGateKey string) (*promoterv1alpha1.ChangeTransferPolicy, error) {

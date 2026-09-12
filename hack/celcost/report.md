@@ -17,7 +17,7 @@ Estimated static CEL costs versus kube-apiserver limits, computed from `k8s.io/a
 | DependentsSuccessfulCommitStatus | v1alpha1 | 6,291,456 | 6.29% |
 | GitCommitStatus | v1alpha1 | 0 | 0.00% |
 | GitRepository | v1alpha1 | 14 | 0.00% |
-| PromotionStrategy | v1alpha1 | 85,743,744 | 85.74% |
+| PromotionStrategy | v1alpha1 | 85,743,747 | 85.74% |
 | PullRequest | v1alpha1 | 394 | 0.00% |
 | RevertCommit | v1alpha1 | 0 | 0.00% |
 | ScheduledCommitStatus | v1alpha1 | 106,003 | 0.11% |
@@ -208,7 +208,8 @@ Source: `promoter.argoproj.io_promotionstrategies.yaml`
 | `.spec.environments[].branch` | 42,000 | 0.42% | `!self.contains(':')` |
 | `.spec.environments[].branch` | 42,000 | 0.42% | `!self.contains('..')` |
 | `.spec.environments[].branch` | 3,000 | 0.03% | `!self.startsWith('-')` |
-| **Total** | **85,743,744** | **85.74%** | |
+| `.spec.orderCommitStatusRef.kind` | 3 | 0.00% | `self.endsWith('CommitStatus')` |
+| **Total** | **85,743,747** | **85.74%** | |
 
 #### PullRequest
 

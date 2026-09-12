@@ -4035,7 +4035,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_OrderCommitStatusRef(ref 
 				Properties: map[string]spec.Schema{
 					"group": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Group is the API group of the referenced resource.",
+							Description: "Group is the API group of the referenced resource. Built-in gates use promoter.argoproj.io; out-of-tree ordering gates may use any valid API group and are resolved via the generic gate contract.",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",
@@ -4043,7 +4043,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_OrderCommitStatusRef(ref 
 					},
 					"kind": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Kind is the type of resource being referenced.",
+							Description: "Kind is the type of resource being referenced. Must name a CommitStatus gate CR registered as an ordering gate. DependentsSuccessfulCommitStatus is supported today; additional kinds may be added later.",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",

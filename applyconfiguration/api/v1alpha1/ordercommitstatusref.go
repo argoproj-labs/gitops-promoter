@@ -22,9 +22,11 @@ package v1alpha1
 //
 // OrderCommitStatusRef is a reference to a commit status gate CR that enforces promotion ordering.
 type OrderCommitStatusRefApplyConfiguration struct {
-	// Group is the API group of the referenced resource.
+	// Group is the API group of the referenced resource. Built-in gates use promoter.argoproj.io;
+	// out-of-tree ordering gates may use any valid API group and are resolved via the generic gate contract.
 	Group *string `json:"group,omitempty"`
-	// Kind is the type of resource being referenced.
+	// Kind is the type of resource being referenced. Must name a CommitStatus gate CR registered as an
+	// ordering gate. DependentsSuccessfulCommitStatus is supported today; additional kinds may be added later.
 	Kind *string `json:"kind,omitempty"`
 	// Name is the name of the resource being referenced.
 	Name *string `json:"name,omitempty"`

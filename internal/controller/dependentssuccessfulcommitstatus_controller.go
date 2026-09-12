@@ -167,6 +167,8 @@ func resolveDependentEnvironments(ps *promoterv1alpha1.PromotionStrategy) ([]pro
 			dagEnv.DependsOn = slices.Clone(env.DependsOn)
 		case i > 0:
 			dagEnv.DependsOn = []string{ps.Spec.Environments[i-1].Branch}
+		default:
+			// First environment in list order has no predecessor.
 		}
 		environments = append(environments, dagEnv)
 	}

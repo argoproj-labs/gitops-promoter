@@ -85,15 +85,19 @@ type ObjectReference struct {
 
 // OrderCommitStatusRef is a reference to a commit status gate CR that enforces promotion ordering.
 type OrderCommitStatusRef struct {
-	// Group is the API group of the referenced resource.
+	// Group is the API group of the referenced resource. Built-in gates use promoter.argoproj.io;
+	// out-of-tree ordering gates may use any valid API group and are resolved via the generic gate contract.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:default:=promoter.argoproj.io
-	// +kubebuilder:validation:Enum:=promoter.argoproj.io
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
 	Group string `json:"group"`
-	// Kind is the type of resource being referenced.
+	// Kind is the type of resource being referenced. Must name a CommitStatus gate CR registered as an
+	// ordering gate. DependentsSuccessfulCommitStatus is supported today; additional kinds may be added later.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:default:=DependentsSuccessfulCommitStatus
-	// +kubebuilder:validation:Enum:=DependentsSuccessfulCommitStatus
+	// +kubebuilder:validation:XValidation:rule=`self.endsWith('CommitStatus')`,message="kind must name a CommitStatus gate CR"
 	Kind string `json:"kind"`
 	// Name is the name of the resource being referenced.
 	// +kubebuilder:validation:Required

@@ -5627,16 +5627,22 @@ spec:
                 properties:
                   group:
                     default: promoter.argoproj.io
-                    description: Group is the API group of the referenced resource.
-                    enum:
-                    - promoter.argoproj.io
+                    description: |-
+                      Group is the API group of the referenced resource. Built-in gates use promoter.argoproj.io;
+                      out-of-tree ordering gates may use any valid API group and are resolved via the generic gate contract.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                     type: string
                   kind:
                     default: DependentsSuccessfulCommitStatus
-                    description: Kind is the type of resource being referenced.
-                    enum:
-                    - DependentsSuccessfulCommitStatus
+                    description: |-
+                      Kind is the type of resource being referenced. Must name a CommitStatus gate CR registered as an
+                      ordering gate. DependentsSuccessfulCommitStatus is supported today; additional kinds may be added later.
                     type: string
+                    x-kubernetes-validations:
+                    - message: kind must name a CommitStatus gate CR
+                      rule: self.endsWith('CommitStatus')
                   name:
                     description: Name is the name of the resource being referenced.
                     maxLength: 253

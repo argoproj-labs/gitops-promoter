@@ -202,6 +202,15 @@ The DependentsSuccessfulCommitStatus produces the gate; the PromotionStrategy co
 `orderCommitStatusRef`. The PromotionStrategy controller injects `spec.key` onto every `ChangeTransferPolicy`'s
 `proposedCommitStatuses` — do not declare the ordering key yourself.
 
+`orderCommitStatusRef` uses a `group` / `kind` / `name` triple. Resolution uses a generic contract:
+`spec.key` and `spec.promotionStrategyRef.name` at whatever API version the CRD is served on (from cluster
+discovery). That applies to `DependentsSuccessfulCommitStatus` and to out-of-tree ordering gates alike. The Promoter
+ServiceAccount needs RBAC `get` on the referenced CRD, and the gate controller must write the ordering `CommitStatus`
+objects the CTP waits on.
+
+Use `kind: DependentsSuccessfulCommitStatus` (the default) for the built-in ordering gate unless you operate a custom
+ordering gate CR that also follows this contract.
+
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: PromotionStrategy
@@ -229,9 +238,9 @@ spec:
 ```
 
 > [!IMPORTANT]
-> The PromotionStrategy controller fails its reconcile when `orderCommitStatusRef` points at a missing
-> `DependentsSuccessfulCommitStatus`, when the referenced kind/group is unsupported, or when
-> `promotionStrategyRef.name` on the DSCS does not match the owning PromotionStrategy.
+> The PromotionStrategy controller fails its reconcile when `orderCommitStatusRef` points at a missing gate object,
+> when the referenced `group`/`kind` is not a supported ordering gate, or when the gate's `promotionStrategyRef.name`
+> does not match the owning PromotionStrategy.
 
 ## Status (`status.environments`)
 
