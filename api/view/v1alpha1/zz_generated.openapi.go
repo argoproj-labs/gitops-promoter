@@ -113,6 +113,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.ModeSpec{}.OpenAPIModelName():                                             schema_argoproj_labs_gitops_promoter_api_v1alpha1_ModeSpec(ref),
 		apiv1alpha1.OAuth2Auth{}.OpenAPIModelName():                                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_OAuth2Auth(ref),
 		apiv1alpha1.ObjectReference{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_ObjectReference(ref),
+		apiv1alpha1.OrderCommitStatusRef{}.OpenAPIModelName():                                 schema_argoproj_labs_gitops_promoter_api_v1alpha1_OrderCommitStatusRef(ref),
 		apiv1alpha1.OutputSpec{}.OpenAPIModelName():                                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_OutputSpec(ref),
 		apiv1alpha1.PollingModeSpec{}.OpenAPIModelName():                                      schema_argoproj_labs_gitops_promoter_api_v1alpha1_PollingModeSpec(ref),
 		apiv1alpha1.PromotionStrategy{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategy(ref),
@@ -1280,7 +1281,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ChangeTransferPolicyStatu
 					},
 					"history": {
 						SchemaProps: spec.SchemaProps{
-							Description: "History defines the history of promoted changes done by the ChangeTransferPolicy. You can think of it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged. The history length is hard-coded to be at most 5 entries. This may change in the future. History is constructed on a best-effort basis and should be used for informational purposes only. History is in reverse chronological order (newest is first).",
+							Description: "History defines the history of promoted changes done by the ChangeTransferPolicy. You can think of it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged. The history length is at most 5 entries. History is constructed on a best-effort basis and should be used for informational purposes only. History is in reverse chronological order (newest is first).",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
@@ -2476,37 +2477,17 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommi
 				Properties: map[string]spec.Schema{
 					"promotionStrategyRef": {
 						SchemaProps: spec.SchemaProps{
-							Description: "PromotionStrategyRef is a reference to the promotion strategy that this dependents successful commit status applies to. The controller watches this PromotionStrategy and, for each environment, reports whether the environment's dependent environments (as declared in Environments) are promoted and successful.",
+							Description: "PromotionStrategyRef is a reference to the promotion strategy that this dependents successful commit status applies to. The controller watches this PromotionStrategy and, for each environment, reports whether the environment's dependent environments (as declared on the PromotionStrategy) are promoted and successful.",
 							Default:     map[string]interface{}{},
 							Ref:         ref(apiv1alpha1.ObjectReference{}.OpenAPIModelName()),
 						},
 					},
 					"key": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Key is the commit status key referenced in the PromotionStrategy's proposedCommitStatuses. It must match a key declared there so the gate this controller produces is enforced. Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).",
+							Description: "Key is the commit status key this controller writes on each environment's proposed hydrated SHA. The PromotionStrategy controller injects this key onto every ChangeTransferPolicy's proposedCommitStatuses. Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",
-						},
-					},
-					"environments": {
-						VendorExtensible: spec.VendorExtensible{
-							Extensions: spec.Extensions{
-								"x-kubernetes-list-map-keys": []interface{}{
-									"branch",
-								},
-							},
-						},
-						SchemaProps: spec.SchemaProps{
-							Description: "Environments declares which environments each branch depends on. An environment becomes eligible for promotion once all of its dependsOn dependents are promoted and successful. An entry with no dependsOn is a root. The graph must be acyclic; cycles and references to unknown branches are rejected.\n\nWhen omitted or empty, the controller infers a linear chain from the referenced PromotionStrategy's spec.environments order: the first environment is a root, and each subsequent environment dependsOn the one before it.",
-							Type:        []string{"array"},
-							Items: &spec.SchemaOrArray{
-								Schema: &spec.Schema{
-									SchemaProps: spec.SchemaProps{
-										Ref: ref(apiv1alpha1.DependentEnvironment{}.OpenAPIModelName()),
-									},
-								},
-							},
 						},
 					},
 					"url": {
@@ -2521,7 +2502,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_DependentsSuccessfulCommi
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.DependentEnvironment{}.OpenAPIModelName(), apiv1alpha1.ObjectReference{}.OpenAPIModelName(), apiv1alpha1.URLConfig{}.OpenAPIModelName()},
+			apiv1alpha1.ObjectReference{}.OpenAPIModelName(), apiv1alpha1.URLConfig{}.OpenAPIModelName()},
 	}
 }
 
@@ -2702,6 +2683,20 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_Environment(ref common.Re
 							Format:      "",
 						},
 					},
+					"dependsOn": {
+						SchemaProps: spec.SchemaProps{
+							Description: "DependsOn is the list of upstream environment branches this environment waits on before it becomes eligible for promotion. An empty or omitted list makes this environment a root when any environment declares dependsOn; when no environment declares dependsOn, a linear chain is inferred from spec.environments order. Each item must not start with '-', contain ':', or contain '..'.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
+									},
+								},
+							},
+						},
+					},
 				},
 				Required: []string{"branch"},
 			},
@@ -2761,7 +2756,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_EnvironmentStatus(ref com
 					},
 					"history": {
 						SchemaProps: spec.SchemaProps{
-							Description: "History defines the history of promoted changes done by the PromotionStrategy for each environment. You can think of it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged. The history length is hard-coded to be at most 5 entries. This may change in the future. History is constructed on a best-effort basis and should be used for informational purposes only. History is in reverse chronological order (newest is first).",
+							Description: "History defines the history of promoted changes done by the PromotionStrategy for each environment. You can think of it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged. The history length is at most 5 entries. History is constructed on a best-effort basis and should be used for informational purposes only. History is in reverse chronological order (newest is first).",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
@@ -4031,6 +4026,44 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_ObjectReference(ref commo
 	}
 }
 
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_OrderCommitStatusRef(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "OrderCommitStatusRef is a reference to a commit status gate CR that enforces promotion ordering.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"group": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Group is the API group of the referenced resource. Built-in gates use promoter.argoproj.io; out-of-tree ordering gates may use any valid API group and are resolved via the generic gate contract.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is the type of resource being referenced. Must name a CommitStatus gate CR registered as an ordering gate. DependentsSuccessfulCommitStatus is supported today; additional kinds may be added later.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"name": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Name is the name of the resource being referenced.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"group", "kind", "name"},
+			},
+		},
+	}
+}
+
 func schema_argoproj_labs_gitops_promoter_api_v1alpha1_OutputSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -4236,7 +4269,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategySpec(ref
 							},
 						},
 						SchemaProps: spec.SchemaProps{
-							Description: "ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running in a live environment. If a proposed commit status is failing for a given environment, the dry commit will not be promoted to that environment.\n\nThe commit statuses specified in this field apply to all environments in the promotion sequence. You can also specify commit statuses for individual environments in the `environments` field.",
+							Description: "ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running in a live environment. If a proposed commit status is failing for a given environment, the dry commit will not be promoted to that environment.\n\nThe commit statuses specified in this field apply to all environments in the promotion sequence. You can also specify commit statuses for individual environments in the `environments` field.\n\nThe ordering gate key from orderCommitStatusRef is injected onto each ChangeTransferPolicy automatically and does not need to be declared here.",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
@@ -4245,6 +4278,13 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategySpec(ref
 									},
 								},
 							},
+						},
+					},
+					"orderCommitStatusRef": {
+						SchemaProps: spec.SchemaProps{
+							Description: "OrderCommitStatusRef is a reference to the commit status gate that enforces promotion ordering across environments. The controller injects that gate's key onto every ChangeTransferPolicy's proposedCommitStatuses.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.OrderCommitStatusRef{}.OpenAPIModelName()),
 						},
 					},
 					"environments": {
@@ -4281,11 +4321,11 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategySpec(ref
 						},
 					},
 				},
-				Required: []string{"gitRepositoryRef", "environments"},
+				Required: []string{"gitRepositoryRef", "orderCommitStatusRef", "environments"},
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.CommitStatusSelector{}.OpenAPIModelName(), apiv1alpha1.Environment{}.OpenAPIModelName(), apiv1alpha1.ObjectReference{}.OpenAPIModelName(), apiv1alpha1.PullRequestPolicySpec{}.OpenAPIModelName()},
+			apiv1alpha1.CommitStatusSelector{}.OpenAPIModelName(), apiv1alpha1.Environment{}.OpenAPIModelName(), apiv1alpha1.ObjectReference{}.OpenAPIModelName(), apiv1alpha1.OrderCommitStatusRef{}.OpenAPIModelName(), apiv1alpha1.PullRequestPolicySpec{}.OpenAPIModelName()},
 	}
 }
 

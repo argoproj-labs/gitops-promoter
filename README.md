@@ -39,10 +39,13 @@ metadata:
 spec:
   gitRepositoryRef:
     name: example-git-repo
+  orderCommitStatusRef:
+    group: promoter.argoproj.io
+    kind: DependentsSuccessfulCommitStatus
+    name: example-promotion-strategy
   activeCommitStatuses:
     - key: argocd-app-health
   proposedCommitStatuses:
-    - key: dependents-successful # ordering gate; see DependentsSuccessfulCommitStatus
     - key: security-scan
   environments:
     - branch: environment/dev

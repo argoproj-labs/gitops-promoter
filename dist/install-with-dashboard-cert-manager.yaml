@@ -540,6 +540,7 @@ spec:
                       - key
                       - phase
                       type: object
+                    maxItems: 100
                     type: array
                     x-kubernetes-list-map-keys:
                     - key
@@ -605,6 +606,7 @@ spec:
                                   type: string
                               type: object
                           type: object
+                        maxItems: 100
                         type: array
                       repoURL:
                         description: RepoURL is the URL of the repository where the
@@ -685,6 +687,7 @@ spec:
                                   type: string
                               type: object
                           type: object
+                        maxItems: 100
                         type: array
                       repoURL:
                         description: RepoURL is the URL of the repository where the
@@ -774,6 +777,7 @@ spec:
                                   type: string
                               type: object
                           type: object
+                        maxItems: 100
                         type: array
                       repoURL:
                         description: RepoURL is the URL of the repository where the
@@ -850,7 +854,7 @@ spec:
                 description: |-
                   History defines the history of promoted changes done by the ChangeTransferPolicy. You can think of
                   it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged.
-                  The history length is hard-coded to be at most 5 entries. This may change in the future.
+                  The history length is at most 5 entries.
                   History is constructed on a best-effort basis and should be used for informational purposes only.
                   History is in reverse chronological order (newest is first).
                 items:
@@ -899,6 +903,7 @@ spec:
                             - key
                             - phase
                             type: object
+                          maxItems: 100
                           type: array
                           x-kubernetes-list-map-keys:
                           - key
@@ -966,6 +971,7 @@ spec:
                                         type: string
                                     type: object
                                 type: object
+                              maxItems: 100
                               type: array
                             repoURL:
                               description: RepoURL is the URL of the repository where
@@ -1049,6 +1055,7 @@ spec:
                                         type: string
                                     type: object
                                 type: object
+                              maxItems: 100
                               type: array
                             repoURL:
                               description: RepoURL is the URL of the repository where
@@ -1141,6 +1148,7 @@ spec:
                                         type: string
                                     type: object
                                 type: object
+                              maxItems: 100
                               type: array
                             repoURL:
                               description: RepoURL is the URL of the repository where
@@ -1203,6 +1211,7 @@ spec:
                             - key
                             - phase
                             type: object
+                          maxItems: 100
                           type: array
                         hydrated:
                           description: |-
@@ -1269,6 +1278,7 @@ spec:
                                         type: string
                                     type: object
                                 type: object
+                              maxItems: 100
                               type: array
                             repoURL:
                               description: RepoURL is the URL of the repository where
@@ -1350,6 +1360,7 @@ spec:
                             rule: self == '' || isURL(self)
                       type: object
                   type: object
+                maxItems: 5
                 type: array
               instanceID:
                 description: |-
@@ -1406,6 +1417,7 @@ spec:
                       - key
                       - phase
                       type: object
+                    maxItems: 100
                     type: array
                     x-kubernetes-list-map-keys:
                     - key
@@ -1471,6 +1483,7 @@ spec:
                                   type: string
                               type: object
                           type: object
+                        maxItems: 100
                         type: array
                       repoURL:
                         description: RepoURL is the URL of the repository where the
@@ -1551,6 +1564,7 @@ spec:
                                   type: string
                               type: object
                           type: object
+                        maxItems: 100
                         type: array
                       repoURL:
                         description: RepoURL is the URL of the repository where the
@@ -1640,6 +1654,7 @@ spec:
                                   type: string
                               type: object
                           type: object
+                        maxItems: 100
                         type: array
                       repoURL:
                         description: RepoURL is the URL of the repository where the
@@ -4527,69 +4542,10 @@ spec:
           spec:
             description: spec defines the desired state of DependentsSuccessfulCommitStatus
             properties:
-              environments:
-                description: |-
-                  Environments declares which environments each branch depends on. An environment becomes eligible for
-                  promotion once all of its dependsOn dependents are promoted and successful. An entry with no dependsOn
-                  is a root. The graph must be acyclic; cycles and references to unknown branches are rejected.
-
-                  When omitted or empty, the controller infers a linear chain from the referenced
-                  PromotionStrategy's spec.environments order: the first environment is a root, and each
-                  subsequent environment dependsOn the one before it.
-                items:
-                  description: DependentEnvironment declares one environment branch
-                    and the other branches it depends on.
-                  properties:
-                    branch:
-                      description: |-
-                        Branch is the name of the active branch for the environment. It must match a branch declared
-                        in the referenced PromotionStrategy's environments.
-                        Must not start with '-', contain ':', or contain '..'.
-                      maxLength: 100
-                      minLength: 1
-                      type: string
-                      x-kubernetes-validations:
-                      - message: branch must not start with '-'
-                        rule: '!self.startsWith(''-'')'
-                      - message: branch must not contain ':'
-                        rule: '!self.contains('':'')'
-                      - message: branch must not contain '..'
-                        rule: '!self.contains(''..'')'
-                    dependsOn:
-                      description: |-
-                        DependsOn is the list of dependent environment branches this environment waits on. The environment is
-                        only eligible for promotion once every branch listed here is promoted and successful. An empty or
-                        omitted list makes this environment a root.
-                        Each item must not start with '-', contain ':', or contain '..'.
-                      items:
-                        maxLength: 100
-                        minLength: 1
-                        type: string
-                        x-kubernetes-validations:
-                        - message: branch must not start with '-'
-                          rule: '!self.startsWith(''-'')'
-                        - message: branch must not contain ':'
-                          rule: '!self.contains('':'')'
-                        - message: branch must not contain '..'
-                          rule: '!self.contains(''..'')'
-                      maxItems: 100
-                      type: array
-                      x-kubernetes-list-type: set
-                  required:
-                  - branch
-                  type: object
-                  x-kubernetes-validations:
-                  - message: branch cannot depend on itself
-                    rule: '!has(self.dependsOn) || self.dependsOn.all(d, d != self.branch)'
-                maxItems: 1000
-                type: array
-                x-kubernetes-list-map-keys:
-                - branch
-                x-kubernetes-list-type: map
               key:
                 description: |-
-                  Key is the commit status key referenced in the PromotionStrategy's proposedCommitStatuses.
-                  It must match a key declared there so the gate this controller produces is enforced.
+                  Key is the commit status key this controller writes on each environment's proposed hydrated SHA.
+                  The PromotionStrategy controller injects this key onto every ChangeTransferPolicy's proposedCommitStatuses.
                   Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
                 maxLength: 63
                 minLength: 1
@@ -4599,7 +4555,7 @@ spec:
                 description: |-
                   PromotionStrategyRef is a reference to the promotion strategy that this dependents successful commit status
                   applies to. The controller watches this PromotionStrategy and, for each environment, reports whether the
-                  environment's dependent environments (as declared in Environments) are promoted and successful.
+                  environment's dependent environments (as declared on the PromotionStrategy) are promoted and successful.
                 properties:
                   name:
                     description: Name is the name of the object to refer to.
@@ -4755,6 +4711,7 @@ spec:
                         - key
                         - phase
                         type: object
+                      maxItems: 100
                       type: array
                       x-kubernetes-list-map-keys:
                       - key
@@ -4820,6 +4777,7 @@ spec:
                   required:
                   - branch
                   type: object
+                maxItems: 500
                 type: array
                 x-kubernetes-list-map-keys:
                 - branch
@@ -5610,6 +5568,26 @@ spec:
                         rule: '!self.contains('':'')'
                       - message: branch must not contain '..'
                         rule: '!self.contains(''..'')'
+                    dependsOn:
+                      description: |-
+                        DependsOn is the list of upstream environment branches this environment waits on before it becomes eligible
+                        for promotion. An empty or omitted list makes this environment a root when any environment declares dependsOn;
+                        when no environment declares dependsOn, a linear chain is inferred from spec.environments order.
+                        Each item must not start with '-', contain ':', or contain '..'.
+                      items:
+                        maxLength: 100
+                        minLength: 1
+                        type: string
+                        x-kubernetes-validations:
+                        - message: branch must not start with '-'
+                          rule: '!self.startsWith(''-'')'
+                        - message: branch must not contain ':'
+                          rule: '!self.contains('':'')'
+                        - message: branch must not contain '..'
+                          rule: '!self.contains(''..'')'
+                      maxItems: 100
+                      type: array
+                      x-kubernetes-list-type: set
                     proposedCommitStatuses:
                       description: |-
                         ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running
@@ -5637,7 +5615,10 @@ spec:
                   required:
                   - branch
                   type: object
-                maxItems: 1000
+                  x-kubernetes-validations:
+                  - message: branch cannot depend on itself
+                    rule: '!has(self.dependsOn) || self.dependsOn.all(d, d != self.branch)'
+                maxItems: 500
                 minItems: 1
                 type: array
                 x-kubernetes-list-map-keys:
@@ -5656,6 +5637,40 @@ spec:
                 required:
                 - name
                 type: object
+              orderCommitStatusRef:
+                description: |-
+                  OrderCommitStatusRef is a reference to the commit status gate that enforces promotion ordering across
+                  environments. The controller injects that gate's key onto every ChangeTransferPolicy's proposedCommitStatuses.
+                properties:
+                  group:
+                    default: promoter.argoproj.io
+                    description: |-
+                      Group is the API group of the referenced resource. Built-in gates use promoter.argoproj.io;
+                      out-of-tree ordering gates may use any valid API group and are resolved via the generic gate contract.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                    type: string
+                  kind:
+                    default: DependentsSuccessfulCommitStatus
+                    description: |-
+                      Kind is the type of resource being referenced. Must name a CommitStatus gate CR registered as an
+                      ordering gate. DependentsSuccessfulCommitStatus is supported today; additional kinds may be added later.
+                    type: string
+                    x-kubernetes-validations:
+                    - message: kind must name a CommitStatus gate CR
+                      rule: self.endsWith('CommitStatus')
+                  name:
+                    description: Name is the name of the resource being referenced.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
+                    type: string
+                required:
+                - group
+                - kind
+                - name
+                type: object
               proposedCommitStatuses:
                 description: |-
                   ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running
@@ -5664,6 +5679,9 @@ spec:
 
                   The commit statuses specified in this field apply to all environments in the promotion sequence. You can also
                   specify commit statuses for individual environments in the `environments` field.
+
+                  The ordering gate key from orderCommitStatusRef is injected onto each ChangeTransferPolicy automatically and
+                  does not need to be declared here.
                 items:
                   description: CommitStatusSelector is used to select commit statuses
                     by their key.
@@ -5710,6 +5728,7 @@ spec:
             required:
             - environments
             - gitRepositoryRef
+            - orderCommitStatusRef
             type: object
           status:
             description: PromotionStrategyStatus defines the observed state of PromotionStrategy
@@ -5821,6 +5840,7 @@ spec:
                             - key
                             - phase
                             type: object
+                          maxItems: 100
                           type: array
                           x-kubernetes-list-map-keys:
                           - key
@@ -5888,6 +5908,7 @@ spec:
                                         type: string
                                     type: object
                                 type: object
+                              maxItems: 100
                               type: array
                             repoURL:
                               description: RepoURL is the URL of the repository where
@@ -5971,6 +5992,7 @@ spec:
                                         type: string
                                     type: object
                                 type: object
+                              maxItems: 100
                               type: array
                             repoURL:
                               description: RepoURL is the URL of the repository where
@@ -6063,6 +6085,7 @@ spec:
                                         type: string
                                     type: object
                                 type: object
+                              maxItems: 100
                               type: array
                             repoURL:
                               description: RepoURL is the URL of the repository where
@@ -6083,7 +6106,7 @@ spec:
                       description: |-
                         History defines the history of promoted changes done by the PromotionStrategy for each environment.
                         You can think of it as a list of PRs merged by GitOps Promoter. It will not include changes that were
-                        manually merged. The history length is hard-coded to be at most 5 entries. This may change in the future.
+                        manually merged. The history length is at most 5 entries.
                         History is constructed on a best-effort basis and should be used for informational purposes only.
                         History is in reverse chronological order (newest is first).
                       items:
@@ -6133,6 +6156,7 @@ spec:
                                   - key
                                   - phase
                                   type: object
+                                maxItems: 100
                                 type: array
                                 x-kubernetes-list-map-keys:
                                 - key
@@ -6205,6 +6229,7 @@ spec:
                                               type: string
                                           type: object
                                       type: object
+                                    maxItems: 100
                                     type: array
                                   repoURL:
                                     description: RepoURL is the URL of the repository
@@ -6294,6 +6319,7 @@ spec:
                                               type: string
                                           type: object
                                       type: object
+                                    maxItems: 100
                                     type: array
                                   repoURL:
                                     description: RepoURL is the URL of the repository
@@ -6391,6 +6417,7 @@ spec:
                                               type: string
                                           type: object
                                       type: object
+                                    maxItems: 100
                                     type: array
                                   repoURL:
                                     description: RepoURL is the URL of the repository
@@ -6454,6 +6481,7 @@ spec:
                                   - key
                                   - phase
                                   type: object
+                                maxItems: 100
                                 type: array
                               hydrated:
                                 description: |-
@@ -6525,6 +6553,7 @@ spec:
                                               type: string
                                           type: object
                                       type: object
+                                    maxItems: 100
                                     type: array
                                   repoURL:
                                     description: RepoURL is the URL of the repository
@@ -6606,6 +6635,7 @@ spec:
                                   rule: self == '' || isURL(self)
                             type: object
                         type: object
+                      maxItems: 5
                       type: array
                     lastHealthyDryShas:
                       description: LastHealthyDryShas is a list of dry commits that
@@ -6670,6 +6700,7 @@ spec:
                             - key
                             - phase
                             type: object
+                          maxItems: 100
                           type: array
                           x-kubernetes-list-map-keys:
                           - key
@@ -6737,6 +6768,7 @@ spec:
                                         type: string
                                     type: object
                                 type: object
+                              maxItems: 100
                               type: array
                             repoURL:
                               description: RepoURL is the URL of the repository where
@@ -6820,6 +6852,7 @@ spec:
                                         type: string
                                     type: object
                                 type: object
+                              maxItems: 100
                               type: array
                             repoURL:
                               description: RepoURL is the URL of the repository where
@@ -6912,6 +6945,7 @@ spec:
                                         type: string
                                     type: object
                                 type: object
+                              maxItems: 100
                               type: array
                             repoURL:
                               description: RepoURL is the URL of the repository where
@@ -6986,6 +7020,7 @@ spec:
                   - branch
                   - proposed
                   type: object
+                maxItems: 500
                 type: array
                 x-kubernetes-list-map-keys:
                 - branch

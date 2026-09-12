@@ -571,18 +571,6 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: timezone
       type:
         scalar: string
-- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentEnvironment
-  map:
-    fields:
-    - name: branch
-      type:
-        scalar: string
-    - name: dependsOn
-      type:
-        list:
-          elementType:
-            scalar: string
-          elementRelationship: associative
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatus
   map:
     fields:
@@ -642,14 +630,6 @@ var schemaYAML = typed.YAMLObject(`types:
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentsSuccessfulCommitStatusSpec
   map:
     fields:
-    - name: environments
-      type:
-        list:
-          elementType:
-            namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.DependentEnvironment
-          elementRelationship: associative
-          keys:
-          - branch
     - name: key
       type:
         scalar: string
@@ -717,6 +697,12 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: branch
       type:
         scalar: string
+    - name: dependsOn
+      type:
+        list:
+          elementType:
+            scalar: string
+          elementRelationship: associative
     - name: proposedCommitStatuses
       type:
         list:
@@ -1138,6 +1124,20 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: name
       type:
         scalar: string
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.OrderCommitStatusRef
+  map:
+    fields:
+    - name: group
+      type:
+        scalar: string
+      default: promoter.argoproj.io
+    - name: kind
+      type:
+        scalar: string
+      default: DependentsSuccessfulCommitStatus
+    - name: name
+      type:
+        scalar: string
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.OutputSpec
   map:
     fields:
@@ -1200,6 +1200,9 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: gitRepositoryRef
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ObjectReference
+    - name: orderCommitStatusRef
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.OrderCommitStatusRef
     - name: proposedCommitStatuses
       type:
         list:

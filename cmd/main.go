@@ -280,6 +280,7 @@ func runController(
 	if err = (&controller.PromotionStrategyReconciler{
 		Client:      localManager.GetClient(),
 		Scheme:      localManager.GetScheme(),
+		RESTMapper:  localManager.GetRESTMapper(),
 		Recorder:    localManager.GetEventRecorder("PromotionStrategy"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),

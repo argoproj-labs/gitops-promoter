@@ -49,14 +49,22 @@ type PromotionStrategySpec struct {
 	//
 	// The commit statuses specified in this field apply to all environments in the promotion sequence. You can also
 	// specify commit statuses for individual environments in the `environments` field.
+	//
+	// The ordering gate key from orderCommitStatusRef is injected onto each ChangeTransferPolicy automatically and
+	// does not need to be declared here.
 	// +kubebuilder:validation:Optional
 	// +listType:=map
 	// +listMapKey=key
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses,omitempty"`
 
+	// OrderCommitStatusRef is a reference to the commit status gate that enforces promotion ordering across
+	// environments. The controller injects that gate's key onto every ChangeTransferPolicy's proposedCommitStatuses.
+	// +kubebuilder:validation:Required
+	OrderCommitStatusRef OrderCommitStatusRef `json:"orderCommitStatusRef"`
+
 	// Environments is the sequence of environments that a dry commit will be promoted through.
 	// +kubebuilder:validation:MinItems:=1
-	// +kubebuilder:validation:MaxItems:=1000
+	// +kubebuilder:validation:MaxItems:=500
 	// +listType:=map
 	// +listMapKey=branch
 	Environments []Environment `json:"environments"`
@@ -74,6 +82,7 @@ type PromotionStrategySpec struct {
 }
 
 // Environment defines a single environment in the promotion sequence.
+// +kubebuilder:validation:XValidation:rule="!has(self.dependsOn) || self.dependsOn.all(d, d != self.branch)",message="branch cannot depend on itself"
 type Environment struct {
 	// Branch is the name of the active branch for the environment.
 	// Must not start with '-', contain ':', or contain '..'.
@@ -114,6 +123,20 @@ type Environment struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MinLength=1
 	ActivePath string `json:"activePath,omitempty"`
+
+	// DependsOn is the list of upstream environment branches this environment waits on before it becomes eligible
+	// for promotion. An empty or omitted list makes this environment a root when any environment declares dependsOn;
+	// when no environment declares dependsOn, a linear chain is inferred from spec.environments order.
+	// Each item must not start with '-', contain ':', or contain '..'.
+	// +optional
+	// +listType:=set
+	// +kubebuilder:validation:MaxItems=100
+	// +kubebuilder:validation:items:MinLength=1
+	// +kubebuilder:validation:items:MaxLength=100
+	// +kubebuilder:validation:items:XValidation:rule="!self.startsWith('-')",message="branch must not start with '-'"
+	// +kubebuilder:validation:items:XValidation:rule="!self.contains(':')",message="branch must not contain ':'"
+	// +kubebuilder:validation:items:XValidation:rule="!self.contains('..')",message="branch must not contain '..'"
+	DependsOn []string `json:"dependsOn,omitempty"`
 }
 
 // GetAutoMerge returns the value of the AutoMerge field, defaulting to true if the field is nil.
@@ -170,6 +193,7 @@ type PromotionStrategyStatus struct {
 
 	// Environments holds the status of each environment in the promotion sequence.
 	// +optional
+	// +kubebuilder:validation:MaxItems=500
 	// +listType:=map
 	// +listMapKey=branch
 	Environments []EnvironmentStatus `json:"environments,omitempty"`
@@ -225,9 +249,10 @@ type EnvironmentStatus struct {
 
 	// History defines the history of promoted changes done by the PromotionStrategy for each environment.
 	// You can think of it as a list of PRs merged by GitOps Promoter. It will not include changes that were
-	// manually merged. The history length is hard-coded to be at most 5 entries. This may change in the future.
+	// manually merged. The history length is at most 5 entries.
 	// History is constructed on a best-effort basis and should be used for informational purposes only.
 	// History is in reverse chronological order (newest is first).
+	// +kubebuilder:validation:MaxItems=5
 	History []History `json:"history,omitempty"`
 }
 

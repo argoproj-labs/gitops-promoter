@@ -26,20 +26,12 @@ package v1alpha1
 type DependentsSuccessfulCommitStatusSpecApplyConfiguration struct {
 	// PromotionStrategyRef is a reference to the promotion strategy that this dependents successful commit status
 	// applies to. The controller watches this PromotionStrategy and, for each environment, reports whether the
-	// environment's dependent environments (as declared in Environments) are promoted and successful.
+	// environment's dependent environments (as declared on the PromotionStrategy) are promoted and successful.
 	PromotionStrategyRef *ObjectReferenceApplyConfiguration `json:"promotionStrategyRef,omitempty"`
-	// Key is the commit status key referenced in the PromotionStrategy's proposedCommitStatuses.
-	// It must match a key declared there so the gate this controller produces is enforced.
+	// Key is the commit status key this controller writes on each environment's proposed hydrated SHA.
+	// The PromotionStrategy controller injects this key onto every ChangeTransferPolicy's proposedCommitStatuses.
 	// Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
 	Key *string `json:"key,omitempty"`
-	// Environments declares which environments each branch depends on. An environment becomes eligible for
-	// promotion once all of its dependsOn dependents are promoted and successful. An entry with no dependsOn
-	// is a root. The graph must be acyclic; cycles and references to unknown branches are rejected.
-	//
-	// When omitted or empty, the controller infers a linear chain from the referenced
-	// PromotionStrategy's spec.environments order: the first environment is a root, and each
-	// subsequent environment dependsOn the one before it.
-	Environments []DependentEnvironmentApplyConfiguration `json:"environments,omitempty"`
 	// URL generates the URL to use on the per-environment CommitStatus (SCM details link), for
 	// example a link into the Promoter UI that highlights this environment's dependsOn upstreams.
 	// Optional; when empty, no URL is set on the child CommitStatus. The template receives
@@ -67,19 +59,6 @@ func (b *DependentsSuccessfulCommitStatusSpecApplyConfiguration) WithPromotionSt
 // If called multiple times, the Key field is set to the value of the last call.
 func (b *DependentsSuccessfulCommitStatusSpecApplyConfiguration) WithKey(value string) *DependentsSuccessfulCommitStatusSpecApplyConfiguration {
 	b.Key = &value
-	return b
-}
-
-// WithEnvironments adds the given value to the Environments field in the declarative configuration
-// and returns the receiver, so that objects can be build by chaining "With" function invocations.
-// If called multiple times, values provided by each call will be appended to the Environments field.
-func (b *DependentsSuccessfulCommitStatusSpecApplyConfiguration) WithEnvironments(values ...*DependentEnvironmentApplyConfiguration) *DependentsSuccessfulCommitStatusSpecApplyConfiguration {
-	for i := range values {
-		if values[i] == nil {
-			panic("nil value passed to WithEnvironments")
-		}
-		b.Environments = append(b.Environments, *values[i])
-	}
 	return b
 }
 
