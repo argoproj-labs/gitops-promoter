@@ -212,6 +212,7 @@ spec:
                         - key
                         - phase
                         type: object
+                      maxItems: 100
                       type: array
                       x-kubernetes-list-map-keys:
                       - key
@@ -277,6 +278,7 @@ spec:
                   required:
                   - branch
                   type: object
+                maxItems: 500
                 type: array
                 x-kubernetes-list-map-keys:
                 - branch

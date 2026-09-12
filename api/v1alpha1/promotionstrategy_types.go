@@ -64,7 +64,7 @@ type PromotionStrategySpec struct {
 
 	// Environments is the sequence of environments that a dry commit will be promoted through.
 	// +kubebuilder:validation:MinItems:=1
-	// +kubebuilder:validation:MaxItems:=1000
+	// +kubebuilder:validation:MaxItems:=500
 	// +listType:=map
 	// +listMapKey=branch
 	Environments []Environment `json:"environments"`
@@ -193,6 +193,7 @@ type PromotionStrategyStatus struct {
 
 	// Environments holds the status of each environment in the promotion sequence.
 	// +optional
+	// +kubebuilder:validation:MaxItems=500
 	// +listType:=map
 	// +listMapKey=branch
 	Environments []EnvironmentStatus `json:"environments,omitempty"`
@@ -248,9 +249,10 @@ type EnvironmentStatus struct {
 
 	// History defines the history of promoted changes done by the PromotionStrategy for each environment.
 	// You can think of it as a list of PRs merged by GitOps Promoter. It will not include changes that were
-	// manually merged. The history length is hard-coded to be at most 5 entries. This may change in the future.
+	// manually merged. The history length is at most 5 entries.
 	// History is constructed on a best-effort basis and should be used for informational purposes only.
 	// History is in reverse chronological order (newest is first).
+	// +kubebuilder:validation:MaxItems=5
 	History []History `json:"history,omitempty"`
 }
 

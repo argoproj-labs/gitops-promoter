@@ -110,6 +110,7 @@ type DependentsSuccessfulCommitStatusEnvironmentStatus struct {
 
 	// ActiveCommitStatuses is a verbatim copy of the PromotionStrategy environment's active commit statuses.
 	// +optional
+	// +kubebuilder:validation:MaxItems=100
 	// +listType=map
 	// +listMapKey=key
 	ActiveCommitStatuses []ChangeRequestPolicyCommitStatusPhase `json:"activeCommitStatuses,omitempty"`
@@ -146,6 +147,7 @@ type DependentsSuccessfulCommitStatusStatus struct {
 
 	// Environments reports observed gate and upstream state per dependency-graph branch.
 	// +optional
+	// +kubebuilder:validation:MaxItems=500
 	// +listType=map
 	// +listMapKey=branch
 	Environments []DependentsSuccessfulCommitStatusEnvironmentStatus `json:"environments,omitempty"`
