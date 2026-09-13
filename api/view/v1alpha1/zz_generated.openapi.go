@@ -2685,7 +2685,7 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_Environment(ref common.Re
 					},
 					"dependsOn": {
 						SchemaProps: spec.SchemaProps{
-							Description: "DependsOn is the list of upstream environment branches this environment waits on before it becomes eligible for promotion. An empty or omitted list makes this environment a root when any environment declares dependsOn; when no environment declares dependsOn, a linear chain is inferred from spec.environments order. Each item must not start with '-', contain ':', or contain '..'.",
+							Description: "DependsOn is the list of upstream environment branches this environment waits on before it becomes eligible for promotion (evaluated by DependentsSuccessfulCommitStatus). An empty or omitted list makes this environment a root when any environment declares dependsOn; when no environment declares dependsOn, that controller infers a linear chain from spec.environments order. Each item must not start with '-', contain ':', or contain '..'.",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{

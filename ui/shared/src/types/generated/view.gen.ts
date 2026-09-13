@@ -536,7 +536,7 @@ export type components = {
              * @default
              */
             branch: string;
-            /** @description DependsOn is the list of upstream environment branches this environment waits on before it becomes eligible for promotion. An empty or omitted list makes this environment a root when any environment declares dependsOn; when no environment declares dependsOn, a linear chain is inferred from spec.environments order. Each item must not start with '-', contain ':', or contain '..'. */
+            /** @description DependsOn is the list of upstream environment branches this environment waits on before it becomes eligible for promotion (evaluated by DependentsSuccessfulCommitStatus). An empty or omitted list makes this environment a root when any environment declares dependsOn; when no environment declares dependsOn, that controller infers a linear chain from spec.environments order. Each item must not start with '-', contain ':', or contain '..'. */
             dependsOn?: string[];
             /**
              * @description ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running in a live environment. If a proposed commit status is failing for a given environment, the dry commit will not be promoted to that environment.

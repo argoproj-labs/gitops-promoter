@@ -26,10 +26,9 @@ what ordering gates are waiting on: a downstream promotion may stay blocked unti
 Upgrading from a release before 0.39? See [Upgrading](../upgrading.md#039-promotion-order-on-promotionstrategy). From 0.37 or earlier, also see [0.38 — Promotion ordering gate](../upgrading.md#038-promotion-ordering-gate).
 
 Promotion ordering (which environments may promote relative to others) is also expressed as a proposed commit
-status. Create a [DependentsSuccessfulCommitStatus](built-in-gates/dependents-successful-commit-status.md) and set
-required `spec.orderCommitStatusRef` on the PromotionStrategy. The controller injects the gate key onto every
-`ChangeTransferPolicy`; without a matching DSCS the PromotionStrategy fails reconcile so environments cannot promote
-out of order by accident.
+status. Set required `spec.orderCommitStatusRef` on the PromotionStrategy. The controller injects that gate's
+`spec.key` onto every `ChangeTransferPolicy`; without a resolvable ref the PromotionStrategy fails reconcile.
+The built-in ordering gate is [DependentsSuccessfulCommitStatus](built-in-gates/dependents-successful-commit-status.md).
 
 Gate controller authors: see [Commit Status Controller Best Practices](../contributing/developing-a-commitstatus.md#gate-statusenvironments-standard).
 
@@ -68,7 +67,7 @@ spec:
 ```
 
 In this example, the PromotionStrategy has three environments: `environment/dev`, `environment/test`, and `environment/prod`.
-All environments have a `healthy` active commit status check and the linear ordering gate injected from
+All environments have a `healthy` active commit status check and the ordering-gate key injected from
 `orderCommitStatusRef`. The `environment/prod` environment has an additional `deployment-freeze` proposed
 commit status check.
 

@@ -490,9 +490,9 @@ spec:
 The PromotionStrategy resource is the main resource that you will use to configure the promotion of your application to different environments.
 
 Every PromotionStrategy requires `spec.orderCommitStatusRef`, naming a
-[DependentsSuccessfulCommitStatus](gating-promotions/built-in-gates/dependents-successful-commit-status.md).
-The controller injects that gate's `spec.key` onto every `ChangeTransferPolicy` so environments cannot promote out of
-order by accident. For the common linear dev → staging → production pipeline, omit `dependsOn` on every environment.
+[DependentsSuccessfulCommitStatus](gating-promotions/built-in-gates/dependents-successful-commit-status.md)
+(or another ordering-gate CR). The controller injects that gate's `spec.key` onto every `ChangeTransferPolicy`.
+For the common linear dev → staging → production pipeline with DSCS, omit `dependsOn` on every environment.
 Upgrading from 0.38? See [Upgrading](upgrading.md#039-promotion-order-on-promotionstrategy).
 
 Here is a minimal example:

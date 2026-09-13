@@ -45,8 +45,9 @@ type EnvironmentApplyConfiguration struct {
 	// When set, this environment's CTP uses this path instead of spec.activePath.
 	ActivePath *string `json:"activePath,omitempty"`
 	// DependsOn is the list of upstream environment branches this environment waits on before it becomes eligible
-	// for promotion. An empty or omitted list makes this environment a root when any environment declares dependsOn;
-	// when no environment declares dependsOn, a linear chain is inferred from spec.environments order.
+	// for promotion (evaluated by DependentsSuccessfulCommitStatus). An empty or omitted list makes this environment
+	// a root when any environment declares dependsOn; when no environment declares dependsOn, that controller infers
+	// a linear chain from spec.environments order.
 	// Each item must not start with '-', contain ':', or contain '..'.
 	DependsOn []string `json:"dependsOn,omitempty"`
 }

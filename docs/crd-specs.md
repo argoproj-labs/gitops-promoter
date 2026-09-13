@@ -2,10 +2,10 @@
 
 The PromotionStrategy is the user's interface to controlling how changes are promoted through their environments. In 
 this CR, the user configures the list of live hydrated environment branches and the checks which must pass between
-promotion steps. Promotion ordering requires `spec.orderCommitStatusRef` (naming a
-[DependentsSuccessfulCommitStatus](#dependentssuccessfulcommitstatus)); the controller injects that gate's `spec.key`
-onto every `ChangeTransferPolicy`. Custom promotion graphs use `spec.environments[].dependsOn` on the
-PromotionStrategy.
+promotion steps. Promotion ordering requires `spec.orderCommitStatusRef`; the controller injects that gate's `spec.key`
+onto every `ChangeTransferPolicy`. The built-in gate is
+[DependentsSuccessfulCommitStatus](#dependentssuccessfulcommitstatus); that gate's custom graphs use
+`spec.environments[].dependsOn` on the PromotionStrategy.
 
 ```yaml
 {!internal/controller/testdata/PromotionStrategy.yaml!}
@@ -100,10 +100,10 @@ auth mechanism. A ClusterScmProvider can be referenced by any GitRepository in t
 ### DependentsSuccessfulCommitStatus
 
 A DependentsSuccessfulCommitStatus gates promotions based on whether dependent environments are promoted and
-[successful](gating-promotions/index.md#environment-success). The dependency graph is read from the referenced
-PromotionStrategy's `spec.environments[]`: when no environment declares `dependsOn`, the controller infers a **linear**
+[successful](gating-promotions/index.md#environment-success). The DSCS controller reads the referenced
+PromotionStrategy's `spec.environments[]`: when no environment declares `dependsOn`, it infers a **linear**
 chain from list order (for example dev → staging → prod); otherwise each environment's `dependsOn` defines the DAG.
-Wire the gate with required `PromotionStrategy.spec.orderCommitStatusRef`; the PromotionStrategy controller injects
+Attach the gate with `PromotionStrategy.spec.orderCommitStatusRef`; the PromotionStrategy controller injects
 `spec.key` onto every `ChangeTransferPolicy`. See
 [Dependents Successful Commit Status](gating-promotions/built-in-gates/dependents-successful-commit-status.md).
 
