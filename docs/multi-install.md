@@ -52,6 +52,8 @@ At startup the controller reads `instanceID` from `ControllerConfiguration` (via
 
 The same selector is set as `cache.DefaultLabelSelector`, so informers started later for types **not** in `ByObject` — including unstructured out-of-tree `orderCommitStatusRef` gate CRs — are partitioned the same way. The manager client also reads unstructured objects from that cache (`Cache.Unstructured`), so `Resolve` sees only gates in this install's partition. Label those gate CRs like other user-created roots in multi-install mode, and grant the controller `get`, `list`, and `watch` on the out-of-tree CRD.
 
+In-tree `orderCommitStatusRef` gates (today `DependentsSuccessfulCommitStatus`) are **not** read as unstructured. `Resolve` uses a typed `Get` so they reuse the promoter CRD informer already listed in `ByObject`. Any new in-tree ordering gate must follow that typed path; do not resolve it through the unstructured informer.
+
 `ControllerConfiguration` itself is **not** instance-id filtered—the install must always read its own configuration. Argo CD `Application` watches also stay unfiltered (Applications do not carry Promoter instance labels).
 
 When `instanceID` is unset, the cache selector requires the instance-id label to **not exist**. When set, the selector requires an **exact match**.

@@ -204,9 +204,11 @@ The DependentsSuccessfulCommitStatus produces the gate; the PromotionStrategy co
 
 `orderCommitStatusRef` uses a `group` / `kind` / `name` triple. Resolution uses a generic contract:
 `spec.key` and `spec.promotionStrategyRef.name` at whatever API version the CRD is served on (from cluster
-discovery). That applies to `DependentsSuccessfulCommitStatus` and to out-of-tree ordering gates alike. The Promoter
-ServiceAccount needs RBAC `get` on the referenced CRD, and the gate controller must write the ordering `CommitStatus`
-objects the CTP waits on.
+discovery). In-tree ordering gates (today `DependentsSuccessfulCommitStatus`) are loaded with a typed
+`Get` against the promoter informer cache. Out-of-tree kinds use the same field contract via an
+unstructured `Get`. The Promoter ServiceAccount needs RBAC `get` on the referenced CRD (and
+`list`/`watch` for out-of-tree kinds so their informer can start), and the gate controller must write
+the ordering `CommitStatus` objects the CTP waits on.
 
 Use `kind: DependentsSuccessfulCommitStatus` (the default) for the built-in ordering gate unless you operate a custom
 ordering gate CR that also follows this contract.

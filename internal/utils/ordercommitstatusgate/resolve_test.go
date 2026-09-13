@@ -9,10 +9,24 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/restmapper"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
+
+func promoterScheme() *runtime.Scheme {
+	scheme := runtime.NewScheme()
+	Expect(promoterv1alpha1.AddToScheme(scheme)).To(Succeed())
+	return scheme
+}
+
+func testPromotionStrategy(ref promoterv1alpha1.OrderCommitStatusRef) *promoterv1alpha1.PromotionStrategy {
+	return &promoterv1alpha1.PromotionStrategy{
+		ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default"},
+		Spec:       promoterv1alpha1.PromotionStrategySpec{OrderCommitStatusRef: ref},
+	}
+}
 
 func testRESTMapper(gvk schema.GroupVersionKind, resource string) meta.RESTMapper {
 	return restmapper.NewDiscoveryRESTMapper([]*restmapper.APIGroupResources{{
@@ -46,32 +60,46 @@ var _ = Describe("OrderCommitStatusRef helpers", func() {
 })
 
 var _ = Describe("Resolve", func() {
-	It("resolves DependentsSuccessfulCommitStatus", func() {
-		ps := &promoterv1alpha1.PromotionStrategy{
+	It("resolves DependentsSuccessfulCommitStatus via a typed Get", func() {
+		ps := testPromotionStrategy(promoterv1alpha1.OrderCommitStatusRef{Name: "demo"})
+		gate := &promoterv1alpha1.DependentsSuccessfulCommitStatus{
 			ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default"},
-			Spec: promoterv1alpha1.PromotionStrategySpec{
-				OrderCommitStatusRef: promoterv1alpha1.OrderCommitStatusRef{
-					Group: promoterv1alpha1.DefaultOrderCommitStatusGroup,
-					Kind:  promoterv1alpha1.DefaultOrderCommitStatusKind,
-					Name:  "demo",
-				},
+			Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "demo"},
+				Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
 			},
 		}
-		gate := &unstructured.Unstructured{}
-		gate.SetGroupVersionKind(schema.GroupVersionKind{
-			Group:   promoterv1alpha1.DefaultOrderCommitStatusGroup,
-			Version: "v1alpha1",
-			Kind:    promoterv1alpha1.DefaultOrderCommitStatusKind,
-		})
-		gate.SetName("demo")
-		gate.SetNamespace("default")
-		Expect(unstructured.SetNestedField(gate.Object, promoterv1alpha1.DependentsSuccessfulCommitStatusKey, "spec", "key")).To(Succeed())
-		Expect(unstructured.SetNestedField(gate.Object, "demo", "spec", "promotionStrategyRef", "name")).To(Succeed())
-
-		c := fake.NewClientBuilder().WithObjects(gate).Build()
+		c := fake.NewClientBuilder().WithScheme(promoterScheme()).WithObjects(gate).Build()
 		key, err := Resolve(context.Background(), c, nil, ps)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(key).To(Equal(promoterv1alpha1.DependentsSuccessfulCommitStatusKey))
+	})
+
+	It("rejects a typed DependentsSuccessfulCommitStatus with an empty spec.key", func() {
+		ps := testPromotionStrategy(promoterv1alpha1.OrderCommitStatusRef{Name: "demo"})
+		gate := &promoterv1alpha1.DependentsSuccessfulCommitStatus{
+			ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default"},
+			Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "demo"},
+			},
+		}
+		c := fake.NewClientBuilder().WithScheme(promoterScheme()).WithObjects(gate).Build()
+		_, err := Resolve(context.Background(), c, nil, ps)
+		Expect(err).To(MatchError(ContainSubstring("empty spec.key")))
+	})
+
+	It("rejects a typed DependentsSuccessfulCommitStatus whose promotionStrategyRef does not match", func() {
+		ps := testPromotionStrategy(promoterv1alpha1.OrderCommitStatusRef{Name: "demo"})
+		gate := &promoterv1alpha1.DependentsSuccessfulCommitStatus{
+			ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "default"},
+			Spec: promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "other"},
+				Key:                  promoterv1alpha1.DependentsSuccessfulCommitStatusKey,
+			},
+		}
+		c := fake.NewClientBuilder().WithScheme(promoterScheme()).WithObjects(gate).Build()
+		_, err := Resolve(context.Background(), c, nil, ps)
+		Expect(err).To(MatchError(ContainSubstring("promotionStrategyRef.name is \"other\"")))
 	})
 
 	It("resolves out-of-tree gate CRs at v1alpha1", func() {
