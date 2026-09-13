@@ -34,6 +34,7 @@ var _ = Describe("GateCommitStatusKinds", func() {
 
 		for _, want := range []string{
 			"ArgoCDCommitStatus",
+			"DependentsSuccessfulCommitStatus",
 			"GitCommitStatus",
 			"TimedCommitStatus",
 			"WebRequestCommitStatus",

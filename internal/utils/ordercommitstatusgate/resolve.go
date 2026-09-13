@@ -15,6 +15,10 @@ import (
 // spec.key for injection onto ChangeTransferPolicies. The gate CR must expose spec.key and
 // spec.promotionStrategyRef.name; API version is resolved from cluster discovery when a REST
 // mapper is available.
+//
+// Out-of-tree kinds are fetched as unstructured objects. The manager client caches those
+// Gets (Cache.Unstructured) and partitions the informer with the same instance-id selector
+// as promoter CRDs. The ServiceAccount needs get/list/watch on the gate CRD.
 func Resolve(ctx context.Context, c client.Client, mapper meta.RESTMapper, ps *promoterv1alpha1.PromotionStrategy) (string, error) {
 	ref := ps.Spec.OrderCommitStatusRef.WithDefaults()
 	if ref.Name == "" {

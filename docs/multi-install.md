@@ -50,7 +50,7 @@ The value must be a valid Kubernetes label value (min length 1, max 63 character
 
 At startup the controller reads `instanceID` from `ControllerConfiguration` (via a direct API read, not the informer cache) and configures `cache.ByObject` label selectors for every promoter root CRD except `ControllerConfiguration`, plus `Secret` objects (SCM credentials, HTTP auth, kubeconfig, and other secrets fetched through the manager client).
 
-The same selector is set as `cache.DefaultLabelSelector`, so informers started later for types **not** in `ByObject` — including unstructured out-of-tree `orderCommitStatusRef` gate CRs — are partitioned the same way. Label those gate CRs like other user-created roots in multi-install mode.
+The same selector is set as `cache.DefaultLabelSelector`, so informers started later for types **not** in `ByObject` — including unstructured out-of-tree `orderCommitStatusRef` gate CRs — are partitioned the same way. The manager client also reads unstructured objects from that cache (`Cache.Unstructured`), so `Resolve` sees only gates in this install's partition. Label those gate CRs like other user-created roots in multi-install mode, and grant the controller `get`, `list`, and `watch` on the out-of-tree CRD.
 
 `ControllerConfiguration` itself is **not** instance-id filtered—the install must always read its own configuration. Argo CD `Application` watches also stay unfiltered (Applications do not carry Promoter instance labels).
 
