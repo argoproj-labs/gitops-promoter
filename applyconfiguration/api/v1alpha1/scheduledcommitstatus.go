@@ -29,7 +29,8 @@ import (
 // ScheduledCommitStatusApplyConfiguration represents a declarative configuration of the ScheduledCommitStatus type for use
 // with apply.
 //
-// ScheduledCommitStatus is the Schema for the scheduledcommitstatuses API.
+// ScheduledCommitStatus provides calendar-based gating for environment promotions using cron expressions
+// with durations. It defines recurring allow and exclusion windows that control when promotions can happen.
 type ScheduledCommitStatusApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration `json:""`
 	// metadata is a standard object metadata

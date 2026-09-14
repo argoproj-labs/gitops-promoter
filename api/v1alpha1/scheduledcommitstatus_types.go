@@ -209,7 +209,8 @@ type WindowStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
-// ScheduledCommitStatus is the Schema for the scheduledcommitstatuses API.
+// ScheduledCommitStatus provides calendar-based gating for environment promotions using cron expressions
+// with durations. It defines recurring allow and exclusion windows that control when promotions can happen.
 // +kubebuilder:printcolumn:name="PromotionStrategy",type=string,JSONPath=`.spec.promotionStrategyRef.name`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 type ScheduledCommitStatus struct {
