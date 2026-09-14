@@ -1,6 +1,7 @@
 import { describe, it, beforeEach, afterEach, expect, vi } from 'vitest';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import App from '../src/App';
 import DashboardPage from '../src/pages/DashboardPage';
 import PromotionStrategyPage from '../src/pages/PromotionStrategyPage';
@@ -37,6 +38,15 @@ vi.stubGlobal(
     observe() {}
     unobserve() {}
     disconnect() {}
+  },
+);
+
+vi.stubGlobal(
+  'EventSource',
+  class {
+    addEventListener() {}
+    removeEventListener() {}
+    close() {}
   },
 );
 
@@ -106,6 +116,56 @@ describe('Dashboard Page Load Tests', () => {
       expect(() => {
         root.render(React.createElement(PromotionStrategyPage, { namespace: 'test-namespace' }));
       }).not.toThrow();
+
+      root.unmount();
+    });
+  });
+
+  describe('Promotion strategy routes', () => {
+    const renderAt = async (path: string) => {
+      const root = createRoot(container);
+      root.render(
+        React.createElement(
+          MemoryRouter,
+          { initialEntries: [path] },
+          React.createElement(
+            Routes,
+            null,
+            React.createElement(Route, {
+              path: '/promotion-strategies/:namespace/:name',
+              element: React.createElement(PromotionStrategyPage),
+            }),
+            React.createElement(Route, {
+              path: '/promotion-strategies/:namespace/:name/manifest',
+              element: React.createElement(PromotionStrategyPage),
+            }),
+          ),
+        ),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      return root;
+    };
+
+    it('should mount the live manifest route', async () => {
+      const root = await renderAt('/promotion-strategies/test-namespace/test-strategy/manifest');
+
+      expect(container.textContent).toContain('Loading promotion strategies');
+
+      root.unmount();
+    });
+
+    it('should mount the overview route', async () => {
+      const root = await renderAt('/promotion-strategies/test-namespace/test-strategy');
+
+      expect(container.textContent).toContain('Loading promotion strategies');
+
+      root.unmount();
+    });
+
+    it('should not match an unknown trailing segment', async () => {
+      const root = await renderAt('/promotion-strategies/test-namespace/test-strategy/bogus');
+
+      expect(container.textContent).toBe('');
 
       root.unmount();
     });
