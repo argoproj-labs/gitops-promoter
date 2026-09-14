@@ -6,13 +6,21 @@ import type { PromotionStrategy } from '@shared/types/promotion';
 import type { HistoryViewState } from '@shared/utils/deepLink';
 import type { CommitRow, FilterId, SortId } from './types';
 import { buildMatrix } from './buildMatrix';
-import { isEmptyCellKind } from './helpers';
+import { isEmptyCellKind, pruneEnvFilter } from './helpers';
 import { Dropdown, DropdownItem } from './Dropdown/Dropdown';
 import Tooltip from './Tooltip/Tooltip';
 import FlowCell from './FlowCell/FlowCell';
 import DetailDrawer from './DetailDrawer/DetailDrawer';
 import { useDrawerWidth } from './useDrawerWidth';
 import './index.scss';
+
+const scrollRowIntoView = (rowId: string) => {
+  requestAnimationFrame(() => {
+    document
+      .getElementById(`row-${rowId}`)
+      ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  });
+};
 
 export interface CellSelection {
   rowId: string;
@@ -92,7 +100,12 @@ const HistoryView: React.FC<HistoryViewProps> = ({
     onViewStateChangeRef.current?.({ ...viewStateRef.current, envFilter: value });
   }, []);
 
+  const selectionFromLinkRef = useRef(initialSelection !== null);
+  const [staleLink, setStaleLink] = useState(false);
+
   const selectCell = useCallback((next: CellSelection | null) => {
+    selectionFromLinkRef.current = false;
+    setStaleLink(false);
     setSelectedState(next);
     onSelectionChangeRef.current?.(next);
   }, []);
@@ -108,10 +121,26 @@ const HistoryView: React.FC<HistoryViewProps> = ({
       !selectedCell ||
       isEmptyCellKind(selectedCell.kind)
     ) {
+      if (selectionFromLinkRef.current) setStaleLink(true);
+      selectionFromLinkRef.current = false;
       setSelectedState(null);
       onSelectionChangeRef.current?.(null);
     }
   }, [selected, rows.length, rowsById, validBranches]);
+
+  useEffect(() => {
+    if (!selected || rows.length === 0 || !selectionFromLinkRef.current) return;
+    selectionFromLinkRef.current = false;
+    scrollRowIntoView(selected.rowId);
+  }, [selected, rows.length]);
+
+  const envFilterReconciledRef = useRef(false);
+  useEffect(() => {
+    if (envFilterReconciledRef.current || envs.length === 0) return;
+    envFilterReconciledRef.current = true;
+    const pruned = pruneEnvFilter(viewStateRef.current.envFilter, validBranches);
+    if (pruned) setEnvFilter(pruned);
+  }, [envs.length, validBranches, setEnvFilter]);
 
   const handleToggleEnvFilter = useCallback((branch: string) => {
     setEnvFilter((prev) =>
@@ -167,11 +196,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
       const liveBranch = branches.find((b) => row.cells[b].kind === 'live');
       const branch = liveBranch ?? branches.find((b) => !isEmptyCellKind(row.cells[b].kind));
       if (branch) selectCell({ rowId, branch });
-      requestAnimationFrame(() => {
-        document
-          .getElementById(`row-${rowId}`)
-          ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      });
+      scrollRowIntoView(rowId);
     },
     [envs, rowsById, selectCell],
   );
@@ -344,6 +369,20 @@ const HistoryView: React.FC<HistoryViewProps> = ({
 
           <div className="hp-matrix">
             <div className="hp-matrix__sticky">
+              {staleLink && (
+                <div className="hp-env-banner hp-stale-link" role="status">
+                  <span className="hp-env-banner__text">
+                    That commit is no longer in this promotion history.
+                  </span>
+                  <button
+                    type="button"
+                    className="hp-env-banner__clear"
+                    onClick={() => setStaleLink(false)}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
               {envFilter.length > 0 && visibleEnvs.length < envs.length && (
                 <div className="hp-env-banner">
                   <span className="hp-env-banner__text">

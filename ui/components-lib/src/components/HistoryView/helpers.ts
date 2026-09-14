@@ -24,3 +24,11 @@ export function commitKey(c: Commit | undefined): string | null {
   if (c?.subject || c?.author) return `nokey:${c?.subject ?? ''}|${c?.author ?? ''}`;
   return null;
 }
+
+// Seeded env filters can name branches the strategy no longer has (a stale or
+// hand-edited URL). Unknown branches are dropped; an empty result means all
+// environments. Returns null when nothing needs to change.
+export function pruneEnvFilter(envFilter: string[], validBranches: Set<string>): string[] | null {
+  const pruned = envFilter.filter((b) => validBranches.has(b));
+  return pruned.length === envFilter.length ? null : pruned;
+}
