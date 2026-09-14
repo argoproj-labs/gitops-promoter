@@ -21,6 +21,95 @@ const makeStrategy = (name: string, namespace = 'default') =>
     status: { environments: [] },
   });
 
+const DEV_BRANCH = 'environments/dev';
+const PRD_BRANCH = 'environments/prd';
+
+const makeCommit = (sha: string, subject: string, commitTime: string) => ({
+  sha,
+  subject,
+  author: 'deployment-bot <bot@example.com>',
+  repoURL: 'https://github.example.com/deployment',
+  commitTime,
+});
+
+const NEWER_COMMIT = makeCommit(
+  'aaaaaaa1111111111111111111111111111111111',
+  'add new feature',
+  '2026-05-22T15:00:00Z',
+);
+const OLDER_COMMIT = makeCommit(
+  'bbbbbbb2222222222222222222222222222222222',
+  'fix a bug',
+  '2026-05-22T14:00:00Z',
+);
+
+const makeStrategyWithHistory = (name: string, namespace = 'default') =>
+  JSON.stringify({
+    kind: 'PromotionStrategy',
+    apiVersion: 'promoter.argoproj.io/v1alpha1',
+    metadata: {
+      name,
+      namespace,
+      uid: 'uid-' + name,
+      resourceVersion: '1',
+      generation: 1,
+      creationTimestamp: '',
+    },
+    spec: {
+      gitRepositoryRef: { name: 'my-repo' },
+      environments: [{ branch: DEV_BRANCH }, { branch: PRD_BRANCH }],
+    },
+    status: {
+      environments: [
+        {
+          branch: DEV_BRANCH,
+          active: {
+            dry: NEWER_COMMIT,
+            hydrated: {},
+            commitStatuses: [{ key: 'ci', phase: 'success' }],
+          },
+          proposed: { dry: {}, hydrated: {}, commitStatuses: [] },
+          history: [
+            {
+              active: {
+                dry: NEWER_COMMIT,
+                hydrated: {},
+                commitStatuses: [{ key: 'ci', phase: 'success' }],
+              },
+            },
+            {
+              active: {
+                dry: OLDER_COMMIT,
+                hydrated: {},
+                commitStatuses: [{ key: 'ci', phase: 'failure' }],
+              },
+            },
+          ],
+          lastHealthyDryShas: [],
+        },
+        {
+          branch: PRD_BRANCH,
+          active: {
+            dry: OLDER_COMMIT,
+            hydrated: {},
+            commitStatuses: [{ key: 'ci', phase: 'success' }],
+          },
+          proposed: { dry: {}, hydrated: {}, commitStatuses: [] },
+          history: [
+            {
+              active: {
+                dry: OLDER_COMMIT,
+                hydrated: {},
+                commitStatuses: [{ key: 'ci', phase: 'success' }],
+              },
+            },
+          ],
+          lastHealthyDryShas: [],
+        },
+      ],
+    },
+  });
+
 const makeTreeNode = (name: string, namespace = 'default', version = 'v1alpha1') => ({
   kind: 'PromotionStrategy',
   name,
@@ -385,6 +474,130 @@ describe('AppViewExtension', () => {
       expect(params.get('view')).toBe('tree');
       expect(params.get('node')).toBe('argoproj.io/Rollout');
       expect(params.get('promotionstrategy')).toBe('default/only-strategy');
+    });
+  });
+
+  describe('history view state deep linking', () => {
+    const setSearch = (search: string) => {
+      window.history.replaceState(null, '', '/applications/test-app' + search);
+    };
+
+    const renderHistory = async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ manifest: makeStrategyWithHistory('only-strategy') }),
+        text: async () => '',
+      } as Response);
+
+      await render(makeProps([makeTreeNode('only-strategy')]));
+    };
+
+    const trigger = (label: string) =>
+      container.querySelector(`.hp-dd__trigger[aria-label="${label}"]`) as HTMLButtonElement;
+
+    const triggerValue = (label: string) =>
+      trigger(label)?.querySelector('.hp-dd__value')?.textContent;
+
+    const openMenu = async (label: string) => {
+      trigger(label).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      await wait();
+    };
+
+    const menuItem = (text: string) =>
+      Array.from(document.querySelectorAll('#hp-dropdown-menu .hp-dd__item')).find((item) =>
+        item.querySelector('.hp-dd__item-label')?.textContent?.includes(text),
+      ) as HTMLButtonElement;
+
+    const chooseItem = async (label: string, text: string) => {
+      await openMenu(label);
+      menuItem(text).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      await wait();
+    };
+
+    const lastSearchParams = (replaceState: ReturnType<typeof vi.spyOn>) => {
+      const calls = replaceState.mock.calls;
+      const url = new URL(calls[calls.length - 1][2] as string, 'http://localhost');
+      return url.searchParams;
+    };
+
+    afterEach(() => {
+      setSearch('');
+    });
+
+    it('seeds the filter dropdown from psFilter', async () => {
+      setSearch('?psView=history&psFilter=failed');
+      await renderHistory();
+
+      expect(triggerValue('Filter')).toBe('Failed');
+    });
+
+    it('seeds the sort dropdown from psSort', async () => {
+      setSearch('?psView=history&psSort=oldest');
+      await renderHistory();
+
+      expect(triggerValue('Sort')).toBe('Oldest first');
+    });
+
+    it('seeds the environment dropdown from psEnvs', async () => {
+      setSearch(`?psView=history&psEnvs=${encodeURIComponent(`${DEV_BRANCH},${PRD_BRANCH}`)}`);
+      await renderHistory();
+
+      expect(triggerValue('Environment')).toBe('2 environments');
+    });
+
+    it('falls back to the default filter for an unrecognized psFilter', async () => {
+      setSearch('?psView=history&psFilter=bogus');
+      await renderHistory();
+
+      expect(triggerValue('Filter')).toBe('All commits');
+    });
+
+    it('shows all defaults when no history params are present', async () => {
+      setSearch('?psView=history');
+      await renderHistory();
+
+      expect(triggerValue('Filter')).toBe('All commits');
+      expect(triggerValue('Sort')).toBe('Newest first');
+      expect(triggerValue('Environment')).toBe('All environments');
+    });
+
+    it('writes psSort when changing the sort dropdown', async () => {
+      setSearch('?psView=history');
+      await renderHistory();
+      const replaceState = vi.spyOn(window.history, 'replaceState');
+
+      await chooseItem('Sort', 'Oldest first');
+
+      expect(triggerValue('Sort')).toBe('Oldest first');
+      expect(lastSearchParams(replaceState).get('psSort')).toBe('oldest');
+    });
+
+    it('removes psSort when changing the sort back to the default', async () => {
+      setSearch('?psView=history&psSort=oldest');
+      await renderHistory();
+      const replaceState = vi.spyOn(window.history, 'replaceState');
+
+      await chooseItem('Sort', 'Newest first');
+
+      expect(triggerValue('Sort')).toBe('Newest first');
+      expect(lastSearchParams(replaceState).get('psSort')).toBeNull();
+    });
+
+    it('preserves unrelated ArgoCD params when writing history view state', async () => {
+      setSearch(
+        '?resource=&node=argoproj.io%2FApplication%2Fargocd%2Ftest&promotionstrategy=default%2Fonly-strategy&psView=history',
+      );
+      await renderHistory();
+      const replaceState = vi.spyOn(window.history, 'replaceState');
+
+      await chooseItem('Filter', 'Failed');
+
+      const params = lastSearchParams(replaceState);
+      expect(params.get('psFilter')).toBe('failed');
+      expect(params.get('resource')).toBe('');
+      expect(params.get('node')).toBe('argoproj.io/Application/argocd/test');
+      expect(params.get('promotionstrategy')).toBe('default/only-strategy');
+      expect(params.get('psView')).toBe('history');
     });
   });
 
