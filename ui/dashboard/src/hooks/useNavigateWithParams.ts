@@ -6,7 +6,7 @@ import { useLocation, useNavigate, type NavigateOptions } from 'react-router';
  * survive in-app navigation. Only cross-page params belong here; per-page view
  * state (history filters, sort, selection, ...) must not be added.
  */
-export const CROSS_PAGE_PARAMS = ['mock'] as const;
+export const CROSS_PAGE_PARAMS = ['mock', 'namespace'] as const;
 
 /**
  * Builds the destination for useNavigateWithParams: carries the allowlisted

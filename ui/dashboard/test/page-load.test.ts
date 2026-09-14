@@ -102,7 +102,7 @@ describe('Dashboard Page Load Tests', () => {
       const root = createRoot(container);
 
       expect(() => {
-        root.render(React.createElement(DashboardPage));
+        root.render(React.createElement(MemoryRouter, null, React.createElement(DashboardPage)));
       }).not.toThrow();
 
       root.unmount();
