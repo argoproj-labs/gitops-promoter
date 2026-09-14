@@ -3,9 +3,12 @@ kind: PromotionStrategy
 metadata:
   name: demo-github
 spec:
-  proposedCommitStatuses:
-  # The DependentsSuccessfulCommitStatus CR will maintain this ordering gate.
-  - key: dependents-successful
+  gitRepositoryRef:
+    name: gitops-promoter-demo-repo
+  orderCommitStatusRef:
+    group: promoter.argoproj.io
+    kind: DependentsSuccessfulCommitStatus
+    name: demo-github
   activeCommitStatuses:
   # The ArgoCDCommitStatus CR will maintain this commit status based on the application health.
   - key: argocd-health
@@ -16,8 +19,6 @@ spec:
       branch: environment/staging
     - autoMerge: false
       branch: environment/prod
-  gitRepositoryRef:
-    name: gitops-promoter-demo-repo
 ---
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: DependentsSuccessfulCommitStatus

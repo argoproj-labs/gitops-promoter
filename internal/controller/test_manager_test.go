@@ -152,6 +152,7 @@ func startPartitionedManager(ctx context.Context, cfg *rest.Config, namespace st
 	Expect((&PromotionStrategyReconciler{
 		Client:      localMgr.GetClient(),
 		Scheme:      localMgr.GetScheme(),
+		RESTMapper:  localMgr.GetRESTMapper(),
 		Recorder:    localMgr.GetEventRecorder("PromotionStrategy"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),

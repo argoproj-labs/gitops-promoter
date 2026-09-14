@@ -125,8 +125,9 @@ var _ = Describe("Run integration (envtest + in-process server)", func() {
 		ps := &promoterv1alpha1.PromotionStrategy{
 			Name: testPSName, Namespace: testNamespace,
 			Spec: promoterv1alpha1.PromotionStrategySpec{
-				RepositoryReference: promoterv1alpha1.ObjectReference{Name: "my-repo"},
-				Environments:        []promoterv1alpha1.Environment{{Branch: "environment/dev"}},
+				RepositoryReference:  promoterv1alpha1.ObjectReference{Name: "my-repo"},
+				OrderCommitStatusRef: testOrderCommitStatusRef("my-dscs"),
+				Environments:         []promoterv1alpha1.Environment{{Branch: "environment/dev"}},
 			},
 		}
 		Expect(cl.Create(context.Background(), ps)).To(Succeed())
@@ -175,8 +176,9 @@ var _ = Describe("Run integration (envtest + in-process server)", func() {
 		ps := &promoterv1alpha1.PromotionStrategy{
 			Name: testPSName, Namespace: testNamespace,
 			Spec: promoterv1alpha1.PromotionStrategySpec{
-				RepositoryReference: promoterv1alpha1.ObjectReference{Name: "my-repo"},
-				Environments:        []promoterv1alpha1.Environment{{Branch: "environment/dev"}},
+				RepositoryReference:  promoterv1alpha1.ObjectReference{Name: "my-repo"},
+				OrderCommitStatusRef: testOrderCommitStatusRef("my-dscs"),
+				Environments:         []promoterv1alpha1.Environment{{Branch: "environment/dev"}},
 			},
 		}
 		Expect(cl.Create(context.Background(), ps)).To(Succeed())

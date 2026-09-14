@@ -922,8 +922,11 @@ metadata:
 spec:
   gitRepositoryRef:
     name: my-app-repo
+  orderCommitStatusRef:
+    group: promoter.argoproj.io
+    kind: DependentsSuccessfulCommitStatus
+    name: my-app
   proposedCommitStatuses:
-    - key: dependents-successful # required ordering gate; see DependentsSuccessfulCommitStatus
     - key: external-approval  # Must match WebRequestCommitStatus.spec.key
   environments:
     - branch: environment/development

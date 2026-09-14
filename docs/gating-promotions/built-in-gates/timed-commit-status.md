@@ -61,8 +61,10 @@ metadata:
 spec:
   gitRepositoryRef:
     name: webservice-tier-1
-  proposedCommitStatuses:
-    - key: dependents-successful # required ordering gate; see DependentsSuccessfulCommitStatus
+  orderCommitStatusRef:
+    group: promoter.argoproj.io
+    kind: DependentsSuccessfulCommitStatus
+    name: webservice-tier-1
   activeCommitStatuses:
     - key: timer
   environments:
@@ -88,11 +90,14 @@ metadata:
 spec:
   gitRepositoryRef:
     name: webservice-tier-1
+  orderCommitStatusRef:
+    group: promoter.argoproj.io
+    kind: DependentsSuccessfulCommitStatus
+    name: webservice-tier-1
   activeCommitStatuses:
     - key: argocd-health
     - key: timer
   proposedCommitStatuses:
-    - key: dependents-successful # required ordering gate; see DependentsSuccessfulCommitStatus
     - key: manual-approval
   environments:
     - branch: environment/development

@@ -280,7 +280,7 @@ func shouldSkipHistoryRecalculation(history []promoterv1alpha1.History, activeSh
 func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) {
 	logger := log.FromContext(ctx)
 
-	shaListActive, err := gitOperations.GetRevListFirstParent(ctx, "origin/"+ctp.Spec.ActiveBranch, 5)
+	shaListActive, err := gitOperations.GetRevListFirstParent(ctx, "origin/"+ctp.Spec.ActiveBranch, promoterv1alpha1.MaxPromotionHistory)
 	if err != nil {
 		logger.V(4).Info("failed to get rev-list commit history for active branch", "branch", ctp.Spec.ActiveBranch, "err", err)
 		return

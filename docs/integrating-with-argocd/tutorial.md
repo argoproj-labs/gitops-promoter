@@ -276,8 +276,8 @@ EOF
 
 Create the PromotionStrategy and a
 [DependentsSuccessfulCommitStatus](../gating-promotions/built-in-gates/dependents-successful-commit-status.md)
-so promotions are ordered (development → staging → prod). Ordering is not injected automatically; without this gate the
-PromotionStrategy controller fails its reconcile.
+so promotions are ordered (development → staging → prod). Set required `orderCommitStatusRef` on the
+PromotionStrategy; the controller injects the ordering key onto every ChangeTransferPolicy.
 
 ```bash
 cat << EOF | kubectl apply -f-
@@ -286,9 +286,10 @@ kind: PromotionStrategy
 metadata:
   name: demo-github
 spec:
-  proposedCommitStatuses:
-  # The DependentsSuccessfulCommitStatus CR will maintain this ordering gate.
-  - key: dependents-successful
+  orderCommitStatusRef:
+    group: promoter.argoproj.io
+    kind: DependentsSuccessfulCommitStatus
+    name: demo-github
   activeCommitStatuses:
   # The ArgoCDCommitStatus CR will maintain this commit status based on the application health.
   - key: argocd-health

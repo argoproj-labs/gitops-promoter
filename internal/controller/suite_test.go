@@ -243,6 +243,7 @@ var _ = BeforeSuite(func() {
 	err = (&PromotionStrategyReconciler{
 		Client:      k8sManager.GetClient(),
 		Scheme:      k8sManager.GetScheme(),
+		RESTMapper:  k8sManager.GetRESTMapper(),
 		Recorder:    k8sManager.GetEventRecorder("PromotionStrategy"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),

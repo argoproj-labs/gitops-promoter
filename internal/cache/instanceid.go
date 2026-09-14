@@ -4,6 +4,7 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/kinds"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
+	argocd "github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -17,17 +18,31 @@ import (
 // is required because controller-runtime matches ByObject map keys by pointer identity.
 var partitionedSecretObject client.Object = &corev1.Secret{}
 
+// unpartitionedObjects are types read through the manager cache that never carry a promoter
+// instance-id label, so they must opt out of DefaultLabelSelector. Argo CD Applications are
+// watched by the ArgoCDCommitStatus controller; Namespaces are read by the WebRequestCommitStatus
+// controller for template metadata. Package-level pointers are required because controller-runtime
+// matches ByObject map keys by pointer identity.
+var unpartitionedObjects = []client.Object{
+	&argocd.Application{},
+	&corev1.Namespace{},
+}
+
 // OptionsForInstanceID returns controller-runtime cache options that partition informer watches by
 // instance-id label. When instanceID is nil, only resources without the label are cached. When
 // set, only resources with promoter.argoproj.io/instance-id equal to *instanceID are cached.
 //
-// ControllerConfiguration is scoped to controllerNamespace only (not instance-id partitioned).
-// Secret informers additionally apply secretDataTransform so only promoter credential keys are
-// retained in cache (see secret_transform.go).
+// DefaultLabelSelector applies the same selector to informers started for types not listed in
+// ByObject, so lazily started unstructured informers (out-of-tree orderCommitStatusRef gates) are
+// partitioned too. Any cached type that does not carry the label must therefore be listed in
+// unpartitionedObjects or it becomes invisible. ControllerConfiguration is scoped to
+// controllerNamespace only (not instance-id partitioned). Secret informers additionally apply
+// secretDataTransform so only promoter credential keys are retained in cache
+// (see secret_transform.go).
 func OptionsForInstanceID(instanceID *string, controllerNamespace string) cache.Options {
 	sel := instanceIDSelector(instanceID)
 	objs := PartitionedObjects()
-	byObject := make(map[client.Object]cache.ByObject, len(objs)+1)
+	byObject := make(map[client.Object]cache.ByObject, len(objs)+len(unpartitionedObjects)+1)
 	for _, obj := range objs {
 		byObject[obj] = cache.ByObject{Label: sel}
 	}
@@ -35,13 +50,22 @@ func OptionsForInstanceID(instanceID *string, controllerNamespace string) cache.
 		Label:     sel,
 		Transform: secretDataTransform(),
 	}
+	// labels.Everything() is controller-runtime's sentinel so DefaultLabelSelector is not copied
+	// onto these types during cache option defaulting (ByObject.Label nil would inherit it).
 	byObject[PartitionedControllerConfigurationObject()] = cache.ByObject{
 		Namespaces: map[string]cache.Config{
 			controllerNamespace: {},
 		},
 		Field: fields.OneTermEqualSelector("metadata.name", settings.ControllerConfigurationName),
+		Label: labels.Everything(),
 	}
-	return cache.Options{ByObject: byObject}
+	for _, obj := range unpartitionedObjects {
+		byObject[obj] = cache.ByObject{Label: labels.Everything()}
+	}
+	return cache.Options{
+		ByObject:             byObject,
+		DefaultLabelSelector: sel,
+	}
 }
 
 func instanceIDSelector(instanceID *string) labels.Selector {
@@ -79,6 +103,12 @@ func PartitionedObjects() []client.Object {
 // Exported for tests.
 func PartitionedSecretObject() client.Object {
 	return partitionedSecretObject
+}
+
+// UnpartitionedObjects returns the type keys that opt out of instance-id filtering because they
+// never carry the label. Exported for tests.
+func UnpartitionedObjects() []client.Object {
+	return unpartitionedObjects
 }
 
 // PartitionedControllerConfigurationObject returns the ControllerConfiguration type key used in

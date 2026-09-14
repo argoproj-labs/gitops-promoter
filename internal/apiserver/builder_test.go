@@ -80,8 +80,9 @@ func seedObjects() []client.Object {
 			"keep-me":             "yes",
 		},
 		Spec: promoterv1alpha1.PromotionStrategySpec{
-			RepositoryReference: promoterv1alpha1.ObjectReference{Name: "my-repo"},
-			Environments:        []promoterv1alpha1.Environment{{Branch: "environment/dev"}},
+			RepositoryReference:  promoterv1alpha1.ObjectReference{Name: "my-repo"},
+			OrderCommitStatusRef: testOrderCommitStatusRef("my-dscs"),
+			Environments:         []promoterv1alpha1.Environment{{Branch: "environment/dev"}},
 		},
 		Status: promoterv1alpha1.PromotionStrategyStatus{
 			Environments: []promoterv1alpha1.EnvironmentStatus{
@@ -240,8 +241,9 @@ var _ = Describe("BuildBundle", func() {
 			&promoterv1alpha1.PromotionStrategy{
 				Name: testPSName, Namespace: testNamespace,
 				Spec: promoterv1alpha1.PromotionStrategySpec{
-					RepositoryReference: promoterv1alpha1.ObjectReference{Name: "my-repo"},
-					Environments:        []promoterv1alpha1.Environment{{Branch: "environment/dev"}},
+					RepositoryReference:  promoterv1alpha1.ObjectReference{Name: "my-repo"},
+					OrderCommitStatusRef: testOrderCommitStatusRef(testPSName),
+					Environments:         []promoterv1alpha1.Environment{{Branch: "environment/dev"}},
 				},
 			},
 			&promoterv1alpha1.GitRepository{

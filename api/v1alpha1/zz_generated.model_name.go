@@ -411,6 +411,11 @@ func (in ObjectReference) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in OrderCommitStatusRef) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.OrderCommitStatusRef"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in OutputSpec) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.OutputSpec"
 }

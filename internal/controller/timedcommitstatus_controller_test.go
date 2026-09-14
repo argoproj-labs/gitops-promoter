@@ -56,13 +56,6 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 		promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 			{Key: "timer"},
 		}
-		// The DAG ordering gate must be declared explicitly on the PromotionStrategy;
-		// the controller no longer auto-injects it. Without it, downstream environments merge
-		// without waiting for the previous environment, so the "Open PR" spec that expects a
-		// pending promotion to sit in staging would race against an immediate merge.
-		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-			{Key: promoterv1alpha1.DependentsSuccessfulCommitStatusKey},
-		}
 
 		setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
