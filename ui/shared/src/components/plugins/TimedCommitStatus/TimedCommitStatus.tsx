@@ -1,40 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import type { components } from '../../../types/generated/view.gen';
-import { formatDuration } from '../../../utils/util';
+import { formatDuration, parseGoDuration } from '../../../utils/util';
 import type { CommitStatusContext } from '../types';
 import type { RowPlugin } from '../types';
 import './TimedCommitStatus.scss';
-
-function parseGoDuration(duration: string): number {
-  let totalMs = 0;
-  const re = /(\d+(?:\.\d+)?)(ns|us|µs|ms|h|m|s)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(duration)) !== null) {
-    const value = parseFloat(m[1]);
-    switch (m[2]) {
-      case 'h':
-        totalMs += value * 3_600_000;
-        break;
-      case 'm':
-        totalMs += value * 60_000;
-        break;
-      case 's':
-        totalMs += value * 1_000;
-        break;
-      case 'ms':
-        totalMs += value;
-        break;
-      case 'us':
-      case 'µs':
-        totalMs += value / 1_000;
-        break;
-      case 'ns':
-        totalMs += value / 1_000_000;
-        break;
-    }
-  }
-  return duration.trimStart().startsWith('-') ? -totalMs : totalMs;
-}
 
 function remainingFromCommitTime(
   environment: NonNullable<ReturnType<typeof findEnvironment>>,

@@ -40,6 +40,37 @@ export function formatDuration(ms: number): string {
   return `${seconds}s`;
 }
 
+export function parseGoDuration(duration: string): number {
+  let totalMs = 0;
+  const re = /(\d+(?:\.\d+)?)(ns|us|µs|ms|h|m|s)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(duration)) !== null) {
+    const value = parseFloat(m[1]);
+    switch (m[2]) {
+      case 'h':
+        totalMs += value * 3_600_000;
+        break;
+      case 'm':
+        totalMs += value * 60_000;
+        break;
+      case 's':
+        totalMs += value * 1_000;
+        break;
+      case 'ms':
+        totalMs += value;
+        break;
+      case 'us':
+      case 'µs':
+        totalMs += value / 1_000;
+        break;
+      case 'ns':
+        totalMs += value / 1_000_000;
+        break;
+    }
+  }
+  return duration.trimStart().startsWith('-') ? -totalMs : totalMs;
+}
+
 // Get the commit url from the repo url and sha
 export function getCommitUrl(repoUrl: string, sha: string): string {
   if (!repoUrl || !sha) return '';
