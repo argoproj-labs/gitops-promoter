@@ -6,6 +6,15 @@ import type { CellSelection } from '@components-lib/components/HistoryView/Histo
 import { PromotionStrategy } from '@shared/types/promotion';
 import { AppViewComponentProps } from '@shared/types/extension';
 import { sortStrategyCommitStatuses } from '@shared/utils/util';
+import {
+  EXTENSION_HISTORY_PARAMS,
+  EXTENSION_SELECTION_PARAMS,
+  readHistoryViewState,
+  readSelection,
+  writeHistoryViewState,
+  writeSelection,
+} from '@shared/utils/deepLink';
+import type { HistoryViewState } from '@shared/utils/deepLink';
 import './StrategyDropdown.scss';
 
 type ViewMode = 'card' | 'history';
@@ -20,41 +29,57 @@ interface SelectOption {
   label: string;
 }
 
-const getParam = (): string => {
-  const params = new URLSearchParams(window.location.search);
-  return params.get(PARAM) || '';
+const currentParams = (): URLSearchParams => new URLSearchParams(window.location.search);
+
+const commitParams = (params: URLSearchParams) => {
+  const url = new URL(window.location.href);
+  url.search = params.toString();
+  window.history.replaceState(null, '', url.toString());
 };
+
+const getParam = (): string => currentParams().get(PARAM) || '';
 
 const setParam = (name: string) => {
-  const url = new URL(window.location.href);
+  const params = currentParams();
   if (name) {
-    url.searchParams.set(PARAM, name);
+    params.set(PARAM, name);
   } else {
-    url.searchParams.delete(PARAM);
+    params.delete(PARAM);
   }
-  window.history.replaceState(null, '', url.toString());
+  commitParams(params);
 };
 
-const COMMIT_PARAM = 'psCommit';
-const ENV_PARAM = 'psEnv';
+const VIEW_PARAM = 'psView';
 
-const getSelectionFromUrl = (): CellSelection | null => {
-  const params = new URLSearchParams(window.location.search);
-  const rowId = params.get(COMMIT_PARAM);
-  const branch = params.get(ENV_PARAM);
-  return rowId && branch ? { rowId, branch } : null;
+const getViewFromUrl = (): ViewMode => {
+  const params = currentParams();
+  return params.get(VIEW_PARAM) === 'history' || readSelection(params, EXTENSION_SELECTION_PARAMS)
+    ? 'history'
+    : 'card';
 };
+
+const setViewInUrl = (view: ViewMode) => {
+  const params = currentParams();
+  if (view === 'history') {
+    params.set(VIEW_PARAM, view);
+  } else {
+    params.delete(VIEW_PARAM);
+  }
+  commitParams(params);
+};
+
+const getSelectionFromUrl = (): CellSelection | null =>
+  readSelection(currentParams(), EXTENSION_SELECTION_PARAMS);
 
 const setSelectionInUrl = (selection: CellSelection | null) => {
-  const url = new URL(window.location.href);
-  if (selection) {
-    url.searchParams.set(COMMIT_PARAM, selection.rowId);
-    url.searchParams.set(ENV_PARAM, selection.branch);
-  } else {
-    url.searchParams.delete(COMMIT_PARAM);
-    url.searchParams.delete(ENV_PARAM);
-  }
-  window.history.replaceState(null, '', url.toString());
+  commitParams(writeSelection(currentParams(), EXTENSION_SELECTION_PARAMS, selection));
+};
+
+const getViewStateFromUrl = (): HistoryViewState =>
+  readHistoryViewState(currentParams(), EXTENSION_HISTORY_PARAMS);
+
+const setViewStateInUrl = (state: HistoryViewState) => {
+  commitParams(writeHistoryViewState(currentParams(), EXTENSION_HISTORY_PARAMS, state));
 };
 
 const storageKey = (appNamespace: string, appName: string) =>
@@ -89,7 +114,12 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
     () => getParam() || getStored(application.metadata.namespace, application.metadata.name),
   );
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const [view, setView] = useState<ViewMode>(() => (getSelectionFromUrl() ? 'history' : 'card'));
+  const [view, setView] = useState<ViewMode>(getViewFromUrl);
+
+  const selectView = (next: ViewMode) => {
+    setView(next);
+    setViewInUrl(next);
+  };
 
   useEffect(() => {
     const appName = application.metadata.name;
@@ -205,7 +235,7 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
               role="tab"
               aria-selected={view === 'card'}
               className={`gp-view-toggle__btn ${view === 'card' ? 'gp-view-toggle__btn--active' : ''}`}
-              onClick={() => setView('card')}
+              onClick={() => selectView('card')}
             >
               Overview
             </button>
@@ -214,7 +244,7 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
               role="tab"
               aria-selected={view === 'history'}
               className={`gp-view-toggle__btn ${view === 'history' ? 'gp-view-toggle__btn--active' : ''}`}
-              onClick={() => setView('history')}
+              onClick={() => selectView('history')}
             >
               History
             </button>
@@ -228,6 +258,8 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
             strategy={selected}
             initialSelection={getSelectionFromUrl()}
             onSelectionChange={setSelectionInUrl}
+            initialViewState={getViewStateFromUrl()}
+            onViewStateChange={setViewStateInUrl}
           />
         </div>
       )}

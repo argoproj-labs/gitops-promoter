@@ -283,6 +283,111 @@ describe('AppViewExtension', () => {
     });
   });
 
+  describe('view tab deep linking', () => {
+    const setSearch = (search: string) => {
+      window.history.replaceState(null, '', '/applications/test-app' + search);
+    };
+
+    const renderOneStrategy = async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ manifest: makeStrategy('only-strategy') }),
+        text: async () => '',
+      } as Response);
+
+      await render(makeProps([makeTreeNode('only-strategy')]));
+    };
+
+    const tab = (label: string) =>
+      Array.from(container.querySelectorAll('[role="tab"]')).find(
+        (t) => t.textContent === label,
+      ) as HTMLButtonElement;
+
+    const lastSearchParams = (replaceState: ReturnType<typeof vi.spyOn>) => {
+      const calls = replaceState.mock.calls;
+      const url = new URL(calls[calls.length - 1][2] as string, 'http://localhost');
+      return url.searchParams;
+    };
+
+    afterEach(() => {
+      setSearch('');
+    });
+
+    it('opens the history tab from psView with no selection present', async () => {
+      setSearch('?psView=history');
+      await renderOneStrategy();
+
+      expect(tab('History').getAttribute('aria-selected')).toBe('true');
+      expect(tab('Overview').getAttribute('aria-selected')).toBe('false');
+    });
+
+    it('opens the card tab when psView is absent', async () => {
+      setSearch('');
+      await renderOneStrategy();
+
+      expect(tab('Overview').getAttribute('aria-selected')).toBe('true');
+      expect(tab('History').getAttribute('aria-selected')).toBe('false');
+    });
+
+    it('opens the card tab for an unrecognized psView value', async () => {
+      setSearch('?psView=bogus');
+      await renderOneStrategy();
+
+      expect(tab('Overview').getAttribute('aria-selected')).toBe('true');
+    });
+
+    it('still infers the history tab from a shipped psCommit/psEnv link', async () => {
+      setSearch('?psCommit=abc123&psEnv=main');
+      await renderOneStrategy();
+
+      expect(tab('History').getAttribute('aria-selected')).toBe('true');
+    });
+
+    it('does not infer the history tab from a partial selection pair', async () => {
+      setSearch('?psCommit=abc123');
+      await renderOneStrategy();
+
+      expect(tab('Overview').getAttribute('aria-selected')).toBe('true');
+    });
+
+    it('writes psView=history when switching to the history tab', async () => {
+      setSearch('');
+      await renderOneStrategy();
+      const replaceState = vi.spyOn(window.history, 'replaceState');
+
+      tab('History').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      await wait();
+
+      expect(lastSearchParams(replaceState).get('psView')).toBe('history');
+    });
+
+    it('removes psView when switching back to the card tab', async () => {
+      setSearch('?psView=history');
+      await renderOneStrategy();
+      const replaceState = vi.spyOn(window.history, 'replaceState');
+
+      tab('Overview').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      await wait();
+
+      expect(lastSearchParams(replaceState).get('psView')).toBeNull();
+    });
+
+    it('preserves unrelated ArgoCD params when writing psView', async () => {
+      setSearch('?resource=&view=tree&node=argoproj.io%2FRollout');
+      await renderOneStrategy();
+      const replaceState = vi.spyOn(window.history, 'replaceState');
+
+      tab('History').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      await wait();
+
+      const params = lastSearchParams(replaceState);
+      expect(params.get('psView')).toBe('history');
+      expect(params.get('view')).toBe('tree');
+      expect(params.get('node')).toBe('argoproj.io/Rollout');
+      expect(params.get('promotionstrategy')).toBe('default/only-strategy');
+    });
+  });
+
   describe('when tree has PromotionStrategy nodes', () => {
     it('shows an error when fetch rejects', async () => {
       vi.mocked(fetch).mockRejectedValue(new Error('network failure'));
