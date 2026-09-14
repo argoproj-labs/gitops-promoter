@@ -147,6 +147,7 @@ type GenericScmProvider interface {
 	runtime.Object
 	metav1.Object
 	GetSpec() *ScmProviderSpec
+	SCMCallScope
 }
 
 // +kubebuilder:object:root:false
