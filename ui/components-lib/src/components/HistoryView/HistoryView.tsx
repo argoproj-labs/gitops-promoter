@@ -3,6 +3,7 @@ import { FaChevronLeft, FaFilter, FaSort, FaLayerGroup, FaArrowRight } from 'rea
 import { GoGitCommit } from 'react-icons/go';
 import { timeAgo, formatDate, getCommitUrl } from '@shared/utils/util';
 import type { PromotionStrategy } from '@shared/types/promotion';
+import type { HistoryViewState } from '@shared/utils/deepLink';
 import type { CommitRow, FilterId, SortId } from './types';
 import { buildMatrix } from './buildMatrix';
 import { isEmptyCellKind } from './helpers';
@@ -25,6 +26,10 @@ export interface HistoryViewProps {
   onBack?: () => void;
   initialSelection?: CellSelection | null;
   onSelectionChange?: (_selection: CellSelection | null) => void;
+  // Filter, sort and environment filter seed values; any subset may be given,
+  // the rest fall back to their defaults. The host owns URL serialization.
+  initialViewState?: Partial<HistoryViewState>;
+  onViewStateChange?: (_state: HistoryViewState) => void;
   // By default the view fills its host container (`height: 100%`), which is
   // correct when mounted inside a sized ancestor like ArgoCD's
   // `application-details__tree`. Hosts with no sized ancestor (the dashboard)
@@ -40,6 +45,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   fillViewport = false,
   initialSelection = null,
   onSelectionChange,
+  initialViewState,
+  onViewStateChange,
 }) => {
   const rootClass = fillViewport ? 'hp--viewport' : '';
   const name = nameProp ?? strategy?.metadata?.name;
@@ -55,13 +62,35 @@ const HistoryView: React.FC<HistoryViewProps> = ({
     return m;
   }, [rows]);
 
-  const [filter, setFilter] = useState<FilterId>('all');
-  const [sort, setSort] = useState<SortId>('newest');
-  const [envFilter, setEnvFilter] = useState<string[]>([]);
+  const [filter, setFilterState] = useState<FilterId>(initialViewState?.filter ?? 'all');
+  const [sort, setSortState] = useState<SortId>(initialViewState?.sort ?? 'newest');
+  const [envFilter, setEnvFilterState] = useState<string[]>(initialViewState?.envFilter ?? []);
   const [selected, setSelectedState] = useState<CellSelection | null>(initialSelection);
 
   const onSelectionChangeRef = useRef(onSelectionChange);
   onSelectionChangeRef.current = onSelectionChange;
+
+  const onViewStateChangeRef = useRef(onViewStateChange);
+  onViewStateChangeRef.current = onViewStateChange;
+
+  const viewStateRef = useRef<HistoryViewState>({ filter, sort, envFilter });
+  viewStateRef.current = { filter, sort, envFilter };
+
+  const setFilter = useCallback((next: FilterId) => {
+    setFilterState(next);
+    onViewStateChangeRef.current?.({ ...viewStateRef.current, filter: next });
+  }, []);
+
+  const setSort = useCallback((next: SortId) => {
+    setSortState(next);
+    onViewStateChangeRef.current?.({ ...viewStateRef.current, sort: next });
+  }, []);
+
+  const setEnvFilter = useCallback((next: string[] | ((_prev: string[]) => string[])) => {
+    const value = typeof next === 'function' ? next(viewStateRef.current.envFilter) : next;
+    setEnvFilterState(value);
+    onViewStateChangeRef.current?.({ ...viewStateRef.current, envFilter: value });
+  }, []);
 
   const selectCell = useCallback((next: CellSelection | null) => {
     setSelectedState(next);
