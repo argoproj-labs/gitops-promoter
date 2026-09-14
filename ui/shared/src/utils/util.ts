@@ -42,11 +42,13 @@ export function formatDuration(ms: number): string {
 
 export function parseGoDuration(duration: string): number {
   let totalMs = 0;
-  const re = /(\d+(?:\.\d+)?)(ns|us|µs|ms|h|m|s)/g;
+  const negated = duration.trimStart().startsWith('-');
+  const body = negated ? duration.replace('-', '') : duration;
+  const re = /([+-]?)(\d+(?:\.\d+)?)(ns|us|µs|ms|h|m|s)/g;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(duration)) !== null) {
-    const value = parseFloat(m[1]);
-    switch (m[2]) {
+  while ((m = re.exec(body)) !== null) {
+    const value = (m[1] === '-' ? -1 : 1) * parseFloat(m[2]);
+    switch (m[3]) {
       case 'h':
         totalMs += value * 3_600_000;
         break;
@@ -68,7 +70,7 @@ export function parseGoDuration(duration: string): number {
         break;
     }
   }
-  return duration.trimStart().startsWith('-') ? -totalMs : totalMs;
+  return negated ? -totalMs : totalMs;
 }
 
 // Get the commit url from the repo url and sha

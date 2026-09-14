@@ -70,8 +70,8 @@ describe('parseGoDuration', () => {
     expect(parseGoDuration('\t-1h')).toBe(-3_600_000);
   });
 
-  it('does not negate when the sign follows other leading characters', () => {
-    expect(parseGoDuration('x-5m')).toBe(300_000);
+  it('does not negate the whole expression when the sign follows other leading characters', () => {
+    expect(parseGoDuration('x-5m')).toBe(-300_000);
   });
 
   it.each([
@@ -126,11 +126,39 @@ describe('parseGoDuration', () => {
     expect(parseGoDuration('garbage 2s garbage')).toBe(2_000);
   });
 
-  // Pins current behavior: only a leading '-' negates, so a mid-string '-' is dropped and
-  // "1h-30m" adds the 30m instead of subtracting it. Go would reject this string outright.
-  it('ignores a minus sign that appears mid-string', () => {
-    expect(parseGoDuration('1h-30m')).toBe(5_400_000);
+  it('subtracts a term introduced by a mid-string minus sign', () => {
+    expect(parseGoDuration('1h-30m')).toBe(1_800_000);
+    expect(parseGoDuration('1m-30s')).toBe(30_000);
+  });
+
+  it('adds a term introduced by a mid-string plus sign', () => {
+    expect(parseGoDuration('1h+30m')).toBe(5_400_000);
+    expect(parseGoDuration('1m+30s')).toBe(90_000);
+  });
+
+  it('applies each mid-string sign to the term that follows it', () => {
+    expect(parseGoDuration('1h-30m-15s')).toBe(1_785_000);
+    expect(parseGoDuration('1h+30m-15s')).toBe(5_385_000);
+    expect(parseGoDuration('2h-30m+15m')).toBe(6_300_000);
+  });
+
+  it('negates the whole signed expression when a leading minus precedes mid-string signs', () => {
+    expect(parseGoDuration('-1h-30m')).toBe(-1_800_000);
+    expect(parseGoDuration('-1h-30m-15s')).toBe(-1_785_000);
+    expect(parseGoDuration('+1h-30m')).toBe(1_800_000);
+  });
+
+  it('leaves leading-minus compound forms unchanged', () => {
+    expect(parseGoDuration('-1h30m')).toBe(-5_400_000);
+    expect(parseGoDuration('-2h45m30s')).toBe(-9_930_000);
+    expect(parseGoDuration('-1.5h')).toBe(-5_400_000);
+    expect(parseGoDuration('  -5m')).toBe(-300_000);
+  });
+
+  // Pins current behavior: a trailing sign has no term to apply to and is simply skipped.
+  it('skips a trailing sign with no following term', () => {
     expect(parseGoDuration('5m-')).toBe(300_000);
+    expect(parseGoDuration('5m+')).toBe(300_000);
   });
 
   // Pins current behavior: repeated units are summed rather than rejected as invalid.
@@ -139,10 +167,9 @@ describe('parseGoDuration', () => {
     expect(parseGoDuration('30s30s')).toBe(60_000);
   });
 
-  // Pins current behavior: a leading '+' is not part of the regex and is simply skipped, so a
-  // positive-signed duration parses as positive by accident rather than by design.
-  it('skips a leading plus sign', () => {
+  it('parses a leading plus sign as positive', () => {
     expect(parseGoDuration('+5m')).toBe(300_000);
+    expect(parseGoDuration('+1h30m')).toBe(5_400_000);
   });
 
   // Pins current behavior: exponent notation is not supported, so "1e3s" matches only the "3s"
