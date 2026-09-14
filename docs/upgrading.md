@@ -4,6 +4,14 @@ This page documents breaking changes and migration steps between releases.
 
 ## 0.39 — Promotion order on PromotionStrategy {#039-promotion-order-on-promotionstrategy}
 
+> [!IMPORTANT]
+> Your PromotionStrategies will stop reconciling after upgrading to 0.39.0+ until you apply manifest changes. This is a breaking change requiring downtime to address.
+>
+> **From 0.37 (or earlier):** PromotionStrategy used to auto-inject a hard-coded `promoter-previous-environment` check for linear order. That magic is gone. For each PromotionStrategy, create a `DependentsSuccessfulCommitStatus` (`spec.key` plus `spec.promotionStrategyRef` naming the PS) and add required `spec.orderCommitStatusRef` on the PS pointing at that gate. Do not put the ordering key in `proposedCommitStatuses` — the PS controller injects it. Linear pipelines omit `dependsOn`; custom DAGs set `dependsOn` on `PromotionStrategy.spec.environments[]`.
+>
+> **From 0.38:** You already have a `DependentsSuccessfulCommitStatus`. Copy any `DependentsSuccessfulCommitStatus.spec.environments[].dependsOn` onto the matching `PromotionStrategy.spec.environments[]`, delete `spec.environments` from the DSCS, add required `spec.orderCommitStatusRef` on the PS, and remove the ordering key (usually `dependents-successful`) from `proposedCommitStatuses`. Keep DSCS `spec.key` and `spec.promotionStrategyRef`.
+>
+
 This release moves the promotion dependency graph from `DependentsSuccessfulCommitStatus` onto
 `PromotionStrategy` and wires the ordering gate through required `orderCommitStatusRef`.
 
