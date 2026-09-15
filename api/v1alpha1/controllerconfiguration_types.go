@@ -103,6 +103,31 @@ type PromotionStrategyConfiguration struct {
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
 	WorkQueue WorkQueue `json:"workQueue"`
+
+	// GitNoteRetry controls how PromotionStrategy re-enqueues ChangeTransferPolicies whose
+	// effective dry SHA lags a sibling while waiting for a hydrator git note. SCM webhooks
+	// do not fire for notes pushes, so this bounded backoff covers the gap until
+	// changeTransferPolicy.workQueue.requeueDuration takes over.
+	// +required
+	GitNoteRetry GitNoteRetry `json:"gitNoteRetry"`
+}
+
+// GitNoteRetry is how PromotionStrategy re-enqueues ChangeTransferPolicies whose
+// effective dry SHA lags a sibling while waiting for a hydrator git note (SCMs
+// do not webhook notes pushes). After maxAttempts delayed nudges, retry falls
+// through to changeTransferPolicy.workQueue.requeueDuration.
+type GitNoteRetry struct {
+	// MaxAttempts is the number of delayed re-enqueues for one unchanged
+	// disagreement after the first immediate nudge. Must be at least 1.
+	// +required
+	// +kubebuilder:validation:Minimum=1
+	MaxAttempts int `json:"maxAttempts"`
+
+	// ExponentialFailure is the backoff between delayed nudges (same knobs as
+	// WorkQueue's exponentialFailure rate limiter). Delay for delayed attempt i
+	// (0-based) is min(baseDelay * 2^i, maxDelay).
+	// +required
+	ExponentialFailure ExponentialFailure `json:"exponentialFailure"`
 }
 
 // ChangeTransferPolicyConfiguration defines the configuration for the ChangeTransferPolicy controller.

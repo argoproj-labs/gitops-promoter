@@ -341,6 +341,11 @@ func (in GitLabRepo) OpenAPIModelName() string {
 }
 
 // OpenAPIModelName returns the OpenAPI model name for this type.
+func (in GitNoteRetry) OpenAPIModelName() string {
+	return "io.argoproj.promoter.v1alpha1.GitNoteRetry"
+}
+
+// OpenAPIModelName returns the OpenAPI model name for this type.
 func (in GitRepository) OpenAPIModelName() string {
 	return "io.argoproj.promoter.v1alpha1.GitRepository"
 }

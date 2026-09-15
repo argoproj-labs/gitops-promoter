@@ -99,6 +99,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		apiv1alpha1.GitHubRepo{}.OpenAPIModelName():                                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitHubRepo(ref),
 		apiv1alpha1.GitLab{}.OpenAPIModelName():                                               schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitLab(ref),
 		apiv1alpha1.GitLabRepo{}.OpenAPIModelName():                                           schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitLabRepo(ref),
+		apiv1alpha1.GitNoteRetry{}.OpenAPIModelName():                                         schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitNoteRetry(ref),
 		apiv1alpha1.GitRepository{}.OpenAPIModelName():                                        schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitRepository(ref),
 		apiv1alpha1.GitRepositoryList{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitRepositoryList(ref),
 		apiv1alpha1.GitRepositorySpec{}.OpenAPIModelName():                                    schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitRepositorySpec(ref),
@@ -3412,6 +3413,37 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitLabRepo(ref common.Ref
 	}
 }
 
+func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitNoteRetry(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "GitNoteRetry is how PromotionStrategy re-enqueues ChangeTransferPolicies whose effective dry SHA lags a sibling while waiting for a hydrator git note (SCMs do not webhook notes pushes). After maxAttempts delayed nudges, retry falls through to changeTransferPolicy.workQueue.requeueDuration.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"maxAttempts": {
+						SchemaProps: spec.SchemaProps{
+							Description: "MaxAttempts is the number of delayed re-enqueues for one unchanged disagreement after the first immediate nudge. Must be at least 1.",
+							Default:     0,
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
+					"exponentialFailure": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ExponentialFailure is the backoff between delayed nudges (same knobs as WorkQueue's exponentialFailure rate limiter). Delay for delayed attempt i (0-based) is min(baseDelay * 2^i, maxDelay).",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.ExponentialFailure{}.OpenAPIModelName()),
+						},
+					},
+				},
+				Required: []string{"maxAttempts", "exponentialFailure"},
+			},
+		},
+		Dependencies: []string{
+			apiv1alpha1.ExponentialFailure{}.OpenAPIModelName()},
+	}
+}
+
 func schema_argoproj_labs_gitops_promoter_api_v1alpha1_GitRepository(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -4169,12 +4201,19 @@ func schema_argoproj_labs_gitops_promoter_api_v1alpha1_PromotionStrategyConfigur
 							Ref:         ref(apiv1alpha1.WorkQueue{}.OpenAPIModelName()),
 						},
 					},
+					"gitNoteRetry": {
+						SchemaProps: spec.SchemaProps{
+							Description: "GitNoteRetry controls how PromotionStrategy re-enqueues ChangeTransferPolicies whose effective dry SHA lags a sibling while waiting for a hydrator git note. SCM webhooks do not fire for notes pushes, so this bounded backoff covers the gap until changeTransferPolicy.workQueue.requeueDuration takes over.",
+							Default:     map[string]interface{}{},
+							Ref:         ref(apiv1alpha1.GitNoteRetry{}.OpenAPIModelName()),
+						},
+					},
 				},
-				Required: []string{"workQueue"},
+				Required: []string{"workQueue", "gitNoteRetry"},
 			},
 		},
 		Dependencies: []string{
-			apiv1alpha1.WorkQueue{}.OpenAPIModelName()},
+			apiv1alpha1.GitNoteRetry{}.OpenAPIModelName(), apiv1alpha1.WorkQueue{}.OpenAPIModelName()},
 	}
 }
 

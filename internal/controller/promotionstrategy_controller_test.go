@@ -5033,6 +5033,168 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
+		Context("gitNoteRetry configuration vs a delayed hydrator note", Serial, func() {
+			// Staging is hydrated for a new dry SHA while dev is not. PromotionStrategy
+			// then nudges the dev CTP so it can refetch git notes (SCMs do not webhook
+			// notes pushes). These specs push the matching note on dev-next after a delay
+			// and show that gitNoteRetry is what decides whether that note is seen before
+			// the ChangeTransferPolicy workQueue.requeueDuration fallback.
+			bringStagingAheadOfDev := func() (gitPath2, firstDrySha, secondDrySha string) {
+				GinkgoHelper()
+
+				By("Waiting for ChangeTransferPolicies to be created and reconciled")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+						Namespace: typeNamespacedName.Namespace,
+					}, &ctpDev)
+					g.Expect(err).To(Succeed())
+					g.Expect(ctpDev.Status.Active.Dry.Sha).NotTo(BeEmpty())
+
+					err = k8sClient.Get(ctx, types.NamespacedName{
+						Name:      utils.KubeSafeUniqueName(utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+						Namespace: typeNamespacedName.Namespace,
+					}, &ctpStaging)
+					g.Expect(err).To(Succeed())
+					g.Expect(ctpStaging.Status.Active.Dry.Sha).NotTo(BeEmpty())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Making a change and hydrating all environments (normal flow first)")
+				gitPath1, err := os.MkdirTemp("", "*")
+				Expect(err).NotTo(HaveOccurred())
+				DeferCleanup(func() { _ = os.RemoveAll(gitPath1) })
+				firstDrySha, _ = makeChangeAndHydrateRepo(gitPath1, gitRepo, "first commit", "")
+
+				By("Setting dev's commit status to success so staging can promote")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      ctpDev.Name,
+						Namespace: ctpDev.Namespace,
+					}, &ctpDev)
+					g.Expect(err).To(Succeed())
+					g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(firstDrySha))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				_, err = runGitCmd(ctx, gitPath1, "fetch")
+				Expect(err).NotTo(HaveOccurred())
+				devActiveSha, err := runGitCmd(ctx, gitPath1, "rev-parse", "origin/"+ctpDev.Spec.ActiveBranch)
+				Expect(err).NotTo(HaveOccurred())
+				devActiveSha = strings.TrimSpace(devActiveSha)
+
+				_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, activeCommitStatusDevelopment, func() error {
+					activeCommitStatusDevelopment.Spec.Sha = devActiveSha
+					activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+					return nil
+				})
+				Expect(err).To(Succeed())
+
+				By("Waiting for staging to be promoted (first commit)")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      ctpStaging.Name,
+						Namespace: ctpStaging.Namespace,
+					}, &ctpStaging)
+					g.Expect(err).To(Succeed())
+					g.Expect(ctpStaging.Status.Active.Dry.Sha).To(Equal(firstDrySha))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				stagingActiveSha, err := runGitCmd(ctx, gitPath1, "rev-parse", "origin/"+ctpStaging.Spec.ActiveBranch)
+				Expect(err).NotTo(HaveOccurred())
+				stagingActiveSha = strings.TrimSpace(stagingActiveSha)
+				_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, activeCommitStatusStaging, func() error {
+					activeCommitStatusStaging.Spec.Sha = stagingActiveSha
+					activeCommitStatusStaging.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+					return nil
+				})
+				Expect(err).To(Succeed())
+
+				By("Hydrating ONLY staging-next for a new dry SHA (dev hydrator still on the first SHA)")
+				gitPath2, err = cloneTestRepo(ctx, gitRepo)
+				Expect(err).NotTo(HaveOccurred())
+				DeferCleanup(func() { _ = os.RemoveAll(gitPath2) })
+
+				secondDrySha, err = makeDryCommit(ctx, gitPath2, "second commit - delayed git note")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(hydrateEnvironment(ctx, gitPath2, testBranchStagingNext, secondDrySha, "hydrate staging for second dry sha")).To(Succeed())
+
+				By("Waiting until staging has the new proposed dry SHA and is blocked on dev's hydrator")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      ctpStaging.Name,
+						Namespace: ctpStaging.Namespace,
+					}, &ctpStaging)
+					g.Expect(err).To(Succeed())
+					g.Expect(ctpStaging.Status.Proposed.Dry.Sha).To(Equal(secondDrySha))
+
+					err = k8sClient.Get(ctx, types.NamespacedName{
+						Name:      ctpDev.Name,
+						Namespace: ctpDev.Namespace,
+					}, &ctpDev)
+					g.Expect(err).To(Succeed())
+					g.Expect(ctpDev.Status.Proposed.Dry.Sha).To(Equal(firstDrySha))
+					if ctpDev.Status.Proposed.Note != nil {
+						g.Expect(ctpDev.Status.Proposed.Note.DrySha).To(Equal(firstDrySha))
+					}
+
+					prevEnvCS := getDAGOrderingGate(g, ctpStaging.Spec.ActiveBranch)
+					g.Expect(prevEnvCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				return gitPath2, firstDrySha, secondDrySha
+			}
+
+			It("does not pick up a git note pushed after a stingy gitNoteRetry budget", func() {
+				setGitNoteRetry(ctx, 1, 50*time.Millisecond)
+				setChangeTransferPolicyRequeueDuration(ctx, 30*time.Minute)
+
+				gitPath2, firstDrySha, secondDrySha := bringStagingAheadOfDev()
+
+				By("Waiting for the stingy retry chain and any in-flight CTP git fetch to finish")
+				time.Sleep(15 * time.Second)
+
+				By("Pushing the hydrator git note on dev-next with no webhook")
+				Expect(addNoteToEnvironment(ctx, gitPath2, testBranchDevelopmentNext, secondDrySha)).To(Succeed())
+
+				By("Dev CTP must not refetch: gitNoteRetry is exhausted and CTP requeue has not fired")
+				Consistently(func(g Gomega) {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      ctpDev.Name,
+						Namespace: ctpDev.Namespace,
+					}, &ctpDev)
+					g.Expect(err).To(Succeed())
+					g.Expect(ctpDev.Status.Proposed.Dry.Sha).To(Equal(firstDrySha))
+					if ctpDev.Status.Proposed.Note != nil {
+						g.Expect(ctpDev.Status.Proposed.Note.DrySha).NotTo(Equal(secondDrySha),
+							"stingy gitNoteRetry must not enqueue the CTP in time to see dry %s", secondDrySha)
+					}
+				}, 8*time.Second, 500*time.Millisecond).Should(Succeed())
+			})
+
+			It("picks up a delayed git note when gitNoteRetry is long enough", func() {
+				// Keep retrying for well longer than the delay below, and longer than
+				// the time it takes for PromotionStrategy to observe the disagreement.
+				setGitNoteRetry(ctx, 90, time.Second)
+
+				gitPath2, firstDrySha, secondDrySha := bringStagingAheadOfDev()
+
+				By("Delaying the hydrator git note (slow note, no SCM webhook)")
+				time.Sleep(3 * time.Second)
+				Expect(addNoteToEnvironment(ctx, gitPath2, testBranchDevelopmentNext, secondDrySha)).To(Succeed())
+
+				By("Dev CTP should refetch via the still-running gitNoteRetry chain")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      ctpDev.Name,
+						Namespace: ctpDev.Namespace,
+					}, &ctpDev)
+					g.Expect(err).To(Succeed())
+					g.Expect(ctpDev.Status.Proposed.Note).NotTo(BeNil())
+					g.Expect(ctpDev.Status.Proposed.Note.DrySha).To(Equal(secondDrySha))
+					g.Expect(ctpDev.Status.Proposed.Dry.Sha).To(Equal(firstDrySha))
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+		})
+
 		It("should allow production to promote older commit when staging has moved ahead", func() {
 			// This test verifies the scenario where:
 			// 1. Dry commit A is made (commitTime: 10:00)
@@ -5929,9 +6091,13 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		// The batch target is the effective proposed dry SHA (Note.DrySha if set, else
 		// Proposed.Dry.Sha) of the CTP with the newest proposed hydrated commit. A CTP is
 		// enqueued when its own effective proposed dry SHA disagrees with that target — one
-		// immediate enqueue plus at most 3 chained delayed retries per distinct disagreement (a
-		// retried nudge covers a git note landing shortly after the previous one), after
-		// which the periodic CTP requeue is the retry path until the disagreement changes.
+		// immediate enqueue plus gitNoteRetry.maxAttempts chained delayed retries per
+		// distinct disagreement (a retried nudge covers a git note landing shortly after
+		// the previous one), after which the periodic CTP requeue is the retry path until
+		// the disagreement changes.
+		const testGitNoteRetryAttempts = 3
+		testGitNoteRetryDelay := 50 * time.Millisecond
+
 		makeCTPWithShas := func(name, proposedDrySha string, note *promoterv1alpha1.HydratorMetadata, commitTime metav1.Time) *promoterv1alpha1.ChangeTransferPolicy { //nolint:unparam // proposedDrySha is a fixture knob; the current specs all model note-vs-file divergence on the same file SHA
 			return &promoterv1alpha1.ChangeTransferPolicy{
 				Name:      name,
@@ -5968,10 +6134,15 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			mutex := &sync.Mutex{}
 
 			reconciler := &PromotionStrategyReconciler{
-				// Shrink the rate-limit window from the 15s production default so
-				// delayed-retry behavior can be exercised without real 15s waits;
-				// the semantics under test are all threshold-relative.
-				enqueueThreshold: 500 * time.Millisecond,
+				// Short constant backoff so delayed-retry behavior can be exercised
+				// without real 15s waits; attempt count matches the shipped default.
+				gitNoteRetry: &promoterv1alpha1.GitNoteRetry{
+					MaxAttempts: testGitNoteRetryAttempts,
+					ExponentialFailure: promoterv1alpha1.ExponentialFailure{
+						BaseDelay: metav1.Duration{Duration: testGitNoteRetryDelay},
+						MaxDelay:  metav1.Duration{Duration: testGitNoteRetryDelay},
+					},
+				},
 				EnqueueCTP: func(namespace, name string) {
 					mutex.Lock()
 					defer mutex.Unlock()
@@ -5980,6 +6151,11 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			}
 
 			return reconciler, enqueuedCTPs, mutex
+		}
+
+		nudge := func(reconciler *PromotionStrategyReconciler, ctps []*promoterv1alpha1.ChangeTransferPolicy) {
+			GinkgoHelper()
+			Expect(reconciler.enqueueOutOfSyncCTPs(ctx, ctps)).To(Succeed())
 		}
 
 		enqueuedNames := func(enqueuedCTPs *[]client.ObjectKey, mutex *sync.Mutex) []string {
@@ -5999,7 +6175,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			// A lone environment's own effective dry SHA is the target by definition, even
 			// when its note disagrees with its hydrator.metadata file (a no-op hydration).
 			// There is no sibling to catch up with and nothing a refetch could change.
-			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{
+			nudge(reconciler, []*promoterv1alpha1.ChangeTransferPolicy{
 				makeLaggingCTP("lonely-ctp"),
 			})
 
@@ -6016,7 +6192,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			note := func() *promoterv1alpha1.HydratorMetadata {
 				return &promoterv1alpha1.HydratorMetadata{DrySha: "newnote456"}
 			}
-			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{
+			nudge(reconciler, []*promoterv1alpha1.ChangeTransferPolicy{
 				makeCTPWithShas("dev-ctp", "abc123", note(), metav1.NewTime(time.Now().Add(-time.Minute))),
 				makeCTPWithShas("prod-ctp", "abc123", note(), metav1.Now()),
 			})
@@ -6031,7 +6207,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			// lagging environment still reports abc123. The laggard is the environment
 			// with something to fetch — it must be the one selected, not the sibling that
 			// already has the note.
-			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{
+			nudge(reconciler, []*promoterv1alpha1.ChangeTransferPolicy{
 				makeCTPWithShas("lagging-ctp", "abc123", &promoterv1alpha1.HydratorMetadata{DrySha: "abc123"}, metav1.NewTime(time.Now().Add(-time.Minute))),
 				makeCTPWithShas("newest-ctp", "abc123", &promoterv1alpha1.HydratorMetadata{DrySha: "newnote456"}, metav1.Now()),
 			})
@@ -6050,13 +6226,13 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			noteless := makeCTPWithShas("noteless-ctp", "abc123", nil, metav1.NewTime(time.Now().Add(-time.Minute)))
 			newest := makeCTPWithShas("newest-ctp", "abc123", &promoterv1alpha1.HydratorMetadata{DrySha: "newnote456"}, metav1.Now())
 
-			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{noteless, newest})
+			nudge(reconciler, []*promoterv1alpha1.ChangeTransferPolicy{noteless, newest})
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"noteless-ctp"}))
 
 			// Repeated owner-watch loops with the identical disagreement do not enqueue
 			// again immediately (they defer to the single scheduled retry).
-			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{noteless, newest})
-			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{noteless, newest})
+			nudge(reconciler, []*promoterv1alpha1.ChangeTransferPolicy{noteless, newest})
+			nudge(reconciler, []*promoterv1alpha1.ChangeTransferPolicy{noteless, newest})
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"noteless-ctp"}))
 		})
 
@@ -6068,7 +6244,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				makeTargetCTP(),
 			}
 
-			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			nudge(reconciler, ctps)
 
 			enqueueMutex.Lock()
 			Expect(*enqueuedCTPs).To(HaveLen(1))
@@ -6085,21 +6261,22 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				makeTargetCTP(),
 			}
 
-			// One call enqueues immediately and auto-chains threshold-spaced delayed
-			// retries until the disagreement budget is exhausted. Repeats within the
-			// rate-limit window do not enqueue again or arm duplicate chains.
-			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			// One call enqueues immediately and auto-chains delayed retries until
+			// gitNoteRetry.maxAttempts is exhausted. Repeats within the first backoff
+			// delay do not enqueue again or arm duplicate chains.
+			nudge(reconciler, ctps)
 			for range 3 {
-				reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+				nudge(reconciler, ctps)
 			}
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(HaveLen(1))
 
 			// The chained retries cover a git note landing shortly after each nudge (note
-			// pushes have no webhooks). The budget allows 3 delayed retries after the
-			// immediate enqueue — 4 total — without further reconcile calls.
+			// pushes have no webhooks). The budget allows gitNoteRetry.maxAttempts delayed
+			// retries after the immediate enqueue without further reconcile calls.
+			expectedEnqueues := 1 + testGitNoteRetryAttempts
 			Eventually(func() []string {
 				return enqueuedNames(enqueuedCTPs, enqueueMutex)
-			}, 5*time.Second, 20*time.Millisecond).Should(HaveLen(4),
+			}, 5*time.Second, 20*time.Millisecond).Should(HaveLen(expectedEnqueues),
 				"chained delayed retries should exhaust the disagreement budget")
 
 			// The budget is exhausted: further owner-watch loops neither enqueue nor
@@ -6108,15 +6285,15 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			// is the retry path from here on.
 			Consistently(func() []string {
 				return enqueuedNames(enqueuedCTPs, enqueueMutex)
-			}, 2*time.Second, 100*time.Millisecond).Should(HaveLen(4),
+			}, 2*time.Second, 100*time.Millisecond).Should(HaveLen(expectedEnqueues),
 				"an unchanged disagreement must stop retrying once its budget is exhausted")
 
-			// Even outside the rate-limit window, the exhausted budget blocks enqueues.
-			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			// Even after the first backoff delay, the exhausted budget blocks enqueues.
+			nudge(reconciler, ctps)
 			Consistently(func() []string {
 				return enqueuedNames(enqueuedCTPs, enqueueMutex)
-			}, time.Second, 100*time.Millisecond).Should(HaveLen(4),
-				"an exhausted disagreement must not re-enqueue even after the threshold elapses")
+			}, time.Second, 100*time.Millisecond).Should(HaveLen(expectedEnqueues),
+				"an exhausted disagreement must not re-enqueue even after the backoff delay elapses")
 		})
 
 		It("should re-arm when the disagreement changes and auto-chain retries for the new disagreement", func() {
@@ -6126,7 +6303,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{lagging, makeTargetCTP()}
 
 			// First call enqueues for disagreement (old123 vs abc123) and arms a retry chain.
-			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			nudge(reconciler, ctps)
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp"}))
 
 			// The CTP's note moves (a fetched note, a different value): a NEW disagreement
@@ -6135,20 +6312,21 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			// no matter how many owner-watch loops repeat it.
 			lagging.Status.Proposed.Note.DrySha = "older999"
 			for range 5 {
-				reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+				nudge(reconciler, ctps)
 			}
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp"}),
-				"changed disagreement within the threshold must defer, not enqueue immediately")
+				"changed disagreement within the first backoff delay must defer, not enqueue immediately")
 
-			// The new chain delivers its budget of threshold-spaced nudges:
-			// 1 (old, immediate) + maxEnqueueRetriesPerDisagreement (new chain) = 4 total.
+			// The new chain delivers its budget of delayed nudges:
+			// 1 (old, immediate) + gitNoteRetry.maxAttempts (new chain).
+			expectedEnqueues := 1 + testGitNoteRetryAttempts
 			Eventually(func() []string {
 				return enqueuedNames(enqueuedCTPs, enqueueMutex)
-			}, 5*time.Second, 20*time.Millisecond).Should(HaveLen(4),
+			}, 5*time.Second, 20*time.Millisecond).Should(HaveLen(expectedEnqueues),
 				"new disagreement should get a fresh chained retry budget")
 			Consistently(func() []string {
 				return enqueuedNames(enqueuedCTPs, enqueueMutex)
-			}, 2*time.Second, 100*time.Millisecond).Should(HaveLen(4),
+			}, 2*time.Second, 100*time.Millisecond).Should(HaveLen(expectedEnqueues),
 				"no additional enqueue may fire without a new disagreement")
 		})
 
@@ -6158,12 +6336,12 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			lagging := makeLaggingCTP("test-ctp")
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{lagging, makeTargetCTP()}
 
-			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			nudge(reconciler, ctps)
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"test-ctp"}))
 
 			// The lagging environment's note catches up to the batch target.
 			lagging.Status.Proposed.Note.DrySha = "abc123"
-			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			nudge(reconciler, ctps)
 
 			// Without cancellation the auto-chain would reach 4 enqueues within a few seconds.
 			Consistently(func() []string {
@@ -6182,14 +6360,34 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			}
 
 			// First call - both lagging CTPs should enqueue
-			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			nudge(reconciler, ctps)
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"ctp-1", "ctp-2"}))
 
 			// Second call immediately - both disagreements are unchanged and within the
 			// rate-limit window, so neither enqueues immediately (each defers to a single
 			// scheduled delayed retry instead, tracked independently per CTP).
-			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			nudge(reconciler, ctps)
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"ctp-1", "ctp-2"}))
+		})
+
+		It("should honor gitNoteRetry.maxAttempts", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+			reconciler.gitNoteRetry.MaxAttempts = 1
+
+			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
+				makeLaggingCTP("test-ctp"),
+				makeTargetCTP(),
+			}
+			nudge(reconciler, ctps)
+			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(HaveLen(1))
+
+			Eventually(func() []string {
+				return enqueuedNames(enqueuedCTPs, enqueueMutex)
+			}, 2*time.Second, 20*time.Millisecond).Should(HaveLen(2),
+				"one immediate enqueue plus maxAttempts delayed retries")
+			Consistently(func() []string {
+				return enqueuedNames(enqueuedCTPs, enqueueMutex)
+			}, time.Second, 50*time.Millisecond).Should(HaveLen(2))
 		})
 
 		It("should rate limit one CTP while allowing a fresh CTP through", func() {
@@ -6199,17 +6397,39 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			ctp2 := makeLaggingCTP("ctp-2")
 
 			// First call - enqueue ctp-1 only
-			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{ctp1, makeTargetCTP()})
+			nudge(reconciler, []*promoterv1alpha1.ChangeTransferPolicy{ctp1, makeTargetCTP()})
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"ctp-1"}))
 
-			// Immediately call again with both CTPs: ctp-1 is inside its rate-limit
-			// window, so it does not enqueue immediately (it defers to a scheduled
-			// delayed retry); ctp-2 has never been enqueued and goes through right away.
-			time.Sleep(100 * time.Millisecond)
-			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{ctp1, ctp2, makeTargetCTP()})
+			// Call again well inside the first backoff delay: ctp-1 is rate limited, so it
+			// does not enqueue immediately (it defers to a scheduled delayed retry); ctp-2
+			// has never been enqueued and goes through right away.
+			time.Sleep(testGitNoteRetryDelay / 5)
+			nudge(reconciler, []*promoterv1alpha1.ChangeTransferPolicy{ctp1, ctp2, makeTargetCTP()})
 
 			Expect(enqueuedNames(enqueuedCTPs, enqueueMutex)).To(Equal([]string{"ctp-1", "ctp-2"}))
 		})
+	})
+})
+
+var _ = Describe("gitNoteRetryDelay", func() {
+	policy := func(base, max time.Duration) promoterv1alpha1.GitNoteRetry {
+		return promoterv1alpha1.GitNoteRetry{
+			MaxAttempts: 8,
+			ExponentialFailure: promoterv1alpha1.ExponentialFailure{
+				BaseDelay: metav1.Duration{Duration: base},
+				MaxDelay:  metav1.Duration{Duration: max},
+			},
+		}
+	}
+
+	It("doubles until maxDelay", func() {
+		p := policy(time.Second, 10*time.Second)
+		Expect(gitNoteRetryDelay(p, 0)).To(Equal(time.Second))
+		Expect(gitNoteRetryDelay(p, 1)).To(Equal(2 * time.Second))
+		Expect(gitNoteRetryDelay(p, 2)).To(Equal(4 * time.Second))
+		Expect(gitNoteRetryDelay(p, 3)).To(Equal(8 * time.Second))
+		Expect(gitNoteRetryDelay(p, 4)).To(Equal(10 * time.Second))
+		Expect(gitNoteRetryDelay(p, 5)).To(Equal(10 * time.Second))
 	})
 })
 
