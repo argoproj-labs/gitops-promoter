@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useRef } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 import HistoryView from '@lib/components/HistoryView/HistoryView';
 import type { CellSelection } from '@lib/components/HistoryView/HistoryView';
@@ -30,22 +30,35 @@ const HistoryPage: React.FC = () => {
   const initialSelection = readSelection(searchParams, DASHBOARD_SELECTION_PARAMS);
   const initialViewState = readHistoryViewState(searchParams, DASHBOARD_HISTORY_PARAMS);
 
-  const handleSelectionChange = useCallback(
-    (selection: CellSelection | null) => {
-      setSearchParams((prev) => writeSelection(prev, DASHBOARD_SELECTION_PARAMS, selection), {
-        replace: true,
-      });
+  const latestSearchParamsRef = useRef(searchParams);
+  latestSearchParamsRef.current = searchParams;
+
+  const applyParamsUpdate = useCallback(
+    (updater: (_prev: URLSearchParams) => URLSearchParams) => {
+      setSearchParams(
+        () => {
+          const next = updater(latestSearchParamsRef.current);
+          latestSearchParamsRef.current = next;
+          return next;
+        },
+        { replace: true },
+      );
     },
     [setSearchParams],
   );
 
+  const handleSelectionChange = useCallback(
+    (selection: CellSelection | null) => {
+      applyParamsUpdate((prev) => writeSelection(prev, DASHBOARD_SELECTION_PARAMS, selection));
+    },
+    [applyParamsUpdate],
+  );
+
   const handleViewStateChange = useCallback(
     (state: HistoryViewState) => {
-      setSearchParams((prev) => writeHistoryViewState(prev, DASHBOARD_HISTORY_PARAMS, state), {
-        replace: true,
-      });
+      applyParamsUpdate((prev) => writeHistoryViewState(prev, DASHBOARD_HISTORY_PARAMS, state));
     },
-    [setSearchParams],
+    [applyParamsUpdate],
   );
 
   return (

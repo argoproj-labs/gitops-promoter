@@ -62,10 +62,11 @@ const setViewInUrl = (view: ViewMode) => {
   const params = currentParams();
   if (view === 'history') {
     params.set(VIEW_PARAM, view);
+    commitParams(params);
   } else {
     params.delete(VIEW_PARAM);
+    commitParams(writeSelection(params, EXTENSION_SELECTION_PARAMS, null));
   }
-  commitParams(params);
 };
 
 const getSelectionFromUrl = (): CellSelection | null =>

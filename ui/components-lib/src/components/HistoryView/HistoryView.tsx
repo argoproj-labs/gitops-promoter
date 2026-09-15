@@ -4,7 +4,7 @@ import { GoGitCommit } from 'react-icons/go';
 import { timeAgo, formatDate, getCommitUrl } from '@shared/utils/util';
 import type { PromotionStrategy } from '@shared/types/promotion';
 import type { HistoryViewState } from '@shared/utils/deepLink';
-import type { CommitRow, FilterId, SortId } from './types';
+import { FILTER_IDS, SORT_IDS, type CommitRow, type FilterId, type SortId } from './types';
 import { buildMatrix } from './buildMatrix';
 import { isEmptyCellKind, pruneEnvFilter } from './helpers';
 import { Dropdown, DropdownItem } from './Dropdown/Dropdown';
@@ -86,18 +86,21 @@ const HistoryView: React.FC<HistoryViewProps> = ({
 
   const setFilter = useCallback((next: FilterId) => {
     setFilterState(next);
-    onViewStateChangeRef.current?.({ ...viewStateRef.current, filter: next });
+    viewStateRef.current = { ...viewStateRef.current, filter: next };
+    onViewStateChangeRef.current?.(viewStateRef.current);
   }, []);
 
   const setSort = useCallback((next: SortId) => {
     setSortState(next);
-    onViewStateChangeRef.current?.({ ...viewStateRef.current, sort: next });
+    viewStateRef.current = { ...viewStateRef.current, sort: next };
+    onViewStateChangeRef.current?.(viewStateRef.current);
   }, []);
 
   const setEnvFilter = useCallback((next: string[] | ((_prev: string[]) => string[])) => {
     const value = typeof next === 'function' ? next(viewStateRef.current.envFilter) : next;
     setEnvFilterState(value);
-    onViewStateChangeRef.current?.({ ...viewStateRef.current, envFilter: value });
+    viewStateRef.current = { ...viewStateRef.current, envFilter: value };
+    onViewStateChangeRef.current?.(viewStateRef.current);
   }, []);
 
   const selectionFromLinkRef = useRef(initialSelection !== null);
@@ -134,10 +137,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({
     scrollRowIntoView(selected.rowId);
   }, [selected, rows.length]);
 
-  const envFilterReconciledRef = useRef(false);
   useEffect(() => {
-    if (envFilterReconciledRef.current || envs.length === 0) return;
-    envFilterReconciledRef.current = true;
+    if (envs.length === 0) return;
     const pruned = pruneEnvFilter(viewStateRef.current.envFilter, validBranches);
     if (pruned) setEnvFilter(pruned);
   }, [envs.length, validBranches, setEnvFilter]);
@@ -223,18 +224,26 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   const selectedCell = selectedRow && selected ? selectedRow.cells[selected.branch] : null;
   const hasMultipleEnvs = envs.length > 1;
 
-  const FILTERS: { id: FilterId; label: string }[] = [
-    { id: 'all', label: 'All commits' },
-    { id: 'live', label: 'Live' },
-    { id: 'in-flight', label: 'In flight' },
-    { id: 'failed', label: 'Failed' },
-    { id: 'no-op', label: 'No-op' },
-  ];
+  const FILTER_LABELS: Record<FilterId, string> = {
+    all: 'All commits',
+    live: 'Live',
+    'in-flight': 'In flight',
+    failed: 'Failed',
+    'no-op': 'No-op',
+  };
+  const FILTERS: { id: FilterId; label: string }[] = FILTER_IDS.map((id) => ({
+    id,
+    label: FILTER_LABELS[id],
+  }));
 
-  const SORTS: { id: SortId; label: string }[] = [
-    { id: 'newest', label: 'Newest first' },
-    { id: 'oldest', label: 'Oldest first' },
-  ];
+  const SORT_LABELS: Record<SortId, string> = {
+    newest: 'Newest first',
+    oldest: 'Oldest first',
+  };
+  const SORTS: { id: SortId; label: string }[] = SORT_IDS.map((id) => ({
+    id,
+    label: SORT_LABELS[id],
+  }));
 
   const visibleEnvs = envFilter.length ? envs.filter((e) => envFilter.includes(e.branch)) : envs;
 

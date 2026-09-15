@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { useLocation, useParams } from 'react-router';
+import { useMatch, useParams } from 'react-router';
 import { useNavigateWithParams } from '../hooks/useNavigateWithParams';
 import { namespaceStore } from '../stores/NamespaceStore';
 import { PromotionStrategyStore } from '../stores/PromotionStrategyStore';
@@ -30,8 +30,7 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
 
   const currentNamespace = namespaceStore((s: NamespaceStore) => s.namespace);
   const setNamespace = namespaceStore((s: NamespaceStore) => s.setNamespace);
-  const { pathname } = useLocation();
-  const showManifest = pathname.endsWith('/manifest');
+  const showManifest = !!useMatch('/promotion-strategies/:namespace/:name/manifest');
 
   const { items, fetchItems, subscribe, unsubscribe } = PromotionStrategyStore();
 
@@ -97,7 +96,10 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
           <div className="strategy-page-tabs">
             <button
               className={`strategy-page-tab ${!showManifest ? 'active' : ''}`}
-              onClick={() => navigate(strategyPath)}
+              onClick={() => {
+                if (!showManifest) return;
+                navigate(strategyPath, { replace: true });
+              }}
             >
               Overview
             </button>
@@ -111,7 +113,10 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
 
             <button
               className={`strategy-page-tab ${showManifest ? 'active' : ''}`}
-              onClick={() => navigate(`${strategyPath}/manifest`)}
+              onClick={() => {
+                if (showManifest) return;
+                navigate(`${strategyPath}/manifest`, { replace: true });
+              }}
             >
               Live
               <br />

@@ -461,6 +461,20 @@ describe('AppViewExtension', () => {
       expect(lastSearchParams(replaceState).get('psView')).toBeNull();
     });
 
+    it('clears a lingering selection when switching back to the card tab', async () => {
+      setSearch('?psView=history&psCommit=abc123&psEnv=main');
+      await renderOneStrategy();
+      const replaceState = vi.spyOn(window.history, 'replaceState');
+
+      tab('Overview').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      await wait();
+
+      const params = lastSearchParams(replaceState);
+      expect(params.get('psView')).toBeNull();
+      expect(params.get('psCommit')).toBeNull();
+      expect(params.get('psEnv')).toBeNull();
+    });
+
     it('preserves unrelated ArgoCD params when writing psView', async () => {
       setSearch('?resource=&view=tree&node=argoproj.io%2FRollout');
       await renderOneStrategy();

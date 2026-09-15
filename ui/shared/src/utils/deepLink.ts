@@ -1,7 +1,4 @@
-import type { FilterId, SortId } from '../types/historyView';
-
-const FILTER_IDS: readonly FilterId[] = ['all', 'live', 'in-flight', 'failed', 'no-op'];
-const SORT_IDS: readonly SortId[] = ['newest', 'oldest'];
+import { FILTER_IDS, SORT_IDS, type FilterId, type SortId } from '../types/historyView';
 
 /** URL-addressable view state of the history matrix. */
 export interface HistoryViewState {

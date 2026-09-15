@@ -1,5 +1,6 @@
 import type { Commit, CommitStatus, PullRequest, ReferenceCommit } from '@shared/types/promotion';
 
+export { FILTER_IDS, SORT_IDS } from '@shared/types/historyView';
 export type { FilterId, SortId } from '@shared/types/historyView';
 
 export type HealthKey = 'success' | 'failure' | 'pending' | 'unknown';
