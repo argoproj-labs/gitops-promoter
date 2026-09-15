@@ -4,12 +4,9 @@ import Card from '@components-lib/components/Card';
 import HistoryView from '@components-lib/components/HistoryView/HistoryView';
 import type { CellSelection } from '@components-lib/components/HistoryView/HistoryView';
 import { PromotionStrategy } from '@shared/types/promotion';
-import type { ChangeTransferPolicy, PromotionStrategyDetails } from '@shared/types/view';
-import type { Environment } from '@shared/types/promotion';
-import { mergeCommitStatusManagers } from '@shared/utils/PSData';
-import type { CommitStatusManagerBundle } from '@shared/utils/PSData';
+import type { PromotionStrategyDetails } from '@shared/types/view';
+import { mergePromotionStrategyFromBundle } from '@shared/utils/bundleToUI';
 import { AppViewComponentProps } from '@shared/types/extension';
-import { sortStrategyCommitStatuses } from '@shared/utils/util';
 import './StrategyDropdown.scss';
 
 type ViewMode = 'card' | 'history';
@@ -23,55 +20,8 @@ interface StrategyItem {
   promotionStrategy: PromotionStrategy;
 }
 
-function environmentsFromCTPs(
-  spec: PromotionStrategy['spec'],
-  ctps: ChangeTransferPolicy[],
-): Environment[] {
-  const byBranch = new Map<string, ChangeTransferPolicy>();
-  for (const ctp of ctps) {
-    const branch = ctp.spec?.activeBranch;
-    if (branch) byBranch.set(branch, ctp);
-  }
-
-  return spec.environments.map((env) => {
-    const status = byBranch.get(env.branch)?.status ?? {};
-    return {
-      branch: env.branch,
-      active: status.active ?? { dry: {}, hydrated: {} },
-      proposed: status.proposed ?? { dry: {}, hydrated: {} },
-      pullRequest: status.pullRequest,
-      history: status.history,
-      lastHealthyDryShas: [],
-    };
-  });
-}
-
-function managersFromBundle(bundle: PromotionStrategyDetails): CommitStatusManagerBundle {
-  return {
-    timedCommitStatuses: bundle.timedCommitStatuses,
-    gitCommitStatuses: bundle.gitCommitStatuses,
-    scheduledCommitStatuses: bundle.scheduledCommitStatuses,
-    argoCDCommitStatuses: bundle.argoCDCommitStatuses,
-    webRequestCommitStatuses: bundle.webRequestCommitStatuses,
-  };
-}
-
 function bundleToItem(bundle: PromotionStrategyDetails): StrategyItem {
-  const ps = bundle.promotionStrategy;
-  const environments = environmentsFromCTPs(ps.spec, bundle.changeTransferPolicies ?? []);
-  const promotionStrategy = {
-    ...ps,
-    metadata: {
-      ...ps.metadata,
-      name: bundle.metadata.name,
-      namespace: bundle.metadata.namespace,
-    },
-    status: { ...ps.status, environments },
-  } as PromotionStrategy;
-  sortStrategyCommitStatuses(promotionStrategy);
-  return {
-    promotionStrategy: mergeCommitStatusManagers(promotionStrategy, managersFromBundle(bundle)),
-  };
+  return { promotionStrategy: mergePromotionStrategyFromBundle(bundle) };
 }
 
 interface SelectOption {
