@@ -1,6 +1,3 @@
-// Node 22 ships an experimental localStorage global that shadows jsdom's and
-// exposes no Storage methods. The zustand persist middleware captures it at
-// import time, so it has to be replaced before any test module is imported.
 const store = new Map<string, string>();
 
 Object.defineProperty(globalThis, 'localStorage', {

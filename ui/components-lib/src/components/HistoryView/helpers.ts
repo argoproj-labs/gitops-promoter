@@ -1,7 +1,6 @@
 import type { Commit, CommitStatus } from '@shared/types/promotion';
 import type { CellKind, HealthKey } from './types';
 
-// Cell kinds with no commit activity for the env: non-selectable, excluded from env-scoped rows.
 export function isEmptyCellKind(kind: CellKind | undefined): boolean {
   return kind === 'no-changes' || kind === 'unknown-history';
 }
@@ -25,9 +24,6 @@ export function commitKey(c: Commit | undefined): string | null {
   return null;
 }
 
-// Seeded env filters can name branches the strategy no longer has (a stale or
-// hand-edited URL). Unknown branches are dropped; an empty result means all
-// environments. Returns null when nothing needs to change.
 export function pruneEnvFilter(envFilter: string[], validBranches: Set<string>): string[] | null {
   const pruned = envFilter.filter((b) => validBranches.has(b));
   return pruned.length === envFilter.length ? null : pruned;
