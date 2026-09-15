@@ -32,3 +32,4 @@ export {
 export type { CommitStatusRowPluginRegistration, PluginRegistryListener } from './registry';
 export { installPluginHostApi } from './hostApi';
 export { useCommitStatusRowPlugin } from './useCommitStatusRowPlugin';
+export { assertSharedReactInstance } from './reactSharing';
