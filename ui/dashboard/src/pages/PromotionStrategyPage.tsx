@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useMatch, useParams } from 'react-router';
 import { useNavigateWithParams } from '../hooks/useNavigateWithParams';
 import { namespaceStore } from '../stores/NamespaceStore';
@@ -36,13 +36,16 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
 
   const selectedStrategy = items.find((ps: PromotionStrategy) => ps.metadata.name === strategyName);
 
+  const fetchedNamespaceRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!namespace) return;
     if (namespace !== currentNamespace) {
       setNamespace(namespace);
     }
 
-    if (!items.length || !selectedStrategy) {
+    if (fetchedNamespaceRef.current !== namespace) {
+      fetchedNamespaceRef.current = namespace;
       fetchItems(namespace);
     }
 
