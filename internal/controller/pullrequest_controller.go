@@ -229,7 +229,7 @@ func (r *PullRequestReconciler) GetEnqueueFunc() PREnqueueFunc {
 //nolint:gocyclo // Intentional linear state machine; splitting helpers would obscure docstring order.
 func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Reconciling PullRequest")
+	logger.V(3).Info("Reconciling PullRequest")
 	startTime := time.Now()
 
 	var pr promoterv1alpha1.PullRequest
@@ -239,7 +239,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	if err := r.Get(ctx, req.NamespacedName, &pr); err != nil {
 		if k8serrors.IsNotFound(err) {
-			logger.Info("PullRequest not found", "namespace", req.Namespace, "name", req.Name)
+			logger.V(3).Info("PullRequest not found", "namespace", req.Namespace, "name", req.Name)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("failed to get PullRequest: %w", err)
@@ -315,7 +315,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	if pullRequestStatusIsTerminal(&pr) {
-		logger.Info("Deleting terminal PullRequest", "pullRequestID", pr.Status.ID, "statusState", pr.Status.State, "specState", pr.Spec.State)
+		logger.V(2).Info("Deleting terminal PullRequest", "pullRequestID", pr.Status.ID, "statusState", pr.Status.State, "specState", pr.Spec.State)
 		if err := r.Delete(ctx, &pr); err != nil && !k8serrors.IsNotFound(err) {
 			return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest: %w", err)
 		}
@@ -345,7 +345,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// loop for activity that actually requires SCM calls. We'd have to do some internal cache work
 	// to ensure we don't call Merge with stale sha/message data.
 	if shouldSkipSCMSync(&pr) {
-		logger.V(1).Info("skipping SCM sync for non-SCM spec change on open pull request")
+		logger.V(4).Info("skipping SCM sync for non-SCM spec change on open pull request")
 		return r.pullRequestRequeueResult(ctx)
 	}
 
@@ -663,7 +663,7 @@ func pullRequestWasHealthy(previousReady *metav1.Condition) bool {
 // createPullRequest creates the SCM pull request. previousReady gates health-responsive failure
 // events so backoff retries do not spam Warning events after the first failure.
 func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider, previousReady *metav1.Condition) error {
-	log.FromContext(ctx).Info("Creating PullRequest")
+	log.FromContext(ctx).V(2).Info("Creating PullRequest")
 	id, err := provider.Create(ctx, pr.Spec.Title, pr.Spec.SourceBranch, pr.Spec.TargetBranch, pr.Spec.Description, *pr)
 	if err != nil {
 		if pullRequestWasHealthy(previousReady) {
@@ -686,7 +686,7 @@ func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr *promo
 }
 
 func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
-	log.FromContext(ctx).Info("Updating PullRequest")
+	log.FromContext(ctx).V(2).Info("Updating PullRequest")
 	if err := provider.Update(ctx, pr.Spec.Title, pr.Spec.Description, *pr); err != nil {
 		return err //nolint:wrapcheck // Error wrapping handled at top level
 	}
@@ -698,7 +698,7 @@ func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr *promo
 // mergePullRequest merges the SCM pull request. previousReady gates health-responsive failure
 // events so backoff retries do not spam Warning events after the first failure.
 func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider, previousReady *metav1.Condition) error {
-	log.FromContext(ctx).Info("Merging PullRequest")
+	log.FromContext(ctx).V(2).Info("Merging PullRequest")
 	mergedTime := metav1.Now()
 
 	updatedMessage, err := git.AddTrailerToCommitMessage(
@@ -731,7 +731,7 @@ func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promot
 // closePullRequest closes the SCM pull request and records status.state=closed.
 // The caller must invoke this only when Get reports the pull request is open during termination.
 func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
-	log.FromContext(ctx).Info("Closing PullRequest")
+	log.FromContext(ctx).V(2).Info("Closing PullRequest")
 	if err := provider.Close(ctx, *pr); err != nil {
 		return err //nolint:wrapcheck // Error wrapping handled at top level
 	}
@@ -795,7 +795,7 @@ func pullRequestDeletionBlockedByMissingDependency(err error) error {
 // provider does not support pull request labels (e.g. Bitbucket Cloud), so misconfiguration
 // is caught at apply time instead of surfacing as a reconcile error loop.
 func (r *PullRequestReconciler) reconcileLabels(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
-	log.FromContext(ctx).Info("Reconciling PullRequest labels")
+	log.FromContext(ctx).V(5).Info("Reconciling PullRequest labels")
 	toAdd, toRemove := labels.Diff(pr.Spec.Labels, pr.Status.AppliedLabels)
 	if len(toRemove) > 0 {
 		if err := provider.RemoveLabels(ctx, *pr, toRemove); err != nil {

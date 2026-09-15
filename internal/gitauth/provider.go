@@ -41,11 +41,11 @@ func CreateGitOperationsProvider(
 
 	switch {
 	case scmProvider.GetSpec().Fake != nil:
-		logger.V(4).Info("Creating fake git authentication provider")
+		logger.V(5).Info("Creating fake git authentication provider")
 		return fake.NewFakeGitAuthenticationProvider(scmProvider, secret), nil
 
 	case scmProvider.GetSpec().GitHub != nil:
-		logger.V(4).Info("Creating GitHub git authentication provider")
+		logger.V(5).Info("Creating GitHub git authentication provider")
 		provider, err := github.NewGithubGitAuthenticationProvider(ctx, k8sClient, scmProvider, secret, repoObjectKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create GitHub Auth Provider: %w", err)
@@ -53,7 +53,7 @@ func CreateGitOperationsProvider(
 		return provider, nil
 
 	case scmProvider.GetSpec().GitLab != nil:
-		logger.V(4).Info("Creating GitLab git authentication provider")
+		logger.V(5).Info("Creating GitLab git authentication provider")
 		provider, err := gitlab.NewGitlabGitAuthenticationProvider(scmProvider, secret)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create GitLab Auth Provider: %w", err)
@@ -61,7 +61,7 @@ func CreateGitOperationsProvider(
 		return provider, nil
 
 	case scmProvider.GetSpec().Forgejo != nil:
-		logger.V(4).Info("Creating Forgejo git authentication provider")
+		logger.V(5).Info("Creating Forgejo git authentication provider")
 		provider, err := forgejo.NewForgejoGitAuthenticationProvider(scmProvider, secret)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Forgejo Auth Provider: %w", err)
@@ -69,7 +69,7 @@ func CreateGitOperationsProvider(
 		return provider, nil
 
 	case scmProvider.GetSpec().Gitea != nil:
-		logger.V(4).Info("Creating Gitea git authentication provider")
+		logger.V(5).Info("Creating Gitea git authentication provider")
 		provider, err := gitea.NewGiteaGitAuthenticationProvider(scmProvider, secret)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Gitea Auth Provider: %w", err)
@@ -77,7 +77,7 @@ func CreateGitOperationsProvider(
 		return provider, nil
 
 	case scmProvider.GetSpec().BitbucketCloud != nil:
-		logger.V(4).Info("Creating Bitbucket Cloud git authentication provider")
+		logger.V(5).Info("Creating Bitbucket Cloud git authentication provider")
 		provider, err := bitbucket_cloud.NewBitbucketCloudGitAuthenticationProvider(scmProvider, secret)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Bitbucket Cloud Auth Provider: %w", err)
@@ -85,7 +85,7 @@ func CreateGitOperationsProvider(
 		return provider, nil
 
 	case scmProvider.GetSpec().AzureDevOps != nil:
-		logger.V(4).Info("Creating Azure DevOps git authentication provider")
+		logger.V(5).Info("Creating Azure DevOps git authentication provider")
 		return azuredevops.NewAzdoGitAuthenticationProvider(scmProvider, secret), nil
 	default:
 		return nil, errors.New("no supported git authentication provider found")

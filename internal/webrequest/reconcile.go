@@ -125,7 +125,7 @@ func reconcileOutcomeFromHTTPResponse(
 	lastRequestTime := &now
 	lastResponseStatusCode := &response.StatusCode
 
-	logger.V(4).Info("HTTP response received", "statusCode", response.StatusCode)
+	logger.V(6).Info("HTTP response received", "statusCode", response.StatusCode)
 
 	var responseDataJSON *apiextensionsv1.JSON
 	if wrcs.Spec.Mode.Trigger != nil && wrcs.Spec.Mode.Trigger.Response != nil {
@@ -419,7 +419,7 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusEnvironments(ctx context.Con
 
 		if lastState.Phase != string(promoterv1alpha1.CommitPhaseSuccess) && result.Phase == promoterv1alpha1.CommitPhaseSuccess {
 			transitionedBranches = append(transitionedBranches, branch)
-			logger.Info("Validation transitioned to success", "branch", branch, "sha", reportedSha)
+			logger.V(2).Info("Validation transitioned to success", "branch", branch, "sha", reportedSha)
 		}
 
 		triggerDataJSON, err := marshalJSONMap(decision.NewTriggerData)
@@ -449,7 +449,7 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusEnvironments(ctx context.Con
 		}
 		commitStatuses = append(commitStatuses, cs)
 
-		logger.Info("Processed environment", "branch", branch, "reportedSha", reportedSha, "phase", result.Phase, "triggered", decision.ShouldFire)
+		logger.V(3).Info("Processed environment", "branch", branch, "reportedSha", reportedSha, "phase", result.Phase, "triggered", decision.ShouldFire)
 	}
 
 	requeueAfter = requeueDurationForMode(wrcs.Spec.Mode)
@@ -567,7 +567,7 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusPromotionStrategy(ctx contex
 		}
 	}
 	if len(transitionedBranches) > 0 {
-		logger.Info("Validation transitioned to success (context=promotionstrategy)", "branches", transitionedBranches)
+		logger.V(2).Info("Validation transitioned to success (context=promotionstrategy)", "branches", transitionedBranches)
 	}
 
 	resolvedPhases := getPhasesByBranch(applicableEnvs, result.Phase, result.PhasePerBranch)

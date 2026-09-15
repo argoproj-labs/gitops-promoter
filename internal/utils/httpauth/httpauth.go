@@ -154,7 +154,7 @@ func ApplyBasicAuth(ctx context.Context, secret *corev1.Secret, req *http.Reques
 	credentials := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
 	req.Header.Set("Authorization", "Basic "+credentials)
 
-	logger.V(4).Info("Applied Basic authentication")
+	logger.V(5).Info("Applied Basic authentication")
 	return nil
 }
 
@@ -179,7 +179,7 @@ func ApplyBearerAuth(ctx context.Context, secret *corev1.Secret, req *http.Reque
 
 	req.Header.Set("Authorization", "Bearer "+token)
 
-	logger.V(4).Info("Applied Bearer authentication")
+	logger.V(5).Info("Applied Bearer authentication")
 	return nil
 }
 
@@ -232,7 +232,7 @@ func ApplyOAuth2Auth(ctx context.Context, secret *corev1.Secret, config *OAuth2C
 
 	req.Header.Set("Authorization", "Bearer "+token.AccessToken)
 
-	logger.V(4).Info("Applied OAuth2 authentication", "tokenExpiry", token.Expiry)
+	logger.V(5).Info("Applied OAuth2 authentication", "tokenExpiry", token.Expiry)
 	return nil
 }
 
@@ -290,7 +290,7 @@ func BuildTLSClient(ctx context.Context, secret *corev1.Secret, timeout time.Dur
 		},
 	}
 
-	logger.V(4).Info("Built TLS authenticated HTTP client")
+	logger.V(5).Info("Built TLS authenticated HTTP client")
 	return httpClient, nil
 }
 
@@ -436,46 +436,46 @@ func ApplySCMAuth(ctx context.Context, scmProvider promoterv1alpha1.GenericScmPr
 		if err != nil {
 			return nil, fmt.Errorf("failed to build GitHub auth transport: %w", err)
 		}
-		logger.V(4).Info("Applied SCM authentication", "provider", "GitHub", "scmProvider", scmProvider.GetName())
+		logger.V(5).Info("Applied SCM authentication", "provider", "GitHub", "scmProvider", scmProvider.GetName())
 		return &http.Client{Transport: transport}, nil
 
 	case spec.GitLab != nil:
 		if err := gitlab.ApplyHTTPAuth(secret, req); err != nil {
 			return nil, fmt.Errorf("failed to apply GitLab SCM auth: %w", err)
 		}
-		logger.V(4).Info("Applied SCM authentication", "provider", "GitLab", "scmProvider", scmProvider.GetName())
+		logger.V(5).Info("Applied SCM authentication", "provider", "GitLab", "scmProvider", scmProvider.GetName())
 		return nil, nil
 
 	case spec.Forgejo != nil:
 		if err := forgejo.ApplyHTTPAuth(secret, req); err != nil {
 			return nil, fmt.Errorf("failed to apply Forgejo SCM auth: %w", err)
 		}
-		logger.V(4).Info("Applied SCM authentication", "provider", "Forgejo", "scmProvider", scmProvider.GetName())
+		logger.V(5).Info("Applied SCM authentication", "provider", "Forgejo", "scmProvider", scmProvider.GetName())
 		return nil, nil
 
 	case spec.Gitea != nil:
 		if err := gitea.ApplyHTTPAuth(secret, req); err != nil {
 			return nil, fmt.Errorf("failed to apply Gitea SCM auth: %w", err)
 		}
-		logger.V(4).Info("Applied SCM authentication", "provider", "Gitea", "scmProvider", scmProvider.GetName())
+		logger.V(5).Info("Applied SCM authentication", "provider", "Gitea", "scmProvider", scmProvider.GetName())
 		return nil, nil
 
 	case spec.BitbucketCloud != nil:
 		if err := bitbucket_cloud.ApplyHTTPAuth(secret, req); err != nil {
 			return nil, fmt.Errorf("failed to apply Bitbucket Cloud SCM auth: %w", err)
 		}
-		logger.V(4).Info("Applied SCM authentication", "provider", "BitbucketCloud", "scmProvider", scmProvider.GetName())
+		logger.V(5).Info("Applied SCM authentication", "provider", "BitbucketCloud", "scmProvider", scmProvider.GetName())
 		return nil, nil
 
 	case spec.AzureDevOps != nil:
 		if err := azuredevops.ApplyHTTPAuth(secret, req); err != nil {
 			return nil, fmt.Errorf("failed to apply Azure DevOps SCM auth: %w", err)
 		}
-		logger.V(4).Info("Applied SCM authentication", "provider", "AzureDevOps", "scmProvider", scmProvider.GetName())
+		logger.V(5).Info("Applied SCM authentication", "provider", "AzureDevOps", "scmProvider", scmProvider.GetName())
 		return nil, nil
 
 	case spec.Fake != nil:
-		logger.V(4).Info("SCM provider is Fake, no authentication applied")
+		logger.V(5).Info("SCM provider is Fake, no authentication applied")
 		return nil, nil
 
 	default:

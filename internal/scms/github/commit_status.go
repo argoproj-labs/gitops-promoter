@@ -67,14 +67,14 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.
 
 	// Determine if we should update an existing check run or create a new one
 	if commitStatus.Status.Sha == commitStatus.Spec.Sha && commitStatus.Status.Id != "" && !isTransitionFromCompleted {
-		logger.Info("Updating existing check run via Checks API", "checkRunId", commitStatus.Status.Id)
+		logger.V(4).Info("Updating existing check run via Checks API", "checkRunId", commitStatus.Status.Id)
 		return cs.updateCheckRun(ctx, commitStatus)
 	}
 
 	if isTransitionFromCompleted {
-		logger.Info("Creating new check run for phase change", "oldPhase", commitStatus.Status.Phase, "newPhase", commitStatus.Spec.Phase, "oldCheckRunId", commitStatus.Status.Id)
+		logger.V(2).Info("Creating new check run for phase change", "oldPhase", commitStatus.Status.Phase, "newPhase", commitStatus.Spec.Phase, "oldCheckRunId", commitStatus.Status.Id)
 	} else {
-		logger.Info("Creating new check run via Checks API")
+		logger.V(2).Info("Creating new check run via Checks API")
 	}
 	return cs.createCheckRun(ctx, commitStatus)
 }
@@ -94,7 +94,7 @@ func (cs *CommitStatus) getGitRepository(ctx context.Context, commitStatus *prom
 func buildCheckRunOutput(ctx context.Context, name, description string) *github.CheckRunOutput {
 	if name == "" || description == "" {
 		logger := log.FromContext(ctx)
-		logger.V(4).Info("No output (title/summary) provided for check run",
+		logger.V(5).Info("No output (title/summary) provided for check run",
 			"reason", "name or description is empty")
 		return nil
 	}
@@ -195,7 +195,7 @@ func (cs *CommitStatus) updateCheckRun(ctx context.Context, commitStatus *promot
 		// instead of the Checks API, resulting in an invalid check run ID
 		if ghErr, ok := errors.AsType[*github.ErrorResponse](err); ok && ghErr.Response != nil && ghErr.Response.StatusCode == http.StatusNotFound {
 			logger := log.FromContext(ctx)
-			logger.Info("Check run not found (404), falling back to create operation", "checkRunId", commitStatus.Status.Id)
+			logger.V(1).Info("Check run not found (404), falling back to create operation", "checkRunId", commitStatus.Status.Id)
 			// Fall back to creating a new check run
 			return cs.createCheckRun(ctx, commitStatus)
 		}
@@ -222,13 +222,13 @@ func (cs *CommitStatus) handleCheckRunResponse(
 		duration := time.Since(startTime)
 		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPICommitStatus, operation, response.StatusCode, duration, getRateLimitMetrics(response.Rate))
 
-		logger.Info("github rate limit",
+		logger.V(2).Info("github rate limit",
 			"limit", response.Rate.Limit,
 			"remaining", response.Rate.Remaining,
 			"reset", response.Rate.Reset,
 			"url", response.Request.URL)
 
-		logger.V(4).Info("github response status", "status", response.Status)
+		logger.V(2).Info("github response status", "status", response.Status)
 	}
 
 	// Update commit status with check run information

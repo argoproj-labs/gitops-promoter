@@ -77,7 +77,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, desc strin
 		prObj.Spec.RepositoryReference.Name,
 		resp,
 	)
-	logger.V(4).Info("gitlab response status",
+	logger.V(2).Info("gitlab response status",
 		"status", resp.Status)
 
 	return strconv.FormatInt(mr.IID, 10), nil
@@ -124,7 +124,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 		prObj.Spec.RepositoryReference.Name,
 		resp,
 	)
-	logger.V(4).Info("gitlab response status",
+	logger.V(2).Info("gitlab response status",
 		"status", resp.Status)
 
 	return nil
@@ -170,7 +170,7 @@ func (pr *PullRequest) Close(ctx context.Context, prObj v1alpha1.PullRequest) er
 		prObj.Spec.RepositoryReference.Name,
 		resp,
 	)
-	logger.V(4).Info("gitlab response status",
+	logger.V(2).Info("gitlab response status",
 		"status", resp.Status)
 
 	return nil
@@ -223,7 +223,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) (s
 		prObj.Spec.RepositoryReference.Name,
 		resp,
 	)
-	logger.V(4).Info("gitlab response status",
+	logger.V(2).Info("gitlab response status",
 		"status", resp.Status)
 
 	return scms.MergeResult{CommitSHA: mergedTargetSHA(mr)}, nil
@@ -232,7 +232,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) (s
 // FindOpen checks if a pull request is open and returns its status.
 func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.FindOpenResult, error) {
 	logger := log.FromContext(ctx)
-	logger.V(4).Info("Finding Open Pull Request")
+	logger.V(5).Info("Finding Open Pull Request")
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
 		Namespace: pullRequest.Namespace,
@@ -253,7 +253,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	if resp == nil {
 		statusCode := -1
 		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
-		logger.V(4).Info("gitlab response status", "status", "nil response")
+		logger.V(2).Info("gitlab response status", "status", "nil response")
 		return scms.FindOpenResult{}, errors.New("received nil response from GitLab API")
 	}
 	metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, resp.StatusCode, time.Since(start), nil)
@@ -266,7 +266,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 		pullRequest.Spec.RepositoryReference.Name,
 		resp,
 	)
-	logger.V(4).Info("gitlab response status",
+	logger.V(2).Info("gitlab response status",
 		"status", resp.Status)
 
 	if len(mrs) > 0 {
@@ -297,7 +297,7 @@ func mergedTargetSHA(mr *gitlab.MergeRequest) string {
 // Get fetches a pull request by status.id.
 func (pr *PullRequest) Get(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.GetPullRequestResult, error) {
 	logger := log.FromContext(ctx)
-	logger.V(4).Info("Getting merge request by ID")
+	logger.V(5).Info("Getting merge request by ID")
 
 	mrIID, err := strconv.ParseInt(pullRequest.Status.ID, 10, 64)
 	if err != nil {

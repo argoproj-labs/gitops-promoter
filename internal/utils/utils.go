@@ -216,7 +216,7 @@ func EnqueueChangeTransferPolicies(
 			continue
 		}
 
-		logger.Info("Triggering ChangeTransferPolicy reconciliation",
+		logger.V(3).Info("Triggering ChangeTransferPolicy reconciliation",
 			"changeTransferPolicy", ctpName,
 			"branch", envBranch,
 			"reason", logReason)
@@ -401,10 +401,10 @@ func HandleReconciliationResult(
 
 	logger := log.FromContext(ctx)
 
-	logger.Info(fmt.Sprintf("Reconciling %s End", obj.GetObjectKind().GroupVersionKind().Kind), "duration", time.Since(startTime))
+	logger.V(3).Info(fmt.Sprintf("Reconciling %s End", obj.GetObjectKind().GroupVersionKind().Kind), "duration", time.Since(startTime))
 	if obj.GetName() == "" && obj.GetNamespace() == "" {
 		// This happens when the Get in the Reconcile function returns "not found." It's expected and safe to skip.
-		logger.V(4).Info(obj.GetObjectKind().GroupVersionKind().Kind + " not found, skipping reconciliation")
+		logger.V(5).Info(obj.GetObjectKind().GroupVersionKind().Kind + " not found, skipping reconciliation")
 		return
 	}
 
@@ -509,7 +509,7 @@ func HandleReconciliationResult(
 
 	// Object was deleted concurrently; nothing to write.
 	if k8serrors.IsNotFound(patchErr) {
-		logger.V(4).Info("status apply skipped, object no longer exists", "error", patchErr)
+		logger.V(5).Info("status apply skipped, object no longer exists", "error", patchErr)
 		return
 	}
 
@@ -531,7 +531,7 @@ func HandleReconciliationResult(
 	// reconcile is the canonical "status is stale" signal; the Ready condition's own
 	// ObservedGeneration field records the generation that was attempted.
 	fallbackFieldOwner := fieldOwner + "-fallback"
-	logger.V(4).Info("full status apply failed, attempting conditions-only apply",
+	logger.V(1).Info("full status apply failed, attempting conditions-only apply",
 		"error", patchErr, "fallbackFieldOwner", fallbackFieldOwner)
 
 	// Rewrite the in-memory Ready condition to describe the apply failure. If the
@@ -570,7 +570,7 @@ func HandleReconciliationResult(
 		client.FieldOwner(fallbackFieldOwner), client.ForceOwnership)
 	if fallbackErr != nil {
 		if k8serrors.IsNotFound(fallbackErr) {
-			logger.V(4).Info("conditions-only status apply skipped, object no longer exists", "error", fallbackErr)
+			logger.V(5).Info("conditions-only status apply skipped, object no longer exists", "error", fallbackErr)
 			return
 		}
 		// Fallback also failed, report both errors
@@ -588,7 +588,7 @@ func HandleReconciliationResult(
 
 	// Fallback succeeded, but report the original status apply failure
 	persistedReady = &fallbackCondition
-	logger.Info("Successfully applied only the Ready condition after full status apply failed")
+	logger.V(1).Info("Successfully applied only the Ready condition after full status apply failed")
 	if *err == nil {
 		*err = fmt.Errorf("failed to apply full status (but applying only the Ready condition succeeded): %w", patchErr)
 	} else {

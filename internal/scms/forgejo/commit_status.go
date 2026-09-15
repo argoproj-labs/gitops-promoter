@@ -41,7 +41,7 @@ func NewForgejoCommitStatusProvider(k8sClient k8sClient.Client, scmProvider prom
 // Set sets the commit status for a given commit SHA in the specified repository.
 func (cs CommitStatus) Set(ctx context.Context, csObj *promoterv1alpha1.CommitStatus) (*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Setting Commit Phase")
+	logger.V(5).Info("Setting Commit Phase")
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, cs.k8sClient, k8sClient.ObjectKey{
 		Namespace: csObj.Namespace,
@@ -76,7 +76,7 @@ func (cs CommitStatus) Set(ctx context.Context, csObj *promoterv1alpha1.CommitSt
 		return nil, fmt.Errorf("failed to set commit status: %w", err)
 	}
 	if resp != nil {
-		logger.V(4).Info("forgejo response status", "status", resp.Status)
+		logger.V(2).Info("forgejo response status", "status", resp.Status)
 	}
 
 	csObj.Status.Id = strconv.FormatInt(commitStatus.ID, 16)
