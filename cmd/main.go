@@ -598,7 +598,9 @@ func newCommand() *cobra.Command {
 
 	opts := zap.Options{
 		Development: true,
-		Level:       zapcore.Level(-2), // default verbosity 2 (state changes), per k8s logging conventions; use --zap-log-level=4/5/6 for debug/trace/wire
+		// Default verbosity 2 (state changes), per k8s logging conventions.
+		// Use --zap-log-level=4/5/6 for debug/trace/wire.
+		Level:       zapcore.Level(-2),
 		TimeEncoder: zapcore.RFC3339NanoTimeEncoder,
 	}
 
