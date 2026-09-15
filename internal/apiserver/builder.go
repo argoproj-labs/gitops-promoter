@@ -23,12 +23,14 @@ import (
 	"github.com/google/uuid"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	viewv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/view/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
 // detailsUIDNamespace is a fixed UUID namespace used to derive deterministic UIDs
@@ -100,44 +102,44 @@ func buildBundle(ctx context.Context, reader client.Reader, namespace, name, res
 	if err := reader.List(ctx, csList, client.InNamespace(namespace), psLabel); err != nil {
 		return nil, fmt.Errorf("failed to list CommitStatuses: %w", err)
 	}
-	bundle.CommitStatuses = nilIfEmpty(csList.Items)
+	bundle.CommitStatuses = stampGVK[promoterv1alpha1.CommitStatus](csList.Items)
 
 	// Commit-status managers reference the PS by spec.promotionStrategyRef.name.
 	argocdList := &promoterv1alpha1.ArgoCDCommitStatusList{}
 	if err := reader.List(ctx, argocdList, client.InNamespace(namespace), client.MatchingFields{controller.PromotionStrategyRefField: name}); err != nil {
 		return nil, fmt.Errorf("failed to list ArgoCDCommitStatuses: %w", err)
 	}
-	bundle.ArgoCDCommitStatuses = nilIfEmpty(argocdList.Items)
+	bundle.ArgoCDCommitStatuses = stampGVK[promoterv1alpha1.ArgoCDCommitStatus](argocdList.Items)
 
 	gitCSList := &promoterv1alpha1.GitCommitStatusList{}
 	if err := reader.List(ctx, gitCSList, client.InNamespace(namespace), client.MatchingFields{controller.PromotionStrategyRefField: name}); err != nil {
 		return nil, fmt.Errorf("failed to list GitCommitStatuses: %w", err)
 	}
-	bundle.GitCommitStatuses = nilIfEmpty(gitCSList.Items)
+	bundle.GitCommitStatuses = stampGVK[promoterv1alpha1.GitCommitStatus](gitCSList.Items)
 
 	timedCSList := &promoterv1alpha1.TimedCommitStatusList{}
 	if err := reader.List(ctx, timedCSList, client.InNamespace(namespace), client.MatchingFields{controller.PromotionStrategyRefField: name}); err != nil {
 		return nil, fmt.Errorf("failed to list TimedCommitStatuses: %w", err)
 	}
-	bundle.TimedCommitStatuses = nilIfEmpty(timedCSList.Items)
+	bundle.TimedCommitStatuses = stampGVK[promoterv1alpha1.TimedCommitStatus](timedCSList.Items)
 
 	webReqCSList := &promoterv1alpha1.WebRequestCommitStatusList{}
 	if err := reader.List(ctx, webReqCSList, client.InNamespace(namespace), client.MatchingFields{controller.PromotionStrategyRefField: name}); err != nil {
 		return nil, fmt.Errorf("failed to list WebRequestCommitStatuses: %w", err)
 	}
-	bundle.WebRequestCommitStatuses = nilIfEmpty(webReqCSList.Items)
+	bundle.WebRequestCommitStatuses = stampGVK[promoterv1alpha1.WebRequestCommitStatus](webReqCSList.Items)
 
 	dagCSList := &promoterv1alpha1.DependentsSuccessfulCommitStatusList{}
 	if err := reader.List(ctx, dagCSList, client.InNamespace(namespace), client.MatchingFields{controller.PromotionStrategyRefField: name}); err != nil {
 		return nil, fmt.Errorf("failed to list DependentsSuccessfulCommitStatuses: %w", err)
 	}
-	bundle.DependentsSuccessfulCommitStatuses = nilIfEmpty(dagCSList.Items)
+	bundle.DependentsSuccessfulCommitStatuses = stampGVK[promoterv1alpha1.DependentsSuccessfulCommitStatus](dagCSList.Items)
 
 	scheduledCSList := &promoterv1alpha1.ScheduledCommitStatusList{}
 	if err := reader.List(ctx, scheduledCSList, client.InNamespace(namespace), client.MatchingFields{controller.PromotionStrategyRefField: name}); err != nil {
 		return nil, fmt.Errorf("failed to list ScheduledCommitStatuses: %w", err)
 	}
-	bundle.ScheduledCommitStatuses = nilIfEmpty(scheduledCSList.Items)
+	bundle.ScheduledCommitStatuses = stampGVK[promoterv1alpha1.ScheduledCommitStatus](scheduledCSList.Items)
 
 	// Git config: GitRepository -> ScmProvider / ClusterScmProvider.
 	// The credentials Secret referenced by the provider is intentionally never read.
@@ -202,4 +204,37 @@ func nilIfEmpty[T any](items []T) []T {
 		return nil
 	}
 	return items
+}
+
+// stampGVK sets apiVersion/kind on each item and returns nil for an empty slice.
+//
+// Commit-status managers are embedded in the bundle as typed struct fields, so the
+// apiserver's versioning codec — which stamps the GVK of the object being served —
+// only reaches the top-level PromotionStrategyDetails. metav1.TypeMeta tags both
+// fields omitempty, so the nested managers would otherwise serialize without any
+// apiVersion/kind at all, leaving clients to infer a manager's type from which
+// field it arrived in. UI plugins are dispatched on the manager's GVK, so the
+// bundle states it explicitly rather than making every consumer rebuild the
+// field-name-to-kind mapping.
+//
+// The kind is resolved from the scheme rather than passed in, so a new manager kind
+// cannot be added to the bundle with a wrong or missing kind string. A type the
+// bundle embeds but the scheme does not know is a programming error, so it panics
+// rather than degrading to an unkeyed manager the UI would silently ignore.
+func stampGVK[T any, PT interface {
+	*T
+	runtime.Object
+}](items []T) []T {
+	for i := range items {
+		obj := PT(&items[i])
+		gvks, _, err := utils.GetScheme().ObjectKinds(obj)
+		if err != nil {
+			panic(fmt.Sprintf("failed to resolve kind for %T: %v", obj, err))
+		}
+		if len(gvks) == 0 {
+			panic(fmt.Sprintf("no kind registered for %T", obj))
+		}
+		obj.GetObjectKind().SetGroupVersionKind(gvks[0])
+	}
+	return nilIfEmpty(items)
 }

@@ -19,12 +19,15 @@ package apiserver
 import (
 	"context"
 	"encoding/json"
+	"reflect"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -40,6 +43,13 @@ const (
 	testPSUID     = types.UID("11111111-1111-1111-1111-111111111111")
 	testSecretVal = "SUPER-SECRET-TOKEN"
 )
+
+// serializedTypeMeta reads back just the GVK of an embedded object, to assert it
+// survives serialization (metav1.TypeMeta tags both fields omitempty).
+type serializedTypeMeta struct {
+	APIVersion string `json:"apiVersion"`
+	Kind       string `json:"kind"`
+}
 
 func objectMeta(name string) metav1.ObjectMeta {
 	return metav1.ObjectMeta{Name: name, Namespace: testNamespace}
@@ -128,6 +138,10 @@ func seedObjects() []client.Object {
 			ObjectMeta: objectMeta("scheduled-1"),
 			Spec:       promoterv1alpha1.ScheduledCommitStatusSpec{PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: testPSName}},
 		},
+		&promoterv1alpha1.DependentsSuccessfulCommitStatus{
+			ObjectMeta: objectMeta("dependents-1"),
+			Spec:       promoterv1alpha1.DependentsSuccessfulCommitStatusSpec{PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: testPSName}},
+		},
 		&promoterv1alpha1.GitRepository{
 			ObjectMeta: objectMeta("my-repo"),
 			Spec: promoterv1alpha1.GitRepositorySpec{
@@ -185,6 +199,18 @@ var _ = Describe("BuildBundle", func() {
 		Expect(bundle.WebRequestCommitStatuses).To(HaveLen(1))
 		Expect(bundle.ScheduledCommitStatuses).To(HaveLen(1))
 		Expect(bundle.ScheduledCommitStatuses[0].Name).To(Equal("scheduled-1"))
+		Expect(bundle.DependentsSuccessfulCommitStatuses).To(HaveLen(1))
+		Expect(bundle.DependentsSuccessfulCommitStatuses[0].Name).To(Equal("dependents-1"))
+
+		By("stamping apiVersion/kind on every embedded commit status")
+		Expect(bundle.CommitStatuses[0].APIVersion).To(Equal("promoter.argoproj.io/v1alpha1"))
+		Expect(bundle.CommitStatuses[0].Kind).To(Equal("CommitStatus"))
+		Expect(bundle.ArgoCDCommitStatuses[0].Kind).To(Equal("ArgoCDCommitStatus"))
+		Expect(bundle.GitCommitStatuses[0].Kind).To(Equal("GitCommitStatus"))
+		Expect(bundle.TimedCommitStatuses[0].Kind).To(Equal("TimedCommitStatus"))
+		Expect(bundle.WebRequestCommitStatuses[0].Kind).To(Equal("WebRequestCommitStatus"))
+		Expect(bundle.ScheduledCommitStatuses[0].Kind).To(Equal("ScheduledCommitStatus"))
+		Expect(bundle.DependentsSuccessfulCommitStatuses[0].Kind).To(Equal("DependentsSuccessfulCommitStatus"))
 
 		By("resolving git config but never the Secret")
 		Expect(bundle.GitRepository).NotTo(BeNil())
@@ -225,6 +251,59 @@ var _ = Describe("BuildBundle", func() {
 		Expect(bundle.PromotionStrategy.ManagedFields).To(BeNil())
 		Expect(bundle.PromotionStrategy.Annotations).NotTo(HaveKey(lastAppliedAnnotation))
 		Expect(bundle.PromotionStrategy.Annotations).To(HaveKeyWithValue("keep-me", "yes"))
+	})
+
+	It("stamps apiVersion/kind on every commit status field in the bundle", func() {
+		// UI plugins dispatch on a commit status's GVK, so every embedded commit
+		// status must carry one. Walking the bundle reflectively (rather than
+		// asserting a fixed list of fields) means adding a manager array to
+		// PromotionStrategyDetails without stamping it fails here.
+		reader := newFakeReader(seedObjects()...)
+
+		bundle, err := buildBundle(context.Background(), reader, testNamespace, testPSName, "1")
+		Expect(err).NotTo(HaveOccurred())
+
+		v := reflect.ValueOf(*bundle)
+		t := v.Type()
+		checked := 0
+		for i := range t.NumField() {
+			field := t.Field(i)
+			if field.Type.Kind() != reflect.Slice || !strings.Contains(field.Name, "CommitStatus") {
+				continue
+			}
+			items := v.Field(i)
+			Expect(items.Len()).To(BeNumerically(">", 0),
+				"%s has no seeded object, so its GVK is unverified; add one to seedObjects", field.Name)
+			for j := range items.Len() {
+				obj, ok := items.Index(j).Addr().Interface().(runtime.Object)
+				Expect(ok).To(BeTrue(), "%s item is not a runtime.Object", field.Name)
+				gvk := obj.GetObjectKind().GroupVersionKind()
+				Expect(gvk.Kind).NotTo(BeEmpty(), "%s[%d] is missing kind", field.Name, j)
+				Expect(gvk.GroupVersion().String()).To(Equal("promoter.argoproj.io/v1alpha1"),
+					"%s[%d] has the wrong apiVersion", field.Name, j)
+			}
+			checked++
+		}
+		Expect(checked).To(Equal(7), "expected 7 commit status fields in the bundle")
+	})
+
+	It("serializes apiVersion/kind for embedded commit statuses", func() {
+		// The fields are omitempty, so only a round trip proves they reach clients.
+		reader := newFakeReader(seedObjects()...)
+
+		bundle, err := buildBundle(context.Background(), reader, testNamespace, testPSName, "1")
+		Expect(err).NotTo(HaveOccurred())
+
+		raw, err := json.Marshal(bundle)
+		Expect(err).NotTo(HaveOccurred())
+
+		var out struct {
+			TimedCommitStatuses []serializedTypeMeta `json:"timedCommitStatuses"`
+		}
+		Expect(json.Unmarshal(raw, &out)).To(Succeed())
+		Expect(out.TimedCommitStatuses).To(HaveLen(1))
+		Expect(out.TimedCommitStatuses[0].APIVersion).To(Equal("promoter.argoproj.io/v1alpha1"))
+		Expect(out.TimedCommitStatuses[0].Kind).To(Equal("TimedCommitStatus"))
 	})
 
 	It("returns NotFound when the PromotionStrategy is missing", func() {
