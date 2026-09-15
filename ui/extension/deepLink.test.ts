@@ -25,11 +25,11 @@ describe('readHistoryViewState', () => {
   });
 
   it.each(nameSets)('reads non-default filter, sort and envs (%s)', (_host, names) => {
-    const params = new URLSearchParams({
-      [names.filter]: 'failed',
-      [names.sort]: 'oldest',
-      [names.envs]: 'staging,prod',
-    });
+    const params = new URLSearchParams();
+    params.set(names.filter, 'failed');
+    params.set(names.sort, 'oldest');
+    params.append(names.envs, 'staging');
+    params.append(names.envs, 'prod');
     expect(readHistoryViewState(params, names)).toEqual({
       filter: 'failed',
       sort: 'oldest',
@@ -76,21 +76,17 @@ describe('readHistoryViewState', () => {
     expect(readHistoryViewState(params, DASHBOARD_HISTORY_PARAMS).envFilter).toEqual(['prod']);
   });
 
-  it('drops empty segments from a malformed env list', () => {
-    const params = new URLSearchParams({ envs: ',,staging,,prod,' });
+  it('drops empty env segments', () => {
+    const params = new URLSearchParams('envs=&envs=staging&envs=&envs=prod');
     expect(readHistoryViewState(params, DASHBOARD_HISTORY_PARAMS).envFilter).toEqual([
       'staging',
       'prod',
     ]);
   });
 
-  it('reads an empty or comma-only env list as no filter', () => {
+  it('reads an absent envs param as no filter', () => {
     expect(
-      readHistoryViewState(new URLSearchParams({ envs: '' }), DASHBOARD_HISTORY_PARAMS).envFilter,
-    ).toEqual([]);
-    expect(
-      readHistoryViewState(new URLSearchParams({ envs: ',,,' }), DASHBOARD_HISTORY_PARAMS)
-        .envFilter,
+      readHistoryViewState(new URLSearchParams(''), DASHBOARD_HISTORY_PARAMS).envFilter,
     ).toEqual([]);
   });
 
@@ -101,11 +97,10 @@ describe('readHistoryViewState', () => {
     ]);
   });
 
-  it('decodes percent-encoded env segments', () => {
-    const params = new URLSearchParams('envs=release%2F1.0,prod');
+  it('round-trips a branch name containing a comma', () => {
+    const params = new URLSearchParams('envs=env%2Fus%2Ceu');
     expect(readHistoryViewState(params, DASHBOARD_HISTORY_PARAMS).envFilter).toEqual([
-      'release/1.0',
-      'prod',
+      'env/us,eu',
     ]);
   });
 });
@@ -136,15 +131,23 @@ describe('writeHistoryViewState', () => {
     });
     expect(next.get(names.filter)).toBe('in-flight');
     expect(next.get(names.sort)).toBe('oldest');
-    expect(next.get(names.envs)).toBe('staging,prod');
+    expect(next.getAll(names.envs)).toEqual(['staging', 'prod']);
   });
 
-  it('comma-joins the env filter', () => {
+  it('writes the env filter as repeated params', () => {
     const next = writeHistoryViewState(new URLSearchParams(), DASHBOARD_HISTORY_PARAMS, {
       ...DEFAULT_HISTORY_VIEW_STATE,
       envFilter: ['a', 'b', 'c'],
     });
-    expect(next.get('envs')).toBe('a,b,c');
+    expect(next.getAll('envs')).toEqual(['a', 'b', 'c']);
+  });
+
+  it('round-trips a branch name containing a comma', () => {
+    const next = writeHistoryViewState(new URLSearchParams(), DASHBOARD_HISTORY_PARAMS, {
+      ...DEFAULT_HISTORY_VIEW_STATE,
+      envFilter: ['env/us,eu'],
+    });
+    expect(readHistoryViewState(next, DASHBOARD_HISTORY_PARAMS).envFilter).toEqual(['env/us,eu']);
   });
 
   it('drops empty env segments rather than writing them', () => {
@@ -152,7 +155,7 @@ describe('writeHistoryViewState', () => {
       ...DEFAULT_HISTORY_VIEW_STATE,
       envFilter: ['', 'prod', ''],
     });
-    expect(next.get('envs')).toBe('prod');
+    expect(next.getAll('envs')).toEqual(['prod']);
   });
 
   it('omits envs entirely when every segment is empty', () => {

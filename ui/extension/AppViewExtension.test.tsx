@@ -553,7 +553,9 @@ describe('AppViewExtension', () => {
     });
 
     it('seeds the environment dropdown from psEnvs', async () => {
-      setSearch(`?psView=history&psEnvs=${encodeURIComponent(`${DEV_BRANCH},${PRD_BRANCH}`)}`);
+      setSearch(
+        `?psView=history&psEnvs=${encodeURIComponent(DEV_BRANCH)}&psEnvs=${encodeURIComponent(PRD_BRANCH)}`,
+      );
       await renderHistory();
 
       expect(triggerValue('Environment')).toBe('2 environments');
