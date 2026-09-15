@@ -3,15 +3,24 @@ import { FaChevronLeft, FaFilter, FaSort, FaLayerGroup, FaArrowRight } from 'rea
 import { GoGitCommit } from 'react-icons/go';
 import { timeAgo, formatDate, getCommitUrl } from '@shared/utils/util';
 import type { PromotionStrategy } from '@shared/types/promotion';
-import type { CommitRow, FilterId, SortId } from './types';
+import type { HistoryViewState } from '@shared/utils/deepLink';
+import { FILTER_IDS, SORT_IDS, type CommitRow, type FilterId, type SortId } from './types';
 import { buildMatrix } from './buildMatrix';
-import { isEmptyCellKind } from './helpers';
+import { isEmptyCellKind, pruneEnvFilter } from './helpers';
 import { Dropdown, DropdownItem } from './Dropdown/Dropdown';
 import Tooltip from './Tooltip/Tooltip';
 import FlowCell from './FlowCell/FlowCell';
 import DetailDrawer from './DetailDrawer/DetailDrawer';
 import { useDrawerWidth } from './useDrawerWidth';
 import './index.scss';
+
+const scrollRowIntoView = (rowId: string) => {
+  requestAnimationFrame(() => {
+    document
+      .getElementById(`row-${rowId}`)
+      ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  });
+};
 
 export interface CellSelection {
   rowId: string;
@@ -25,6 +34,10 @@ export interface HistoryViewProps {
   onBack?: () => void;
   initialSelection?: CellSelection | null;
   onSelectionChange?: (_selection: CellSelection | null) => void;
+  // Filter, sort and environment filter seed values; any subset may be given,
+  // the rest fall back to their defaults. The host owns URL serialization.
+  initialViewState?: Partial<HistoryViewState>;
+  onViewStateChange?: (_state: HistoryViewState) => void;
   // By default the view fills its host container (`height: 100%`), which is
   // correct when mounted inside a sized ancestor like ArgoCD's
   // `application-details__tree`. Hosts with no sized ancestor (the dashboard)
@@ -40,6 +53,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   fillViewport = false,
   initialSelection = null,
   onSelectionChange,
+  initialViewState,
+  onViewStateChange,
 }) => {
   const rootClass = fillViewport ? 'hp--viewport' : '';
   const name = nameProp ?? strategy?.metadata?.name;
@@ -55,15 +70,45 @@ const HistoryView: React.FC<HistoryViewProps> = ({
     return m;
   }, [rows]);
 
-  const [filter, setFilter] = useState<FilterId>('all');
-  const [sort, setSort] = useState<SortId>('newest');
-  const [envFilter, setEnvFilter] = useState<string[]>([]);
+  const [filter, setFilterState] = useState<FilterId>(initialViewState?.filter ?? 'all');
+  const [sort, setSortState] = useState<SortId>(initialViewState?.sort ?? 'newest');
+  const [envFilter, setEnvFilterState] = useState<string[]>(initialViewState?.envFilter ?? []);
   const [selected, setSelectedState] = useState<CellSelection | null>(initialSelection);
 
   const onSelectionChangeRef = useRef(onSelectionChange);
   onSelectionChangeRef.current = onSelectionChange;
 
+  const onViewStateChangeRef = useRef(onViewStateChange);
+  onViewStateChangeRef.current = onViewStateChange;
+
+  const viewStateRef = useRef<HistoryViewState>({ filter, sort, envFilter });
+  viewStateRef.current = { filter, sort, envFilter };
+
+  const setFilter = useCallback((next: FilterId) => {
+    setFilterState(next);
+    viewStateRef.current = { ...viewStateRef.current, filter: next };
+    onViewStateChangeRef.current?.(viewStateRef.current);
+  }, []);
+
+  const setSort = useCallback((next: SortId) => {
+    setSortState(next);
+    viewStateRef.current = { ...viewStateRef.current, sort: next };
+    onViewStateChangeRef.current?.(viewStateRef.current);
+  }, []);
+
+  const setEnvFilter = useCallback((next: string[] | ((_prev: string[]) => string[])) => {
+    const value = typeof next === 'function' ? next(viewStateRef.current.envFilter) : next;
+    setEnvFilterState(value);
+    viewStateRef.current = { ...viewStateRef.current, envFilter: value };
+    onViewStateChangeRef.current?.(viewStateRef.current);
+  }, []);
+
+  const selectionFromLinkRef = useRef(initialSelection !== null);
+  const [staleLink, setStaleLink] = useState(false);
+
   const selectCell = useCallback((next: CellSelection | null) => {
+    selectionFromLinkRef.current = false;
+    setStaleLink(false);
     setSelectedState(next);
     onSelectionChangeRef.current?.(next);
   }, []);
@@ -79,10 +124,24 @@ const HistoryView: React.FC<HistoryViewProps> = ({
       !selectedCell ||
       isEmptyCellKind(selectedCell.kind)
     ) {
+      if (selectionFromLinkRef.current) setStaleLink(true);
+      selectionFromLinkRef.current = false;
       setSelectedState(null);
       onSelectionChangeRef.current?.(null);
     }
   }, [selected, rows.length, rowsById, validBranches]);
+
+  useEffect(() => {
+    if (!selected || rows.length === 0 || !selectionFromLinkRef.current) return;
+    selectionFromLinkRef.current = false;
+    scrollRowIntoView(selected.rowId);
+  }, [selected, rows.length]);
+
+  useEffect(() => {
+    if (envs.length === 0) return;
+    const pruned = pruneEnvFilter(viewStateRef.current.envFilter, validBranches);
+    if (pruned) setEnvFilter(pruned);
+  }, [envs.length, validBranches, setEnvFilter]);
 
   const handleToggleEnvFilter = useCallback((branch: string) => {
     setEnvFilter((prev) =>
@@ -138,11 +197,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
       const liveBranch = branches.find((b) => row.cells[b].kind === 'live');
       const branch = liveBranch ?? branches.find((b) => !isEmptyCellKind(row.cells[b].kind));
       if (branch) selectCell({ rowId, branch });
-      requestAnimationFrame(() => {
-        document
-          .getElementById(`row-${rowId}`)
-          ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      });
+      scrollRowIntoView(rowId);
     },
     [envs, rowsById, selectCell],
   );
@@ -169,18 +224,26 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   const selectedCell = selectedRow && selected ? selectedRow.cells[selected.branch] : null;
   const hasMultipleEnvs = envs.length > 1;
 
-  const FILTERS: { id: FilterId; label: string }[] = [
-    { id: 'all', label: 'All commits' },
-    { id: 'live', label: 'Live' },
-    { id: 'in-flight', label: 'In flight' },
-    { id: 'failed', label: 'Failed' },
-    { id: 'no-op', label: 'No-op' },
-  ];
+  const FILTER_LABELS: Record<FilterId, string> = {
+    all: 'All commits',
+    live: 'Live',
+    'in-flight': 'In flight',
+    failed: 'Failed',
+    'no-op': 'No-op',
+  };
+  const FILTERS: { id: FilterId; label: string }[] = FILTER_IDS.map((id) => ({
+    id,
+    label: FILTER_LABELS[id],
+  }));
 
-  const SORTS: { id: SortId; label: string }[] = [
-    { id: 'newest', label: 'Newest first' },
-    { id: 'oldest', label: 'Oldest first' },
-  ];
+  const SORT_LABELS: Record<SortId, string> = {
+    newest: 'Newest first',
+    oldest: 'Oldest first',
+  };
+  const SORTS: { id: SortId; label: string }[] = SORT_IDS.map((id) => ({
+    id,
+    label: SORT_LABELS[id],
+  }));
 
   const visibleEnvs = envFilter.length ? envs.filter((e) => envFilter.includes(e.branch)) : envs;
 
@@ -315,6 +378,20 @@ const HistoryView: React.FC<HistoryViewProps> = ({
 
           <div className="hp-matrix">
             <div className="hp-matrix__sticky">
+              {staleLink && (
+                <div className="hp-env-banner hp-stale-link" role="status">
+                  <span className="hp-env-banner__text">
+                    That commit is no longer in this promotion history.
+                  </span>
+                  <button
+                    type="button"
+                    className="hp-env-banner__clear"
+                    onClick={() => setStaleLink(false)}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
               {envFilter.length > 0 && visibleEnvs.length < envs.length && (
                 <div className="hp-env-banner">
                   <span className="hp-env-banner__text">

@@ -30,6 +30,10 @@ function App() {
           path="/promotion-strategies/:namespace/:name"
           element={<PromotionStrategyPageWithNamespace />}
         />
+        <Route
+          path="/promotion-strategies/:namespace/:name/manifest"
+          element={<PromotionStrategyPageWithNamespace />}
+        />
         <Route path="/promotion-strategies/:namespace/:name/history/*" element={<HistoryPage />} />
       </Routes>
     </BrowserRouter>

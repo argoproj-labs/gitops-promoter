@@ -1,8 +1,7 @@
 import React, { useEffect } from 'react';
-import { useParams } from 'react-router';
+import { useMatch, useParams } from 'react-router';
 import { useNavigateWithParams } from '../hooks/useNavigateWithParams';
 import { namespaceStore } from '../stores/NamespaceStore';
-import { viewStore } from '../stores/ViewStore';
 import { PromotionStrategyStore } from '../stores/PromotionStrategyStore';
 import BackButton from '../components/BackButton';
 import HeaderBar from '@lib/components/HeaderBar';
@@ -31,7 +30,7 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
 
   const currentNamespace = namespaceStore((s: NamespaceStore) => s.namespace);
   const setNamespace = namespaceStore((s: NamespaceStore) => s.setNamespace);
-  const { currentView, setView } = viewStore();
+  const showManifest = !!useMatch('/promotion-strategies/:namespace/:name/manifest');
 
   const { items, fetchItems, subscribe, unsubscribe } = PromotionStrategyStore();
 
@@ -61,6 +60,7 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
   ]);
 
   const navigate = useNavigateWithParams();
+  const strategyPath = `/promotion-strategies/${namespace}/${strategyName}`;
 
   const handleBack = () => {
     setNamespace(currentNamespace);
@@ -95,22 +95,28 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
         <div className="strategy-page-header-right">
           <div className="strategy-page-tabs">
             <button
-              className={`strategy-page-tab ${currentView === 'cards' ? 'active' : ''}`}
-              onClick={() => setView('cards')}
+              className={`strategy-page-tab ${!showManifest ? 'active' : ''}`}
+              onClick={() => {
+                if (!showManifest) return;
+                navigate(strategyPath, { replace: true });
+              }}
             >
               Overview
             </button>
 
             <button
               className="strategy-page-tab"
-              onClick={() => navigate(`/promotion-strategies/${namespace}/${strategyName}/history`)}
+              onClick={() => navigate(`${strategyPath}/history`)}
             >
               History
             </button>
 
             <button
-              className={`strategy-page-tab ${currentView === 'yaml' ? 'active' : ''}`}
-              onClick={() => setView('yaml')}
+              className={`strategy-page-tab ${showManifest ? 'active' : ''}`}
+              onClick={() => {
+                if (showManifest) return;
+                navigate(`${strategyPath}/manifest`, { replace: true });
+              }}
             >
               Live
               <br />
@@ -120,12 +126,12 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
         </div>
       </div>
 
-      {currentView === 'cards' ? (
+      {showManifest ? (
+        <LiveManifestView strategy={selectedStrategy} />
+      ) : (
         <div className="strategy-page-cards">
           <PromotionStrategyDetailsView strategy={selectedStrategy} />
         </div>
-      ) : (
-        <LiveManifestView strategy={selectedStrategy} />
       )}
     </>
   );
