@@ -21,7 +21,11 @@ const DashboardPage: React.FC = () => {
   const namespace = resolveNamespace(searchParams.get('namespace'), persistedNamespace, namespaces);
 
   useEffect(() => {
-    if (namespaces.length > 0 && namespaces.includes(namespace) && namespace !== persistedNamespace) {
+    if (
+      namespaces.length > 0 &&
+      namespaces.includes(namespace) &&
+      namespace !== persistedNamespace
+    ) {
       setNamespace(namespace);
     }
   }, [namespace, namespaces, persistedNamespace, setNamespace]);
