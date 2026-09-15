@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"math"
 	"path"
 	"reflect"
 	"slices"
@@ -64,8 +65,8 @@ type ctpDisagreement struct {
 // ctpEnqueueState tracks rate limiting and retry state for enqueuing out-of-sync CTPs.
 type ctpEnqueueState struct {
 	// lastEnqueueTime is when this CTP was last enqueued. It bounds enqueue spacing to
-	// the threshold, so a fresh disagreement arriving right after a nudge cannot bypass
-	// the rate limit.
+	// the first git-note backoff delay, so a fresh disagreement arriving right after a
+	// nudge cannot bypass the rate limit.
 	lastEnqueueTime time.Time
 	// lastSeenTime is when the enqueue decision last considered this CTP, including
 	// retries-exhausted skips. The hourly cleanup sweeps on this rather than
@@ -91,17 +92,6 @@ type ctpEnqueueState struct {
 	lastDisagreement ctpDisagreement
 }
 
-const (
-	// defaultEnqueueThreshold is the minimum spacing between enqueues of the same CTP,
-	// and the spacing between chained retries.
-	defaultEnqueueThreshold = 15 * time.Second
-	// maxEnqueueRetriesPerDisagreement is the number of delayed retries allowed per
-	// distinct disagreement, after the one immediate enqueue. Bounds re-nudging of an
-	// unchanged disagreement (e.g. an environment that structurally cannot match the
-	// target) so it does not re-enqueue on a fixed interval forever.
-	maxEnqueueRetriesPerDisagreement = 3
-)
-
 // PromotionStrategyReconciler reconciles a PromotionStrategy object
 type PromotionStrategyReconciler struct {
 	client.Client
@@ -117,11 +107,6 @@ type PromotionStrategyReconciler struct {
 	// Key is client.ObjectKey of the CTP. Protected by enqueueStateMutex.
 	enqueueStates     map[client.ObjectKey]*ctpEnqueueState
 	enqueueStateMutex sync.Mutex
-
-	// enqueueThreshold is the minimum spacing between enqueues of the same CTP.
-	// The zero value means the production default (defaultEnqueueThreshold); tests
-	// override it so retry behavior can be exercised without real 15s waits.
-	enqueueThreshold time.Duration
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=dependentssuccessfulcommitstatuses,verbs=get
@@ -216,7 +201,9 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// This is done AFTER updating the PromotionStrategy status to avoid conflicts.
 	// When CTPs reconcile and update their status, the .Owns() watch will automatically
 	// trigger this PromotionStrategy to reconcile again.
-	r.enqueueOutOfSyncCTPs(ctx, ctps)
+	if err := r.enqueueOutOfSyncCTPs(ctx, ctps); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to enqueue out-of-sync ChangeTransferPolicies: %w", err)
+	}
 
 	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.PromotionStrategyConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
@@ -471,14 +458,20 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 // disagreement is unchanged afterwards, git held nothing the status hadn't already seen
 // at that moment. The note the disagreement is waiting on may still land shortly after
 // (note pushes have no webhooks), so the same disagreement gets one immediate enqueue
-// plus a chained series of threshold-spaced delayed retries — and then nothing until
+// plus a chained series of exponentially spaced delayed retries — and then nothing until
 // CTP requeue (changeTransferPolicy.workQueue.requeueDuration), which is the designed
 // convergence mechanism. This keeps a persistent no-op disagreement from re-enqueueing
 // forever. A changed disagreement (a fetched note, a new target) resets the budget and
-// is nudged promptly again.
-func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, ctps []*promoterv1alpha1.ChangeTransferPolicy) {
+// is nudged promptly again. Retry count and delays come from
+// spec.promotionStrategy.gitNoteRetry.
+func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, ctps []*promoterv1alpha1.ChangeTransferPolicy) error {
 	if len(ctps) == 0 {
-		return
+		return nil
+	}
+
+	policy, err := r.gitNoteRetryPolicy(ctx)
+	if err != nil {
+		return err
 	}
 
 	// Initialize state map lazily
@@ -519,7 +512,7 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 	}
 
 	if newestEffectiveProposedDrySha == "" {
-		return
+		return nil
 	}
 
 	// Consider enqueuing reconcile for CTPs whose effective proposed dry SHA differs
@@ -540,8 +533,9 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 		r.handleRateLimitedEnqueue(ctxWithLog, ctp, ctpDisagreement{
 			ctpEffectiveProposedDrySha:    ctpEffectiveProposedDrySha,
 			newestEffectiveProposedDrySha: newestEffectiveProposedDrySha,
-		})
+		}, policy)
 	}
+	return nil
 }
 
 // startCleanupTimer starts a self-rescheduling background timer to remove stale entries
@@ -591,14 +585,15 @@ func (r *PromotionStrategyReconciler) startCleanupTimer() {
 }
 
 // handleRateLimitedEnqueue nudges a CTP to reconcile for the given disagreement, rate
-// limited so the same CTP is not enqueued more than once per threshold (15s by default).
+// limited so the same CTP is not enqueued more than once per first backoff delay
+// (gitNoteRetry.exponentialFailure.baseDelay, capped at maxDelay).
 //
 // A disagreement that differs from the one the CTP is currently armed for (a brand-new
 // gap, a fetched note, a new target) starts a fresh bounded retry chain and enqueues
-// right away — unless the CTP was enqueued within the threshold, in which case the
+// right away — unless the CTP was enqueued within the first backoff delay, in which case the
 // immediate nudge is skipped and the chain delivers it on its first tick. That tick is a
-// full threshold after the chain starts (not just the time remaining in the rate-limit
-// window), so a deferred first nudge can land up to nearly two thresholds after the
+// full first delay after the chain starts (not just the time remaining in the rate-limit
+// window), so a deferred first nudge can land up to nearly two first-delays after the
 // previous enqueue; this is acceptable because the note being waited on typically lands
 // within that window anyway. A disagreement identical to the one already armed is left to
 // the existing chain (or, if its budget is exhausted, to the periodic CTP requeue), so it
@@ -608,11 +603,9 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 	ctx context.Context,
 	ctp *promoterv1alpha1.ChangeTransferPolicy,
 	disagreement ctpDisagreement,
+	policy promoterv1alpha1.GitNoteRetry,
 ) {
-	enqueueThreshold := r.enqueueThreshold
-	if enqueueThreshold <= 0 {
-		enqueueThreshold = defaultEnqueueThreshold
-	}
+	minSpacing := gitNoteRetryDelay(policy, 0)
 
 	logger := log.FromContext(ctx)
 	now := time.Now()
@@ -630,20 +623,20 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 		return
 	}
 	state.lastDisagreement = disagreement
-	rateLimited := now.Sub(state.lastEnqueueTime) < enqueueThreshold
+	rateLimited := !state.lastEnqueueTime.IsZero() && now.Sub(state.lastEnqueueTime) < minSpacing
 	r.enqueueStateMutex.Unlock()
 
 	// Start a fresh chain for the new disagreement, then enqueue immediately unless the
-	// CTP was nudged within the rate-limit window — in which case the chain's first tick
-	// delivers the nudge once the window elapses. Either way the chain provides up to
-	// maxEnqueueRetriesPerDisagreement threshold-spaced nudges and then stops.
+	// CTP was nudged within the first backoff delay — in which case the chain's first tick
+	// delivers the nudge once that delay elapses. Either way the chain provides up to
+	// policy.MaxAttempts delayed nudges and then stops.
 	if rateLimited {
 		logger.V(4).Info("Rate limited, deferring enqueue to retry chain", "ctp", ctp.Name)
 	} else {
 		logger.V(4).Info("Enqueueing out-of-sync CTP", "ctp", ctp.Name)
 		r.enqueue(key)
 	}
-	r.startRetryChain(ctx, key, disagreement, maxEnqueueRetriesPerDisagreement)
+	r.startRetryChain(ctx, key, disagreement, policy, policy.MaxAttempts, 0)
 }
 
 // getOrCreateState returns the enqueue state for key, creating it if absent. Callers must
@@ -669,32 +662,31 @@ func (r *PromotionStrategyReconciler) enqueue(key client.ObjectKey) {
 	}
 }
 
-// startRetryChain re-nudges a CTP every threshold for a bounded number of attempts, then
-// stops. It exists because SCMs send no webhook for git-note pushes: the note a
-// disagreement is waiting on may land in the seconds after a reconcile, and at a long CTP
-// requeue interval that would otherwise be the only retry. Each tick re-nudges only while
-// lastDisagreement still equals the disagreement the chain was armed with; a changed
-// disagreement (new chain) or convergence (cleared) makes the tick a no-op and ends the
-// chain — so a CTP that structurally cannot match the target stops after the budget
-// rather than re-enqueueing forever. attemptsLeft is carried in the closure, so no
-// per-chain state lives in the map.
+// startRetryChain re-nudges a CTP on the git-note exponential backoff for a bounded
+// number of attempts, then stops. It exists because SCMs send no webhook for git-note
+// pushes: the note a disagreement is waiting on may land in the seconds after a reconcile,
+// and at a long CTP requeue interval that would otherwise be the only retry. Each tick
+// re-nudges only while lastDisagreement still equals the disagreement the chain was armed
+// with; a changed disagreement (new chain) or convergence (cleared) makes the tick a no-op
+// and ends the chain — so a CTP that structurally cannot match the target stops after the
+// budget rather than re-enqueueing forever. attemptsLeft and attemptIndex are carried in
+// the closure, so no per-chain state lives in the map.
 func (r *PromotionStrategyReconciler) startRetryChain(
 	ctx context.Context,
 	key client.ObjectKey,
 	disagreement ctpDisagreement,
+	policy promoterv1alpha1.GitNoteRetry,
 	attemptsLeft int,
+	attemptIndex int,
 ) {
 	if attemptsLeft <= 0 {
 		return
 	}
 
-	enqueueThreshold := r.enqueueThreshold
-	if enqueueThreshold <= 0 {
-		enqueueThreshold = defaultEnqueueThreshold
-	}
+	delay := gitNoteRetryDelay(policy, attemptIndex)
 	logger := log.FromContext(ctx)
 
-	time.AfterFunc(enqueueThreshold, func() {
+	time.AfterFunc(delay, func() {
 		r.enqueueStateMutex.Lock()
 		state := r.enqueueStates[key]
 		stale := state == nil || state.lastDisagreement != disagreement
@@ -712,8 +704,39 @@ func (r *PromotionStrategyReconciler) startRetryChain(
 			"ctp", key.Name,
 			"attemptsLeft", attemptsLeft)
 		r.enqueue(key)
-		r.startRetryChain(ctx, key, disagreement, attemptsLeft-1)
+		r.startRetryChain(ctx, key, disagreement, policy, attemptsLeft-1, attemptIndex+1)
 	})
+}
+
+// gitNoteRetryPolicy returns spec.promotionStrategy.gitNoteRetry from ControllerConfiguration.
+func (r *PromotionStrategyReconciler) gitNoteRetryPolicy(ctx context.Context) (promoterv1alpha1.GitNoteRetry, error) {
+	if r.SettingsMgr == nil {
+		return promoterv1alpha1.GitNoteRetry{}, fmt.Errorf("SettingsMgr is required to load gitNoteRetry")
+	}
+	policy, err := r.SettingsMgr.GetGitNoteRetry(ctx)
+	if err != nil {
+		return promoterv1alpha1.GitNoteRetry{}, fmt.Errorf("failed to get gitNoteRetry: %w", err)
+	}
+	return policy, nil
+}
+
+// gitNoteRetryDelay is the wait before delayed attempt i (0-based), matching
+// workqueue.NewTypedItemExponentialFailureRateLimiter: min(baseDelay * 2^i, maxDelay).
+func gitNoteRetryDelay(policy promoterv1alpha1.GitNoteRetry, attemptIndex int) time.Duration {
+	baseDelay := policy.ExponentialFailure.BaseDelay.Duration
+	maxDelay := policy.ExponentialFailure.MaxDelay.Duration
+	if attemptIndex < 0 {
+		attemptIndex = 0
+	}
+	backoff := float64(baseDelay.Nanoseconds()) * math.Pow(2, float64(attemptIndex))
+	if backoff > math.MaxInt64 {
+		return maxDelay
+	}
+	calculated := time.Duration(backoff)
+	if calculated > maxDelay {
+		return maxDelay
+	}
+	return calculated
 }
 
 // markConverged clears the retry chain for a CTP whose effective dry SHA now matches the

@@ -2001,6 +2001,51 @@ func setPullRequestRequeueDuration(ctx context.Context, d time.Duration) {
 	})
 }
 
+// setGitNoteRetry patches spec.promotionStrategy.gitNoteRetry for this spec and restores
+// the shipped default in DeferCleanup. delay is used for both baseDelay and maxDelay
+// (constant backoff), matching the common test/setup shape.
+func setGitNoteRetry(ctx context.Context, maxAttempts int, delay time.Duration) {
+	GinkgoHelper()
+	var cc promoterv1alpha1.ControllerConfiguration
+	key := types.NamespacedName{Namespace: "default", Name: settings.ControllerConfigurationName}
+	Expect(k8sClient.Get(ctx, key, &cc)).To(Succeed())
+	original := cc.Spec.PromotionStrategy.GitNoteRetry
+	cc.Spec.PromotionStrategy.GitNoteRetry = promoterv1alpha1.GitNoteRetry{
+		MaxAttempts: maxAttempts,
+		ExponentialFailure: promoterv1alpha1.ExponentialFailure{
+			BaseDelay: metav1.Duration{Duration: delay},
+			MaxDelay:  metav1.Duration{Duration: delay},
+		},
+	}
+	Expect(k8sClient.Update(ctx, &cc)).To(Succeed())
+
+	DeferCleanup(func() {
+		var cc promoterv1alpha1.ControllerConfiguration
+		Expect(k8sClient.Get(ctx, key, &cc)).To(Succeed())
+		cc.Spec.PromotionStrategy.GitNoteRetry = original
+		Expect(k8sClient.Update(ctx, &cc)).To(Succeed())
+	})
+}
+
+// setChangeTransferPolicyRequeueDuration patches changeTransferPolicy.workQueue.requeueDuration
+// so tests can keep the periodic CTP fallback from firing during a gitNoteRetry observation window.
+func setChangeTransferPolicyRequeueDuration(ctx context.Context, d time.Duration) {
+	GinkgoHelper()
+	var cc promoterv1alpha1.ControllerConfiguration
+	key := types.NamespacedName{Namespace: "default", Name: settings.ControllerConfigurationName}
+	Expect(k8sClient.Get(ctx, key, &cc)).To(Succeed())
+	original := cc.Spec.ChangeTransferPolicy.WorkQueue.RequeueDuration
+	cc.Spec.ChangeTransferPolicy.WorkQueue.RequeueDuration = metav1.Duration{Duration: d}
+	Expect(k8sClient.Update(ctx, &cc)).To(Succeed())
+
+	DeferCleanup(func() {
+		var cc promoterv1alpha1.ControllerConfiguration
+		Expect(k8sClient.Get(ctx, key, &cc)).To(Succeed())
+		cc.Spec.ChangeTransferPolicy.WorkQueue.RequeueDuration = original
+		Expect(k8sClient.Update(ctx, &cc)).To(Succeed())
+	})
+}
+
 func getGitBranchSHA(ctx context.Context, owner, name, branch string) string {
 	gitServerPort := 5000 + GinkgoParallelProcess()
 	repoURL := fmt.Sprintf("http://localhost:%d/%s/%s", gitServerPort, owner, name)

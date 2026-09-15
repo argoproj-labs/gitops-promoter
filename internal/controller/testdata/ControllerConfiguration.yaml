@@ -9,6 +9,14 @@ metadata:
 spec:
   # PromotionStrategy controller manages promotion strategies and creates ChangeTransferPolicies
   promotionStrategy:
+    # How long to keep re-enqueuing CTPs while waiting for a hydrator git note
+    # (notes pushes have no SCM webhook). After maxAttempts delayed nudges, the
+    # ChangeTransferPolicy workQueue.requeueDuration is the retry path.
+    gitNoteRetry:
+      maxAttempts: 3
+      exponentialFailure:
+        baseDelay: "15s"
+        maxDelay: "15s"
     workQueue:
       # How often to automatically requeue resources for reconciliation
       requeueDuration: "5m"

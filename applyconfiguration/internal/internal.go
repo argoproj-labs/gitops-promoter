@@ -917,6 +917,15 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: projectId
       type:
         scalar: numeric
+- name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.GitNoteRetry
+  map:
+    fields:
+    - name: exponentialFailure
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.ExponentialFailure
+    - name: maxAttempts
+      type:
+        scalar: numeric
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.GitRepository
   map:
     fields:
@@ -1172,6 +1181,9 @@ var schemaYAML = typed.YAMLObject(`types:
 - name: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.PromotionStrategyConfiguration
   map:
     fields:
+    - name: gitNoteRetry
+      type:
+        namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.GitNoteRetry
     - name: workQueue
       type:
         namedType: com.github.argoproj-labs.gitops-promoter.api.v1alpha1.WorkQueue

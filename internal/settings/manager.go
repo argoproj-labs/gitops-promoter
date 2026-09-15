@@ -178,6 +178,19 @@ func (m *Manager) GetPullRequestControllersTemplate(ctx context.Context) (promot
 	return config.Spec.PullRequest.Template, nil
 }
 
+// GetGitNoteRetry retrieves the PromotionStrategy git-note wait retry policy.
+//
+// This bounds how PromotionStrategy re-enqueues ChangeTransferPolicies whose effective
+// dry SHA lags a sibling while waiting for a hydrator git note (notes pushes have no
+// SCM webhook).
+func (m *Manager) GetGitNoteRetry(ctx context.Context) (promoterv1alpha1.GitNoteRetry, error) {
+	config, err := m.getControllerConfiguration(ctx)
+	if err != nil {
+		return promoterv1alpha1.GitNoteRetry{}, fmt.Errorf("failed to get controller configuration: %w", err)
+	}
+	return config.Spec.PromotionStrategy.GitNoteRetry, nil
+}
+
 // GetRequeueDuration retrieves the requeue duration for a specific controller type.
 // The type parameter T must satisfy the ControllerConfigurationTypes constraint.
 //

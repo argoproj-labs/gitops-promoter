@@ -145,6 +145,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.GitLabApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("GitLabRepo"):
 		return &apiv1alpha1.GitLabRepoApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("GitNoteRetry"):
+		return &apiv1alpha1.GitNoteRetryApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("GitRepository"):
 		return &apiv1alpha1.GitRepositoryApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("GitRepositorySpec"):

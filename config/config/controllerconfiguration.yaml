@@ -8,6 +8,11 @@ metadata:
   name: controller-configuration
 spec:
   promotionStrategy:
+    gitNoteRetry:
+      maxAttempts: 3
+      exponentialFailure:
+        baseDelay: "15s"
+        maxDelay: "15s"
     workQueue:
       maxConcurrentReconciles: 10
       requeueDuration: "5m"

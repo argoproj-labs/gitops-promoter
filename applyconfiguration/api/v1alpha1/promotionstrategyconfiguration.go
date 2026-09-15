@@ -28,6 +28,11 @@ type PromotionStrategyConfigurationApplyConfiguration struct {
 	// WorkQueue contains the work queue configuration for the PromotionStrategy controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	WorkQueue *WorkQueueApplyConfiguration `json:"workQueue,omitempty"`
+	// GitNoteRetry controls how PromotionStrategy re-enqueues ChangeTransferPolicies whose
+	// effective dry SHA lags a sibling while waiting for a hydrator git note. SCM webhooks
+	// do not fire for notes pushes, so this bounded backoff covers the gap until
+	// changeTransferPolicy.workQueue.requeueDuration takes over.
+	GitNoteRetry *GitNoteRetryApplyConfiguration `json:"gitNoteRetry,omitempty"`
 }
 
 // PromotionStrategyConfigurationApplyConfiguration constructs a declarative configuration of the PromotionStrategyConfiguration type for use with
@@ -41,5 +46,13 @@ func PromotionStrategyConfiguration() *PromotionStrategyConfigurationApplyConfig
 // If called multiple times, the WorkQueue field is set to the value of the last call.
 func (b *PromotionStrategyConfigurationApplyConfiguration) WithWorkQueue(value *WorkQueueApplyConfiguration) *PromotionStrategyConfigurationApplyConfiguration {
 	b.WorkQueue = value
+	return b
+}
+
+// WithGitNoteRetry sets the GitNoteRetry field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the GitNoteRetry field is set to the value of the last call.
+func (b *PromotionStrategyConfigurationApplyConfiguration) WithGitNoteRetry(value *GitNoteRetryApplyConfiguration) *PromotionStrategyConfigurationApplyConfiguration {
+	b.GitNoteRetry = value
 	return b
 }

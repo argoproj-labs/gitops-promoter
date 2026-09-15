@@ -3337,6 +3337,45 @@ spec:
                   PromotionStrategy contains the configuration for the PromotionStrategy controller,
                   including WorkQueue settings that control reconciliation behavior.
                 properties:
+                  gitNoteRetry:
+                    description: |-
+                      GitNoteRetry controls how PromotionStrategy re-enqueues ChangeTransferPolicies whose
+                      effective dry SHA lags a sibling while waiting for a hydrator git note. SCM webhooks
+                      do not fire for notes pushes, so this bounded backoff covers the gap until
+                      changeTransferPolicy.workQueue.requeueDuration takes over.
+                    properties:
+                      exponentialFailure:
+                        description: |-
+                          ExponentialFailure is the backoff between delayed nudges (same knobs as
+                          WorkQueue's exponentialFailure rate limiter). Delay for delayed attempt i
+                          (0-based) is min(baseDelay * 2^i, maxDelay).
+                        properties:
+                          baseDelay:
+                            description: |-
+                              BaseDelay is the initial delay after the first failure. Subsequent failures will exponentially
+                              increase this delay (2x, 4x, 8x, etc.) until MaxDelay is reached.
+                              Format follows Go's time.Duration syntax (e.g., "1s" for 1 second).
+                            type: string
+                          maxDelay:
+                            description: |-
+                              MaxDelay is the maximum delay between retry attempts. Once the exponential backoff reaches
+                              this value, all subsequent retries will use this delay.
+                              Format follows Go's time.Duration syntax (e.g., "1m" for 1 minute).
+                            type: string
+                        required:
+                        - baseDelay
+                        - maxDelay
+                        type: object
+                      maxAttempts:
+                        description: |-
+                          MaxAttempts is the number of delayed re-enqueues for one unchanged
+                          disagreement after the first immediate nudge. Must be at least 1.
+                        minimum: 1
+                        type: integer
+                    required:
+                    - exponentialFailure
+                    - maxAttempts
+                    type: object
                   workQueue:
                     description: |-
                       WorkQueue contains the work queue configuration for the PromotionStrategy controller.
@@ -3539,6 +3578,7 @@ spec:
                     - requeueDuration
                     type: object
                 required:
+                - gitNoteRetry
                 - workQueue
                 type: object
               pullRequest:
@@ -10316,6 +10356,11 @@ spec:
             slowDelay: 5m
       requeueDuration: 5m
   promotionStrategy:
+    gitNoteRetry:
+      exponentialFailure:
+        baseDelay: 15s
+        maxDelay: 15s
+      maxAttempts: 3
     workQueue:
       maxConcurrentReconciles: 10
       rateLimiter:
