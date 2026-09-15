@@ -112,7 +112,7 @@ func (r *ChangeTransferPolicyReconciler) GetEnqueueFunc() CTPEnqueueFunc {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
 func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
-	logger.V(1).Info("Reconciling ChangeTransferPolicy")
+	logger.V(3).Info("Reconciling ChangeTransferPolicy")
 	startTime := time.Now()
 
 	var ctp promoterv1alpha1.ChangeTransferPolicy
@@ -123,7 +123,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	err = r.Get(ctx, req.NamespacedName, &ctp, &client.GetOptions{})
 	if err != nil {
 		if k8s_errors.IsNotFound(err) {
-			logger.V(1).Info("ChangeTransferPolicy not found")
+			logger.V(3).Info("ChangeTransferPolicy not found")
 			return ctrl.Result{}, nil
 		}
 
@@ -227,7 +227,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	}
 
 	if shouldSkipHistoryRecalculation(ctp.Status.History, ctp.Status.Active.Hydrated.Sha) {
-		logger.V(4).Info("skipping history recalculation, newest history entry describes the active tip")
+		logger.V(5).Info("skipping history recalculation, newest history entry describes the active tip")
 	} else {
 		// calculateHistory is done at a best effort so we do not return any errors here, we just log them instead.
 		r.calculateHistory(ctx, &ctp, gitOperations)
@@ -282,14 +282,14 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 
 	shaListActive, err := gitOperations.GetRevListFirstParent(ctx, "origin/"+ctp.Spec.ActiveBranch, promoterv1alpha1.MaxPromotionHistory)
 	if err != nil {
-		logger.V(1).Info("failed to get rev-list commit history for active branch", "branch", ctp.Spec.ActiveBranch, "err", err)
+		logger.V(4).Info("failed to get rev-list commit history for active branch", "branch", ctp.Spec.ActiveBranch, "err", err)
 		return
 	}
-	logger.V(4).Info("Rev-list history for active branch", "shaList", shaListActive)
+	logger.V(5).Info("Rev-list history for active branch", "shaList", shaListActive)
 
 	// We know which active commits we'll need, so pre-load them.
 	if err := gitOperations.LoadCommitAndMetadataBlobs(ctx, ctp.Spec.ActivePath, shaListActive...); err != nil {
-		logger.V(1).Info("failed to prefetch history commit objects", "err", err)
+		logger.V(4).Info("failed to prefetch history commit objects", "err", err)
 		return
 	}
 
@@ -298,7 +298,7 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 	for _, sha := range shaListActive {
 		trailers, err := gitOperations.GetTrailers(ctx, sha)
 		if err != nil {
-			logger.V(4).Info("failed to get trailers while prefetching proposed history commits", "sha", sha, "err", err)
+			logger.V(5).Info("failed to get trailers while prefetching proposed history commits", "sha", sha, "err", err)
 			continue
 		}
 		if proposedSha := getFirstTrailerValue(trailers, constants.TrailerShaHydratedProposed); proposedSha != "" {
@@ -307,7 +307,7 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 	}
 	if len(proposedHistoryShas) > 0 {
 		if err := gitOperations.LoadCommits(ctx, proposedHistoryShas...); err != nil {
-			logger.V(1).Info("failed to prefetch proposed history commit objects", "err", err)
+			logger.V(4).Info("failed to prefetch proposed history commit objects", "err", err)
 			return
 		}
 	}
@@ -316,7 +316,7 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 	for _, sha := range shaListActive {
 		historyEntry, shouldInclude, err := r.buildHistoryEntry(ctx, sha, ctp.Spec.ActivePath, gitOperations)
 		if err != nil {
-			logger.V(1).Info("failed to build history entry", "sha", sha, "err", err)
+			logger.V(4).Info("failed to build history entry", "sha", sha, "err", err)
 			continue
 		}
 
@@ -338,7 +338,7 @@ func (r *ChangeTransferPolicyReconciler) buildHistoryEntry(ctx context.Context, 
 
 	activeTrailers, err := gitOperations.GetHistoryNote(ctx, sha)
 	if err != nil {
-		logger.V(4).Info("failed to get history note, falling back to commit message trailers", "sha", sha, "err", err)
+		logger.V(5).Info("failed to get history note, falling back to commit message trailers", "sha", sha, "err", err)
 	}
 	if len(activeTrailers) == 0 {
 		activeTrailers, err = gitOperations.GetTrailers(ctx, sha)
@@ -414,14 +414,14 @@ func (r *ChangeTransferPolicyReconciler) populateActiveMetadata(ctx context.Cont
 	logger := log.FromContext(ctx)
 	activeHydrated, err := gitOperations.GetShaMetadataFromGit(ctx, sha)
 	if err != nil {
-		logger.V(4).Info("failed to get active historic metadata from git", "sha", sha, "error", err)
+		logger.V(5).Info("failed to get active historic metadata from git", "sha", sha, "error", err)
 	}
 	h.Active.Hydrated = activeHydrated
 	h.Active.Hydrated.Body = removeKnownTrailers(h.Active.Hydrated.Body)
 
 	activeDry, err := gitOperations.GetShaMetadataFromFile(ctx, sha, activePath)
 	if err != nil {
-		logger.V(4).Info("failed to get active historic metadata from file", "sha", sha, "error", err)
+		logger.V(5).Info("failed to get active historic metadata from file", "sha", sha, "error", err)
 	}
 	h.Active.Dry = activeDry
 }
@@ -432,13 +432,13 @@ func (r *ChangeTransferPolicyReconciler) populateProposedMetadata(ctx context.Co
 
 	proposedHydratedSha := getFirstTrailerValue(activeTrailers, constants.TrailerShaHydratedProposed)
 	if proposedHydratedSha == "" {
-		logger.V(4).Info("No " + constants.TrailerShaHydratedProposed + " trailer found")
+		logger.V(5).Info("No " + constants.TrailerShaHydratedProposed + " trailer found")
 		return
 	}
 
 	meta, err := gitOperations.GetShaMetadataFromGit(ctx, proposedHydratedSha)
 	if err != nil {
-		logger.V(4).Info("failed to get proposed historic metadata from git", "sha", proposedHydratedSha, "error", err)
+		logger.V(5).Info("failed to get proposed historic metadata from git", "sha", proposedHydratedSha, "error", err)
 	}
 	h.Proposed.Hydrated = meta
 }
@@ -450,37 +450,37 @@ func (r *ChangeTransferPolicyReconciler) populatePullRequestMetadata(ctx context
 	if pullRequestID := getFirstTrailerValue(activeTrailers, constants.TrailerPullRequestID); pullRequestID != "" {
 		h.PullRequest.ID = pullRequestID
 	} else {
-		logger.V(4).Info("No " + constants.TrailerPullRequestID + " found in trailers")
+		logger.V(5).Info("No " + constants.TrailerPullRequestID + " found in trailers")
 	}
 
 	if pullRequestUrl := getFirstTrailerValue(activeTrailers, constants.TrailerPullRequestUrl); pullRequestUrl != "" {
 		if !strings.HasPrefix(pullRequestUrl, "http://") && !strings.HasPrefix(pullRequestUrl, "https://") {
-			logger.V(4).Info("pull request URL does not start with http:// or https://", "url", pullRequestUrl)
+			logger.V(5).Info("pull request URL does not start with http:// or https://", "url", pullRequestUrl)
 		} else {
 			h.PullRequest.Url = pullRequestUrl
 		}
 	} else {
-		logger.V(4).Info("No " + constants.TrailerPullRequestUrl + " found in trailers")
+		logger.V(5).Info("No " + constants.TrailerPullRequestUrl + " found in trailers")
 	}
 
 	if timeStr := getFirstTrailerValue(activeTrailers, constants.TrailerPullRequestCreationTime); timeStr != "" {
 		if creationTime, err := time.Parse(time.RFC3339, timeStr); err != nil {
-			logger.V(4).Info("failed to parse "+constants.TrailerPullRequestCreationTime, "time", timeStr, "err", err)
+			logger.V(5).Info("failed to parse "+constants.TrailerPullRequestCreationTime, "time", timeStr, "err", err)
 		} else {
 			h.PullRequest.PRCreationTime = metav1.NewTime(creationTime)
 		}
 	} else {
-		logger.V(4).Info("No " + constants.TrailerPullRequestCreationTime + " found in trailers")
+		logger.V(5).Info("No " + constants.TrailerPullRequestCreationTime + " found in trailers")
 	}
 
 	if timeStr := getFirstTrailerValue(activeTrailers, constants.TrailerPullRequestMergeTime); timeStr != "" {
 		if mergeTime, err := time.Parse(time.RFC3339, timeStr); err != nil {
-			logger.V(4).Info("failed to parse "+constants.TrailerPullRequestMergeTime, "time", timeStr, "err", err)
+			logger.V(5).Info("failed to parse "+constants.TrailerPullRequestMergeTime, "time", timeStr, "err", err)
 		} else {
 			h.PullRequest.PRMergeTime = metav1.NewTime(mergeTime)
 		}
 	} else {
-		logger.V(4).Info("No " + constants.TrailerPullRequestMergeTime + " found in trailers")
+		logger.V(5).Info("No " + constants.TrailerPullRequestMergeTime + " found in trailers")
 	}
 }
 
@@ -535,12 +535,12 @@ func getCommitStatusKeysFromTrailers(ctx context.Context, trailers map[string][]
 			}
 			key = strings.TrimPrefix(key, prefix)
 			if key == "" {
-				logger.V(4).Info("Skipping empty trailer key", "key", key)
+				logger.V(5).Info("Skipping empty trailer key", "key", key)
 				continue
 			}
 			parts := strings.Split(key, "-")
 			if len(parts) < 2 {
-				logger.V(4).Info("Skipping trailer with unexpected format", "key", key)
+				logger.V(5).Info("Skipping trailer with unexpected format", "key", key)
 				continue
 			}
 			csKey := strings.Join(parts[:len(parts)-1], "-")
@@ -701,7 +701,7 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 		return fmt.Errorf("failed to get SHAs for active branch %q: %w", ctp.Spec.ActiveBranch, err)
 	}
 
-	logger.V(1).Info("Branch SHAs", "branchShas", map[string]string{
+	logger.V(4).Info("Branch SHAs", "branchShas", map[string]string{
 		ctp.Spec.ActiveBranch:   activeSha,
 		ctp.Spec.ProposedBranch: proposedSha,
 	})
@@ -918,7 +918,7 @@ func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, 
 		// CommitStatus success against the wrong dry SHA.
 		ctp.Status.Proposed.Note = nil
 	}
-	logger.V(4).Info("Set proposed Note.DrySha from git note",
+	logger.V(5).Info("Set proposed Note.DrySha from git note",
 		"proposedHydratedSha", proposedHydratedSha,
 		"noteDrySha", drySha)
 
@@ -988,7 +988,7 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 			phase = promoterv1alpha1.CommitPhasePending
 			// We might not want to event here because of the potential for a lot of events, when say Argo CD is slow at updating the status
 		}
-		logger.V(1).Info("CommitStatus State",
+		logger.V(4).Info("CommitStatus State",
 			"key", status.Key,
 			"sha", targetCommitBranchState.Hydrated.Sha,
 			"phase", phase,
@@ -1025,7 +1025,7 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 		// No PR resource found - keep existing status to preserve last-known PR metadata.
 		// This allows the CTP to maintain a record of the last known PR state even after the PR resource
 		// is deleted (e.g., after external merge/close). The status is only replaced when a new PR is created.
-		logger.V(4).Info("No PR resource found, preserving existing PR status in CTP")
+		logger.V(5).Info("No PR resource found, preserving existing PR status in CTP")
 		return nil
 	}
 
@@ -1037,7 +1037,7 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 		ctp.Status.PullRequest = &promoterv1alpha1.PullRequestCommonStatus{}
 	}
 
-	logger.V(4).Info("CTP copying PR status",
+	logger.V(5).Info("CTP copying PR status",
 		"prName", pr.Items[0].Name,
 		"prState", pr.Items[0].Status.State,
 		"prID", pr.Items[0].Status.ID,
@@ -1124,7 +1124,7 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 	}
 
 	if ctp.Status.PullRequest == nil {
-		logger.V(1).Info("PR being deleted but CTP has no PR status, cannot remove finalizer yet")
+		logger.V(4).Info("PR being deleted but CTP has no PR status, cannot remove finalizer yet")
 		return nil
 	}
 
@@ -1132,7 +1132,7 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 		ctp.Status.PullRequest.State == livePR.Status.State &&
 		ctp.Status.PullRequest.MergedTargetSha == livePR.Status.MergedTargetSha
 	if !statusMatches {
-		logger.V(1).Info("PR being deleted but CTP status doesn't match PR status, cannot remove finalizer yet",
+		logger.V(4).Info("PR being deleted but CTP status doesn't match PR status, cannot remove finalizer yet",
 			"ctpPRID", ctp.Status.PullRequest.ID,
 			"prID", livePR.Status.ID,
 			"ctpPRState", ctp.Status.PullRequest.State,
@@ -1144,13 +1144,13 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 
 	// Do not release our finalizer until the PullRequest controller records a finalized deletion outcome.
 	if !pullRequestStatusIsFinalized(&livePR) {
-		logger.V(1).Info("PR being deleted but PullRequest status is not finalized yet, cannot remove finalizer yet",
+		logger.V(4).Info("PR being deleted but PullRequest status is not finalized yet, cannot remove finalizer yet",
 			"prState", livePR.Status.State,
 			"mergedTargetSha", livePR.Status.MergedTargetSha)
 		return nil
 	}
 
-	logger.V(1).Info("Removing CTP finalizer from PR - status already synced",
+	logger.V(3).Info("Removing CTP finalizer from PR - status already synced",
 		"prName", livePR.Name,
 		"prID", livePR.Status.ID,
 		"prState", livePR.Status.State)
@@ -1164,7 +1164,7 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 		return fmt.Errorf("failed to remove CTP finalizer from PullRequest: %w", err)
 	}
 
-	logger.V(4).Info("PR finalizer removed")
+	logger.V(5).Info("PR finalizer removed")
 	return nil
 }
 
@@ -1198,7 +1198,7 @@ func (r *ChangeTransferPolicyReconciler) ensurePromotionHistoryNote(ctx context.
 		return fmt.Errorf("failed to check for an existing history note on merge commit %q: %w", mergedTargetSha, err)
 	}
 	if len(existing) > 0 && shouldSkipHistoryRecalculation(ctp.Status.History, mergedTargetSha) {
-		logger.V(4).Info("Promotion history note already present and history describes the merge commit",
+		logger.V(5).Info("Promotion history note already present and history describes the merge commit",
 			"mergeCommit", mergedTargetSha, "prID", livePR.Status.ID)
 		return nil
 	}
@@ -1239,11 +1239,11 @@ func (r *ChangeTransferPolicyReconciler) writePromotionHistoryNote(ctx context.C
 	logger := log.FromContext(ctx)
 
 	if livePR.Status.State == promoterv1alpha1.PullRequestClosed || livePR.Status.State == promoterv1alpha1.PullRequestUnknown {
-		logger.V(4).Info("PR was closed or unknown on SCM, skipping promotion history note", "prState", livePR.Status.State)
+		logger.V(5).Info("PR was closed or unknown on SCM, skipping promotion history note", "prState", livePR.Status.State)
 		return nil
 	}
 	if livePR.Status.State != promoterv1alpha1.PullRequestMerged {
-		logger.V(4).Info("PR is not merged, skipping promotion history note", "prState", livePR.Status.State)
+		logger.V(5).Info("PR is not merged, skipping promotion history note", "prState", livePR.Status.State)
 		return nil
 	}
 
@@ -1253,13 +1253,13 @@ func (r *ChangeTransferPolicyReconciler) writePromotionHistoryNote(ctx context.C
 	}
 	if len(trailers) == 0 {
 		// A brand-new PR can be merged before the CTP's trailer-bearing update ever ran; there is nothing to record.
-		logger.V(4).Info("PR commit message has no trailers, skipping promotion history note")
+		logger.V(5).Info("PR commit message has no trailers, skipping promotion history note")
 		return nil
 	}
 
 	mergedTargetSha := livePR.Status.MergedTargetSha
 	if mergedTargetSha == "" {
-		logger.V(4).Info("merged pull request has no status.mergedTargetSha, skipping promotion history note (best-effort)",
+		logger.V(5).Info("merged pull request has no status.mergedTargetSha, skipping promotion history note (best-effort)",
 			"prID", livePR.Status.ID, "prState", livePR.Status.State)
 		return nil
 	}
@@ -1289,7 +1289,7 @@ func (r *ChangeTransferPolicyReconciler) writePromotionHistoryNote(ctx context.C
 		return fmt.Errorf("failed to set history note on merge commit %q: %w", mergedTargetSha, err)
 	}
 
-	logger.V(1).Info("Wrote promotion history note", "mergeCommit", mergedTargetSha, "prID", livePR.Status.ID)
+	logger.V(3).Info("Wrote promotion history note", "mergeCommit", mergedTargetSha, "prID", livePR.Status.ID)
 	return nil
 }
 
@@ -1319,7 +1319,7 @@ func reconcileProposedTrailersWithMergeCommit(ctx context.Context, recorder even
 		return nil
 	}
 
-	logger.Info("promotion history merge commit snapshot mismatch; using the merge commit as the source of truth",
+	logger.V(1).Info("promotion history merge commit snapshot mismatch; using the merge commit as the source of truth",
 		"mergeCommit", mergedTargetSha, "snapshotDrySha", snapshotDrySha, "mergedDrySha", mergedDrySha)
 	recorder.Eventf(ctp, nil, "Warning", constants.PromotionHistoryNoteMergeCommitSnapshotMismatchReason, "WritingPromotionHistoryNote",
 		constants.PromotionHistoryNoteMergeCommitSnapshotMismatchMessage, livePR.Name, snapshotDrySha, mergedDrySha)
@@ -1356,7 +1356,7 @@ func mergedProposedDrySha(ctx context.Context, gitOperations *git.EnvironmentOpe
 func mergeCommitSecondParent(ctx context.Context, gitOperations *git.EnvironmentOperations, mergedTargetSha string) string {
 	parents, err := gitOperations.GetCommitParents(ctx, mergedTargetSha)
 	if err != nil {
-		log.FromContext(ctx).V(4).Info("failed to read parents of merge commit; leaving proposed hydrated trailer as snapshot",
+		log.FromContext(ctx).V(5).Info("failed to read parents of merge commit; leaving proposed hydrated trailer as snapshot",
 			"sha", mergedTargetSha, "err", err)
 		return ""
 	}
@@ -1461,7 +1461,7 @@ func (r *ChangeTransferPolicyReconciler) handleCTPCleanupOnDelete(ctx context.Co
 			continue
 		}
 
-		logger.V(1).Info("Removing ChangeTransferPolicy PullRequest finalizer during ChangeTransferPolicy deletion",
+		logger.V(3).Info("Removing ChangeTransferPolicy PullRequest finalizer during ChangeTransferPolicy deletion",
 			"pullRequest", livePR.Name)
 
 		prApply := pullRequestApplyOwnedByChangeTransferPolicy(&livePR, nil, false)
@@ -1495,7 +1495,7 @@ func (r *ChangeTransferPolicyReconciler) getPromotionStrategy(ctx context.Contex
 		}
 	}
 
-	logger.V(4).Info("ChangeTransferPolicy has no PromotionStrategy owner reference, skipping PromotionStrategy lookup")
+	logger.V(5).Info("ChangeTransferPolicy has no PromotionStrategy owner reference, skipping PromotionStrategy lookup")
 	return nil, nil
 }
 
@@ -1702,7 +1702,7 @@ func (r *ChangeTransferPolicyReconciler) createOrUpdatePullRequest(ctx context.C
 	// Log and emit events
 	if !prExists {
 		r.Recorder.Eventf(ctp, nil, "Normal", constants.PullRequestCreatedReason, "CreatingPullRequest", constants.PullRequestCreatedMessage, pr.Name)
-		logger.Info("Created pull request", "pullRequest", pr.Name)
+		logger.V(2).Info("Created pull request", "pullRequest", pr.Name)
 	} else {
 		logger.V(4).Info("Applied pull request", "pullRequest", pr.Name)
 	}
@@ -1758,7 +1758,7 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 
 	for i, status := range ctp.Status.Proposed.CommitStatuses {
 		if status.Phase != string(promoterv1alpha1.CommitPhaseSuccess) {
-			logger.V(1).Info("Proposed commit status is not success", "key", ctp.Spec.ProposedCommitStatuses[i].Key, "sha", ctp.Status.Proposed.Hydrated.Sha, "phase", status.Phase)
+			logger.V(4).Info("Proposed commit status is not success", "key", ctp.Spec.ProposedCommitStatuses[i].Key, "sha", ctp.Status.Proposed.Hydrated.Sha, "phase", status.Phase)
 			return nil, nil
 		}
 	}
@@ -1792,7 +1792,7 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 	// We found 1 pull request process it.
 	pullRequest := prl.Items[0]
 	if pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
-		logger.Info("Commit status checks passed", "branch", ctp.Spec.ActiveBranch,
+		logger.V(2).Info("Commit status checks passed", "branch", ctp.Spec.ActiveBranch,
 			"activeCommitStatuses", ctp.Status.Active.CommitStatuses,
 			"proposedCommitStatuses", ctp.Status.Proposed.CommitStatuses,
 			"activeDryCommitTime", ctp.Status.Active.Dry.CommitTime)
@@ -1805,7 +1805,7 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 
 	if pullRequest.Spec.State != promoterv1alpha1.PullRequestOpen {
 		// This is for the case where the PR is set to merge in k8s but something else is blocking it, like an external commit status check.
-		logger.Info("Pull request can not be merged, probably due to SCM", "pr", pullRequest.Name)
+		logger.V(1).Info("Pull request can not be merged, probably due to SCM", "pr", pullRequest.Name)
 
 		return &pullRequest, nil
 	}
@@ -1835,7 +1835,7 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 		return &pullRequest, fmt.Errorf("failed to apply PR %q state to merged: %w", pullRequest.Name, err)
 	}
 	r.Recorder.Eventf(ctp, nil, "Normal", constants.PullRequestMergedReason, "MergingPullRequest", constants.PullRequestMergedMessage, pr.Name)
-	logger.Info("Merged pull request")
+	logger.V(2).Info("Merged pull request")
 	return pr, nil
 }
 
@@ -1852,11 +1852,11 @@ func (r *ChangeTransferPolicyReconciler) gitMergeStrategyOurs(ctx context.Contex
 	proposedSha := ctp.Status.Proposed.Hydrated.Sha
 	activeSha := ctp.Status.Active.Hydrated.Sha
 	if proposedSha != "" && proposedSha == activeSha {
-		logger.V(4).Info("Skipping conflict check, proposed and active hydrated tips are the same commit", "sha", proposedSha)
+		logger.V(5).Info("Skipping conflict check, proposed and active hydrated tips are the same commit", "sha", proposedSha)
 		return false, nil
 	}
 
-	logger.V(4).Info("Testing for conflicts between branches", "proposed", ctp.Spec.ProposedBranch, "active", ctp.Spec.ActiveBranch)
+	logger.V(5).Info("Testing for conflicts between branches", "proposed", ctp.Spec.ProposedBranch, "active", ctp.Spec.ActiveBranch)
 
 	// Check if there's a conflict between branches
 	hasConflict, err := gitOperations.HasConflict(ctx, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
@@ -1865,12 +1865,12 @@ func (r *ChangeTransferPolicyReconciler) gitMergeStrategyOurs(ctx context.Contex
 	}
 
 	if !hasConflict {
-		logger.V(4).Info("No conflicts detected between branches", "proposed", ctp.Spec.ProposedBranch, "active", ctp.Spec.ActiveBranch)
+		logger.V(5).Info("No conflicts detected between branches", "proposed", ctp.Spec.ProposedBranch, "active", ctp.Spec.ActiveBranch)
 		return false, nil // No conflict, nothing to do
 	}
 
 	// If we have a conflict, perform a merge with "ours" strategy
-	logger.Info("Conflicts detected, performing merge with 'ours' strategy", "proposed", ctp.Spec.ProposedBranch, "active", ctp.Spec.ActiveBranch, "activePath", ctp.Spec.ActivePath)
+	logger.V(2).Info("Conflicts detected, performing merge with 'ours' strategy", "proposed", ctp.Spec.ProposedBranch, "active", ctp.Spec.ActiveBranch, "activePath", ctp.Spec.ActivePath)
 
 	if ctp.Spec.ActivePath != "" {
 		err = gitOperations.MergeWithOursStrategyForPath(ctx, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, ctp.Spec.ActivePath)

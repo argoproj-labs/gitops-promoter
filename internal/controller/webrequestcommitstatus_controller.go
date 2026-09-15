@@ -79,7 +79,7 @@ type WebRequestCommitStatusReconciler struct {
 // an environment transitions to success. Result status and requeue time are updated via the deferred handler.
 func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
-	logger.V(1).Info("Reconciling WebRequestCommitStatus")
+	logger.V(3).Info("Reconciling WebRequestCommitStatus")
 	startTime := time.Now()
 
 	var wrcs promoterv1alpha1.WebRequestCommitStatus
@@ -93,7 +93,7 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 	err = r.Get(ctx, req.NamespacedName, &wrcs)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			logger.V(1).Info("WebRequestCommitStatus not found")
+			logger.V(3).Info("WebRequestCommitStatus not found")
 			return ctrl.Result{}, nil
 		}
 		logger.Error(err, "failed to get WebRequestCommitStatus")
@@ -297,7 +297,7 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	defer cancel()
 	req = req.WithContext(reqCtx)
 
-	logger.V(4).Info("Making HTTP request", "method", rendered.Method, "url", rendered.URL)
+	logger.V(6).Info("Making HTTP request", "method", rendered.Method, "url", rendered.URL)
 
 	// Execute request (metrics: counter and histogram only after Do; duration is Do through body read).
 	httpMetricsStart := time.Now()
@@ -310,7 +310,7 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			logger.V(4).Info("Failed to close response body", "error", closeErr)
+			logger.V(5).Info("Failed to close response body", "error", closeErr)
 		}
 	}()
 
@@ -335,7 +335,7 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 		Headers:    resp.Header,
 	}
 
-	logger.V(4).Info("HTTP request completed", "statusCode", resp.StatusCode, "latency", httpRequestMetricsDuration)
+	logger.V(6).Info("HTTP request completed", "statusCode", resp.StatusCode, "latency", httpRequestMetricsDuration)
 
 	return response, nil
 }

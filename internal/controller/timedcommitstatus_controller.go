@@ -67,7 +67,7 @@ type TimedCommitStatusReconciler struct {
 //nolint:dupl // Gate controllers share the same reconciliation skeleton by design.
 func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
-	logger.V(1).Info("Reconciling TimedCommitStatus")
+	logger.V(3).Info("Reconciling TimedCommitStatus")
 	startTime := time.Now()
 
 	var tcs promoterv1alpha1.TimedCommitStatus
@@ -79,7 +79,7 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	err = r.Get(ctx, req.NamespacedName, &tcs, &client.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			logger.V(1).Info("TimedCommitStatus not found")
+			logger.V(3).Info("TimedCommitStatus not found")
 			return ctrl.Result{}, nil
 		}
 		logger.Error(err, "failed to get TimedCommitStatus")
@@ -195,7 +195,7 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 		// Look up the environment in the map
 		currentEnvStatus, found := envStatusMap[envConfig.Branch]
 		if !found {
-			logger.Info("Environment not found in PromotionStrategy status", "branch", envConfig.Branch)
+			logger.V(2).Info("Environment not found in PromotionStrategy status", "branch", envConfig.Branch)
 			continue
 		}
 
@@ -204,12 +204,12 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 		currentActiveCommitTime := currentEnvStatus.Active.Hydrated.CommitTime.Time
 
 		if currentActiveSha == "" {
-			logger.V(1).Info("No active hydrated commit in current environment", "branch", envConfig.Branch)
+			logger.V(4).Info("No active hydrated commit in current environment", "branch", envConfig.Branch)
 			continue
 		}
 
 		if currentActiveCommitTime.IsZero() {
-			logger.V(1).Info("No active hydrated commit time in current environment", "branch", envConfig.Branch)
+			logger.V(4).Info("No active hydrated commit time in current environment", "branch", envConfig.Branch)
 			continue
 		}
 
@@ -234,7 +234,7 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 		}
 		if previousPhase == string(promoterv1alpha1.CommitPhasePending) && phase == promoterv1alpha1.CommitPhaseSuccess {
 			transitionedEnvironments = append(transitionedEnvironments, envConfig.Branch)
-			logger.Info("Time gate transitioned to success",
+			logger.V(2).Info("Time gate transitioned to success",
 				"branch", envConfig.Branch,
 				"sha", currentActiveSha)
 		}
@@ -271,7 +271,7 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 		// Emit only after the upsert succeeded so the event always describes persisted state.
 		emitCommitStatusPhaseChangedEvent(r.Recorder, tcs, tcs.Spec.Key, envConfig.Branch, previousPhase, string(phase))
 
-		logger.V(1).Info("Processed environment time gate",
+		logger.V(3).Info("Processed environment time gate",
 			"branch", envConfig.Branch,
 			"activeSha", currentActiveSha,
 			"phase", phase,

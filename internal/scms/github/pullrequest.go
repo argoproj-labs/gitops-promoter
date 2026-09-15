@@ -68,12 +68,12 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 	if githubPullRequest == nil || githubPullRequest.Number == nil {
 		return "", errors.New("GitHub returned empty pull request response")
 	}
-	logger.V(1).Info("github rate limit",
+	logger.V(6).Info("github rate limit",
 		"limit", response.Rate.Limit,
 		"remaining", response.Rate.Remaining,
 		"reset", response.Rate.Reset,
 		"url", response.Request.URL)
-	logger.V(4).Info("github response status", "status", response.Status)
+	logger.V(6).Info("github response status", "status", response.Status)
 
 	return strconv.Itoa(*githubPullRequest.Number), nil
 }
@@ -105,12 +105,12 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pu
 	if err != nil {
 		return fmt.Errorf("failed to edit pull request: %w", err)
 	}
-	logger.V(1).Info("github rate limit",
+	logger.V(6).Info("github rate limit",
 		"limit", response.Rate.Limit,
 		"remaining", response.Rate.Remaining,
 		"reset", response.Rate.Reset,
 		"url", response.Request.URL)
-	logger.V(4).Info("github response status",
+	logger.V(6).Info("github response status",
 		"status", response.Status)
 
 	return nil
@@ -142,12 +142,12 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullReque
 	if err != nil {
 		return err //nolint:wrapcheck // Error wrapping handled at top level
 	}
-	logger.V(1).Info("github rate limit",
+	logger.V(6).Info("github rate limit",
 		"limit", response.Rate.Limit,
 		"remaining", response.Rate.Remaining,
 		"reset", response.Rate.Reset,
 		"url", response.Request.URL)
-	logger.V(4).Info("github response status",
+	logger.V(6).Info("github response status",
 		"status", response.Status)
 
 	return nil
@@ -184,12 +184,12 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 	if err != nil {
 		return scms.MergeResult{}, err //nolint:wrapcheck // Error wrapping handled at top level
 	}
-	logger.V(1).Info("github rate limit",
+	logger.V(6).Info("github rate limit",
 		"limit", response.Rate.Limit,
 		"remaining", response.Rate.Remaining,
 		"reset", response.Rate.Reset,
 		"url", response.Request.URL)
-	logger.V(4).Info("github response status",
+	logger.V(6).Info("github response status",
 		"status", response.Status)
 
 	return scms.MergeResult{CommitSHA: mergeResult.GetSHA()}, nil
@@ -198,7 +198,7 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 // FindOpen checks if a pull request is open and returns its status.
 func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.FindOpenResult, error) {
 	logger := log.FromContext(ctx)
-	logger.V(4).Info("Finding Open Pull Request")
+	logger.V(5).Info("Finding Open Pull Request")
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil || gitRepo == nil {
@@ -216,12 +216,12 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	if err != nil {
 		return scms.FindOpenResult{}, fmt.Errorf("failed to list pull requests: %w", err)
 	}
-	logger.V(1).Info("github rate limit",
+	logger.V(6).Info("github rate limit",
 		"limit", response.Rate.Limit,
 		"remaining", response.Rate.Remaining,
 		"reset", response.Rate.Reset,
 		"url", response.Request.URL)
-	logger.V(4).Info("github response status",
+	logger.V(6).Info("github response status",
 		"status", response.Status)
 	if len(pullRequests) > 0 {
 		pr0 := pullRequests[0]
@@ -246,7 +246,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 // Get fetches a pull request by status.id.
 func (pr *PullRequest) Get(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.GetPullRequestResult, error) {
 	logger := log.FromContext(ctx)
-	logger.V(4).Info("Getting pull request by ID")
+	logger.V(5).Info("Getting pull request by ID")
 
 	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
 	if err != nil {
@@ -344,7 +344,7 @@ func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest v1alpha1.PullR
 	if err != nil {
 		return fmt.Errorf("failed to add labels to pull request: %w", err)
 	}
-	logger.V(4).Info("added labels to github pull request", "labels", labels)
+	logger.V(5).Info("added labels to github pull request", "labels", labels)
 
 	return nil
 }
@@ -444,7 +444,7 @@ func (pr *PullRequest) RemoveLabels(ctx context.Context, pullRequest v1alpha1.Pu
 			return fmt.Errorf("failed to remove label %q from pull request: %w", label, err)
 		}
 	}
-	logger.V(4).Info("removed labels from github pull request", "labels", labels)
+	logger.V(5).Info("removed labels from github pull request", "labels", labels)
 
 	return nil
 }

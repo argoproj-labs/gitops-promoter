@@ -56,7 +56,7 @@ type ControllerConfigurationReconciler struct {
 // controller so the informer cache partition is rebuilt on restart.
 func (r *ControllerConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
-	logger.V(1).Info("Reconciling ControllerConfiguration")
+	logger.V(3).Info("Reconciling ControllerConfiguration")
 	startTime := time.Now()
 
 	var cc promoterv1alpha1.ControllerConfiguration

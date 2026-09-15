@@ -102,20 +102,20 @@ func CleanupOrphanedCommitStatuses(
 			continue
 		}
 		if !metav1.IsControlledBy(cs, owner) {
-			logger.V(4).Info("Skipping CommitStatus not owned by parent gate",
+			logger.V(5).Info("Skipping CommitStatus not owned by parent gate",
 				"commitStatusName", cs.Name,
 				"parent", owner.GetName())
 			continue
 		}
 
-		logger.Info("Deleting orphaned CommitStatus",
+		logger.V(2).Info("Deleting orphaned CommitStatus",
 			"commitStatusName", cs.Name,
 			"parent", owner.GetName(),
 			"namespace", owner.GetNamespace())
 
 		if err := c.Delete(ctx, cs); err != nil {
 			if k8serrors.IsNotFound(err) {
-				logger.V(4).Info("CommitStatus already deleted", "commitStatusName", cs.Name)
+				logger.V(5).Info("CommitStatus already deleted", "commitStatusName", cs.Name)
 				continue
 			}
 			return fmt.Errorf("failed to delete orphaned CommitStatus %q: %w", cs.Name, err)

@@ -111,7 +111,7 @@ type ApplicationsInEnvironment struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.1/pkg/reconcile
 func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreconcile.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
-	logger.V(1).Info("Reconciling ArgoCDCommitStatus", "cluster", req.ClusterName, "namespace", req.Namespace, "name", req.Name)
+	logger.V(3).Info("Reconciling ArgoCDCommitStatus", "cluster", req.ClusterName, "namespace", req.Namespace, "name", req.Name)
 	startTime := time.Now()
 
 	var argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
@@ -122,7 +122,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	err = r.localClient.Get(ctx, req.NamespacedName, &argoCDCommitStatus, &client.GetOptions{})
 	if err != nil {
 		if k8s_errors.IsNotFound(err) {
-			logger.V(1).Info("ArgoCDCommitStatus not found")
+			logger.V(3).Info("ArgoCDCommitStatus not found")
 			return ctrl.Result{}, nil
 		}
 
@@ -151,7 +151,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		clusters = append(clusters, mcmanager.LocalCluster)
 	}
 	for _, clusterName := range clusters {
-		logger.V(1).Info("Fetching Argo CD applications from cluster", "cluster", clusterName)
+		logger.V(4).Info("Fetching Argo CD applications from cluster", "cluster", clusterName)
 		cluster, err := r.Manager.GetCluster(ctx, clusterName)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to get cluster: %w", err)
@@ -180,7 +180,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	for _, clusterApps := range apps {
 		appCount += len(clusterApps.Items)
 	}
-	logger.V(4).Info("Found Applications", "appCount", appCount)
+	logger.V(5).Info("Found Applications", "appCount", appCount)
 
 	if appCount == 0 {
 		return ctrl.Result{}, fmt.Errorf("no Argo CD Applications found matching selector %v - check that the clusters successfully engaged", ls)
@@ -495,7 +495,7 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchand
 					logger.Error(err, "failed to parse label selector")
 				}
 				if err == nil && selector.Matches(appLabels) {
-					logger.V(4).Info("ArgoCD application caused ArgoCDCommitStatus to reconcile",
+					logger.V(5).Info("ArgoCD application caused ArgoCDCommitStatus to reconcile",
 						"app-namespace", argoCDApplication.GetNamespace(), "application", argoCDApplication.GetName(),
 						"argocdcommitstatus", argoCDCommitStatus.Namespace+"/"+argoCDCommitStatus.Name)
 
@@ -664,14 +664,14 @@ func (r *ArgoCDCommitStatusReconciler) cleanupLegacyOrphanedCommitStatusesWithou
 			continue
 		}
 
-		logger.Info("Deleting legacy orphaned CommitStatus",
+		logger.V(2).Info("Deleting legacy orphaned CommitStatus",
 			"commitStatusName", cs.Name,
 			"argoCDCommitStatus", argoCDCommitStatus.Name,
 			"namespace", argoCDCommitStatus.Namespace)
 
 		if err := r.localClient.Delete(ctx, cs); err != nil {
 			if k8s_errors.IsNotFound(err) {
-				logger.V(4).Info("CommitStatus already deleted", "commitStatusName", cs.Name)
+				logger.V(5).Info("CommitStatus already deleted", "commitStatusName", cs.Name)
 				continue
 			}
 			return fmt.Errorf("failed to delete legacy orphaned CommitStatus %q: %w", cs.Name, err)
@@ -726,7 +726,7 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 		}
 
 		// Set the URL in the CommitStatus
-		logger.V(4).Info("Rendered URL template", "url", renderedURL, "environment", targetBranch, "commitStatus", resourceName, "namespace", argoCDCommitStatus.Namespace)
+		logger.V(5).Info("Rendered URL template", "url", renderedURL, "environment", targetBranch, "commitStatus", resourceName, "namespace", argoCDCommitStatus.Namespace)
 		commitStatusSpec = commitStatusSpec.WithUrl(renderedURL)
 	}
 
@@ -766,7 +766,7 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 
 	emitCommitStatusPhaseChangedEvent(r.Recorder, &argoCDCommitStatus, key, targetBranch, previousPhase, string(phase))
 
-	logger.V(1).Info("Applied CommitStatus", "name", resourceName, "targetBranch", targetBranch, "sha", sha, "phase", phase, "description", desc)
+	logger.V(4).Info("Applied CommitStatus", "name", resourceName, "targetBranch", targetBranch, "sha", sha, "phase", phase, "description", desc)
 
 	return commitStatus, nil
 }

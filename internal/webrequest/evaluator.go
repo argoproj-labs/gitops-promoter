@@ -133,7 +133,7 @@ func (e *ExpressionEvaluator) evaluateWhenVariablesExpression(ctx context.Contex
 		return nil, fmt.Errorf("when.variables expression must return a map/object, got %T", output)
 	}
 
-	logger.V(4).Info("When variables expression evaluated", "whenVariables", result)
+	logger.V(5).Info("When variables expression evaluated", "whenVariables", result)
 	return result, nil
 }
 
@@ -175,7 +175,7 @@ func (e *ExpressionEvaluator) evaluateTriggerExpression(ctx context.Context, exp
 		return triggerResult{}, fmt.Errorf("trigger expression must return bool, got %T", output)
 	}
 
-	logger.V(4).Info("Trigger expression evaluated", "trigger", boolResult)
+	logger.V(5).Info("Trigger expression evaluated", "trigger", boolResult)
 	return triggerResult{Trigger: boolResult}, nil
 }
 
@@ -199,7 +199,7 @@ func (e *ExpressionEvaluator) evaluateTriggerDataExpression(ctx context.Context,
 		return nil, fmt.Errorf("trigger data expression must return a map/object, got %T", output)
 	}
 
-	logger.V(4).Info("Trigger data expression evaluated", "triggerData", result)
+	logger.V(5).Info("Trigger data expression evaluated", "triggerData", result)
 	return result, nil
 }
 
@@ -230,7 +230,7 @@ func (e *ExpressionEvaluator) evaluateValidationExpressionForEnvironments(ctx co
 		if b {
 			phase = promoterv1alpha1.CommitPhaseSuccess
 		}
-		logger.V(4).Info("Validation expression evaluated", "passed", b, "phase", phase)
+		logger.V(5).Info("Validation expression evaluated", "passed", b, "phase", phase)
 		return phase, nil
 	}
 
@@ -240,7 +240,7 @@ func (e *ExpressionEvaluator) evaluateValidationExpressionForEnvironments(ctx co
 		if parseErr != nil {
 			return promoterv1alpha1.CommitPhasePending, parseErr
 		}
-		logger.V(4).Info("Validation expression evaluated (phase object)", "phase", phase)
+		logger.V(5).Info("Validation expression evaluated (phase object)", "phase", phase)
 		return phase, nil
 	}
 
@@ -280,7 +280,7 @@ func (e *ExpressionEvaluator) evaluateValidationExpressionForPromotionStrategy(c
 		if parseErr != nil {
 			return promoterv1alpha1.CommitPhasePending, nil, parseErr
 		}
-		logger.V(4).Info("Validation expression evaluated (per-branch object)", "defaultPhase", defaultPhase, "phasePerBranch", phases)
+		logger.V(5).Info("Validation expression evaluated (per-branch object)", "defaultPhase", defaultPhase, "phasePerBranch", phases)
 		return defaultPhase, phases, nil
 	}
 
@@ -308,7 +308,7 @@ func (e *ExpressionEvaluator) evaluateResponseDataExpression(ctx context.Context
 		return nil, fmt.Errorf("response data expression must return a map/object, got %T", output)
 	}
 
-	logger.V(4).Info("Response data expression evaluated", "responseData", result)
+	logger.V(5).Info("Response data expression evaluated", "responseData", result)
 	return result, nil
 }
 
@@ -333,7 +333,7 @@ func (e *ExpressionEvaluator) evaluateSuccessDataExpression(ctx context.Context,
 		return nil, fmt.Errorf("success data expression must return a map/object, got %T", output)
 	}
 
-	logger.V(4).Info("Success data expression evaluated", "successData", result)
+	logger.V(5).Info("Success data expression evaluated", "successData", result)
 	return result, nil
 }
 

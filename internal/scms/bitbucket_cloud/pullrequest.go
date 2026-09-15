@@ -90,8 +90,8 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, desc strin
 		return "", fmt.Errorf("pull request ID has unexpected type: %T (expected float64)", idValue)
 	}
 
-	logger.V(4).Info("bitbucket response status", "status", statusCode)
-	logger.V(4).Info("created pull request", "id", int(idFloat))
+	logger.V(6).Info("bitbucket response status", "status", statusCode)
+	logger.V(5).Info("created pull request", "id", int(idFloat))
 
 	return strconv.Itoa(int(idFloat)), nil
 }
@@ -128,8 +128,8 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 		return fmt.Errorf("failed to update pull request: %w", err)
 	}
 
-	logger.V(4).Info("bitbucket response status", "status", statusCode)
-	logger.V(4).Info("updated pull request", "id", prObj.Status.ID)
+	logger.V(6).Info("bitbucket response status", "status", statusCode)
+	logger.V(5).Info("updated pull request", "id", prObj.Status.ID)
 
 	return nil
 }
@@ -164,8 +164,8 @@ func (pr *PullRequest) Close(ctx context.Context, prObj v1alpha1.PullRequest) er
 		return fmt.Errorf("failed to close pull request: %w", err)
 	}
 
-	logger.V(4).Info("bitbucket response status", "status", statusCode)
-	logger.V(4).Info("closed pull request", "id", prObj.Status.ID)
+	logger.V(6).Info("bitbucket response status", "status", statusCode)
+	logger.V(5).Info("closed pull request", "id", prObj.Status.ID)
 
 	return nil
 }
@@ -201,8 +201,8 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) (s
 		return scms.MergeResult{}, fmt.Errorf("failed to merge request: %w", err)
 	}
 
-	logger.V(4).Info("bitbucket response status", "status", statusCode)
-	logger.V(4).Info("merged pull request", "id", prObj.Status.ID)
+	logger.V(6).Info("bitbucket response status", "status", statusCode)
+	logger.V(5).Info("merged pull request", "id", prObj.Status.ID)
 
 	// The merge response echoes the pull request, including merge_commit. A missing or
 	// unresolvable hash is not fatal here: the controller falls back to a Get-by-ID lookup.
@@ -236,7 +236,7 @@ func mergeCommitHash(payload any) string {
 // FindOpen checks if a pull request is open and returns its status.
 func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.FindOpenResult, error) {
 	logger := log.FromContext(ctx)
-	logger.V(4).Info("Finding Open Pull Request")
+	logger.V(5).Info("Finding Open Pull Request")
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
 		Namespace: pullRequest.Namespace,
@@ -271,7 +271,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 		return scms.FindOpenResult{}, fmt.Errorf("failed to list pull requests: %w", err)
 	}
 
-	logger.V(4).Info("bitbucket response status", "status", statusCode)
+	logger.V(6).Info("bitbucket response status", "status", statusCode)
 
 	// Parse the paginated response
 	resultMap, ok := result.(map[string]any)
@@ -329,7 +329,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 // Get fetches a pull request by status.id.
 func (pr *PullRequest) Get(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.GetPullRequestResult, error) {
 	logger := log.FromContext(ctx)
-	logger.V(4).Info("Getting pull request by ID")
+	logger.V(5).Info("Getting pull request by ID")
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
 		Namespace: pullRequest.Namespace,
@@ -360,7 +360,7 @@ func (pr *PullRequest) Get(ctx context.Context, pullRequest v1alpha1.PullRequest
 		return scms.GetPullRequestResult{}, fmt.Errorf("failed to get pull request: %w", err)
 	}
 
-	logger.V(4).Info("bitbucket response status", "status", statusCode)
+	logger.V(6).Info("bitbucket response status", "status", statusCode)
 
 	prMap, ok := result.(map[string]any)
 	if !ok {

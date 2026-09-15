@@ -161,7 +161,7 @@ func (g *EnvironmentOperations) prefetchCommits(ctx context.Context, shas ...str
 		return
 	}
 	if err := g.fetchCommits(ctx, uncached...); err != nil {
-		log.FromContext(ctx).V(1).Info("failed to prefetch commits, falling back to individual lookups", "error", err)
+		log.FromContext(ctx).V(4).Info("failed to prefetch commits, falling back to individual lookups", "error", err)
 	}
 }
 
