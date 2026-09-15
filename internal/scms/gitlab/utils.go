@@ -20,7 +20,7 @@ func logGitLabRateLimitsIfAvailable(
 	reset := resp.Header.Get("Ratelimit-Reset")
 
 	if limit != "" || remaining != "" || reset != "" {
-		logger.V(6).Info("GitLab rate limits",
+		logger.V(2).Info("GitLab rate limits",
 			"scmProvider", scmProvider,
 			"limit", limit,
 			"remaining", remaining,

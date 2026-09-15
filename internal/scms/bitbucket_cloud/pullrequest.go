@@ -90,7 +90,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, desc strin
 		return "", fmt.Errorf("pull request ID has unexpected type: %T (expected float64)", idValue)
 	}
 
-	logger.V(6).Info("bitbucket response status", "status", statusCode)
+	logger.V(2).Info("bitbucket response status", "status", statusCode)
 	logger.V(5).Info("created pull request", "id", int(idFloat))
 
 	return strconv.Itoa(int(idFloat)), nil
@@ -128,7 +128,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 		return fmt.Errorf("failed to update pull request: %w", err)
 	}
 
-	logger.V(6).Info("bitbucket response status", "status", statusCode)
+	logger.V(2).Info("bitbucket response status", "status", statusCode)
 	logger.V(5).Info("updated pull request", "id", prObj.Status.ID)
 
 	return nil
@@ -164,7 +164,7 @@ func (pr *PullRequest) Close(ctx context.Context, prObj v1alpha1.PullRequest) er
 		return fmt.Errorf("failed to close pull request: %w", err)
 	}
 
-	logger.V(6).Info("bitbucket response status", "status", statusCode)
+	logger.V(2).Info("bitbucket response status", "status", statusCode)
 	logger.V(5).Info("closed pull request", "id", prObj.Status.ID)
 
 	return nil
@@ -201,7 +201,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) (s
 		return scms.MergeResult{}, fmt.Errorf("failed to merge request: %w", err)
 	}
 
-	logger.V(6).Info("bitbucket response status", "status", statusCode)
+	logger.V(2).Info("bitbucket response status", "status", statusCode)
 	logger.V(5).Info("merged pull request", "id", prObj.Status.ID)
 
 	// The merge response echoes the pull request, including merge_commit. A missing or
@@ -271,7 +271,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 		return scms.FindOpenResult{}, fmt.Errorf("failed to list pull requests: %w", err)
 	}
 
-	logger.V(6).Info("bitbucket response status", "status", statusCode)
+	logger.V(2).Info("bitbucket response status", "status", statusCode)
 
 	// Parse the paginated response
 	resultMap, ok := result.(map[string]any)
@@ -360,7 +360,7 @@ func (pr *PullRequest) Get(ctx context.Context, pullRequest v1alpha1.PullRequest
 		return scms.GetPullRequestResult{}, fmt.Errorf("failed to get pull request: %w", err)
 	}
 
-	logger.V(6).Info("bitbucket response status", "status", statusCode)
+	logger.V(2).Info("bitbucket response status", "status", statusCode)
 
 	prMap, ok := result.(map[string]any)
 	if !ok {

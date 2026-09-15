@@ -222,13 +222,13 @@ func (cs *CommitStatus) handleCheckRunResponse(
 		duration := time.Since(startTime)
 		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPICommitStatus, operation, response.StatusCode, duration, getRateLimitMetrics(response.Rate))
 
-		logger.V(6).Info("github rate limit",
+		logger.V(2).Info("github rate limit",
 			"limit", response.Rate.Limit,
 			"remaining", response.Rate.Remaining,
 			"reset", response.Rate.Reset,
 			"url", response.Request.URL)
 
-		logger.V(6).Info("github response status", "status", response.Status)
+		logger.V(2).Info("github response status", "status", response.Status)
 	}
 
 	// Update commit status with check run information

@@ -70,7 +70,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 	}
 
 	if resp != nil {
-		logger.V(6).Info("forgejo response status", "status", resp.Status)
+		logger.V(2).Info("forgejo response status", "status", resp.Status)
 	}
 	return strconv.FormatInt(pullRequest.Index, 10), nil
 }
@@ -107,7 +107,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 	}
 
 	if resp != nil {
-		logger.V(6).Info("forgejo response status", "status", resp.Status)
+		logger.V(2).Info("forgejo response status", "status", resp.Status)
 	}
 	return nil
 }
@@ -149,7 +149,7 @@ func (pr *PullRequest) Close(ctx context.Context, prObj promoterv1alpha1.PullReq
 	}
 
 	if resp != nil {
-		logger.V(6).Info("forgejo response status", "status", resp.Status)
+		logger.V(2).Info("forgejo response status", "status", resp.Status)
 	}
 	return nil
 }
@@ -191,7 +191,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj promoterv1alpha1.PullReq
 		return scms.MergeResult{}, err //nolint:wrapcheck // Error wrapping handled at top level
 	}
 	if resp != nil {
-		logger.V(6).Info("forgejo response status", "status", resp.Status)
+		logger.V(2).Info("forgejo response status", "status", resp.Status)
 	}
 	// Forgejo's merge endpoint returns no body, so the merge commit SHA is left to a Get-by-ID lookup.
 	return scms.MergeResult{}, nil
@@ -222,7 +222,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest promoterv1alpha
 		return scms.FindOpenResult{}, fmt.Errorf("failed to list pull requests: %w", err)
 	}
 	if resp != nil {
-		logger.V(6).Info("forgejo response status", "status", resp.Status)
+		logger.V(2).Info("forgejo response status", "status", resp.Status)
 	}
 
 	for _, prItem := range prs {
@@ -313,7 +313,7 @@ func checkOpenPR(ctx context.Context, pr PullRequest, repo *promoterv1alpha1.Git
 		return true, fmt.Errorf("failed to get pull request: %w", err)
 	}
 	if resp != nil {
-		logger.V(6).Info("forgejo response status", "status", resp.Status)
+		logger.V(2).Info("forgejo response status", "status", resp.Status)
 	}
 
 	return existingPr.State != forgejo.StateOpen, nil

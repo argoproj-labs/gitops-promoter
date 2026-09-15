@@ -68,12 +68,12 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 	if githubPullRequest == nil || githubPullRequest.Number == nil {
 		return "", errors.New("GitHub returned empty pull request response")
 	}
-	logger.V(6).Info("github rate limit",
+	logger.V(2).Info("github rate limit",
 		"limit", response.Rate.Limit,
 		"remaining", response.Rate.Remaining,
 		"reset", response.Rate.Reset,
 		"url", response.Request.URL)
-	logger.V(6).Info("github response status", "status", response.Status)
+	logger.V(2).Info("github response status", "status", response.Status)
 
 	return strconv.Itoa(*githubPullRequest.Number), nil
 }
@@ -105,12 +105,12 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pu
 	if err != nil {
 		return fmt.Errorf("failed to edit pull request: %w", err)
 	}
-	logger.V(6).Info("github rate limit",
+	logger.V(2).Info("github rate limit",
 		"limit", response.Rate.Limit,
 		"remaining", response.Rate.Remaining,
 		"reset", response.Rate.Reset,
 		"url", response.Request.URL)
-	logger.V(6).Info("github response status",
+	logger.V(2).Info("github response status",
 		"status", response.Status)
 
 	return nil
@@ -142,12 +142,12 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullReque
 	if err != nil {
 		return err //nolint:wrapcheck // Error wrapping handled at top level
 	}
-	logger.V(6).Info("github rate limit",
+	logger.V(2).Info("github rate limit",
 		"limit", response.Rate.Limit,
 		"remaining", response.Rate.Remaining,
 		"reset", response.Rate.Reset,
 		"url", response.Request.URL)
-	logger.V(6).Info("github response status",
+	logger.V(2).Info("github response status",
 		"status", response.Status)
 
 	return nil
@@ -184,12 +184,12 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 	if err != nil {
 		return scms.MergeResult{}, err //nolint:wrapcheck // Error wrapping handled at top level
 	}
-	logger.V(6).Info("github rate limit",
+	logger.V(2).Info("github rate limit",
 		"limit", response.Rate.Limit,
 		"remaining", response.Rate.Remaining,
 		"reset", response.Rate.Reset,
 		"url", response.Request.URL)
-	logger.V(6).Info("github response status",
+	logger.V(2).Info("github response status",
 		"status", response.Status)
 
 	return scms.MergeResult{CommitSHA: mergeResult.GetSHA()}, nil
@@ -216,12 +216,12 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	if err != nil {
 		return scms.FindOpenResult{}, fmt.Errorf("failed to list pull requests: %w", err)
 	}
-	logger.V(6).Info("github rate limit",
+	logger.V(2).Info("github rate limit",
 		"limit", response.Rate.Limit,
 		"remaining", response.Rate.Remaining,
 		"reset", response.Rate.Reset,
 		"url", response.Request.URL)
-	logger.V(6).Info("github response status",
+	logger.V(2).Info("github response status",
 		"status", response.Status)
 	if len(pullRequests) > 0 {
 		pr0 := pullRequests[0]

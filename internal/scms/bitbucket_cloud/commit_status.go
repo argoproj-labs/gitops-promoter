@@ -84,7 +84,7 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 		return nil, fmt.Errorf("failed to create status: %w", err)
 	}
 
-	logger.V(6).Info("bitbucket response status", "status", statusCode)
+	logger.V(2).Info("bitbucket response status", "status", statusCode)
 
 	// Parse the response
 	resultMap, ok := result.(map[string]any)

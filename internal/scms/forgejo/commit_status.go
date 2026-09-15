@@ -76,7 +76,7 @@ func (cs CommitStatus) Set(ctx context.Context, csObj *promoterv1alpha1.CommitSt
 		return nil, fmt.Errorf("failed to set commit status: %w", err)
 	}
 	if resp != nil {
-		logger.V(6).Info("forgejo response status", "status", resp.Status)
+		logger.V(2).Info("forgejo response status", "status", resp.Status)
 	}
 
 	csObj.Status.Id = strconv.FormatInt(commitStatus.ID, 16)

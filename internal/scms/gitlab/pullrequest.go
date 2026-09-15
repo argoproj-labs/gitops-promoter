@@ -77,7 +77,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, desc strin
 		prObj.Spec.RepositoryReference.Name,
 		resp,
 	)
-	logger.V(6).Info("gitlab response status",
+	logger.V(2).Info("gitlab response status",
 		"status", resp.Status)
 
 	return strconv.FormatInt(mr.IID, 10), nil
@@ -124,7 +124,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 		prObj.Spec.RepositoryReference.Name,
 		resp,
 	)
-	logger.V(6).Info("gitlab response status",
+	logger.V(2).Info("gitlab response status",
 		"status", resp.Status)
 
 	return nil
@@ -170,7 +170,7 @@ func (pr *PullRequest) Close(ctx context.Context, prObj v1alpha1.PullRequest) er
 		prObj.Spec.RepositoryReference.Name,
 		resp,
 	)
-	logger.V(6).Info("gitlab response status",
+	logger.V(2).Info("gitlab response status",
 		"status", resp.Status)
 
 	return nil
@@ -223,7 +223,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) (s
 		prObj.Spec.RepositoryReference.Name,
 		resp,
 	)
-	logger.V(6).Info("gitlab response status",
+	logger.V(2).Info("gitlab response status",
 		"status", resp.Status)
 
 	return scms.MergeResult{CommitSHA: mergedTargetSHA(mr)}, nil
@@ -253,7 +253,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	if resp == nil {
 		statusCode := -1
 		metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
-		logger.V(6).Info("gitlab response status", "status", "nil response")
+		logger.V(2).Info("gitlab response status", "status", "nil response")
 		return scms.FindOpenResult{}, errors.New("received nil response from GitLab API")
 	}
 	metrics.RecordSCMCall(ctx, repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, resp.StatusCode, time.Since(start), nil)
@@ -266,7 +266,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 		pullRequest.Spec.RepositoryReference.Name,
 		resp,
 	)
-	logger.V(6).Info("gitlab response status",
+	logger.V(2).Info("gitlab response status",
 		"status", resp.Status)
 
 	if len(mrs) > 0 {

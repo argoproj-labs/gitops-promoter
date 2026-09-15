@@ -19,7 +19,7 @@ For each SCM REST API request that GitOps Promoter records for metrics (the same
 | `response_code` | HTTP status code returned for that request (or a sentinel such as `500` when the client maps errors to a synthetic code). |
 | `duration_seconds` | Time spent on the request, in seconds. |
 
-**Scope:** only requests that go through the shared metrics hook are logged here. Other SCM traffic (for example GitHub App **installation listing** during client setup) is not included. Provider-specific messages such as `github rate limit`, `GitLab rate limits`, per-request response statuses, and `ls-remote called` are emitted at verbosity level 6, so `--zap-log-level=6` surfaces the full per-request SCM and git traffic picture beyond the summary `SCM API call` lines.
+**Scope:** only requests that go through the shared metrics hook are logged here. Other SCM traffic (for example GitHub App **installation listing** during client setup) is not included. Provider-specific messages such as `github rate limit`, `GitLab rate limits`, and per-request response statuses are also emitted at verbosity level 2, so the default level carries the full per-request SCM picture. Git-transport polling (`ls-remote called`) stays at level 6.
 
 ## Log Verbosity
 
@@ -64,11 +64,11 @@ Levels follow the Kubernetes convention. Each level includes everything below it
 |-------|-----------------|
 | `0` (`info`) | Always visible: actionable warnings and anomalies — missing or deleted secrets, saturation (full enqueue channels, webhook retry capacity exhausted), programmer errors, controller shutdown triggers. |
 | `1` | Notable one-off events: server and manager lifecycle, repository clones, GitHub App installation listing, status-apply fallback recoveries, unexpected-but-recovered SCM states (for example a 404 on a check run update). |
-| `2` (**default**) | Significant state changes and side effects: pull requests created/updated/merged/closed, promotions and branch merges, merge conflicts detected and resolved, gates transitioning to success, commit statuses pushed for a phase change, orphaned and legacy resource cleanup, finalizer holds that block deletion, and the [`SCM API call`](#scm-api-call-logs) telemetry line for each SCM REST request. |
+| `2` (**default**) | Significant state changes and side effects: pull requests created/updated/merged/closed, promotions and branch merges, merge conflicts detected and resolved, gates transitioning to success, commit statuses pushed for a phase change, orphaned and legacy resource cleanup, finalizer holds that block deletion, and per-SCM-request telemetry ([`SCM API call`](#scm-api-call-logs) lines, provider response statuses, and rate-limit headers). |
 | `3` | Extended reconcile flow: reconcile start/end (with duration), per-environment processing results, cross-resource reconcile triggers and enqueues, finalizer removal steps, promotion history notes written. |
 | `4` | Debug — the logic behind decisions: gate evaluations (for example `Proposed commit status is not success`, DAG gate results), promotion-needed checks, finalizer wait reasons, requeue and rate-limit decisions, best-effort fallback failures. |
 | `5` | Trace — plumbing detail: git command internals (fetches, notes, trailers, cat-file), expression evaluation results, rendered templates, HTTP client auth setup, provider-level operation logs, routine skip reasons. |
-| `6` | Wire — per-request traffic: SCM HTTP response statuses, rate-limit headers, `ls-remote` calls, webhook/metrics/dashboard HTTP access logs, per-message stream filtering. |
+| `6` | Wire — remaining per-request traffic: gate HTTP request/response detail (`WebRequestCommitStatus`), `ls-remote` calls, metrics/dashboard HTTP access logs, per-message stream filtering. |
 
 Any positive integer can be used as a log level; higher values produce more output.
 
