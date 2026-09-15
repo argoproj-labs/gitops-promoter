@@ -431,7 +431,7 @@ func isUpstreamPending(g *dag, branch, targetDrySha string, currentActiveCommitT
 	// The upstream's hydrator must have processed the same dry SHA the current environment is
 	// promoting.
 	if envHydratedForDrySha != targetDrySha {
-		return true, "Waiting for the hydrator to finish processing the proposed dry commit"
+		return true, hydratorPendingReason(branch, targetDrySha, envHydratedForDrySha)
 	}
 
 	// If the upstream has merged the target dry SHA, verify commit-time ordering and health.
@@ -465,6 +465,15 @@ func isUpstreamPending(g *dag, branch, targetDrySha string, currentActiveCommitT
 		}
 	}
 	return false, ""
+}
+
+func hydratorPendingReason(branch, targetDrySha, currentHydratedDrySha string) string {
+	current := utils.TruncateString(currentHydratedDrySha, 7)
+	if current == "" {
+		current = "none"
+	}
+	return fmt.Sprintf(`Waiting for hydrator on %q to process dry %s (currently %s)`,
+		branch, utils.TruncateString(targetDrySha, 7), current)
 }
 
 // checkCommitStatusesPassing reports whether an environment's active commit statuses are all

@@ -4841,7 +4841,9 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				// The previous environment commit status should exist and be pending
 				prevEnvCS := getDAGOrderingGate(g, ctpStaging.Spec.ActiveBranch)
 				g.Expect(prevEnvCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
-				g.Expect(prevEnvCS.Spec.Description).To(ContainSubstring("hydrator to finish processing"))
+				g.Expect(prevEnvCS.Spec.Description).To(Equal(fmt.Sprintf(
+					`Waiting for hydrator on %q to process dry %s (currently %s)`,
+					testBranchDevelopment, secondDrySha[:7], firstDrySha[:7])))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Now hydrating dev-next with the second dry SHA")
@@ -4994,7 +4996,9 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Eventually(func(g Gomega) {
 				prevEnvCS := getDAGOrderingGate(g, ctpStaging.Spec.ActiveBranch)
 				g.Expect(prevEnvCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
-				g.Expect(prevEnvCS.Spec.Description).To(ContainSubstring("hydrator to finish processing"))
+				g.Expect(prevEnvCS.Spec.Description).To(Equal(fmt.Sprintf(
+					`Waiting for hydrator on %q to process dry %s (currently %s)`,
+					testBranchDevelopment, secondDrySha[:7], firstDrySha[:7])))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Adding ONLY a git note to dev's existing hydrated commit (no new commit)")
@@ -5460,7 +5464,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Entry("blocks when not hydrated",
 				"OLD", "OLD", "OLD", // prev: hasn't hydrated (note=OLD, target=ABC)
 				"OLD", "ABC", "ABC", // curr: target SHA is ABC
-				true, "Waiting for the hydrator to finish processing the proposed dry commit"),
+				true, `Waiting for hydrator on "linear-env-0" to process dry ABC (currently OLD)`),
 
 			// Case 2: Hydrated, NOT no-op, NOT merged → BLOCK "waiting for promotion"
 			Entry("blocks when hydrated but not merged (has real changes)",
@@ -5554,7 +5558,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				},
 				Entry("blocks when not hydrated",
 					"OLD", "OLD", "OLD", "ABC",
-					true, "Waiting for the hydrator to finish processing the proposed dry commit"),
+					true, `Waiting for hydrator on "linear-env-0" to process dry ABC (currently OLD)`),
 				Entry("blocks when hydrated but not merged",
 					"OLD", "ABC", "OLD", "ABC",
 					true, `Waiting for "linear-env-0" to be promoted`),
@@ -5597,7 +5601,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				isPending, reason := linearUpstreamsPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
 
 				Expect(isPending).To(BeTrue())
-				Expect(reason).To(Equal("Waiting for the hydrator to finish processing the proposed dry commit"))
+				Expect(reason).To(Equal(`Waiting for hydrator on "env1" to process dry ABC (currently OLD)`))
 			})
 
 			It("blocks on unmerged env after recursing through no-ops", func() {
