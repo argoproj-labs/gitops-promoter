@@ -55,7 +55,6 @@ var _ = Describe("ChangeTransferPolicy pull request label expressions", func() {
 
 	BeforeEach(func() {
 		ctx = context.Background()
-		fake.ResetLabelCallCount()
 	})
 
 	It("evaluates a static label list onto PullRequest.spec.labels", func() {
@@ -158,7 +157,7 @@ var _ = Describe("ChangeTransferPolicy pull request label expressions", func() {
 		err := k8sClient.Get(ctx, fixtures.prNamespacedName(), &pr)
 		gomega := NewGomegaWithT(GinkgoTB())
 		gomega.Expect(apierrors.IsNotFound(err)).To(BeTrue())
-		gomega.Expect(fake.LabelCallCount()).To(BeZero())
+		gomega.Expect(fake.LabelCallCount(fixtures.prNamespacedName())).To(BeZero())
 	})
 
 	It("reports Ready=False when the label expression fails at evaluation time", func() {
@@ -181,7 +180,7 @@ var _ = Describe("ChangeTransferPolicy pull request label expressions", func() {
 		err := k8sClient.Get(ctx, fixtures.prNamespacedName(), &pr)
 		gomega := NewGomegaWithT(GinkgoTB())
 		gomega.Expect(apierrors.IsNotFound(err)).To(BeTrue())
-		gomega.Expect(fake.LabelCallCount()).To(BeZero())
+		gomega.Expect(fake.LabelCallCount(fixtures.prNamespacedName())).To(BeZero())
 	})
 
 	It("reports Ready=False when the label expression returns invalid label names", func() {
@@ -205,7 +204,7 @@ var _ = Describe("ChangeTransferPolicy pull request label expressions", func() {
 		err := k8sClient.Get(ctx, fixtures.prNamespacedName(), &pr)
 		gomega := NewGomegaWithT(GinkgoTB())
 		gomega.Expect(apierrors.IsNotFound(err)).To(BeTrue())
-		gomega.Expect(fake.LabelCallCount()).To(BeZero())
+		gomega.Expect(fake.LabelCallCount(fixtures.prNamespacedName())).To(BeZero())
 	})
 })
 

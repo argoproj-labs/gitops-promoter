@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -32,16 +31,36 @@ var (
 	pullRequests map[string]pullRequestProviderState
 	mutexPR      sync.RWMutex
 
-	// findOpenCallCount is incremented on every FindOpen call (for tests).
-	findOpenCallCount atomic.Uint64
-	// updateCallCount is incremented on every Update call (for tests).
-	updateCallCount atomic.Uint64
-	// mergeShaMismatchCount is incremented every time Merge is called with a PR
-	// whose Spec.MergeSha does not match origin/<sourceBranch> (for tests).
-	mergeShaMismatchCount atomic.Uint64
-	// labelCallCount is incremented on AddLabels and RemoveLabels calls (for tests).
-	labelCallCount atomic.Uint64
+	// prCallCounts records SCM calls per PullRequest resource (for tests). Every spec in a ginkgo
+	// process shares this package state, and a PullRequest left behind by an earlier spec keeps
+	// reconciling on its periodic requeue, so counts are only meaningful per resource.
+	prCallCounts   = map[client.ObjectKey]pullRequestCallCounts{}
+	prCallCountsMu sync.Mutex
 )
+
+// pullRequestCallCounts holds the per-resource SCM call counts tests assert on.
+type pullRequestCallCounts struct {
+	findOpen         uint64
+	update           uint64
+	label            uint64
+	mergeShaMismatch uint64
+}
+
+func recordPullRequestCall(pullRequest v1alpha1.PullRequest, record func(*pullRequestCallCounts)) {
+	key := client.ObjectKeyFromObject(&pullRequest)
+
+	prCallCountsMu.Lock()
+	defer prCallCountsMu.Unlock()
+	counts := prCallCounts[key]
+	record(&counts)
+	prCallCounts[key] = counts
+}
+
+func readPullRequestCallCount(key client.ObjectKey, read func(pullRequestCallCounts) uint64) uint64 {
+	prCallCountsMu.Lock()
+	defer prCallCountsMu.Unlock()
+	return read(prCallCounts[key])
+}
 
 type pullRequestProviderState struct {
 	createdAt        time.Time
@@ -101,7 +120,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 
 // Update updates an existing pull request with the specified title and description.
 func (pr *PullRequest) Update(ctx context.Context, title, description string, pullRequest v1alpha1.PullRequest) error {
-	updateCallCount.Add(1)
+	recordPullRequestCall(pullRequest, func(c *pullRequestCallCounts) { c.update++ })
 	return nil
 }
 
@@ -193,7 +212,7 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 	}
 	actualSha = strings.TrimSpace(actualSha)
 	if actualSha != pullRequest.Spec.MergeSha {
-		mergeShaMismatchCount.Add(1)
+		recordPullRequestCall(pullRequest, func(c *pullRequestCallCounts) { c.mergeShaMismatch++ })
 		return scms.MergeResult{}, fmt.Errorf("source branch HEAD SHA %q does not match expected merge SHA %q", actualSha, pullRequest.Spec.MergeSha)
 	}
 
@@ -243,61 +262,45 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 	return scms.MergeResult{CommitSHA: mergedTargetSha}, nil
 }
 
-// ResetFindOpenCallCount resets the test-only counter of FindOpen invocations.
-func ResetFindOpenCallCount() {
-	findOpenCallCount.Store(0)
+// ResetPullRequestCallCounts clears every test-only SCM call count recorded for one PullRequest
+// resource. Counts are tracked per resource, so a spec only ever needs to reset its own.
+func ResetPullRequestCallCounts(key client.ObjectKey) {
+	prCallCountsMu.Lock()
+	defer prCallCountsMu.Unlock()
+	delete(prCallCounts, key)
 }
 
-// ResetUpdateCallCount resets the test-only counter of Update invocations.
-func ResetUpdateCallCount() {
-	updateCallCount.Store(0)
+// FindOpenCallCount returns how many times FindOpen has been invoked for one PullRequest resource
+// since the last reset.
+func FindOpenCallCount(key client.ObjectKey) uint64 {
+	return readPullRequestCallCount(key, func(c pullRequestCallCounts) uint64 { return c.findOpen })
 }
 
-// ResetPullRequestSCMCallCounts resets both FindOpen and Update test counters.
-func ResetPullRequestSCMCallCounts() {
-	ResetFindOpenCallCount()
-	ResetUpdateCallCount()
+// UpdateCallCount returns how many times Update has been invoked for one PullRequest resource
+// since the last reset.
+func UpdateCallCount(key client.ObjectKey) uint64 {
+	return readPullRequestCallCount(key, func(c pullRequestCallCounts) uint64 { return c.update })
 }
 
-// FindOpenCallCount returns how many times FindOpen has been invoked since the last reset.
-func FindOpenCallCount() uint64 {
-	return findOpenCallCount.Load()
+// PullRequestSCMCallCount returns FindOpen plus Update invocations for one PullRequest resource
+// since the last reset.
+func PullRequestSCMCallCount(key client.ObjectKey) uint64 {
+	return readPullRequestCallCount(key, func(c pullRequestCallCounts) uint64 { return c.findOpen + c.update })
 }
 
-// UpdateCallCount returns how many times Update has been invoked since the last reset.
-func UpdateCallCount() uint64 {
-	return updateCallCount.Load()
+// LabelCallCount returns how many times AddLabels or RemoveLabels has been invoked for one
+// PullRequest resource since the last reset.
+func LabelCallCount(key client.ObjectKey) uint64 {
+	return readPullRequestCallCount(key, func(c pullRequestCallCounts) uint64 { return c.label })
 }
 
-// PullRequestSCMCallCount returns FindOpen plus Update invocations since the last reset.
-func PullRequestSCMCallCount() uint64 {
-	return FindOpenCallCount() + UpdateCallCount()
-}
-
-// ResetMergeShaMismatchCount resets the test-only counter of Merge calls that hit the
-// PR.Spec.MergeSha != origin/<sourceBranch> guard. The counter is process-wide; reset it
-// before any test that asserts on it.
-func ResetMergeShaMismatchCount() {
-	mergeShaMismatchCount.Store(0)
-}
-
-// ResetLabelCallCount resets the test-only counter of AddLabels/RemoveLabels invocations.
-func ResetLabelCallCount() {
-	labelCallCount.Store(0)
-}
-
-// LabelCallCount returns how many times AddLabels or RemoveLabels has been invoked since the last reset.
-func LabelCallCount() uint64 {
-	return labelCallCount.Load()
-}
-
-// MergeShaMismatchCount returns how many times Merge has been called with a PR whose
-// Spec.MergeSha did not match origin/<sourceBranch> since the last reset. A non-zero value
+// MergeShaMismatchCount returns how many times Merge has been called for one PullRequest resource
+// whose Spec.MergeSha did not match origin/<sourceBranch> since the last reset. A non-zero value
 // means the controller asked the SCM to merge a sha the SCM no longer has on the source
 // branch, typically because the controller pushed a fresh commit to the proposed branch
 // (for example via MergeWithOursStrategy) without updating PR.Spec.MergeSha to match.
-func MergeShaMismatchCount() uint64 {
-	return mergeShaMismatchCount.Load()
+func MergeShaMismatchCount(key client.ObjectKey) uint64 {
+	return readPullRequestCallCount(key, func(c pullRequestCallCounts) uint64 { return c.mergeShaMismatch })
 }
 
 // GetRecordedState returns the PR entry stored in the fake provider for the given resource, if any.
@@ -321,7 +324,7 @@ func (pr *PullRequest) GetRecordedState(ctx context.Context, pullRequest v1alpha
 
 // FindOpen checks if a pull request is open and returns its status.
 func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.FindOpenResult, error) {
-	findOpenCallCount.Add(1)
+	recordPullRequestCall(pullRequest, func(c *pullRequestCallCounts) { c.findOpen++ })
 
 	mutexPR.RLock()
 	found, id, createdAt, scmLabels := pr.findOpen(ctx, pullRequest)
@@ -570,7 +573,7 @@ func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequ
 
 // AddLabels adds labels to a pull request in the fake provider.
 func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labelNames []string) error {
-	labelCallCount.Add(1)
+	recordPullRequestCall(pullRequest, func(c *pullRequestCallCounts) { c.label++ })
 	if len(labelNames) == 0 {
 		return nil
 	}
@@ -598,7 +601,7 @@ func (pr *PullRequest) AddLabels(ctx context.Context, pullRequest v1alpha1.PullR
 
 // RemoveLabels removes labels from a pull request in the fake provider.
 func (pr *PullRequest) RemoveLabels(ctx context.Context, pullRequest v1alpha1.PullRequest, labelNames []string) error {
-	labelCallCount.Add(1)
+	recordPullRequestCall(pullRequest, func(c *pullRequestCallCounts) { c.label++ })
 	if len(labelNames) == 0 {
 		return nil
 	}

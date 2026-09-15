@@ -41,7 +41,6 @@ var _ = Describe("PullRequest SCM labels", func() {
 
 	BeforeEach(func() {
 		ctx = context.Background()
-		fake.ResetLabelCallCount()
 	})
 
 	AfterEach(func() {
@@ -75,7 +74,7 @@ var _ = Describe("PullRequest SCM labels", func() {
 			g.Expect(pullRequest.Status.ID).NotTo(BeEmpty())
 		}, constants.EventuallyTimeout).Should(Succeed())
 
-		fake.ResetLabelCallCount()
+		fake.ResetPullRequestCallCounts(resourceName)
 		Eventually(func(g Gomega) {
 			g.Expect(k8sClient.Get(ctx, resourceName, pullRequest)).To(Succeed())
 			pullRequest.Spec.Labels = []string{"lgtm", "approved"}
@@ -91,14 +90,14 @@ var _ = Describe("PullRequest SCM labels", func() {
 		applied, err := provider.GetAppliedLabels(ctx, *pullRequest)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(applied).To(ConsistOf("lgtm", "approved"))
-		Expect(fake.LabelCallCount()).To(BeNumerically(">", 0))
+		Expect(fake.LabelCallCount(resourceName)).To(BeNumerically(">", 0))
 
-		callsAfterApply := fake.LabelCallCount()
+		callsAfterApply := fake.LabelCallCount(resourceName)
 		Consistently(func(g Gomega) {
-			g.Expect(fake.LabelCallCount()).To(Equal(callsAfterApply))
+			g.Expect(fake.LabelCallCount(resourceName)).To(Equal(callsAfterApply))
 		}, "2s", "200ms").Should(Succeed())
 
-		fake.ResetLabelCallCount()
+		fake.ResetPullRequestCallCounts(resourceName)
 		Eventually(func(g Gomega) {
 			g.Expect(k8sClient.Get(ctx, resourceName, pullRequest)).To(Succeed())
 			pullRequest.Spec.Labels = nil
@@ -144,7 +143,7 @@ var _ = Describe("PullRequest SCM labels", func() {
 
 		Expect(fake.SetScmLabels(ctx, k8sClient, *pullRequest, []string{"approved"})).To(Succeed())
 
-		fake.ResetLabelCallCount()
+		fake.ResetPullRequestCallCounts(resourceName)
 		Eventually(func(g Gomega) {
 			g.Expect(k8sClient.Get(ctx, resourceName, pullRequest)).To(Succeed())
 			pullRequest.Spec.Title = pullRequest.Spec.Title + " "
@@ -160,7 +159,7 @@ var _ = Describe("PullRequest SCM labels", func() {
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(applied).To(ConsistOf("lgtm", "approved"))
 		}, constants.EventuallyTimeout).Should(Succeed())
-		Expect(fake.LabelCallCount()).To(BeNumerically(">", 0))
+		Expect(fake.LabelCallCount(resourceName)).To(BeNumerically(">", 0))
 	})
 
 	It("leaves third-party SCM labels alone during reconcile", func() {
@@ -194,7 +193,7 @@ var _ = Describe("PullRequest SCM labels", func() {
 
 		Expect(fake.SetScmLabels(ctx, k8sClient, *pullRequest, []string{"lgtm", "approved", thirdPartyLabel})).To(Succeed())
 
-		fake.ResetLabelCallCount()
+		fake.ResetPullRequestCallCounts(resourceName)
 		Eventually(func(g Gomega) {
 			g.Expect(k8sClient.Get(ctx, resourceName, pullRequest)).To(Succeed())
 			pullRequest.Spec.Title = pullRequest.Spec.Title + " "
@@ -212,7 +211,7 @@ var _ = Describe("PullRequest SCM labels", func() {
 			g.Expect(applied).To(ConsistOf("lgtm", "approved", thirdPartyLabel))
 		}, constants.EventuallyTimeout).Should(Succeed())
 
-		Expect(fake.LabelCallCount()).To(BeZero())
+		Expect(fake.LabelCallCount(resourceName)).To(BeZero())
 	})
 
 	It("removes retracted promoter labels but leaves third-party labels on the SCM", func() {
@@ -246,7 +245,7 @@ var _ = Describe("PullRequest SCM labels", func() {
 
 		Expect(fake.SetScmLabels(ctx, k8sClient, *pullRequest, []string{"lgtm", "approved", thirdPartyLabel})).To(Succeed())
 
-		fake.ResetLabelCallCount()
+		fake.ResetPullRequestCallCounts(resourceName)
 		Eventually(func(g Gomega) {
 			g.Expect(k8sClient.Get(ctx, resourceName, pullRequest)).To(Succeed())
 			pullRequest.Spec.Labels = []string{"lgtm"}
@@ -264,7 +263,7 @@ var _ = Describe("PullRequest SCM labels", func() {
 			g.Expect(applied).NotTo(ContainElement("approved"))
 		}, constants.EventuallyTimeout).Should(Succeed())
 
-		Expect(fake.LabelCallCount()).To(BeNumerically(">", 0))
+		Expect(fake.LabelCallCount(resourceName)).To(BeNumerically(">", 0))
 	})
 })
 
