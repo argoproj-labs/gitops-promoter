@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	_ "embed"
-	"fmt"
 	"net/url"
 	"os"
 	"strings"
@@ -105,28 +104,6 @@ func dagEnvStatusWithNote(branch, activeDry, proposedDry, noteDry string, health
 		envStatus.Proposed.Note = &promoterv1alpha1.HydratorMetadata{DrySha: noteDry}
 	}
 	return envStatus
-}
-
-// hydratorWaitReason is the expected CommitStatus / gate description when an upstream
-// environment's hydrator has not processed the target dry SHA. Short SHAs match
-// CommitBranchState.DryShaShort (first 7 characters). An empty current SHA is shown as "none".
-func hydratorWaitReason(branch, targetDrySha, currentHydratedDrySha string) string {
-	return fmt.Sprintf(`Waiting for hydrator on %q to process dry %s (currently %s)`,
-		branch, shortDrySha(targetDrySha), currentlyHydratedDrySha(currentHydratedDrySha))
-}
-
-func shortDrySha(sha string) string {
-	if len(sha) < 7 {
-		return sha
-	}
-	return sha[:7]
-}
-
-func currentlyHydratedDrySha(sha string) string {
-	if sha == "" {
-		return "none"
-	}
-	return shortDrySha(sha)
 }
 
 var _ = Describe("DependentsSuccessfulCommitStatus Controller", func() {
@@ -821,9 +798,11 @@ var _ = Describe("DAG graph logic", func() {
 			}
 			pending, reason := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeTrue())
-			Expect(reason).To(Equal(hydratorWaitReason("stg", newDry, oldDry)))
+			Expect(reason).To(Equal(`Waiting for hydrator on "stg" to process dry new-dry (currently old-dry)`))
 		})
 
+		// Dry SHAs are truncated to 7 characters so the reason fits an SCM commit status
+		// description. Full SHAs belong on status.environments[], not in the description.
 		It("hydrator reason: shortens git-length SHAs to 7 characters", func() {
 			target := "abcdef1234567890abcdef1234567890abcdef12"
 			current := "0123456789abcdef0123456789abcdef01234567"
@@ -833,11 +812,7 @@ var _ = Describe("DAG graph logic", func() {
 			snapshots := buildUpstreamSnapshots(linear(), "prd", target, metav1.NewTime(newer), status)
 			pending, reason := upstreamsPending(snapshots, linear().dependsOn["prd"])
 			Expect(pending).To(BeTrue())
-			Expect(reason).To(Equal(hydratorWaitReason("stg", target, current)))
-			Expect(reason).To(ContainSubstring("abcdef1"))
-			Expect(reason).To(ContainSubstring("0123456"))
-			Expect(reason).NotTo(ContainSubstring(target))
-			Expect(reason).NotTo(ContainSubstring(current))
+			Expect(reason).To(Equal(`Waiting for hydrator on "stg" to process dry abcdef1 (currently 0123456)`))
 		})
 
 		It("hydrator reason: uses the git note as the current hydrated SHA when present", func() {
@@ -848,7 +823,7 @@ var _ = Describe("DAG graph logic", func() {
 			}
 			pending, reason := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeTrue())
-			Expect(reason).To(Equal(hydratorWaitReason("stg", newDry, oldDry)))
+			Expect(reason).To(Equal(`Waiting for hydrator on "stg" to process dry new-dry (currently old-dry)`))
 		})
 
 		It("hydrator reason: says currently none when the upstream has no hydrated dry SHA", func() {
@@ -857,8 +832,7 @@ var _ = Describe("DAG graph logic", func() {
 			}
 			pending, reason := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeTrue())
-			Expect(reason).To(Equal(hydratorWaitReason("stg", newDry, "")))
-			Expect(reason).To(ContainSubstring("(currently none)"))
+			Expect(reason).To(Equal(`Waiting for hydrator on "stg" to process dry new-dry (currently none)`))
 		})
 
 		It("hydrator reason: names the deeper ancestor after recursing through a no-op", func() {
@@ -868,7 +842,7 @@ var _ = Describe("DAG graph logic", func() {
 			}
 			pending, reason := upstreamsPendingFor(linear(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeTrue())
-			Expect(reason).To(Equal(hydratorWaitReason("dev", newDry, oldDry)))
+			Expect(reason).To(Equal(`Waiting for hydrator on "dev" to process dry new-dry (currently old-dry)`))
 		})
 
 		It("fan-in: hydrator reason names the unhydrated upstream", func() {
@@ -878,7 +852,7 @@ var _ = Describe("DAG graph logic", func() {
 			}
 			pending, reason := upstreamsPendingFor(diamond(), "prd", metav1.NewTime(newer), status)
 			Expect(pending).To(BeTrue())
-			Expect(reason).To(Equal(hydratorWaitReason("perf", newDry, oldDry)))
+			Expect(reason).To(Equal(`Waiting for hydrator on "perf" to process dry new-dry (currently old-dry)`))
 		})
 
 		It("holds pending when upstream status is missing from statusByBranch", func() {
