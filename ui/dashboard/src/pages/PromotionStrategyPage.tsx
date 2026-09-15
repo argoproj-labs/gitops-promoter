@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { useMatch, useParams } from 'react-router';
+import { useParams } from 'react-router';
 import { useNavigateWithParams } from '../hooks/useNavigateWithParams';
 import { namespaceStore } from '../stores/NamespaceStore';
 import { PromotionStrategyStore } from '../stores/PromotionStrategyStore';
@@ -24,13 +24,13 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
   namespace: propsNamespace,
   strategyName: propsStrategyName,
 }) => {
-  const { namespace: urlNamespace, name: urlStrategyName } = useParams();
+  const { namespace: urlNamespace, name: urlStrategyName, tab } = useParams();
   const namespace = propsNamespace || urlNamespace;
   const strategyName = propsStrategyName || urlStrategyName;
 
   const currentNamespace = namespaceStore((s: NamespaceStore) => s.namespace);
   const setNamespace = namespaceStore((s: NamespaceStore) => s.setNamespace);
-  const showManifest = !!useMatch('/promotion-strategies/:namespace/:name/manifest');
+  const showManifest = tab === 'manifest';
 
   const { items, fetchItems, subscribe, unsubscribe } = PromotionStrategyStore();
 
@@ -51,16 +51,7 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
 
     subscribe(namespace);
     return () => unsubscribe();
-  }, [
-    namespace,
-    currentNamespace,
-    setNamespace,
-    fetchItems,
-    subscribe,
-    unsubscribe,
-    items,
-    selectedStrategy,
-  ]);
+  }, [namespace, currentNamespace, setNamespace, fetchItems, subscribe, unsubscribe]);
 
   const navigate = useNavigateWithParams();
   const strategyPath = `/promotion-strategies/${namespace}/${strategyName}`;

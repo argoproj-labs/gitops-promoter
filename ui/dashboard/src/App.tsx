@@ -27,11 +27,7 @@ function App() {
         <Route path="/" element={<RootRedirect />} />
         <Route path="/promotion-strategies" element={<DashboardPage />} />
         <Route
-          path="/promotion-strategies/:namespace/:name"
-          element={<PromotionStrategyPageWithNamespace />}
-        />
-        <Route
-          path="/promotion-strategies/:namespace/:name/manifest"
+          path="/promotion-strategies/:namespace/:name/:tab?"
           element={<PromotionStrategyPageWithNamespace />}
         />
         <Route path="/promotion-strategies/:namespace/:name/history/*" element={<HistoryPage />} />

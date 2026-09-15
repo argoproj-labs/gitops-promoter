@@ -132,11 +132,7 @@ describe('Dashboard Page Load Tests', () => {
             Routes,
             null,
             React.createElement(Route, {
-              path: '/promotion-strategies/:namespace/:name',
-              element: React.createElement(PromotionStrategyPage),
-            }),
-            React.createElement(Route, {
-              path: '/promotion-strategies/:namespace/:name/manifest',
+              path: '/promotion-strategies/:namespace/:name/:tab?',
               element: React.createElement(PromotionStrategyPage),
             }),
           ),
@@ -162,10 +158,10 @@ describe('Dashboard Page Load Tests', () => {
       root.unmount();
     });
 
-    it('should not match an unknown trailing segment', async () => {
+    it('renders the overview for an unrecognized trailing segment', async () => {
       const root = await renderAt('/promotion-strategies/test-namespace/test-strategy/bogus');
 
-      expect(container.textContent).toBe('');
+      expect(container.textContent).toContain('Loading promotion strategies');
 
       root.unmount();
     });
