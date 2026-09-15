@@ -107,10 +107,6 @@ type PromotionStrategyReconciler struct {
 	// Key is client.ObjectKey of the CTP. Protected by enqueueStateMutex.
 	enqueueStates     map[client.ObjectKey]*ctpEnqueueState
 	enqueueStateMutex sync.Mutex
-
-	// gitNoteRetry overrides spec.promotionStrategy.gitNoteRetry when non-nil.
-	// Tests set a short policy so retry behavior can be exercised without real 15s waits.
-	gitNoteRetry *promoterv1alpha1.GitNoteRetry
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=dependentssuccessfulcommitstatuses,verbs=get
@@ -712,12 +708,8 @@ func (r *PromotionStrategyReconciler) startRetryChain(
 	})
 }
 
-// gitNoteRetryPolicy returns the git-note wait retry policy. Tests inject a short
-// policy via gitNoteRetry; production reads ControllerConfiguration.
+// gitNoteRetryPolicy returns spec.promotionStrategy.gitNoteRetry from ControllerConfiguration.
 func (r *PromotionStrategyReconciler) gitNoteRetryPolicy(ctx context.Context) (promoterv1alpha1.GitNoteRetry, error) {
-	if r.gitNoteRetry != nil {
-		return *r.gitNoteRetry, nil
-	}
 	if r.SettingsMgr == nil {
 		return promoterv1alpha1.GitNoteRetry{}, fmt.Errorf("SettingsMgr is required to load gitNoteRetry")
 	}

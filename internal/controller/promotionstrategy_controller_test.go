@@ -47,6 +47,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 )
 
 //go:embed testdata/PromotionStrategy.yaml
@@ -6087,7 +6088,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 	// polling). Using defer to hold the lock for an entire test would cause deadlock: the test
 	// would wait for timers to fire, but timers would block waiting for the lock that won't
 	// release until the test completes.
-	Context("Enqueue decisions and rate limiting for enqueueOutOfSyncCTPs", func() {
+	Context("Enqueue decisions and rate limiting for enqueueOutOfSyncCTPs", Serial, func() {
 		// The batch target is the effective proposed dry SHA (Note.DrySha if set, else
 		// Proposed.Dry.Sha) of the CTP with the newest proposed hydrated commit. A CTP is
 		// enqueued when its own effective proposed dry SHA disagrees with that target — one
@@ -6097,6 +6098,19 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		// the disagreement changes.
 		const testGitNoteRetryAttempts = 3
 		testGitNoteRetryDelay := 50 * time.Millisecond
+
+		BeforeEach(func() {
+			setGitNoteRetry(ctx, testGitNoteRetryAttempts, testGitNoteRetryDelay)
+			Eventually(func(g Gomega) {
+				var cc promoterv1alpha1.ControllerConfiguration
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Name:      settings.ControllerConfigurationName,
+					Namespace: "default",
+				}, &cc)).To(Succeed())
+				g.Expect(cc.Spec.PromotionStrategy.GitNoteRetry.MaxAttempts).To(Equal(testGitNoteRetryAttempts))
+				g.Expect(cc.Spec.PromotionStrategy.GitNoteRetry.ExponentialFailure.BaseDelay.Duration).To(Equal(testGitNoteRetryDelay))
+			}).Should(Succeed())
+		})
 
 		makeCTPWithShas := func(name, proposedDrySha string, note *promoterv1alpha1.HydratorMetadata, commitTime metav1.Time) *promoterv1alpha1.ChangeTransferPolicy { //nolint:unparam // proposedDrySha is a fixture knob; the current specs all model note-vs-file divergence on the same file SHA
 			return &promoterv1alpha1.ChangeTransferPolicy{
@@ -6134,15 +6148,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			mutex := &sync.Mutex{}
 
 			reconciler := &PromotionStrategyReconciler{
-				// Short constant backoff so delayed-retry behavior can be exercised
-				// without real 15s waits; attempt count matches the shipped default.
-				gitNoteRetry: &promoterv1alpha1.GitNoteRetry{
-					MaxAttempts: testGitNoteRetryAttempts,
-					ExponentialFailure: promoterv1alpha1.ExponentialFailure{
-						BaseDelay: metav1.Duration{Duration: testGitNoteRetryDelay},
-						MaxDelay:  metav1.Duration{Duration: testGitNoteRetryDelay},
-					},
-				},
+				SettingsMgr: settings.NewManager(k8sClient, k8sClient, settings.ManagerConfig{ControllerNamespace: "default"}),
 				EnqueueCTP: func(namespace, name string) {
 					mutex.Lock()
 					defer mutex.Unlock()
@@ -6371,8 +6377,17 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		})
 
 		It("should honor gitNoteRetry.maxAttempts", func() {
+			setGitNoteRetry(ctx, 1, testGitNoteRetryDelay)
+			Eventually(func(g Gomega) {
+				var cc promoterv1alpha1.ControllerConfiguration
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Name:      settings.ControllerConfigurationName,
+					Namespace: "default",
+				}, &cc)).To(Succeed())
+				g.Expect(cc.Spec.PromotionStrategy.GitNoteRetry.MaxAttempts).To(Equal(1))
+			}).Should(Succeed())
+
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
-			reconciler.gitNoteRetry.MaxAttempts = 1
 
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
 				makeLaggingCTP("test-ctp"),
