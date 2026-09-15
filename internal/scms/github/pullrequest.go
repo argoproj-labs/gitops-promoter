@@ -68,12 +68,12 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 	if githubPullRequest == nil || githubPullRequest.Number == nil {
 		return "", errors.New("GitHub returned empty pull request response")
 	}
-	logger.Info("github rate limit",
+	logger.V(1).Info("github rate limit",
 		"limit", response.Rate.Limit,
 		"remaining", response.Rate.Remaining,
 		"reset", response.Rate.Reset,
 		"url", response.Request.URL)
-	logger.Info("github response status", "status", response.Status)
+	logger.V(4).Info("github response status", "status", response.Status)
 
 	return strconv.Itoa(*githubPullRequest.Number), nil
 }
@@ -105,7 +105,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pu
 	if err != nil {
 		return fmt.Errorf("failed to edit pull request: %w", err)
 	}
-	logger.Info("github rate limit",
+	logger.V(1).Info("github rate limit",
 		"limit", response.Rate.Limit,
 		"remaining", response.Rate.Remaining,
 		"reset", response.Rate.Reset,
@@ -142,7 +142,7 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullReque
 	if err != nil {
 		return err //nolint:wrapcheck // Error wrapping handled at top level
 	}
-	logger.Info("github rate limit",
+	logger.V(1).Info("github rate limit",
 		"limit", response.Rate.Limit,
 		"remaining", response.Rate.Remaining,
 		"reset", response.Rate.Reset,
@@ -184,7 +184,7 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 	if err != nil {
 		return scms.MergeResult{}, err //nolint:wrapcheck // Error wrapping handled at top level
 	}
-	logger.Info("github rate limit",
+	logger.V(1).Info("github rate limit",
 		"limit", response.Rate.Limit,
 		"remaining", response.Rate.Remaining,
 		"reset", response.Rate.Reset,
@@ -216,7 +216,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	if err != nil {
 		return scms.FindOpenResult{}, fmt.Errorf("failed to list pull requests: %w", err)
 	}
-	logger.Info("github rate limit",
+	logger.V(1).Info("github rate limit",
 		"limit", response.Rate.Limit,
 		"remaining", response.Rate.Remaining,
 		"reset", response.Rate.Reset,

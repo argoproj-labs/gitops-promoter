@@ -229,7 +229,7 @@ func (r *PullRequestReconciler) GetEnqueueFunc() PREnqueueFunc {
 //nolint:gocyclo // Intentional linear state machine; splitting helpers would obscure docstring order.
 func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Reconciling PullRequest")
+	logger.V(1).Info("Reconciling PullRequest")
 	startTime := time.Now()
 
 	var pr promoterv1alpha1.PullRequest
@@ -239,7 +239,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	if err := r.Get(ctx, req.NamespacedName, &pr); err != nil {
 		if k8serrors.IsNotFound(err) {
-			logger.Info("PullRequest not found", "namespace", req.Namespace, "name", req.Name)
+			logger.V(1).Info("PullRequest not found", "namespace", req.Namespace, "name", req.Name)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("failed to get PullRequest: %w", err)
@@ -795,7 +795,7 @@ func pullRequestDeletionBlockedByMissingDependency(err error) error {
 // provider does not support pull request labels (e.g. Bitbucket Cloud), so misconfiguration
 // is caught at apply time instead of surfacing as a reconcile error loop.
 func (r *PullRequestReconciler) reconcileLabels(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
-	log.FromContext(ctx).Info("Reconciling PullRequest labels")
+	log.FromContext(ctx).V(4).Info("Reconciling PullRequest labels")
 	toAdd, toRemove := labels.Diff(pr.Spec.Labels, pr.Status.AppliedLabels)
 	if len(toRemove) > 0 {
 		if err := provider.RemoveLabels(ctx, *pr, toRemove); err != nil {

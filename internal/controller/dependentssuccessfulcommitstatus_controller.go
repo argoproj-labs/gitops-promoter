@@ -97,7 +97,7 @@ type DependentsSuccessfulCommitStatusReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/reconcile
 func (r *DependentsSuccessfulCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := logf.FromContext(ctx)
-	logger.Info("Reconciling DependentsSuccessfulCommitStatus")
+	logger.V(1).Info("Reconciling DependentsSuccessfulCommitStatus")
 	startTime := time.Now()
 
 	var dcs promoterv1alpha1.DependentsSuccessfulCommitStatus
@@ -108,7 +108,7 @@ func (r *DependentsSuccessfulCommitStatusReconciler) Reconcile(ctx context.Conte
 	// 1. Fetch the DependentsSuccessfulCommitStatus instance.
 	if err = r.Get(ctx, req.NamespacedName, &dcs); err != nil {
 		if k8serrors.IsNotFound(err) {
-			logger.Info("DependentsSuccessfulCommitStatus not found")
+			logger.V(1).Info("DependentsSuccessfulCommitStatus not found")
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("failed to get DependentsSuccessfulCommitStatus %q: %w", req.Name, err)
@@ -252,7 +252,7 @@ func (r *DependentsSuccessfulCommitStatusReconciler) updateDependentsSuccessfulC
 			phase = promoterv1alpha1.CommitPhasePending
 		}
 
-		logger.V(4).Info("Evaluated DAG gate for environment",
+		logger.V(1).Info("Evaluated DAG gate for environment",
 			"branch", branch,
 			"dependsOn", graph.dependsOn[branch],
 			"targetDrySha", targetDrySha,

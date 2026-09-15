@@ -41,7 +41,7 @@ func NewForgejoCommitStatusProvider(k8sClient k8sClient.Client, scmProvider prom
 // Set sets the commit status for a given commit SHA in the specified repository.
 func (cs CommitStatus) Set(ctx context.Context, csObj *promoterv1alpha1.CommitStatus) (*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Setting Commit Phase")
+	logger.V(4).Info("Setting Commit Phase")
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, cs.k8sClient, k8sClient.ObjectKey{
 		Namespace: csObj.Namespace,

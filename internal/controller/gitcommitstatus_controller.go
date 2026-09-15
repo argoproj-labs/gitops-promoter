@@ -75,7 +75,7 @@ type GitCommitStatusReconciler struct {
 // 4. Creates/updates a CommitStatus resource with the validation result
 func (r *GitCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Reconciling GitCommitStatus", "name", req.Name)
+	logger.V(1).Info("Reconciling GitCommitStatus", "name", req.Name)
 	startTime := time.Now()
 
 	var gcs promoterv1alpha1.GitCommitStatus
@@ -86,7 +86,7 @@ func (r *GitCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	err = r.Get(ctx, req.NamespacedName, &gcs, &client.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			logger.Info("GitCommitStatus not found")
+			logger.V(1).Info("GitCommitStatus not found")
 			return ctrl.Result{}, nil
 		}
 
@@ -286,7 +286,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 		// Emit only after the upsert succeeded so the event always describes persisted state.
 		emitCommitStatusPhaseChangedEvent(r.Recorder, gcs, gcs.Spec.Key, branch, previousPhase, string(phase))
 
-		logger.Info("Processed environment validation",
+		logger.V(1).Info("Processed environment validation",
 			"branch", branch,
 			"proposedSha", proposedSha,
 			"targetedSha", shaToValidate,

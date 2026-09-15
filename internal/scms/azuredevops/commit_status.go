@@ -44,7 +44,7 @@ func NewAzureDevopsCommitStatusProvider(ctx context.Context, k8sClient client.Cl
 // Set sets the commit status for a given commit SHA in the specified repository.
 func (cs CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitStatus) (*v1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Setting Commit Status for Azure DevOps")
+	logger.V(4).Info("Setting Commit Status for Azure DevOps")
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, cs.k8sClient, client.ObjectKey{Namespace: commitStatus.Namespace, Name: commitStatus.Spec.RepositoryReference.Name})
 	if err != nil {

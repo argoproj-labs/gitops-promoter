@@ -449,7 +449,7 @@ func (r *Reconciler) ReconcileWebRequestCommitStatusEnvironments(ctx context.Con
 		}
 		commitStatuses = append(commitStatuses, cs)
 
-		logger.Info("Processed environment", "branch", branch, "reportedSha", reportedSha, "phase", result.Phase, "triggered", decision.ShouldFire)
+		logger.V(1).Info("Processed environment", "branch", branch, "reportedSha", reportedSha, "phase", result.Phase, "triggered", decision.ShouldFire)
 	}
 
 	requeueAfter = requeueDurationForMode(wrcs.Spec.Mode)

@@ -209,7 +209,7 @@ func (g *EnvironmentOperations) CloneRepo(ctx context.Context) error {
 		return err
 	}
 
-	logger.V(4).Info("Cloned repo successful", "repo", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), "identity", g.identity)
+	logger.Info("Cloned repo successful", "repo", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), "identity", g.identity)
 
 	gitpaths.Set(g.cloneKey(), path)
 
@@ -270,7 +270,7 @@ func (g *EnvironmentOperations) GetBranchSha(ctx context.Context, branch, lastKn
 	if lastKnownHydratedSha != "" {
 		remoteHeads, err := LsRemote(ctx, g.gap, g.gitRepo, branch)
 		if err != nil {
-			logger.V(4).Info("ls-remote probe failed, falling back to unconditional fetch", "branch", branch, "error", err)
+			logger.V(1).Info("ls-remote probe failed, falling back to unconditional fetch", "branch", branch, "error", err)
 		} else {
 			skipFetch = remoteHeads[branch] == lastKnownHydratedSha
 		}
@@ -446,7 +446,7 @@ func LsRemote(ctx context.Context, gap scms.GitOperationsProvider, gitRepo *v1al
 		shas[branch] = sha
 	}
 
-	logger.Info("ls-remote called", "repoUrl", gap.GetGitHttpsRepoUrl(*gitRepo), "branches", branches, "shas", shas)
+	logger.V(1).Info("ls-remote called", "repoUrl", gap.GetGitHttpsRepoUrl(*gitRepo), "branches", branches, "shas", shas)
 
 	return shas, nil
 }
@@ -830,7 +830,7 @@ func (g *EnvironmentOperations) GetHydratorNote(ctx context.Context, sha string)
 
 	var note HydratorMetadata
 	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &note); err != nil {
-		logger.V(4).Info("Failed to parse git note as JSON, ignoring", "sha", sha, "content", stdout, "error", err)
+		logger.V(1).Info("Failed to parse git note as JSON, ignoring", "sha", sha, "content", stdout, "error", err)
 		return nil, nil
 	}
 
@@ -863,7 +863,7 @@ func (g *EnvironmentOperations) GetHistoryNote(ctx context.Context, sha string) 
 
 	var trailers map[string][]string
 	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &trailers); err != nil {
-		logger.V(4).Info("Failed to parse history note as JSON, ignoring", "sha", sha, "content", stdout, "error", err)
+		logger.V(1).Info("Failed to parse history note as JSON, ignoring", "sha", sha, "content", stdout, "error", err)
 		return nil, nil
 	}
 
@@ -926,7 +926,7 @@ func (g *EnvironmentOperations) SetHistoryNote(ctx context.Context, sha string, 
 			logger.Error(err, "Failed to push history note", "sha", sha, "stderr", stderr)
 			return lastErr
 		}
-		logger.V(4).Info("History note push rejected, retrying", "sha", sha, "attempt", attempt, "stderr", stderr)
+		logger.V(1).Info("History note push rejected, retrying", "sha", sha, "attempt", attempt, "stderr", stderr)
 		if attempt < setHistoryNoteMaxAttempts {
 			delay := wait.Jitter(time.Duration(attempt)*setHistoryNoteRetryBaseDelay, 1.0)
 			select {

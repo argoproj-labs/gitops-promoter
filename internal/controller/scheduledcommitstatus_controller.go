@@ -65,7 +65,7 @@ type ScheduledCommitStatusReconciler struct {
 //nolint:dupl // Gate controllers share the same reconciliation skeleton by design.
 func (r *ScheduledCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Reconciling ScheduledCommitStatus")
+	logger.V(1).Info("Reconciling ScheduledCommitStatus")
 	startTime := time.Now()
 
 	var scs promoterv1alpha1.ScheduledCommitStatus
@@ -75,7 +75,7 @@ func (r *ScheduledCommitStatusReconciler) Reconcile(ctx context.Context, req ctr
 	err = r.Get(ctx, req.NamespacedName, &scs, &client.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			logger.Info("ScheduledCommitStatus not found")
+			logger.V(1).Info("ScheduledCommitStatus not found")
 			return ctrl.Result{}, nil
 		}
 		logger.Error(err, "failed to get ScheduledCommitStatus")
@@ -194,7 +194,7 @@ func (r *ScheduledCommitStatusReconciler) processEnvironments(ctx context.Contex
 
 		proposedSha := currentEnvStatus.Proposed.Hydrated.Sha
 		if proposedSha == "" {
-			logger.Info("No proposed hydrated commit in current environment", "branch", envConfig.Branch)
+			logger.V(1).Info("No proposed hydrated commit in current environment", "branch", envConfig.Branch)
 			continue
 		}
 
@@ -260,7 +260,7 @@ func (r *ScheduledCommitStatusReconciler) processEnvironments(ctx context.Contex
 
 		emitCommitStatusPhaseChangedEvent(r.Recorder, scs, scs.Spec.Key, envConfig.Branch, previousPhase, string(phase))
 
-		logger.Info("Processed environment scheduled window",
+		logger.V(1).Info("Processed environment scheduled window",
 			"branch", envConfig.Branch,
 			"proposedSha", proposedSha,
 			"phase", phase,

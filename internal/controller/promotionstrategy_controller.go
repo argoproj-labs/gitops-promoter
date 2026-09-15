@@ -141,7 +141,7 @@ type PromotionStrategyReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
 func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Reconciling PromotionStrategy")
+	logger.V(1).Info("Reconciling PromotionStrategy")
 	startTime := time.Now()
 
 	var ps promoterv1alpha1.PromotionStrategy
@@ -161,7 +161,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	err = r.Get(ctx, req.NamespacedName, &ps, &client.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			logger.Info("PromotionStrategy not found")
+			logger.V(1).Info("PromotionStrategy not found")
 			return ctrl.Result{}, nil
 		}
 		logger.Error(err, "failed to get PromotionStrategy")
@@ -626,7 +626,7 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 		// or its budget is exhausted and we are deliberately waiting for the periodic CTP
 		// requeue. Either way there is nothing to do here until the disagreement changes.
 		r.enqueueStateMutex.Unlock()
-		logger.V(4).Info("Enqueue skipped, already armed for this disagreement (active retries or exhausted budget)", "ctp", ctp.Name)
+		logger.V(1).Info("Enqueue skipped, already armed for this disagreement (active retries or exhausted budget)", "ctp", ctp.Name)
 		return
 	}
 	state.lastDisagreement = disagreement
@@ -638,9 +638,9 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 	// delivers the nudge once the window elapses. Either way the chain provides up to
 	// maxEnqueueRetriesPerDisagreement threshold-spaced nudges and then stops.
 	if rateLimited {
-		logger.V(4).Info("Rate limited, deferring enqueue to retry chain", "ctp", ctp.Name)
+		logger.V(1).Info("Rate limited, deferring enqueue to retry chain", "ctp", ctp.Name)
 	} else {
-		logger.V(4).Info("Enqueueing out-of-sync CTP", "ctp", ctp.Name)
+		logger.V(1).Info("Enqueueing out-of-sync CTP", "ctp", ctp.Name)
 		r.enqueue(key)
 	}
 	r.startRetryChain(ctx, key, disagreement, maxEnqueueRetriesPerDisagreement)
@@ -708,7 +708,7 @@ func (r *PromotionStrategyReconciler) startRetryChain(
 			return
 		}
 
-		logger.V(4).Info("Retrying enqueue for unchanged disagreement",
+		logger.V(1).Info("Retrying enqueue for unchanged disagreement",
 			"ctp", key.Name,
 			"attemptsLeft", attemptsLeft)
 		r.enqueue(key)

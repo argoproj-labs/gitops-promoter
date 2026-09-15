@@ -79,7 +79,7 @@ type WebRequestCommitStatusReconciler struct {
 // an environment transitions to success. Result status and requeue time are updated via the deferred handler.
 func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Reconciling WebRequestCommitStatus")
+	logger.V(1).Info("Reconciling WebRequestCommitStatus")
 	startTime := time.Now()
 
 	var wrcs promoterv1alpha1.WebRequestCommitStatus
@@ -93,7 +93,7 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 	err = r.Get(ctx, req.NamespacedName, &wrcs)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			logger.Info("WebRequestCommitStatus not found")
+			logger.V(1).Info("WebRequestCommitStatus not found")
 			return ctrl.Result{}, nil
 		}
 		logger.Error(err, "failed to get WebRequestCommitStatus")

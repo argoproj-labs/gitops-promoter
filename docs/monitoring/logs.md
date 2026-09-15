@@ -21,7 +21,7 @@ For each SCM REST API request that GitOps Promoter records for metrics (the same
 | `response_code` | HTTP status code returned for that request (or a sentinel such as `500` when the client maps errors to a synthetic code). |
 | `duration_seconds` | Time spent on the request, in seconds. |
 
-**Scope:** only requests that go through the shared metrics hook are logged here. Other SCM traffic (for example GitHub App **installation listing** during client setup) is not included. Provider-specific messages such as `github rate limit` may still appear at `info` when enabled by that provider.
+**Scope:** only requests that go through the shared metrics hook are logged here. Other SCM traffic (for example GitHub App **installation listing** during client setup) is not included. Provider-specific messages such as `github rate limit` and `GitLab rate limits` are also emitted at verbosity level 1, so `--zap-log-level=1` surfaces both the API call lines and rate-limit telemetry.
 
 ## Log Verbosity
 
@@ -61,9 +61,22 @@ The `--zap-log-level` flag accepts the following values:
 
 | Value | Description |
 |-------|-------------|
-| `info` | Default level. Logs informational messages and errors. |
+| `info` | Default level. Logs errors plus significant state changes and side effects. |
 | `debug` | Logs additional debug messages. Equivalent to level `1`. |
 | `5` | Highly verbose output useful for diagnosing bugs. |
 
 Any positive integer can be used as a log level; higher values produce more output. The most commonly used value for 
 diagnosing bugs is `5`.
+
+### How log levels are assigned
+
+Log statements in the controller are leveled by how useful they are for debugging versus day-to-day operation:
+
+| Level | Tier | What lands here |
+|-------|------|-----------------|
+| `info` (0) | Operational | State changes and side effects an operator should see by default: pull requests created/merged/closed, promotions and branch merges, merge conflicts detected, gates transitioning to success, orphaned resource cleanup, repository clones, saturation warnings (full enqueue channels, webhook retry capacity), misconfiguration warnings (missing secrets), and server/manager lifecycle. |
+| `1` (`debug`) | Debug | The reconcile narrative: reconcile start/end (with duration), per-environment gate evaluations and promotion decisions (for example `Proposed commit status is not success`), cross-resource reconcile triggers/enqueues, finalizer wait reasons, SCM API telemetry (`SCM API call`, rate limits, `ls-remote called`), and unusual best-effort fallback paths. |
+| `4`+ | Trace | Full wire-level and plumbing detail: per-request SCM HTTP response statuses, git command plumbing (fetches, notes, trailers, cat-file), expression evaluation results, rendered templates, HTTP client auth setup, metrics scrape access logs, and routine skip reasons. |
+
+When adding a new log statement, pick the level by asking who needs it: an operator watching a healthy system (`info`),
+someone debugging "why is my change not promoting" (`V(1)`), or someone tracing a specific SCM/git interaction (`V(4)`).

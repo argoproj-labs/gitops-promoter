@@ -58,7 +58,7 @@ type ClusterScmProviderReconciler struct {
 // move the current state of the cluster closer to the desired state.
 func (r *ClusterScmProviderReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Reconciling ClusterScmProvider")
+	logger.V(1).Info("Reconciling ClusterScmProvider")
 	startTime := time.Now()
 
 	var clusterScmProvider promoterv1alpha1.ClusterScmProvider
@@ -68,7 +68,7 @@ func (r *ClusterScmProviderReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	if err := r.Get(ctx, req.NamespacedName, &clusterScmProvider); err != nil {
 		if k8serrors.IsNotFound(err) {
-			logger.Info("ClusterScmProvider not found", "name", req.Name)
+			logger.V(1).Info("ClusterScmProvider not found", "name", req.Name)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("failed to get ClusterScmProvider: %w", err)

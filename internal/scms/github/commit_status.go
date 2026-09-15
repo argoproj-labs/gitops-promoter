@@ -67,14 +67,14 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.
 
 	// Determine if we should update an existing check run or create a new one
 	if commitStatus.Status.Sha == commitStatus.Spec.Sha && commitStatus.Status.Id != "" && !isTransitionFromCompleted {
-		logger.Info("Updating existing check run via Checks API", "checkRunId", commitStatus.Status.Id)
+		logger.V(1).Info("Updating existing check run via Checks API", "checkRunId", commitStatus.Status.Id)
 		return cs.updateCheckRun(ctx, commitStatus)
 	}
 
 	if isTransitionFromCompleted {
-		logger.Info("Creating new check run for phase change", "oldPhase", commitStatus.Status.Phase, "newPhase", commitStatus.Spec.Phase, "oldCheckRunId", commitStatus.Status.Id)
+		logger.V(1).Info("Creating new check run for phase change", "oldPhase", commitStatus.Status.Phase, "newPhase", commitStatus.Spec.Phase, "oldCheckRunId", commitStatus.Status.Id)
 	} else {
-		logger.Info("Creating new check run via Checks API")
+		logger.V(1).Info("Creating new check run via Checks API")
 	}
 	return cs.createCheckRun(ctx, commitStatus)
 }
@@ -222,7 +222,7 @@ func (cs *CommitStatus) handleCheckRunResponse(
 		duration := time.Since(startTime)
 		metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPICommitStatus, operation, response.StatusCode, duration, getRateLimitMetrics(response.Rate))
 
-		logger.Info("github rate limit",
+		logger.V(1).Info("github rate limit",
 			"limit", response.Rate.Limit,
 			"remaining", response.Rate.Remaining,
 			"reset", response.Rate.Reset,

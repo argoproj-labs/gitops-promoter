@@ -46,7 +46,7 @@ func NewAzdoPullRequestProvider(k8sClient client.Client, secret v1.Secret, scmPr
 // Create creates a new pull request with the specified title, head, base, and description.
 func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest v1alpha1.PullRequest) (string, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Creating Pull Request in Azure DevOps")
+	logger.V(4).Info("Creating Pull Request in Azure DevOps")
 
 	if title == "" {
 		return "", errors.New("title is required for pull request creation")
@@ -93,7 +93,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 
 	metrics.RecordSCMCall(ctx, gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, statusCode, time.Since(start), nil)
 
-	logger.Info("Azure DevOps pull request created successfully", "prId", *createdPR.PullRequestId)
+	logger.V(4).Info("Azure DevOps pull request created successfully", "prId", *createdPR.PullRequestId)
 
 	return strconv.Itoa(*createdPR.PullRequestId), nil
 }
@@ -101,7 +101,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 // Update updates an existing pull request with the specified title and description.
 func (pr *PullRequest) Update(ctx context.Context, title, description string, pullRequest v1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
-	logger.Info("Updating Pull Request in Azure DevOps")
+	logger.V(4).Info("Updating Pull Request in Azure DevOps")
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
@@ -151,7 +151,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pu
 // Close closes an existing pull request.
 func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
-	logger.Info("Closing Pull Request in Azure DevOps")
+	logger.V(4).Info("Closing Pull Request in Azure DevOps")
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
@@ -201,7 +201,7 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullReque
 // Merge merges an existing pull request with the specified commit message.
 func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullRequest) (scms.MergeResult, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Merging Pull Request in Azure DevOps")
+	logger.V(4).Info("Merging Pull Request in Azure DevOps")
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {

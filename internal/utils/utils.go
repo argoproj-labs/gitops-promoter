@@ -216,7 +216,7 @@ func EnqueueChangeTransferPolicies(
 			continue
 		}
 
-		logger.Info("Triggering ChangeTransferPolicy reconciliation",
+		logger.V(1).Info("Triggering ChangeTransferPolicy reconciliation",
 			"changeTransferPolicy", ctpName,
 			"branch", envBranch,
 			"reason", logReason)
@@ -401,7 +401,7 @@ func HandleReconciliationResult(
 
 	logger := log.FromContext(ctx)
 
-	logger.Info(fmt.Sprintf("Reconciling %s End", obj.GetObjectKind().GroupVersionKind().Kind), "duration", time.Since(startTime))
+	logger.V(1).Info(fmt.Sprintf("Reconciling %s End", obj.GetObjectKind().GroupVersionKind().Kind), "duration", time.Since(startTime))
 	if obj.GetName() == "" && obj.GetNamespace() == "" {
 		// This happens when the Get in the Reconcile function returns "not found." It's expected and safe to skip.
 		logger.V(4).Info(obj.GetObjectKind().GroupVersionKind().Kind + " not found, skipping reconciliation")
@@ -531,7 +531,7 @@ func HandleReconciliationResult(
 	// reconcile is the canonical "status is stale" signal; the Ready condition's own
 	// ObservedGeneration field records the generation that was attempted.
 	fallbackFieldOwner := fieldOwner + "-fallback"
-	logger.V(4).Info("full status apply failed, attempting conditions-only apply",
+	logger.Info("full status apply failed, attempting conditions-only apply",
 		"error", patchErr, "fallbackFieldOwner", fallbackFieldOwner)
 
 	// Rewrite the in-memory Ready condition to describe the apply failure. If the
