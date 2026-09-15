@@ -1,6 +1,6 @@
 import React from 'react';
 import { FiChevronDown, FiChevronUp } from 'react-icons/fi';
-import { useCommitStatusRowPlugin } from '@shared/components/plugins';
+import { useCommitStatusRowPlugin, PluginErrorBoundary } from '@shared/components/plugins';
 import type { Check } from '@shared/types/promotion';
 import type { HealthKey } from '../types';
 import { HEALTH_LABELS } from '../presentation';
@@ -41,7 +41,9 @@ export const DrawerCheckItem: React.FC<{
           </button>
         )}
         {Plugin && manager ? (
-          <Plugin.rowHeader check={check} manager={manager} />
+          <PluginErrorBoundary pluginKind={check.kind}>
+            <Plugin.rowHeader check={check} manager={manager} />
+          </PluginErrorBoundary>
         ) : (
           <>
             <span className="hp-sr-only">
@@ -64,8 +66,12 @@ export const DrawerCheckItem: React.FC<{
         )}
       </div>
       {RowContent && manager && (
+        // Stays mounted while collapsed (hidden is CSS-only, not an unmount), so a
+        // plugin's timers/effects keep running even when the panel isn't visible.
         <div id={panelId} className="hp-drawer__check-panel" hidden={!isExpanded}>
-          <RowContent check={check} manager={manager} />
+          <PluginErrorBoundary pluginKind={check.kind}>
+            <RowContent check={check} manager={manager} />
+          </PluginErrorBoundary>
         </div>
       )}
     </li>

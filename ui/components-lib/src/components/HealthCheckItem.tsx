@@ -2,7 +2,7 @@ import React from 'react';
 import { StatusIcon, StatusType } from './StatusIcon';
 import { Tooltip } from './Tooltip';
 import { Check } from '@shared/types/promotion';
-import { useCommitStatusRowPlugin } from '@shared/components/plugins';
+import { useCommitStatusRowPlugin, PluginErrorBoundary } from '@shared/components/plugins';
 
 export const HealthCheckItem: React.FC<{ check: Check }> = ({ check }) => {
   const Plugin = useCommitStatusRowPlugin(check.kind, check.apiVersion);
@@ -13,7 +13,9 @@ export const HealthCheckItem: React.FC<{ check: Check }> = ({ check }) => {
         <StatusIcon phase={check.status as StatusType} type="status" />
         <div className="health-check-body">
           {Plugin && check.manager ? (
-            <Plugin.rowHeader check={check} manager={check.manager} />
+            <PluginErrorBoundary pluginKind={check.kind}>
+              <Plugin.rowHeader check={check} manager={check.manager} />
+            </PluginErrorBoundary>
           ) : check.url ? (
             <a
               href={check.url}

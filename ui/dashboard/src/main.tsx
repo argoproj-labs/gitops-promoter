@@ -2,6 +2,7 @@ import '@lib/styles/main.scss';
 
 import React, { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { loadPluginBundle } from '@shared/components/plugins';
 import App from './App';
 
 // Published before any plugin script can load, so an externally loaded plugin
@@ -17,3 +18,5 @@ if (rootEl) {
     </StrictMode>,
   );
 }
+
+loadPluginBundle(React);
