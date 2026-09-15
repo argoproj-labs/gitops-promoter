@@ -167,18 +167,18 @@ var _ = Describe("PullRequest Controller", func() {
 			})
 
 			It("should not repeat SCM Update calls on every periodic requeue once synced", func() {
-				fake.ResetPullRequestCallCounts(typeNamespacedName)
+				fake.ResetPullRequestCallCounts(pullRequest.UID)
 
 				By("Waiting for several periodic reconciles to occur (proven via FindOpen, which must always run)")
 				Eventually(func(g Gomega) {
-					g.Expect(fake.FindOpenCallCount(typeNamespacedName)).To(BeNumerically(">=", 3))
+					g.Expect(fake.FindOpenCallCount(pullRequest.UID)).To(BeNumerically(">=", 3))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Verifying Update was not repeated on any of those periodic reconciles")
 				// With the fix, a PR that is already open with no spec change since the last
 				// successful sync produces 0 Update calls no matter how many periodic
 				// reconciles occur. Without it, Update fires once per periodic reconcile.
-				Expect(fake.UpdateCallCount(typeNamespacedName)).To(BeZero(),
+				Expect(fake.UpdateCallCount(pullRequest.UID)).To(BeZero(),
 					"Update should not be called again for a generation that was already successfully synced")
 			})
 		})
@@ -217,7 +217,7 @@ var _ = Describe("PullRequest Controller", func() {
 			})
 
 			It("should not hit SCM when only spec.commit.message changes", func() {
-				fake.ResetPullRequestCallCounts(typeNamespacedName)
+				fake.ResetPullRequestCallCounts(pullRequest.UID)
 
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
@@ -226,9 +226,9 @@ var _ = Describe("PullRequest Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Consistently(func(g Gomega) {
-					g.Expect(fake.FindOpenCallCount(typeNamespacedName)).To(BeZero())
-					g.Expect(fake.UpdateCallCount(typeNamespacedName)).To(BeZero())
-					g.Expect(fake.PullRequestSCMCallCount(typeNamespacedName)).To(BeZero())
+					g.Expect(fake.FindOpenCallCount(pullRequest.UID)).To(BeZero())
+					g.Expect(fake.UpdateCallCount(pullRequest.UID)).To(BeZero())
+					g.Expect(fake.PullRequestSCMCallCount(pullRequest.UID)).To(BeZero())
 				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 
 				Eventually(func(g Gomega) {
@@ -241,7 +241,7 @@ var _ = Describe("PullRequest Controller", func() {
 			})
 
 			It("should not hit SCM when only spec.mergeSha changes while open", func() {
-				fake.ResetPullRequestCallCounts(typeNamespacedName)
+				fake.ResetPullRequestCallCounts(pullRequest.UID)
 
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
@@ -250,9 +250,9 @@ var _ = Describe("PullRequest Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Consistently(func(g Gomega) {
-					g.Expect(fake.FindOpenCallCount(typeNamespacedName)).To(BeZero())
-					g.Expect(fake.UpdateCallCount(typeNamespacedName)).To(BeZero())
-					g.Expect(fake.PullRequestSCMCallCount(typeNamespacedName)).To(BeZero())
+					g.Expect(fake.FindOpenCallCount(pullRequest.UID)).To(BeZero())
+					g.Expect(fake.UpdateCallCount(pullRequest.UID)).To(BeZero())
+					g.Expect(fake.PullRequestSCMCallCount(pullRequest.UID)).To(BeZero())
 				}, 3*time.Second, 100*time.Millisecond).Should(Succeed())
 
 				Eventually(func(g Gomega) {
@@ -265,9 +265,9 @@ var _ = Describe("PullRequest Controller", func() {
 			})
 
 			It("should still hit SCM when spec.title changes", func() {
-				fake.ResetPullRequestCallCounts(typeNamespacedName)
-				baselineFindOpen := fake.FindOpenCallCount(typeNamespacedName)
-				baselineUpdate := fake.UpdateCallCount(typeNamespacedName)
+				fake.ResetPullRequestCallCounts(pullRequest.UID)
+				baselineFindOpen := fake.FindOpenCallCount(pullRequest.UID)
+				baselineUpdate := fake.UpdateCallCount(pullRequest.UID)
 
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
@@ -276,8 +276,8 @@ var _ = Describe("PullRequest Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Eventually(func(g Gomega) {
-					g.Expect(fake.FindOpenCallCount(typeNamespacedName)).To(BeNumerically(">", baselineFindOpen))
-					g.Expect(fake.UpdateCallCount(typeNamespacedName)).To(BeNumerically(">", baselineUpdate))
+					g.Expect(fake.FindOpenCallCount(pullRequest.UID)).To(BeNumerically(">", baselineFindOpen))
+					g.Expect(fake.UpdateCallCount(pullRequest.UID)).To(BeNumerically(">", baselineUpdate))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
@@ -1526,7 +1526,7 @@ var _ = Describe("PullRequest Controller", func() {
 		})
 
 		It("should close the SCM PR, set status closed when status syncs, and not spam FindOpen while terminating", func() {
-			fake.ResetPullRequestCallCounts(typeNamespacedName)
+			fake.ResetPullRequestCallCounts(pullRequest.UID)
 
 			// Status must be persisted as closed before the promoter finalizer is released so the
 			// owning ChangeTransferPolicy can read the terminal outcome while the object still exists.
@@ -1586,18 +1586,18 @@ var _ = Describe("PullRequest Controller", func() {
 
 			By("Checking the number of FindOpen calls")
 
-			findOpenBeforeBump := fake.FindOpenCallCount(typeNamespacedName)
+			findOpenBeforeBump := fake.FindOpenCallCount(pullRequest.UID)
 			time.Sleep(150 * time.Millisecond)
 
 			By("Verifying FindOpen is not invoked in a tight loop while the object is stuck terminating")
-			findOpenAfterWindow := fake.FindOpenCallCount(typeNamespacedName)
+			findOpenAfterWindow := fake.FindOpenCallCount(pullRequest.UID)
 			Expect(findOpenAfterWindow-findOpenBeforeBump).To(BeNumerically("<", 100),
 				"FindOpen should not be polled repeatedly after the SCM PR is closed during deletion")
 
-			snapshot := fake.FindOpenCallCount(typeNamespacedName)
+			snapshot := fake.FindOpenCallCount(pullRequest.UID)
 			Consistently(func(g Gomega) {
 				// Allow a small bump from a stray requeue; a regression still produces thousands of FindOpen calls.
-				g.Expect(fake.FindOpenCallCount(typeNamespacedName)).To(BeNumerically("<=", snapshot+5))
+				g.Expect(fake.FindOpenCallCount(pullRequest.UID)).To(BeNumerically("<=", snapshot+5))
 			}, 2*time.Second, 50*time.Millisecond).Should(Succeed())
 
 			By("Verifying status reflects closed after the SCM PR was closed during deletion")
@@ -1609,7 +1609,7 @@ var _ = Describe("PullRequest Controller", func() {
 			// Once the promoter finalizer is released this controller is done with the object, even
 			// though the blocking finalizer keeps it around and reconciles keep arriving.
 			By("Verifying a spec change on the terminating object is rejected by CEL immutability")
-			afterRelease := fake.FindOpenCallCount(typeNamespacedName)
+			afterRelease := fake.FindOpenCallCount(pullRequest.UID)
 			Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 			base := pullRequest.DeepCopy()
 			pullRequest.Spec.Title = pullRequest.Spec.Title + "-bumped"
@@ -1617,7 +1617,7 @@ var _ = Describe("PullRequest Controller", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("spec is immutable"))
 			Consistently(func(g Gomega) {
-				g.Expect(fake.FindOpenCallCount(typeNamespacedName)).To(Equal(afterRelease))
+				g.Expect(fake.FindOpenCallCount(pullRequest.UID)).To(Equal(afterRelease))
 			}, 2*time.Second, 50*time.Millisecond).Should(Succeed())
 		})
 	})

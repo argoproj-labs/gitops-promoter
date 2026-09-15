@@ -24,6 +24,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -31,10 +32,10 @@ var (
 	pullRequests map[string]pullRequestProviderState
 	mutexPR      sync.RWMutex
 
-	// prCallCounts records SCM calls per PullRequest resource (for tests). Every spec in a ginkgo
+	// prCallCounts records SCM calls per PullRequest UID (for tests). Every spec in a ginkgo
 	// process shares this package state, and a PullRequest left behind by an earlier spec keeps
-	// reconciling on its periodic requeue, so counts are only meaningful per resource.
-	prCallCounts   = map[client.ObjectKey]pullRequestCallCounts{}
+	// reconciling on its periodic requeue, so counts are only meaningful per object instance.
+	prCallCounts   = map[types.UID]pullRequestCallCounts{}
 	prCallCountsMu sync.Mutex
 )
 
@@ -47,19 +48,22 @@ type pullRequestCallCounts struct {
 }
 
 func recordPullRequestCall(pullRequest v1alpha1.PullRequest, record func(*pullRequestCallCounts)) {
-	key := client.ObjectKeyFromObject(&pullRequest)
+	uid := pullRequest.UID
+	if uid == "" {
+		return
+	}
 
 	prCallCountsMu.Lock()
 	defer prCallCountsMu.Unlock()
-	counts := prCallCounts[key]
+	counts := prCallCounts[uid]
 	record(&counts)
-	prCallCounts[key] = counts
+	prCallCounts[uid] = counts
 }
 
-func readPullRequestCallCount(key client.ObjectKey, read func(pullRequestCallCounts) uint64) uint64 {
+func readPullRequestCallCount(uid types.UID, read func(pullRequestCallCounts) uint64) uint64 {
 	prCallCountsMu.Lock()
 	defer prCallCountsMu.Unlock()
-	return read(prCallCounts[key])
+	return read(prCallCounts[uid])
 }
 
 type pullRequestProviderState struct {
@@ -263,44 +267,44 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 }
 
 // ResetPullRequestCallCounts clears every test-only SCM call count recorded for one PullRequest
-// resource. Counts are tracked per resource, so a spec only ever needs to reset its own.
-func ResetPullRequestCallCounts(key client.ObjectKey) {
+// UID. Counts are tracked per object instance, so a spec only ever needs to reset its own.
+func ResetPullRequestCallCounts(uid types.UID) {
 	prCallCountsMu.Lock()
 	defer prCallCountsMu.Unlock()
-	delete(prCallCounts, key)
+	delete(prCallCounts, uid)
 }
 
-// FindOpenCallCount returns how many times FindOpen has been invoked for one PullRequest resource
+// FindOpenCallCount returns how many times FindOpen has been invoked for one PullRequest UID
 // since the last reset.
-func FindOpenCallCount(key client.ObjectKey) uint64 {
-	return readPullRequestCallCount(key, func(c pullRequestCallCounts) uint64 { return c.findOpen })
+func FindOpenCallCount(uid types.UID) uint64 {
+	return readPullRequestCallCount(uid, func(c pullRequestCallCounts) uint64 { return c.findOpen })
 }
 
-// UpdateCallCount returns how many times Update has been invoked for one PullRequest resource
+// UpdateCallCount returns how many times Update has been invoked for one PullRequest UID
 // since the last reset.
-func UpdateCallCount(key client.ObjectKey) uint64 {
-	return readPullRequestCallCount(key, func(c pullRequestCallCounts) uint64 { return c.update })
+func UpdateCallCount(uid types.UID) uint64 {
+	return readPullRequestCallCount(uid, func(c pullRequestCallCounts) uint64 { return c.update })
 }
 
-// PullRequestSCMCallCount returns FindOpen plus Update invocations for one PullRequest resource
+// PullRequestSCMCallCount returns FindOpen plus Update invocations for one PullRequest UID
 // since the last reset.
-func PullRequestSCMCallCount(key client.ObjectKey) uint64 {
-	return readPullRequestCallCount(key, func(c pullRequestCallCounts) uint64 { return c.findOpen + c.update })
+func PullRequestSCMCallCount(uid types.UID) uint64 {
+	return readPullRequestCallCount(uid, func(c pullRequestCallCounts) uint64 { return c.findOpen + c.update })
 }
 
 // LabelCallCount returns how many times AddLabels or RemoveLabels has been invoked for one
-// PullRequest resource since the last reset.
-func LabelCallCount(key client.ObjectKey) uint64 {
-	return readPullRequestCallCount(key, func(c pullRequestCallCounts) uint64 { return c.label })
+// PullRequest UID since the last reset.
+func LabelCallCount(uid types.UID) uint64 {
+	return readPullRequestCallCount(uid, func(c pullRequestCallCounts) uint64 { return c.label })
 }
 
-// MergeShaMismatchCount returns how many times Merge has been called for one PullRequest resource
+// MergeShaMismatchCount returns how many times Merge has been called for one PullRequest UID
 // whose Spec.MergeSha did not match origin/<sourceBranch> since the last reset. A non-zero value
 // means the controller asked the SCM to merge a sha the SCM no longer has on the source
 // branch, typically because the controller pushed a fresh commit to the proposed branch
 // (for example via MergeWithOursStrategy) without updating PR.Spec.MergeSha to match.
-func MergeShaMismatchCount(key client.ObjectKey) uint64 {
-	return readPullRequestCallCount(key, func(c pullRequestCallCounts) uint64 { return c.mergeShaMismatch })
+func MergeShaMismatchCount(uid types.UID) uint64 {
+	return readPullRequestCallCount(uid, func(c pullRequestCallCounts) uint64 { return c.mergeShaMismatch })
 }
 
 // GetRecordedState returns the PR entry stored in the fake provider for the given resource, if any.
