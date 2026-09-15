@@ -97,6 +97,12 @@ var _ = Describe("OptionsForInstanceID", func() {
 			Expect(byObj.Label.String()).To(Equal(labels.Everything().String()), "%T must not be instance-id filtered", obj)
 		}
 	})
+
+	It("omits Argo CD Application so host CRD discovery cannot leak onto provider ClusterOptions", func() {
+		opts := promotercache.OptionsForInstanceID(nil, testControllerNamespace)
+		Expect(opts.ByObject).NotTo(HaveKey(promotercache.UnpartitionedApplicationObject()))
+		Expect(opts.ByObject).To(HaveKey(promotercache.PartitionedSecretObject()))
+	})
 })
 
 var _ = Describe("Partitioned promoter CRDs", func() {

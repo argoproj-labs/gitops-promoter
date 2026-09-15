@@ -171,6 +171,9 @@ func runController(
 		ClusterOptions: []cluster.Option{
 			func(clusterOptions *cluster.Options) {
 				clusterOptions.Scheme = scheme
+				// Do not copy host Cache ByObject here. Application CRD presence is a local-cluster
+				// concern (WithArgoCDApplicationIfInstalled). Remote Application informers start from
+				// watches with no DefaultLabelSelector, so they stay unfiltered.
 			},
 		},
 	}
@@ -191,12 +194,22 @@ func runController(
 		setupLog.Info("default instance-id mode: scoping informer cache to resources without instance-id label")
 	}
 
+	// Cache on mcmanager.New is the host manager only. Provider clusters use ClusterOptions
+	// below and must not inherit a ByObject key that depends on the local Application CRD.
+	cacheOpts, err := promotercache.WithArgoCDApplicationIfInstalled(
+		promotercache.OptionsForInstanceID(instanceID, controllerNamespace),
+		restConfig,
+	)
+	if err != nil {
+		return fmt.Errorf("build instance-id cache options: %w", err)
+	}
+
 	runCtx, shutdown := context.WithCancel(processSignalsCtx)
 
 	mcMgr, err := mcmanager.New(restConfig, provider, ctrl.Options{
 		Scheme: scheme,
 		Client: promotercache.ClientOptions(),
-		Cache:  promotercache.OptionsForInstanceID(instanceID, controllerNamespace),
+		Cache:  cacheOpts,
 		Metrics: metricsserver.Options{
 			BindAddress:    metricsAddr,
 			SecureServing:  secureMetrics,
