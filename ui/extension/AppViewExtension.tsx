@@ -4,16 +4,75 @@ import Card from '@components-lib/components/Card';
 import HistoryView from '@components-lib/components/HistoryView/HistoryView';
 import type { CellSelection } from '@components-lib/components/HistoryView/HistoryView';
 import { PromotionStrategy } from '@shared/types/promotion';
+import type { ChangeTransferPolicy, PromotionStrategyDetails } from '@shared/types/view';
+import type { Environment } from '@shared/types/promotion';
+import { mergeCommitStatusManagers } from '@shared/utils/PSData';
+import type { CommitStatusManagerBundle } from '@shared/utils/PSData';
 import { AppViewComponentProps } from '@shared/types/extension';
 import { sortStrategyCommitStatuses } from '@shared/utils/util';
 import './StrategyDropdown.scss';
 
 type ViewMode = 'card' | 'history';
 
-const GROUP = 'promoter.argoproj.io';
-const KIND = 'PromotionStrategy';
+const GROUP = 'view.promoter.argoproj.io';
+const KIND = 'PromotionStrategyDetails';
 const PARAM = 'promotionstrategy';
 const STORAGE_PREFIX = 'gitops-promoter:lastStrategy:';
+
+interface StrategyItem {
+  promotionStrategy: PromotionStrategy;
+}
+
+function environmentsFromCTPs(
+  spec: PromotionStrategy['spec'],
+  ctps: ChangeTransferPolicy[],
+): Environment[] {
+  const byBranch = new Map<string, ChangeTransferPolicy>();
+  for (const ctp of ctps) {
+    const branch = ctp.spec?.activeBranch;
+    if (branch) byBranch.set(branch, ctp);
+  }
+
+  return spec.environments.map((env) => {
+    const status = byBranch.get(env.branch)?.status ?? {};
+    return {
+      branch: env.branch,
+      active: status.active ?? { dry: {}, hydrated: {} },
+      proposed: status.proposed ?? { dry: {}, hydrated: {} },
+      pullRequest: status.pullRequest,
+      history: status.history,
+      lastHealthyDryShas: [],
+    };
+  });
+}
+
+function managersFromBundle(bundle: PromotionStrategyDetails): CommitStatusManagerBundle {
+  return {
+    timedCommitStatuses: bundle.timedCommitStatuses,
+    gitCommitStatuses: bundle.gitCommitStatuses,
+    scheduledCommitStatuses: bundle.scheduledCommitStatuses,
+    argoCDCommitStatuses: bundle.argoCDCommitStatuses,
+    webRequestCommitStatuses: bundle.webRequestCommitStatuses,
+  };
+}
+
+function bundleToItem(bundle: PromotionStrategyDetails): StrategyItem {
+  const ps = bundle.promotionStrategy;
+  const environments = environmentsFromCTPs(ps.spec, bundle.changeTransferPolicies ?? []);
+  const promotionStrategy = {
+    ...ps,
+    metadata: {
+      ...ps.metadata,
+      name: bundle.metadata.name,
+      namespace: bundle.metadata.namespace,
+    },
+    status: { ...ps.status, environments },
+  } as PromotionStrategy;
+  sortStrategyCommitStatuses(promotionStrategy);
+  return {
+    promotionStrategy: mergeCommitStatusManagers(promotionStrategy, managersFromBundle(bundle)),
+  };
+}
 
 interface SelectOption {
   value: string;
@@ -84,7 +143,7 @@ const setStored = (appNamespace: string, appName: string, name: string) => {
 const strategyKey = (s: PromotionStrategy) => `${s.metadata.namespace}/${s.metadata.name}`;
 
 const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
-  const [strategies, setStrategies] = useState<PromotionStrategy[]>([]);
+  const [strategies, setStrategies] = useState<StrategyItem[]>([]);
   const [selectedKey, setSelectedKey] = useState<string>(
     () => getParam() || getStored(application.metadata.namespace, application.metadata.name),
   );
@@ -134,12 +193,12 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
           throw new Error(messageParts.join(' - '));
         }
         const data: { manifest: string } = await response.json();
-        return sortStrategyCommitStatuses(JSON.parse(data.manifest) as PromotionStrategy);
+        return bundleToItem(JSON.parse(data.manifest) as PromotionStrategyDetails);
       }),
     )
       .then((parsed) => {
         setStrategies(parsed);
-        const keys = parsed.map(strategyKey);
+        const keys = parsed.map((item) => strategyKey(item.promotionStrategy));
         const fromUrl = getParam();
         const fromStored = getStored(appNamespace, appName);
         const initial =
@@ -167,14 +226,16 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
     return <div>Loading...</div>;
   }
 
-  const selected = strategies.find((s) => strategyKey(s) === selectedKey);
+  const selected = strategies.find((s) => strategyKey(s.promotionStrategy) === selectedKey);
 
   const hasDuplicateNames =
-    new Set(strategies.map((s) => s.metadata.name)).size < strategies.length;
+    new Set(strategies.map((s) => s.promotionStrategy.metadata.name)).size < strategies.length;
 
   const options: SelectOption[] = strategies.map((s) => ({
-    value: strategyKey(s),
-    label: hasDuplicateNames ? `${s.metadata.name} (${s.metadata.namespace})` : s.metadata.name,
+    value: strategyKey(s.promotionStrategy),
+    label: hasDuplicateNames
+      ? `${s.promotionStrategy.metadata.name} (${s.promotionStrategy.metadata.namespace})`
+      : s.promotionStrategy.metadata.name,
   }));
 
   return (
@@ -221,11 +282,13 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
           </div>
         )}
       </div>
-      {selected && view === 'card' && <Card environments={selected.status?.environments || []} />}
+      {selected && view === 'card' && (
+        <Card environments={selected.promotionStrategy.status?.environments || []} />
+      )}
       {selected && view === 'history' && (
         <div className="gp-history-wrapper">
           <HistoryView
-            strategy={selected}
+            strategy={selected.promotionStrategy}
             initialSelection={getSelectionFromUrl()}
             onSelectionChange={setSelectionInUrl}
           />
