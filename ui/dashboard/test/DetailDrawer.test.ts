@@ -4,7 +4,10 @@ import { createRoot } from 'react-dom/client';
 import DetailDrawer from '@lib/components/HistoryView/DetailDrawer/DetailDrawer';
 import type { CellState, CommitRow, EnvColumn } from '@lib/components/HistoryView/types';
 import type { CommitStatusManager, EnrichedBranchCommitStatus } from '@shared/types/promotion';
-import { commitStatusPlugins } from '@shared/components/plugins';
+import {
+  getCommitStatusRowPlugin,
+  registerCommitStatusRowPlugin,
+} from '@shared/components/plugins';
 import type { CommitStatusContext } from '@shared/components/plugins';
 
 const timedManager: CommitStatusManager = {
@@ -139,8 +142,8 @@ describe('DetailDrawer commit-status plugins', () => {
       rowContent: ({ check }: CommitStatusContext) =>
         React.createElement('span', null, `details for ${check.name}`),
     };
-    const previous = commitStatusPlugins.GitCommitStatus;
-    commitStatusPlugins.GitCommitStatus = stub;
+    const previous = getCommitStatusRowPlugin('GitCommitStatus');
+    registerCommitStatusRowPlugin(stub, 'GitCommitStatus');
 
     try {
       render(
@@ -169,7 +172,9 @@ describe('DetailDrawer commit-status plugins', () => {
       expect(expandedPanel.hidden).toBe(false);
       expect(expandedPanel.textContent).toContain('details for gate');
     } finally {
-      commitStatusPlugins.GitCommitStatus = previous;
+      if (previous) {
+        registerCommitStatusRowPlugin(previous, 'GitCommitStatus');
+      }
     }
   });
 });

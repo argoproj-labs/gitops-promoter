@@ -61,6 +61,15 @@ function webRequest(key: string, branches: string[]) {
   } as unknown as NonNullable<CommitStatusManagerBundle['webRequestCommitStatuses']>[number];
 }
 
+function dependentsSuccessful(key: string, branches: string[]) {
+  return {
+    spec: { key, promotionStrategyRef: { name: 'my-strategy' } },
+    status: { environments: branches.map((branch) => ({ branch, phase: 'pending' })) },
+  } as unknown as NonNullable<
+    CommitStatusManagerBundle['dependentsSuccessfulCommitStatuses']
+  >[number];
+}
+
 function argoCD(key: string) {
   return {
     spec: { key },
@@ -95,6 +104,11 @@ describe('mergeCommitStatusManagers - branch-scoped manager matching', () => {
     ['GitCommitStatus', 'gitCommitStatuses', git],
     ['ScheduledCommitStatus', 'scheduledCommitStatuses', scheduled],
     ['WebRequestCommitStatus', 'webRequestCommitStatuses', webRequest],
+    [
+      'DependentsSuccessfulCommitStatus',
+      'dependentsSuccessfulCommitStatuses',
+      dependentsSuccessful,
+    ],
   ] as const)('%s', (kind, bundleKey, make) => {
     it('matches on spec.key plus a status.environments entry for the branch', () => {
       const manager = make('gate', [OTHER_BRANCH, BRANCH]);
@@ -226,6 +240,28 @@ describe('mergeCommitStatusManagers - branch-scoped manager matching', () => {
       expect(cs.kind).toBe('TimedCommitStatus');
       expect(cs.manager).toBe(manager);
     }
+  });
+
+  it('reads kind/apiVersion off the manager when the server stamps them', () => {
+    const manager = {
+      ...timed('gate', [BRANCH]),
+      kind: 'TimedCommitStatus',
+      apiVersion: 'promoter.argoproj.io/v1beta1',
+    };
+    const [check] = mergeActive(envWithKeys(BRANCH, ['gate']), { timedCommitStatuses: [manager] });
+
+    expect(check.kind).toBe('TimedCommitStatus');
+    expect(check.apiVersion).toBe('promoter.argoproj.io/v1beta1');
+    expect(check.manager).toBe(manager);
+  });
+
+  it('falls back to the inferred kind when the manager has no kind/apiVersion', () => {
+    const manager = timed('gate', [BRANCH]);
+    const [check] = mergeActive(envWithKeys(BRANCH, ['gate']), { timedCommitStatuses: [manager] });
+
+    expect(check.kind).toBe('TimedCommitStatus');
+    expect(check.apiVersion).toBeUndefined();
+    expect(check.manager).toBe(manager);
   });
 
   it('does not mutate the input promotion strategy', () => {

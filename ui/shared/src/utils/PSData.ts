@@ -26,36 +26,67 @@ export interface CommitStatusManagerBundle {
   scheduledCommitStatuses?: components['schemas']['ScheduledCommitStatus'][];
   argoCDCommitStatuses?: components['schemas']['ArgoCDCommitStatus'][];
   webRequestCommitStatuses?: components['schemas']['WebRequestCommitStatus'][];
+  dependentsSuccessfulCommitStatuses?: components['schemas']['DependentsSuccessfulCommitStatus'][];
+}
+
+// Older promoter servers predate GVK-stamping on nested manager objects; this
+// warns once so plugin authors know why kind-based matching still works but
+// isn't coming from the wire, without spamming the console per check.
+let warnedMissingGvk = false;
+function warnMissingGvkOnce(): void {
+  if (warnedMissingGvk) {
+    return;
+  }
+  warnedMissingGvk = true;
+  console.warn(
+    'PSData: commit status manager missing kind/apiVersion; falling back to inferred commit status kind. Upgrade the promoter server to receive kind/apiVersion directly.',
+  );
 }
 
 function findManager(
   key: string,
   branch: string,
   managers: CommitStatusManagerBundle,
-): { kind: CommitStatusManagerKind; manager: CommitStatusManager } | undefined {
+): { kind: string; apiVersion?: string; manager: CommitStatusManager } | undefined {
+  const withFallback = (
+    manager: CommitStatusManager,
+    fallbackKind: CommitStatusManagerKind,
+  ): { kind: string; apiVersion?: string; manager: CommitStatusManager } => {
+    if (manager.kind) {
+      return { kind: manager.kind, apiVersion: manager.apiVersion, manager };
+    }
+    warnMissingGvkOnce();
+    return { kind: fallbackKind, manager };
+  };
+
   for (const tcs of managers.timedCommitStatuses ?? []) {
     if (tcs.spec.key === key && tcs.status?.environments?.some((e) => e.branch === branch)) {
-      return { kind: 'TimedCommitStatus', manager: tcs };
+      return withFallback(tcs, 'TimedCommitStatus');
     }
   }
   for (const gcs of managers.gitCommitStatuses ?? []) {
     if (gcs.spec.key === key && gcs.status?.environments?.some((e) => e.branch === branch)) {
-      return { kind: 'GitCommitStatus', manager: gcs };
+      return withFallback(gcs, 'GitCommitStatus');
     }
   }
   for (const scs of managers.scheduledCommitStatuses ?? []) {
     if (scs.spec.key === key && scs.status?.environments?.some((e) => e.branch === branch)) {
-      return { kind: 'ScheduledCommitStatus', manager: scs };
+      return withFallback(scs, 'ScheduledCommitStatus');
     }
   }
   for (const acs of managers.argoCDCommitStatuses ?? []) {
     if (acs.spec?.key === key) {
-      return { kind: 'ArgoCDCommitStatus', manager: acs };
+      return withFallback(acs, 'ArgoCDCommitStatus');
     }
   }
   for (const wrcs of managers.webRequestCommitStatuses ?? []) {
     if (wrcs.spec.key === key && wrcs.status?.environments?.some((e) => e.branch === branch)) {
-      return { kind: 'WebRequestCommitStatus', manager: wrcs };
+      return withFallback(wrcs, 'WebRequestCommitStatus');
+    }
+  }
+  for (const dscs of managers.dependentsSuccessfulCommitStatuses ?? []) {
+    if (dscs.spec.key === key && dscs.status?.environments?.some((e) => e.branch === branch)) {
+      return withFallback(dscs, 'DependentsSuccessfulCommitStatus');
     }
   }
   return undefined;
@@ -69,6 +100,7 @@ export function getChecks(commitStatuses: EnrichedBranchCommitStatus[], branch: 
     url: cs.url,
     branch,
     kind: cs.kind,
+    apiVersion: cs.apiVersion,
     manager: cs.manager,
   }));
 }
@@ -92,7 +124,7 @@ export function mergeCommitStatusManagers(
   ): EnrichedBranchCommitStatus[] | undefined =>
     commitStatuses?.map((cs) => {
       const match = findManager(cs.key, branch, managers);
-      return { ...cs, kind: match?.kind, manager: match?.manager };
+      return { ...cs, kind: match?.kind, apiVersion: match?.apiVersion, manager: match?.manager };
     });
 
   const environments: Environment[] = ps.status.environments.map((environment: Environment) => {

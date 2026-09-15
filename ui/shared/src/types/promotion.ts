@@ -58,18 +58,21 @@ export type CommitStatusManagerKind =
   | 'GitCommitStatus'
   | 'ScheduledCommitStatus'
   | 'ArgoCDCommitStatus'
-  | 'WebRequestCommitStatus';
+  | 'WebRequestCommitStatus'
+  | 'DependentsSuccessfulCommitStatus';
 
 export type CommitStatusManager =
   | components['schemas']['TimedCommitStatus']
   | components['schemas']['GitCommitStatus']
   | components['schemas']['ScheduledCommitStatus']
   | components['schemas']['ArgoCDCommitStatus']
-  | components['schemas']['WebRequestCommitStatus'];
+  | components['schemas']['WebRequestCommitStatus']
+  | components['schemas']['DependentsSuccessfulCommitStatus'];
 
 /** {@link BranchCommitStatus} stamped with the manager join computed by `mergeCommitStatusManagers`. */
 export interface EnrichedBranchCommitStatus extends BranchCommitStatus {
-  kind?: CommitStatusManagerKind;
+  kind?: string;
+  apiVersion?: string;
   manager?: CommitStatusManager;
 }
 
@@ -79,7 +82,8 @@ export interface Check {
   description?: string;
   url?: string;
   branch: string;
-  kind?: CommitStatusManagerKind;
+  kind?: string;
+  apiVersion?: string;
   manager?: CommitStatusManager;
 }
 
