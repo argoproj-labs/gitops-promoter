@@ -1,12 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Select, { SingleValue } from 'react-select';
 import Card from '@components-lib/components/Card';
 import HistoryView from '@components-lib/components/HistoryView/HistoryView';
-import type { CellSelection } from '@components-lib/components/HistoryView/HistoryView';
+import type { HistoryUrlState } from '@components-lib/components/HistoryView/HistoryView';
 import { PromotionStrategy } from '@shared/types/promotion';
 import { AppViewComponentProps } from '@shared/types/extension';
 import { sortStrategyCommitStatuses } from '@shared/utils/util';
 import {
+  DEFAULT_HISTORY_VIEW_STATE,
   EXTENSION_HISTORY_PARAMS,
   EXTENSION_SELECTION_PARAMS,
   readHistoryViewState,
@@ -14,7 +15,6 @@ import {
   writeHistoryViewState,
   writeSelection,
 } from '@shared/utils/deepLink';
-import type { HistoryViewState } from '@shared/utils/deepLink';
 import './StrategyDropdown.scss';
 
 type ViewMode = 'card' | 'history';
@@ -65,22 +65,24 @@ const setViewInUrl = (view: ViewMode) => {
     commitParams(params);
   } else {
     params.delete(VIEW_PARAM);
-    commitParams(writeSelection(params, EXTENSION_SELECTION_PARAMS, null));
+    const cleared = writeSelection(params, EXTENSION_SELECTION_PARAMS, null);
+    commitParams(
+      writeHistoryViewState(cleared, EXTENSION_HISTORY_PARAMS, DEFAULT_HISTORY_VIEW_STATE)
+    );
   }
 };
 
-const getSelectionFromUrl = (): CellSelection | null =>
-  readSelection(currentParams(), EXTENSION_SELECTION_PARAMS);
+const getHistoryUrlState = (): HistoryUrlState => ({
+  selection: readSelection(currentParams(), EXTENSION_SELECTION_PARAMS),
+  viewState: readHistoryViewState(currentParams(), EXTENSION_HISTORY_PARAMS),
+});
 
-const setSelectionInUrl = (selection: CellSelection | null) => {
-  commitParams(writeSelection(currentParams(), EXTENSION_SELECTION_PARAMS, selection));
-};
-
-const getViewStateFromUrl = (): HistoryViewState =>
-  readHistoryViewState(currentParams(), EXTENSION_HISTORY_PARAMS);
-
-const setViewStateInUrl = (state: HistoryViewState) => {
-  commitParams(writeHistoryViewState(currentParams(), EXTENSION_HISTORY_PARAMS, state));
+const setHistoryUrlState = (state: HistoryUrlState) => {
+  const params = currentParams();
+  params.set(VIEW_PARAM, 'history');
+  let next = writeSelection(params, EXTENSION_SELECTION_PARAMS, state.selection);
+  next = writeHistoryViewState(next, EXTENSION_HISTORY_PARAMS, state.viewState);
+  commitParams(next);
 };
 
 const storageKey = (appNamespace: string, appName: string) =>
@@ -121,6 +123,13 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
     setView(next);
     setViewInUrl(next);
   };
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const initialHistoryUrlState = useMemo(() => getHistoryUrlState(), [view]);
+
+  const handleHistoryUrlStateChange = useCallback((state: HistoryUrlState) => {
+    setHistoryUrlState(state);
+  }, []);
 
   useEffect(() => {
     const appName = application.metadata.name;
@@ -257,10 +266,9 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
         <div className="gp-history-wrapper">
           <HistoryView
             strategy={selected}
-            initialSelection={getSelectionFromUrl()}
-            onSelectionChange={setSelectionInUrl}
-            initialViewState={getViewStateFromUrl()}
-            onViewStateChange={setViewStateInUrl}
+            initialSelection={initialHistoryUrlState.selection}
+            initialViewState={initialHistoryUrlState.viewState}
+            onUrlStateChange={handleHistoryUrlStateChange}
           />
         </div>
       )}

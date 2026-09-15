@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useCallback, useEffect, useReducer, useRef } from 'react';
 import { FaChevronLeft, FaFilter, FaSort, FaLayerGroup, FaArrowRight } from 'react-icons/fa';
 import { GoGitCommit } from 'react-icons/go';
 import { timeAgo, formatDate, getCommitUrl } from '@shared/utils/util';
@@ -22,9 +22,35 @@ const scrollRowIntoView = (rowId: string) => {
   });
 };
 
+const FILTER_LABELS: Record<FilterId, string> = {
+  all: 'All commits',
+  live: 'Live',
+  'in-flight': 'In flight',
+  failed: 'Failed',
+  'no-op': 'No-op',
+};
+const FILTERS: { id: FilterId; label: string }[] = FILTER_IDS.map((id) => ({
+  id,
+  label: FILTER_LABELS[id],
+}));
+
+const SORT_LABELS: Record<SortId, string> = {
+  newest: 'Newest first',
+  oldest: 'Oldest first',
+};
+const SORTS: { id: SortId; label: string }[] = SORT_IDS.map((id) => ({
+  id,
+  label: SORT_LABELS[id],
+}));
+
 export interface CellSelection {
   rowId: string;
   branch: string;
+}
+
+export interface HistoryUrlState {
+  selection: CellSelection | null;
+  viewState: HistoryViewState;
 }
 
 export interface HistoryViewProps {
@@ -33,17 +59,51 @@ export interface HistoryViewProps {
   namespace?: string;
   onBack?: () => void;
   initialSelection?: CellSelection | null;
-  onSelectionChange?: (_selection: CellSelection | null) => void;
-  // Filter, sort and environment filter seed values; any subset may be given,
-  // the rest fall back to their defaults. The host owns URL serialization.
   initialViewState?: Partial<HistoryViewState>;
-  onViewStateChange?: (_state: HistoryViewState) => void;
-  // By default the view fills its host container (`height: 100%`), which is
-  // correct when mounted inside a sized ancestor like ArgoCD's
-  // `application-details__tree`. Hosts with no sized ancestor (the dashboard)
-  // set this to clamp the root to the viewport instead.
+  onUrlStateChange?: (_state: HistoryUrlState) => void;
   fillViewport?: boolean;
 }
+
+const initialUrlState = (
+  selection: CellSelection | null,
+  viewState: Partial<HistoryViewState> | undefined,
+): HistoryUrlState => ({
+  selection,
+  viewState: {
+    filter: viewState?.filter ?? 'all',
+    sort: viewState?.sort ?? 'newest',
+    envFilter: viewState?.envFilter ?? [],
+  },
+});
+
+const sameUrlState = (a: HistoryUrlState, b: HistoryUrlState): boolean =>
+  a.selection?.rowId === b.selection?.rowId &&
+  a.selection?.branch === b.selection?.branch &&
+  a.viewState.filter === b.viewState.filter &&
+  a.viewState.sort === b.viewState.sort &&
+  a.viewState.envFilter.join(',') === b.viewState.envFilter.join(',');
+
+type UrlStateAction =
+  | { type: 'setFilter'; filter: FilterId }
+  | { type: 'setSort'; sort: SortId }
+  | { type: 'setEnvFilter'; envFilter: string[] }
+  | { type: 'setSelection'; selection: CellSelection | null }
+  | { type: 'reset'; state: HistoryUrlState };
+
+const urlStateReducer = (state: HistoryUrlState, action: UrlStateAction): HistoryUrlState => {
+  switch (action.type) {
+    case 'setFilter':
+      return { ...state, viewState: { ...state.viewState, filter: action.filter } };
+    case 'setSort':
+      return { ...state, viewState: { ...state.viewState, sort: action.sort } };
+    case 'setEnvFilter':
+      return { ...state, viewState: { ...state.viewState, envFilter: action.envFilter } };
+    case 'setSelection':
+      return { ...state, selection: action.selection };
+    case 'reset':
+      return action.state;
+  }
+};
 
 const HistoryView: React.FC<HistoryViewProps> = ({
   strategy,
@@ -52,9 +112,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   onBack,
   fillViewport = false,
   initialSelection = null,
-  onSelectionChange,
   initialViewState,
-  onViewStateChange,
+  onUrlStateChange,
 }) => {
   const rootClass = fillViewport ? 'hp--viewport' : '';
   const name = nameProp ?? strategy?.metadata?.name;
@@ -70,78 +129,61 @@ const HistoryView: React.FC<HistoryViewProps> = ({
     return m;
   }, [rows]);
 
-  const [filter, setFilterState] = useState<FilterId>(initialViewState?.filter ?? 'all');
-  const [sort, setSortState] = useState<SortId>(initialViewState?.sort ?? 'newest');
-  const [envFilter, setEnvFilterState] = useState<string[]>(initialViewState?.envFilter ?? []);
-  const [selected, setSelectedState] = useState<CellSelection | null>(initialSelection);
+  const [urlState, dispatch] = useReducer(
+    urlStateReducer,
+    initialUrlState(initialSelection, initialViewState),
+  );
+  const { selection: selected, viewState } = urlState;
+  const { filter, sort, envFilter } = viewState;
+  const selectionFromLinkRef = useRef(initialSelection !== null);
 
-  const onSelectionChangeRef = useRef(onSelectionChange);
-  onSelectionChangeRef.current = onSelectionChange;
+  const initialUrlStateRef = useRef(urlState);
+  useEffect(() => {
+    const next = initialUrlState(initialSelection, initialViewState);
+    if (!sameUrlState(next, initialUrlStateRef.current)) {
+      initialUrlStateRef.current = next;
+      selectionFromLinkRef.current = next.selection !== null;
+      dispatch({ type: 'reset', state: next });
+    }
+  }, [initialSelection, initialViewState]);
 
-  const onViewStateChangeRef = useRef(onViewStateChange);
-  onViewStateChangeRef.current = onViewStateChange;
+  const onUrlStateChangeRef = useRef(onUrlStateChange);
+  onUrlStateChangeRef.current = onUrlStateChange;
 
-  const viewStateRef = useRef<HistoryViewState>({ filter, sort, envFilter });
-  viewStateRef.current = { filter, sort, envFilter };
+  const urlStateRef = useRef(urlState);
+  urlStateRef.current = urlState;
+
+  useEffect(() => {
+    if (urlState !== initialUrlStateRef.current) {
+      onUrlStateChangeRef.current?.(urlState);
+    }
+  }, [urlState]);
 
   const setFilter = useCallback((next: FilterId) => {
-    setFilterState(next);
-    viewStateRef.current = { ...viewStateRef.current, filter: next };
-    onViewStateChangeRef.current?.(viewStateRef.current);
+    dispatch({ type: 'setFilter', filter: next });
   }, []);
 
   const setSort = useCallback((next: SortId) => {
-    setSortState(next);
-    viewStateRef.current = { ...viewStateRef.current, sort: next };
-    onViewStateChangeRef.current?.(viewStateRef.current);
+    dispatch({ type: 'setSort', sort: next });
   }, []);
 
   const setEnvFilter = useCallback((next: string[] | ((_prev: string[]) => string[])) => {
-    const value = typeof next === 'function' ? next(viewStateRef.current.envFilter) : next;
-    setEnvFilterState(value);
-    viewStateRef.current = { ...viewStateRef.current, envFilter: value };
-    onViewStateChangeRef.current?.(viewStateRef.current);
+    const value =
+      typeof next === 'function' ? next(urlStateRef.current.viewState.envFilter) : next;
+    dispatch({ type: 'setEnvFilter', envFilter: value });
   }, []);
 
-  const selectionFromLinkRef = useRef(initialSelection !== null);
   const [staleLink, setStaleLink] = useState(false);
 
   const selectCell = useCallback((next: CellSelection | null) => {
     selectionFromLinkRef.current = false;
     setStaleLink(false);
-    setSelectedState(next);
-    onSelectionChangeRef.current?.(next);
+    dispatch({ type: 'setSelection', selection: next });
   }, []);
 
   const drawer = useDrawerWidth();
 
   const validBranches = useMemo(() => new Set(envs.map((e) => e.branch)), [envs]);
-  useEffect(() => {
-    if (!selected || rows.length === 0) return;
-    const selectedCell = rowsById.get(selected.rowId)?.cells[selected.branch];
-    if (
-      !validBranches.has(selected.branch) ||
-      !selectedCell ||
-      isEmptyCellKind(selectedCell.kind)
-    ) {
-      if (selectionFromLinkRef.current) setStaleLink(true);
-      selectionFromLinkRef.current = false;
-      setSelectedState(null);
-      onSelectionChangeRef.current?.(null);
-    }
-  }, [selected, rows.length, rowsById, validBranches]);
-
-  useEffect(() => {
-    if (!selected || rows.length === 0 || !selectionFromLinkRef.current) return;
-    selectionFromLinkRef.current = false;
-    scrollRowIntoView(selected.rowId);
-  }, [selected, rows.length]);
-
-  useEffect(() => {
-    if (envs.length === 0) return;
-    const pruned = pruneEnvFilter(viewStateRef.current.envFilter, validBranches);
-    if (pruned) setEnvFilter(pruned);
-  }, [envs.length, validBranches, setEnvFilter]);
 
   const handleToggleEnvFilter = useCallback((branch: string) => {
     setEnvFilter((prev) =>
@@ -176,6 +218,35 @@ const HistoryView: React.FC<HistoryViewProps> = ({
     if (sort === 'oldest') return [...list].sort((a, b) => a.freshestAt - b.freshestAt);
     return [...list].sort((a, b) => b.freshestAt - a.freshestAt);
   }, [envScopedRows, filter, sort]);
+
+  const filteredRowIds = useMemo(() => new Set(filteredRows.map((r) => r.id)), [filteredRows]);
+
+  useEffect(() => {
+    if (!selected || rows.length === 0) return;
+    const selectedCell = rowsById.get(selected.rowId)?.cells[selected.branch];
+    if (
+      !validBranches.has(selected.branch) ||
+      !selectedCell ||
+      isEmptyCellKind(selectedCell.kind) ||
+      !filteredRowIds.has(selected.rowId)
+    ) {
+      if (selectionFromLinkRef.current) setStaleLink(true);
+      selectionFromLinkRef.current = false;
+      dispatch({ type: 'setSelection', selection: null });
+    }
+  }, [selected, rows.length, rowsById, validBranches, filteredRowIds]);
+
+  useEffect(() => {
+    if (!selected || rows.length === 0 || !selectionFromLinkRef.current) return;
+    selectionFromLinkRef.current = false;
+    scrollRowIntoView(selected.rowId);
+  }, [selected, rows.length]);
+
+  useEffect(() => {
+    if (envs.length === 0) return;
+    const pruned = pruneEnvFilter(urlStateRef.current.viewState.envFilter, validBranches);
+    if (pruned) setEnvFilter(pruned);
+  }, [envs.length, validBranches, setEnvFilter]);
 
   const counts = useMemo(() => {
     return {
@@ -223,27 +294,6 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   const selectedRow = selected ? (rowsById.get(selected.rowId) ?? null) : null;
   const selectedCell = selectedRow && selected ? selectedRow.cells[selected.branch] : null;
   const hasMultipleEnvs = envs.length > 1;
-
-  const FILTER_LABELS: Record<FilterId, string> = {
-    all: 'All commits',
-    live: 'Live',
-    'in-flight': 'In flight',
-    failed: 'Failed',
-    'no-op': 'No-op',
-  };
-  const FILTERS: { id: FilterId; label: string }[] = FILTER_IDS.map((id) => ({
-    id,
-    label: FILTER_LABELS[id],
-  }));
-
-  const SORT_LABELS: Record<SortId, string> = {
-    newest: 'Newest first',
-    oldest: 'Oldest first',
-  };
-  const SORTS: { id: SortId; label: string }[] = SORT_IDS.map((id) => ({
-    id,
-    label: SORT_LABELS[id],
-  }));
 
   const visibleEnvs = envFilter.length ? envs.filter((e) => envFilter.includes(e.branch)) : envs;
 
